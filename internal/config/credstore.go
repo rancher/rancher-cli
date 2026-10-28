@@ -50,7 +50,7 @@ func IsUserIDCacheSlot(name string) bool {
 	return strings.HasPrefix(name, UserIDCachePrefix)
 }
 
-const keyringService = "rancher-cli"
+const keyringService = "cli.rancher.io"
 
 // keyringObserverFn is an optional test hook called on every keyring operation
 // performed through keyringStore (Get, Set, Delete). Nil by default - no-op in

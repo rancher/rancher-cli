@@ -638,7 +638,7 @@ func TestFacadeJSONLoginReturnsV3ShapeWithDescription(t *testing.T) {
 	f := testrancher.New(testrancher.Options{})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	body := `{"type":"localProvider","responseType":"json","description":"rancher-cli login @ h [op:0123456789ab]","username":"e2e-user","password":"e2e-pass"}`
+	body := `{"type":"localProvider","responseType":"json","description":"cli.rancher.io login @ h [op:0123456789ab]","username":"e2e-user","password":"e2e-pass"}`
 	resp, err := srv.Client().Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
@@ -651,7 +651,7 @@ func TestFacadeJSONLoginReturnsV3ShapeWithDescription(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
 	assert.NotEmpty(t, got.ID)
 	assert.True(t, strings.HasPrefix(got.Token, got.ID+":"), "v3 bearer is <name>:<key>")
-	assert.Equal(t, []string{"rancher-cli login @ h [op:0123456789ab]"}, f.LoginDescriptions())
+	assert.Equal(t, []string{"cli.rancher.io login @ h [op:0123456789ab]"}, f.LoginDescriptions())
 }
 
 // TestFacadeDeleteRecordsKindNameAndBearer asserts what cleanup tests read:

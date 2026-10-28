@@ -27,7 +27,7 @@ Environment:
   VAULT_ADDR              Vault/OpenBao address (required)
   VAULT_TOKEN             auth token; falls back to ~/.vault-token
   RANCHER_VAULT_MOUNT     KV v2 mount (default: secret)
-  RANCHER_VAULT_PATH      path prefix under the mount (default: rancher-cli)
+  RANCHER_VAULT_PATH      path prefix under the mount (default: ` + defaultVaultPath + `)
 
 See CREDENTIAL_HELPERS.md for the full protocol contract.`
 

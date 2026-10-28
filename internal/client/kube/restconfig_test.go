@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 	"k8s.io/client-go/rest"
 )
 
@@ -236,4 +237,29 @@ func tokenlessWithChange(t *testing.T, record string) config.Effective {
 	eff, err := loaded.Effective(config.NewFileStore(dir))
 	require.NoError(t, err)
 	return eff
+}
+
+// TestRequireLoginForAKeychainEntryWithNoToken asserts an entry whose
+// keychain store holds no login for it is not logged in: RequireLogin
+// returns NOT_LOGGED_IN with exit code 2 and the login command for the entry.
+func TestRequireLoginForAKeychainEntryWithNoToken(t *testing.T) {
+	t.Setenv(config.EnvCredentialStore, "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	cfg := &config.Config{CurrentServer: "prod", Servers: map[string]config.Server{"prod": {URL: "https://r.ex"}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	store, _, err := config.OpenResolvedStore("keychain", dir)
+	require.NoError(t, err)
+	eff, err := cfg.Effective(store)
+	require.NoError(t, err)
+	require.Empty(t, eff.Token)
+
+	err = RequireLogin(eff)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
+	assert.Equal(t, 2, ce.ExitCode())
+	assert.Equal(t, `not logged in to "prod"`, ce.Message)
+	assert.Equal(t, clierr.Rancher+" auth login 'prod'", ce.Hint)
 }

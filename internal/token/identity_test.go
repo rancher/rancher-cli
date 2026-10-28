@@ -20,7 +20,7 @@ func TestNewOperationMarkerShape(t *testing.T) {
 	require.NoError(t, err)
 	assert.Regexp(t, regexp.MustCompile(`^[0-9a-f]{12}$`), a)
 	assert.NotEqual(t, a, b)
-	assert.Equal(t, "rancher-cli login @ host1 [op:"+a+"]", TokenDescription("host1", a))
+	assert.Equal(t, "cli.rancher.io login @ host1 [op:"+a+"]", TokenDescription("host1", a))
 }
 
 // TestTokenRefFromValidatedBearer asserts the one place a name is derived
@@ -364,4 +364,12 @@ func TestComputedExpiry(t *testing.T) {
 			assert.Equal(t, tc.want, computedExpiry(tc.createdTS, tc.ttl))
 		})
 	}
+}
+
+// TestHostLoginDescriptionNamesTheProduct asserts the description of a token
+// created outside a login operation starts with the product identifier
+// cli.rancher.io and carries no operation marker.
+func TestHostLoginDescriptionNamesTheProduct(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "cli.rancher.io login @ "+hostname(), hostLoginDescription())
 }

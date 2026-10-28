@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -85,7 +87,7 @@ func newTestHandlerFor(t *testing.T, h http.Handler) *vaultHandler {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return &vaultHandler{addr: srv.URL, token: "test-token", mount: "secret", path: "rancher-cli", client: srv.Client()}
+	return &vaultHandler{addr: srv.URL, token: "test-token", mount: "secret", path: defaultVaultPath, client: srv.Client()}
 }
 
 func TestVaultStoreGetErase(t *testing.T) {
@@ -112,7 +114,7 @@ func TestVaultStoreGetErase(t *testing.T) {
 	assert.Equal(t, credhelper.EraseNothingStored, outcome, "erase of a missing credential reports a no-op")
 	// exact endpoint: metadata delete, never data soft-delete
 	joined := strings.Join(fv.paths, "\n")
-	assert.Contains(t, joined, "DELETE /v1/secret/metadata/rancher-cli/")
+	assert.Contains(t, joined, "DELETE /v1/secret/metadata/cli.rancher.io/")
 	assert.NotContains(t, joined, "DELETE /v1/secret/data/")
 }
 
@@ -306,4 +308,34 @@ func TestVaultGetEmptyDataIsNotFound(t *testing.T) {
 	creds, err := h.Get("https://r.ex", "prod")
 	require.NoError(t, err)
 	assert.Nil(t, creds)
+}
+
+// TestDefaultVaultPath asserts an empty RANCHER_VAULT_PATH reads as unset:
+// the handler's path and the help text's default are both cli.rancher.io.
+func TestDefaultVaultPath(t *testing.T) {
+	t.Setenv("VAULT_ADDR", "http://vault.example.com:8200")
+	t.Setenv("VAULT_TOKEN", "test-token")
+	t.Setenv("RANCHER_VAULT_PATH", "")
+
+	h, err := newVaultHandlerFromEnv()
+	require.NoError(t, err)
+	assert.Equal(t, "cli.rancher.io", h.path)
+	assert.Contains(t, usageText, "(default: cli.rancher.io)")
+}
+
+// TestCredentialHelpersDocNamesTheDefaultVaultPath asserts the
+// RANCHER_VAULT_PATH row of CREDENTIAL_HELPERS.md names defaultVaultPath as
+// its default.
+func TestCredentialHelpersDocNamesTheDefaultVaultPath(t *testing.T) {
+	t.Parallel()
+	doc, err := os.ReadFile(filepath.Join("..", "..", "CREDENTIAL_HELPERS.md"))
+	require.NoError(t, err)
+	var row string
+	for line := range strings.SplitSeq(string(doc), "\n") {
+		if strings.HasPrefix(line, "| `RANCHER_VAULT_PATH` |") {
+			row = line
+		}
+	}
+	require.NotEmpty(t, row, "the environment table has a RANCHER_VAULT_PATH row")
+	assert.Contains(t, row, "| `"+defaultVaultPath+"` |")
 }

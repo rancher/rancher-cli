@@ -1868,7 +1868,7 @@ func postTokenCreate(ctx context.Context, client *http.Client, newRequest func(c
 // login operation owns it: get-token's per-cluster creates, which no cleanup
 // path has to find again.
 func hostLoginDescription() string {
-	return "rancher-cli login @ " + hostname()
+	return descriptionProduct + " login @ " + hostname()
 }
 
 // hostname is this machine's name for a token description; a machine that

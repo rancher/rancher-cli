@@ -146,7 +146,7 @@ OpenBao. Configuration (environment):
 | `VAULT_ADDR` | - (required) | Vault/OpenBao address. |
 | `VAULT_TOKEN` | `~/.vault-token` | Auth token (env wins). |
 | `RANCHER_VAULT_MOUNT` | `secret` | KV v2 mount. |
-| `RANCHER_VAULT_PATH` | `rancher-cli` | Path prefix under the mount. |
+| `RANCHER_VAULT_PATH` | `cli.rancher.io` | Path prefix under the mount. |
 
 One KV v2 secret per credential at
 `<mount>/data/<path>/sha256hex(serverURL + "\n" + name)` with fields `token`,
@@ -154,12 +154,12 @@ One KV v2 secret per credential at
 permanently removed. Required policy:
 
 ```hcl
-path "secret/data/rancher-cli/*"     { capabilities = ["create", "update", "read"] }
-path "secret/metadata/rancher-cli/*" { capabilities = ["delete"] }
+path "secret/data/cli.rancher.io/*"     { capabilities = ["create", "update", "read"] }
+path "secret/metadata/cli.rancher.io/*" { capabilities = ["delete"] }
 ```
 
 The paths above use the default mount (`secret`) and path prefix
-(`rancher-cli`); adjust them if `RANCHER_VAULT_MOUNT` or `RANCHER_VAULT_PATH`
+(`cli.rancher.io`); adjust them if `RANCHER_VAULT_MOUNT` or `RANCHER_VAULT_PATH`
 are overridden.
 
 (`update` matters: without it the first login works and every re-login
@@ -229,7 +229,7 @@ ver=$(printf '%s' "$req" | jq -r '.protocolVersion')
 [ "$ver" = "1" ] || { echo "unsupported protocol version $ver" >&2; exit 1; }
 url=$(printf '%s' "$req" | jq -r '.serverURL')
 name=$(printf '%s' "$req" | jq -r '.name')
-entry="rancher-cli/$(printf '%s\n%s' "$url" "$name" | openssl dgst -sha256 -r | cut -d' ' -f1)"
+entry="cli.rancher.io/$(printf '%s\n%s' "$url" "$name" | openssl dgst -sha256 -r | cut -d' ' -f1)"
 case "$1" in
 get)
   if out=$(pass show "$entry" 2>&1); then

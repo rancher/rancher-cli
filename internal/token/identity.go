@@ -53,10 +53,13 @@ func NewOperationMarker() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// descriptionProduct is the product name a token description starts with.
+const descriptionProduct = "cli.rancher.io"
+
 // TokenDescription renders the description every token this operation
 // creates carries.
 func TokenDescription(host, marker string) string {
-	return fmt.Sprintf("rancher-cli login @ %s [op:%s]", host, marker)
+	return fmt.Sprintf("%s login @ %s [op:%s]", descriptionProduct, host, marker)
 }
 
 var v3NameRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)

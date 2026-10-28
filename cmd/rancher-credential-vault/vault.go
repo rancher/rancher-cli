@@ -30,6 +30,10 @@ type vaultHandler struct {
 	client                   *http.Client
 }
 
+// defaultVaultPath is the path prefix under the mount when
+// RANCHER_VAULT_PATH is unset.
+const defaultVaultPath = "cli.rancher.io"
+
 func newVaultHandlerFromEnv() (*vaultHandler, error) {
 	addr := os.Getenv("VAULT_ADDR")
 	if addr == "" {
@@ -48,7 +52,7 @@ func newVaultHandlerFromEnv() (*vaultHandler, error) {
 		return nil, fmt.Errorf("no Vault token: set VAULT_TOKEN or create ~/.vault-token")
 	}
 	mount := envOr("RANCHER_VAULT_MOUNT", "secret")
-	path := envOr("RANCHER_VAULT_PATH", "rancher-cli")
+	path := envOr("RANCHER_VAULT_PATH", defaultVaultPath)
 	return &vaultHandler{addr: strings.TrimRight(addr, "/"), token: token, mount: mount, path: path, client: http.DefaultClient}, nil
 }
 

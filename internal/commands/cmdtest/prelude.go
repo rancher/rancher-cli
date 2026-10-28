@@ -186,7 +186,7 @@ func RunPreludeRows(t *testing.T, run func(t *testing.T, dir string) ([]string, 
 				assert.NoFileExists(t, config.TransitionPath(dir), "the change is finished")
 				assert.False(t, recordAtFirstWrite, "the replay retired prod's identity record before the command's first write")
 				assert.NoFileExists(t, identityRecordPath(dir, "prod"), "and it is gone")
-				_, err := keyring.Get("rancher-cli", prodAccount+":prod")
+				_, err := keyring.Get("cli.rancher.io", prodAccount+":prod")
 				assert.ErrorIs(t, err, keyring.ErrNotFound, "and so is the old copy")
 			}},
 		{name: "a pin step that moves readers is written, and the command's last write resumes the pauses it held",
