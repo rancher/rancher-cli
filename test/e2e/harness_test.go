@@ -89,6 +89,8 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	"access-projects": func(o *testrancher.Options) { o.ClustersPageSize = 1 },
 	// The scenario creates the management Clusters it inspects.
 	"inspect-cluster": func(o *testrancher.Options) { o.ClusterVisibility = withStoredClusters(o.ClusterVisibility) },
+	// The direct-endpoint clusters the scenario asks kubeconfig for by name.
+	"kubeconfig": func(o *testrancher.Options) { o.ClusterVisibility = withDirectEndpointClusters(o.ClusterVisibility) },
 }
 
 // shimClusters are the management Clusters the facade's steve collection
@@ -269,6 +271,28 @@ func withStoredClusters(visible func(string) ([]testrancher.ClusterFixture, bool
 			rows = append(rows, testrancher.ClusterFixture{ID: name, DisplayName: display})
 		}
 		return rows, true
+	}
+}
+
+// directEndpointClusters are the clusters seedDirectEndpointFixtures creates,
+// as the steve clusters collection lists them.
+var directEndpointClusters = []testrancher.ClusterFixture{
+	{ID: "c-ace-fqdn", DisplayName: "acefqdn"},
+	{ID: "c-ace-nodes", DisplayName: "acenodes"},
+	{ID: "c-ace-empty", DisplayName: "aceempty"},
+}
+
+// withDirectEndpointClusters adds the direct-endpoint clusters to visible,
+// so a command resolves one by display name or id. Only the kubeconfig
+// scenario gets them: they have no proxy behind them, and a command that
+// probes every listed cluster would reach them.
+func withDirectEndpointClusters(visible func(string) ([]testrancher.ClusterFixture, bool)) func(string) ([]testrancher.ClusterFixture, bool) {
+	return func(bearer string) ([]testrancher.ClusterFixture, bool) {
+		rows, ok := visible(bearer)
+		if !ok {
+			return nil, false
+		}
+		return slices.Concat(rows, directEndpointClusters), true
 	}
 }
 
