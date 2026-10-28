@@ -42,7 +42,7 @@ func exhaustedBudget(ctx context.Context) (time.Duration, bool) {
 
 // timeoutFlag is the --timeout ArgSpec every access command carries.
 func timeoutFlag() runtime.ArgSpec {
-	return runtime.ArgSpec{Name: flagTimeout, Type: "string", Desc: "time budget for the whole call, e.g. 2m (default 60s)"}
+	return runtime.ArgSpec{Name: flagTimeout, Type: "string", Desc: "time limit for the whole command, e.g. 2m (default 60s)"}
 }
 
 // parseTimeout reads --timeout: empty is the default budget; anything

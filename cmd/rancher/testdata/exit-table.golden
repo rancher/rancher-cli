@@ -297,7 +297,7 @@ stderr:
 $ rancher config path --read-only
 exit: 2
 stderr:
-> error (VALIDATION): config path is a local command and --read-only does not govern it; run it without --read-only and any value typed with it (RANCHER_CLI_READONLY or config readOnly is the session-wide form and leaves local commands usable)
+> error (VALIDATION): config path is a local command and --read-only does not govern it; run it without --read-only and any value typed with it (RANCHER_CLI_READONLY or config readOnly applies to every run and leaves local commands usable)
 
 $ rancher delete pod x --cluster local --apply --yes
 env: RANCHER_CLI_READONLY=1

@@ -77,7 +77,7 @@ func TestOriginOfDistinguishes(t *testing.T) {
 func TestOriginOfRejects(t *testing.T) {
 	t.Parallel()
 	_, err := httpx.OriginOf(nil)
-	require.ErrorContains(t, err, "nil")
+	require.ErrorContains(t, err, "missing")
 	for _, raw := range []string{"ftp://h", "https:///path", "https:opaque", "https://h:0", "https://h:70000"} {
 		u, perr := url.Parse(raw)
 		require.NoError(t, perr, raw)

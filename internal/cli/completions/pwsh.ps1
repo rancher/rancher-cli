@@ -4,13 +4,14 @@
 # (https://github.com/urfave/cli), MIT License,
 # Copyright (c) 2023 urfave/cli maintainers.
 #
-# Unlike urfave's own script, which derives the command name from the .ps1
-# filename it is saved as, this one hardcodes "rancher": it is emitted
-# directly by `rancher completion pwsh`, never saved under a different name.
+# Unlike urfave's own script, which takes the command name from the
+# .ps1 filename it is saved as, this one always uses "rancher":
+# `rancher completion pwsh` prints it directly, and it is never saved
+# under a different name.
 #
-# Output the script to path/to/rancher.ps1 and run it to enable completion.
+# Save the script as path/to/rancher.ps1 and run it to enable completion.
 #
-# Minimum supported shell: Windows PowerShell 5.1 or pwsh 7+
+# Minimum shell version: Windows PowerShell 5.1 or pwsh 7+
 # (Register-ArgumentCompleter -Native and CompletionResult are the newest
 # APIs used).
 

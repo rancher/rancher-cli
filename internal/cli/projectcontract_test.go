@@ -515,7 +515,7 @@ func TestProjectContract(t *testing.T) {
 				assert.Zero(t, r.exit, "%v", argv)
 				require.NotEmpty(t, r.reads, "%v: the command read the project it takes", argv)
 				for _, c := range r.reads {
-					assert.Equal(t, "c-abc", c, "%v: the project is read on the cluster --cluster names", argv)
+					assert.Equal(t, "c-abc", c, "%v: the project is read on the cluster given by --cluster", argv)
 				}
 			}
 

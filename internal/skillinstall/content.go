@@ -37,8 +37,10 @@ const (
 )
 
 // ErrNonRegular marks a tree entry that is not a regular file - symlinks,
-// FIFOs, and devices are rejected rather than read.
-var ErrNonRegular = errors.New("tree contains a non-regular file")
+// FIFOs, and devices are rejected rather than read. Its text is the end of
+// a sentence: callers wrap it as "the skill files include <path>, which
+// <ErrNonRegular>".
+var ErrNonRegular = errors.New("is not a regular file")
 
 var source fs.FS
 
@@ -56,18 +58,18 @@ type InstallRecord struct {
 func splitSkillMD(b []byte) (fm []byte, body []byte, err error) {
 	rest, found := bytes.CutPrefix(b, []byte("---\n"))
 	if !found {
-		return nil, nil, fmt.Errorf("SKILL.md: missing frontmatter open")
+		return nil, nil, fmt.Errorf("SKILL.md: the frontmatter has no opening --- line")
 	}
 	fm, body, found = bytes.Cut(rest, []byte("\n---\n"))
 	if !found {
-		return nil, nil, fmt.Errorf("SKILL.md: missing frontmatter close")
+		return nil, nil, fmt.Errorf("SKILL.md: the frontmatter has no closing --- line")
 	}
 	return fm, body, nil
 }
 
 func loadSource() (map[string][]byte, error) {
 	if source == nil {
-		return nil, fmt.Errorf("skillinstall: source not set")
+		return nil, fmt.Errorf("internal error: the skill source is not set")
 	}
 	files := map[string][]byte{}
 	err := fs.WalkDir(source, ".", func(path string, d fs.DirEntry, err error) error {
@@ -78,7 +80,7 @@ func loadSource() (map[string][]byte, error) {
 			return nil
 		}
 		if !d.Type().IsRegular() {
-			return fmt.Errorf("%w: %s", ErrNonRegular, path)
+			return fmt.Errorf("the skill files include %s, which %w", path, ErrNonRegular)
 		}
 		b, err := fs.ReadFile(source, path)
 		if err != nil {
@@ -91,7 +93,7 @@ func loadSource() (map[string][]byte, error) {
 		return nil, err
 	}
 	if _, ok := files[skillFile]; !ok {
-		return nil, fmt.Errorf("skill source: no %s", skillFile)
+		return nil, fmt.Errorf("internal error: the skill source has no %s", skillFile)
 	}
 	return files, nil
 }
@@ -113,7 +115,7 @@ func ReadTree(dir string) (map[string][]byte, error) {
 			return nil
 		}
 		if !d.Type().IsRegular() {
-			return fmt.Errorf("%w: %s", ErrNonRegular, path)
+			return fmt.Errorf("the skill files include %s, which %w", path, ErrNonRegular)
 		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {

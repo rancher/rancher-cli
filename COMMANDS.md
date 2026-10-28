@@ -122,7 +122,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 | `access who-can <verb> [<resource>[/<name>]]` | List the subjects the cluster's bindings name that the authorizer allows to perform a verb on a resource, one SubjectAccessReview each; denied rows with `--show-denied`; exit 13 when a row has a request issue or is unknown because the authorizer returned an evaluation error |
 | `access explain <verb> [<resource>[/<name>]]` | Explain the authorizer's decision for one subject, verb, and resource in one namespace: the binding and role the server's reason names, the rules covering the request, and the Rancher chain behind the binding (ClusterRoleTemplateBinding or ProjectRoleTemplateBinding, GlobalRoleBinding and GlobalRole, RoleTemplate inheritance); on deny, the bindings naming the subject or its groups; exit 0 allowed, 12 denied, 13 unknown, never changed by a partial chain |
 | `access clusters` | List the clusters Rancher lets you (or `--as` a user) into, as its proxy answers per cluster, beside the management bindings that grant it; exit 13 when any cluster is unknown |
-| `access projects [--cluster]` | List the projects you (or `--as` a user) can see into, grouped by cluster: the authorizer's answer to getting each project namespace, rolled up per project (all, partial, none, unknown), beside the ProjectRoleTemplateBindings that make the subject a member and the cluster or global bindings that reach it without membership; exit 13 when any cluster, project or namespace is unknown |
+| `access projects [--cluster]` | List the projects you (or `--as` a user) can see into, grouped by cluster: the authorizer's answer to getting each namespace of the project, summarized per project (all, partial, none, unknown), beside the ProjectRoleTemplateBindings that make the subject a member and the cluster or global bindings that reach it without membership; exit 13 when any cluster, project or namespace is unknown |
 
 ## Logs & support
 
@@ -154,9 +154,9 @@ for lifecycle; `get provisioning-cluster` for reads.
 |---|---|
 | `schema [command\|kind\|group]` | Capability manifest: bare = grouped table of contents; `<command>`/`<kind>`/`<group>` = one card; filter flags span the whole surface |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
-| `skill install` | Install the rancher agents skill into coding-agent harnesses |
-| `skill uninstall` | Remove rancher-installed agents skills (only exact owner-marked installations) |
-| `skill status` | Report installed skill versions and integrity; exits 7 when a selected target is out of state |
+| `skill install` | Install the rancher-cli agent skill into coding-agent harnesses |
+| `skill uninstall` | Remove the agent skills that rancher-cli installed (a skill directory that rancher-cli did not install is never removed: the command stops with an error and changes no target) |
+| `skill status` | Report, for each harness, the installed skill version and whether its files are unchanged; exits 7 when a selected target is not in the expected state (another version, changed files, content rancher-cli did not install, or missing under --require-installed) |
 <!-- /conformance:commands-table -->
 
 Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =

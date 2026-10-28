@@ -469,7 +469,7 @@ func TestClusterClientDeleteRefusesCrossOriginRedirect(t *testing.T) {
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeGeneric, ce2.Code)
 	assert.False(t, ce2.Retryable)
-	require.ErrorContains(t, err, "credentialed redirects are not followed across origins")
+	require.ErrorContains(t, err, "a redirect to another origin is not followed, to keep credentials from being sent there")
 	assert.Zero(t, hits.Load())
 }
 

@@ -33,7 +33,7 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.BoolFlag{Name: "apply", Usage: "apply the change"},
 		&ucli.BoolFlag{Name: "yes", Usage: "confirm a destructive change"},
 		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "allow writing to a deprecated resource"},
-		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; ambiguity becomes an error"},
+		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; fail with an error when the input is ambiguous"},
 		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template=<tpl>"},
 		&ucli.StringFlag{Name: "color", Usage: "auto|always|never"},
 		&ucli.StringFlag{Name: "project", Usage: "the project, by id or display name (only commands that take --project)"},

@@ -94,17 +94,17 @@ func ShellCompletionShells() []string { return []string{"bash", "zsh", "fish", "
 // GlobalFlags is the confirmation/output model, discoverable via schema.
 func GlobalFlags() []GlobalFlag {
 	return []GlobalFlag{
-		{Name: "--dry-run", Type: "bool", AppliesTo: "mutating", Desc: "preview Effect, no change"},
-		{Name: "--apply", Type: "bool", AppliesTo: "mutating", Desc: "execute the mutation"},
-		{Name: "--yes", Type: "bool", AppliesTo: "mutating", Desc: "confirm a destructive Effect"},
-		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "permit a deprecated-stability write"},
-		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; ambiguity becomes an error"},
-		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' = ids only; 'wide' adds extra columns to the same rows, never a filter; template=<go-template> renders a Go template over the JSON view of data"},
-		{Name: "--color", Type: "enum", Enum: ColorModes, AppliesTo: "all", Desc: "when table/default/wide text is styled: auto (default) styles only a real terminal, always/never override detection; NO_COLOR turns styling off, CLICOLOR_FORCE/FORCE_COLOR turn it on, under auto", Env: []string{"NO_COLOR", "CLICOLOR_FORCE", "FORCE_COLOR"}},
+		{Name: "--dry-run", Type: "bool", AppliesTo: "mutating", Desc: "preview the changes without applying them"},
+		{Name: "--apply", Type: "bool", AppliesTo: "mutating", Desc: "apply the change"},
+		{Name: "--yes", Type: "bool", AppliesTo: "mutating", Desc: "confirm a destructive change"},
+		{Name: "--allow-deprecated", Type: "bool", AppliesTo: "mutating", Desc: "allow writing to a deprecated resource"},
+		{Name: "--no-input", Type: "bool", AppliesTo: "all", Desc: "never prompt; fail with an error when the input is ambiguous"},
+		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' prints only the NAME column, one per line; 'wide' adds extra columns to the same rows and never filters rows; template=<go-template> renders a Go template over the `data` of the JSON output"},
+		{Name: "--color", Type: "enum", Enum: ColorModes, AppliesTo: "all", Desc: "when table (the default) and wide output is styled: auto (default) styles only output sent to a terminal, always and never skip that check; under auto, NO_COLOR turns styling off and CLICOLOR_FORCE or FORCE_COLOR turn it on", Env: []string{"NO_COLOR", "CLICOLOR_FORCE", "FORCE_COLOR"}},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
 		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "accepted; currently no effect"},
-		{Name: "--project", Type: "string", AppliesTo: "declared", Desc: "the project, by id or display name, on the cluster --cluster names; only the commands that take --project accept it, every other command refuses it before sending a request"},
-		{Name: "--read-only", Type: "bool", AppliesTo: "server", Desc: "refuse mutating commands for this session; one-way, no override; applies to commands that read or change server resources and is refused on local commands (config readOnly and a non-empty RANCHER_CLI_READONLY are the session-wide forms and leave local commands usable)", Env: []string{"RANCHER_CLI_READONLY"}},
+		{Name: "--project", Type: "string", AppliesTo: "declared", Desc: "the project, by id or display name, on the cluster given by --cluster; only the commands that take --project accept it, and every other command refuses it before sending a request"},
+		{Name: "--read-only", Type: "bool", AppliesTo: "server", Desc: "refuse commands that make changes, for this run; once set it cannot be turned off; applies to commands that read or change server resources and is refused on local commands (the config setting readOnly and a non-empty RANCHER_CLI_READONLY apply to every run and leave local commands usable)", Env: []string{"RANCHER_CLI_READONLY"}},
 	}
 }
 
@@ -131,7 +131,7 @@ func EnvVars() []EnvVar {
 		{Name: "RANCHER_CLI_TOKEN", Desc: "API token (id:secret) for non-interactive auth"},
 		{Name: "RANCHER_CLI_CACERT", Flag: "--cacert", Desc: "PEM CA bundle, a path or the literal PEM"},
 		{Name: "RANCHER_CLI_CREDENTIAL_STORE", Flag: "--credential-store", Desc: "credential store backend: auto, keychain, or file"},
-		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, refuse mutating commands for the session; local commands stay usable"},
+		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, every run refuses commands that make changes; local commands stay usable"},
 		{Name: "NO_COLOR", Flag: "--color", Desc: "when non-empty, turn off styling under --color=auto"},
 		{Name: "CLICOLOR_FORCE", Flag: "--color", Desc: "when set to a value other than \"0\", turn on styling under --color=auto"},
 		{Name: "FORCE_COLOR", Flag: "--color", Desc: "same as CLICOLOR_FORCE; when both are set and disagree, whichever is not \"0\" wins"},

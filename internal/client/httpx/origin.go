@@ -26,7 +26,7 @@ var defaultPort = map[string]string{"http": "80", "https": "443"}
 // http/https, empty hostname, port outside 1..65535.
 func OriginOf(u *url.URL) (Origin, error) {
 	if u == nil {
-		return Origin{}, errors.New("URL is nil")
+		return Origin{}, errors.New("URL is missing")
 	}
 	scheme := strings.ToLower(u.Scheme)
 	if _, ok := defaultPort[scheme]; !ok {

@@ -147,7 +147,7 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	home := skillHome(t, ".agents", ".claude")
 	skillinstall.SetSource(skillTestSource(t))
 
-	// foreign-looking (non-empty, unmarked) leftover staging entry next to the
+	// foreign-looking (non-empty, unmarked) leftover temporary directory next to the
 	// claude target: sweep must report it, and the report must survive
 	// the partial-failure error
 	leftover := filepath.Join(home, ".claude", "skills", ".rancher-skill-staging-cafe")
@@ -198,7 +198,7 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	assert.Contains(t, text, "# warning: ")
 	assert.Contains(t, text, ".rancher-skill-staging-cafe")
 	assert.Contains(t, text, "error (GENERIC): skill install changed only part of the selected targets")
-	assert.Contains(t, text, "full report: rancher skill status, or re-run with -o json")
+	assert.Contains(t, text, "to see each target's state, run rancher skill status; to see every reason, run the command again with -o json")
 }
 
 // TestSkillOutcomesImplementsTabular asserts that skillOutcomes implements

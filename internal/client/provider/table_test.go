@@ -468,7 +468,7 @@ func TestTableReadsShareUserAgentAndRedirectPolicy(t *testing.T) {
 		_, want := c.List(t.Context(), nodesGVR, "", "")
 		_, got := tr.ListTable(t.Context(), nodesGVR, "", "")
 		requireSameCLIError(t, want, got)
-		require.ErrorContains(t, got, "credentialed redirects are not followed across origins")
+		require.ErrorContains(t, got, "a redirect to another origin is not followed, to keep credentials from being sent there")
 		_, want = c.Get(t.Context(), nodesGVR, "", "node-1")
 		_, got = tr.GetTable(t.Context(), nodesGVR, "", "node-1")
 		requireSameCLIError(t, want, got)

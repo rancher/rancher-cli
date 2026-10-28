@@ -7,9 +7,10 @@
 # Enable completion:
 #   rancher completion fish > ~/.config/fish/completions/rancher.fish
 #
-# Minimum supported shell: fish 3.0. Every construct here (string builtin,
-# commandline -opc/-ct, negative slices) dates to fish 2.3, but 3.0 is the
-# oldest release the suite is expected to run against.
+# Minimum shell version: fish 3.0. Every feature used here (the string
+# builtin, commandline -opc/-ct, negative slices) has been available since
+# fish 2.3, but 3.0 is the oldest release the completion tests are expected
+# to run against.
 
 function __rancher_perform_completion
     # Extract all args except the last one

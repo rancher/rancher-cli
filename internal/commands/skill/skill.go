@@ -38,10 +38,12 @@ func (s skillOutcomes) Rows() [][]string {
 	return rows
 }
 
-func skillFlags() []runtime.ArgSpec {
+// skillFlags returns the flags shared by the skill commands; scopeDesc is the
+// help text of --scope, which differs per command.
+func skillFlags(scopeDesc string) []runtime.ArgSpec {
 	return []runtime.ArgSpec{
 		{Name: "agent", Type: "string", Enum: skillinstall.AgentNames(), Desc: "target harness (or `all`; default all)"},
-		{Name: "scope", Type: "string", Enum: []string{"user", "project"}, Desc: "install `scope` (default user)"},
+		{Name: "scope", Type: "string", Enum: []string{"user", "project"}, Desc: scopeDesc},
 	}
 }
 
@@ -75,7 +77,7 @@ func skillTargets(in runtime.Input) ([]skillinstall.Target, error) {
 func nothingDetectedErr() *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
 		"no coding-agent harness detected in the home directory; "+
-			"supported: claude, codex, copilot, agents; use --scope project to install into the current repo instead")
+			"supported: claude, codex, copilot, agents; use --scope project to use the current repository instead")
 }
 
 type skillInstallCmd struct{ version string }
@@ -86,9 +88,9 @@ func NewInstall(version string) runtime.Command { return skillInstallCmd{version
 func (skillInstallCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "skill install",
-		Usage: "Install the rancher agents skill into coding-agent harnesses",
-		Flags: append(skillFlags(),
-			runtime.ArgSpec{Name: "force", Type: "bool", Desc: "replace foreign content at the target"}),
+		Usage: "Install the rancher-cli agent skill into coding-agent harnesses",
+		Flags: append(skillFlags("install location `scope`: user or project (default user)"),
+			runtime.ArgSpec{Name: "force", Type: "bool", Desc: "replace content at the target that rancher-cli did not install"}),
 		Examples: []string{
 			"rancher skill install",
 			"rancher skill install --agent claude --scope project",
@@ -148,8 +150,8 @@ func NewUninstall(version string) runtime.Command { return skillUninstallCmd{ver
 func (skillUninstallCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "skill uninstall",
-		Usage:       "Remove rancher-installed agents skills",
-		Flags:       skillFlags(),
+		Usage:       "Remove the agent skills that rancher-cli installed",
+		Flags:       skillFlags("install location `scope` to remove from: user or project (default user)"),
 		Examples:    []string{"rancher skill uninstall --agent claude"},
 		CommandType: runtime.Local,
 		Shape:       runtime.ShapeTabular,
@@ -207,8 +209,8 @@ func NewStatus(version string) runtime.Command { return skillStatusCmd{version} 
 func (skillStatusCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "skill status",
-		Usage: "Report installed skill versions and integrity per harness",
-		Flags: append(skillFlags(),
+		Usage: "Report, for each harness, the installed skill version and whether its files are unchanged",
+		Flags: append(skillFlags("install location `scope` to check: user or project (default user)"),
 			runtime.ArgSpec{Name: "require-installed", Type: "bool", Desc: "fail when a selected target is absent"}),
 		Examples: []string{
 			"rancher skill status",
@@ -237,7 +239,7 @@ func (c skillStatusCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 		v, installed, err := skillinstall.StatusTarget(t, c.version)
 		if err != nil {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("checking %s: %v", t.Dir, err))
+				fmt.Sprintf("could not check %s: %v", t.Dir, err))
 		}
 		rows = append(rows, skillinstall.Outcome{Target: t, Verdict: v, CLIVersion: installed})
 		switch v {

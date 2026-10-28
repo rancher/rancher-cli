@@ -75,7 +75,7 @@
           "type": "string"
         },
         {
-          "desc": "time budget for the whole call, e.g. 2m (default 60s)",
+          "desc": "time limit for the whole command, e.g. 2m (default 60s)",
           "name": "timeout",
           "type": "string"
         }
@@ -118,7 +118,7 @@
           "type": "string"
         },
         {
-          "desc": "time budget for the whole call, e.g. 2m (default 60s)",
+          "desc": "time limit for the whole command, e.g. 2m (default 60s)",
           "name": "timeout",
           "type": "string"
         }
@@ -204,7 +204,7 @@
           "type": "string"
         },
         {
-          "desc": "time budget for the whole call, e.g. 2m (default 60s)",
+          "desc": "time limit for the whole command, e.g. 2m (default 60s)",
           "name": "timeout",
           "type": "string"
         }
@@ -275,7 +275,7 @@
           "type": "string"
         },
         {
-          "desc": "time budget for the whole call, e.g. 2m (default 60s)",
+          "desc": "time limit for the whole command, e.g. 2m (default 60s)",
           "name": "timeout",
           "type": "string"
         }
@@ -322,7 +322,7 @@
           "type": "string"
         },
         {
-          "desc": "time budget for the whole call, e.g. 2m (default 60s)",
+          "desc": "time limit for the whole command, e.g. 2m (default 60s)",
           "name": "timeout",
           "type": "string"
         }
@@ -412,7 +412,7 @@
           "type": "bool"
         },
         {
-          "desc": "time budget for the whole call, e.g. 2m (default 60s)",
+          "desc": "time limit for the whole command, e.g. 2m (default 60s)",
           "name": "timeout",
           "type": "string"
         }
@@ -9554,7 +9554,7 @@
           "type": "string"
         },
         {
-          "desc": "install `scope` (default user)",
+          "desc": "install location `scope`: user or project (default user)",
           "enum": [
             "user",
             "project"
@@ -9563,7 +9563,7 @@
           "type": "string"
         },
         {
-          "desc": "replace foreign content at the target",
+          "desc": "replace content at the target that rancher-cli did not install",
           "name": "force",
           "type": "bool"
         }
@@ -9573,7 +9573,7 @@
       "serverAccess": "none",
       "shape": "tabular",
       "toolset": "core",
-      "usage": "Install the rancher agents skill into coding-agent harnesses"
+      "usage": "Install the rancher-cli agent skill into coding-agent harnesses"
     },
     {
       "auth": false,
@@ -9596,7 +9596,7 @@
           "type": "string"
         },
         {
-          "desc": "install `scope` (default user)",
+          "desc": "install location `scope` to check: user or project (default user)",
           "enum": [
             "user",
             "project"
@@ -9619,7 +9619,7 @@
         7
       ],
       "toolset": "core",
-      "usage": "Report installed skill versions and integrity per harness"
+      "usage": "Report, for each harness, the installed skill version and whether its files are unchanged"
     },
     {
       "auth": false,
@@ -9641,7 +9641,7 @@
           "type": "string"
         },
         {
-          "desc": "install `scope` (default user)",
+          "desc": "install location `scope` to remove from: user or project (default user)",
           "enum": [
             "user",
             "project"
@@ -9655,7 +9655,7 @@
       "serverAccess": "none",
       "shape": "tabular",
       "toolset": "core",
-      "usage": "Remove rancher-installed agents skills"
+      "usage": "Remove the agent skills that rancher-cli installed"
     },
     {
       "auth": true,
@@ -9973,7 +9973,7 @@
       "name": "RANCHER_CLI_CREDENTIAL_STORE"
     },
     {
-      "desc": "when non-empty, refuse mutating commands for the session; local commands stay usable",
+      "desc": "when non-empty, every run refuses commands that make changes; local commands stay usable",
       "flag": "--read-only",
       "name": "RANCHER_CLI_READONLY"
     },
@@ -10156,37 +10156,37 @@
   "globalFlags": [
     {
       "appliesTo": "mutating",
-      "desc": "preview Effect, no change",
+      "desc": "preview the changes without applying them",
       "name": "--dry-run",
       "type": "bool"
     },
     {
       "appliesTo": "mutating",
-      "desc": "execute the mutation",
+      "desc": "apply the change",
       "name": "--apply",
       "type": "bool"
     },
     {
       "appliesTo": "mutating",
-      "desc": "confirm a destructive Effect",
+      "desc": "confirm a destructive change",
       "name": "--yes",
       "type": "bool"
     },
     {
       "appliesTo": "mutating",
-      "desc": "permit a deprecated-stability write",
+      "desc": "allow writing to a deprecated resource",
       "name": "--allow-deprecated",
       "type": "bool"
     },
     {
       "appliesTo": "all",
-      "desc": "never prompt; ambiguity becomes an error",
+      "desc": "never prompt; fail with an error when the input is ambiguous",
       "name": "--no-input",
       "type": "bool"
     },
     {
       "appliesTo": "all",
-      "desc": "'name' = ids only; 'wide' adds extra columns to the same rows, never a filter; template=<go-template> renders a Go template over the JSON view of data",
+      "desc": "'name' prints only the NAME column, one per line; 'wide' adds extra columns to the same rows and never filters rows; template=<go-template> renders a Go template over the `data` of the JSON output",
       "enum": [
         "table",
         "wide",
@@ -10199,7 +10199,7 @@
     },
     {
       "appliesTo": "all",
-      "desc": "when table/default/wide text is styled: auto (default) styles only a real terminal, always/never override detection; NO_COLOR turns styling off, CLICOLOR_FORCE/FORCE_COLOR turn it on, under auto",
+      "desc": "when table (the default) and wide output is styled: auto (default) styles only output sent to a terminal, always and never skip that check; under auto, NO_COLOR turns styling off and CLICOLOR_FORCE or FORCE_COLOR turn it on",
       "enum": [
         "auto",
         "always",
@@ -10230,13 +10230,13 @@
     },
     {
       "appliesTo": "declared",
-      "desc": "the project, by id or display name, on the cluster --cluster names; only the commands that take --project accept it, every other command refuses it before sending a request",
+      "desc": "the project, by id or display name, on the cluster given by --cluster; only the commands that take --project accept it, and every other command refuses it before sending a request",
       "name": "--project",
       "type": "string"
     },
     {
       "appliesTo": "server",
-      "desc": "refuse mutating commands for this session; one-way, no override; applies to commands that read or change server resources and is refused on local commands (config readOnly and a non-empty RANCHER_CLI_READONLY are the session-wide forms and leave local commands usable)",
+      "desc": "refuse commands that make changes, for this run; once set it cannot be turned off; applies to commands that read or change server resources and is refused on local commands (the config setting readOnly and a non-empty RANCHER_CLI_READONLY apply to every run and leave local commands usable)",
       "env": [
         "RANCHER_CLI_READONLY"
       ],
@@ -10286,7 +10286,7 @@
         "skill uninstall",
         "skill status"
       ],
-      "desc": "Install, remove, and inspect agent skills packaged with this CLI.",
+      "desc": "Install, remove, and check the agent skills that come with rancher-cli.",
       "name": "skill"
     },
     {
@@ -10314,7 +10314,7 @@
         "create cluster",
         "create machine-config"
       ],
-      "desc": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",
+      "desc": "Create Rancher resources. Most commands in this group have their own flags for one kind; `create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
       "name": "create"
     },
     {
@@ -10322,7 +10322,7 @@
         "project add-namespace",
         "project remove-namespace"
       ],
-      "desc": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
+      "desc": "Manage a project's namespaces: add namespaces of the project's cluster to a Rancher project, or remove them from it.",
       "name": "project"
     },
     {
@@ -10342,7 +10342,7 @@
         "cluster pause-autoscaling",
         "cluster resume-autoscaling"
       ],
-      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; lifecycle is `create cluster` and `delete provisioning-cluster`, reads are `get provisioning-cluster`.",
+      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; to create or delete one use `create cluster` and `delete provisioning-cluster`, and to read one use `get provisioning-cluster`.",
       "name": "cluster"
     },
     {
@@ -10353,7 +10353,7 @@
         "inspect project",
         "inspect user"
       ],
-      "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
+      "desc": "Show the current state, events and related objects of a cluster, workload or project.",
       "name": "inspect"
     },
     {
@@ -10365,7 +10365,7 @@
         "access clusters",
         "access projects"
       ],
-      "desc": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the accepted binding), which clusters Rancher's proxy lets a subject into beside the management bindings that grant it, and which projects a subject can see into (the authorizer's answer to getting each project namespace, rolled up per project) kept apart from the Rancher memberships (ProjectRoleTemplateBindings) behind them. The authorizer questions are answered by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
+      "desc": "Questions about access, answered by the server: whether a subject can perform a verb on a resource, the rules a subject has in a namespace, which of the subjects named in the cluster's bindings the authorizer allows to perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the binding it accepted), which clusters Rancher's proxy lets a subject into, with the management bindings that grant that access, and which projects a subject can see into (the authorizer's answer to getting each namespace of the project, summarized per project), kept apart from the ProjectRoleTemplateBindings behind them. The authorizer questions are answered through the Rancher proxy by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview; which clusters a subject can reach is the proxy's own answer; the bindings are only read, and the client never evaluates them.",
       "name": "access"
     },
     {
@@ -10422,7 +10422,7 @@
         "get nodedriver",
         "get clusterregistrationtoken"
       ],
-      "desc": "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
+      "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `get cloud-credential` and `get kubernetes-versions` are dedicated commands.",
       "name": "get"
     },
     {
@@ -10490,7 +10490,7 @@
         "patch nodedriver",
         "patch clusterregistrationtoken"
       ],
-      "desc": "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
+      "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
       "name": "patch"
     },
     {
@@ -10527,7 +10527,7 @@
         "delete harvesterconfig",
         "delete vmwarevsphereconfig"
       ],
-      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
+      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
       "name": "delete"
     }
   ],

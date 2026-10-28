@@ -176,8 +176,8 @@ func TestRenderTemplateEmptySource(t *testing.T) {
 	var buf bytes.Buffer
 	err := Render(&buf, TemplatePrefix, &Envelope{Data: map[string]string{"name": "w1"}})
 	require.Error(t, err)
-	require.ErrorContains(t, err, "empty template source")
-	assert.Empty(t, buf.String(), "an empty template source must render nothing")
+	require.ErrorContains(t, err, "the template is empty")
+	assert.Empty(t, buf.String(), "an empty template must render nothing")
 }
 
 func TestRenderTemplateInvalidSource(t *testing.T) {

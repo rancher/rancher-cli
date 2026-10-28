@@ -24,7 +24,7 @@ import (
 // rebuilt as GENERIC from its text.
 func TestMapErrPassesThroughStructuredError(t *testing.T) {
 	t.Parallel()
-	inner := clierr.New(clierr.CodeGeneric, "refused to follow a redirect from https://a to https://b: credentialed redirects are not followed across origins; check that https://a is the correct address")
+	inner := clierr.New(clierr.CodeGeneric, "refused to follow a redirect from https://a to https://b: a redirect to another origin is not followed, to keep credentials from being sent there; check that https://a is the correct address")
 	wrapped := &url.Error{Op: "Patch", URL: "https://a/x", Err: inner}
 	got := mapErr(wrapped)
 	ce, ok := errors.AsType[*clierr.Error](got)

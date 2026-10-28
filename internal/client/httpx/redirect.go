@@ -46,6 +46,6 @@ func RejectCrossOriginRedirect(req *http.Request, via []*http.Request) error {
 		return nil
 	}
 	return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
-		"refused to follow a redirect from %s to %s: credentialed redirects are not followed across origins; check that %s is the correct address",
+		"refused to follow a redirect from %s to %s: a redirect to another origin is not followed, to keep credentials from being sent there; check that %s is the correct address",
 		first, next, first))
 }

@@ -143,11 +143,11 @@ printf 'DONE\n'
 // "amazonec2config/" expects a name after the slash, "template=" expects a
 // Go template after the equals - carries none, so accepting it keeps the
 // cursor in the same word for the second-stage completion. This needs no
-// compopt, so bash 3.2 (macOS stock) and bash 4+ behave identically; the
-// test runs under every available bash. Multiple matches only ever insert
-// readline's common prefix, which never reaches a trailing space ("pod "
-// vs "pods " share only "pod"), and an empty COMPREPLY still hands off to
-// the -o default filename fallback.
+// compopt, so bash 3.2 (the version macOS ships) and bash 4+ behave
+// identically; the test runs under every available bash. Multiple matches
+// only ever insert readline's common prefix, which never reaches a trailing
+// space ("pod " vs "pods " share only "pod"), and an empty COMPREPLY still
+// hands off to the -o default filename fallback.
 func TestBashCompletionCandidateBoundaries(t *testing.T) {
 	t.Parallel()
 

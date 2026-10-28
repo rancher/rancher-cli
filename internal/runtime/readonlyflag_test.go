@@ -28,8 +28,8 @@ func localDesc() Descriptor { return Descriptor{Name: "config path", CommandType
 // TestRunRefusesTypedReadOnlyOnLocalCommand asserts that a typed
 // --read-only on a Local command is refused with VALIDATION and no hint
 // before the command runs, whether the flag reads true or false, and that
-// the message names the command and the session-wide forms but never
-// blames the environment or config as the cause.
+// the message names the command and the forms that apply to every run but
+// never blames the environment or config as the cause.
 func TestRunRefusesTypedReadOnlyOnLocalCommand(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

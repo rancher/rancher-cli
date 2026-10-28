@@ -19,7 +19,7 @@ import (
 
 // ErrNoInput is returned by Prompt/PromptSecret when interaction is disallowed
 // (no TTY, or --no-input). Callers map it to the appropriate clierr.Error.
-var ErrNoInput = errors.New("input required but interaction is disabled")
+var ErrNoInput = errors.New("input required but prompting is disabled (no terminal, or --no-input)")
 
 // Prompter carries the resolved streams and interactivity flags. mu guards
 // every write to err: a background goroutine (e.g. the OAuth loopback

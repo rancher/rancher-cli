@@ -14,7 +14,7 @@ stderr 'template=<go-template>'
 ! exec rancher schema -o template
 stderr 'error \(VALIDATION\):'
 
-# template=<go-template> renders the Go template over the JSON view of data:
+# template=<go-template> renders the Go template over the data of the JSON output:
 # config path's data carries {path, exists}, so {{.path}} prints the resolved
 # config file path.
 exec rancher config path -o template={{.path}}

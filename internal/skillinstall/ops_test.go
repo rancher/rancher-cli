@@ -21,7 +21,7 @@ func targetIn(t *testing.T) Target {
 
 // testLockDir derives a deterministic lock dir from the target's own temp
 // base, so single-target helpers and direct Acquire calls in the same test
-// share one lock domain without threading a variable through every call.
+// share one lock directory without threading a variable through every call.
 func testLockDir(tg Target) string {
 	return filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(tg.Dir))), ".test-locks")
 }
@@ -95,7 +95,7 @@ func TestForeignRefusedWithoutForce(t *testing.T) {
 
 	_, err := Acquire(testLockDir(tg), []Target{tg}, "install", false)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "foreign")
+	require.ErrorContains(t, err, "did not install")
 
 	_, err = Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
 	require.Error(t, err) // force never authorizes uninstall of foreign
@@ -243,13 +243,14 @@ func TestStagingSweepBuckets(t *testing.T) {
 	require.NoError(t, os.MkdirAll(unmarked, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(unmarked, "SKILL.md"), []byte("---\nname: ranch"), 0o644))
 
-	// crash shape: marker temp file stranded in the parent (written
+	// crash shape: temporary file stranded in the parent (written
 	// outside staging, crash before the rename into staging)
 	strayTmp := filepath.Join(parent, ".rancher-skill-marker-beef.tmp")
 	require.NoError(t, os.WriteFile(strayTmp, []byte("skill-inst"), 0o644))
 
-	// crash shape: probe file stranded in the parent when os.Remove failed
-	// after probeWritable's CreateTemp (e.g. transient lock on Windows)
+	// crash shape: file from the check that the directory is writable stranded in the parent
+	// when os.Remove failed after probeWritable's CreateTemp (e.g.
+	// transient lock on Windows)
 	strayProbe := filepath.Join(parent, ".rancher-skill-probe-deadcafe")
 	require.NoError(t, os.WriteFile(strayProbe, []byte(""), 0o644))
 
@@ -260,15 +261,15 @@ func TestStagingSweepBuckets(t *testing.T) {
 	require.NoError(t, err)
 
 	_, statErr := os.Stat(empty)
-	assert.True(t, os.IsNotExist(statErr), "empty leftover staging entry must be removed")
+	assert.True(t, os.IsNotExist(statErr), "empty leftover temporary directory must be removed")
 	_, statErr = os.Stat(marked)
-	assert.True(t, os.IsNotExist(statErr), "marker-complete leftover staging entry must be removed")
+	assert.True(t, os.IsNotExist(statErr), "marker-complete leftover temporary directory must be removed")
 	_, statErr = os.Stat(unmarked)
 	require.NoError(t, statErr, "unmarked non-empty leftover must remain")
 	_, statErr = os.Stat(strayTmp)
-	assert.True(t, os.IsNotExist(statErr), "stray marker temp file must be removed")
+	assert.True(t, os.IsNotExist(statErr), "stray temporary file must be removed")
 	_, statErr = os.Stat(strayProbe)
-	assert.True(t, os.IsNotExist(statErr), "stray probe file must be removed")
+	assert.True(t, os.IsNotExist(statErr), "stray file from the check that the directory is writable must be removed")
 	require.Len(t, warnings, 1)
 	assert.Contains(t, warnings[0], ".rancher-skill-staging-cafe")
 }
@@ -290,7 +291,7 @@ func TestStagedValidationFailureLeavesTargetUntouched(t *testing.T) {
 	_, err = leases[0].Install("v2.0.0", false)
 	ReleaseAll(leases)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "staged tree failed validation")
+	require.ErrorContains(t, err, "the files to install failed validation")
 
 	postStageHook = nil
 	v, installed, err := StatusTarget(tg, "v1.0.0")
@@ -324,7 +325,7 @@ func TestStagingPopulationFailureLeavesNoLeftovers(t *testing.T) {
 	require.NoError(t, err)
 	for _, e := range entries {
 		assert.False(t, strings.HasPrefix(e.Name(), ".rancher-skill-staging-"),
-			"leftover staging entry stranded: %s", e.Name())
+			"leftover temporary directory stranded: %s", e.Name())
 	}
 }
 
@@ -344,7 +345,7 @@ func TestUninstallAbsentIsFilesystemNoOp(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "absent uninstall must not create harness dirs")
 }
 
-// The absence race is closed by the shared lock domain, not rechecking: a
+// The absence race is closed by the shared lock directory, not rechecking: a
 // held absent-target uninstall lease blocks a concurrent install of the
 // same target outright.
 func TestUninstallAbsentLeaseBlocksConcurrentInstall(t *testing.T) {
@@ -354,7 +355,7 @@ func TestUninstallAbsentLeaseBlocksConcurrentInstall(t *testing.T) {
 	leases, err := Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
 	require.NoError(t, err)
 
-	// a concurrent install in the same lock domain must fail busy
+	// a concurrent install in the same lock directory must fail busy
 	_, err = Acquire(testLockDir(tg), []Target{tg}, "install", false)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "another skill operation")

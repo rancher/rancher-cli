@@ -165,7 +165,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 		return 0, renderErr(streams, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("%s is a local command and --read-only does not govern it; run it without --read-only "+
 				"and any value typed with it "+
-				"(RANCHER_CLI_READONLY or config readOnly is the session-wide form and leaves local commands usable)",
+				"(RANCHER_CLI_READONLY or config readOnly applies to every run and leaves local commands usable)",
 				d.Name)))
 	}
 
@@ -333,7 +333,7 @@ func validateFormat(format string, secret bool) *clierr.Error {
 	if src, ok := strings.CutPrefix(format, output.TemplatePrefix); ok {
 		if src == "" {
 			return clierr.New(clierr.CodeValidation,
-				"--output template source is empty; pass -o template='{{ .field }}'")
+				"--output template is empty; pass -o template='{{ .field }}'")
 		}
 		if _, err := template.New("out").Parse(src); err != nil {
 			if secret {

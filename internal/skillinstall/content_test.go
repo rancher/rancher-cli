@@ -120,6 +120,8 @@ func TestReadTreeRejectsNonRegularEntries(t *testing.T) {
 	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "link.md")))
 	_, err := ReadTree(dir)
 	require.ErrorIs(t, err, ErrNonRegular)
+	require.ErrorContains(t, err, "the skill files include ")
+	require.ErrorContains(t, err, "link.md, which is not a regular file")
 
 	dir2 := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir2, "SKILL.md"), []byte("x"), 0o644))

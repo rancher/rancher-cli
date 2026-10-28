@@ -68,7 +68,7 @@ func TestTargetsCopilotProjectAliasesAgentsDir(t *testing.T) {
 func TestTargetsUnknownAgent(t *testing.T) {
 	_, err := Targets("emacs", ScopeUser, "")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "unknown agent")
+	assert.EqualError(t, err, `unknown harness "emacs" (valid: claude, codex, copilot, agents, all)`)
 }
 
 func TestAgentNames(t *testing.T) {

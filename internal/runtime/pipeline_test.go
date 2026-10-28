@@ -1220,9 +1220,9 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 			message: `--output="template" is not one of table|wide|json|yaml|name|template=<go-template>`,
 		},
 		{
-			name:    "empty template source",
+			name:    "empty template",
 			format:  "template=",
-			message: "--output template source is empty; pass -o template='{{ .field }}'",
+			message: "--output template is empty; pass -o template='{{ .field }}'",
 		},
 		{
 			name:    "template parse error",
@@ -1946,7 +1946,7 @@ func TestValidateFormatLeavesTheValueOutForASecretInput(t *testing.T) {
 		{"a flag typed as the value", "--from-literal=k=s3cretcanary9", `--output="--from-literal=k=s3cretcanary9" is not one of ` + oneOf, "--output value is not one of " + oneOf},
 		{"a bare template", "template", `--output="template" is not one of ` + oneOf, "--output value is not one of " + oneOf},
 		{"a template that does not parse", "template={{s3cretcanary9", "", "--output template does not parse; must be valid Go text/template syntax"},
-		{"a template with no source", "template=", "--output template source is empty; pass -o template='{{ .field }}'", "--output template source is empty; pass -o template='{{ .field }}'"},
+		{"a template with no source", "template=", "--output template is empty; pass -o template='{{ .field }}'", "--output template is empty; pass -o template='{{ .field }}'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

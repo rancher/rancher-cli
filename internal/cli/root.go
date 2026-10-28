@@ -429,10 +429,10 @@ var groupUsages = map[string]string{
 	"delete":      "Delete resources",
 	"inspect":     "Inspect related resources together",
 	"project":     "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
-	"skill":       "Agents-skill installation for coding-agent harnesses",
+	"skill":       "Installation of the rancher-cli agent skill in coding-agent harnesses",
 	"telemetry":   "Local usage recording: status, on, off, reset and show",
 	"oidc-client": "OIDC client secret lifecycle (create oidc-client creates the client itself)",
-	"cluster":     "Cluster scaling and autoscaling (lifecycle is 'create cluster' and 'delete provisioning-cluster')",
+	"cluster":     "Cluster scaling and autoscaling (create a provisioning cluster with 'create cluster' and delete it with 'delete provisioning-cluster')",
 	"access":      "Where a subject can go, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 
@@ -864,10 +864,10 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	groupDescs := map[string]string{
 		"auth":   "Authenticate with a Rancher server, manage API tokens, and inspect the session.",
 		"config": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
-		"skill":  "Install, remove, and inspect agent skills packaged with this CLI.",
+		"skill":  "Install, remove, and check the agent skills that come with rancher-cli.",
 		"telemetry": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. " +
 			"Recorded events stay on this machine.",
-		"create": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",
+		"create": "Create Rancher resources. Most commands in this group have their own flags for one kind; `create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
 		// "project" is both a command group and a kind. Resolution order is
 		// command → group → kind, so rancher schema
 		// project returns THIS group's card carrying a kind-view hint, and
@@ -875,7 +875,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// allowlisted (TestSchemaGroupKindCollisionsAreDeliberate): renaming
 		// the group would churn the TOC section layout and every agent
 		// prompt that references it.
-		"project":     "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
+		"project":     "Manage a project's namespaces: add namespaces of the project's cluster to a Rancher project, or remove them from it.",
 		"oidc-client": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
 		// "cluster" is both a command group and a management KIND name -
 		// the same deliberate collision "project" already carries (see
@@ -884,18 +884,18 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// provisioning-cluster`, `get cluster`) stays where it is; `get
 		// provisioning-cluster` is the read path for this family's target.
 		"cluster": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; " +
-			"lifecycle is `create cluster` and `delete provisioning-cluster`, reads are `get provisioning-cluster`.",
-		"inspect": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
-		"access": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, " +
-			"which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject " +
-			"(the chain of Rancher bindings and templates behind the accepted binding), which clusters Rancher's proxy lets a subject into " +
-			"beside the management bindings that grant it, and which projects a subject can see into (the authorizer's answer to getting each " +
-			"project namespace, rolled up per project) kept apart from the Rancher memberships (ProjectRoleTemplateBindings) behind them. " +
-			"The authorizer questions are answered by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview " +
-			"through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
-		"get":    "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
-		"patch":  "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
-		"delete": "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
+			"to create or delete one use `create cluster` and `delete provisioning-cluster`, and to read one use `get provisioning-cluster`.",
+		"inspect": "Show the current state, events and related objects of a cluster, workload or project.",
+		"access": "Questions about access, answered by the server: whether a subject can perform a verb on a resource, the rules a subject has in a namespace, " +
+			"which of the subjects named in the cluster's bindings the authorizer allows to perform a verb on a resource, why the authorizer decided as it did for one subject " +
+			"(the chain of Rancher bindings and templates behind the binding it accepted), which clusters Rancher's proxy lets a subject into, " +
+			"with the management bindings that grant that access, and which projects a subject can see into (the authorizer's answer to getting each " +
+			"namespace of the project, summarized per project), kept apart from the ProjectRoleTemplateBindings behind them. " +
+			"The authorizer questions are answered through the Rancher proxy by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview; " +
+			"which clusters a subject can reach is the proxy's own answer; the bindings are only read, and the client never evaluates them.",
+		"get":    "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `get cloud-credential` and `get kubernetes-versions` are dedicated commands.",
+		"patch":  "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
+		"delete": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
 	}
 
 	// The manifest's ordered sections mirror assembleCommands below exactly:

@@ -188,11 +188,11 @@ envelope:
 ```
 
 Read `data`; surface `warnings` to the user. Other formats: `table` (default,
-for users), `wide` (table family - adds extra columns to the same rows, never
-a filter), `yaml`, `name` (ids only), or `template=<go-template>` - a Go
-template over the JSON view of `data` (same shape as `-o json`) - often
-shorter than piping JSON into another interpreter, e.g. names and creation
-times of every kubeconfig token object:
+for users), `wide` (table family - adds extra columns to the same rows and
+never filters rows), `yaml`, `name` (only the NAME column, one per line), or
+`template=<go-template>` - a Go template over the `data` of the JSON output
+(same shape as `-o json`) - often shorter than piping JSON into another
+interpreter, e.g. names and creation times of every kubeconfig token object:
 `rancher get kubeconfigs -o 'template={{range .}}{{.metadata.name}} {{.metadata.creationTimestamp}}{{"\n"}}{{end}}'`.
 Anything else is a `VALIDATION` error. `metadata.managedFields` never appears in CLI
 output across all formats. To narrow a list by label, use `--selector`
@@ -707,19 +707,19 @@ that. A group or service account is refused here.
 `rancher access projects [--cluster <c>] [--as <user>]` says which
 projects a subject can see into: `data.clusters[].projects[].visibility`
 is `all`, `partial`, `none`, or `unknown` (the authorizer's answer to
-getting each project namespace, rolled up), `data.visibleProjects[]` the
-compact list, `data.memberOf.projects[]` the subset the subject is a
-Rancher member of (a ProjectRoleTemplateBinding names it) and
-`data.inheritedAccess[]` what it reaches through cluster or global grants
-without membership. Visibility is not membership and membership is not
-permission; a `null` `data.memberOf` means the binding read failed, not
-"no memberships". A member asking about themselves gets visibility only.
-Every `access` command runs under one 60 s budget for the whole call; on
-"fan-out budget ... exhausted" (a terminal error, nothing partial is
-reported) rerun with `--timeout <duration>` (for example `--timeout 5m`)
-or narrow the question: `access projects --cluster <c>`, or `-n <ns>` /
-`--project <p>` on `access can|list|who-can` (`access clusters` takes
-neither).
+getting each namespace of the project, summarized per project),
+`data.visibleProjects[]` the compact list, `data.memberOf.projects[]` the
+subset the subject is a Rancher member of (a ProjectRoleTemplateBinding
+names it) and `data.inheritedAccess[]` what it reaches through cluster or
+global grants without membership. Visibility is not membership and
+membership is not permission; a `null` `data.memberOf` means the binding
+read failed, not "no memberships". A member asking about themselves gets
+visibility only. Every `access` command runs under one 60 s time limit for
+the whole command; on "fan-out budget ... exhausted" (a terminal error, nothing
+partial is reported) rerun with `--timeout <duration>` (for example
+`--timeout 5m`) or narrow the question: `access projects --cluster <c>`, or
+`-n <ns>` / `--project <p>` on `access can|list|who-can` (`access clusters`
+takes neither).
 Never present a role list as permissions.
 
 - `rancher grant <subject> (--project <p> --cluster <c> | --cluster <c> | --global) --role <r>` -
@@ -854,12 +854,12 @@ rancher oidc-client rotate-secret my-app --apply --yes
   CLI does not detect can set `AI_AGENT` to its name: a name on the list in
   REFERENCE.md ("What the CLI sends to the server") is reported as is, any
   other as `agent`.
-- **Read-only sessions:** `--read-only` (or config `readOnly: true` / a
+- **Read-only mode:** `--read-only` (or config `readOnly: true` / a
   non-empty `RANCHER_CLI_READONLY` - including the literal `"false"`) refuses
-  every mutating command before any network call, one-way with no
-  per-invocation override. A typed `--read-only` on a local command
+  every command that makes changes before any network call, and nothing in
+  that run turns it off. A typed `--read-only` on a local command
   (`auth status`, `config *`, `kubeconfig`, ...) is refused with
-  `VALIDATION`; for a session that keeps local commands usable, set
+  `VALIDATION`; to keep local commands usable in every run, set
   `RANCHER_CLI_READONLY` instead of typing the flag on every call.
   `rancher schema -o json` reports `readOnly`/`readOnlySources`. For real
   enforcement pair it with a Rancher token bound to read-only RBAC - the

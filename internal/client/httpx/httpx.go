@@ -52,7 +52,7 @@ func New(o Options) (*http.Client, error) {
 	} else if o.CACert != "" {
 		roots := x509.NewCertPool()
 		if !roots.AppendCertsFromPEM([]byte(o.CACert)) {
-			return nil, errors.New("failed to append CA certs from PEM")
+			return nil, errors.New("could not read any CA certificate from the PEM text")
 		}
 		tlsConfig.RootCAs = roots
 	}

@@ -167,7 +167,7 @@ func TestNewOracleTargetFromEnv(t *testing.T) {
 		t.Setenv("E2E_FIDELITY_CACERT", "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----")
 		_, err := NewOracleTargetFromEnv()
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to append CA certs from PEM")
+		assert.ErrorContains(t, err, "could not read any CA certificate from the PEM text")
 	})
 
 	t.Run("success wires the target", func(t *testing.T) {

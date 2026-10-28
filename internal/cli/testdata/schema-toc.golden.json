@@ -173,18 +173,18 @@
       "commands": [
         {
           "name": "skill install",
-          "usage": "Install the rancher agents skill into coding-agent harnesses"
+          "usage": "Install the rancher-cli agent skill into coding-agent harnesses"
         },
         {
           "name": "skill uninstall",
-          "usage": "Remove rancher-installed agents skills"
+          "usage": "Remove the agent skills that rancher-cli installed"
         },
         {
           "name": "skill status",
-          "usage": "Report installed skill versions and integrity per harness"
+          "usage": "Report, for each harness, the installed skill version and whether its files are unchanged"
         }
       ],
-      "desc": "Install, remove, and inspect agent skills packaged with this CLI.",
+      "desc": "Install, remove, and check the agent skills that come with rancher-cli.",
       "name": "skill"
     },
     {
@@ -261,7 +261,7 @@
           "usage": "Create a machine config for the machine pool of a node-driver cluster"
         }
       ],
-      "desc": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",
+      "desc": "Create Rancher resources. Most commands in this group have their own flags for one kind; `create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
       "name": "create"
     },
     {
@@ -275,7 +275,7 @@
           "usage": "Remove a namespace from its project and remove its project label"
         }
       ],
-      "desc": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
+      "desc": "Manage a project's namespaces: add namespaces of the project's cluster to a Rancher project, or remove them from it.",
       "name": "project"
     },
     {
@@ -326,7 +326,7 @@
           "usage": "Resume the cluster autoscaler cluster-wide"
         }
       ],
-      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; lifecycle is `create cluster` and `delete provisioning-cluster`, reads are `get provisioning-cluster`.",
+      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; to create or delete one use `create cluster` and `delete provisioning-cluster`, and to read one use `get provisioning-cluster`.",
       "name": "cluster"
     },
     {
@@ -352,7 +352,7 @@
           "usage": "Inspect a user: id and names, groups, and role bindings at global, cluster and project level"
         }
       ],
-      "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
+      "desc": "Show the current state, events and related objects of a cluster, workload or project.",
       "name": "inspect"
     },
     {
@@ -382,7 +382,7 @@
           "usage": "List the projects a subject can see into, and the Rancher memberships behind them"
         }
       ],
-      "desc": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the accepted binding), which clusters Rancher's proxy lets a subject into beside the management bindings that grant it, and which projects a subject can see into (the authorizer's answer to getting each project namespace, rolled up per project) kept apart from the Rancher memberships (ProjectRoleTemplateBindings) behind them. The authorizer questions are answered by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
+      "desc": "Questions about access, answered by the server: whether a subject can perform a verb on a resource, the rules a subject has in a namespace, which of the subjects named in the cluster's bindings the authorizer allows to perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the binding it accepted), which clusters Rancher's proxy lets a subject into, with the management bindings that grant that access, and which projects a subject can see into (the authorizer's answer to getting each namespace of the project, summarized per project), kept apart from the ProjectRoleTemplateBindings behind them. The authorizer questions are answered through the Rancher proxy by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview; which clusters a subject can reach is the proxy's own answer; the bindings are only read, and the client never evaluates them.",
       "name": "access"
     },
     {
@@ -396,7 +396,7 @@
           "usage": "List available Kubernetes versions (rke2/k3s)"
         }
       ],
-      "desc": "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
+      "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `get cloud-credential` and `get kubernetes-versions` are dedicated commands.",
       "generated": {
         "count": 49,
         "pattern": "get <kind>"
@@ -440,7 +440,7 @@
       ]
     },
     {
-      "desc": "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
+      "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
       "generated": {
         "count": 49,
         "pattern": "patch <kind>"
@@ -448,7 +448,7 @@
       "name": "patch"
     },
     {
-      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
+      "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
       "generated": {
         "count": 31,
         "pattern": "delete <kind>"

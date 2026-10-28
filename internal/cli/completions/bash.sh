@@ -7,13 +7,13 @@
 # Source this to enable completion:
 #   source <(rancher completion bash)
 #
-# Minimum supported shell: bash 3.2 (macOS stock) with the bash-completion
-# package (1.2+) providing _get_comp_words_by_ref; when bash-completion 2.12+
-# is present its _comp_initialize is used instead. Without bash-completion
-# the completer silently declines. The second TAB lists each candidate with
-# its description ("token  -- description") on bash 4.0 and later, where
-# COMP_TYPE exists; on bash 3 the list shows tokens only. Completion itself
-# is unaffected.
+# Minimum shell version: bash 3.2 (the version macOS ships) with the
+# bash-completion package (1.2+) providing _get_comp_words_by_ref; when
+# bash-completion 2.12+ is present its _comp_initialize is used instead.
+# Without bash-completion the completer offers no candidates. The second TAB
+# lists each candidate with its description ("token  -- description") on
+# bash 4.0 and later, where COMP_TYPE exists; on bash 3 the list shows
+# tokens only. Completion itself is unaffected.
 
 # macOS still ships Bash 3, where bash-completion may not provide
 # _init_completion. This is a minimal compatible fallback.
@@ -125,11 +125,12 @@ __rancher_bash_autocomplete() {
       # so the cursor stays in the same word for the second-stage
       # completion. This is the git-completion pattern, chosen over a
       # per-invocation `compopt -o nospace` because compopt does not exist
-      # on bash 3 (macOS stock): candidate-side spaces behave identically on
-      # bash 3 and 4+. Multiple matches are unaffected either way - readline
-      # inserts only the common prefix, which never reaches a trailing space
-      # ("pod " and "pods " share only "pod"). fish and PowerShell need no
-      # equivalent - see the notes in fish.sh and pwsh.ps1.
+      # on bash 3 (the version macOS ships): candidate-side spaces behave
+      # identically on bash 3 and 4+. Multiple matches are unaffected either
+      # way - readline inserts only the common prefix, which never reaches a
+      # trailing space ("pod " and "pods " share only "pod"). fish and
+      # PowerShell need no equivalent - see the notes in fish.sh and
+      # pwsh.ps1.
       COMPREPLY=()
       local __rancher_match
       for __rancher_match in "${matches[@]}"; do
@@ -148,20 +149,20 @@ __rancher_bash_autocomplete() {
       # name - is re-enabled for this invocation. Readline then owns
       # quoting, tilde handling, and boundaries natively.
       #
-      # bash 3 (macOS stock, no compopt): the native fallback would insert
-      # completed file names with NO argument delimiter at all, so generate
-      # the candidates here instead, with the same per-candidate boundaries
-      # the script's own candidates carry - "/" (no space) after
+      # bash 3 (the version macOS ships, no compopt): the native fallback
+      # would insert completed file names with NO argument delimiter at all,
+      # so generate the candidates here instead, with the same per-candidate
+      # boundaries the script's own candidates carry - "/" (no space) after
       # directories, a trailing space after everything else. Entries are
-      # escaped with printf %q (a bash 3.2 builtin) because readline
-      # inserts COMPREPLY entries verbatim (this compspec has no
-      # -o filenames), so the entry itself must be shell-quoted for a name
-      # with spaces to land as one word. Residual, the most pure bash 3 can
-      # do: a typed prefix that is ALREADY quoted/escaped matches nothing
-      # here and falls through to the native (spaceless) fallback, only
-      # bare "~"/"~/..." prefixes are tilde-expanded (to the expanded
-      # $HOME text, as readline's expand-tilde does; "~user" falls
-      # through), and a file name with an embedded newline mis-splits.
+      # escaped with printf %q (a bash 3.2 builtin) because readline inserts
+      # COMPREPLY entries verbatim (this compspec has no -o filenames), so
+      # the entry itself must be shell-quoted for a name with spaces to land
+      # as one word. Residual, the most pure bash 3 can do: a typed prefix
+      # that is ALREADY quoted/escaped matches nothing here and falls
+      # through to the native (spaceless) fallback, only bare "~"/"~/..."
+      # prefixes are tilde-expanded (to the expanded $HOME text, as
+      # readline's expand-tilde does; "~user" falls through), and a file
+      # name with an embedded newline mis-splits.
       if type compopt &>/dev/null; then
         compopt +o nospace 2>/dev/null
       else

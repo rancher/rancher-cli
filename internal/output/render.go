@@ -96,7 +96,7 @@ func RenderStyled(w io.Writer, format string, env *Envelope, s style.Style) erro
 		// pipeline's validateFormat already rejects it, so match that contract
 		// here for direct callers.
 		if src == "" {
-			return fmt.Errorf("empty template source")
+			return fmt.Errorf("the template is empty")
 		}
 		return renderTemplate(w, src, env)
 	}
@@ -154,7 +154,7 @@ func encodeJSON(w io.Writer, v any) error {
 func renderTable(w io.Writer, env *Envelope, s style.Style) error {
 	t, ok := env.Data.(Tabular)
 	if !ok {
-		return fmt.Errorf("table format requires Data to implement output.Tabular; got %T", env.Data)
+		return fmt.Errorf("internal error: this command's result cannot be shown as a table (result type %T)", env.Data)
 	}
 	return writeTable(w, t.Columns(), t.Rows(), s)
 }
@@ -169,7 +169,7 @@ func renderWide(w io.Writer, env *Envelope, s style.Style) error {
 	}
 	t, ok := env.Data.(Tabular)
 	if !ok {
-		return fmt.Errorf("wide format requires Data to implement output.Tabular; got %T", env.Data)
+		return fmt.Errorf("internal error: this command's result cannot be shown as a wide table (result type %T)", env.Data)
 	}
 	return writeTable(w, t.Columns(), t.Rows(), s)
 }

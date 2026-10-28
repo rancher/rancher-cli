@@ -10,7 +10,7 @@ compdef _rancher rancher
 # Source this to enable completion:
 #   source <(rancher completion zsh)
 #
-# Minimum supported shell: zsh 5.0, with the completion system initialized
+# Minimum shell version: zsh 5.0, with the completion system initialized
 # (compinit) - compdef, _describe, and _files come from it.
 
 _rancher() {

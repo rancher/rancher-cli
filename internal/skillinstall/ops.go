@@ -61,7 +61,7 @@ func (r Report) TextDetails() []string {
 	if n := len(r.Outcomes) - shown; n > 0 {
 		lines = append(lines, fmt.Sprintf("… and %d more", n))
 	}
-	lines = append(lines, "full report: rancher skill status, or re-run with -o json")
+	lines = append(lines, "to see each target's state, run rancher skill status; to see every reason, run the command again with -o json")
 	return lines
 }
 
@@ -71,14 +71,14 @@ const (
 	probePrefix     = ".rancher-skill-probe-"
 )
 
-// DefaultLockDir is the production lock domain: the OS-user cache dir -
+// DefaultLockDir is the production lock directory: the OS-user cache dir -
 // stable per OS user and deliberately NOT the CLI config dir, because
 // RANCHER_CLI_CONFIG_DIR is a supported isolation mechanism while the
 // filesystem targets it locks are shared.
 func DefaultLockDir() (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
-		return "", fmt.Errorf("resolving lock domain: %w", err)
+		return "", fmt.Errorf("could not find the user cache directory for the skill lock files: %w", err)
 	}
 	return filepath.Join(base, "rancher"), nil
 }
@@ -155,7 +155,7 @@ func refuseSymlink(dir string) error {
 		return err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to operate on symlinked skill dir: %s", dir)
+		return fmt.Errorf("refusing to use the skill directory %s: it is a symbolic link", dir)
 	}
 	return nil
 }
@@ -208,9 +208,9 @@ func validateTarget(t Target, verb string, force bool) error {
 		return nil
 	}
 	if verb == "install" {
-		return fmt.Errorf("foreign content at %s (not installed by rancher); use --force to replace", t.Dir)
+		return fmt.Errorf("%s has content that rancher-cli did not install; use --force to replace it", t.Dir)
 	}
-	return fmt.Errorf("foreign content at %s (not installed by rancher); not removing", t.Dir)
+	return fmt.Errorf("%s has content that rancher-cli did not install; not removing it", t.Dir)
 }
 
 // probeWritable proves the parent accepts writes while we hold its lock.
@@ -219,7 +219,7 @@ func validateTarget(t Target, verb string, force bool) error {
 func probeWritable(parent string) error {
 	f, err := os.CreateTemp(parent, probePrefix+"*")
 	if err != nil {
-		return fmt.Errorf("parent dir not writable: %w", err)
+		return fmt.Errorf("parent directory not writable: %w", err)
 	}
 	name := f.Name()
 	_ = f.Close()
@@ -318,13 +318,13 @@ func cleanStaging(parent string) (warnings []string, err error) {
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasPrefix(e.Name(), markerTmpPrefix) && strings.HasSuffix(e.Name(), ".tmp") {
 			if rmErr := os.Remove(filepath.Join(parent, e.Name())); rmErr != nil {
-				return nil, fmt.Errorf("removing leftover marker temp file %s: %w", e.Name(), rmErr)
+				return nil, fmt.Errorf("could not remove the temporary file %s left by an earlier install: %w", e.Name(), rmErr)
 			}
 			continue
 		}
 		if !e.IsDir() && strings.HasPrefix(e.Name(), probePrefix) {
 			if rmErr := os.Remove(filepath.Join(parent, e.Name())); rmErr != nil {
-				return nil, fmt.Errorf("removing leftover probe file %s: %w", e.Name(), rmErr)
+				return nil, fmt.Errorf("could not remove the file %s left by an earlier check that the directory is writable: %w", e.Name(), rmErr)
 			}
 			continue
 		}
@@ -334,23 +334,23 @@ func cleanStaging(parent string) (warnings []string, err error) {
 		dir := filepath.Join(parent, e.Name())
 		inner, err := os.ReadDir(dir)
 		if err != nil {
-			return nil, fmt.Errorf("inspecting leftover staging entry %s: %w", dir, err)
+			return nil, fmt.Errorf("could not check the temporary directory %s left by an earlier install: %w", dir, err)
 		}
 		remove := len(inner) == 0
 		if !remove {
 			ours, err := markerComplete(dir)
 			if err != nil {
-				return nil, fmt.Errorf("inspecting leftover staging entry %s: %w", dir, err)
+				return nil, fmt.Errorf("could not check the temporary directory %s left by an earlier install: %w", dir, err)
 			}
 			remove = ours
 		}
 		if remove {
 			if rmErr := os.RemoveAll(dir); rmErr != nil {
-				return nil, fmt.Errorf("removing leftover staging entry %s: %w", dir, rmErr)
+				return nil, fmt.Errorf("could not remove the temporary directory %s left by an earlier install: %w", dir, rmErr)
 			}
 			continue
 		}
-		warnings = append(warnings, fmt.Sprintf("unrecognized leftover staging entry left in place: %s", dir))
+		warnings = append(warnings, fmt.Sprintf("left %s in place: rancher-cli does not recognize it as a temporary directory of its own", dir))
 	}
 	return warnings, nil
 }
@@ -372,14 +372,14 @@ func validateStaged(staging string) error {
 		return err
 	}
 	if !ours {
-		return fmt.Errorf("owner marker missing or incomplete")
+		return fmt.Errorf("the file %s, which marks the directory as installed by rancher-cli, is missing or incomplete", OwnerMarkerFile)
 	}
 	isOurs, prov, err := owned(staging)
 	if err != nil {
 		return err
 	}
 	if !isOurs {
-		return fmt.Errorf("staged SKILL.md does not carry our install record")
+		return fmt.Errorf("the SKILL.md to install does not record that rancher-cli installed it")
 	}
 	tree, err := ReadTree(staging)
 	if err != nil {
@@ -390,7 +390,7 @@ func validateStaged(staging string) error {
 		return err
 	}
 	if digest != prov.ContentDigest {
-		return fmt.Errorf("staged tree digest %s does not match stamped %s", digest, prov.ContentDigest)
+		return fmt.Errorf("the digest of the files to install (%s) does not match the digest recorded in SKILL.md (%s)", digest, prov.ContentDigest)
 	}
 	return nil
 }
@@ -423,7 +423,7 @@ func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 	}
 	cleanup := func(primary error) error {
 		if rmErr := os.RemoveAll(staging); rmErr != nil {
-			return fmt.Errorf("%w (cleaning staging %s also failed: %v)", primary, staging, rmErr)
+			return fmt.Errorf("%w (removing the temporary directory %s also failed: %v)", primary, staging, rmErr)
 		}
 		return primary
 	}
@@ -476,7 +476,7 @@ func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 	// target: ownership marker, install record, and recomputed canonical
 	// digest must all hold, or the target stays exactly as it was.
 	if err := validateStaged(staging); err != nil {
-		return warnings, cleanup(fmt.Errorf("staged tree failed validation: %w", err))
+		return warnings, cleanup(fmt.Errorf("the files to install failed validation: %w", err))
 	}
 	// revalidate the target under the held lock, then remove and swap
 	if err := validateTarget(t, "install", force); err != nil {

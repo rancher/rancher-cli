@@ -264,7 +264,7 @@ take it; `-` means no flag. A variable and its flag relate in different ways:
 | `CATTLE_OAUTH_AUTH_FLOW` | `--auth-flow` | legacy spelling of `RANCHER_CLI_OAUTH_AUTH_FLOW`, read when that one is empty |
 | `CATTLE_OAUTH_CALLBACK_PORT` | - | legacy spelling of `RANCHER_CLI_OAUTH_CALLBACK_PORT`, read when that one is empty |
 | `RANCHER_CLI_TELEMETRY` | - | `true` or `false`; turns usage recording on or off over the `telemetry` config key, see [Usage recording](#usage-recording); empty counts as unset and any other value is ignored |
-| `RANCHER_CLI_READONLY` | `--read-only` | when non-empty, refuses mutating commands for the session; local commands stay usable; see [Read-only mode](#read-only-mode) |
+| `RANCHER_CLI_READONLY` | `--read-only` | when non-empty, every run refuses commands that make changes; local commands stay usable; see [Read-only mode](#read-only-mode) |
 | `NO_COLOR` | `--color` | when non-empty, turns off styling under `--color=auto`; see [Color](#color) |
 | `CLICOLOR_FORCE` | `--color` | when non-empty and not `0`, turns on styling under `--color=auto` unless `NO_COLOR` is set; see [Color](#color) |
 | `FORCE_COLOR` | `--color` | same as `CLICOLOR_FORCE`; see [Color](#color) |
@@ -1027,11 +1027,11 @@ source (`authorizer`, `rancherProxy`, `scopeDiscovery`, `request`,
 `mixed`) and identity (`caller`, `impersonated`,
 `subjectAccessReview`).
 
-Every `access` command runs under one time budget for the whole call:
+Every `access` command runs under one time limit for the whole command:
 discovery, identity reads and every review share it, at most five
 reviews in flight at once. The default is 60 s; `--timeout <duration>`
-(for example `--timeout 5m`) sets it for that call. Running out of budget
-is a terminal error naming the budget and the stage it ended in, and the
+(for example `--timeout 5m`) sets it for that command. Running out of time
+is a terminal error naming the limit and the stage it ended in, and the
 clusters or namespaces that had already answered are not reported. A
 fleet-wide `access clusters` on a large installation needs a longer
 `--timeout`; `access projects` can also be narrowed to one cluster with
@@ -1196,13 +1196,13 @@ wide-only columns: a kind's Wide-marked columns, or the priority columns the
 cluster's API server sends for a built-in kind - presentation, never a scope
 change: a payload with no wide-only columns renders identically to `table`) ·
 `json` · `yaml` ·
-`name` (`.metadata.name`/ids only) · `template=<go-template>` - a Go template
-over the JSON view of `data` (same shape as `-o json`). Any other value is
-rejected with a `VALIDATION` error before the command runs. Every kind
-has its own table, its columns or the cluster's own (next paragraph); there is
-no pretty-JSON fallback under `table`/`wide` - a kind that did not implement
-it would fail with a rendering error instead of silently dumping JSON, so use
-`-o json` for the versioned envelope.
+`name` (only the NAME column, one per line) · `template=<go-template>` - a
+Go template over the `data` of the JSON output (same shape as `-o json`).
+Any other value is rejected with a `VALIDATION` error before the command
+runs. Every kind has its own table, its columns or the cluster's own (next
+paragraph); there is no pretty-JSON fallback under `table`/`wide` - a kind
+that did not implement it would fail with a rendering error instead of
+silently dumping JSON, so use `-o json` for the versioned envelope.
 
 The table of a built-in Kubernetes kind (node, namespace, pod, deployment,
 service, configmap, secret, statefulset, daemonset, replicaset, job, cronjob,
@@ -1263,7 +1263,7 @@ regardless of this flag. Precedence, checked in order: `--color=never` or
 `auto`, `NO_COLOR` set to any non-empty value turns styling off; otherwise
 `CLICOLOR_FORCE` or `FORCE_COLOR` set to a non-empty value other than `0`
 turns it on. If none of those apply, styling follows whether the stream
-being written to (stdout or stderr, resolved independently) is a real
+being written to (stdout or stderr, resolved independently) is a
 terminal.
 
 ## Error codes
@@ -1336,9 +1336,9 @@ default included; `auth get-token` does too, except in a call with
 
 ## Read-only mode
 
-Three sources, OR'd together, put a session into read-only mode, refusing
-every mutating command before any network call - strictly one-way, no
-per-invocation override exists:
+Any one of three sources puts a run into read-only mode, which refuses
+every command that makes changes before any network call; once on,
+nothing in that run turns it off:
 
 - Config: `readOnly: true` (top-level config field).
 - Env: `RANCHER_CLI_READONLY`.
@@ -1350,23 +1350,23 @@ per-invocation override exists:
 > this CLI behaves this way.
 
 Refusal is `VALIDATION`, naming the command and the active source(s) (e.g.
-"enabled by RANCHER_CLI_READONLY") - the one-way rule means you have to know
-which knob to turn off. `rancher schema -o json` reports the resolved state
-(`readOnly`, `readOnlySources`) so an agent can check before trying.
+"enabled by RANCHER_CLI_READONLY"). Nothing in a run turns read-only mode
+off; to run the command, remove every source the message names.
+`rancher schema -o json` reports the resolved state (`readOnly`,
+`readOnlySources`) so an agent can check before trying.
 
 Scoping, stated honestly: read-only mode refuses `Mutating` commands - the
 CLI's managed-resource surface - and the typed flag is also refused on local
 commands (below). Under config or environment read-only mode, local commands
 (`auth login`, `auth status`, `config *`, `kubeconfig`, `skill *`,
-`completion`) stay usable; otherwise a read-only session couldn't even
-establish itself. A typed `--read-only` on a local command is refused with
-`VALIDATION` before the command does anything (`--read-only=false` included),
-with no hint: run the command without `--read-only` and any value typed with
-it. The environment variable and the config field are the only session-wide
-forms.
-An agent that types `--read-only` on every call loses `auth status`,
-`config *` and `kubeconfig`; set `RANCHER_CLI_READONLY` for the process
-instead.
+`completion`) stay usable; otherwise read-only mode would also stop you from
+logging in and editing the config. A typed `--read-only` on a local command
+is refused with `VALIDATION` before the command does anything
+(`--read-only=false` included), with no hint: run the command without
+`--read-only` and any value typed with it. The environment variable and the
+config field are the only forms that apply to every run. An agent that types
+`--read-only` on every call loses `auth status`, `config *` and
+`kubeconfig`; set `RANCHER_CLI_READONLY` for the process instead.
 
 Under config or environment read-only mode the CLI still revokes its own
 tokens: `auth logout`, `auth delete-token` and `config delete-server` delete

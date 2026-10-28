@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Scope string
@@ -137,7 +138,7 @@ func Targets(agent string, scope Scope, cwd string) ([]Target, error) {
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("unknown agent %q (valid: %v)", agent, AgentNames())
+			return nil, fmt.Errorf("unknown harness %q (valid: %s)", agent, strings.Join(AgentNames(), ", "))
 		}
 	}
 	var out []Target
