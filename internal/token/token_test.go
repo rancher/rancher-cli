@@ -2335,14 +2335,16 @@ func TestGetTokenFTPServerReadableConfigRejectsResolvedProbe(t *testing.T) {
 		tin{s: map[string]string{"server": "ftp://host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "ftp:// server must be rejected at the resolved-probe validation, not served from cache")
-	assert.ErrorContains(t, err, "ftp://host", "error must name the invalid resolved server")
+	require.ErrorContains(t, err, "the server URL in --server cannot be used: its scheme is not http or https; use http:// or https://; "+
+		"when kubectl runs this command, the URL is the --server argument of the kubeconfig's exec block")
+	assert.NotContains(t, err.Error(), "ftp://host", "the error holds no part of the URL")
 }
 
 // TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe asserts the
 // post-resolution probe: a malformed --server https://[::1 (unclosed bracket)
 // bypasses the fast-path (CanonicalServerURL errors → fast path skipped), and
 // with a readable config the resolved probe must catch it. The seeded cache
-// record under the lowercased-fallback identity must not be served.
+// record under the fallback identity must not be served.
 func TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -2358,7 +2360,9 @@ func TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe(t *testing.T)
 		tin{s: map[string]string{"server": malformed, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "malformed --server must be rejected at the resolved-probe validation, not served from cache")
-	assert.ErrorContains(t, err, malformed, "error must name the invalid resolved server")
+	require.ErrorContains(t, err, "the server URL in --server cannot be used: it is not a valid URL; give a URL like https://host, without a user name or password; "+
+		"when kubectl runs this command, the URL is the --server argument of the kubeconfig's exec block")
+	assert.NotContains(t, err.Error(), malformed, "the error holds no part of the URL")
 }
 
 // TestGetTokenEmptyHostnameServerIsRejected verifies that a --server value with
@@ -2380,7 +2384,9 @@ func TestGetTokenEmptyHostnameServerIsRejected(t *testing.T) {
 		tin{s: map[string]string{"server": emptyHost, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	require.Error(t, err, "https://:443 must not address a cache entry")
-	assert.ErrorContains(t, err, emptyHost, "error must name the invalid resolved server")
+	require.ErrorContains(t, err, "the server URL in --server cannot be used: it has no host name; give a URL like https://host, without a user name or password; "+
+		"when kubectl runs this command, the URL is the --server argument of the kubeconfig's exec block")
+	assert.NotContains(t, err.Error(), emptyHost, "the error holds no part of the URL")
 }
 
 // TestBasicAuthUsernameDefault verifies that a non-empty UsernameDefault on

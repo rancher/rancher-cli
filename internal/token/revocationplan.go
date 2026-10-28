@@ -133,9 +133,13 @@ func (r RevocationReport) TextDetails() []string {
 // revocationItem is one token a local delete may leave live: what it is,
 // where it is recorded, and how it is revoked.
 type revocationItem struct {
-	ref       *TokenRef
-	source    string
-	server    string
+	ref    *TokenRef
+	source string
+	server string
+	// recorded is the server as the record stored it, which may hold user
+	// information that server (its identity) does not; empty when the item
+	// has no record of its own.
+	recorded  string
 	cluster   string
 	owner     string
 	expiresAt string
@@ -261,7 +265,7 @@ func (d *Deletion) selects(cfg *config.Config, r config.CachedRecord) bool {
 }
 
 func (d *Deletion) planCacheRecord(cfg *config.Config, r config.CachedRecord) *revocationItem {
-	it := &revocationItem{source: sourceCache, ref: r.TokenRef, server: config.CanonicalServerIdentity(r.Server), cluster: r.Cluster,
+	it := &revocationItem{source: sourceCache, ref: r.TokenRef, server: config.CanonicalServerIdentity(r.Server), recorded: r.Server, cluster: r.Cluster,
 		owner: r.TokenUserID, cacheKey: r.Key, cacheToken: r.Token}
 	if !r.Expiry.IsZero() {
 		it.expiresAt = r.Expiry.UTC().Format(time.RFC3339)
@@ -419,7 +423,7 @@ func (d *Deletion) planEntry(name string, s config.Server) {
 		}
 		ref := rec.Ref
 		it := &revocationItem{source: sourceSuperseded, ref: &ref, owner: rec.UserID, expiresAt: rec.ExpiresAt, entry: name,
-			server: cmp.Or(rec.Server, server)}
+			server: cmp.Or(config.CanonicalServerIdentity(rec.Server), server), recorded: rec.Server}
 		d.items = append(d.items, it)
 		matchesLogin := login != "" && usableBearer(rec.Ref.Kind, rec.Ref.Name, login) && it.server == server && s.CLICreated()
 		switch {
@@ -585,10 +589,10 @@ func (d *Deletion) Report() RevocationReport {
 			continue
 		}
 		if it.revoked {
-			rep.Revoked = append(rep.Revoked, RevokedToken{Ref: *it.ref, Source: it.source, Server: it.server})
+			rep.Revoked = append(rep.Revoked, RevokedToken{Ref: *it.ref, Source: it.source, Server: config.DisplayServerIdentity(it.server)})
 			continue
 		}
-		n := NotRevokedToken{Ref: it.ref, Source: it.source, Server: it.server,
+		n := NotRevokedToken{Ref: it.ref, Source: it.source, Server: config.DisplayServerIdentity(it.server),
 			Entry: d.reportedEntry(it), Reason: it.reason, Error: it.errText, Retry: d.retry(it), Recovery: d.recovery(it)}
 		if it.tlsErr != nil {
 			n.Code, n.Error, n.Certificate = clierr.CodeTLSTrust, d.tlsMessage(it), it.cert
@@ -712,7 +716,19 @@ func (d *Deletion) recovery(it *revocationItem) []string {
 		_, revoke := clierr.RecoveryCommands(*it.ref)
 		return []string{revoke}
 	}
-	return clierr.RecoverySequence(it.server, it.owner, *it.ref)
+	return d.advise(it).Sequence
+}
+
+// advise is what config.AdviseRecord says about the server of a manual
+// token: where it is reported (the entry it is recorded on, that entry's URL
+// as stored, and whether the entry was removed) and the token's server.
+func (d *Deletion) advise(it *revocationItem) config.RecordAdvice {
+	e, exists := d.view.Servers[it.entry]
+	if !exists && d.cfg != nil {
+		e = d.cfg.Servers[it.entry]
+	}
+	site := config.RecordSite{Entry: d.reportedEntry(it), EntryURL: e.URL, Removed: it.entry != "" && (d.removed[it.entry] || !exists)}
+	return config.AdviseRecord(site, cmp.Or(it.recorded, it.server), it.owner, *it.ref)
 }
 
 // serverCATail says how a login connects to a server whose certificate a
@@ -774,7 +790,11 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	if it.ref != nil && it.ref.Kind == TokenKindV3 {
 		return fmt.Sprintf("the %s was not revoked (%s); %s", what, reasonText(it), v3AdminRemedy(*it.ref, it.expiresAt))
 	}
-	seq := clierr.RecoverySequence(it.server, it.owner, *it.ref)
+	advice := d.advise(it)
+	if advice.Text != "" {
+		return fmt.Sprintf("the %s was not revoked (%s); %s", what, reasonText(it), advice.Text)
+	}
+	seq := advice.Sequence
 	for i := range seq {
 		seq[i] = clierr.MarkRemedy(seq[i])
 	}
@@ -844,7 +864,7 @@ func (d *Deletion) TextLines() []string {
 		}
 		if it.server != server {
 			server = it.server
-			header := "tokens on " + server + ":"
+			header := "tokens on " + config.DisplayServerIdentity(server) + ":"
 			if server == "" {
 				header = "tokens with no server recorded:"
 			}

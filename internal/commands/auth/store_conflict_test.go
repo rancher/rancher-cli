@@ -57,7 +57,7 @@ func TestAuthCheckFailsOnAStoreConflict(t *testing.T) {
 	declareStore(t, dir, "file")
 	t.Setenv(config.EnvCredentialStore, "keychain")
 
-	store, serr := config.NewLazyStore(&config.Config{CredentialStore: "file"}, dir)
+	store, serr := config.NewLazyStore(&config.Config{CredentialStore: "file"}, dir, false)
 	require.NoError(t, serr)
 	cmd := &authCheckCmd{
 		dir:       dir,
@@ -79,7 +79,7 @@ func TestAuthCheckReportsAStoreConflictUnderAnEnvToken(t *testing.T) {
 	t.Setenv(config.EnvCredentialStore, "keychain")
 	t.Setenv(config.EnvToken, "id:secret")
 
-	store, serr := config.NewLazyStore(&config.Config{CredentialStore: "file"}, dir)
+	store, serr := config.NewLazyStore(&config.Config{CredentialStore: "file"}, dir, false)
 	require.NoError(t, serr)
 	cmd := &authCheckCmd{
 		dir:       dir,

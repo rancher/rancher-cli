@@ -64,19 +64,22 @@ func ResolveCA(canonicalURL, selector string) (string, error) {
 
 // CanonicalizeServerURL canonicalizes rawURL for a registration call,
 // producing the standard invalid-URL validation error every registration
-// caller surfaces on failure. Callers thread the result into Prepare rather
+// caller surfaces on failure. entry is "" for a URL typed with --url, or the
+// name of the stored entry the URL belongs to: the error names that source
+// and never the URL, which may hold a password. A URL that carries a user
+// name or password is refused. Callers thread the result into Prepare rather
 // than letting it canonicalize the same URL a second time.
-func CanonicalizeServerURL(rawURL string) (string, error) {
-	canonical, err := credhelper.CanonicalServerURL(rawURL)
-	if err != nil {
-		return "", clierr.New(clierr.CodeValidation, "invalid server URL: "+clierr.RedactURLUserinfo(rawURL))
+func CanonicalizeServerURL(rawURL, entry string) (string, error) {
+	origin := config.ServerURLOrigin{Source: "--url"}
+	if entry != "" {
+		origin = config.EntryOrigin(entry)
 	}
-	// Scheme is checked here, not only in Prepare, so the
-	// error can echo the URL as the operator typed it - canonicalization
-	// strips path/query, and a fat-fingered URL is easier to spot whole.
+	canonical, err := credhelper.CheckServerURL(rawURL)
+	if err != nil {
+		return "", origin.Refusal(err)
+	}
 	if !config.IsSupportedScheme(canonical) {
-		return "", clierr.New(clierr.CodeValidation,
-			"unsupported server URL scheme: "+clierr.RedactURLUserinfo(rawURL)+"; use http:// or https://")
+		return "", origin.Refusal(config.ErrServerURLScheme)
 	}
 	return canonical, nil
 }
@@ -105,18 +108,17 @@ func PrepareConnecting(ctx context.Context, tlsPreflight TLSPreflightFunc, canon
 		// entry or token: Effective would silently withhold the stored
 		// credential later, surfacing as an unexplained NOT_LOGGED_IN after
 		// a login that appeared to succeed.
-		return Probe{}, clierr.New(clierr.CodeValidation,
-			"unsupported server URL scheme: "+canonicalURL+"; use http:// or https://")
+		return Probe{}, config.ServerURLOrigin{Source: "--url"}.Refusal(config.ErrServerURLScheme)
 	}
 	caBytes, raerr := ResolveCA(canonicalURL, caSelector)
 	if raerr != nil {
-		return Probe{}, clierr.New(clierr.CodeValidation, "reading --cacert: "+raerr.Error())
+		return Probe{}, clierr.New(clierr.CodeValidation, "reading --cacert: "+config.CAFileProblem(raerr))
 	}
 	connection, fromEnvironment := caBytes, false
 	if variableCA != "" {
 		b, verr := ResolveCA(canonicalURL, variableCA)
 		if verr != nil {
-			return Probe{}, clierr.New(clierr.CodeValidation, "reading "+config.EnvCACert+": "+verr.Error())
+			return Probe{}, clierr.New(clierr.CodeValidation, "reading "+config.EnvCACert+": "+config.CAFileProblem(verr))
 		}
 		connection, fromEnvironment = b, b != ""
 	}
@@ -283,11 +285,17 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 	case existing.URL == probe.CanonicalURL && existing.CA == probe.CASelector:
 		// Entry no-op: identical existing entry, nothing to rewrite.
 	case existing.URL != probe.CanonicalURL:
+		hint := fmt.Sprintf("rancher config update-server %s --url %s", clierr.ShellQuote(name), clierr.ShellQuote(probe.CanonicalURL))
+		if _, problem := credhelper.CheckServerURL(existing.URL); problem != nil {
+			// The entry's URL cannot be shown or compared: the entry is
+			// what needs the repair.
+			return CreateOutcome{}, clierr.New(clierr.CodeConflict, config.EntryOrigin(name).Text(problem)).WithHint(hint)
+		}
 		return CreateOutcome{}, clierr.New(clierr.CodeConflict,
 			fmt.Sprintf(
 				"server entry %q already points at %s; to add a new server choose a different name, or to change this entry's URL run: rancher config update-server %s --url %s",
-				name, existing.URL, name, probe.CanonicalURL)).
-			WithHint(fmt.Sprintf("rancher config update-server %s --url %s", clierr.ShellQuote(name), clierr.ShellQuote(probe.CanonicalURL)))
+				name, config.DisplayServerURL(existing.URL), name, probe.CanonicalURL)).
+			WithHint(hint)
 	default:
 		// URL matches; only the CA selector differs.
 		return CreateOutcome{}, clierr.New(clierr.CodeConflict,
@@ -380,8 +388,13 @@ type UpdateOutcome struct {
 	Unchanged          bool
 	ChangedFields      []string
 	CredentialsCleared bool
-	CurrentServer      string
-	PointerRepaired    bool
+	// UserinfoRemoved is true when the stored URL held a user name or
+	// password and was rewritten without it: the server is the same, so no
+	// credential is cleared and ChangedFields does not name "url" (the
+	// caller's envelope does).
+	UserinfoRemoved bool
+	CurrentServer   string
+	PointerRepaired bool
 }
 
 // UpdatePlan is the update commit's validated, not-yet-applied result: the
@@ -395,6 +408,21 @@ type UpdatePlan struct {
 	CASelector         string
 	ChangedFields      []string
 	CredentialsCleared bool
+	// RewriteURL is set when the stored URL holds a user name or password
+	// and names the same server as the new URL: the entry is rewritten with
+	// the canonical URL and nothing else about the server changes.
+	RewriteURL bool
+}
+
+// storedUserinfoOnly reports whether the stored URL holds a user name or
+// password and canonicalizes to canonical: only the user information
+// differs, so the entry names the same server.
+func storedUserinfoOnly(stored, canonical string) bool {
+	u, err := neturl.Parse(stored)
+	if err != nil || u.User == nil {
+		return false
+	}
+	return config.CanonicalServerIdentity(stored) == canonical
 }
 
 // ValidateUpdate runs update-server's TWO independently named validations,
@@ -417,7 +445,8 @@ func ValidateUpdate(cfg *config.Config, name string, src UpdateSource, probe Pro
 		return UpdatePlan{}, registrationConflict(name, "resulting CA content changed", rerr)
 	}
 	var changed []string
-	if existing.URL != probe.CanonicalURL {
+	rewrite := existing.URL != probe.CanonicalURL && storedUserinfoOnly(existing.URL, probe.CanonicalURL)
+	if existing.URL != probe.CanonicalURL && !rewrite {
 		changed = append(changed, "url")
 	}
 	if existing.CA != probe.CASelector || (src.ClearCA && existing.CA == "" && existing.CAFromEnvironment) {
@@ -425,7 +454,7 @@ func ValidateUpdate(cfg *config.Config, name string, src UpdateSource, probe Pro
 	}
 	return UpdatePlan{
 		Name: name, CanonicalURL: probe.CanonicalURL, CASelector: probe.CASelector,
-		ChangedFields: changed, CredentialsCleared: existing.URL != probe.CanonicalURL,
+		ChangedFields: changed, CredentialsCleared: existing.URL != probe.CanonicalURL && !rewrite, RewriteURL: rewrite,
 	}, nil
 }
 
@@ -435,9 +464,10 @@ func ValidateUpdate(cfg *config.Config, name string, src UpdateSource, probe Pro
 // Callers that must purge credentials on a URL change do so between
 // ValidateUpdate and ApplyUpdate.
 func ApplyUpdate(cfg *config.Config, plan UpdatePlan) (UpdateOutcome, error) {
-	if len(plan.ChangedFields) > 0 {
+	if len(plan.ChangedFields) > 0 || plan.RewriteURL {
 		e := cfg.Servers[plan.Name]
-		if plan.CredentialsCleared {
+		switch {
+		case plan.CredentialsCleared:
 			// A URL change clears the entry's credentials, so the entry
 			// keeps only its address, its trust and what its change's first
 			// write gave it: the advanced cache binding id, the pause, which
@@ -446,25 +476,29 @@ func ApplyUpdate(cfg *config.Config, plan UpdatePlan) (UpdateOutcome, error) {
 			// no login of the new address tries them.
 			e = config.Server{URL: plan.CanonicalURL, CA: plan.CASelector,
 				CacheBindingID: e.CacheBindingID, CacheWritesPaused: e.CacheWritesPaused, SupersededTokens: e.SupersededTokens}
-		} else {
+		case len(plan.ChangedFields) > 0:
 			// A CA-only update changes no credential: every other field
 			// is kept, a pause a change left included. The fingerprint
 			// belonged to the certificate being replaced.
 			e.URL, e.CA, e.CAFingerprint, e.CAFromEnvironment = plan.CanonicalURL, plan.CASelector, "", false
+		default:
+			// Only the user information left the URL: the server, its
+			// trust and every credential are the same.
+			e.URL = plan.CanonicalURL
 		}
 		cfg.Servers[plan.Name] = e
 	}
 	repaired := bootstrapPointer(cfg, plan.Name)
-	if len(plan.ChangedFields) > 0 || repaired {
+	if len(plan.ChangedFields) > 0 || plan.RewriteURL || repaired {
 		if err := config.WriteStep("update", cfg); err != nil {
 			return UpdateOutcome{}, err
 		}
 	}
 	return UpdateOutcome{
 		Name: plan.Name, CanonicalURL: plan.CanonicalURL, CASelector: plan.CASelector,
-		Unchanged: len(plan.ChangedFields) == 0, ChangedFields: plan.ChangedFields,
-		CredentialsCleared: plan.CredentialsCleared,
-		CurrentServer:      cfg.CurrentServer, PointerRepaired: repaired,
+		Unchanged: len(plan.ChangedFields) == 0 && !plan.RewriteURL, ChangedFields: plan.ChangedFields,
+		CredentialsCleared: plan.CredentialsCleared, UserinfoRemoved: plan.RewriteURL,
+		CurrentServer: cfg.CurrentServer, PointerRepaired: repaired,
 	}, nil
 }
 

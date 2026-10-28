@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"sigs.k8s.io/yaml"
 )
@@ -115,9 +116,15 @@ func ErrNotLoggedInFor(servers map[string]string, withCA map[string]bool) *clier
 			// and has no leading dash, which would read as a flag ([::1]).
 			url := servers[names[0]]
 			name := strings.TrimLeft(clierr.HostEntryName("", url), "-")
-			login := LoginCommand + " " + clierr.ShellQuote(name) + " --url " + clierr.ShellQuote(url)
 			msg := "not logged in - no current server; the only server entry, " +
-				clierr.ShellQuote(names[0]) + ", is the exec plugin's own login entry, which auth login refuses; log in under a server entry of your own with: "
+				clierr.ShellQuote(names[0]) + ", is the exec plugin's own login entry, which auth login refuses; "
+			if _, err := credhelper.CheckServerURL(url); err != nil {
+				// No command can name an unusable URL: the text says how to
+				// repair the entry instead.
+				return clierr.New(clierr.CodeNotLoggedIn, msg+EntryOrigin(names[0]).Text(err))
+			}
+			login := LoginCommand + " " + clierr.ShellQuote(name) + " --url " + clierr.ShellQuote(url)
+			msg += "log in under a server entry of your own with: "
 			if withCA[names[0]] {
 				return clierr.New(clierr.CodeNotLoggedIn, msg+login+InlineCAClause(CASource{Kind: CASourceEntry, Entry: names[0]}))
 			}
@@ -452,13 +459,15 @@ func Load(path string) (*Config, error) {
 // pairing used by both the CLI adapter (internal/cli resolveDeps) and the
 // legacy token shim's cache-miss branch, so a future change to either step
 // (a migration check, an extra Config field driving store selection) applies
-// in one place rather than two.
-func LoadAndStore(dir string) (*Config, CredStore, error) {
+// in one place rather than two. takesSecrets is whether the command that
+// opens the store takes secrets (its descriptor's SecretInput): such a
+// command's store errors name where a value came from and never the value.
+func LoadAndStore(dir string, takesSecrets bool) (*Config, CredStore, error) {
 	cfg, err := Load(FilePath(dir))
 	if err != nil {
 		return nil, nil, err
 	}
-	store, err := NewLazyStore(cfg, dir)
+	store, err := NewLazyStore(cfg, dir, takesSecrets)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -36,7 +36,7 @@ func RunKubectl(ctx context.Context, dir, url, name string) (string, error) {
 	if err != nil {
 		return "", &setupError{err}
 	}
-	_, store, err := config.LoadAndStore(dir)
+	_, store, err := config.LoadAndStore(dir, false)
 	if err != nil {
 		return "", &setupError{err}
 	}

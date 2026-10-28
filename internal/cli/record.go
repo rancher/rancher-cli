@@ -252,7 +252,7 @@ var serverRows = map[string]func(serverInput) string{
 			v = os.Getenv(config.EnvURL)
 		}
 		if v == "" && in.cfg != nil {
-			v = in.cfg.EffectiveConnection().URL
+			v = effectiveConnectionURL(in.cfg)
 		}
 		return token.ApplyDefaultScheme(v)
 	},
@@ -288,6 +288,16 @@ var serverRows = map[string]func(serverInput) string{
 	},
 }
 
+// effectiveConnectionURL is the URL the current server and the environment
+// give, or "" when it is refused: a refused URL records no server.
+func effectiveConnectionURL(cfg *config.Config) string {
+	eff := cfg.EffectiveConnection()
+	if eff.URLErr != nil {
+		return ""
+	}
+	return eff.URL
+}
+
 // recordedServer returns the canonical URL of the server the run targeted,
 // or "" when it had none. A command whose server access is none has none.
 // Otherwise a command in serverRows reads its own server, and any other
@@ -301,7 +311,7 @@ func recordedServer(d runtime.Descriptor, p parsedLine, cfg *config.Config) stri
 	if row, ok := serverRows[d.Name]; ok {
 		raw = row(serverInput{leaf: p.levels[p.urfaveEnd.level], cfg: cfg})
 	} else if cfg != nil {
-		raw = cfg.EffectiveConnection().URL
+		raw = effectiveConnectionURL(cfg)
 	}
 	if raw == "" {
 		return ""

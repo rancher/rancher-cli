@@ -333,6 +333,9 @@ func (tokenCmd) Describe() runtime.Descriptor {
 		// kubectl runs the plugin with the directory its exec entry names,
 		// which the operator's shell does not carry.
 		RemedyConfigDir: true,
+		// --server may be a URL with a password typed into it, and a flag
+		// left without its value takes the next word.
+		SecretInput: true,
 		// A file Rancher wrote carries no env, and the environment that
 		// ran kubectl chose its directory, which a remedy run in the same
 		// environment resolves too.
@@ -442,17 +445,11 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	// Validate and canonicalize the resolved server once: both the definitive
-	// cache key and the subsequent cache write use this single validated identity.
-	serverID, cerr := credhelper.CanonicalServerURL(server)
-	if cerr != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("resolved server %q is not a valid URL: %v", server, cerr))
-	}
-	if !config.IsSupportedScheme(serverID) {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("resolved server %q: unsupported scheme (only http and https are supported)", server))
-	}
+	// The canonical identity of the resolved server: both the definitive
+	// cache key and the subsequent cache write use it. connectionTarget
+	// refused every server that fails the check or whose scheme is not http
+	// or https, so the verdict is not asked again here.
+	serverID, _ := credhelper.CheckServerURL(server)
 	cacheKey := config.CacheKeyFor(params.Name, serverID, clusterID, params.UserID, params.authConfigOfCall())
 
 	// The endpoint kubectl is about to use, when the kubeconfig asked
@@ -632,10 +629,10 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		case werr == nil && ready:
 			markReady = true
 		case werr == nil:
-			loginWarnings = append(loginWarnings, directNotReadyWarning(directTarget.server, params.Name))
+			loginWarnings = append(loginWarnings, directNotReadyWarning(config.DisplayServerURL(directTarget.server), params.Name))
 		default:
 			if unavailable, ok := errors.AsType[*directProbeUnavailable](werr); ok {
-				loginWarnings = append(loginWarnings, fmt.Sprintf("the direct endpoint %s cannot be probed (%v); the credential is returned without waiting for it", directTarget.server, unavailable.err))
+				loginWarnings = append(loginWarnings, fmt.Sprintf("the direct endpoint %s cannot be probed (%v); the credential is returned without waiting for it", config.DisplayServerURL(directTarget.server), unavailable.err))
 				break
 			}
 			// The caller cancelled: the token that would now be orphaned
@@ -827,13 +824,14 @@ func directNotReadyWarning(server, entry string) string {
 // resolved key" invariant and the notice-once suppression both depend on the two
 // probes producing identical keys. Returns ("", false) when the probe is
 // impossible: the server is empty, the name and userID are both empty, the URL
-// is not parseable, or the scheme is not http/https.
+// is not parseable or carries userinfo (the run then reaches connectionTarget,
+// which refuses it), or the scheme is not http/https.
 func computeCacheProbeKey(name, server, cluster, userID, authConfig string) (string, bool) {
 	if (name == "" && userID == "") || server == "" {
 		return "", false
 	}
 	normalized := ApplyDefaultScheme(server)
-	cu, err := credhelper.CanonicalServerURL(normalized)
+	cu, err := credhelper.CheckServerURL(normalized)
 	if err != nil {
 		return "", false
 	}
@@ -1595,7 +1593,7 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName, use
 		// ignoreCurrentContext is set only by the legacy shim, whose flag is
 		// --cacerts.
 		shim := ignoreCurrentContext
-		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "reading "+caReadSource(from, shim)+": "+err.Error())
+		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "reading "+caReadSource(from, shim)+": "+config.CAFileProblem(err))
 	}
 	return server, caPEM, cluster, caSource, from, choice, nil
 }
@@ -1614,6 +1612,7 @@ func serverRequiredError() *clierr.Error {
 // are both set. The exec plugin's completion of --auth-provider asks it the
 // same question the call itself would answer.
 func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName string, ignoreCurrentContext, skipVerify bool) (server, ca string, from config.CASource, choice entryChoice, err error) {
+	var origin config.ServerURLOrigin
 	server = flagServer
 	explicitServer := server != ""
 	if caIn != "" {
@@ -1627,6 +1626,10 @@ func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName st
 	// not become the bogus non-empty "https://".
 	if explicitServer {
 		server = ApplyDefaultScheme(server)
+		origin = config.ServerURLOrigin{Source: "--server", ExecEntryArgument: true}
+		if err := checkServerOrigin(server, origin); err != nil {
+			return "", "", config.CASource{}, entryChoice{}, err
+		}
 	}
 
 	// A ignoreCurrentContext caller is flag-driven by definition: an absent
@@ -1646,7 +1649,21 @@ func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName st
 		// entry it does not use must not abort it.
 		eff := cfg.EffectiveConnection()
 		if server == "" {
+			// Only the URL this call takes is refused: a typed good --server
+			// is never refused because of a bad entry or variable.
+			if eff.URLErr != nil {
+				return "", "", config.CASource{}, entryChoice{}, eff.URLErr
+			}
 			server = eff.URL
+			origin = config.EntryOrigin(eff.ServerName)
+			if eff.URLFromVariable {
+				origin = config.ServerURLOrigin{Source: config.EnvURL}
+			}
+			if server != "" {
+				if err := checkServerOrigin(server, origin); err != nil {
+					return "", "", config.CASource{}, entryChoice{}, err
+				}
+			}
 		}
 		if caIn == "" && server != "" {
 			identified, ierr := identifyEntry(cfg, server, wantName, cluster, ignoreCurrentContext)
@@ -1681,6 +1698,20 @@ func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName st
 			"--server is required; pass it, or add and log in to a server first")
 	}
 	return server, caIn, from, choice, nil
+}
+
+// checkServerOrigin refuses a server URL the plugin cannot use: one that
+// carries userinfo or does not parse, or whose scheme is not http or https.
+// origin names where the URL came from.
+func checkServerOrigin(server string, origin config.ServerURLOrigin) error {
+	canonical, cerr := credhelper.CheckServerURL(server)
+	if cerr != nil {
+		return origin.Refusal(cerr)
+	}
+	if !config.IsSupportedScheme(canonical) {
+		return origin.Refusal(config.ErrServerURLScheme)
+	}
+	return nil
 }
 
 // caReadSource names where an unreadable CA came from: the flag the call

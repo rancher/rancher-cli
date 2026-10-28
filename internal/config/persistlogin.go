@@ -734,7 +734,7 @@ func resolveEntryName(cfg *Config, in PersistLoginInput) (name string, existing 
 		}
 		if !in.CollisionSuffix {
 			return "", Server{}, false, clierr.New(clierr.CodeConflict,
-				fmt.Sprintf("server entry %q is registered at %s, not %s", name, existing.URL, in.CanonicalURL))
+				fmt.Sprintf("server entry %q is registered at %s, not %s", name, DisplayServerURL(existing.URL), in.CanonicalURL))
 		}
 		name = fmt.Sprintf("%s-%d", in.Name, i)
 	}
@@ -903,7 +903,7 @@ func priorEntry(snap *Server) *clierr.PriorEntry {
 	if fp == "" {
 		fp = caFingerprintOf(snap.CA)
 	}
-	return &clierr.PriorEntry{URL: snap.URL, CA: snap.CA, CAFingerprint: fp, CAFromEnvironment: snap.CAFromEnvironment, Provenance: snap.Provenance,
+	return &clierr.PriorEntry{URL: DisplayServerURL(snap.URL), CA: snap.CA, CAFingerprint: fp, CAFromEnvironment: snap.CAFromEnvironment, Provenance: snap.Provenance,
 		TokenRef: snap.TokenRef, TokenUserID: snap.TokenUserID, CredentialExpiresAt: snap.CredentialExpiresAt,
 		SupersededTokens: snap.SupersededTokens}
 }

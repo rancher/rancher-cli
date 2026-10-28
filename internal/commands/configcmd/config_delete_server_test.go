@@ -149,10 +149,10 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 	assert.Equal(t, "server acme deleted\n"+
 		"  credentials removed (file)\n"+
 		"  1 cached kubectl credentials removed\n"+
-		"  tokens on acme.ex:\n"+
-		"    not revoked cluster token with no name recorded (unproven)\n"+
 		"  tokens on https://acme.ex:\n"+
-		"    not revoked: the pasted login token, which is not the CLI's to revoke\n", res.Text)
+		"    not revoked: the pasted login token, which is not the CLI's to revoke\n"+
+		"  tokens on acme.ex:\n"+
+		"    not revoked cluster token with no name recorded (unproven)\n", res.Text)
 
 	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), cmdtest.CacheAnchor(t, dir))
 	assert.ErrorIs(t, err, config.ErrNoToken)

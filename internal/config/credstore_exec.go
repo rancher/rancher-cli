@@ -135,7 +135,7 @@ func (s *execStore) invoke(verb string, req credhelper.Request) (*credhelper.Res
 func wireRequest(ref ServerRef) (credhelper.Request, error) {
 	cu, err := credhelper.CanonicalServerURL(ref.URL)
 	if err != nil {
-		return credhelper.Request{}, fmt.Errorf("credential helper request: %w", err)
+		return credhelper.Request{}, fmt.Errorf("credential helper request: the server URL is not usable: %w", err)
 	}
 	return credhelper.Request{ServerURL: cu, Name: ref.Name}, nil
 }

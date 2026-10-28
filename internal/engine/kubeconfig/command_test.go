@@ -394,16 +394,15 @@ func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
 	assert.NotEmpty(t, kc.CurrentContext, "stdout must still be exactly the bare kubeconfig YAML")
 }
 
-// A malformed server URL makes kube.BaseURL's url.Parse fail, falling back to
-// raw string trimming that preserves the original scheme case verbatim - the
-// warning must still fire (case-insensitive, not-https rather than a literal
-// "http://" match) instead of silently skipping it.
-func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {
+// A server URL whose scheme is upper case keeps it as written through
+// kube.BaseURL - the warning must still fire (case-insensitive, not-https
+// rather than a literal "http://" match) instead of silently skipping it.
+func TestKubeconfigWarnsOnUppercaseHTTPServer(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := &config.Config{
 		CurrentServer: "prod",
-		Servers:       map[string]config.Server{"prod": {URL: "HTTP://foo%zz.example.com/v3"}},
+		Servers:       map[string]config.Server{"prod": {URL: "HTTP://foo.example.com/v3"}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -414,6 +413,28 @@ func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, p)
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "not https")
+}
+
+// TestKubeconfigRefusesAMalformedServerURL asserts that a current server
+// entry whose URL does not parse is refused as VALIDATION, naming the entry
+// and never the URL.
+func TestKubeconfigRefusesAMalformedServerURL(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentServer: "prod",
+		Servers:       map[string]config.Server{"prod": {URL: "HTTP://foo%zz.example.com/v3"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
+	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, ui.Discard())
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "the server URL in server entry 'prod' cannot be used: ")
+	assert.NotContains(t, ce.Message, "foo")
 }
 
 func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {

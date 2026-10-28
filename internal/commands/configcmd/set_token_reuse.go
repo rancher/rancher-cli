@@ -88,12 +88,12 @@ func dormantPluginLogins(cfg *config.Config) ([]map[string]any, []string) {
 		s := cfg.Servers[n]
 		entry := entryReport(n, s)
 		out = append(out, entry)
-		lines = append(lines, fmt.Sprintf("plugin-created login %s (%s) is dormant, not deleted", n, s.URL))
+		lines = append(lines, fmt.Sprintf("plugin-created login %s (%s) is dormant, not deleted", n, config.DisplayServerURL(s.URL)))
 		if s.CLIOwned() && s.LoggedOutAt == "" {
 			lines = append(lines, "  remove its credential with: rancher auth logout "+clierr.ShellQuote(n))
 		}
 		lines = append(lines, "  remove the entry and its records with: rancher config delete-server "+clierr.ShellQuote(n))
-		lines = append(lines, recordLines(s, "  ")...)
+		lines = append(lines, recordLines(n, s, "  ")...)
 	}
 	return out, lines
 }

@@ -26,7 +26,7 @@ func TestAuthCheckOnAnUnpinnedDirectory(t *testing.T) {
 		t.Helper()
 		cfg, err := config.Load(config.FilePath(dir))
 		require.NoError(t, err)
-		store, serr := config.NewLazyStore(cfg, dir)
+		store, serr := config.NewLazyStore(cfg, dir, false)
 		require.NoError(t, serr)
 		cmd := &authCheckCmd{
 			dir: dir, store: store,
@@ -101,7 +101,7 @@ func TestLogoutClearsCredentialsInBothStores(t *testing.T) {
 	}
 	readStaging := func(t *testing.T, dir string) (string, error) {
 		t.Helper()
-		cfg, store, err := config.LoadAndStore(dir)
+		cfg, store, err := config.LoadAndStore(dir, false)
 		require.NoError(t, err)
 		return store.GetToken(config.ServerRef{Name: "staging", URL: cfg.Servers["staging"].URL})
 	}

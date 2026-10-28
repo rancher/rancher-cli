@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
@@ -538,6 +539,17 @@ func (d *Deletion) send(budget context.Context, trust, bearer string, provenance
 
 func (d *Deletion) newClient(trust string) revokeClient {
 	s := d.cfg.Servers[trust]
+	// An entry whose URL is unusable (hand-edited in config.yaml) is never
+	// dialed and its stored token never sent.
+	if _, err := credhelper.CheckServerURL(s.URL); err != nil {
+		origin := config.EntryOrigin(trust)
+		text := origin.Text(err)
+		if d.req.Command == DeleteForDeleteServer && slices.Contains(d.req.Targets, trust) {
+			// The command removes the entry: the repair is not the entry's URL.
+			text = origin.RemovedText(err)
+		}
+		return revokeClient{err: errors.New(text + "; the token was not sent")}
+	}
 	pem, fromVariable, err := revokeCA(s)
 	if err != nil {
 		return revokeClient{err: err}

@@ -43,7 +43,7 @@ func addServerOver(t *testing.T, stagingStore string) (string, runtime.Result) {
 
 func readEntry(t *testing.T, dir, entry string) (string, error) {
 	t.Helper()
-	cfg, store, err := config.LoadAndStore(dir)
+	cfg, store, err := config.LoadAndStore(dir, false)
 	require.NoError(t, err)
 	return store.GetToken(config.ServerRef{Name: entry, URL: cfg.Servers[entry].URL})
 }

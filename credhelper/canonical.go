@@ -1,7 +1,7 @@
 package credhelper
 
 import (
-	"fmt"
+	"errors"
 	"net"
 	"net/url"
 	"regexp"
@@ -33,15 +33,54 @@ func ValidHelperName(name string) bool { return helperNameRE.MatchString(name) }
 // closed: a canonical identity must round-trip through url.Parse, so an
 // input that cannot is rejected rather than emitted.
 func CanonicalServerURL(raw string) (string, error) {
+	u, err := parseServerURL(raw)
+	if err != nil {
+		return "", err
+	}
+	return canonicalFromURL(u)
+}
+
+// CheckServerURL refuses a server URL that carries userinfo (a user name,
+// with or without a password) or that does not parse into a scheme and a
+// host, and returns the canonical form CanonicalServerURL returns for every
+// URL it accepts. A scheme other than http or https is not refused here: the
+// callers that need http or https check that themselves. The error text
+// carries no part of the input, because the input may hold a password.
+func CheckServerURL(raw string) (string, error) {
+	u, err := parseServerURL(raw)
+	if err != nil {
+		return "", err
+	}
+	if u.User != nil {
+		return "", errServerURLUserinfo
+	}
+	return canonicalFromURL(u)
+}
+
+// The error texts below carry no part of the URL they refuse. They are
+// phrased as the reason after "the server URL in <source> cannot be used: ".
+var (
+	errServerURLSyntax   = errors.New("it is not a valid URL")
+	errServerURLRelative = errors.New("it must be absolute (scheme://host)")
+	errServerURLNoHost   = errors.New("it has no host name")
+	errServerURLUserinfo = errors.New("it holds a user name or password")
+	errServerURLRebuild  = errors.New("it does not parse as scheme://host")
+)
+
+func parseServerURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid server URL %q: %w", raw, err)
+		return nil, errServerURLSyntax
 	}
+	return u, nil
+}
+
+func canonicalFromURL(u *url.URL) (string, error) {
 	if u.Scheme == "" || u.Host == "" {
-		return "", fmt.Errorf("server URL %q must be absolute (scheme://host)", raw)
+		return "", errServerURLRelative
 	}
 	if u.Hostname() == "" {
-		return "", fmt.Errorf("server URL %q has no hostname", raw)
+		return "", errServerURLNoHost
 	}
 	scheme := strings.ToLower(u.Scheme)
 	host := canonicalHostPort(scheme, u.Host)
@@ -51,7 +90,7 @@ func CanonicalServerURL(raw string) (string, error) {
 	host = strings.ReplaceAll(host, " ", "%20")
 	canonical := scheme + "://" + host
 	if _, err := url.Parse(canonical); err != nil {
-		return "", fmt.Errorf("server URL %q does not canonicalize to a parseable form: %w", raw, err)
+		return "", errServerURLRebuild
 	}
 	return canonical, nil
 }

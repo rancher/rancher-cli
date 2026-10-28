@@ -208,6 +208,14 @@ type Effective struct {
 	// the wording of a command that takes --url and --cacert.
 	TLSRemedy tlstrust.Remedy
 	Token     string
+	// URLErr is the refusal of URL (credhelper.CheckServerURL), naming the
+	// variable or the server entry it came from; nil for a usable URL. The
+	// connection is resolved as usual beside it; Effective returns it as its
+	// error and a caller of EffectiveConnection checks it before it uses URL.
+	URLErr error
+	// URLFromVariable is set when URL is RANCHER_CLI_URL, not the current
+	// entry's.
+	URLFromVariable bool
 	// KnownServers is the configured server inventory (name → URL),
 	// carried so a downstream consumer that finds URL empty (no current
 	// server, no env) can answer with the re-login shortcut instead of
@@ -295,6 +303,7 @@ func (c *Config) connection() (eff Effective, name string, s Server, serverErr e
 	}
 
 	// Effective URL first (env > file).
+	fromVariable := false
 	if v := os.Getenv(EnvURL); v != "" {
 		if serverErr == nil && !SameServerURL(v, s.URL) {
 			// Never pair a CA or display name with a server they were not
@@ -304,7 +313,19 @@ func (c *Config) connection() (eff Effective, name string, s Server, serverErr e
 			eff.CASource = CASource{}
 			eff.ServerName = ""
 		}
-		eff.URL = v
+		eff.URL, fromVariable = v, true
+		eff.URLFromVariable = true
+	}
+	// Only the URL that wins is checked: a bad entry URL under a good
+	// RANCHER_CLI_URL is never used.
+	if eff.URL != "" {
+		if _, err := credhelper.CheckServerURL(eff.URL); err != nil {
+			if fromVariable {
+				eff.URLErr = ServerURLOrigin{Source: EnvURL}.Refusal(err)
+			} else {
+				eff.URLErr = EntryOrigin(name).Refusal(err)
+			}
+		}
 	}
 	if v := EnvCACertFor(eff.URL); v != "" {
 		eff.CA, eff.CASource = v, CASource{Kind: CASourceVariable}
@@ -350,6 +371,12 @@ func tlsRemedyFor(eff Effective) tlstrust.Remedy {
 // a divergent RANCHER_CLI_URL never receives another server's credential.
 func (c *Config) Effective(store CredStore) (Effective, error) {
 	eff, name, s, serverErr := c.connection()
+	// A refused URL ends the call before the token variable and before any
+	// credential store read: a refused entry never reaches a store or an
+	// exec helper.
+	if eff.URLErr != nil {
+		return Effective{}, eff.URLErr
+	}
 
 	// Token: env short-circuits the store entirely; otherwise read the
 	// stored token only when the effective URL still matches the configured

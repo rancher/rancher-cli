@@ -210,7 +210,7 @@ func TestAURLLoginErasesAnOrphanFromAHelperItDoesNotUse(t *testing.T) {
 	assert.Empty(t, cmdtest.HelperCreds(t, statePath), "the helper no longer holds the orphan")
 
 	t.Setenv(config.EnvCredentialStore, "exec:fake")
-	cfg, store, serr := config.LoadAndStore(dir)
+	cfg, store, serr := config.LoadAndStore(dir, false)
 	require.NoError(t, serr)
 	require.Contains(t, cfg.Servers, "acme", "the registration wrote the entry")
 	_, gerr := store.GetToken(config.ServerRef{Name: "acme", URL: cfg.Servers["acme"].URL})

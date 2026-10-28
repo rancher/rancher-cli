@@ -134,8 +134,8 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		// server (no error, no Authorization header) - warn so the resulting
 		// kubeconfig's silent 401s are explainable. Inverted (warn on
 		// NOT-https, case-insensitive) rather than matching "http://" literally:
-		// BaseURL's error-fallback path can return a malformed or differently
-		// cased scheme that a literal "http://" prefix check would miss.
+		// BaseURL keeps the scheme as the URL wrote it, so a scheme in any
+		// case reaches here, which a literal "http://" prefix check would miss.
 		p.Notice("server URL is not https; kubectl will silently skip exec-credential auth - use https")
 	}
 	// eff.ServerName is empty for an env-only session, or when the env

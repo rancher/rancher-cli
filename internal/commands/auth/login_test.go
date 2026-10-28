@@ -580,10 +580,10 @@ func TestLoginEmptyNameArgumentRefused(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code, "the refusal fires without --url too")
 }
 
-// TestLoginUnsupportedSchemeEchoesRawURL asserts that the scheme refusal
-// shows the URL as typed - canonicalization strips path and query, and a
-// fat-fingered URL is easier to spot whole.
-func TestLoginUnsupportedSchemeEchoesRawURL(t *testing.T) {
+// TestLoginUnsupportedSchemeNamesTheFlagAndNotTheURL asserts that the scheme
+// refusal names --url and shows no part of the URL: a typed URL may hold a
+// password.
+func TestLoginUnsupportedSchemeNamesTheFlagAndNotTheURL(t *testing.T) {
 	t.Parallel()
 	dir, store := cmdtest.FilePolicyDir(t)
 	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
@@ -592,7 +592,8 @@ func TestLoginUnsupportedSchemeEchoesRawURL(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "ftp://rancher.example.com/some/path?x=1")
+	assert.Contains(t, ce.Message, "the server URL in --url cannot be used: its scheme is not http or https; use http:// or https://")
+	assert.NotContains(t, ce.Message, "rancher.example.com")
 }
 
 // TestLoginDerivedNameIPv6LiteralRefused asserts that a name is never
@@ -711,7 +712,7 @@ func TestLoginDerivedNameInvalidURLFallsThroughToRegistrationError(t *testing.T)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "invalid server URL")
+	assert.Contains(t, ce.Message, "the server URL in --url cannot be used: it must be absolute (scheme://host); give a URL like https://host, without a user name or password")
 }
 
 func TestLoginDelegatedIdenticalURLIsNoOpAddAndAuthenticates(t *testing.T) {
@@ -795,7 +796,7 @@ func TestLoginDelegatedInvalidURLOnKnownNameFallsThroughToRegistrationError(t *t
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "invalid server URL")
+	assert.Contains(t, ce.Message, "the server URL in --url cannot be used: it must be absolute (scheme://host); give a URL like https://host, without a user name or password")
 	assert.NotContains(t, ce.Message, "is registered at")
 }
 

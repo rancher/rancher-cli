@@ -65,11 +65,13 @@ func TestPrepareConnectingNamesTheUnreadableCA(t *testing.T) {
 	good := cmdtest.WriteCAFile(t, cmdtest.CAPem1)
 	_, err := PrepareConnecting(t.Context(), nil, "https://r.ex", good, "/nonexistent/variable.pem")
 	require.ErrorContains(t, err, "reading RANCHER_CLI_CACERT: ")
-	require.ErrorContains(t, err, "/nonexistent/variable.pem")
+	require.ErrorContains(t, err, "the file does not exist")
+	assert.NotContains(t, err.Error(), "variable.pem")
 
 	_, err = PrepareConnecting(t.Context(), nil, "https://r.ex", "/nonexistent/saved.pem", good)
 	require.ErrorContains(t, err, "reading --cacert: ")
-	require.ErrorContains(t, err, "/nonexistent/saved.pem")
+	require.ErrorContains(t, err, "the file does not exist")
+	assert.NotContains(t, err.Error(), "saved.pem")
 }
 
 // TestCommitCreateRecordsAVariableConnectedLoginOnAnEntryWithNoCA asserts

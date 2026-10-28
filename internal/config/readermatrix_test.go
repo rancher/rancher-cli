@@ -472,7 +472,7 @@ func seedMatrixCopy(t *testing.T, dir, entry, url, store, token string) (keychai
 // test's probe rather than an answer an earlier call left.
 func readMatrixEntry(dir, entry string) (string, error) {
 	resetKeyringUsableCache()
-	c, store, err := LoadAndStore(dir)
+	c, store, err := LoadAndStore(dir, false)
 	if err != nil {
 		return "", err
 	}

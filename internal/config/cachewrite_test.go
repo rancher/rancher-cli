@@ -71,7 +71,7 @@ func TestAStoreThatForwardsItsCacheRefusesThePausedBindingToo(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex", CacheWritesPaused: PauseLocked}}}
 	paused := CacheBindingFor(CanonicalDir(dir), cfg, "prod")
-	lazy, err := NewLazyStore(&Config{CredentialStore: "file"}, dir)
+	lazy, err := NewLazyStore(&Config{CredentialStore: "file"}, dir, false)
 	require.NoError(t, err)
 	for name, store := range map[string]CredStore{
 		"keychain": newPinnedKeyringStore(dir, false),
@@ -218,7 +218,7 @@ func TestEveryStoreSaysWhichBackendItReads(t *testing.T) {
 	assert.Equal(t, "exec:vault", backendOf(newExecStore("vault", dir)))
 
 	require.NoError(t, WritePin(dir, backendKeychain))
-	lazy, err := NewLazyStore(&Config{CredentialStore: "auto"}, dir)
+	lazy, err := NewLazyStore(&Config{CredentialStore: "auto"}, dir, false)
 	require.NoError(t, err)
 	_, fixed := lazy.ResolvedBackend()
 	assert.False(t, fixed, "nothing is read before the first credential call")
@@ -228,7 +228,7 @@ func TestEveryStoreSaysWhichBackendItReads(t *testing.T) {
 	assert.Equal(t, backendKeychain, backendOf(lazy), "and it never resolves again")
 
 	t.Setenv(EnvCredentialStore, "keychain")
-	conflicted, err := NewLazyStore(&Config{CredentialStore: "file"}, dir)
+	conflicted, err := NewLazyStore(&Config{CredentialStore: "file"}, dir, false)
 	require.NoError(t, err)
 	_, _ = conflicted.GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
 	b, fixed := conflicted.ResolvedBackend()
@@ -266,12 +266,12 @@ func TestTheStoreCheckKnowsWhetherAStoreWasRead(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &Config{CredentialStore: "file", Servers: map[string]Server{"prod": {URL: "https://r.ex", CacheBindingID: "b1"}}}
 
-	unread, err := NewLazyStore(cfg, dir)
+	unread, err := NewLazyStore(cfg, dir, false)
 	require.NoError(t, err)
 	require.NoError(t, CacheBindingFor(dir, cfg, "prod").ReadFrom(unread).CheckStore(), "a store never read")
 
 	t.Setenv(EnvCredentialStore, "keychain")
-	failed, err := NewLazyStore(cfg, dir)
+	failed, err := NewLazyStore(cfg, dir, false)
 	require.NoError(t, err)
 	_, _ = failed.GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
 	require.ErrorIs(t, CacheBindingFor(dir, cfg, "prod").ReadFrom(failed).CheckStore(), ErrCacheStoreChanged, "a store whose resolution failed")

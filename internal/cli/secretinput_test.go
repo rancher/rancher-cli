@@ -35,13 +35,13 @@ const secretCanary = "s3cretcanary9"
 // needs, for the rows where the server refuses a short password.
 const shortSecretCanary = "s3cretcnry9"
 
-// canaryForms returns canary as every renderer could show it: as typed, and
-// in each of the three base64 alignments (the text after zero, one or two
+// canaryForms returns canary as every renderer could show it: as typed, in
+// lower case (an identity is lowercased), and in each of the three base64 alignments (the text after zero, one or two
 // bytes of other text), cut to the characters the neighbor bytes do not
 // change. The renderers do not HTML-escape, so a JSON-escaped form adds
 // nothing for a canary of letters and digits.
 func canaryForms(canary string) []string {
-	forms := []string{canary}
+	forms := []string{canary, strings.ToLower(canary)}
 	for pad := range 3 {
 		enc := strings.TrimRight(base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", pad)+canary)), "=")
 		start := (8*pad + 5) / 6
@@ -57,11 +57,11 @@ func canaryForms(canary string) []string {
 func TestCanaryFormsFindTheCanaryInAnyAlignment(t *testing.T) {
 	t.Parallel()
 	forms := canaryForms(secretCanary)
-	require.Len(t, forms, 4)
+	require.Len(t, forms, 5)
 	for pad := range 6 {
 		enc := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("-", pad) + secretCanary + "tail"))
 		found := false
-		for _, f := range forms[1:] {
+		for _, f := range forms[2:] {
 			found = found || strings.Contains(enc, f)
 		}
 		assert.True(t, found, "pad %d: %s", pad, enc)
@@ -99,8 +99,28 @@ type secretRow struct {
 	// text its message holds, so a row cannot pass by failing elsewhere.
 	code    string
 	message string
+	// contains are further texts the error's message holds.
+	contains []string
 	// hint, when set, is the text the error's hint must equal.
 	hint string
+	// stored writes config.yaml, with this one entry, into the config
+	// directory before the before lines and the seed run.
+	stored *secretStored
+	// seed runs after the config is written, with the config directory and
+	// the stub's own usable URL; it may add the records the row needs.
+	seed func(tb testing.TB, dir, serverURL string)
+	// noRefusal marks a row whose command is not refused for its URL: the
+	// row asserts the message (when there is an error) holds none of forbid,
+	// and a non-zero exit is not required.
+	noRefusal bool
+	// forbid are texts the output holds none of: those of a noRefusal row,
+	// and the message of a refused one.
+	forbid []string
+	// instead is the text a noRefusal row's output holds in place of the
+	// refusal, so it cannot pass by failing elsewhere; reaches says the stub
+	// server saw a request.
+	instead string
+	reaches bool
 }
 
 // secretBearer is the token the stub server knows; the row runs use it as
@@ -271,7 +291,8 @@ func secretRows() []secretRow {
 	}
 
 	const badPort = "@rancher.invalid:abc"
-	redactedBadPort := "invalid server URL: https://<redacted>" + badPort
+	refusedBadPort := "the server URL in --url cannot be used: it is not a valid URL"
+	refusedUserinfo := "the server URL in --url cannot be used: it holds a user name or password"
 	for _, cmd := range []struct{ name, line string }{
 		{"config add-server", "config add-server x --url"},
 		{"auth login", "auth login x --token-stdin --url"},
@@ -281,19 +302,19 @@ func secretRows() []secretRow {
 			stdin = "id:y"
 		}
 		add(
-			secretRow{flag: "url", name: cmd.name + ": a URL with a password and a bad port", argv: line(cmd.line, "https://u:"+c+badPort), stdin: stdin, code: validation, message: redactedBadPort},
-			secretRow{flag: "url", name: cmd.name + ": a URL with a password and an unsupported scheme", argv: line(cmd.line, "ftp://u:"+c+"@rancher.invalid"), stdin: stdin, code: validation, message: "unsupported server URL scheme: ftp://<redacted>@rancher.invalid"},
+			secretRow{flag: "url", name: cmd.name + ": a URL with a password and a bad port", argv: line(cmd.line, "https://u:"+c+badPort), stdin: stdin, code: validation, message: refusedBadPort},
+			secretRow{flag: "url", name: cmd.name + ": a URL with a password and an unsupported scheme", argv: line(cmd.line, "ftp://u:"+c+"@rancher.invalid"), stdin: stdin, code: validation, message: refusedUserinfo},
 		)
 	}
 	// The password holds a character that ends an authority, so the part of
 	// it after that character is the canary.
 	for _, sep := range []string{"/", "?", "#", "@"} {
-		add(secretRow{flag: "url", name: "config add-server: a password with " + sep, argv: line("config add-server x --url", "https://u:s3cret"+sep+"canary9"+badPort), canary: "canary9", code: validation, message: redactedBadPort})
+		add(secretRow{flag: "url", name: "config add-server: a password with " + sep, argv: line("config add-server x --url", "https://u:s3cret"+sep+"canary9"+badPort), canary: "canary9", code: validation, message: refusedBadPort})
 	}
 	updateBefore := [][]string{line("config add-server x --url {url} --cacert {pem}")}
 	add(
-		secretRow{flag: "url", name: "config update-server: a URL with a password and a bad port", argv: line("config update-server x --url", "https://u:"+c+badPort), before: updateBefore, code: validation, message: redactedBadPort},
-		secretRow{flag: "url", name: "config update-server: a URL with a password and an unsupported scheme", argv: line("config update-server x --url", "ftp://u:"+c+"@rancher.invalid"), before: updateBefore, code: validation, message: "unsupported server URL scheme: ftp://<redacted>@rancher.invalid"},
+		secretRow{flag: "url", name: "config update-server: a URL with a password and a bad port", argv: line("config update-server x --url", "https://u:"+c+badPort), before: updateBefore, code: validation, message: refusedBadPort},
+		secretRow{flag: "url", name: "config update-server: a URL with a password and an unsupported scheme", argv: line("config update-server x --url", "ftp://u:"+c+"@rancher.invalid"), before: updateBefore, code: validation, message: refusedUserinfo},
 		secretRow{flag: "url", name: "config update-server: a URL with a password typed as an argument", argv: line("config update-server x", "https://u:"+c+"@rancher.invalid"), before: updateBefore, code: validation, message: "unexpected argument 2"},
 		secretRow{flag: "url", name: "config add-server: a URL with a password typed as an argument", argv: line("config add-server x --url {url}", "https://u:"+c+"@rancher.invalid"), code: validation, message: "unexpected argument 2"},
 		secretRow{flag: "url", name: "auth login: a URL with a password typed as an argument", argv: line("auth login x --token-stdin", "https://u:"+c+"@rancher.invalid"), stdin: "id:y", code: validation, message: "unexpected argument 2"},
@@ -332,28 +353,24 @@ func secretRows() []secretRow {
 		secretRow{flag: "from-literal", name: "a flag typed with no value takes --from-literal=<canary> as its value: --project", argv: line("create secret s1 --project", "--from-literal=k="+c), code: validation, message: "flag --project got flag --from-literal as its value"},
 		secretRow{flag: "patch", name: "an unknown op names the op field only: the op holds a verb, never a value", argv: line(patchLine, "-p", `[{"op":"`+"bogus"+`","path":"/data/a","value":"`+c+`"}]`), code: validation, message: `patch operation 0 has the unknown operation "bogus"`},
 	)
+	rows = append(rows, secretURLRows()...)
 	return rows
 }
 
 // secretFlagPattern matches the names of the flags that may take a secret
 // value, or a file or stdin that holds one.
-var secretFlagPattern = regexp.MustCompile(`secret|password|token|credential|literal|set|patch|stdin|key|file|filename|url|server`)
+var secretFlagPattern = regexp.MustCompile(`secret|password|token|credential|literal|set|patch|stdin|key|file|filename|url|server|cacert`)
 
 // secretExempt names the flags the pattern matches whose value is never a
 // secret, with the reason.
 var secretExempt = map[string]string{
 	"cloud-credential":     "the name of a cloud credential, never its content",
-	"credential-store":     "the name of a credential store backend",
 	"must-change-password": "a bool",
 	"output-file":          "a path the command writes to",
+	"clear-cacert":         "a bool",
 	"token-ttl":            "a duration",
 	"non-resource-url":     "a request path of the Kubernetes API on the server, never a URL with userinfo",
-	"server":               serverURLNotRedacted,
 }
-
-// serverURLNotRedacted is the reason of the exempt entries for the paths
-// that show a server URL with its userinfo.
-const serverURLNotRedacted = "the server URL's userinfo is not yet redacted on this path (internal/token, internal/client)"
 
 // secretNameGaps returns one problem per name in uses that pattern matches
 // and neither rows nor exempt covers, one per row or exempt entry that
@@ -409,10 +426,7 @@ var secretEnvPattern = regexp.MustCompile(`(?i)secret|password|token|credential|
 
 // secretEnvExempt names the environment variables the pattern matches whose
 // value is never a secret, with the reason.
-var secretEnvExempt = map[string]string{
-	"RANCHER_CLI_CREDENTIAL_STORE": "the name of a credential store backend",
-	"RANCHER_CLI_URL":              serverURLNotRedacted,
-}
+var secretEnvExempt = map[string]string{}
 
 // secretEnvGaps is secretNameGaps over the environment variables vars.
 func secretEnvGaps(vars []runtime.EnvVar, rows map[string]bool, exempt map[string]string) []string {
@@ -594,14 +608,17 @@ func secretServer(t *testing.T, stub secretStub, token string) *httptest.Server 
 			writeKubeJSON(w, http.StatusOK, `{"items":[]}`)
 		}),
 	})
+	secretSeen.reset()
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Logf("request: %s %s", r.Method, r.URL.RequestURI())
+		secretSeen.add(r.Method + " " + r.URL.RequestURI())
 		if stub != nil && stub(w, r) {
 			return
 		}
 		rancher.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
+	secretServerURL = srv.URL
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -663,41 +680,70 @@ func TestSecretInputErrorsNeverQuoteTheValue(t *testing.T) {
 	restoreRawArgv(t)
 	for _, row := range secretRows() {
 		t.Run(cmp.Or(row.flag, row.env, "other")+"/"+row.name, func(t *testing.T) {
-			srv := secretServer(t, row.stub, secretBearer)
-			for k, v := range row.setEnv {
-				t.Setenv(k, v)
-			}
-			for name, content := range row.files {
-				require.NoError(t, os.WriteFile(filepath.Join(".", name), []byte(content), 0o600))
-			}
-			fill := func(words []string) []string {
-				out := make([]string, 0, len(words)+2)
-				for _, w := range words {
-					w = strings.ReplaceAll(w, "{url}", srv.URL)
-					w = strings.ReplaceAll(w, "{pem}", string(pemFromServer(t, srv)))
-					out = append(out, w)
-				}
-				return out
-			}
-			for _, line := range row.before {
-				stdout, stderr, code := runWithStdin(t, append([]string{"-o", "json"}, fill(line)...), "")
-				require.Zero(t, code, "before %v: stdout: %s stderr: %s", line, stdout, stderr)
-			}
-			argv := append([]string{"-o", "json"}, fill(row.argv)...)
-			stdout, stderr, code := runWithStdin(t, argv, row.stdin)
+			stdout, stderr, code := runSecretRow(t, row)
 
 			canary := cmp.Or(row.canary, secretCanary)
 			assertNoCanary(t, canary, map[string]string{"stdout": stdout, "stderr": stderr})
+			if row.noRefusal {
+				for _, bad := range append([]string{"the server URL in"}, row.forbid...) {
+					assert.NotContains(t, stdout+stderr, bad)
+				}
+				if row.instead != "" {
+					assert.Contains(t, stdout+stderr, row.instead)
+				}
+				if row.reaches {
+					assert.NotEmpty(t, secretSeen.all(), "the URL that won was used: a request reached the stub")
+				}
+				return
+			}
 			require.NotZero(t, code, "stdout: %s stderr: %s", stdout, stderr)
 			ce := renderedError(t, "json", stderr)
 			assert.Equal(t, row.code, string(ce.Code), "stderr: %s", stderr)
-			assert.Contains(t, ce.Message, row.message)
+			message := withoutRunDirectory(ce.Message)
+			assert.Contains(t, message, row.message)
+			for _, want := range row.contains {
+				assert.Contains(t, message, want)
+			}
+			for _, bad := range row.forbid {
+				assert.NotContains(t, message, bad)
+			}
 			if row.hint != "" {
 				assert.Equal(t, row.hint, ce.Hint)
 			}
 			assertNoCanary(t, canary, map[string]string{"code": ce.Code, "message": ce.Message, "hint": ce.Hint})
 		})
 	}
+}
+
+// withoutRunDirectory removes from text the words a remedy names the run's
+// config directory with, exactly `--config '<directory>' ` for the directory
+// of this run: the rows state each remedy once, and a remedy that named
+// another directory would keep its words and fail the row. The canary checks
+// read the text as it was written.
+func withoutRunDirectory(text string) string {
+	return strings.ReplaceAll(text, "--config "+clierr.ShellQuote(remedyDirFor(os.Getenv(config.EnvConfigDir)))+" ", "")
+}
+
+// runSecretRow runs the command line of row in a fresh stub server and
+// config directory, as the table does, and returns what it wrote and its exit
+// code. Not parallel: it sets the process environment.
+func runSecretRow(t *testing.T, row secretRow) (stdout, stderr string, code int) {
+	t.Helper()
+	srv := secretServer(t, row.stub, secretBearer)
+	fill := secretFiller(t, srv)
+	for k, v := range row.setEnv {
+		t.Setenv(k, fill(v))
+	}
+	for name, content := range row.files {
+		require.NoError(t, os.WriteFile(filepath.Join(".", name), []byte(content), 0o600))
+	}
+	prepareSecretRow(t, srv, row, fill)
+	for _, line := range row.before {
+		stdout, stderr, code := runWithStdin(t, append([]string{"-o", "json"}, fillAll(fill, line)...), "")
+		require.Zero(t, code, "before %v: stdout: %s stderr: %s", line, stdout, stderr)
+	}
+	argv := append([]string{"-o", "json"}, fillAll(fill, row.argv)...)
+	return runWithStdin(t, argv, row.stdin)
 }
 
 // TestUsageErrorTextLeavesTheValueOutForASecretInput asserts that the text

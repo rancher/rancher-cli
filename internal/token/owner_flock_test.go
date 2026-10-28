@@ -181,7 +181,7 @@ func TestUserIDBesideAFailedLoginOfItsEntry(t *testing.T) {
 	}
 	servedFor := func(t *testing.T, dir, userID string) bool {
 		t.Helper()
-		_, store, err := config.LoadAndStore(dir)
+		_, store, err := config.LoadAndStore(dir, false)
 		require.NoError(t, err)
 		_, _, err = store.GetCachedCred(userKey(dir, userID), anchorFor(dir))
 		return err == nil

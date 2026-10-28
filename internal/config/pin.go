@@ -122,8 +122,8 @@ var ErrCredentialStoreConflict = errors.New("the declared credential store and "
 // choosing either one risks serving a credential the caller did not mean.
 func storeConflictError(declared, asked string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"this config directory stores credentials in %q (config.yaml credentialStore); %s asks for %q; unset the variable, or use a different --config",
-		declared, EnvCredentialStore, asked)).
+		"this config directory stores credentials in %s (config.yaml credentialStore); %s asks for %s; unset the variable, or use a different --config",
+		storeValueText(declared), EnvCredentialStore, storeValueText(asked))).
 		WithHint("unset " + EnvCredentialStore).
 		WithCause(ErrCredentialStoreConflict)
 }
@@ -135,8 +135,8 @@ func storeConflictError(declared, asked string) error {
 // wrong file.
 func storeFlagConflictError(requested, asked string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"this login asks for credentials in %q (--credential-store); %s asks for %q; unset the variable, or drop the flag",
-		requested, EnvCredentialStore, asked)).
+		"this login asks for credentials in %s (--credential-store); %s asks for %s; unset the variable, or drop the flag",
+		storeValueText(requested), EnvCredentialStore, storeValueText(asked))).
 		WithHint("unset " + EnvCredentialStore)
 }
 
@@ -156,9 +156,16 @@ const PolicySourceFlag = "flag"
 // variable conflict included.
 func LoginPolicy(requested, declared string) (policy, source string, err error) {
 	if requested == "" {
-		return EffectivePolicyWithSource(declared)
+		policy, source, err = EffectivePolicyWithSource(declared)
+		if err != nil {
+			return policy, source, err
+		}
+		if cerr := checkPolicyFrom(policy, source, true); cerr != nil {
+			return "", "", clierr.New(clierr.CodeValidation, cerr.Error())
+		}
+		return policy, source, nil
 	}
-	if cerr := CheckStorePolicy(requested); cerr != nil {
+	if cerr := checkPolicyFrom(requested, PolicySourceFlag, true); cerr != nil {
 		return "", "", clierr.New(clierr.CodeValidation, cerr.Error())
 	}
 	if env := os.Getenv(EnvCredentialStore); env != "" && env != requested {

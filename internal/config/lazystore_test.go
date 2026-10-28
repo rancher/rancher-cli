@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"os"
 	"path/filepath"
@@ -102,17 +103,53 @@ func TestLazyStoreDeferredErrorIsStable(t *testing.T) {
 }
 
 // TestNewLazyStoreValidatesPolicyEagerly: an unknown effective policy fails
-// at CONSTRUCTION with OpenStore's exact error text, and no
-// filesystem state appears.
+// at CONSTRUCTION naming its source, and no filesystem state appears. A
+// command that takes no secrets sees the value; one that takes secrets never
+// does.
 func TestNewLazyStoreValidatesPolicyEagerly(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "wat")
 	dir := t.TempDir() + "/fresh"
 
-	_, err := NewLazyStore(&Config{}, dir)
+	_, err := NewLazyStore(&Config{}, dir, false)
 	require.Error(t, err)
-	require.ErrorContains(t, err, `unknown credential store "wat"`)
+	require.ErrorContains(t, err, `RANCHER_CLI_CREDENTIAL_STORE: unknown credential store "wat" (valid: keychain, file, auto, exec:<name>)`)
 	_, statErr := os.Stat(dir)
 	assert.True(t, os.IsNotExist(statErr))
+
+	_, err = NewLazyStore(&Config{}, dir, true)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "RANCHER_CLI_CREDENTIAL_STORE: unknown credential store (valid: keychain, file, auto, exec:<name>)")
+	assert.NotContains(t, err.Error(), "wat")
+	_, statErr = os.Stat(dir)
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+// TestNewLazyStoreNamesTheSourceOfAnInvalidValue asserts that the refusal
+// names the variable or config.yaml, and keeps the value out of the text of a
+// command that takes secrets, for a name and a helper name alike.
+func TestNewLazyStoreNamesTheSourceOfAnInvalidValue(t *testing.T) {
+	for _, tc := range []struct {
+		name, variable, declared, source string
+	}{
+		{"the variable", "wat", "", "RANCHER_CLI_CREDENTIAL_STORE"},
+		{"config.yaml", "", "wat", "config.yaml credentialStore"},
+		{"a helper name in the variable", "exec:Not_Valid", "", "RANCHER_CLI_CREDENTIAL_STORE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(EnvCredentialStore, tc.variable)
+			for _, takesSecrets := range []bool{false, true} {
+				_, err := NewLazyStore(&Config{CredentialStore: tc.declared}, t.TempDir(), takesSecrets)
+				require.ErrorContains(t, err, tc.source+": ")
+				value := cmp.Or(tc.variable, tc.declared)
+				if takesSecrets {
+					assert.NotContains(t, err.Error(), "wat")
+					assert.NotContains(t, err.Error(), "Not_Valid")
+				} else {
+					require.ErrorContains(t, err, value)
+				}
+			}
+		})
+	}
 }
 
 // TestNewLazyStoreCapturesEffectivePolicy: the policy resolved
@@ -121,7 +158,7 @@ func TestNewLazyStoreValidatesPolicyEagerly(t *testing.T) {
 func TestNewLazyStoreCapturesEffectivePolicy(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "file")
 	dir := t.TempDir()
-	l, err := NewLazyStore(&Config{}, dir)
+	l, err := NewLazyStore(&Config{}, dir, false)
 	require.NoError(t, err)
 
 	// Env flips to an INVALID policy after construction; the captured
@@ -139,7 +176,7 @@ func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
 	dir := t.TempDir() + "/fresh"
 
-	_, err := NewLazyStore(&Config{}, dir)
+	_, err := NewLazyStore(&Config{}, dir, false)
 	require.NoError(t, err)
 	_, statErr := os.Stat(dir)
 	assert.True(t, os.IsNotExist(statErr), "construction must not create the config dir or pin")
@@ -229,7 +266,7 @@ func TestLazyStoreDefersAStoreConflict(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "file")
 	dir := t.TempDir()
 
-	store, err := NewLazyStore(&Config{CredentialStore: "keychain"}, dir)
+	store, err := NewLazyStore(&Config{CredentialStore: "keychain"}, dir, false)
 	require.NoError(t, err, "construction is not where a conflict surfaces")
 	require.NotNil(t, store)
 	assert.Empty(t, store.(NoticeSource).DrainNotices(), "a store nobody resolved produces nothing")
@@ -252,6 +289,6 @@ func TestLazyStoreDefersAStoreConflict(t *testing.T) {
 // every command, whether or not one opens the store.
 func TestLazyStoreStillFailsFastOnAnUnknownPolicy(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
-	_, err := NewLazyStore(&Config{CredentialStore: "nonsense"}, t.TempDir())
+	_, err := NewLazyStore(&Config{CredentialStore: "nonsense"}, t.TempDir(), false)
 	require.Error(t, err)
 }

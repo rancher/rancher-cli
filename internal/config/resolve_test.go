@@ -578,3 +578,52 @@ func TestEffectiveConnectionMatchesEffectiveWithoutTheCredential(t *testing.T) {
 		})
 	}
 }
+
+// TestEffectiveRefusesAnUnusableURLBeforeAnyStoreRead asserts that a current
+// server entry whose URL holds userinfo or does not parse is refused with
+// Effective{} and the refusal, before the token variable and before any read
+// of the credential store (a stored token is never fetched, and an exec
+// helper never runs, for a URL no command may use).
+func TestEffectiveRefusesAnUnusableURLBeforeAnyStoreRead(t *testing.T) {
+	for _, raw := range []string{"https://u:pwzq7@hostzq7", "https://hostzq7:abc", "hostzq7:8443"} {
+		for _, token := range []string{"", "id:sec"} {
+			t.Run(raw+"/"+token, func(t *testing.T) {
+				t.Setenv(EnvURL, "")
+				t.Setenv(EnvToken, token)
+				st := &recordingStore{name: "prod", token: "stored-token"}
+				eff, err := effectiveTestConfig("prod", raw).Effective(st)
+				require.Error(t, err)
+				assert.Equal(t, Effective{}, eff)
+				assert.Zero(t, st.getCalls, "the credential store is never read")
+				ce, ok := errors.AsType[*clierr.Error](err)
+				require.True(t, ok)
+				assert.Equal(t, clierr.CodeValidation, ce.Code)
+				assert.Contains(t, ce.Message, "the server URL in server entry 'prod' cannot be used: ")
+				assert.NotContains(t, ce.Message, "pwzq7")
+				assert.NotContains(t, ce.Message, "hostzq7")
+			})
+		}
+	}
+}
+
+// TestEffectiveChecksOnlyTheURLThatWins asserts that a bad entry URL under a
+// good RANCHER_CLI_URL is never refused, a good entry under a bad variable
+// is refused naming the variable, and EffectiveConnection records the
+// refusal in URLErr beside the connection it still fills.
+func TestEffectiveChecksOnlyTheURLThatWins(t *testing.T) {
+	t.Setenv(EnvToken, "id:sec")
+	t.Setenv(EnvURL, "https://good.ex")
+	eff, err := effectiveTestConfig("prod", "https://u:pwzq7@hostzq7").Effective(&recordingStore{})
+	require.NoError(t, err)
+	assert.Equal(t, "https://good.ex", eff.URL)
+	require.NoError(t, eff.URLErr)
+
+	t.Setenv(EnvURL, "https://u:pwzq7@hostzq7")
+	conn := effectiveTestConfig("prod", "https://good.ex").EffectiveConnection()
+	require.Error(t, conn.URLErr)
+	require.ErrorContains(t, conn.URLErr, "the server URL in "+EnvURL+" cannot be used: ")
+	assert.Equal(t, "https://u:pwzq7@hostzq7", conn.URL, "the connection is filled as before")
+	_, err = effectiveTestConfig("prod", "https://good.ex").Effective(&recordingStore{})
+	require.ErrorContains(t, err, "the server URL in "+EnvURL+" cannot be used: ")
+	assert.NotContains(t, err.Error(), "pwzq7")
+}

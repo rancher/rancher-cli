@@ -75,16 +75,17 @@ func resolveCompletionConnection() completionConnection {
 
 // completionServerURL validates a server URL before any request or stored
 // credential read of a completion: it returns the canonical form, and false
-// for a malformed URL or one with a scheme other than http and https.
-// Completion is best-effort, so the refusal is silent.
+// for a URL that carries userinfo or does not parse (treated as a missing
+// URL) or one with a scheme other than http and https. Completion is
+// best-effort, so the refusal is silent.
 func completionServerURL(raw string) (string, bool) {
-	canonical, err := credhelper.CanonicalServerURL(raw)
+	canonical, err := credhelper.CheckServerURL(raw)
 	if err != nil {
 		completionDebugf("stop: server URL: %v", err)
 		return "", false
 	}
 	if !config.IsSupportedScheme(canonical) {
-		completionDebugf("stop: server URL scheme unsupported: %s", raw)
+		completionDebugf("stop: server URL scheme unsupported: %s", config.DisplayServerURL(raw))
 		return "", false
 	}
 	return canonical, true
@@ -109,7 +110,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 		completionDebugf("stop: no server URL (no current server in config and no RANCHER_CLI_URL)")
 		return TokenCapability{}
 	}
-	completionDebugf("connection: url=%s ca=%t", conn.ServerURL, conn.CACert != "")
+	completionDebugf("connection: url=%s ca=%t", config.DisplayServerURL(conn.ServerURL), conn.CACert != "")
 
 	// Validate the server URL before any stored-credential read. Completion
 	// is best-effort: an unsupported or malformed URL silently yields an

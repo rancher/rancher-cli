@@ -1,6 +1,7 @@
 package token
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -96,4 +97,91 @@ func TestRetireSkipsAPastedCredential(t *testing.T) {
 	assert.Contains(t, rep.Warnings[0], "it waits for a login the CLI creates")
 	assert.Contains(t, rep.Warnings[0], clierr.RecoverySequenceAssumption)
 	assert.Contains(t, rep.Warnings[1], "--url 'https://old.ex'", "a record of another server is recovered on its server")
+}
+
+// TestRetireKeepsARecordOfAServerThatCannotBeUsed asserts that a record whose
+// server holds user information or does not parse is kept without a request,
+// that its warning says the token stays on the server that issued it and how
+// to delete it there, and that no command, no URL and no password is built
+// from the record's server.
+func TestRetireKeepsARecordOfAServerThatCannotBeUsed(t *testing.T) {
+	x := newRetireFixture(t, testrancher.Options{})
+	other, fresh := x.credAs(t, "a"), x.credAs(t, "a")
+	rec := record(other, "2026-09-01T00:00:00Z")
+	rec.Server = "https://u:pwzq7@old.ex:abc"
+	x.seedRecords(t, []config.SupersededToken{rec})
+	before := len(x.f.DeleteRequests())
+
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
+	assert.Empty(t, deletedNames(x.f, before))
+	assert.Len(t, rep.Kept, 1)
+	require.Len(t, rep.Warnings, 1)
+	name := clierr.ShellQuote(other.Ref.Name)
+	assert.Equal(t, "the superseded token "+other.Ref.String()+" was not retired: it is a token of <unusable URL>, which this entry no longer names; "+
+		"the server recorded for token "+name+" cannot be used: it is not a valid URL; the token stays on the server that issued it; "+
+		"delete it there with "+clierr.Rancher+" delete token "+name+" --apply --yes while signed in to that server", rep.Warnings[0])
+	assert.NotContains(t, rep.Warnings[0], "auth login")
+	assert.NotContains(t, rep.Warnings[0], "pwzq7")
+}
+
+// TestRetirePastedCredentialKeepsARecordOfAServerThatCannotBeUsed asserts that
+// a record of a server that cannot be used gets only the text for that
+// server: no login of the CLI retires it, so the wait for one is not said.
+func TestRetirePastedCredentialKeepsARecordOfAServerThatCannotBeUsed(t *testing.T) {
+	x := newRetireFixture(t, testrancher.Options{})
+	other := x.credAs(t, "a")
+	rec := record(other, "2026-09-01T00:00:00Z")
+	rec.Server = "unusable:https://old.ex:abc"
+	x.seedRecords(t, []config.SupersededToken{rec})
+
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, UserSupplied("pasted:secret"), x.records(t))
+	require.Len(t, rep.Warnings, 1)
+	name := clierr.ShellQuote(other.Ref.Name)
+	assert.Equal(t, "the superseded token "+other.Ref.String()+" was not retired: the server recorded for token "+name+
+		" cannot be used: it is not a valid URL; the token stays on the server that issued it; delete it there with "+
+		clierr.Rancher+" delete token "+name+" --apply --yes while signed in to that server", rep.Warnings[0])
+}
+
+// TestRetireJudgesARecordByTheIdentityOfItsServer asserts that a record whose
+// server is the entry's own plus user information is the entry's token and is
+// retired, and that one at another server plus user information is kept with
+// a recovery sequence built from the canonical URL: no text as stored, no
+// password, in the warning.
+func TestRetireJudgesARecordByTheIdentityOfItsServer(t *testing.T) {
+	x := newRetireFixture(t, testrancher.Options{})
+	same, other, fresh := x.credAs(t, "a"), x.credAs(t, "a"), x.credAs(t, "a")
+	sameRec := record(same, "2026-09-01T00:00:00Z")
+	sameRec.Server = strings.Replace(x.url, "://", "://u:pwzq7@", 1)
+	otherRec := record(other, "2026-09-02T00:00:00Z")
+	otherRec.Server = "https://u:pwzq7@old.ex:9443"
+	x.seedRecords(t, []config.SupersededToken{sameRec, otherRec})
+	before := len(x.f.DeleteRequests())
+
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
+	assert.Equal(t, []TokenRef{*same.Ref}, rep.Retired)
+	assert.Equal(t, []string{same.Ref.Name}, deletedNames(x.f, before))
+	require.Len(t, rep.Warnings, 1)
+	for _, command := range clierr.RecoverySequence("https://old.ex:9443", other.UserID, *other.Ref) {
+		assert.Contains(t, rep.Warnings[0], clierr.MarkRemedy(command))
+	}
+	assert.NotContains(t, rep.Warnings[0], "pwzq7")
+	assert.NotContains(t, rep.Warnings[0], "cannot be used")
+}
+
+// TestRetirePastedCredentialGivesTheSequenceOfARecordWithUserinfo asserts the
+// pasted branch builds the recovery sequence of a record at another server
+// plus user information from the canonical URL as well.
+func TestRetirePastedCredentialGivesTheSequenceOfARecordWithUserinfo(t *testing.T) {
+	x := newRetireFixture(t, testrancher.Options{})
+	other := x.credAs(t, "a")
+	rec := record(other, "2026-09-01T00:00:00Z")
+	rec.Server = "https://u:pwzq7@old.ex:9443"
+	x.seedRecords(t, []config.SupersededToken{rec})
+
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, UserSupplied("pasted:secret"), x.records(t))
+	require.Len(t, rep.Warnings, 1)
+	for _, command := range clierr.RecoverySequence("https://old.ex:9443", other.UserID, *other.Ref) {
+		assert.Contains(t, rep.Warnings[0], clierr.MarkRemedy(command))
+	}
+	assert.NotContains(t, rep.Warnings[0], "pwzq7")
 }

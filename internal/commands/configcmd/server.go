@@ -52,7 +52,7 @@ func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Promp
 	names := slices.Sorted(maps.Keys(cfg.Servers))
 	list := make(serverList, 0, len(names))
 	for _, n := range names {
-		list = append(list, serverEntry{Current: n == cfg.CurrentServer, Name: n, URL: cfg.Servers[n].URL})
+		list = append(list, serverEntry{Current: n == cfg.CurrentServer, Name: n, URL: config.DisplayServerURL(cfg.Servers[n].URL)})
 	}
 	return runtime.Result{Kind: "ServerList", Data: list}, nil
 }

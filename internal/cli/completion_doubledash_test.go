@@ -395,7 +395,7 @@ func TestCompletionFlagAsAFlagValueIsAnOrdinaryLine(t *testing.T) {
 		wantMsg  string
 	}{
 		{"a cluster named by the word", []string{"get", "pod", "--cluster", "--generate-shell-completion", "--namespace", "x", "mypod"}, 3, "rancher root GET /v1/management.cattle.io.clusters: the server rejected the credential (401)"},
-		{"a URL given as the word", []string{"config", "add-server", "--url", "--generate-shell-completion", "--apply", "myserver"}, 2, "invalid server URL: --generate-shell-completion"},
+		{"a URL given as the word", []string{"config", "add-server", "--url", "--generate-shell-completion", "--apply", "myserver"}, 2, "the server URL in --url cannot be used: it must be absolute (scheme://host)"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

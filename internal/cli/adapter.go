@@ -371,7 +371,7 @@ func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 // resolveDeps-backed command), but the auto probe / credstore-pin write /
 // config-dir creation defer to the first credential call - an invocation
 // that never touches credentials leaves no store-init side effects.
-func resolveDeps(dir string) (config.CredStore, *config.CacheAnchor, error) {
+func resolveDeps(dir string, takesSecrets bool) (config.CredStore, *config.CacheAnchor, error) {
 	// The stamp the root hook already read anchors this load too: it
 	// precedes every config load in the process, which is what the check
 	// needs, and reading a second one here would cost the plugin's cache
@@ -382,7 +382,7 @@ func resolveDeps(dir string) (config.CredStore, *config.CacheAnchor, error) {
 	if !anchor.SameDirectory(dir) {
 		anchor = config.NewCacheAnchor(dir)
 	}
-	cfg, store, err := config.LoadAndStore(dir)
+	cfg, store, err := config.LoadAndStore(dir, takesSecrets)
 	if err != nil {
 		return nil, nil, err
 	}

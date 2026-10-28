@@ -85,7 +85,7 @@ func kubectl(t *testing.T, dir, url string, p runtime.Prompter, between func(), 
 	anchor := config.NewCacheAnchor(dir)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	_, store, err := config.LoadAndStore(dir)
+	_, store, err := config.LoadAndStore(dir, false)
 	require.NoError(t, err)
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor.WithConfig(cfg)}
 	cmd.newClient = func(o httpx.Options) (*http.Client, error) {
@@ -114,7 +114,7 @@ func served(t *testing.T, dir, url string) string {
 	anchor := config.NewCacheAnchor(dir)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	_, store, err := config.LoadAndStore(dir)
+	_, store, err := config.LoadAndStore(dir, false)
 	require.NoError(t, err)
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor.WithConfig(cfg)}
 	_, _, r, hit := cmd.probeFlagCache("prod", url, "local", "", "", ui.Discard())

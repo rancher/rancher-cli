@@ -512,7 +512,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 					anchor := config.NewCacheAnchor(mdir)
 					loaded, lerr := config.Load(config.FilePath(mdir))
 					require.NoError(t, lerr)
-					_, lazy, serr := config.LoadAndStore(mdir)
+					_, lazy, serr := config.LoadAndStore(mdir, false)
 					require.NoError(t, serr)
 					cmd := tokenCmd{dir: mdir, store: lazy, anchor: anchor.WithConfig(loaded)}
 					_, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": m.URL, "name": "prod", "cluster": "local"}}, ui.Discard())

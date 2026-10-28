@@ -40,10 +40,12 @@ type lazyStore struct {
 // credential - help, schema, completion of a non-credential argument,
 // `config path`, a RANCHER_CLI_TOKEN run - is not failed by a conflict it
 // would never have acted on. An unknown policy value stays eager: it is
-// broken for every command, whether or not one opens the store.
-func NewLazyStore(cfg *Config, dir string) (CredStore, error) {
-	p, conflict := EffectivePolicy(cfg.CredentialStore)
-	if err := checkPolicy(p); err != nil {
+// broken for every command, whether or not one opens the store. takesSecrets
+// is whether the command takes secrets: the refusal of an unknown value then
+// names the source and never the value.
+func NewLazyStore(cfg *Config, dir string, takesSecrets bool) (CredStore, error) {
+	p, source, conflict := EffectivePolicyWithSource(cfg.CredentialStore)
+	if err := checkPolicyFrom(p, source, takesSecrets); err != nil {
 		return nil, err
 	}
 	if conflict != nil {

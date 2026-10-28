@@ -97,7 +97,7 @@ func runRecords(t *testing.T, s recordsSetup) (*clientcmdapi.ExecConfig, []strin
 	}
 	loaded, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	lazy, err := config.NewLazyStore(loaded, dir)
+	lazy, err := config.NewLazyStore(loaded, dir, false)
 	require.NoError(t, err)
 	var reads atomic.Int32
 	store := config.CredStore(lazy)

@@ -40,7 +40,7 @@ func TestAuthProviderWithUserIDMustBeAnAuthConfigName(t *testing.T) {
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok, "%v", err)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Equal(t, "--auth-provider "+clierr.ShellQuote(value)+" is not an auth config name (a lowercase name such as corp-ldap)", ce.Message)
+			assert.Equal(t, "--auth-provider is not an auth config name (a lowercase name such as corp-ldap)", ce.Message)
 			assert.Empty(t, store.cacheReads(), "no record is read for an invalid value")
 			assert.Empty(t, ops, "and nothing else is read: no stamp, no config")
 		})

@@ -1054,11 +1054,11 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 	var targets helperRecords
 	if name, ok := execHelperName(policy); ok {
 		if !credhelper.ValidHelperName(name) {
-			errs = append(errs, fmt.Errorf("invalid credential helper name %q in effective policy; refusing to execute it", name))
+			errs = append(errs, errors.New("invalid credential helper name in effective policy; refusing to execute it"))
 		} else if cu, cerr := credhelper.CanonicalServerURL(ref.URL); cerr == nil {
 			targets.add(HelperRecord{Helper: name, Name: ref.Name, CanonicalURL: cu})
 		} else if ref.URL != "" {
-			errs = append(errs, fmt.Errorf("credential helper delete: %w", cerr))
+			errs = append(errs, fmt.Errorf("credential helper delete: the server URL is not usable: %w", cerr))
 		}
 	}
 	lerr := withHelperRecordsLock(ctx, dir, func(st *helperRecords) error {
@@ -1149,7 +1149,9 @@ func eraseHelperCredential(dir string, e HelperRecord) (deleted bool, err error)
 // CanonicalServerIdentity derives the full canonical cache identity from a
 // server URL: the canonical URL output of credhelper.CanonicalServerURL
 // (scheme://host with the scheme lowercased and the default port for that
-// scheme stripped). Falls back to a lowercased raw string on malformed input.
+// scheme stripped). A URL that does not canonicalize gets an identity that
+// starts with "unusable:" and holds no user information; an empty input gives
+// an empty identity.
 // Use at every exec-credential cache-identity generation site so that
 // http://host and https://host produce distinct keys; use ServerHost for
 // non-identity needs (e.g. kubeconfig entry names).
@@ -1157,7 +1159,7 @@ func CanonicalServerIdentity(rawURL string) string {
 	if cu, err := credhelper.CanonicalServerURL(rawURL); err == nil && cu != "" {
 		return cu
 	}
-	return strings.ToLower(rawURL)
+	return unusableIdentity(rawURL)
 }
 
 // canonicalServerHost derives the canonical cache-identity host from a full
@@ -1257,19 +1259,64 @@ func OpenResolvedStore(backend, dir string) (CredStore, string, error) {
 // Both openStoreResolved and NewLazyStore call this so the valid-policy
 // allowlist is defined exactly once - adding a new backend means updating
 // this one allowlist - both paths share it, so they cannot silently diverge.
-func checkPolicy(p string) error {
+// The text quotes p: a command that takes secrets uses checkPolicyFrom, whose
+// text does not.
+func checkPolicy(p string) error { return policyError(p, true) }
+
+// policyError is the error for an unknown policy value p; showValue says
+// whether its text quotes p.
+func policyError(p string, showValue bool) error {
 	if name, ok := execHelperName(p); ok {
-		if !credhelper.ValidHelperName(name) {
+		if credhelper.ValidHelperName(name) {
+			return nil
+		}
+		if showValue {
 			return fmt.Errorf("invalid credential helper name %q in %q (must match ^[a-z0-9][a-z0-9-]*$)", name, p)
 		}
-		return nil
+		return errors.New("invalid credential helper name (must match ^[a-z0-9][a-z0-9-]*$)")
 	}
 	switch p {
 	case "file", "keychain", "auto":
 		return nil
-	default:
+	}
+	if showValue {
 		return fmt.Errorf("unknown credential store %q (valid: keychain, file, auto, exec:<name>)", p)
 	}
+	return errors.New("unknown credential store (valid: keychain, file, auto, exec:<name>)")
+}
+
+// policySourceText names where an effective credential-store policy came
+// from, as EffectivePolicyWithSource reports it.
+func policySourceText(source string) string {
+	switch source {
+	case "env":
+		return EnvCredentialStore
+	case "config":
+		return "config.yaml credentialStore"
+	case PolicySourceFlag:
+		return "--credential-store"
+	}
+	return "the credential store setting"
+}
+
+// checkPolicyFrom is checkPolicy for a value whose source is known: the
+// error names the source, and quotes the value unless the command takes
+// secrets, where the value may be a typed word that is not a store name.
+func checkPolicyFrom(p, source string, takesSecrets bool) error {
+	if err := policyError(p, !takesSecrets); err != nil {
+		return fmt.Errorf("%s: %w", policySourceText(source), err)
+	}
+	return nil
+}
+
+// storeValueText shows a credential-store value in a message when it is one
+// this release knows, and otherwise only says it is unrecognized: a value
+// that is not a store name may be anything a user typed.
+func storeValueText(v string) string {
+	if checkPolicy(v) == nil {
+		return fmt.Sprintf("%q", v)
+	}
+	return "an unrecognized value"
 }
 
 // openStoreResolved is OpenStore's body operating on an ALREADY-EFFECTIVE

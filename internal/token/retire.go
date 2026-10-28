@@ -61,6 +61,12 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 	if cred.Provenance == ProvenanceUserSupplied {
 		for _, rec := range recs {
 			rep.Kept = append(rep.Kept, rec)
+			if advice := config.AdviseRecord(config.RecordSite{}, cmp.Or(rec.Server, serverURL), rec.UserID, rec.Ref); advice.Text != "" && rec.Ref.Kind != TokenKindV3 {
+				// No login retires a token whose server cannot be used, so
+				// the wait for a login is not said next to it.
+				rep.Warnings = append(rep.Warnings, unusableServerKept(rec, advice.Text, ""))
+				continue
+			}
 			rep.Warnings = append(rep.Warnings, keptWarning(rec, cmp.Or(rec.Server, serverURL), "it waits for a login the CLI creates, and this login's token was pasted"))
 		}
 		return rep
@@ -78,9 +84,9 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 		case expiredPastMargin(rec.ExpiresAt, now):
 			expired = append(expired, rec.Ref)
 			continue
-		case rec.Server != "" && rec.Server != server:
+		case rec.Server != "" && config.CanonicalServerIdentity(rec.Server) != server:
 			rep.Kept = append(rep.Kept, rec)
-			rep.Warnings = append(rep.Warnings, keptWarning(rec, rec.Server, "it is a token of "+rec.Server+", which this entry no longer names"))
+			rep.Warnings = append(rep.Warnings, keptWarning(rec, rec.Server, "it is a token of "+config.DisplayServerURL(rec.Server)+", which this entry no longer names"))
 			continue
 		case rec.Ref.Kind == TokenKindV3:
 			rep.Kept = append(rep.Kept, rec)
@@ -173,10 +179,24 @@ func keptWarning(rec config.SupersededToken, serverURL, why string) string {
 		// No login of the owner deletes a v3 token for a standard user.
 		return fmt.Sprintf("the superseded token %s was not retired: %s; %s", rec.Ref.String(), why, v3AdminRemedy(rec.Ref, rec.ExpiresAt))
 	}
-	seq := clierr.RecoverySequence(serverURL, rec.UserID, rec.Ref)
+	advice := config.AdviseRecord(config.RecordSite{}, serverURL, rec.UserID, rec.Ref)
+	if advice.Text != "" {
+		return unusableServerKept(rec, advice.Text, why)
+	}
+	seq := advice.Sequence
 	for i := range seq {
 		seq[i] = clierr.MarkRemedy(seq[i])
 	}
 	return fmt.Sprintf("the superseded token %s was not retired: %s; revoke it with: %s (%s)",
 		rec.Ref.String(), why, strings.Join(seq, "; "), clierr.RecoverySequenceAssumption)
+}
+
+// unusableServerKept is the warning for a superseded token whose server
+// cannot be used: why it was kept (when given), then text, what becomes of
+// the token.
+func unusableServerKept(rec config.SupersededToken, text, why string) string {
+	if why != "" {
+		why += "; "
+	}
+	return fmt.Sprintf("the superseded token %s was not retired: %s%s", rec.Ref.String(), why, text)
 }

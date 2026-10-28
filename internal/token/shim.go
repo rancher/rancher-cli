@@ -81,6 +81,7 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 		// stdout, no envelope to vary with -o.
 		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table", "json"}},
 		Shape:        runtime.ShapeExecJSON,
+		SecretInput:  true,
 	}
 }
 
@@ -136,7 +137,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	store := c.store
 	if store == nil {
 		var serr error
-		_, store, serr = config.LoadAndStore(dir)
+		_, store, serr = config.LoadAndStore(dir, true)
 		if serr != nil {
 			// warn (the fast-path probe's loose-permission finding) must
 			// ride this error: the probe's global dedup already marked the

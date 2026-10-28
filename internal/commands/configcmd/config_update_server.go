@@ -80,9 +80,9 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	}
 	src.ClearCA = clearCacert
 
-	resultURL := existing.URL
+	resultURL, urlEntry := existing.URL, name
 	if url != "" {
-		resultURL = url
+		resultURL, urlEntry = url, ""
 	}
 	resultCA := existing.CA
 	switch {
@@ -92,7 +92,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		resultCA = cacert
 	}
 
-	canonicalResultURL, perr := register.CanonicalizeServerURL(resultURL)
+	canonicalResultURL, perr := register.CanonicalizeServerURL(resultURL, urlEntry)
 	if perr != nil {
 		return runtime.Result{}, perr
 	}
@@ -175,6 +175,14 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			config.ResumeCacheWrites(c.dir, cfg, name)
 		}
 		out, err = register.ApplyUpdate(cfg, plan)
+		if err == nil && del != nil {
+			// The warnings of the purge judge the entry by the config as it
+			// stands now, with the new URL. The Deletion's view is the config
+			// ApplyUpdate has just changed unless a settle span reloaded it,
+			// which an update that sends no request never reaches; the
+			// refresh keeps the judgement right if that changes.
+			del.Refresh(cfg)
+		}
 		if err != nil && plan.CredentialsCleared {
 			// The purge already ran (delete-first ordering) and cannot be
 			// undone; a write failure here must say so plainly rather than
@@ -194,6 +202,11 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	changed := out.ChangedFields
 	if changed == nil {
 		changed = []string{}
+	}
+	if out.UserinfoRemoved {
+		// The stored URL changed, though the server did not: the envelope
+		// says so, and no credential is cleared.
+		changed = append([]string{"url"}, changed...)
 	}
 	notRevoked := []token.NotRevokedToken{}
 	var revocationLines []string
@@ -224,10 +237,13 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		return res, nil
 	}
 	var lines []string
-	if slices.Contains(changed, "url") {
+	if slices.Contains(out.ChangedFields, "url") {
 		lines = append(lines, "url: "+out.CanonicalURL+" (changed)")
 	}
-	if slices.Contains(changed, "ca") {
+	if out.UserinfoRemoved {
+		lines = append(lines, "url: "+out.CanonicalURL+" (user name and password removed)")
+	}
+	if slices.Contains(out.ChangedFields, "ca") {
 		if register.CAPresence(out.CASelector) != "none" {
 			lines = append(lines, "ca: pinned (changed)")
 		} else {

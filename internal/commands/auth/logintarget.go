@@ -60,7 +60,7 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 		if !ok {
 			return loginTarget{}, loginUnknownNameError(cfg, name)
 		}
-		return entryLoginTarget(name, existing), nil
+		return entryLoginTarget(name, existing)
 	}
 
 	if cacert != "" {
@@ -72,7 +72,7 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 
 	cur, srv, cerr := cfg.CurrentServerEntry()
 	if cerr == nil {
-		return entryLoginTarget(cur, srv), nil
+		return entryLoginTarget(cur, srv)
 	}
 
 	names := slices.Sorted(maps.Keys(cfg.Servers))
@@ -99,9 +99,15 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 
 // entryLoginTarget is the target of a login to an entry already registered:
 // its URL and saved CA, and RANCHER_CLI_CACERT where it applies to that URL.
-func entryLoginTarget(name string, entry config.Server) loginTarget {
+// An entry whose stored URL is unusable (it holds userinfo or does not
+// parse; only a hand-edited config.yaml can make one) is refused, naming the
+// entry and never the URL.
+func entryLoginTarget(name string, entry config.Server) (loginTarget, error) {
+	if err := config.CheckServerURL(entry.URL); err != nil {
+		return loginTarget{}, config.EntryOrigin(name).Refusal(err)
+	}
 	return loginTarget{name: name, server: entry.URL, caSelector: entry.CA, caFingerprint: entry.CAFingerprint,
-		variable: config.EnvCACertFor(entry.URL), known: true}
+		variable: config.EnvCACertFor(entry.URL), known: true}, nil
 }
 
 // urlLoginTarget is the target of a login that registers its server with
@@ -112,7 +118,7 @@ func urlLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarget, 
 	// that name below, and as register.Prepare's input - so a --url
 	// login parses the URL exactly once, and an invalid or
 	// unsupported-scheme URL is refused before any other work.
-	canonical, canonErr := register.CanonicalizeServerURL(url)
+	canonical, canonErr := register.CanonicalizeServerURL(url, "")
 	if canonErr != nil {
 		return loginTarget{}, canonErr
 	}

@@ -208,7 +208,7 @@ func TestEveryExitPathCarriesItsError(t *testing.T) {
 
 	prev := openDirectory
 	t.Cleanup(func() { openDirectory = prev })
-	openDirectory = func(string) (config.CredStore, *config.CacheAnchor, error) {
+	openDirectory = func(string, bool) (config.CredStore, *config.CacheAnchor, error) {
 		return nil, nil, clierr.New(clierr.CodeCredentialStoreUnavailable, "the store cannot be opened")
 	}
 	got, stderr := runResultOf(t, "get", "cluster")

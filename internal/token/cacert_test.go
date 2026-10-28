@@ -175,7 +175,8 @@ func TestResolveConnCANamesTheSourceOfAnUnreadableCA(t *testing.T) {
 			require.True(t, ok, "%v", err)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			require.ErrorContains(t, err, tc.want)
-			require.ErrorContains(t, err, "missing.pem")
+			require.ErrorContains(t, err, "the file does not exist")
+			assert.NotContains(t, err.Error(), "missing.pem")
 		})
 	}
 }

@@ -166,7 +166,7 @@ func TestGetTokenStoreConflictNamesTheRegenerateSteps(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	t.Setenv(config.EnvCredentialStore, "keychain")
-	store, err := config.NewLazyStore(cfg, dir)
+	store, err := config.NewLazyStore(cfg, dir, false)
 	require.NoError(t, err)
 
 	cmd := NewTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
@@ -199,7 +199,7 @@ func TestGetTokenStoreConflictStepsNameTheEntryPartOfTheName(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	t.Setenv(config.EnvCredentialStore, "keychain")
-	store, err := config.NewLazyStore(cfg, dir)
+	store, err := config.NewLazyStore(cfg, dir, false)
 	require.NoError(t, err)
 
 	cmd := NewTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)

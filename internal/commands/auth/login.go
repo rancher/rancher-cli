@@ -302,16 +302,26 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 // chosen by this command, not the caller, so a suggested update-server
 // command would re-point an entry the caller never named, and no single
 // alternate name can be suggested with certainty - the remediation lives in
-// the message body instead.
+// the message body instead. existingURL is the entry's stored URL; a URL that
+// cannot be used is never shown, and the refusal says so instead.
 func nameCollisionError(name, existingURL, canonical string, derived bool) *clierr.Error {
+	update := fmt.Sprintf("rancher config update-server %s --url %s", clierr.ShellQuote(name), clierr.ShellQuote(canonical))
+	if problem := config.CheckServerURL(existingURL); problem != nil {
+		if derived {
+			return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+				"the server URL in server entry %s cannot be used: %s; the name was derived from the host of --url; change that entry's URL before a login, or pass an explicit name to add this server as a separate entry",
+				clierr.ShellQuote(name), problem))
+		}
+		return clierr.New(clierr.CodeValidation, config.EntryOrigin(name).Text(problem)).WithHint(update)
+	}
 	if derived {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("the name %s, derived from the URL's host, is already registered at %s; pass an explicit name to add this server as a separate entry",
-				clierr.ShellQuote(name), existingURL))
+			fmt.Sprintf("the name %s, derived from the host of --url, is already registered at %s; pass an explicit name to add this server as a separate entry",
+				clierr.ShellQuote(name), config.DisplayServerURL(existingURL)))
 	}
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("server %s is registered at %s", name, existingURL)).
-		WithHint(fmt.Sprintf("rancher config update-server %s --url %s", clierr.ShellQuote(name), clierr.ShellQuote(canonical)))
+		fmt.Sprintf("server %s is registered at %s", name, config.DisplayServerURL(existingURL))).
+		WithHint(update)
 }
 
 // configUseServerHint returns the bare, shell-quoted `rancher config
@@ -487,13 +497,13 @@ func (l loginCmd) authenticateAndStore(
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf(
 					"reading stored CA for server entry %q: %s; restore the file, or run: rancher config delete-server %s",
-					name, raerr.Error(), clierr.ShellQuote(name)))
+					name, config.CAFileProblem(raerr), clierr.ShellQuote(name)))
 		}
 		caBytes, connBytes = b, b
 		if conn.variable != "" {
 			vb, verr := register.ResolveCA(serverURL, conn.variable)
 			if verr != nil {
-				return runtime.Result{}, clierr.New(clierr.CodeValidation, "reading "+config.EnvCACert+": "+verr.Error())
+				return runtime.Result{}, clierr.New(clierr.CodeValidation, "reading "+config.EnvCACert+": "+config.CAFileProblem(verr))
 			}
 			connBytes, viaVariable = vb, vb != ""
 		}
@@ -700,7 +710,7 @@ func (l loginCmd) authenticateAndStore(
 	}
 
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]any{
-		"server": name, "url": serverURL, "currentServer": currentServer, "added": added, "verified": verified,
+		"server": name, "url": config.DisplayServerURL(serverURL), "currentServer": currentServer, "added": added, "verified": verified,
 		"residualTokens": residual, "provenance": string(cred.Provenance), "tokenUserId": cred.UserID,
 		"tokenAuthConfig": cred.AuthConfig, "retiredTokens": retired,
 	}}
@@ -722,9 +732,10 @@ func (l loginCmd) authenticateAndStore(
 		lines = append(lines, fmt.Sprintf("the current server remains %s - switch to %s with: rancher config use-server %s",
 			clierr.ShellQuote(currentServer), clierr.ShellQuote(name), clierr.ShellQuote(name)))
 	}
-	headline := fmt.Sprintf("logged in to %s (%s)", name, serverURL)
+	shownURL := config.DisplayServerURL(serverURL)
+	headline := fmt.Sprintf("logged in to %s (%s)", name, shownURL)
 	if !verified {
-		headline = fmt.Sprintf("token stored for %s (%s) - not verified", name, serverURL)
+		headline = fmt.Sprintf("token stored for %s (%s) - not verified", name, shownURL)
 	}
 	tr := runtime.TextLines(headline, lines...)
 	if !verified {

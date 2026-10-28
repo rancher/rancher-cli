@@ -92,7 +92,7 @@ func TestTheReadPathNeverProbesAndNeverPins(t *testing.T) {
 			for name, open := range map[string]func() (CredStore, error){
 				"OpenStore":    func() (CredStore, error) { return OpenStore("auto", dir) },
 				"OpenStoreFor": func() (CredStore, error) { return OpenStoreFor(cfg, dir) },
-				"NewLazyStore": func() (CredStore, error) { return NewLazyStore(cfg, dir) },
+				"NewLazyStore": func() (CredStore, error) { return NewLazyStore(cfg, dir, false) },
 			} {
 				store, err := open()
 				var tok string

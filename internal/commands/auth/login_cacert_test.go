@@ -303,7 +303,8 @@ func TestLoginUnreadableSavedCABlocksTheLoginUnderTheVariable(t *testing.T) {
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok, "%v", err)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Contains(t, ce.Message, "missing.pem")
+			assert.Contains(t, ce.Message, "the file does not exist")
+			assert.NotContains(t, ce.Message, "missing.pem")
 			assert.NotContains(t, ce.Message, "RANCHER_CLI_CACERT")
 			_, terr := store.GetToken(config.ServerRef{Name: "prod"})
 			assert.Error(t, terr)
@@ -327,7 +328,8 @@ func TestLoginUnreadableVariableSaysSo(t *testing.T) {
 			}
 			_, err := tlsLoginCmd(dir, store).Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 			require.ErrorContains(t, err, "reading RANCHER_CLI_CACERT: ")
-			require.ErrorContains(t, err, "variable-missing.pem")
+			require.ErrorContains(t, err, "the file does not exist")
+			assert.NotContains(t, err.Error(), "variable-missing.pem")
 		})
 	}
 }

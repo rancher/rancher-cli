@@ -191,7 +191,8 @@ func TestDeleteLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
 	// report nothing - only the validation error is returned.
 	_, _, err := DeleteLoginToken(t.Context(), dir, execRef(), "exec:../evil")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "../evil", "error must name the invalid helper")
+	require.ErrorContains(t, err, "invalid credential helper name", "error must name the problem")
+	assert.NotContains(t, err.Error(), "../evil")
 }
 
 func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {

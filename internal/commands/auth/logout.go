@@ -86,7 +86,7 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 			return err
 		}
 		for _, s := range targets {
-			urlByName[s] = cfg.Servers[s].URL
+			urlByName[s] = config.DisplayServerURL(cfg.Servers[s].URL)
 		}
 		policy, perr := config.EffectivePolicy(cfg.CredentialStore)
 		if perr != nil {

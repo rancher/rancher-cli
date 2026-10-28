@@ -50,7 +50,7 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--url is required")
 	}
 
-	canonicalURL, err := register.CanonicalizeServerURL(url)
+	canonicalURL, err := register.CanonicalizeServerURL(url, "")
 	if err != nil {
 		return runtime.Result{}, err
 	}

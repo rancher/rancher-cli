@@ -1,0 +1,24 @@
+# A stored URL whose scheme is not http or https is not refused by auth login:
+# a login that verifies the token fails to connect, and one with --no-verify
+# stores the token.
+
+mkdir $RANCHER_CLI_CONFIG_DIR
+cp config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
+
+stdin token.txt
+! exec rancher auth login x --token-stdin -o json
+jsonquery stderr data.error.code GENERIC
+stderr 'cannot reach server'
+! stderr 'the server URL in'
+
+stdin token.txt
+exec rancher auth login x --token-stdin --no-verify
+stdout 'token stored for x \(ftp://127.0.0.1:1\) - not verified'
+
+-- config.yaml --
+currentServer: x
+servers:
+  x:
+    url: ftp://127.0.0.1:1
+-- token.txt --
+x:secret

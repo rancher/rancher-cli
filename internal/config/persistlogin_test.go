@@ -740,7 +740,7 @@ func TestPersistThroughALazyStoreWritesTheIdentityRecord(t *testing.T) {
 
 	in := loginInput(dir, nil)
 	in.OpenStore = func(policy, d string) (CredStore, string, error) {
-		lazy, lerr := NewLazyStore(&Config{CredentialStore: policy}, d)
+		lazy, lerr := NewLazyStore(&Config{CredentialStore: policy}, d, false)
 		return lazy, "", lerr
 	}
 	out, err := PersistLoginCredential(t.Context(), dir, in)

@@ -235,7 +235,7 @@ func TestALoadFailureNamesTheDirectoryThroughTheCommandTree(t *testing.T) {
 	t.Setenv(config.EnvToken, "")
 	t.Setenv(config.EnvCredentialStore, "")
 	prev := openDirectory
-	openDirectory = func(string) (config.CredStore, *config.CacheAnchor, error) {
+	openDirectory = func(string, bool) (config.CredStore, *config.CacheAnchor, error) {
 		return nil, nil, errors.New("config.yaml cannot be read; run " + clierr.Rancher + " config status")
 	}
 	t.Cleanup(func() { openDirectory = prev })

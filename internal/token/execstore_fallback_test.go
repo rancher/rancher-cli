@@ -187,7 +187,9 @@ func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
 		tin{s: map[string]string{"name": "prod", "cluster": "c-1"}},
 		ui.Discard())
 	require.Error(t, err, "ftp:// config server must be rejected by post-resolution validation")
-	require.ErrorContains(t, err, "ftp://host", "error must name the invalid resolved server")
+	require.ErrorContains(t, err, "the server URL in server entry 'prod' cannot be used: its scheme is not http or https; change the entry's URL with "+
+		clierr.Rancher+" config update-server 'prod' --url <url>")
+	assert.NotContains(t, err.Error(), "ftp://host", "the error holds no part of the URL")
 
 	// The state file is created only on helper invocation. If it is absent,
 	// the helper was never called.

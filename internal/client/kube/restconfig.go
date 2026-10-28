@@ -19,12 +19,13 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// BaseURL returns scheme://host for a Rancher server URL, dropping a /v3 suffix.
+// BaseURL returns scheme://host for a Rancher server URL, dropping any userinfo,
+// path, query and fragment. It returns "" when the URL does not parse into a
+// scheme and a host: no raw text, which may hold a password, passes through.
 func BaseURL(serverURL string) string {
 	u, err := url.Parse(strings.TrimSuffix(serverURL, "/"))
-	if err != nil || u.Host == "" {
-		// Best-effort: trim a trailing /v3 textually.
-		return strings.TrimSuffix(strings.TrimSuffix(serverURL, "/"), "/v3")
+	if err != nil || u.Scheme == "" || u.Hostname() == "" {
+		return ""
 	}
 	return u.Scheme + "://" + u.Host
 }

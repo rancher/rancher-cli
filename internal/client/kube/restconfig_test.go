@@ -31,6 +31,32 @@ func TestBaseURL(t *testing.T) {
 	}
 }
 
+// TestBaseURLNeverReturnsUserinfo asserts BaseURL returns scheme and host
+// only for a URL that parses into both, whatever userinfo, path, query and
+// fragment it holds, and "" for one that does not: no raw text, which may
+// hold a password, passes through.
+func TestBaseURLNeverReturnsUserinfo(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://u:pwzq7@r.ex:8443/v3?x=1#f": "https://r.ex:8443",
+		"https://u@r.ex":                     "https://r.ex",
+		"https://r.ex/p@th":                  "https://r.ex",
+		"https://u:pwzq7@r.ex:abc":           "",
+		"u:pwzq7@r.ex:1":                     "",
+		"r.ex:8443":                          "",
+		"https://u:pwzq7@:443":               "",
+		"https://":                           "",
+		"":                                   "",
+		"/v3":                                "",
+	} {
+		t.Run(in, func(t *testing.T) {
+			got := BaseURL(in)
+			assert.Equal(t, want, got)
+			assert.NotContains(t, got, "pwzq7")
+			assert.NotContains(t, got, "@")
+		})
+	}
+}
+
 const testCAPEM = "-----BEGIN CERTIFICATE-----\nPEM\n-----END CERTIFICATE-----\n"
 
 func TestRESTConfigDefaultsAndAuth(t *testing.T) {

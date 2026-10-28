@@ -117,7 +117,7 @@ func pluginEntryFor(cfg *config.Config, server, identified string, user userChec
 func pluginEntriesError(server string, names []string, cfg *config.Config, identified string, user userCheck) *clierr.Error {
 	cands := make([]clierr.Candidate, len(names))
 	for i, n := range names {
-		cands[i] = clierr.Candidate{ID: n, Name: cfg.Servers[n].URL}
+		cands[i] = clierr.Candidate{ID: n, Name: config.DisplayServerURL(cfg.Servers[n].URL)}
 	}
 	msg := fmt.Sprintf("more than one login entry the exec plugin created answers for %s (%s)", server, quotedList(names))
 	piped := "pipe an API token"
@@ -167,7 +167,7 @@ func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID s
 	cands := make([]clierr.Candidate, len(hits))
 	for i, h := range hits {
 		names[i] = h.name
-		cands[i] = clierr.Candidate{ID: h.name, Name: h.entry.URL}
+		cands[i] = clierr.Candidate{ID: h.name, Name: config.DisplayServerURL(h.entry.URL)}
 	}
 	clusterArg, clusterSuffix := "<cluster>", "<cluster>"
 	if clusterID != "" {
@@ -178,11 +178,11 @@ func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID s
 	if ignoreCurrentContext {
 		msg = fmt.Sprintf(
 			"more than one server entry for %s has a stored login (%s) and the legacy rancher token command cannot name one; regenerate the kubeconfig from the entry you want with %s, and replace this kubeconfig with the one it prints",
-			hits[0].entry.URL, quotedList(names), regenerate)
+			config.DisplayServerURL(hits[0].entry.URL), quotedList(names), regenerate)
 	} else {
 		msg = fmt.Sprintf(
 			"more than one server entry for %s has a stored login (%s) and this exec entry names none of them; give the exec entry --name <entry>-%s, or regenerate the kubeconfig from the entry you want with %s",
-			hits[0].entry.URL, quotedList(names), clusterSuffix, regenerate)
+			config.DisplayServerURL(hits[0].entry.URL), quotedList(names), clusterSuffix, regenerate)
 	}
 	return clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands).WithCause(errLookupRefused)
 }
@@ -194,7 +194,7 @@ func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID s
 // at the call's URL is the other route, offered only when one exists.
 func entryOnOtherServerError(cfg *config.Config, name, server, clusterID string) *clierr.Error {
 	entry := clierr.ShellQuote(name)
-	entryURL, current := cfg.Servers[name].URL, cfg.CurrentServer
+	entryURL, current := config.DisplayServerURL(cfg.Servers[name].URL), cfg.CurrentServer
 	cluster := clierr.ShellQuote(clusterID)
 	// auth login refuses a plugin login entry's name, so its route logs in
 	// a new entry at its URL, with its CA, and regenerates from that one.
@@ -203,7 +203,7 @@ func entryOnOtherServerError(cfg *config.Config, name, server, clusterID string)
 	if plugin {
 		s := cfg.Servers[name]
 		ownEntry = "log in there under a server entry of your own, since auth login refuses the exec plugin's own login entries: " +
-			userCheck{clusterID: clusterID, serverID: s.URL, caSource: s.CA, caFrom: config.CASource{Kind: config.CASourceEntry, Entry: name}}.loginOfNewEntry(cfg)
+			userCheck{clusterID: clusterID, serverID: config.DisplayServerURL(s.URL), caSource: s.CA, caFrom: config.CASource{Kind: config.CASourceEntry, Entry: name}}.loginOfNewEntry(cfg)
 	}
 	if len(cfg.MatchingServerNames(server)) == 0 {
 		route := "regenerate the kubeconfig from " + entry + " with " + namedEntryRoute(name, entry, cluster, current)

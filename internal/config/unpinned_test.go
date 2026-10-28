@@ -161,7 +161,7 @@ func TestAnUnpinnedReadCountsItsOperations(t *testing.T) {
 			t.Cleanup(SetWaitForFlockHookForTest(func() { flocks++ }))
 			t.Cleanup(SetAfterWriteHookForTest(func(string) { writes++ }))
 
-			store, err := NewLazyStore(cfg, dir)
+			store, err := NewLazyStore(cfg, dir, false)
 			require.NoError(t, err)
 			tok, err := store.GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
 			require.NoError(t, err)

@@ -34,7 +34,7 @@ import (
 func resolveProviderLoginToken(ctx context.Context, server, caPEM string, idpClient *http.Client, in runtime.Input, p runtime.Prompter) (token.LoginCredential, error) {
 	serverURL, err := url.Parse(server)
 	if err != nil {
-		return token.LoginCredential{}, clierr.New(clierr.CodeValidation, "invalid Rancher server URL: "+err.Error())
+		return token.LoginCredential{}, clierr.New(clierr.CodeValidation, "invalid Rancher server URL")
 	}
 	serverOrigin, err := httpx.OriginOf(serverURL)
 	if err != nil {

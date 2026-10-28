@@ -164,7 +164,7 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	slices.Sort(serverNames)
 	for _, n := range serverNames {
 		s := cfg.Servers[n]
-		serverSections = append(serverSections, field{n, entrySection(s)})
+		serverSections = append(serverSections, field{n, entrySection(n, s)})
 	}
 	var text strings.Builder
 	data := renderFields(fields, "", &text)
@@ -248,7 +248,7 @@ func renderFields(fields []field, indent string, text *strings.Builder) map[stri
 // entrySection is the text form of entryReport: provenance, owner, auth config, expiry,
 // logged-out state, the current token, and one section per superseded
 // record keyed by the token, each with state, last attempt, and recovery.
-func entrySection(s config.Server) []field {
+func entrySection(name string, s config.Server) []field {
 	var out []field
 	if s.Provenance != "" {
 		out = append(out, field{"provenance", string(s.Provenance)})
@@ -267,7 +267,7 @@ func entrySection(s config.Server) []field {
 	}
 	switch {
 	case s.CLIOwned():
-		out = append(out, field{"currentToken", tokenSection(s.URL, *s.TokenRef, s.TokenUserID, s.CredentialExpiresAt)})
+		out = append(out, field{"currentToken", tokenSection(name, s.URL, *s.TokenRef, s.TokenUserID, s.CredentialExpiresAt)})
 	case s.CLICreated() && s.LoggedOutAt == "":
 		// The CLI created the token but never recorded its name: nothing
 		// can be revoked by name, and the surface says so rather than
@@ -284,7 +284,7 @@ func entrySection(s config.Server) []field {
 				sec = append(sec, field{"userId", r.UserID})
 			}
 			if r.Server != "" {
-				sec = append(sec, field{"server", r.Server})
+				sec = append(sec, field{"server", config.DisplayServerURL(r.Server)})
 			}
 			if r.ExpiresAt != "" {
 				sec = append(sec, field{"expiresAt", r.ExpiresAt})
@@ -293,7 +293,7 @@ func entrySection(s config.Server) []field {
 			if r.LastAttempt != nil {
 				sec = append(sec, field{"lastAttempt", string(r.LastAttempt.Result) + " (" + r.LastAttempt.Error + ")"})
 			}
-			sec = append(sec, recoveryField(cmp.Or(r.Server, s.URL), r.UserID, r.Ref))
+			sec = append(sec, recoveryField(name, s.URL, cmp.Or(r.Server, s.URL), r.UserID, r.Ref))
 			recs = append(recs, field{r.Ref.String(), sec})
 		}
 		out = append(out, field{"supersededTokens", recs})
@@ -303,7 +303,7 @@ func entrySection(s config.Server) []field {
 
 // tokenSection renders an entry's current token: ref, owner, expiry, then
 // the recovery sequence that revokes it.
-func tokenSection(serverURL string, ref clierr.TokenRef, userID, expiresAt string) []field {
+func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresAt string) []field {
 	sec := []field{{"ref", ref.String()}}
 	if userID != "" {
 		sec = append(sec, field{"userId", userID})
@@ -311,7 +311,7 @@ func tokenSection(serverURL string, ref clierr.TokenRef, userID, expiresAt strin
 	if expiresAt != "" {
 		sec = append(sec, field{"expiresAt", expiresAt})
 	}
-	return append(sec, recoveryField(serverURL, userID, ref))
+	return append(sec, recoveryField(entry, serverURL, serverURL, userID, ref))
 }
 
 // recoveryField is a recovery sequence with the assumption its commands
@@ -319,12 +319,15 @@ func tokenSection(serverURL string, ref clierr.TokenRef, userID, expiresAt strin
 // set-token-reuse print; for a v3 token it is the administrator's delete
 // alone. Text only: the JSON side is entryReport, whose recovery value
 // stays the commands alone.
-func recoveryField(serverURL, userID string, ref clierr.TokenRef) field {
+func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) field {
 	if ref.Kind == clierr.TokenKindV3 {
 		return field{"recovery", []string{administratorLine(serverURL, ref)}}
 	}
-	seq := clierr.RecoverySequence(serverURL, userID, ref)
-	return field{"recovery", append(seq, "("+clierr.RecoverySequenceAssumption+")")}
+	advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: entryURL}, serverURL, userID, ref)
+	if advice.Text != "" {
+		return field{"recovery", []string{advice.Text}}
+	}
+	return field{"recovery", append(advice.Sequence, "("+clierr.RecoverySequenceAssumption+")")}
 }
 
 // pauseReasonText is the reason entry's pause stays, as config status

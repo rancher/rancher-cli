@@ -32,7 +32,7 @@ func readUserID(in runtime.Input) (string, error) {
 		return "", nil
 	case !ValidUserID(userID):
 		return "", clierr.New(clierr.CodeValidation,
-			"--user-id "+clierr.ShellQuote(userID)+" is not a Rancher user id (a lowercase name such as u-abc12)")
+			"--user-id is not a Rancher user id (a lowercase name such as u-abc12)")
 	}
 	return userID, nil
 }
@@ -57,7 +57,7 @@ func readAuthConfig(in runtime.Input, userID string) (string, error) {
 	authConfig := in.String("auth-provider")
 	if authConfig != "" && !ValidAuthConfigName(authConfig) {
 		return "", clierr.New(clierr.CodeValidation,
-			"--auth-provider "+clierr.ShellQuote(authConfig)+" is not an auth config name (a lowercase name such as corp-ldap)")
+			"--auth-provider is not an auth config name (a lowercase name such as corp-ldap)")
 	}
 	return authConfig, nil
 }
@@ -85,7 +85,11 @@ func RecordedUserIDs(cfg *config.Config, server, name, clusterID string) []strin
 	}
 	server = ApplyDefaultScheme(server)
 	if server == "" {
-		server = cfg.EffectiveConnection().URL
+		eff := cfg.EffectiveConnection()
+		if eff.URLErr != nil {
+			return nil
+		}
+		server = eff.URL
 	}
 	var owners []string
 	if id := config.IdentifyEntry(cfg, server, name, clusterID, false); id.Entry != "" {

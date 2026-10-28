@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -138,4 +140,73 @@ func TestCompletionDebugSilentOutsideCompletion(t *testing.T) {
 	completionDebugf("phase %d", 7)
 	assert.True(t, strings.HasPrefix(traceBuf.String(), "completion +"))
 	assert.True(t, strings.HasSuffix(traceBuf.String(), " phase 7\n"))
+}
+
+// TestCompletionTraceAndRefusalForAServerURLWithUserinfo asserts that a
+// completion request with a server URL that carries userinfo (the variable,
+// or the current server entry) is treated like a missing URL: the trace holds
+// no part of the userinfo, the capability is the zero value, no credential is
+// read and no request reaches the server. A URL without userinfo is traced as
+// scheme and host only.
+// NOT parallel: it mutates env globals and the stored config.
+func TestCompletionTraceAndRefusalForAServerURLWithUserinfo(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	withUserinfo := "http://u:" + urlCanary + "@" + host + "/pathzq7"
+
+	for _, tc := range []struct {
+		name, stored, variable string
+	}{
+		{"the variable", srv.URL, withUserinfo},
+		{"the current server entry", withUserinfo, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests = 0
+			keyring.MockInit()
+			dir := t.TempDir()
+			cfg := &config.Config{
+				CurrentServer: "srv",
+				Servers:       map[string]config.Server{"srv": {URL: tc.stored}},
+				Completion:    config.CompletionConfig{Network: true},
+			}
+			cfg.SetPath(config.FilePath(dir))
+			require.NoError(t, cfg.Write())
+			setStoredConfigForTest(t, cfg, dir)
+			t.Setenv(config.EnvConfigDir, dir)
+			t.Setenv(config.EnvToken, "mgmt-token")
+			t.Setenv(config.EnvURL, tc.variable)
+			t.Setenv(config.EnvCredentialStore, "file")
+			t.Setenv(config.EnvCompletionDebug, "1")
+
+			origProto, origOut := rawCompleting, completionDebugOut
+			var trace bytes.Buffer
+			completionDebugOut, rawCompleting = &trace, true
+			t.Cleanup(func() { rawCompleting, completionDebugOut = origProto, origOut })
+
+			got := resolveCompletionToken("c-1")
+			assert.Equal(t, TokenCapability{}, got)
+			assert.Zero(t, requests, "no request reaches the server")
+			lower := strings.ToLower(trace.String())
+			assert.NotContains(t, lower, strings.ToLower(urlCanary))
+			assert.NotContains(t, lower, "pathzq7")
+			assert.Contains(t, lower, "connection: url="+strings.ToLower(srv.URL), "the URL is traced as scheme and host")
+		})
+	}
+
+	t.Run("an unsupported scheme is traced as scheme and host", func(t *testing.T) {
+		origProto, origOut := rawCompleting, completionDebugOut
+		var trace bytes.Buffer
+		completionDebugOut, rawCompleting = &trace, true
+		t.Cleanup(func() { rawCompleting, completionDebugOut = origProto, origOut })
+		t.Setenv(config.EnvCompletionDebug, "1")
+		_, ok := completionServerURL("ftp://hostzq7/pathzq7?q=1")
+		assert.False(t, ok)
+		assert.Contains(t, trace.String(), "scheme unsupported: ftp://hostzq7\n")
+		assert.NotContains(t, trace.String(), "pathzq7")
+	})
 }

@@ -42,7 +42,7 @@ func refuseToOpenDirectory(t *testing.T) *[]string {
 	t.Helper()
 	opened := new([]string)
 	prev := openDirectory
-	openDirectory = func(dir string) (config.CredStore, *config.CacheAnchor, error) {
+	openDirectory = func(dir string, _ bool) (config.CredStore, *config.CacheAnchor, error) {
 		*opened = append(*opened, dir)
 		return nil, nil, clierr.New(clierr.CodeValidation, "the directory cannot be opened").WithHint(clierr.Rancher + " config status")
 	}

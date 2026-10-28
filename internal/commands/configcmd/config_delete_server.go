@@ -184,7 +184,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 	deletedCache := del.DeletedCache
 	data := map[string]any{
 		"server":               name,
-		"url":                  srv.URL,
+		"url":                  config.DisplayServerURL(srv.URL),
 		"deletedFrom":          map[string][]string{"backend": deletedFrom},
 		"deletedCache":         deletedCache,
 		"currentServerCleared": currentCleared,

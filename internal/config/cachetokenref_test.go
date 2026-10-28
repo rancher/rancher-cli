@@ -25,7 +25,7 @@ func TestACacheRecordNamesTheTokenItsBindingCarries(t *testing.T) {
 		{"keychain", func(dir string) CredStore { return newPinnedKeyringStore(dir, false) }},
 		{"helper", func(dir string) CredStore { return newExecStore("fake", dir) }},
 		{"lazy", func(dir string) CredStore {
-			lazy, err := NewLazyStore(&Config{CredentialStore: "file"}, dir)
+			lazy, err := NewLazyStore(&Config{CredentialStore: "file"}, dir, false)
 			require.NoError(t, err)
 			return lazy
 		}},

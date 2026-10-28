@@ -75,9 +75,9 @@ func TestGetTokenUserIDIsCheckedBeforeAnyCacheRead(t *testing.T) {
 		name, userID, wantMsg string
 	}{
 		{"prod", "", "--user-id is empty; pass a value or omit --user-id"},
-		{"prod", "U-A", "--user-id 'U-A' is not a Rancher user id (a lowercase name such as u-abc12)"},
-		{"prod", "u-a/b", "--user-id 'u-a/b' is not a Rancher user id (a lowercase name such as u-abc12)"},
-		{"prod", "u a", "--user-id 'u a' is not a Rancher user id (a lowercase name such as u-abc12)"},
+		{"prod", "U-A", "--user-id is not a Rancher user id (a lowercase name such as u-abc12)"},
+		{"prod", "u-a/b", "--user-id is not a Rancher user id (a lowercase name such as u-abc12)"},
+		{"prod", "u a", "--user-id is not a Rancher user id (a lowercase name such as u-abc12)"},
 	} {
 		t.Run(tc.name+"/"+tc.userID, func(t *testing.T) {
 			cmd := NewTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
