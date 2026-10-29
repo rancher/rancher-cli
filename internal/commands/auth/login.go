@@ -594,6 +594,7 @@ func (l loginCmd) authenticateAndStore(
 	// round-trip for a pasted/piped token instead; the success text below
 	// says so.
 	noVerify := in.Bool("no-verify")
+	pastedTokenChecked := false
 	if !viaProvider && !noVerify && l.verify != nil {
 		owner, verr := l.verify(ctx, config.Effective{
 			URL: serverURL, CA: connBytes, Token: bearer, ServerName: name,
@@ -616,6 +617,7 @@ func (l loginCmd) authenticateAndStore(
 		// The request that proved the token also named its owner, which
 		// the login records as a create response's owner is recorded.
 		cred.UserID = owner
+		pastedTokenChecked = true
 	}
 
 	var pendingCA *config.PendingTrust
@@ -661,6 +663,18 @@ func (l loginCmd) authenticateAndStore(
 	if persisted {
 		st.Warnings = append(st.Warnings, replacedUserWarning(name, out.ReplacedUserID, cred.UserID)...)
 		st.Warnings = append(st.Warnings, replacedAuthConfigWarning(name, out.ReplacedAuthConfig, cred.AuthConfig)...)
+	}
+	// After the run the CLI may ask the server it reached for its install
+	// id with the token the store just took: a token the server issued in
+	// this run, or a pasted token the verify call accepted. A pasted token
+	// stored with --no-verify was never checked and is not sent; neither is a
+	// token the store refused, because no stored login holds it. The request
+	// is sent after the output, and asks again whatever failure the server's
+	// facts file holds for an earlier token.
+	if persisted && (viaProvider || pastedTokenChecked) {
+		if base, fetch, err := provider.InstallIDFetchFor(serverURL, connBytes, bearer); err == nil {
+			httpx.RegisterInstallIDFetcher(base, fetch, true)
+		}
 	}
 	if perr != nil {
 		if !errors.Is(perr, config.ErrTokenStoreUnsupported) {

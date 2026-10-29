@@ -1,6 +1,9 @@
 package telemetry
 
 import (
+	"errors"
+	"io/fs"
+	"path"
 	"time"
 )
 
@@ -81,19 +84,26 @@ func (f *Facts) StoreInstallID(a Answer, now time.Time) bool {
 }
 
 // VersionDue reports whether the version record is due for a request at now.
-func (f Facts) VersionDue(now time.Time) bool { return f.Version.due(now) }
+func (f Facts) VersionDue(now time.Time) bool { return f.Version.due(now, false) }
 
 // InstallIDDue reports whether the install id record is due for a request
 // at now.
-func (f Facts) InstallIDDue(now time.Time) bool { return f.InstallID.due(now) }
+func (f Facts) InstallIDDue(now time.Time) bool { return f.InstallID.due(now, false) }
+
+// InstallIDDueSkippingFailureWait is InstallIDDue for a command that stored the
+// token the request carries: a stored failure of any kind is due at once,
+// because it may have come from a different token. The wait after a good
+// value does not change.
+func (f Facts) InstallIDDueSkippingFailureWait(now time.Time) bool { return f.InstallID.due(now, true) }
 
 // due reports whether the record is due at now: nothing is stored, or the
 // stored time is later than now (a clock set back never stops a request);
 // else a stored failure waits from its own time, and a good value waits from
-// the time it was read.
-func (r Fact) due(now time.Time) bool {
+// the time it was read. With skipFailureWait a stored failure is due at
+// once.
+func (r Fact) due(now time.Time, skipFailureWait bool) bool {
 	if r.Failure != nil {
-		if r.Failure.At.After(now) {
+		if skipFailureWait || r.Failure.At.After(now) {
 			return true
 		}
 		return !now.Before(r.Failure.At.Add(failureWait(r.Failure.Kind)))
@@ -125,10 +135,11 @@ type FactsRead struct {
 }
 
 // SaveFacts writes the facts file of a server under the recording gates: the
-// controls are on and the configuration directory existed at the start of
-// the run. It never creates the configuration directory and writes nothing
-// through a telemetry path OpenStore refuses. It reports whether the file
-// was written; a failure or a panic is dropped.
+// controls are on and the caller says the configuration directory existed:
+// at the start of the run for an event, at the end of the run for the facts
+// file of the first login. It never creates the configuration directory and
+// writes nothing through a telemetry path OpenStore refuses. It reports
+// whether the file was written; a failure or a panic is dropped.
 func SaveFacts(canonicalURL string, f Facts, opts Options) (written bool) {
 	if !Resolve(ControlInput{Getenv: opts.Getenv, Config: opts.Config}).On || !opts.DirExisted {
 		return false
@@ -144,4 +155,48 @@ func SaveFacts(canonicalURL string, f Facts, opts Options) (written bool) {
 	}
 	defer func() { _ = s.Close() }()
 	return s.WriteFacts(canonicalURL, f) == nil
+}
+
+// ReadServerFacts reads the facts file of a server under the recording
+// gates, as SaveFacts writes it: the controls are on and the caller says the
+// configuration directory existed. The result means what Record's read means:
+// a facts file that is read or missing, or no telemetry directory, is usable;
+// a file that holds text that is not facts counts as missing; any other read
+// failure, a telemetry path OpenStore refuses, an off control, a missing
+// directory and a panic are not usable, and a writer must not write over a
+// file it could not read. It never creates a file or a directory.
+func ReadServerFacts(canonicalURL string, opts Options) (read FactsRead) {
+	if !Resolve(ControlInput{Getenv: opts.Getenv, Config: opts.Config}).On || !opts.DirExisted {
+		return FactsRead{}
+	}
+	defer func() {
+		if recover() != nil {
+			read = FactsRead{}
+		}
+	}()
+	s, err := OpenStore(opts.ConfigDir)
+	if err != nil {
+		return FactsRead{}
+	}
+	defer func() { _ = s.Close() }()
+	if s.tel == nil {
+		return FactsRead{Usable: true}
+	}
+	data, err := s.readFile(path.Join(dirServers, FactsFileName(canonicalURL)))
+	return classifyFactsRead(data, err)
+}
+
+// classifyFactsRead turns the result of reading a facts file into what the
+// reader may rely on: a read file is usable with its facts (empty when the
+// text is not facts), a missing file is usable and empty, and any other
+// error is not usable.
+func classifyFactsRead(data []byte, err error) (read FactsRead) {
+	switch {
+	case err == nil:
+		read.Facts, _ = parseFacts(data)
+		read.Usable = true
+	case errors.Is(err, fs.ErrNotExist):
+		read.Usable = true
+	}
+	return read
 }

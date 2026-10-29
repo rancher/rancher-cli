@@ -92,9 +92,10 @@ func refreshTargetFor(server string) (refreshTarget, bool) {
 // requestFor returns the request that fills one record, or nil when the
 // record is not due at now or its request has nothing to send through: the
 // version needs the transport the server answered through, the install id a
-// fetcher registered for the same server. A request returns the answer to
-// store; runCtx is the run's own context, to tell a request the run ended
-// from one that failed.
+// fetcher registered for the same server; a fetcher registered with the skip
+// asks again after any stored failure of the install id record. A request
+// returns the answer to store; runCtx is the run's own context, to tell a
+// request the run ended from one that failed.
 func requestFor(runCtx context.Context, rec refreshRecord, facts telemetry.Facts, at time.Time, t refreshTarget) func(context.Context) telemetry.Answer {
 	switch rec {
 	case versionRecord:
@@ -103,7 +104,14 @@ func requestFor(runCtx context.Context, rec refreshRecord, facts telemetry.Facts
 		}
 		return func(ctx context.Context) telemetry.Answer { return versionAnswer(ctx, runCtx, t) }
 	case installIDRecord:
-		if !facts.InstallIDDue(at) || !t.hasFetcher {
+		if !t.hasFetcher {
+			return nil
+		}
+		due := facts.InstallIDDue
+		if t.fetcher.SkipFailureWait {
+			due = facts.InstallIDDueSkippingFailureWait
+		}
+		if !due(at) {
 			return nil
 		}
 		return func(ctx context.Context) telemetry.Answer { return installIDAnswer(ctx, runCtx, t.fetcher) }

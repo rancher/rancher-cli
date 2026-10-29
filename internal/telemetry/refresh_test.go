@@ -307,3 +307,153 @@ func TestRecordHandsBackWhatItsEventRead(t *testing.T) {
 		assert.False(t, read.Usable)
 	})
 }
+
+// TestTheInstallIDRecordSkipsAStoredFailureWaitOnly asserts the due rule of a
+// command that stored the token the request carries: a stored failure of any
+// kind is due at once, a time after now is due, and the 24 hours after a
+// good value, a value 23 hours 59 minutes old included, and nothing stored
+// keep their rule. The version record follows its own wait in every row.
+func TestTheInstallIDRecordSkipsAStoredFailureWaitOnly(t *testing.T) {
+	failureAgo := func(kind FailureKind, ago time.Duration) func(*Facts) {
+		return func(f *Facts) {
+			f.FailInstallID(kind, fixedNoon.Add(-ago))
+			f.FailVersion(kind, fixedNoon.Add(-ago))
+		}
+	}
+	valueAgo := func(ago time.Duration) func(*Facts) {
+		return func(f *Facts) {
+			f.SetInstallID(goodInstallID, fixedNoon.Add(-ago))
+			f.SetVersion("v2.15.2", EditionPrime, fixedNoon.Add(-ago))
+		}
+	}
+	rows := []struct {
+		name                  string
+		set                   func(*Facts)
+		withWait, withoutWait bool
+		versionDue            bool
+	}{
+		{"forbidden 1 hour ago", failureAgo(FailureForbidden, time.Hour), false, true, false},
+		{"network 10 minutes ago", failureAgo(FailureNetwork, 10*time.Minute), false, true, false},
+		{"invalid 1 hour ago", failureAgo(FailureInvalid, time.Hour), false, true, false},
+		{"a failure with a time after now", failureAgo(FailureForbidden, -time.Hour), true, true, true},
+		{"a value 1 hour ago", valueAgo(time.Hour), false, false, false},
+		{"a value 23 hours 59 minutes ago", valueAgo(24*time.Hour - time.Minute), false, false, false},
+		{"a value 24 hours ago", valueAgo(24 * time.Hour), true, true, true},
+		{"a value 25 hours ago", valueAgo(25 * time.Hour), true, true, true},
+		{"nothing stored", func(*Facts) {}, true, true, true},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			var f Facts
+			row.set(&f)
+			assert.Equal(t, row.withWait, f.InstallIDDue(fixedNoon), "the root client's rule")
+			assert.Equal(t, row.withoutWait, f.InstallIDDueSkippingFailureWait(fixedNoon), "the rule of a command that stored the token")
+			assert.Equal(t, row.versionDue, f.VersionDue(fixedNoon), "the version record keeps its schedule")
+		})
+	}
+}
+
+// TestReadServerFactsReportsWhatItCouldRead asserts one row per case of the
+// read: no telemetry directory, no facts file and a file that holds no facts
+// are usable and empty, a good file is usable with its facts; the facts file
+// path made a directory, off controls, no directory seen, a config directory
+// that does not exist, a telemetry symlink, a telemetry plain file and a
+// panic in the read are not usable, and a read that is not allowed touches
+// no file.
+func TestReadServerFactsReportsWhatItCouldRead(t *testing.T) {
+	enable(t)
+	useClock(t, fixedNoon)
+	const server = "https://rancher.example.com"
+	var stored Facts
+	stored.SetVersion("v2.15.2", EditionPrime, fixedNoon)
+	stored.SetInstallID(goodInstallID, fixedNoon)
+	factsPath := func(dir string) string {
+		return filepath.Join(dir, "telemetry", "servers", FactsFileName(server))
+	}
+	seed := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		require.True(t, SaveFacts(server, stored, Options{ConfigDir: dir, DirExisted: true}))
+		return dir
+	}
+	existed := func(dir string) Options { return Options{ConfigDir: dir, DirExisted: true} }
+
+	t.Run("no telemetry directory", func(t *testing.T) {
+		dir := t.TempDir()
+		ops := observeOps(t)
+		read := ReadServerFacts(server, existed(dir))
+		assert.True(t, read.Usable)
+		assert.Equal(t, Facts{}, read.Facts)
+		assert.Equal(t, []string{"openroot .", "lstat telemetry"}, ops.take())
+		assert.Empty(t, readNames(t, dir), "nothing is created")
+	})
+	t.Run("no facts file", func(t *testing.T) {
+		dir := seed(t)
+		require.NoError(t, os.Remove(factsPath(dir)))
+		read := ReadServerFacts(server, existed(dir))
+		assert.True(t, read.Usable)
+		assert.Equal(t, Facts{}, read.Facts)
+	})
+	t.Run("an unparsable file", func(t *testing.T) {
+		dir := seed(t)
+		require.NoError(t, os.WriteFile(factsPath(dir), []byte("{not json"), 0o600))
+		read := ReadServerFacts(server, existed(dir))
+		assert.True(t, read.Usable)
+		assert.Equal(t, Facts{}, read.Facts)
+	})
+	t.Run("a good file", func(t *testing.T) {
+		read := ReadServerFacts(server, existed(seed(t)))
+		assert.True(t, read.Usable)
+		assert.Equal(t, "2.15.2", read.Facts.Version.Value)
+		assert.Equal(t, goodInstallID, read.Facts.InstallID.Value)
+	})
+	t.Run("the facts file path is a directory", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(factsPath(dir), 0o700))
+		assert.False(t, ReadServerFacts(server, existed(dir)).Usable)
+	})
+	t.Run("controls off", func(t *testing.T) {
+		dir := seed(t)
+		ops := observeOps(t)
+		opts := existed(dir)
+		opts.Getenv = envOf(map[string]string{EnvTelemetry: "false"})
+		read := ReadServerFacts(server, opts)
+		assert.False(t, read.Usable)
+		assert.Equal(t, Facts{}, read.Facts)
+		assert.Empty(t, ops.take())
+	})
+	t.Run("the directory was not seen", func(t *testing.T) {
+		dir := seed(t)
+		ops := observeOps(t)
+		read := ReadServerFacts(server, Options{ConfigDir: dir})
+		assert.False(t, read.Usable)
+		assert.Empty(t, ops.take())
+	})
+	t.Run("a config directory that does not exist", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "gone")
+		assert.False(t, ReadServerFacts(server, existed(missing)).Usable)
+		_, err := os.Stat(missing)
+		assert.ErrorIs(t, err, os.ErrNotExist, "the config directory is never created")
+	})
+	t.Run("the telemetry path is a symlink", func(t *testing.T) {
+		dir, outside := t.TempDir(), t.TempDir()
+		if err := os.Symlink(outside, filepath.Join(dir, "telemetry")); err != nil {
+			t.Skipf("symlinks are not available: %v", err)
+		}
+		assert.False(t, ReadServerFacts(server, existed(dir)).Usable)
+	})
+	t.Run("the telemetry path is a plain file", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "telemetry"), []byte("x"), 0o600))
+		assert.False(t, ReadServerFacts(server, existed(dir)).Usable)
+	})
+	t.Run("a panic in the read", func(t *testing.T) {
+		dir := seed(t)
+		readHook = func(string) error { panic("read failed") }
+		t.Cleanup(func() { readHook = nil })
+		var read FactsRead
+		require.NotPanics(t, func() { read = ReadServerFacts(server, existed(dir)) })
+		assert.False(t, read.Usable)
+		assert.Equal(t, Facts{}, read.Facts)
+	})
+}

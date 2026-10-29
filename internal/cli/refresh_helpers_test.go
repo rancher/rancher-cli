@@ -73,6 +73,7 @@ func newFactsServer(t *testing.T) *factsServer {
 		case route != nil:
 			route(w, r)
 		case strings.HasSuffix(r.URL.Path, "/selfsubjectreviews"):
+			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview","status":{"userInfo":{"username":"u-1"}}}`))
 		default:
 			http.NotFound(w, r)

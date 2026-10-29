@@ -126,16 +126,16 @@ func TestRegisteringAFetcherKeepsTheLastOneAndNeedsAHost(t *testing.T) {
 	_, ok := RegisteredInstallIDFetcher()
 	assert.False(t, ok)
 	for _, origin := range []string{"", "https://", "h", "://x", "https:///path"} {
-		RegisterInstallIDFetcher(origin, first)
+		RegisterInstallIDFetcher(origin, first, false)
 		_, ok = RegisteredInstallIDFetcher()
 		assert.False(t, ok, "origin %q", origin)
 	}
-	RegisterInstallIDFetcher("https://h", nil)
+	RegisterInstallIDFetcher("https://h", nil, false)
 	_, ok = RegisteredInstallIDFetcher()
 	assert.False(t, ok, "no function")
 
-	RegisterInstallIDFetcher("https://a", first)
-	RegisterInstallIDFetcher("https://b", second)
+	RegisterInstallIDFetcher("https://a", first, false)
+	RegisterInstallIDFetcher("https://b", second, false)
 	f, ok := RegisteredInstallIDFetcher()
 	require.True(t, ok)
 	assert.Equal(t, "https://b", f.Origin)
@@ -144,9 +144,29 @@ func TestRegisteringAFetcherKeepsTheLastOneAndNeedsAHost(t *testing.T) {
 	assert.Equal(t, "second", value)
 	assert.Equal(t, 200, status)
 
-	RegisterInstallIDFetcher("", first)
+	RegisterInstallIDFetcher("", first, false)
 	f, _ = RegisteredInstallIDFetcher()
 	assert.Equal(t, "https://b", f.Origin, "a refused registration leaves the last one")
+}
+
+// TestTheFetcherCarriesTheSkipItWasRegisteredWith asserts the skip given at
+// registration is the one the record returns, the last registration decides
+// it, and ClearRecords drops it with the fetcher.
+func TestTheFetcherCarriesTheSkipItWasRegisteredWith(t *testing.T) {
+	resetRecords(t)
+	fetch := func(context.Context) (string, int, error) { return "", 0, nil }
+	RegisterInstallIDFetcher("https://h", fetch, true)
+	f, ok := RegisteredInstallIDFetcher()
+	require.True(t, ok)
+	assert.True(t, f.SkipFailureWait)
+	RegisterInstallIDFetcher("https://h", fetch, false)
+	f, _ = RegisteredInstallIDFetcher()
+	assert.False(t, f.SkipFailureWait, "the last registration decides")
+	RegisterInstallIDFetcher("https://h", fetch, true)
+	ClearRecords()
+	f, ok = RegisteredInstallIDFetcher()
+	assert.False(t, ok)
+	assert.False(t, f.SkipFailureWait, "a clear drops the skip with the fetcher")
 }
 
 // TestClearRecordsEmptiesBothRecords asserts the one clear function empties
@@ -154,7 +174,7 @@ func TestRegisteringAFetcherKeepsTheLastOneAndNeedsAHost(t *testing.T) {
 func TestClearRecordsEmptiesBothRecords(t *testing.T) {
 	resetRecords(t)
 	RecordAnswered(&url.URL{Scheme: "https", Host: "h"}, &stubTransport{"a"})
-	RegisterInstallIDFetcher("https://h", func(context.Context) (string, int, error) { return "", 0, nil })
+	RegisterInstallIDFetcher("https://h", func(context.Context) (string, int, error) { return "", 0, nil }, false)
 	ClearRecords()
 	assert.Empty(t, AnsweredHosts())
 	_, ok := RegisteredInstallIDFetcher()
@@ -172,7 +192,7 @@ func TestTheRecordsHoldUnderConcurrentUse(t *testing.T) {
 			for range 200 {
 				RecordAnswered(&url.URL{Scheme: "https", Host: host}, &stubTransport{host})
 				_ = AnsweredHosts()
-				RegisterInstallIDFetcher("https://"+host, func(context.Context) (string, int, error) { return host, 200, nil })
+				RegisterInstallIDFetcher("https://"+host, func(context.Context) (string, int, error) { return host, 200, nil }, false)
 				_, _ = RegisteredInstallIDFetcher()
 				if i%8 == 0 {
 					ClearRecords()

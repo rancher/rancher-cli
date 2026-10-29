@@ -53,7 +53,7 @@ var storedURLReadAllowed = map[string]requestAllowance{
 	"internal/client/kube/restconfig.go:RequireLogin":               {1, "emptiness check"},
 	"internal/client/provider/version.go:fetchVersionResponse":      {1, "request building, after Effective refused an unusable URL"},
 	"internal/clierr/loginfailure.go:text":                          {1, "the prior entry's URL, set from config.DisplayServerURL by its only producer"},
-	"internal/commands/auth/authcheck.go:Execute":                   {1, "emptiness check"},
+	"internal/commands/auth/authcheck.go:Execute":                   {2, "emptiness check, and the URL the install id request is built from, after Preflight reached it"},
 	"internal/commands/auth/logintarget.go:entryLoginTarget":        {3, "the stored URL is checked (userinfo, parse), and is the login's target"},
 	"internal/commands/auth/logintarget.go:urlLoginTarget":          {2, "comparison with the typed URL, and the stored URL handed to the collision check; the message shows the display form or no URL"},
 	"internal/commands/configcmd/config_info.go:entrySection":       {5, "recovery sequence source, omitted for a value that cannot be used, the entry's own URL for the repair text, and an emptiness check"},

@@ -1,9 +1,12 @@
 package provider
 
 import (
+	"crypto/tls"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/testrancher"
 )
 
 const installIDRequestPath = "/v1/management.cattle.io.settings/install-uuid"
@@ -155,4 +159,111 @@ func TestDecodeServerInfoReadsTheVersionAndTheEdition(t *testing.T) {
 	}
 	_, err := DecodeServerInfo([]byte(`<html>`))
 	assert.Error(t, err)
+}
+
+// installIDServer answers the install id request with a value and keeps the
+// path and headers of the last request.
+func installIDServer(t *testing.T) (srv *httptest.Server, last func() (string, http.Header)) {
+	t.Helper()
+	var mu sync.Mutex
+	var path string
+	var header http.Header
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		path, header = r.URL.Path, r.Header.Clone()
+		mu.Unlock()
+		_, _ = w.Write([]byte(`{"value":"d3b07384-d9a0-4e7a-9c2b-5f6a7b8c9d0e"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() (string, http.Header) {
+		mu.Lock()
+		defer mu.Unlock()
+		return path, header
+	}
+}
+
+func certificatePEM(srv *httptest.Server) string {
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+}
+
+// TestInstallIDFetchForTrustsTheGivenCAAsTextOrAsAPath asserts the request
+// reaches a server whose certificate the given CA signed, with the CA as PEM
+// text and as the path of a file, and carries the bearer and the Accept header
+// at the host root.
+func TestInstallIDFetchForTrustsTheGivenCAAsTextOrAsAPath(t *testing.T) {
+	defer httpx.SetUserAgent("cli.rancher.io/test")()
+	srv, last := installIDServer(t)
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	require.NoError(t, os.WriteFile(caFile, []byte(certificatePEM(srv)), 0o600))
+	for name, ca := range map[string]string{"text": certificatePEM(srv), "path": caFile} {
+		t.Run(name, func(t *testing.T) {
+			base, fetch, err := InstallIDFetchFor(srv.URL, ca, "id:secret")
+			require.NoError(t, err)
+			assert.Equal(t, srv.URL, base)
+			value, status, err := fetch(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, 200, status)
+			assert.Equal(t, "d3b07384-d9a0-4e7a-9c2b-5f6a7b8c9d0e", value)
+			path, header := last()
+			assert.Equal(t, installIDRequestPath, path)
+			assert.Equal(t, "Bearer id:secret", header.Get("Authorization"))
+			assert.Equal(t, "application/json", header.Get("Accept"))
+			assert.Equal(t, "cli.rancher.io/test", header.Get("User-Agent"))
+		})
+	}
+}
+
+// TestInstallIDFetchForBuildsNothingWhenTheCACannotBeRead asserts a CA path
+// that does not exist and PEM text with no certificate give an error and no
+// function.
+func TestInstallIDFetchForBuildsNothingWhenTheCACannotBeRead(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "absent.pem")
+	for name, ca := range map[string]string{
+		"missing file":   missing,
+		"no certificate": "-----BEGIN CERTIFICATE-----\nnot a certificate\n-----END CERTIFICATE-----",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, fetch, err := InstallIDFetchFor("https://rancher.example.com", ca, "t")
+			require.Error(t, err)
+			assert.Nil(t, fetch)
+		})
+	}
+}
+
+// TestInstallIDFetchForTargetsTheHostRoot asserts the base drops a path and a
+// trailing slash of the server URL, and the request goes to the host root.
+func TestInstallIDFetchForTargetsTheHostRoot(t *testing.T) {
+	srv, last := installIDServer(t)
+	base, fetch, err := InstallIDFetchFor(srv.URL+"/some/path/", certificatePEM(srv), "t")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, base)
+	_, status, err := fetch(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 200, status)
+	path, _ := last()
+	assert.Equal(t, installIDRequestPath, path)
+}
+
+// TestInstallIDFetchForRefusesAServerTheGivenCADidNotSign asserts the request
+// fails for a server whose certificate a different CA signed, and for the
+// same server when no CA is given: the client never skips verification.
+func TestInstallIDFetchForRefusesAServerTheGivenCADidNotSign(t *testing.T) {
+	cert, _, err := testrancher.LoopbackTLSCertificate()
+	require.NoError(t, err)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"value":"d3b07384-d9a0-4e7a-9c2b-5f6a7b8c9d0e"}`))
+	}))
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	builtIn, _ := installIDServer(t)
+	for name, ca := range map[string]string{"another CA": certificatePEM(builtIn), "no CA": ""} {
+		t.Run(name, func(t *testing.T) {
+			_, fetch, err := InstallIDFetchFor(srv.URL, ca, "t")
+			require.NoError(t, err)
+			_, status, err := fetch(t.Context())
+			require.Error(t, err)
+			assert.Zero(t, status)
+		})
+	}
 }

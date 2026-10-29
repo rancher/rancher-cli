@@ -193,8 +193,11 @@ jobs:
       # config load added. And what the server facts refresh adds to a
       # run that got an answer: nothing when no record is due, else the
       # open of the telemetry directory and one temporary file renamed over
-      # the facts file.
-      - run: go test -race -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce' ./internal/cli/
+      # the facts file. And the first auth login on a fresh install, which
+      # runs a whole login through the built tree with the file credential
+      # store: the read of the facts file and the write that creates the
+      # telemetry directory and the file, and no event.
+      - run: go test -race -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse' ./internal/cli/
       # The same hit timed with recording on and off, ten runs of each, for
       # the median. No -race: the detector would hide the difference.
       - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/

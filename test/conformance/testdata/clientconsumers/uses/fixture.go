@@ -19,6 +19,6 @@ func Uses(rc *rest.Config) {
 	_ = httpx.NewExternal(0)
 	f := kube.Dynamic
 	_ = f
-	httpx.RegisterInstallIDFetcher("https://example.com", func(context.Context) (string, int, error) { return "", 0, nil })
+	httpx.RegisterInstallIDFetcher("https://example.com", func(context.Context) (string, int, error) { return "", 0, nil }, false)
 	_ = kube.BaseURL("https://example.com")
 }

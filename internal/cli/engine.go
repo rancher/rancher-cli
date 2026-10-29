@@ -182,7 +182,7 @@ func (f *clientFactory) Root() (engine.RootClient, error) {
 		}
 		base := kube.BaseURL(eff.URL)
 		f.root = &rootClient{base: base, token: eff.Token, hc: hc}
-		httpx.RegisterInstallIDFetcher(base, provider.InstallIDFetch(hc, base, eff.Token))
+		httpx.RegisterInstallIDFetcher(base, provider.InstallIDFetch(hc, base, eff.Token), false)
 	})
 	return f.root, f.rootErr
 }

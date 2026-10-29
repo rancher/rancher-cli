@@ -21,13 +21,16 @@ import (
 // After the command ends and its output is written, Run records one usage
 // event when recording is on and the config directory existed when the root
 // Before hook ran. It then may ask the server the command reached for its
-// version and edition and, when the command built the root client, its
-// install id, within 2 seconds, when they are due; the answers reach the
-// next event, never this one. A line with no chosen command (an unknown
-// command, a group or the root alone, help, the version, urfave's flag
-// errors, the refusals above, a completion request) and the completion and
-// telemetry commands record nothing. Recording never changes the output or
-// the exit code.
+// version and edition and, when the command built the root client or auth
+// login or auth status registered one after their check, its install id,
+// within 2 seconds, when they are due; the answers reach the next event,
+// never this one. The first auth login on a fresh install, which creates the
+// config directory, records no event; when it succeeds with recording on, it
+// writes the server's facts file the same way. A line with no chosen command
+// (an unknown command, a group or the root alone, help, the version,
+// urfave's flag errors, the refusals above, a completion request) and the
+// completion and telemetry commands record nothing. Recording never changes
+// the output or the exit code.
 func Run(ctx context.Context, root *ucli.Command, args []string) int {
 	return run(ctx, root, args).code
 }

@@ -81,10 +81,10 @@ func TestAHostMatchesTheRecordedServerByItsCanonicalForm(t *testing.T) {
 	assert.False(t, ok)
 
 	fetch := func(context.Context) (string, int, error) { return goodUUID, 200, nil }
-	httpx.RegisterInstallIDFetcher("https://b.example.com", fetch)
+	httpx.RegisterInstallIDFetcher("https://b.example.com", fetch, false)
 	target, _ = refreshTargetFor("https://h")
 	assert.False(t, target.hasFetcher, "a fetcher for another server serves none")
-	httpx.RegisterInstallIDFetcher("https://H:443", fetch)
+	httpx.RegisterInstallIDFetcher("https://H:443", fetch, false)
 	target, _ = refreshTargetFor("https://h")
 	assert.True(t, target.hasFetcher, "the same server in another form")
 }
@@ -201,7 +201,7 @@ func TestARegisteredFetcherSendsNothingWhenNoHostAnswered(t *testing.T) {
 	httpx.RegisterInstallIDFetcher(server, func(context.Context) (string, int, error) {
 		sent.Add(1)
 		return goodUUID, 200, nil
-	})
+	}, false)
 	dir := t.TempDir()
 	ops := observeFiles(t)
 	refreshServerFacts(t.Context(), refreshInput{

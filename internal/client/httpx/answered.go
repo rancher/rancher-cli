@@ -30,16 +30,19 @@ type AnsweredHost struct {
 // token it sends in memory only.
 type InstallIDFunc func(ctx context.Context) (value string, status int, err error)
 
-// InstallIDFetcher is the install id request a command registered, and the
-// scheme and host it targets.
+// InstallIDFetcher is the install id request a command registered, the
+// scheme and host it targets, and whether the request skips the wait after a
+// stored failure: a command that just stored the token the request carries
+// asks again whatever failure the server's facts file holds.
 type InstallIDFetcher struct {
-	Origin string
-	Fetch  InstallIDFunc
+	Origin          string
+	Fetch           InstallIDFunc
+	SkipFailureWait bool
 }
 
 // The two records of a run: the hosts that answered, in the order each was
-// last recorded, and the install id fetcher. Requests run concurrently, so
-// each has a lock.
+// last recorded, and the install id fetcher with its skip. Requests run
+// concurrently; each record has a lock.
 var (
 	answeredMu    sync.Mutex
 	answeredHosts []AnsweredHost
@@ -71,17 +74,18 @@ func AnsweredHosts() []AnsweredHost {
 	return slices.Clone(answeredHosts)
 }
 
-// RegisterInstallIDFetcher records the install id request of a command and
-// the scheme and host it targets. The last registration wins. An origin with
-// no scheme or host, or a nil function, records nothing.
-func RegisterInstallIDFetcher(origin string, fetch InstallIDFunc) {
+// RegisterInstallIDFetcher records the install id request of a command, the
+// scheme and host it targets, and whether the request skips the wait after a
+// stored failure. The last registration wins. An origin with no scheme or
+// host, or a nil function, records nothing.
+func RegisterInstallIDFetcher(origin string, fetch InstallIDFunc, skipFailureWait bool) {
 	u, err := url.Parse(origin)
 	if err != nil || u.Scheme == "" || u.Host == "" || fetch == nil {
 		return
 	}
 	fetcherMu.Lock()
 	defer fetcherMu.Unlock()
-	fetcher = InstallIDFetcher{Origin: origin, Fetch: fetch}
+	fetcher = InstallIDFetcher{Origin: origin, Fetch: fetch, SkipFailureWait: skipFailureWait}
 }
 
 // RegisteredInstallIDFetcher returns the fetcher last registered, and false
@@ -92,7 +96,8 @@ func RegisteredInstallIDFetcher() (InstallIDFetcher, bool) {
 	return fetcher, fetcher.Fetch != nil
 }
 
-// ClearRecords empties the hosts that answered and the install id fetcher.
+// ClearRecords empties the hosts that answered and the install id fetcher,
+// its skip included.
 // A run clears both before it starts: nothing carries over to the next run
 // of the same process.
 func ClearRecords() {

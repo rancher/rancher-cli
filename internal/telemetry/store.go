@@ -57,8 +57,9 @@ const (
 type Options struct {
 	// ConfigDir is the configuration directory. The store never creates it.
 	ConfigDir string
-	// DirExisted is true when the caller saw the directory exist at the
-	// start of the run; false records nothing.
+	// DirExisted is true when the caller saw the directory exist: at the
+	// start of the run for an event, at the end of the run for the facts
+	// file of the first login. False records and writes nothing.
 	DirExisted bool
 	// Getenv reads the control variables; nil reads none.
 	Getenv func(string) string
@@ -213,13 +214,7 @@ func (s *Store) record(ev Event) (Status, FactsRead) {
 	url, _ := Server()
 	if url != "" {
 		data, err := s.readFile(path.Join(dirServers, FactsFileName(url)))
-		switch {
-		case err == nil:
-			facts.Facts, _ = parseFacts(data)
-			facts.Usable = true
-		case errors.Is(err, fs.ErrNotExist):
-			facts.Usable = true
-		}
+		facts = classifyFactsRead(data, err)
 	}
 	ev = ev.withFacts(url != "", facts.Facts, now).withDirectoryID(id)
 

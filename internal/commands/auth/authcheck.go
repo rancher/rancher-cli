@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -115,6 +116,12 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	ver, err := a.preflight(ctx, eff)
 	if err != nil {
 		return runtime.Result{}, change.Pending().Apply(err)
+	}
+	// The server answered the connectivity check: after the output the CLI
+	// may ask it for its install id with the token this command checked. The
+	// identity and token probes below only warn and never stop the request.
+	if base, fetch, err := provider.InstallIDFetchFor(eff.URL, eff.CA, eff.Token); err == nil {
+		httpx.RegisterInstallIDFetcher(base, fetch, false)
 	}
 
 	// credential describes the stored credential when it is the effective one

@@ -2050,13 +2050,20 @@ Commands that call the root API include `access`, `inspect cluster`,
 `get kubernetes-versions`, `support-bundle` and `kubeconfig`, and any command
 that names a cluster other than `local` with `--cluster` or a project by name
 with `--project`. A command that names only the `local` cluster, such as
-`get node --cluster local`, does not ask for the install id. These requests go
-out after the output is written, add up to 2 seconds, and never change the
-output or the exit code. A fact is asked for again 24 hours after an answer
-the CLI could use or one it could not, 6 hours after a 403 or 404, and an hour
-after any other failure. The exec plugin never sends them when it serves a
-cached credential. The answers reach the next recorded event, never the one
-just written.
+`get node --cluster local`, does not ask for the install id. `auth login` asks
+for it with the token it stored, after it checked a pasted token or signed in
+through an auth provider; never for a pasted token stored with `--no-verify`.
+`auth status` asks with the token it checked, after the server answered its
+connectivity check. These requests go out after the output is written, add up
+to 2 seconds, and never change the output or the exit code. A fact is asked
+for again 24 hours after an answer the CLI could use or one it could not, 6
+hours after a 403 or 404, and an hour after any other failure. After `auth
+login`, the install id is asked for again whatever failure is stored. The
+first `auth login --url` when the config directory does not exist yet asks too
+when it succeeds and recording is on: it writes only the server's facts file
+and records no event. The exec plugin never sends them when it serves a cached
+credential. The answers reach the next recorded event, never the one just
+written.
 
 Recording is on by default. The first of these controls that applies decides,
 in this order, and `rancher telemetry status` names it as `decidedBy`:

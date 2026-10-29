@@ -125,9 +125,9 @@ func recordDecision(k keptLine, st recordingState) (runtime.Descriptor, bool) {
 }
 
 // recordingTarget is recordDecision, and the canonical URL of the server the
-// run targeted, "" when it had none. It is the one decision that a run
-// records, and for which server, that the event and the server facts refresh
-// both follow.
+// run targeted, "" when it had none. It is the decision that a run records an
+// event, and for which server, that the event and the server facts refresh
+// follow; the first login on a fresh install has its own, firstLoginRefresh.
 func recordingTarget(k keptLine, st recordingState) (d runtime.Descriptor, server string, ok bool) {
 	d, ok = recordDecision(k, st)
 	if !ok {
@@ -140,8 +140,9 @@ func recordingTarget(k keptLine, st recordingState) (d runtime.Descriptor, serve
 // the decision says so. Nothing it does changes the run's output or exit
 // code: a failure to record is dropped, and a panic is recovered. It returns
 // what the server facts refresh needs: the server, the recording options and
-// what the event read of the server's facts file; the zero value when the run
-// records nothing.
+// what the event read of the server's facts file; for the first login on a
+// fresh install, which records no event, what firstLoginRefresh gives; the
+// zero value when the run records nothing.
 func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (in refreshInput) {
 	defer func() {
 		if recover() != nil {
@@ -151,7 +152,7 @@ func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (
 	st := recordingStateNow()
 	d, server, ok := recordingTarget(k, st)
 	if !ok {
-		return refreshInput{}
+		return firstLoginRefresh(k, st, res)
 	}
 	run := telemetry.RunInput{
 		Invocation:  currentInvocation(),
@@ -177,6 +178,43 @@ func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (
 	}
 	_, read := telemetry.Record(newRunEvent(run), opts)
 	return refreshInput{server: server, opts: opts, start: read}
+}
+
+// firstLoginCommands are the commands whose run may create the config
+// directory and then write the server's facts file, with no event: only the
+// first login on a fresh install.
+var firstLoginCommands = []string{"auth login"}
+
+// firstLoginRefresh is what a run that created the config directory hands the
+// server facts refresh, and the zero value when the run is not one. It says
+// yes when recording was on and the directory was missing when the run
+// started, the command is one of firstLoginCommands, the run succeeded, the
+// line names a server, and the directory exists now. The directory check is
+// last: every other run with recording on and no directory stops before it
+// and does no file operation. The run records no event and calls neither
+// telemetry.Record nor telemetry.SetServer; the refresh starts from what the
+// server's facts file holds now; a value another process stored is kept.
+func firstLoginRefresh(k keptLine, st recordingState, res runResult) refreshInput {
+	if !st.on || st.dirExisted {
+		return refreshInput{}
+	}
+	existed := st
+	existed.dirExisted = true
+	d, ok := recordDecision(k, existed)
+	if !ok || !slices.Contains(firstLoginCommands, d.Name) || res.code != 0 {
+		return refreshInput{}
+	}
+	server := recordedServer(d, k.line, storedConfigSnapshot())
+	if server == "" || !telemetry.DirExists(st.dir) {
+		return refreshInput{}
+	}
+	opts := telemetry.Options{
+		ConfigDir:  st.dir,
+		DirExisted: true,
+		Getenv:     os.Getenv,
+		Config:     st.setting,
+	}
+	return refreshInput{server: server, opts: opts, start: telemetry.ReadServerFacts(server, opts)}
 }
 
 // typedFlagNames returns the long names of the flags typed on the line:

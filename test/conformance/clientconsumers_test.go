@@ -6,6 +6,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,10 +45,12 @@ var clientConsumerAllowed = map[string]requestAllowance{
 }
 
 // fetcherRegistrationAllowed lists where production code may register the
-// install id fetcher: only the root client's builder, so a command that does
-// not build the root client never fetches the install id.
+// install id fetcher: the root client's builder, and the two auth commands
+// after their check; no other command ever fetches the install id.
 var fetcherRegistrationAllowed = map[string]requestAllowance{
-	"internal/cli/engine.go:Root": {1, "the root client registers the fetcher with its own client and token when a command builds it"},
+	"internal/cli/engine.go:Root":                          {1, "the root client registers the fetcher with its own client and token when a command builds it"},
+	"internal/commands/auth/login.go:authenticateAndStore": {1, "auth login registers the token it stored, after the verify call accepted a pasted token or the provider issued the token"},
+	"internal/commands/auth/authcheck.go:Execute":          {1, "auth status registers the token it checked, after the connectivity check passed"},
 }
 
 // usesOf returns one match per use of a function for which kind returns a
@@ -146,9 +149,10 @@ func TestEveryClientConsumerIsListedWithWhereItsConfigComes(t *testing.T) {
 	}
 }
 
-// TestTheInstallIDFetcherIsRegisteredOnlyByTheRootClient asserts production
-// code registers the install id fetcher only in the root client's builder.
-func TestTheInstallIDFetcherIsRegisteredOnlyByTheRootClient(t *testing.T) {
+// TestTheInstallIDFetcherIsRegisteredOnlyByTheRootClientAndTheAuthCommands
+// asserts production code registers the install id fetcher only in the root
+// client's builder and in the two auth commands after their check.
+func TestTheInstallIDFetcherIsRegisteredOnlyByTheRootClientAndTheAuthCommands(t *testing.T) {
 	t.Parallel()
 	pkgs, err := fieldManagerPackages()
 	require.NoError(t, err)
@@ -196,12 +200,21 @@ func TestClientConsumerScanFixtures(t *testing.T) {
 // fails and a stale row fails.
 func TestClientConsumerAllowlistRules(t *testing.T) {
 	t.Parallel()
-	one := requestMatch{"internal/cli/engine.go:Root", "internal/cli/engine.go:1: httpx.RegisterInstallIDFetcher"}
-	assert.Empty(t, checkRequestMatches([]requestMatch{one}, fetcherRegistrationAllowed))
+	rootRow := "internal/cli/engine.go:Root"
+	allowed := map[string]requestAllowance{rootRow: fetcherRegistrationAllowed[rootRow]}
+	one := requestMatch{rootRow, "internal/cli/engine.go:1: httpx.RegisterInstallIDFetcher"}
+	assert.Empty(t, checkRequestMatches([]requestMatch{one}, allowed))
 	elsewhere := requestMatch{"internal/cli/engine.go:Cluster", "internal/cli/engine.go:2: httpx.RegisterInstallIDFetcher"}
-	assert.Len(t, checkRequestMatches([]requestMatch{one, elsewhere}, fetcherRegistrationAllowed), 1)
-	assert.Len(t, checkRequestMatches([]requestMatch{one, {one.key, "internal/cli/engine.go:3: httpx.RegisterInstallIDFetcher"}}, fetcherRegistrationAllowed), 1)
-	assert.Len(t, checkRequestMatches(nil, fetcherRegistrationAllowed), 1, "a stale row")
+	assert.Len(t, checkRequestMatches([]requestMatch{one, elsewhere}, allowed), 1)
+	otherAuthCommand := requestMatch{"internal/commands/auth/logout.go:Execute", "internal/commands/auth/logout.go:3: httpx.RegisterInstallIDFetcher"}
+	problems := checkRequestMatches([]requestMatch{otherAuthCommand}, fetcherRegistrationAllowed)
+	assert.True(t, slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, "internal/commands/auth/logout.go:3") }),
+		"a registration in a function with no row is reported: %v", problems)
+	for key := range fetcherRegistrationAllowed {
+		assert.True(t, slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, key) }), "the row %s that nothing used is reported", key)
+	}
+	assert.Len(t, checkRequestMatches([]requestMatch{one, {one.key, "internal/cli/engine.go:3: httpx.RegisterInstallIDFetcher"}}, allowed), 1)
+	assert.Len(t, checkRequestMatches(nil, allowed), 1, "a stale row")
 	newUse := requestMatch{"internal/client/provider/new.go:Build", "internal/client/provider/new.go:9: kube.Dynamic"}
 	assert.Len(t, checkRequestMatches([]requestMatch{newUse}, map[string]requestAllowance{}), 1)
 }

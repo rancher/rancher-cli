@@ -42,6 +42,9 @@ var realSurface = surfaceRules{
 		// SaveFacts writes a Facts value whose strings came through those
 		// setters, under the recording controls.
 		"SaveFacts",
+		// ReadServerFacts takes the server's canonical URL, which only
+		// names the facts file it reads.
+		"ReadServerFacts",
 	},
 	types: []string{
 		"Attribute", "ContractInputs", "EventSpec", "Options", "RunInput", "ControlInput",

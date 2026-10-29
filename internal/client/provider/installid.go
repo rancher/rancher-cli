@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/client/kube"
+	"github.com/rancher/rancher-cli/internal/config"
 )
 
 // installIDPath is the Rancher setting that holds the server's install id,
@@ -43,4 +45,24 @@ func InstallIDFetch(client *http.Client, base, token string) httpx.InstallIDFunc
 		}
 		return s.Value, resp.StatusCode, nil
 	}
+}
+
+// InstallIDFetchFor builds the client and the install id request for a
+// command that holds a server URL, a CA (a PEM or a path, as --cacert takes
+// it) and a token as text. It returns the scheme and host the request targets
+// and the request function. The client verifies the server against the given
+// CA, or the operating system roots when there is none; it is never
+// insecure. It returns an error when the CA cannot be read or the client
+// cannot be built, and the caller then registers nothing.
+func InstallIDFetchFor(serverURL, ca, token string) (base string, fetch httpx.InstallIDFunc, err error) {
+	caPEM, err := config.ResolveCA(ca)
+	if err != nil {
+		return "", nil, err
+	}
+	client, err := httpx.New(httpx.Options{CACert: caPEM, Timeout: httpx.DefaultTimeout})
+	if err != nil {
+		return "", nil, err
+	}
+	base = kube.BaseURL(serverURL)
+	return base, InstallIDFetch(client, base, token), nil
 }
