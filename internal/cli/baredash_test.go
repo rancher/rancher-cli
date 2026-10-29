@@ -418,7 +418,11 @@ func TestBareDashCompletesNothing(t *testing.T) {
 	out, _ := complete(t, []string{"create", "resource", "-f", "-"}, "--")
 	assert.Contains(t, out, "--dry-run", "rancher create resource -f - --<TAB>: a - as a flag's value keeps the candidates")
 	_, requests := complete(t, []string{"get", "pod", "--cluster", "c1"}, "")
-	assert.NotEmpty(t, requests, "rancher get pod --cluster c1 <TAB> asks the server for pod names")
+	assert.Equal(t, []string{"GET /v1/management.cattle.io.clusters"}, requests,
+		"rancher get pod --cluster c1 <TAB> looks the --cluster value up in the cluster list and asks for no pod names")
+	_, requests = complete(t, []string{"get", "pod", "--cluster", "c-aaa11", "--namespace", "default"}, "")
+	assert.Equal(t, []string{"GET /k8s/clusters/c-aaa11/api/v1/namespaces/default/pods"}, requests,
+		"rancher get pod --cluster c-aaa11 --namespace default <TAB> asks the server for pod names")
 }
 
 // TestWordsAfterABareDashRenderInTheColorTyped asserts that the refusal

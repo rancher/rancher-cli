@@ -179,7 +179,7 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		// and listed under the unresolved name).
 		{name: "logs --pod of a downstream-only target with a cluster id", words: []string{"logs", "agent", "--cluster", "c-aaa11", "--pod"}, want: agentPods, hits: map[string]int{downCattlePods: 1}},
 		{name: "logs --pod of a downstream-only target with a display name resolves it first", words: []string{"logs", "agent", "--cluster", "prod", "--pod"}, want: agentPods, hits: map[string]int{steveClustersPath: 2, downCattlePods: 1}},
-		{name: "logs --pod of a downstream-only target with a display name nothing carries", words: []string{"logs", "agent", "--cluster", "nope", "--pod"}, hits: map[string]int{steveClustersPath: 2, steveClusterNopePath: 1}},
+		{name: "logs --pod of a downstream-only target with a display name nothing carries", words: []string{"logs", "agent", "--cluster", "nope", "--pod"}, hits: map[string]int{steveClustersPath: 2}},
 		{name: "logs --pod of a downstream-only target without a cluster", words: []string{"logs", "agent", "--pod"}, hits: map[string]int{}},
 		{name: "logs --pod of a target without a static namespace", words: []string{"logs", "fleet-agent", "--pod"}, hits: map[string]int{}},
 		{name: "logs --pod of an unknown target", words: []string{"logs", "nope", "--pod"}, hits: map[string]int{}},

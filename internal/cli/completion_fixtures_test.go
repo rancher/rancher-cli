@@ -19,8 +19,8 @@ const (
 	roleTemplatesPath = "/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates"
 	globalRolesPath   = "/k8s/clusters/local/apis/management.cattle.io/v3/globalroles"
 	steveClustersPath = "/v1/management.cattle.io.clusters"
-	// steveClusterNopePath is the GET by id a --cluster value no listed
-	// cluster carries sends.
+	// steveClusterNopePath is the GET by id of a --cluster value no listed
+	// cluster carries: the request completion never sends.
 	steveClusterNopePath = steveClustersPath + "/nope"
 	nodeDriversPath      = "/k8s/clusters/local/apis/management.cattle.io/v3/nodedrivers"
 	oidcClientsPath      = "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients"

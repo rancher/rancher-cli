@@ -35,8 +35,9 @@ const (
 	// cluster neither suppresses the source nor costs a request.
 	ClusterNone ClusterNeed = iota
 	// ClusterResolved means Request.ClusterID must hold an id: the surface
-	// resolves a typed display name first (one request, counted apart from
-	// the allowance) and skips the source when it cannot.
+	// matches a typed display name against the cluster list first (a read
+	// of up to steve.MaxPages requests, counted apart from the allowance)
+	// and skips the source when it matches no cluster.
 	ClusterResolved
 )
 

@@ -23,10 +23,12 @@ import (
 // all here: the allowance class is validated and mapped to a request count,
 // the credential and cluster needs are satisfied (a source that needs no
 // credential gets its server and CA from its command, see
-// noCredentialCandidates; a typed display name is
-// resolved with one request counted apart), the Connection is built under
-// the TAB deadline, and the Result is dropped whole when the source asked
-// for more than its allowance. Every failure answers nothing.
+// noCredentialCandidates; a typed display name is matched against the
+// cluster list, a read of up to steve.MaxPages requests counted apart,
+// while a cluster id that starts with "c-" or is "local" skips the match),
+// the Connection is built under the TAB deadline, and the Result is
+// dropped whole when the source asked for more than its allowance. Every
+// failure answers nothing.
 func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, lc completion.Completer, tail []string,
 	flags map[string]completion.Source, kindTable map[string]completion.Source, positional map[string]string) ([]string, bool) {
 	req := completion.Request{

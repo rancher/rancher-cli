@@ -611,22 +611,23 @@ func isClusterIDShaped(s string) bool {
 	return s == "local" || strings.HasPrefix(s, "c-")
 }
 
-// resolveDisplayNameToClusterID issues the surface's requests of its own
-// to map a typed --cluster to a cluster id as the command resolves it: one
-// walk of the steve clusters collection and, when nothing there matches,
-// one GET by id, under an allowance of steve.MaxPages plus one. Returns ""
-// when the value names no cluster or more than one, or a request fails.
-// hc is the single per-dispatch client.
+// resolveDisplayNameToClusterID maps a typed --cluster to a cluster id by
+// one walk of the steve clusters collection under an allowance of
+// steve.MaxPages requests. A value no listed cluster carries, as an id or a
+// display name, resolves to nothing and is not sent to the server: a command
+// then asks for the cluster by id, completion does not. Returns "" when the
+// value names no listed cluster or more than one, or a request fails. hc is
+// the single per-dispatch client.
 func resolveDisplayNameToClusterID(ctx context.Context, hc *http.Client, cap TokenCapability, displayName string) string {
-	conn := tracedConnection(hc, cap, steve.MaxPages+1)
+	conn := tracedConnection(hc, cap, steve.MaxPages)
 	get := completionGetter(conn)
 	list, err := steve.ClustersOnce(ctx, get)
-	if err != nil {
-		return ""
-	}
-	id, _, err := steve.ResolveCluster(ctx, get, list, displayName, steve.ClusterText(displayName))
 	if err != nil || conn.Exceeded() {
-		return "" // not found, ambiguous, or the read failed
+		return "" // the read failed
+	}
+	id, _, err := steve.MatchCluster(list, displayName, steve.ClusterText(displayName))
+	if err != nil {
+		return "" // not listed, or ambiguous
 	}
 	return id
 }

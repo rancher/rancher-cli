@@ -126,7 +126,7 @@ func TestGrantRevokeSitesFullCallback(t *testing.T) {
 		{name: "--project= equals form", tail: []string{"jane", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1:Default", "--project=p-2:System"}, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "--project value without a cluster", tail: []string{"jane", "--project"}, hits: map[string]int{}},
 		{name: "--project value with a spaced display name resolves it first", tail: []string{"jane", "--cluster", "prod cluster", "--project"}, hits: map[string]int{steveClustersPath: 2, "/v1/management.cattle.io.projects/c-ddd44": 1}},
-		{name: "--project value with a display name nothing carries", tail: []string{"jane", "--cluster", "nope", "--project"}, hits: map[string]int{steveClustersPath: 2, steveClusterNopePath: 1}},
+		{name: "--project value with a display name nothing carries", tail: []string{"jane", "--cluster", "nope", "--project"}, hits: map[string]int{steveClustersPath: 2}},
 	}
 	for _, cmd := range []string{"grant", "revoke"} {
 		for _, tt := range tests {

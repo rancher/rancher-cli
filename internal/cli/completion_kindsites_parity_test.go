@@ -100,7 +100,7 @@ func TestKindSitesFullCallback(t *testing.T) {
 		{name: "-n without a cluster", words: []string{"get", "pod", "-n"}, hits: map[string]int{}},
 		{name: "--namespace without a cluster", words: []string{"get", "pod", "--namespace"}, hits: map[string]int{}},
 		{name: "--namespace under a typed project", words: []string{"get", "pod", "--cluster", "c-aaa11", "--project", "p-1", "--namespace"}, hits: map[string]int{}},
-		{name: "--namespace with a display name nothing carries", words: []string{"get", "pod", "--cluster", "nope", "--namespace"}, hits: map[string]int{steveClustersPath: 2, steveClusterNopePath: 1}},
+		{name: "--namespace with a display name nothing carries", words: []string{"get", "pod", "--cluster", "nope", "--namespace"}, hits: map[string]int{steveClustersPath: 2}},
 		{name: "--namespace with a spaced display name resolves it first", words: []string{"get", "pod", "--cluster", "prod cluster", "--namespace"}, want: []string{"team"}, hits: map[string]int{steveClustersPath: 2, downTeamNamespaces: 1}},
 		{name: "--node with a cluster id", words: []string{"usage", "--cluster", "c-aaa11", "--node"}, want: []string{"node-1", "node-2"}, hits: map[string]int{downNodesPath: 1}},
 		{name: "--node without a cluster", words: []string{"usage", "--node"}, hits: map[string]int{}},

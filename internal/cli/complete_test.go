@@ -87,14 +87,14 @@ func resolveForTest(t *testing.T, srv *httptest.Server, v string) string {
 	return resolveDisplayNameToClusterID(ctx, srv.Client(), cap, v)
 }
 
-// TestResolveDisplayNameToClusterIDNotFound asserts a value no listed
-// cluster carries sends the one GET by id and, on its 404, resolves to
-// nothing.
-func TestResolveDisplayNameToClusterIDNotFound(t *testing.T) {
+// TestResolveDisplayNameToClusterIDNotListed asserts a value no listed
+// cluster carries resolves to nothing and sends the list read only: no GET
+// by id.
+func TestResolveDisplayNameToClusterIDNotListed(t *testing.T) {
 	t.Parallel()
 	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod")})
 	assert.Empty(t, resolveForTest(t, srv, "nonexistent"), "not-found must return empty string")
-	assert.Equal(t, []string{steveClustersPath, steveClustersPath + "/nonexistent"}, reqs())
+	assert.Equal(t, []string{steveClustersPath}, reqs())
 }
 
 func TestResolveDisplayNameToClusterIDAmbiguous(t *testing.T) {
@@ -121,18 +121,20 @@ func TestResolveDisplayNameToClusterIDIDWins(t *testing.T) {
 	assert.Equal(t, "prod", resolveForTest(t, srv, "prod"))
 }
 
-// TestResolveDisplayNameToClusterIDNotListedYet asserts a cluster steve's
-// cache has not listed yet resolves through the GET by id.
-func TestResolveDisplayNameToClusterIDNotListedYet(t *testing.T) {
+// TestResolveDisplayNameToClusterIDNotListedYetSendsNoGetByID asserts a
+// cluster the server would answer by id, that steve's cache has not listed
+// yet, resolves to nothing and is not asked for: the requests are the list
+// read only.
+func TestResolveDisplayNameToClusterIDNotListedYetSendsNoGetByID(t *testing.T) {
 	t.Parallel()
 	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod")}, "fresh")
-	assert.Equal(t, "fresh", resolveForTest(t, srv, "fresh"))
-	assert.Equal(t, []string{steveClustersPath, steveClustersPath + "/fresh"}, reqs())
+	assert.Empty(t, resolveForTest(t, srv, "fresh"))
+	assert.Equal(t, []string{steveClustersPath}, reqs())
 }
 
 // TestResolveDisplayNameToClusterIDStaysWithinItsAllowance asserts the
-// step walks every page of the collection and its GET by id within
-// steve.MaxPages plus one requests, and a walk past the page bound
+// step walks every page of the collection within steve.MaxPages requests,
+// a value no page lists sends no GET by id, and a walk past the page bound
 // resolves to nothing.
 func TestResolveDisplayNameToClusterIDStaysWithinItsAllowance(t *testing.T) {
 	t.Parallel()
@@ -164,13 +166,13 @@ func TestResolveDisplayNameToClusterIDStaysWithinItsAllowance(t *testing.T) {
 	miss := httptest.NewServer(count(pages(steve.MaxPages)))
 	t.Cleanup(miss.Close)
 	assert.Empty(t, resolveForTest(t, miss, "absent"))
-	assert.Equal(t, int32(steve.MaxPages+1), hits.Load(), "every page, then the GET by id")
+	assert.Equal(t, int32(steve.MaxPages), hits.Load(), "every page, no GET by id")
 
 	hits.Store(0)
 	over := httptest.NewServer(count(pages(steve.MaxPages + 1)))
 	t.Cleanup(over.Close)
 	assert.Empty(t, resolveForTest(t, over, "name-0"))
-	assert.LessOrEqual(t, hits.Load(), int32(steve.MaxPages+1))
+	assert.LessOrEqual(t, hits.Load(), int32(steve.MaxPages))
 }
 
 func TestSanitizeCandidatesDropsHostileNames(t *testing.T) {
