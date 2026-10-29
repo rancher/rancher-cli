@@ -155,6 +155,8 @@ Gotchas:
 
 ## Cutting a release
 
+- Only the maintainers on the bypass list of the repository's `release tags` ruleset can create,
+  update or delete a `v*` tag; GitHub refuses the push from anyone else.
 - Pushing a tag `vX.Y.Z` or `vX.Y.Z-{alpha|beta|rc}.N` on a commit that is already on main
   (`scripts/check-release-tag <tag>` checks the format first) runs `.github/workflows/release.yaml`:
   zizmor on the tagged commit, then `make validate` and `make e2e`, then the build, the attestations and a draft
@@ -167,6 +169,7 @@ Gotchas:
 - After publishing, the title and notes can still be edited; the release cannot return to a draft. Assets cannot be
   added or changed, and a bad release is fixed only by a new version. `scripts/release-upsert` refuses to upload to a
   published release. Deleting a published release does not free its tag name: GitHub refuses a new release with that name.
+  Immutable releases are on for the repository: once a release is published, GitHub locks its assets and its tag.
 - Never move, delete and push again, or reuse a pushed tag. A failed cut uses up its number.
 - A run that fails before publishing: re-run the failed jobs when the cause is a flake (the upload to the draft is
   idempotent). Otherwise delete the draft and the tag, fix on main, and cut the next number.
