@@ -153,6 +153,24 @@ Gotchas:
   `WaitGroup.Go`, and so on) elsewhere. New code is always written to the
   current idiom - never matched down to a stale one already in the file.
 
+## Cutting a release
+
+- Pushing a tag `vX.Y.Z` or `vX.Y.Z-{alpha|beta|rc}.N` on a commit that is already on main
+  (`scripts/check-release-tag <tag>` checks the format first) runs `.github/workflows/release.yaml`:
+  zizmor on the tagged commit, then `make validate` and `make e2e`, then the build, the attestations and a draft
+  release that holds every asset, with the tag as its title. No release is published yet.
+- Review the draft in the GitHub UI: the assets and `SHA256SUMS`. Paste the reviewed notes into the draft, in the UI or
+  with `gh release edit <tag> --notes-file <file>`, before publishing: watchers' notifications and the releases feed
+  carry the body as it is at publish.
+- Publish with `gh release edit <tag> --draft=false --prerelease=false --latest` (or in the UI). A draft for a tag
+  with a suffix starts as a pre-release; the command publishes it as not a pre-release and as the latest release.
+- After publishing, the title and notes can still be edited; the release cannot return to a draft. Assets cannot be
+  added or changed, and a bad release is fixed only by a new version. `scripts/release-upsert` refuses to upload to a
+  published release. Deleting a published release does not free its tag name: GitHub refuses a new release with that name.
+- Never move, delete and push again, or reuse a pushed tag. A failed cut uses up its number.
+- A run that fails before publishing: re-run the failed jobs when the cause is a flake (the upload to the draft is
+  idempotent). Otherwise delete the draft and the tag, fix on main, and cut the next number.
+
 ## Knowledge graph (graphify)
 
 The repo carries a local knowledge graph at `graphify-out/` (gitignored,

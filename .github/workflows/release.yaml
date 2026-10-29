@@ -1,5 +1,11 @@
 name: release
 
+# A tag push runs zizmor, then validate, then publish. publish attests the
+# build and creates a draft release that holds every asset, with the tag as
+# its title. The draft is reviewed, the reviewed notes are pasted into it,
+# and then it is published; the notes go in before publishing because
+# watchers' notifications and the releases feed carry the body as it is at
+# publish. A published release takes no new assets.
 on:
   push:
     tags: ["v*"]
@@ -7,20 +13,28 @@ on:
 permissions:
   contents: read
 
-# Two same-tag runs (a UI-created release pushing the tag, racing a manual
-# re-push) must not both see zero existing releases and both create one -
-# tag_name v0.1.0-alpha.1 carried two releases on 2026-08-12 from exactly
-# that race. cancel-in-progress stays false: the queued run must still run
-# and take release-upsert's idempotent upload branch, not vanish.
+# Two runs for one tag (a re-run, or a tag pushed again) must not both see
+# zero existing releases and both create one - tag_name v0.1.0-alpha.1
+# carried two releases on 2026-08-12 from exactly that race.
+# cancel-in-progress stays false: the queued run must still run and take
+# release-upsert's idempotent upload branch, not vanish.
 concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  # Static analysis of the workflows on the tagged commit, before any step
+  # that runs third-party code. A finding stops the release.
+  zizmor:
+    permissions:
+      contents: read
+    uses: $/.github/workflows/zizmor.yaml
+
   # No write permissions here: this job pulls third-party code (apt
   # packages, golangci-lint, envtest binaries) before anything is trusted
   # with contents/id-token/attestations access.
   validate:
+    needs: zizmor
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:

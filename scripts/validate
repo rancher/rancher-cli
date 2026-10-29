@@ -85,10 +85,14 @@ static() {
   # The workflows call in-repo actions with GitHub's self-repository
   # syntax (`uses: $/...`), which zizmor's self-repository audit requires.
   # actionlint 1.7.12 and its main branch do not know the syntax and
-  # report a missing ref for it; the ignore drops only that message.
-  # Remove it once a release includes rhysd/actionlint#732 (issue #711).
+  # report a missing ref for it; the first ignore drops only that message.
+  # The second drops the format message for the one reusable workflow the
+  # release workflow calls with the same syntax, zizmor.yaml; a call to any
+  # other workflow file still fails. Remove both once a release includes
+  # rhysd/actionlint#732 (issue #711).
   if command -v actionlint >/dev/null 2>&1; then
-    actionlint -ignore 'invalid format because ref is missing'
+    actionlint -ignore 'invalid format because ref is missing' \
+      -ignore 'reusable workflow call "\$/\.github/workflows/zizmor\.yaml" at "uses" is not following the format'
   else
     echo "warning: actionlint not installed; skipping (install for the workflow gate)" >&2
   fi

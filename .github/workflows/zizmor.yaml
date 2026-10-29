@@ -1,12 +1,14 @@
 name: zizmor
 
 # Static analysis of the workflows themselves (rancher/rancher convention).
+# The release workflow calls it before any build step.
 on:
   push:
     branches: [main]
   pull_request:
     paths: [".github/**"]
   workflow_dispatch:
+  workflow_call:
 
 permissions: {}
 
