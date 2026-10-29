@@ -41,7 +41,7 @@ func mapRequestErr(err error, q *clierr.Request) error {
 
 // InspectClusterRemedy is the command a timed-out read names: the
 // cluster's own state.
-const (
+var (
 	InspectClusterRemedy = clierr.Rancher + " inspect cluster <cluster-id>"
 )
 

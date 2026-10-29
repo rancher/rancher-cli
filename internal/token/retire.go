@@ -143,7 +143,7 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 		}
 		return changed
 	}); err != nil {
-		rep.Warnings = append(rep.Warnings, fmt.Sprintf("could not update the superseded-token records of %s (%v); they are listed by: "+config.StatusCommand, entry, err))
+		rep.Warnings = append(rep.Warnings, fmt.Sprintf("could not update the superseded-token records of %s (%v); they are listed by: ", entry, err)+config.StatusCommand)
 	}
 	return rep
 }

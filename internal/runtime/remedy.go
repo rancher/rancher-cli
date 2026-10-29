@@ -123,13 +123,13 @@ func (streams IO) expandAll(warnings []string) []string {
 // invocation to ask.
 func plainRemedies(s string) string { return clierr.ExpandRemedies(s, "") }
 
-// plainRemedyWriter removes the marker from every remedy command written
-// through it. Result data is not a remedy channel, so a command that
+// plainRemedyWriter removes this process's marker from every remedy command
+// written through it. Result data is not a remedy channel, so a command that
 // reaches it prints as the plain command. Each Write is taken whole: an
 // encoder writes one value in one call, so a command is never split
-// across two. The one change it makes to structured output: a U+2063
-// directly before the word rancher is dropped, wherever the text came
-// from; every other byte is written as it is.
+// across two. The one change it makes to structured output: this process's
+// marker directly before the word rancher is dropped; every other byte is
+// written as it is, a U+2063 or a marker from any other source included.
 type plainRemedyWriter struct{ w io.Writer }
 
 var markedRancher = []byte(clierr.Rancher)

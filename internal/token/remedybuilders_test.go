@@ -334,3 +334,20 @@ func TestAPluginLoginEntryAtAnotherURLGetsANewEntryLogin(t *testing.T) {
 		})
 	}
 }
+
+// TestUnmarkedSessionTextNamesTheListCommand asserts the whole text of the
+// description of a session token the CLI cannot name, with and without the
+// request's expiry: the window clause, the facts and the command that lists
+// the candidates, opened by clierr.Rancher.
+func TestUnmarkedSessionTextNamesTheListCommand(t *testing.T) {
+	t.Parallel()
+	const head = "a session token may have been created through saml at or after 2026-10-12T10:00:00Z"
+	const tail = "; the CLI stopped waiting at 2026-10-12T10:05:00Z, " +
+		"but the browser sign-in can still complete after that, and the token may be newer; " +
+		"these facts narrow the candidates but cannot identify one token; inspect them with: "
+	const command = " get management-tokens -o json, or in the UI under Account & API Keys"
+	search := clierr.UnmarkedTokenSearch{AuthProvider: "saml", HandoffAt: "2026-10-12T10:00:00Z", PollEndedAt: "2026-10-12T10:05:00Z"}
+	assert.Equal(t, head+tail+clierr.Rancher+command, unmarkedSessionText(search))
+	search.RequestExpiresAt = "2026-10-12T10:10:00Z"
+	assert.Equal(t, head+" and not after 2026-10-12T10:10:00Z"+tail+clierr.Rancher+command, unmarkedSessionText(search))
+}

@@ -314,7 +314,7 @@ func ClearFinishedTransition(dir string, cfg *Config) {
 // The notes an error adds about the directory's store change. The first
 // sits beside a remedy that still works; the second replaces it as the
 // hint, since that remedy is a credential command the record refuses.
-const (
+var (
 	unfinishedChangeNote = "a credential store change is unfinished; run " + StatusCommand + " to see it"
 	unreadableChangeNote = "the credential store change record cannot be read; every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + StatusCommand + " to see it"
 )

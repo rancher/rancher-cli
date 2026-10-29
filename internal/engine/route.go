@@ -26,13 +26,15 @@ const FlagNamespace = "namespace"
 // choose from.
 const (
 	ClusterRequiredMessage = "--cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local"
-	ClusterRequiredHint    = clierr.Rancher + " access clusters"
 
 	// ClusterRequiredPlainMessage is the refusal for a command that takes
 	// neither --namespace nor --all-namespaces, where the local-cluster
 	// advice about Rancher's own namespaces does not apply.
 	ClusterRequiredPlainMessage = "--cluster is required; pass a cluster id or name"
 )
+
+// ClusterRequiredHint lists the clusters to choose from.
+var ClusterRequiredHint = clierr.Rancher + " access clusters"
 
 // ClusterFlag declares --cluster with the missing-cluster text that fits the
 // command: ClusterRequiredMessage when it takes --namespace or

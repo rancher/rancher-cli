@@ -223,7 +223,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 	prodEUNoCred := rowEntry{name: "prod-eu"}
 	seed := rowEntry{name: "exec-login-seed", user: "svc", plugin: true}
 	seedTwo := rowEntry{name: "exec-login-seed-2", user: "svc", plugin: true}
-	const (
+	var (
 		useServerUnset = clierr.Rancher + " config use-server <entry> (this sets the directory's current server, which is unset now), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"
 		useServerBack  = clierr.Rancher + " config use-server <entry> (this switches the directory's current server; switch back with " + clierr.Rancher + " config use-server 'staging'), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"
 	)

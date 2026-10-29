@@ -342,7 +342,7 @@ func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert stri
 		then = useServerRemedy("<name>", current) + ", then " + clierr.Rancher + " kubeconfig --cluster " + cluster
 	}
 	return LoginRemedy{
-		Command:  fmt.Sprintf(clierr.Rancher+" auth login %s --url %s%s --token-stdin", entry, clierr.ShellQuote(serverURL), caFlag),
+		Command:  clierr.Rancher + fmt.Sprintf(" auth login %s --url %s%s --token-stdin", entry, clierr.ShellQuote(serverURL), caFlag),
 		Named:    named,
 		InlineCA: inlineCA,
 		CASource: caFrom,

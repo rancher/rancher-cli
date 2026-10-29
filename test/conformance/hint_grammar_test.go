@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -207,6 +208,11 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 				return out
 			}
 		}
+		// Inside package clierr the marked word is the unqualified Rancher,
+		// read as the word rancher the way the selector clierr.Rancher is.
+		if e.Name == "Rancher" && fl.scope.pkg == clierrPath {
+			return []string{"rancher"}
+		}
 		return fl.flattenConst(fl.scope.pkg, e.Name, depth)
 
 	default:
@@ -214,9 +220,9 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 	}
 }
 
-// flattenConst resolves the constant name of package pkg through its
-// declaration, walked in the scope of the file that declares it;
-// unresolved when the package declares none by that name.
+// flattenConst resolves the constant or variable name of package pkg
+// through its declaration, walked in the scope of the file that declares
+// it; unresolved when the package declares none by that name.
 func (fl *flattener) flattenConst(pkg, name string, depth int) []string {
 	c, ok := fl.consts[pkg][name]
 	if !ok {
@@ -374,9 +380,13 @@ func TestHintGrammarConformance(t *testing.T) {
 	}
 }
 
-// packageConsts collects every package-level constant that has a value,
-// by its package's import path and name; paths[i] is files[i]'s path
-// relative to the module root.
+// packageConsts collects every package-level constant that has a value, and
+// every package-level variable whose value is a string expression, by its
+// package's import path and name; paths[i] is files[i]'s path relative to
+// the module root. A string expression is made of literals, +, parentheses,
+// and identifiers and selectors that name other declarations: a variable
+// whose value holds a call, a composite literal or a function literal is
+// left out, since the walk cannot read it.
 func packageConsts(files []*ast.File, paths []string) map[string]map[string]constDecl {
 	out := map[string]map[string]constDecl{}
 	for fi, f := range files {
@@ -386,7 +396,7 @@ func packageConsts(files []*ast.File, paths []string) map[string]map[string]cons
 		}
 		for _, decl := range f.Decls {
 			gd, ok := decl.(*ast.GenDecl)
-			if !ok || gd.Tok != token.CONST {
+			if !ok || (gd.Tok != token.CONST && gd.Tok != token.VAR) {
 				continue
 			}
 			for _, spec := range gd.Specs {
@@ -395,12 +405,34 @@ func packageConsts(files []*ast.File, paths []string) map[string]map[string]cons
 					continue
 				}
 				for i, n := range vs.Names {
+					if gd.Tok == token.VAR && !isStringExpr(vs.Values[i]) {
+						continue
+					}
 					out[scope.pkg][n.Name] = constDecl{value: vs.Values[i], scope: scope}
 				}
 			}
 		}
 	}
 	return out
+}
+
+// isStringExpr reports whether e is built only from string literals, +,
+// parentheses, identifiers and selectors of an identifier.
+func isStringExpr(e ast.Expr) bool {
+	switch e := e.(type) {
+	case *ast.BasicLit:
+		return e.Kind == token.STRING
+	case *ast.ParenExpr:
+		return isStringExpr(e.X)
+	case *ast.BinaryExpr:
+		return e.Op == token.ADD && isStringExpr(e.X) && isStringExpr(e.Y)
+	case *ast.Ident:
+		return true
+	case *ast.SelectorExpr:
+		_, ok := e.X.(*ast.Ident)
+		return ok
+	}
+	return false
 }
 
 // TestHintFlattenerReadsDirectoryFreeAndMarkRemedy asserts a hint built with
@@ -462,4 +494,42 @@ import "github.com/rancher/rancher-cli/internal/config"`, 0)
 	unqualified, err := parser.ParseExpr(`Hint`)
 	require.NoError(t, err)
 	require.Equal(t, []string{unresolved}, fl.flatten(unqualified, nil, 0), "another package's constant is not this one's")
+
+	// A named command that is a variable is read the same way.
+	varDecl, err := parser.ParseFile(token.NewFileSet(), "internal/config/x.go", `package config
+import "github.com/rancher/rancher-cli/internal/clierr"
+var LoginCommand = clierr.Rancher + " auth login"
+var Built = fmt.Sprint("a")
+var Table = map[string]string{"a": "b"}`, 0)
+	require.NoError(t, err)
+	vars := packageConsts([]*ast.File{varDecl, user}, []string{"internal/config/x.go", "internal/token/y.go"})
+	fl = &flattener{funcsByName: map[string][]*ast.FuncDecl{}, consts: vars, scope: scopeOf(user, "internal/token/y.go")}
+	got = fl.flatten(named, nil, 0)
+	require.Equal(t, []string{"rancher auth login, then rancher config status"}, got)
+	require.NotEmpty(t, hintGrammarViolation(got[0]))
+	assert.Contains(t, vars["github.com/rancher/rancher-cli/internal/config"], "LoginCommand")
+	assert.NotContains(t, vars["github.com/rancher/rancher-cli/internal/config"], "Built", "a variable whose value is a call is not read")
+	assert.NotContains(t, vars["github.com/rancher/rancher-cli/internal/config"], "Table", "a variable whose value is a composite literal is not read")
+}
+
+// TestHintFlattenerReadsTheRealAuthStatusRemedy asserts the production
+// tree's AuthStatusRemedy, which package clierr declares from its own
+// unqualified Rancher, flattens to exactly the command it prints, both
+// inside the package and from another one.
+func TestHintFlattenerReadsTheRealAuthStatusRemedy(t *testing.T) {
+	t.Parallel()
+	tree := parseSourceTree()
+	require.NoError(t, tree.err)
+	funcs := map[string][]*ast.FuncDecl{}
+	fl := &flattener{funcsByName: funcs, consts: packageConsts(tree.files, tree.paths)}
+
+	fl.scope = fileScope{pkg: clierrPath}
+	inside, err := parser.ParseExpr(`AuthStatusRemedy`)
+	require.NoError(t, err)
+	require.Equal(t, []string{"rancher auth status"}, fl.flatten(inside, nil, 0))
+
+	fl.scope = fileScope{pkg: modulePrefix + "internal/token", imports: map[string]string{"clierr": clierrPath}}
+	outside, err := parser.ParseExpr(`clierr.AuthStatusRemedy`)
+	require.NoError(t, err)
+	require.Equal(t, []string{"rancher auth status"}, fl.flatten(outside, nil, 0))
 }

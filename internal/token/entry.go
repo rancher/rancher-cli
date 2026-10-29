@@ -219,8 +219,8 @@ func entryOnOtherServerError(cfg *config.Config, name, server, clusterID string)
 		route = ownEntry
 	}
 	return clierr.New(clierr.CodeConflict, fmt.Sprintf(
-		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, %s; to use %s, regenerate it from an entry registered there with %s, then "+clierr.Rancher+" kubeconfig --cluster %s",
-		entry, entryURL, server, entry, route, server, useServerRemedy("<entry>", current), cluster))
+		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, %s; to use %s, regenerate it from an entry registered there with %s, then %s kubeconfig --cluster %s",
+		entry, entryURL, server, entry, route, server, useServerRemedy("<entry>", current), clierr.Rancher, cluster))
 }
 
 // namedEntryRoute is the steps that regenerate the kubeconfig from the named

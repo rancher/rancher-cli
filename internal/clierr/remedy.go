@@ -1,7 +1,9 @@
 package clierr
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math/rand/v2"
 	"regexp"
 	"strings"
 )
@@ -12,14 +14,55 @@ import (
 // pasted without --config would open the same one (kubectl's exec plugin and
 // the kubeconfig command always name it, because their directory comes from
 // the exec entry or a flag the operator's shell does not carry), or nothing.
-// U+2063 is a Unicode format character, which output.Printable removes, so a
-// marker that reaches a terminal without being expanded leaves the plain
+//
+// The marker is U+2063 (INVISIBLE SEPARATOR) followed by 32 characters
+// chosen for each process, so text that came from anywhere else - a server,
+// a file, another process - cannot hold it, and only this process's marker
+// opens a remedy. U+2063 appears only as the first character. All of its
+// characters are Unicode format characters, which output.Printable removes:
+// a marker that reaches a terminal without being expanded leaves the plain
 // command, and the command's own text is unchanged.
-const RemedyMarker = "\u2063"
+var RemedyMarker = markerFromBytes(markerBytes())
 
-// Rancher begins every remedy command: Rancher + " auth login ...". A Go
-// constant, so a constant remedy stays a constant.
-const Rancher = RemedyMarker + "rancher"
+// Rancher begins every remedy command: Rancher + " auth login ...". It is
+// a variable, since the marker is chosen when the process starts.
+var Rancher = RemedyMarker + "rancher"
+
+// markerRunes are the characters a marker holds after its first one,
+// indexed by a two-bit value: U+2060 (WORD JOINER) for 0, U+2061 (FUNCTION
+// APPLICATION) for 1, U+2062 (INVISIBLE TIMES) for 2 and U+2064 (INVISIBLE
+// PLUS) for 3.
+var markerRunes = [4]rune{'\u2060', '\u2061', '\u2062', '\u2064'}
+
+// markerBytes is 8 random bytes from one call of the top-level Uint64 of
+// math/rand/v2, which the Go runtime seeds for each process and which
+// never fails. crypto/rand is not used: its Read and its default reader
+// end the process when the system random source fails, and the exec plugin
+// must never end that way.
+func markerBytes() [8]byte {
+	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:], rand.Uint64())
+	return b
+}
+
+// markerFromBytes is U+2063 followed by one character for every two bits of
+// b: the bytes in order, the two lowest bits of each byte first, each pair
+// read as a number from 0 to 3 that picks a character from markerRunes. All
+// 64 bits of b change the result.
+func markerFromBytes(b [8]byte) string {
+	var sb strings.Builder
+	sb.WriteString("\u2063")
+	for _, v := range b {
+		for shift := 0; shift < 8; shift += 2 {
+			sb.WriteRune(markerRunes[(v>>shift)&3])
+		}
+	}
+	return sb.String()
+}
+
+// withoutSeparator is s with every U+2063 removed, which any text can hold,
+// whatever process wrote it.
+func withoutSeparator(s string) string { return strings.ReplaceAll(s, "\u2063", "") }
 
 // ExpandRemedies writes prefix after the word rancher in every remedy
 // command s holds: " --config '<dir>'" for an invocation whose remedies

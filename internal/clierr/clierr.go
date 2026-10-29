@@ -157,11 +157,11 @@ var exitCodes = map[string]int{
 // with each embedded single quote closed, escaped, and reopened. Every value
 // interpolated into a machine hint (a name, URL, or path) goes through this
 // so the emitted command round-trips as one argument even when the value
-// carries a space or shell metacharacter. The remedy marker is removed
-// from the value, so no name, URL or path can place the invocation's
-// --config inside a command it only appears in.
+// carries a space or shell metacharacter. U+2063, the first character of the
+// remedy marker, is removed from the value, so no name, URL or path can hold
+// a marker; no other character is removed.
 func ShellQuote(s string) string {
-	s = strings.ReplaceAll(s, RemedyMarker, "")
+	s = withoutSeparator(s)
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 

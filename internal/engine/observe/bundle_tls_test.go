@@ -35,6 +35,7 @@ func TestSupportBundleRootClientFailureLeavesNoRemedyMarkerInTheManifest(t *test
 	status := findItem(t, manifestFrom(t, path), "cluster.json", "c-abc").Status
 	assert.Contains(t, status, plainRemedy)
 	assert.NotContains(t, status, clierr.RemedyMarker)
+	assert.False(t, holdsMarkerRune(status), "the status holds a character of the remedy marker")
 	assert.NotContains(t, readArchive(t, path)["manifest.json"], clierr.RemedyMarker)
 }
 
@@ -50,5 +51,6 @@ func TestSupportBundleClusterClientLogFailureLeavesNoRemedyMarkerInTheManifest(t
 	status := findItem(t, manifestFrom(t, path), "agent", "c-1").Status
 	assert.Contains(t, status, plainRemedy)
 	assert.NotContains(t, status, clierr.RemedyMarker)
+	assert.False(t, holdsMarkerRune(status), "the status holds a character of the remedy marker")
 	assert.NotContains(t, readArchive(t, path)["manifest.json"], clierr.RemedyMarker)
 }

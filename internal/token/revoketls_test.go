@@ -381,7 +381,7 @@ func TestTheStampKeepsTheTextOfTheRequestNotTheReportedMessage(t *testing.T) {
 
 // TestAReportedCertificateFailureCarriesNoRemedyMarker asserts the report and
 // the text of a not-revoked token whose entry stays (the row that holds a
-// command) carry no U+2063: the failure details do not expand it. Mutation:
+// command) hold no copy of this process's marker. Mutation:
 // drop ExpandRemedies in tlsMessage.
 func TestAReportedCertificateFailureCarriesNoRemedyMarker(t *testing.T) {
 	x := newRevFixture(t, testrancher.Options{})
@@ -391,6 +391,7 @@ func TestAReportedCertificateFailureCarriesNoRemedyMarker(t *testing.T) {
 	n := notRevoked(t, rep, login.Ref.Name)
 	assert.Contains(t, n.Error, "rancher config update-server 'prod' --cacert <file>")
 	assert.NotContains(t, n.Error, clierr.RemedyMarker)
+	assert.False(t, holdsMarkerRune(n.Error), "the message holds a character of the remedy marker")
 	assert.NotContains(t, strings.Join(rep.TextDetails(), "\n"), clierr.RemedyMarker)
 	assert.NotContains(t, strings.Join(d.TextLines(), "\n"), clierr.RemedyMarker)
 }

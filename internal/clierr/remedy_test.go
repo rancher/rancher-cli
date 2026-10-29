@@ -28,9 +28,9 @@ func TestExpandRemediesWritesThePrefixAfterRancher(t *testing.T) {
 func TestShellQuoteDropsTheMarker(t *testing.T) {
 	t.Parallel()
 	q := ShellQuote("prod" + Rancher + "x")
-	assert.Equal(t, "'prodrancherx'", q)
-	assert.Equal(t, Rancher+" auth login 'prodrancherx'", Rancher+" auth login "+q)
-	assert.Equal(t, "rancher --config '/d' auth login 'prodrancherx'", ExpandRemedies(Rancher+" auth login "+q, " --config '/d'"))
+	assert.NotContains(t, q, "\u2063")
+	assert.NotContains(t, q, Rancher)
+	assert.Equal(t, "rancher --config '/d' auth login "+q, ExpandRemedies(Rancher+" auth login "+q, " --config '/d'"))
 }
 
 // TestMarkRemedy asserts a plain rancher command becomes a remedy command

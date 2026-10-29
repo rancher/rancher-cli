@@ -14,7 +14,7 @@ import (
 )
 
 // AuthStatusRemedy is the command a refused credential names.
-const AuthStatusRemedy = Rancher + " auth status"
+var AuthStatusRemedy = Rancher + " auth status"
 
 // Request names the call a server status answers. A nil *Request means
 // nothing is known about the call: the texts for a refusal with no reason

@@ -252,7 +252,7 @@ func fromRemedyMarker(info *types.Info, e ast.Expr, locals map[types.Object]bool
 			return true
 		}
 		switch obj.(type) {
-		case *types.Const:
+		case *types.Const, *types.Var:
 			found = found || id.Name == "Rancher" || id.Name == "RemedyMarker"
 		case *types.Func:
 			found = found || id.Name == "MarkRemedy"
@@ -412,6 +412,7 @@ var markedCandidateCases = []struct {
 	{"declaredvar", 1},
 	{"plain", 0},
 	{"othername", 0},
+	{"othervar", 0},
 }
 
 var markedCandidatePosition = regexp.MustCompile(`^[^:]+:[0-9]+: `)
@@ -421,8 +422,8 @@ var markedCandidatePosition = regexp.MustCompile(`^[^:]+:[0-9]+: `)
 // clierr.MarkRemedy, keyed or positional, a field of a candidate assigned
 // from one, and a local variable bound from one and used in a candidate are
 // reported, and a candidate of plain text, one built from a name of another
-// package that looks alike, and a message built from clierr.Rancher outside
-// a candidate are accepted.
+// package that looks alike, one built from another variable of clierr, and a
+// message built from clierr.Rancher outside a candidate are accepted.
 func TestMarkedCandidateScanFixtures(t *testing.T) {
 	t.Parallel()
 	pkgs, err := markedCandidateFixtures()

@@ -893,7 +893,8 @@ against every record and **deletes all matches**, and is **idempotent** (zero ma
 success, never `NOT_FOUND`) so teardown scripts stay green.
 
 **Remedies name the invocation's directory.** A remedy command opens with
-`clierr.Rancher`, the word rancher behind a marker character. `runtime.IO.RemedyDir`,
+`clierr.Rancher`, the word rancher behind a marker chosen for each process, so only
+that process's marker opens a remedy. `runtime.IO.RemedyDir`,
 set by the CLI layer before the config load, makes that invocation's renderers - errors
 in text and JSON with their details, warnings, and the prompter's notices - write
 `--config` and the directory, shell-quoted, after rancher. It is set unless a command
@@ -906,8 +907,10 @@ command whose descriptor sets `RemedyConfigDir` (`auth get-token` except in a ca
 or a flag that shell does not carry. Error details name it too, through the payload's
 `MapText`. A bare command that sets `RemedyConfigDir` has its directory resolved in the bare
 branch only to name it. A command's own text output and its result data print the
-plain command, and result data never carries the marker (a U+2063 just before the word
-rancher in structured output is dropped, whatever wrote it). Errors rendered before the
+plain command, and result data never carries the marker (structured output drops only
+this process's marker before the word rancher; a U+2063 or marker that came from server text,
+a file or another process is never expanded and stays an invisible character in json, yaml
+and template output). Errors rendered before the
 directory is resolved (an unknown command or flag, a flag value that is another flag)
 print plain commands. A command that reads no directory (`--help`, `--version`, `schema`,
 `completion`, `skill`) is written without the marker, built through

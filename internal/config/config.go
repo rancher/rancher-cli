@@ -33,7 +33,7 @@ func LoginHintFor(name string) string {
 // The remedy commands the shared credential and store-change code names,
 // each opened by clierr.Rancher so the invocation that prints it can name
 // its config directory.
-const (
+var (
 	// LoginCommand logs in; LoginHintFor names the entry.
 	LoginCommand = clierr.Rancher + " auth login"
 	// DeleteServerCommand removes a server entry; the entry follows.

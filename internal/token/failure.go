@@ -273,8 +273,8 @@ func unmarkedSessionText(s clierr.UnmarkedTokenSearch) string {
 	return fmt.Sprintf("a session token may have been created through %s %s; the CLI stopped waiting at %s, "+
 		"but the browser sign-in can still complete after that, and the token may be newer; "+
 		"these facts narrow the candidates but cannot identify one token; "+
-		"inspect them with: "+clierr.Rancher+" get management-tokens -o json, or in the UI under Account & API Keys",
-		s.AuthProvider, window, s.PollEndedAt)
+		"inspect them with: %s get management-tokens -o json, or in the UI under Account & API Keys",
+		s.AuthProvider, window, s.PollEndedAt, clierr.Rancher)
 }
 
 // cleanFate is true when a token's create is settled and nothing it created

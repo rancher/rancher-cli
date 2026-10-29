@@ -192,7 +192,7 @@ func TestUnfinishedChangeNoteNamesTheStatusCommand(t *testing.T) {
 		return clierr.New(clierr.CodeNotLoggedIn, `not logged in to "prod"`).WithHint(clierr.Rancher + " auth login 'prod'")
 	}
 	cfg := activeTransition(t, dir, fileDeleteStep(t, dir, "prod", "https://r.ex", "prod-tok"))
-	const note = "a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"
+	note := "a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"
 	active := UnfinishedChangeOf(dir, cfg)
 	assert.Equal(t, UnfinishedChange{Note: note}, active)
 	err := active.Apply(notLoggedIn())
