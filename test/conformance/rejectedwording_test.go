@@ -200,6 +200,7 @@ var wordingSkippedPrefixes = []string{
 	"internal/testrancher/",
 	"internal/testtransport/",
 	"internal/remedytest/",
+	"internal/testfs/",
 	"internal/envtestlog/",
 	"internal/commands/cmdtest/",
 	"internal/runtime/completion/completiontest/",

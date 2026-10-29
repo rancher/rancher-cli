@@ -1,49 +1,15 @@
 package telemetry
 
 import (
-	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-)
 
-// snapshot lists every path under dir with its mode, size, modification time
-// (a directory's only off Windows) and contents, so a test sees any change a
-// read should not make.
-func snapshot(t *testing.T, dir string) []string {
-	t.Helper()
-	var out []string
-	require.NoError(t, filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		require.NoError(t, err)
-		info, err := d.Info()
-		require.NoError(t, err)
-		rel, _ := filepath.Rel(dir, p)
-		// NTFS updates a directory's modification time some time after a
-		// child is created or closed, so a snapshot taken right after the
-		// setup can read the old value; on Windows a directory's time is
-		// left out, and the names below it still show a create or a remove.
-		mtime := info.ModTime().UnixNano()
-		if d.IsDir() && runtime.GOOS == "windows" {
-			mtime = 0
-		}
-		line := fmt.Sprintf("%s %v %d %d", rel, info.Mode(), info.Size(), mtime)
-		if info.Mode().IsRegular() {
-			data, err := os.ReadFile(p)
-			require.NoError(t, err)
-			line += " " + string(data)
-		}
-		out = append(out, line)
-		return nil
-	}))
-	slices.Sort(out)
-	return out
-}
+	"github.com/rancher/rancher-cli/internal/testfs"
+)
 
 // TestReadDirectoryIDNeverWrites asserts the read-only id reader reports the
 // id of a valid file and absent for every other state, without a panic and
@@ -77,12 +43,12 @@ func TestReadDirectoryIDNeverWrites(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
 			c.prepare(t, dir)
-			before := snapshot(t, dir)
+			before := testfs.Snapshot(t, dir)
 			s := openStore(t, dir)
 			got, ok := s.ReadDirectoryID()
 			assert.Equal(t, c.ok, ok)
 			assert.Equal(t, c.want, got)
-			assert.Equal(t, before, snapshot(t, dir))
+			assert.Equal(t, before, testfs.Snapshot(t, dir))
 		})
 	}
 }

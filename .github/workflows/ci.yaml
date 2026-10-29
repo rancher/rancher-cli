@@ -13,6 +13,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# ci-windows.yaml carries copies of the two Windows jobs below
+# (install-windows and e2e-windows) for a run of just those two. Its job
+# names differ from the check names this workflow reports. A run of it
+# never replaces a full run of this workflow: a merge requires the full run.
+# A change to a Windows job here is made in the copy in the same commit.
 jobs:
   # The two parts of scripts/validate run as parallel jobs; the commit hook
   # and make validate run the same two parts in one process, so the hook and
@@ -187,6 +192,10 @@ jobs:
       # contract files read from a Windows checkout. The telemetry commands
       # list and delete that store, so their tests run here too.
       - run: go test -race -count=1 ./internal/telemetry/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      # The test helpers for the Windows differences: -v prints each test and
+      # the log shows which Windows branches of the helpers ran and which
+      # skipped.
+      - run: go test -race -count=1 -v ./internal/testfs/
       # What one recorded command run costs the exec plugin's cache hit,
       # through the built command tree: the directory stat and the store's
       # file operations, on NTFS, on top of the hit's own reads, and no

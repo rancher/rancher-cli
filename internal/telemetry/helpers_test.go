@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"sync"
 	"testing"
@@ -157,13 +156,6 @@ func openStore(t *testing.T, dir string) *Store {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	return s
-}
-
-func skipOnWindows(t *testing.T, why string) {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip(why)
-	}
 }
 
 // realHour returns the start of the UTC hour that began ago before now, by

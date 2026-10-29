@@ -51,6 +51,7 @@ what drifted the previous revision of this doc).
 | `internal/commands/skill` | `skill install/uninstall/status` over `internal/skillinstall`. |
 | `internal/commands/telemetrycmd` | The `telemetry` group: `status`, `on`, `off`, `reset` and `show`, as local commands over `internal/telemetry` and the config file's `telemetry` key. They make no request, read no credential and import no client; a conformance test limits their direct imports and their use of `internal/config`. |
 | `internal/remedytest` | Test-only: the top-level commands that read a config directory (the schema manifest golden's commands less `clierr.DirectoryFreeCommands`), which the checks that every remedy command names the directory share, and the helpers a details payload's per-type test uses to walk, plant and classify its text fields (`TextPaths`, `PlantMarked`, `FieldLists`, `AssertEveryFieldClassified`, `AssertMappedAsListed`). No production importer. |
+| `internal/testfs` | Test-only: helpers for the places Windows differs from Unix (`Symlink` skips where the account cannot create symlinks, `RestrictAccess` skips on Windows and as root, `DirectoryInPlaceOfFile`, `Snapshot` and `Tree` with slash-separated paths and no directory time on Windows, `RequireOwnerOnly`, and on Windows `ReadACL` and `CurrentUser`), which tests call instead of `runtime.GOOS`, `os.Symlink`, `os.Chmod`, `os.Geteuid`, `ModTime` and the raw access list calls. No production importer. |
 | `internal/testtransport` | Test-only: `GuardDefaultTransport`, which a test binary that starts httptest servers installs in `TestMain` so a request through `http.DefaultTransport` fails (an httptest server's `Close` closes that transport's idle connections, which breaks such a request in another test). A test sends requests through the server's own client instead. It also holds the helpers a test server uses to stand in for a server that never answers: they wait for the request's context to end, then abort the connection with no response, because a handler that returns sends an implicit 200 that a client whose cancellation lands in the same instant can read. No production importer; `internal/testrancher` imports it. |
 | `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness, an exec-plugin process and the harness that holds one mid-call while a command runs. No production importer. |
 | `internal/cli/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
@@ -150,6 +151,7 @@ graph TD
     accesscomplete["internal/engine/access/complete"]
     kubeconfigengine["internal/engine/kubeconfig"]
     remedytest["internal/remedytest"]
+    testfs["internal/testfs"]
     testtransport["internal/testtransport"]
     config["internal/config"]
     credhelper["credhelper"]

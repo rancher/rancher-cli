@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // answerRow is one answer of the outcome table and what each record stores.
@@ -238,9 +240,7 @@ func TestSaveFactsWritesUnderTheRecordingGates(t *testing.T) {
 	})
 	t.Run("the telemetry path is a symlink", func(t *testing.T) {
 		dir, outside := t.TempDir(), t.TempDir()
-		if err := os.Symlink(outside, filepath.Join(dir, "telemetry")); err != nil {
-			t.Skipf("symlinks are not available: %v", err)
-		}
+		testfs.Symlink(t, outside, filepath.Join(dir, "telemetry"))
 		assert.False(t, SaveFacts(server, f, Options{ConfigDir: dir, DirExisted: true}))
 		assert.Empty(t, readNames(t, outside))
 	})
@@ -289,7 +289,7 @@ func TestRecordHandsBackWhatItsEventRead(t *testing.T) {
 		// error other than not-exist on every platform; a plain file in place
 		// of the servers directory reads as not-exist on Windows.
 		dir := t.TempDir()
-		require.NoError(t, os.MkdirAll(factsPath(dir), 0o700))
+		testfs.DirectoryInPlaceOfFile(t, factsPath(dir))
 		SetServer(server, "")
 		st, read := Record(runEvent(fixedNoon), Options{ConfigDir: dir, DirExisted: true})
 		assert.Equal(t, StatusRecorded, st)
@@ -409,7 +409,7 @@ func TestReadServerFactsReportsWhatItCouldRead(t *testing.T) {
 	})
 	t.Run("the facts file path is a directory", func(t *testing.T) {
 		dir := t.TempDir()
-		require.NoError(t, os.MkdirAll(factsPath(dir), 0o700))
+		testfs.DirectoryInPlaceOfFile(t, factsPath(dir))
 		assert.False(t, ReadServerFacts(server, existed(dir)).Usable)
 	})
 	t.Run("controls off", func(t *testing.T) {
@@ -437,9 +437,7 @@ func TestReadServerFactsReportsWhatItCouldRead(t *testing.T) {
 	})
 	t.Run("the telemetry path is a symlink", func(t *testing.T) {
 		dir, outside := t.TempDir(), t.TempDir()
-		if err := os.Symlink(outside, filepath.Join(dir, "telemetry")); err != nil {
-			t.Skipf("symlinks are not available: %v", err)
-		}
+		testfs.Symlink(t, outside, filepath.Join(dir, "telemetry"))
 		assert.False(t, ReadServerFacts(server, existed(dir)).Usable)
 	})
 	t.Run("the telemetry path is a plain file", func(t *testing.T) {

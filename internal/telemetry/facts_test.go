@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 const goodInstallID = "d3b07384-d9a0-4e7a-9c2b-5f6a7b8c9d0e"
@@ -144,7 +146,7 @@ func TestFactsWriteIsAtomicAndOwnerOnly(t *testing.T) {
 	assert.Equal(t, goodInstallID, got.InstallID.Value)
 	assert.True(t, got.UpdatedAt.Equal(fixedNoon))
 	assert.Equal(t, []string{FactsFileName(url)}, readNames(t, filepath.Join(dir, "telemetry", "servers")))
-	if !skippedOnWindows() {
+	if !testfs.OnWindows() {
 		info, err := os.Stat(filepath.Join(dir, "telemetry", "servers", FactsFileName(url)))
 		require.NoError(t, err)
 		assert.EqualValues(t, 0o600, info.Mode().Perm())
@@ -167,5 +169,3 @@ func TestFactsWriteIsAtomicAndOwnerOnly(t *testing.T) {
 	_, ok = s.ReadFacts("https://other.example.com")
 	assert.False(t, ok)
 }
-
-func skippedOnWindows() bool { return filepath.Separator == '\\' }

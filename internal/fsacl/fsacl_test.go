@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // TestHardenAcceptsAFileAndADirectory asserts both calls succeed on an
@@ -15,6 +17,7 @@ func TestHardenAcceptsAFileAndADirectory(t *testing.T) {
 	file := filepath.Join(dir, "f")
 	require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
 	require.NoError(t, Harden(file))
+	testfs.RequireOwnerOnly(t, file)
 
 	sub := filepath.Join(dir, "d")
 	require.NoError(t, os.Mkdir(sub, 0o700))
@@ -22,6 +25,7 @@ func TestHardenAcceptsAFileAndADirectory(t *testing.T) {
 
 	inner := filepath.Join(sub, "g")
 	require.NoError(t, os.WriteFile(inner, []byte("y"), 0o600))
+	testfs.RequireOwnerOnly(t, inner)
 	got, err := os.ReadFile(inner)
 	require.NoError(t, err)
 	require.Equal(t, "y", string(got))

@@ -1,0 +1,62 @@
+# Copies of the install-windows and e2e-windows jobs of ci.yaml, for a run of
+# just those two jobs: dispatch this workflow on a branch for an early
+# Windows result. The jobs in ci.yaml are the definition. A change to a
+# Windows job there is made in this file in the same commit. The job names
+# differ from the check names ci.yaml reports on purpose: a run of this
+# workflow never stands in for a full run of ci.yaml, which a merge requires.
+name: ci-windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  install-windows-early:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -race -count=1 -run TestWindows ./install/
+      - run: go test -race -count=1 ./internal/config/
+      - run: go test -race -count=1 ./internal/telemetry/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      # The test helpers for the Windows differences: -v prints each test and
+      # the log shows which Windows branches of the helpers ran and which
+      # skipped.
+      - run: go test -race -count=1 -v ./internal/testfs/
+      - run: go test -race -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse' ./internal/cli/
+      - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
+      - run: go test -race -count=1 -v -run 'TestRenameOverAnOpenTarget|TestRemoveOfAnOpenFile|TestReadsRetryASharingViolation|TestShareRetryLeavesOtherErrorsAlone|TestConcurrentWritersOfOneFile|TestReadsDuringReplace|TestRootReadsDuringRootReplace' ./internal/config/
+      - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
+      - run: go test -race -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
+
+  e2e-windows-early:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Cache envtest assets
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~\AppData\Local\kubebuilder-envtest
+          key: envtest-${{ runner.os }}-${{ hashFiles('scripts/e2e') }}
+      - run: bash scripts/e2e
+        timeout-minutes: 25
+      - run: go test -count=1 -v -run TestPwsh ./internal/cli/completions/
+        timeout-minutes: 10

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 var fixedNoon = time.Date(2026, 10, 23, 14, 30, 0, 0, time.UTC)
@@ -172,7 +175,7 @@ func TestPassRefreshesTheMarkerBeforeItRuns(t *testing.T) {
 // TestFilesAreOwnerOnly asserts the modes: 0700 for the directories and
 // 0600 for the files.
 func TestFilesAreOwnerOnly(t *testing.T) {
-	skipOnWindows(t, "mode bits are not meaningful on NTFS; the access list test covers it")
+	testfs.SkipOnWindows(t, "mode bits are not meaningful on NTFS; the access list test covers it")
 	enable(t)
 	useClock(t, fixedNoon)
 	dir := t.TempDir()
@@ -210,9 +213,7 @@ func TestSymlinkedTelemetryDirectoryIsRefused(t *testing.T) {
 	enable(t)
 	useClock(t, fixedNoon)
 	dir, outside := t.TempDir(), t.TempDir()
-	if err := os.Symlink(outside, filepath.Join(dir, "telemetry")); err != nil {
-		t.Skipf("symlinks are not available: %v", err)
-	}
+	testfs.Symlink(t, outside, filepath.Join(dir, "telemetry"))
 	assert.Equal(t, StatusFailed, record(t, dir, runEvent(fixedNoon)))
 	assert.Empty(t, readNames(t, outside))
 
@@ -373,14 +374,10 @@ func TestInjectedWriteFailuresReturnNoErrorAndPrintNothing(t *testing.T) {
 	writeHook = oldHook
 	assert.Empty(t, read(), "nothing is written to standard output or error")
 
-	skipOnWindows(t, "a read-only directory is not enforced the same way")
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory modes")
-	}
+	testfs.SkipOnWindows(t, "a read-only directory is not enforced the same way")
 	locked := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(locked, "telemetry"), 0o700))
-	require.NoError(t, os.Chmod(filepath.Join(locked, "telemetry"), 0o500))
-	t.Cleanup(func() { _ = os.Chmod(filepath.Join(locked, "telemetry"), 0o700) })
+	testfs.RestrictAccess(t, filepath.Join(locked, "telemetry"), 0o500)
 	assert.Equal(t, StatusFailed, record(t, locked, runEvent(fixedNoon)))
 	assert.Empty(t, read(), "nothing is written to standard output or error")
 }
@@ -392,23 +389,10 @@ func TestVariableOffDeletesNothing(t *testing.T) {
 	useClock(t, fixedNoon)
 	dir := t.TempDir()
 	require.Equal(t, StatusRecorded, record(t, dir, runEvent(fixedNoon)))
-	before := listTree(t, dir)
+	before := testfs.Tree(t, dir)
 	st, _ := Record(runEvent(fixedNoon), Options{ConfigDir: dir, DirExisted: true, Getenv: envOf(map[string]string{EnvTelemetry: "false"})})
 	assert.Equal(t, StatusOff, st)
-	assert.Equal(t, before, listTree(t, dir))
-}
-
-func listTree(t *testing.T, dir string) []string {
-	t.Helper()
-	var out []string
-	require.NoError(t, filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		require.NoError(t, err)
-		rel, _ := filepath.Rel(dir, p)
-		out = append(out, rel)
-		return nil
-	}))
-	slices.Sort(out)
-	return out
+	assert.Equal(t, before, testfs.Tree(t, dir))
 }
 
 // TestDirectoryIDCases asserts the id file's cases: created on the first
@@ -584,12 +568,12 @@ func TestResetDeletesEventsFactsAndIDOnly(t *testing.T) {
 	require.NoError(t, s.WriteFacts("https://rancher.example.com", f))
 	require.NoError(t, s.Reset())
 
-	tree := listTree(t, dir)
+	tree := testfs.Tree(t, dir)
 	assert.Contains(t, tree, "config.yaml")
-	assert.Contains(t, tree, filepath.Join("telemetry", "pruned"))
-	assert.NotContains(t, tree, filepath.Join("telemetry", "events"))
-	assert.NotContains(t, tree, filepath.Join("telemetry", "servers"))
-	assert.NotContains(t, tree, filepath.Join("telemetry", "config-directory-id"))
+	assert.Contains(t, tree, path.Join("telemetry", "pruned"))
+	assert.NotContains(t, tree, path.Join("telemetry", "events"))
+	assert.NotContains(t, tree, path.Join("telemetry", "servers"))
+	assert.NotContains(t, tree, path.Join("telemetry", "config-directory-id"))
 }
 
 func openStoreNoCleanup(t *testing.T, dir string) *Store {

@@ -3,7 +3,6 @@ package telemetry
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -13,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 func jsonlNames(t *testing.T, dir string, hour time.Time) []string {
@@ -107,7 +108,7 @@ func TestCompactedHourFileHasOneEventPerLineAndIsOwnerOnly(t *testing.T) {
 	for _, l := range lines {
 		assert.Empty(t, schemaValidator(t).errors(stripLocal(t, l)))
 	}
-	if runtimeIsUnix() {
+	if !testfs.OnWindows() {
 		info, err := os.Stat(file)
 		require.NoError(t, err)
 		assert.EqualValues(t, 0o600, info.Mode().Perm())
@@ -120,8 +121,6 @@ func stripLocal(t *testing.T, line string) any {
 	delete(m, keyLocalFormat)
 	return m
 }
-
-func runtimeIsUnix() bool { return filepath.Separator == '/' }
 
 // TestConcurrentCompactionLosesAndDuplicatesNothing asserts several
 // processes compacting one full hour at the same time lose no event, write
@@ -178,7 +177,7 @@ func TestConcurrentCompactionLosesAndDuplicatesNothing(t *testing.T) {
 		}
 	}
 	assert.Zero(t, total, "the counted markers are gone")
-	if runtime.GOOS != "windows" {
+	if !testfs.OnWindows() {
 		// On Windows a slot another process holds open cannot be removed
 		// and is left for a later pass; the reader removes its duplicate.
 		assert.Empty(t, slotNames(t, dir, h))
