@@ -187,7 +187,7 @@ func TestRunRejectsInvalidAction(t *testing.T) {
 		IO{Out: &out, Err: &errBuf, Format: "json", Apply: true}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "invalid effect action")
+	assert.Equal(t, "internal error: invalid action \"destroy\" in the dry-run preview", ce.Message)
 }
 
 func TestRunRejectsNonDestructiveDelete(t *testing.T) {
@@ -268,7 +268,7 @@ func TestRenderEffectTableRendersDryRunTextWarningsToStderr(t *testing.T) {
 	assert.Equal(t, "update widget/x\n"+
 		"  server: prod\n"+
 		"  cluster: c-x\n"+
-		"  dry run - re-run with --apply to execute\n", out.String())
+		"  dry-run preview - re-run with --apply to apply the change\n", out.String())
 	assert.Equal(t, "# warning: note-a\n", errBuf.String())
 }
 
@@ -292,7 +292,7 @@ func TestRenderEffectWideMatchesTable(t *testing.T) {
 		IO{Out: &wideOut, Err: io.Discard, Format: "wide", DryRun: true}, safety.Binding{})
 	require.Nil(t, ce)
 	assert.Equal(t, tableOut.String(), wideOut.String())
-	assert.Contains(t, tableOut.String(), "dry run - re-run with --apply --yes to execute")
+	assert.Contains(t, tableOut.String(), "dry-run preview - re-run with --apply --yes to apply the change")
 }
 
 // TestDryRunTextDiffLines asserts the change-summary content: each Effect.Diff
@@ -313,7 +313,7 @@ func TestDryRunTextDiffLines(t *testing.T) {
 	require.Nil(t, ce)
 	assert.Equal(t, "update deployment/nginx\n"+
 		"  /spec/replicas: 1 -> 3\n"+
-		"  dry run - re-run with --apply to execute\n", out.String())
+		"  dry-run preview - re-run with --apply to apply the change\n", out.String())
 }
 
 // TestDryRunTextDiffValues asserts a map or list value prints as compact JSON
@@ -350,7 +350,7 @@ func TestDryRunTextDiffValues(t *testing.T) {
 		"  /spec/text: <nil> -> ab\n"+
 		"  /spec/json: <nil> -> {\"k\":\"line1\\nline2\"}\n"+
 		"  /spec/removed: [\"a\",\"b\"] -> <nil>\n"+
-		"  dry run - re-run with --apply to execute\n", out.String())
+		"  dry-run preview - re-run with --apply to apply the change\n", out.String())
 }
 
 // TestRenderEffectRawFormatsWarningsToStderr asserts that raw-output formats
@@ -511,7 +511,7 @@ func TestRunRejectsNilExecutor(t *testing.T) {
 	io := IO{Out: &out, Err: &errOut, Apply: true, Format: "json"}
 	_, ce := Run(t.Context(), cmd, mapInput{}, io, safety.Binding{})
 	if ce == nil || ce.Code != clierr.CodeGeneric {
-		t.Fatalf("nil executor: got %v, want GENERIC command-bug error (not a panic)", ce)
+		t.Fatalf("nil executor: got %v, want GENERIC internal error (not a panic)", ce)
 	}
 }
 
@@ -523,6 +523,7 @@ func TestRunReadCommandDryRunRejected(t *testing.T) {
 		IO{Out: &out, Err: &errBuf, Format: "json", DryRun: true}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeDryRunNotApplicable, ce.Code)
+	assert.Equal(t, "get thing is a read-only command; re-run without --dry-run", ce.Message)
 }
 
 func TestRunUnimplementedContractRejected(t *testing.T) {
@@ -816,7 +817,7 @@ func TestRenderResultRejectsSummaryAndRawBytes(t *testing.T) {
 	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "command bug")
+	assert.Contains(t, ce.Message, "internal error")
 }
 
 func TestRenderResultRejectsTextAndSummary(t *testing.T) {
@@ -829,7 +830,7 @@ func TestRenderResultRejectsTextAndSummary(t *testing.T) {
 	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "command bug")
+	assert.Contains(t, ce.Message, "internal error")
 }
 
 func TestRenderResultRejectsSummaryAndRaw(t *testing.T) {
@@ -842,14 +843,14 @@ func TestRenderResultRejectsSummaryAndRaw(t *testing.T) {
 	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "command bug")
+	assert.Contains(t, ce.Message, "internal error")
 }
 
-// TestRenderResultShapeMismatchIsCommandBug asserts the runtime enforcement of a
+// TestRenderResultShapeMismatchIsInternalError asserts the runtime enforcement of a
 // Descriptor's declared OutputShape: a command whose Result does not carry
-// the payload its own Shape promises is a command bug, not a silent
+// the payload its own Shape promises is an internal error, not a silent
 // fallback.
-func TestRenderResultShapeMismatchIsCommandBug(t *testing.T) {
+func TestRenderResultShapeMismatchIsInternalError(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name   string
@@ -890,7 +891,7 @@ func TestRenderResultShapeMismatchIsCommandBug(t *testing.T) {
 			_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: tc.format}, safety.Binding{})
 			require.NotNil(t, ce)
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
-			assert.Contains(t, ce.Message, "command bug")
+			assert.Contains(t, ce.Message, "internal error")
 			assert.Empty(t, out.String(), "a shape-mismatch result must never partially render")
 			assert.NotEmpty(t, errBuf.String(), "a shape-mismatch error must still be rendered to stderr")
 		})
@@ -1029,7 +1030,7 @@ func TestRenderResultUsesWideTextOverride(t *testing.T) {
 
 // TestCheckResultShapeRejectsWideTextWithoutShapeText asserts WideText is
 // a projection of a ShapeText Text, never a payload of its own: any other
-// shape, or an empty Text, is a command bug.
+// shape, or an empty Text, is an internal error.
 func TestCheckResultShapeRejectsWideTextWithoutShapeText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -1052,7 +1053,7 @@ func TestCheckResultShapeRejectsWideTextWithoutShapeText(t *testing.T) {
 
 // TestCheckResultShapeRejectsWideAndStyledText asserts the two text
 // projections never combine: StyledText styles Text, and no builder styles
-// a wide view, so a result carrying both is a command bug.
+// a wide view, so a result carrying both is an internal error.
 func TestCheckResultShapeRejectsWideAndStyledText(t *testing.T) {
 	t.Parallel()
 	d := Descriptor{Name: "access list", Shape: ShapeText}
@@ -1227,7 +1228,7 @@ func TestRunValidatesOutputFormat(t *testing.T) {
 		{
 			name:    "template parse error",
 			format:  "template={{",
-			message: "invalid template:",
+			message: "--output template does not parse:",
 		},
 	}
 	for _, tc := range invalid {
@@ -1455,7 +1456,7 @@ func TestRenderErrDetailsBlock(t *testing.T) {
 	assert.Equal(t, "error (CONFLICT): boom\n", errBuf.String())
 }
 
-// TestRenderErrFallsBackForUnprojectedDetails asserts the command-bug defense:
+// TestRenderErrFallsBackForUnprojectedDetails asserts the defense against an internal error:
 // a Details value that reached the error through some path other than
 // WithDetails (an Error literal setting the field directly, bypassing the
 // typed setter) renders the neutral fallback line instead of nothing, or a
@@ -1465,6 +1466,7 @@ func TestRenderErrFallsBackForUnprojectedDetails(t *testing.T) {
 	ce := &clierr.Error{Code: clierr.CodeGeneric, Message: "boom", Details: "raw value bypassing WithDetails"}
 	var errBuf bytes.Buffer
 	_ = renderErr(IO{Err: &errBuf, Format: ""}, ce)
+	assert.Equal(t, "the error has more details - re-run with -o json to see them", detailsFallbackLine)
 	assert.Equal(t, "error (GENERIC): boom\n  "+detailsFallbackLine+"\n", errBuf.String())
 }
 
@@ -1779,7 +1781,7 @@ func TestResultSummaryAppearsInJSONEnvelope(t *testing.T) {
 
 // TestResultSummaryRequiresTabularData asserts the runtime rule that Summary
 // rides only over Tabular Data - the JSON-fallback-era pattern of a Summary
-// line papering over non-Tabular Data is a command bug now that the
+// line papering over non-Tabular Data is an internal error now that the
 // fallback itself is gone.
 func TestResultSummaryRequiresTabularData(t *testing.T) {
 	t.Parallel()
@@ -1955,7 +1957,7 @@ func TestValidateFormatLeavesTheValueOutForASecretInput(t *testing.T) {
 			if tc.ordinary != "" {
 				assert.Equal(t, tc.ordinary, ordinary.Message)
 			} else {
-				assert.Contains(t, ordinary.Message, "invalid template: ")
+				assert.Contains(t, ordinary.Message, "--output template does not parse: ")
 				assert.Contains(t, ordinary.Message, "s3cretcanary9", "an ordinary command shows the parser's message")
 			}
 			secret := validateFormat(tc.format, true)
@@ -2057,6 +2059,128 @@ func TestValidateInputEnumRefusalsLeaveTheValueOutForASecretInput(t *testing.T) 
 			assert.Equal(t, clierr.CodeValidation, secret.Code)
 			assert.Equal(t, tc.secret, secret.Message)
 			assert.NotContains(t, secret.Message, "s3cretcanary9")
+		})
+	}
+}
+
+// TestInternalErrorMessagesStartWithThePrefix asserts the whole message of
+// every defect the pipeline reports in a command or in the CLI's own setup:
+// the GENERIC code and a text that starts with "internal error: ". A new
+// message of that kind is covered once its row is added; the source scan in
+// test/conformance holds the prefix for a message nobody added.
+func TestInternalErrorMessagesStartWithThePrefix(t *testing.T) {
+	t.Parallel()
+	run := func(t *testing.T, cmd Command, streams IO) *clierr.Error {
+		t.Helper()
+		var out, errBuf bytes.Buffer
+		streams.Out, streams.Err, streams.Format = &out, &errBuf, "json"
+		_, ce := Run(t.Context(), cmd, mapInput{}, streams, safety.Binding{})
+		require.NotNil(t, ce)
+		return ce
+	}
+	capability := func(req CapabilityRequirement) func(t *testing.T) *clierr.Error {
+		return func(t *testing.T) *clierr.Error {
+			t.Helper()
+			ce := ValidCapabilityShape(req, "get widget")
+			require.NotNil(t, ce)
+			return ce
+		}
+	}
+	shape := func(d Descriptor, res Result, format string) func(t *testing.T) *clierr.Error {
+		return func(t *testing.T) *clierr.Error {
+			t.Helper()
+			ce := checkResultShape(d, res, format)
+			require.NotNil(t, ce)
+			return ce
+		}
+	}
+	plan := func(eff safety.Effect, exec ExecuteFunc) func(t *testing.T) *clierr.Error {
+		return func(t *testing.T) *clierr.Error {
+			t.Helper()
+			return run(t, fakeMutating{d: mutatingDesc(), eff: eff, exec: exec}, IO{Apply: true, Yes: true})
+		}
+	}
+	widget := safety.Effect{Action: safety.ActionCreate, Target: "x", DisplayKind: "widget", DisplayName: "x"}
+	styled := func(style.Style) string { return "x\n" }
+
+	for _, tc := range []struct {
+		name string
+		got  func(t *testing.T) *clierr.Error
+		want string
+	}{
+		{"a command that is neither a read nor a mutating command", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			return run(t, describeOnly{d: Descriptor{Name: "broken", CommandType: ReadOnly}}, IO{})
+		}, "internal error: command implements neither ReadCommand nor MutatingCommand: broken"},
+		{"a plan with no executor", plan(widget, nil),
+			"internal error: the command returned nothing to run to apply the change"},
+		{"a plan with an invalid action", plan(safety.Effect{Action: safety.Action("destroy"), Target: "x", DisplayKind: "widget", DisplayName: "x"}, unusedExec(t)),
+			`internal error: invalid action "destroy" in the dry-run preview`},
+		{"a plan with no display kind", plan(safety.Effect{Action: safety.ActionCreate, Target: "x", DisplayName: "x"}, unusedExec(t)),
+			"internal error: the dry-run preview has an empty DisplayKind or DisplayName"},
+		{"a delete that is not destructive", plan(safety.Effect{Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x"}, unusedExec(t)),
+			"internal error: a delete in the dry-run preview must be destructive"},
+		{"a capability requirement with no checker", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			return run(t, fakeRead{d: primeDesc("get widget")}, IO{})
+		}, "internal error: get widget declares a capability requirement but no capability checker is set up; register the command through the standard server-command path"},
+		{"a capability requirement with no tier", capability(CapabilityRequirement{Feature: "f"}),
+			"internal error: get widget: capability requirement has Feature/Unsupported set with no Tier"},
+		{"an unknown capability tier", capability(CapabilityRequirement{Tier: "bogus", Feature: "f"}),
+			`internal error: get widget: unknown capability tier "bogus"`},
+		{"a capability tier with no feature", capability(CapabilityRequirement{Tier: CapabilityPrime}),
+			`internal error: get widget: capability tier "prime" requires a Feature name`},
+		{"a prime capability tier with Unsupported", capability(CapabilityRequirement{Tier: CapabilityPrime, Feature: "f", Unsupported: "u"}),
+			`internal error: get widget: capability tier "prime" does not use Unsupported`},
+		{"a discovery capability tier with no Unsupported", capability(CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "f"}),
+			`internal error: get widget: capability tier "extDiscovery" requires Unsupported`},
+		{"a notice on a command that is not once-only", shape(Descriptor{Name: "get thing"}, Result{OnceOnlyNotice: "n"}, "json"),
+			"internal error: get thing is not DeliveryOnceOnly but returned OnceOnlyNotice"},
+		{"styled text with no text", shape(Descriptor{Name: "do thing", Shape: ShapeText}, Result{StyledText: styled}, "table"),
+			"internal error: do thing returned StyledText but no Text"},
+		{"wide text on a tabular command", shape(Descriptor{Name: "get thing", Shape: ShapeTabular}, Result{Text: "x\n", WideText: "y\n"}, "wide"),
+			"internal error: get thing returned WideText without a ShapeText Text"},
+		{"wide text and styled text", shape(Descriptor{Name: "access list", Shape: ShapeText}, Result{Text: "x\n", WideText: "y\n", StyledText: styled}, "wide"),
+			"internal error: access list returned both WideText and StyledText"},
+		{"a tabular command with other data", shape(Descriptor{Name: "get thing", CommandType: ReadOnly, Shape: ShapeTabular}, Result{Data: map[string]string{"a": "b"}}, "json"),
+			"internal error: get thing declares ShapeTabular but its Data does not implement output.Tabular"},
+		{"a text command with no text", shape(Descriptor{Name: "patch thing", CommandType: ReadOnly, Shape: ShapeText}, Result{}, ""),
+			"internal error: patch thing declares ShapeText but returned no Text"},
+		{"a bytes command with no bytes", shape(Descriptor{Name: "kubeconfig", CommandType: ReadOnly, Shape: ShapeBytes}, Result{}, "json"),
+			"internal error: kubeconfig declares ShapeBytes but returned no RawBytes"},
+		{"an exec JSON command with Raw unset", shape(Descriptor{Name: "auth get-token", CommandType: ReadOnly, Shape: ShapeExecJSON}, Result{}, "json"),
+			"internal error: auth get-token declares ShapeExecJSON but Result.Raw is not set"},
+		{"text and raw output", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			return run(t, fakeRead{d: Descriptor{Name: "x", CommandType: ReadOnly}, res: Result{Text: "x", Raw: true}}, IO{})
+		}, "internal error: only one of Text, Raw and RawBytes can be set, because each uses the whole stdout; Summary cannot be set with any of them"},
+		{"a summary with data that is not a table", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			cmd := fakeRead{d: Descriptor{Name: "get cluster", CommandType: ReadOnly}, res: Result{Kind: "Cluster", Data: map[string]string{"name": "c-abc"}, Summary: "wait: satisfied"}}
+			return run(t, cmd, IO{})
+		}, "internal error: Summary requires Tabular Data"},
+		{"an exit status the command does not declare", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			return run(t, exitStatusCmd{exitDeclCmd{name: "probe"}, 7}, IO{})
+		}, "internal error: probe returned undeclared exit status 7"},
+		{"a bool value refusal with no bool value", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			return BoolValueError(Descriptor{Name: "get thing"}, []string{"x"}, nil, "rancher get thing x")
+		}, "internal error: get thing was refused for a bool value but no bool value was found"},
+		{"a once-only command with no committed context", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			var out, errBuf bytes.Buffer
+			_, ce := runOnceOnly(t, &out, &errBuf, Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}}, "json")
+			require.NotNil(t, ce)
+			return ce
+		}, "internal error: create widget is DeliveryOnceOnly but returned no CommittedContext"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ce := tc.got(t)
+			assert.Equal(t, clierr.CodeGeneric, ce.Code)
+			assert.True(t, strings.HasPrefix(ce.Message, "internal error: "), "message %q", ce.Message)
+			assert.Equal(t, tc.want, ce.Message)
 		})
 	}
 }

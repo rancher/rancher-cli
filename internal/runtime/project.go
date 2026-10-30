@@ -105,7 +105,7 @@ func WithProjectLookup(ctx context.Context, lookup func(ctx context.Context) (Pr
 // projectOn returns the project the lookup on ctx resolves, for a command
 // acting on clusterID: resolved on the first call of the invocation, from
 // memory after it; ok is false when ctx carries no lookup. A project
-// resolved on another cluster is a command bug, refused rather than used.
+// resolved on another cluster is an internal error, refused rather than used.
 func projectOn(ctx context.Context, clusterID string) (p Project, ok bool, err error) {
 	l, typed := ctx.Value(projectKey{}).(*lazyProject)
 	if !typed {
@@ -120,7 +120,7 @@ func projectOn(ctx context.Context, clusterID string) (p Project, ok bool, err e
 	}
 	if p.Cluster != clusterID {
 		return Project{}, false, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: --project was resolved on cluster %s, the command acts on %s", p.Cluster, clusterID))
+			fmt.Sprintf("internal error: --project was resolved on cluster %s; the command acts on %s", p.Cluster, clusterID))
 	}
 	return p, true, nil
 }
@@ -129,7 +129,7 @@ func projectOn(ctx context.Context, clusterID string) (p Project, ok bool, err e
 // command that takes --project acting on clusterID - the one way a command
 // reads it: resolved on the first call of the invocation, from memory
 // after it; ok is false only when no --project was typed. Two cases are
-// command bugs, refused rather than used: a project resolved on another
+// internal errors, refused rather than used: a project resolved on another
 // cluster, and a typed --project the pipeline did not look up (a direct
 // call that skipped the pipeline), so a command can never act unscoped on
 // a project the caller named.
@@ -140,7 +140,7 @@ func TypedProjectOn(ctx context.Context, in Input, clusterID string) (p Project,
 	}
 	if in.IsSet(FlagProject) || in.String(FlagProject) != "" {
 		return Project{}, false, clierr.New(clierr.CodeGeneric,
-			"command bug: --project was typed but the pipeline did not look it up")
+			"internal error: --project was typed but no project lookup was set up before the command ran")
 	}
 	return Project{}, false, nil
 }
@@ -156,7 +156,7 @@ func MissingClusterError(ctx context.Context) error {
 	}
 	_, err := l.get(ctx)
 	if err == nil {
-		return clierr.New(clierr.CodeGeneric, "command bug: --project resolved with no --cluster")
+		return clierr.New(clierr.CodeGeneric, "internal error: --project resolved with no --cluster")
 	}
 	return err
 }
@@ -186,7 +186,7 @@ func checkProjectFlag(cmd Command, d Descriptor, in Input) *clierr.Error {
 func withProject(ctx context.Context, cmd Command, in Input, streams IO) (context.Context, IO, *clierr.Error) {
 	if streams.Projects == nil {
 		return ctx, streams, clierr.New(clierr.CodeGeneric,
-			"command bug: "+cmd.Describe().Name+" takes --project but no project resolver is wired")
+			"internal error: "+cmd.Describe().Name+" takes --project but no project resolver is set up")
 	}
 	notice := &leadingNotice{src: streams.Notices}
 	streams.Notices = notice

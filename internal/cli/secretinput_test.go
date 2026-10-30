@@ -95,6 +95,10 @@ type secretRow struct {
 	stub secretStub
 	// canary is the secret the row asserts absent; empty means secretCanary.
 	canary string
+	// tolerate is a fixed text of the error that holds the canary's letters
+	// (a refusal that says "true or false" for a canary of TRUE); it is cut
+	// out of the output before the canary is looked for.
+	tolerate string
 	// code and message are the error the row must produce: its code and a
 	// text its message holds, so a row cannot pass by failing elsewhere.
 	code    string
@@ -207,7 +211,7 @@ func secretRows() []secretRow {
 		secretRow{flag: "from-literal", name: "empty key", argv: line(createSecretLine, "--from-literal", "="+c), code: validation, message: "malformed --from-literal value"},
 		secretRow{flag: "from-literal", name: "the second half of a value with a comma", argv: line(createSecretLine, "--from-literal", "pw=ab,"+c), code: validation, message: "malformed --from-literal value"},
 		secretRow{flag: "from-literal", name: "a flag given twice", argv: line(createSecretLine, "--from-literal", "a=b", "--from-literal", "k="+c), code: validation, message: "invalid value for flag -from-literal: can't duplicate this flag"},
-		secretRow{flag: "from-literal", name: "an extra argument", argv: line(createSecretLine, "--from-literal", "a=b", c), code: validation, message: "unexpected argument 2"},
+		secretRow{flag: "from-literal", name: "an extra argument", argv: line(createSecretLine, "--from-literal", "a=b", c), code: validation, message: "unexpected argument at position 2"},
 	)
 
 	bad := map[string]string{
@@ -237,7 +241,7 @@ func secretRows() []secretRow {
 		)
 	}
 	add(
-		secretRow{flag: "filename", name: "an extra argument", argv: line(createFileLine, "-f", "m.yaml", c), files: map[string]string{"m.yaml": secretManifest("x")}, code: validation, message: "unexpected argument 1"},
+		secretRow{flag: "filename", name: "an extra argument", argv: line(createFileLine, "-f", "m.yaml", c), files: map[string]string{"m.yaml": secretManifest("x")}, code: validation, message: "unexpected argument at position 1"},
 	)
 
 	malformedPatch := `[{"op":"add","path":"/data/a"},{"op":"add","path":"/data/b","value":"` + c + `"}]`
@@ -247,7 +251,7 @@ func secretRows() []secretRow {
 		secretRow{flag: "patch", name: "a malformed op ahead of an op holding the canary", argv: line(patchLine, "-p", malformedPatch), code: validation, message: `patch operation 0 (add) has no "value"`},
 		secretRow{flag: "patch", name: "a test op that fails", argv: line(patchLine, "-p", failingTest), stub: configMapStub, code: validation, message: "testing value /data/a failed"},
 		secretRow{flag: "patch", name: "a patch that is not JSON", argv: line(patchLine, "-p", notJSON), code: validation, message: "not valid JSON"},
-		secretRow{flag: "patch", name: "an extra argument", argv: line(patchLine, "-p", "[]", c), code: validation, message: "unexpected argument 2"},
+		secretRow{flag: "patch", name: "an extra argument", argv: line(patchLine, "-p", "[]", c), code: validation, message: "unexpected argument at position 2"},
 		secretRow{flag: "patch-file", name: "a malformed op ahead of an op holding the canary", argv: line(patchLine, "--patch-file", "-"), stdin: malformedPatch, code: validation, message: `patch operation 0 (add) has no "value"`},
 		secretRow{flag: "patch-file", name: "a test op that fails", argv: line(patchLine, "--patch-file", "-"), stdin: failingTest, stub: configMapStub, code: validation, message: "testing value /data/a failed"},
 		secretRow{flag: "patch-file", name: "a patch that is not JSON", argv: line(patchLine, "--patch-file", "-"), stdin: notJSON, code: validation, message: "not valid JSON"},
@@ -259,10 +263,10 @@ func secretRows() []secretRow {
 		secretRow{flag: "set", name: "a credential field", argv: line(machineConfig, "--set", "secretKey="+c), code: validation, message: "holds a credential"},
 		secretRow{flag: "set", name: "a top-level object field", argv: line(machineConfig, "--set", "kind="+c), code: validation, message: "names a top-level Kubernetes object field"},
 		secretRow{flag: "set", name: "a field given twice", argv: line(machineConfig, "--set", "a=b", "--set", "a="+c), code: validation, message: "is given more than once"},
-		secretRow{flag: "set", name: "an extra argument", argv: line(machineConfig, "--set", "a=b", c), code: validation, message: "unexpected argument 3"},
+		secretRow{flag: "set", name: "an extra argument", argv: line(machineConfig, "--set", "a=b", c), code: validation, message: "unexpected argument at position 3"},
 	)
 
-	for _, cmd := range []struct{ line, extra string }{{createUserLine, "unexpected argument 2"}, {passwordLine, "unexpected argument 2"}} {
+	for _, cmd := range []struct{ line, extra string }{{createUserLine, "unexpected argument at position 2"}, {passwordLine, "unexpected argument at position 2"}} {
 		add(
 			secretRow{flag: "password-stdin", name: cmd.line + ": an empty password", argv: line(cmd.line, "--password-stdin"), code: validation, message: "the password read from stdin is empty"},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the flag without the pipe", argv: line(cmd.line), stdin: c, code: validation, message: "--password-stdin is required"},
@@ -283,7 +287,7 @@ func secretRows() []secretRow {
 		secretRow{flag: "token-stdin", name: "a token the server refuses", argv: line(loginLine, "--token-stdin"), stdin: "id:" + c, code: string(clierr.CodeAuth), message: "the server rejected the credential"},
 		secretRow{flag: "token-stdin", name: "a token with no colon, not verified", argv: line(loginLine, "--token-stdin", "--no-verify"), stdin: c, code: validation, message: "invalid token (expected non-empty id:secret)"},
 		secretRow{flag: "token-stdin", name: "the token typed after the flag with =", argv: line(loginLine, "--token-stdin="+c), code: validation, message: "invalid value for flag -token-stdin: the value must be true or false"},
-		secretRow{flag: "token-stdin", name: "the token typed as an argument", argv: line(loginLine, "--token-stdin", c), code: validation, message: "unexpected argument 2"},
+		secretRow{flag: "token-stdin", name: "the token typed as an argument", argv: line(loginLine, "--token-stdin", c), code: validation, message: "unexpected argument at position 2"},
 	)
 
 	for _, token := range []string{c, "id:" + c, "id:" + c + " x"} {
@@ -315,20 +319,20 @@ func secretRows() []secretRow {
 	add(
 		secretRow{flag: "url", name: "config update-server: a URL with a password and a bad port", argv: line("config update-server x --url", "https://u:"+c+badPort), before: updateBefore, code: validation, message: refusedBadPort},
 		secretRow{flag: "url", name: "config update-server: a URL with a password and an unsupported scheme", argv: line("config update-server x --url", "ftp://u:"+c+"@rancher.invalid"), before: updateBefore, code: validation, message: refusedUserinfo},
-		secretRow{flag: "url", name: "config update-server: a URL with a password typed as an argument", argv: line("config update-server x", "https://u:"+c+"@rancher.invalid"), before: updateBefore, code: validation, message: "unexpected argument 2"},
-		secretRow{flag: "url", name: "config add-server: a URL with a password typed as an argument", argv: line("config add-server x --url {url}", "https://u:"+c+"@rancher.invalid"), code: validation, message: "unexpected argument 2"},
-		secretRow{flag: "url", name: "auth login: a URL with a password typed as an argument", argv: line("auth login x --token-stdin", "https://u:"+c+"@rancher.invalid"), stdin: "id:y", code: validation, message: "unexpected argument 2"},
+		secretRow{flag: "url", name: "config update-server: a URL with a password typed as an argument", argv: line("config update-server x", "https://u:"+c+"@rancher.invalid"), before: updateBefore, code: validation, message: "unexpected argument at position 2"},
+		secretRow{flag: "url", name: "config add-server: a URL with a password typed as an argument", argv: line("config add-server x --url {url}", "https://u:"+c+"@rancher.invalid"), code: validation, message: "unexpected argument at position 2"},
+		secretRow{flag: "url", name: "auth login: a URL with a password typed as an argument", argv: line("auth login x --token-stdin", "https://u:"+c+"@rancher.invalid"), stdin: "id:y", code: validation, message: "unexpected argument at position 2"},
 	)
 
 	// A bool flag followed by a word that reads as a bool is refused; the
 	// hint of a command with a secret input is its help, never the line
 	// typed, which holds the other flags' values.
 	add(
-		secretRow{flag: "from-literal", name: "a bool value refusal does not repeat the flag values", argv: line("create secret s --cluster c-x --namespace d --from-literal", "pw="+c, "--dry-run", "false"), code: validation, message: "create secret: argument 2 after the bool flag --dry-run", hint: "rancher create secret --help"},
-		secretRow{flag: "patch", name: "a bool value refusal does not repeat the flag values", argv: line("patch configmap app --cluster c-x --namespace default -p", `[{"op":"add","path":"/data/b","value":"`+c+`"}]`, "--dry-run", "false"), code: validation, message: "patch configmap: argument 2 after the bool flag --dry-run", hint: "rancher patch configmap --help"},
-		secretRow{flag: "set", name: "a bool value refusal does not repeat the flag values", argv: line("create machine-config amazonec2config w --set", "a="+c, "--dry-run", "false"), code: validation, message: "create machine-config: argument 3 after the bool flag --dry-run", hint: "rancher create machine-config --help"},
-		secretRow{flag: "url", name: "a bool value refusal does not repeat the flag values", argv: line("auth login x --token-stdin --url", "https://u:"+c+"@rancher.invalid", "--no-verify", "false"), stdin: "id:y", code: validation, message: "auth login: argument 2 after the bool flag --no-verify", hint: "rancher auth login --help"},
-		secretRow{flag: "password-stdin", name: "a word that reads as a bool is named by position", argv: line("create user bob --password-stdin --dry-run TRUE"), canary: "TRUE", code: validation, message: "create user: argument 2 after the bool flag --dry-run", hint: "rancher create user --help"},
+		secretRow{flag: "from-literal", name: "a bool value refusal does not repeat the flag values", argv: line("create secret s --cluster c-x --namespace d --from-literal", "pw="+c, "--dry-run", "false"), code: validation, message: "create secret: argument at position 2 was typed after the bool flag --dry-run", hint: "rancher create secret --help"},
+		secretRow{flag: "patch", name: "a bool value refusal does not repeat the flag values", argv: line("patch configmap app --cluster c-x --namespace default -p", `[{"op":"add","path":"/data/b","value":"`+c+`"}]`, "--dry-run", "false"), code: validation, message: "patch configmap: argument at position 2 was typed after the bool flag --dry-run", hint: "rancher patch configmap --help"},
+		secretRow{flag: "set", name: "a bool value refusal does not repeat the flag values", argv: line("create machine-config amazonec2config w --set", "a="+c, "--dry-run", "false"), code: validation, message: "create machine-config: argument at position 3 was typed after the bool flag --dry-run", hint: "rancher create machine-config --help"},
+		secretRow{flag: "url", name: "a bool value refusal does not repeat the flag values", argv: line("auth login x --token-stdin --url", "https://u:"+c+"@rancher.invalid", "--no-verify", "false"), stdin: "id:y", code: validation, message: "auth login: argument at position 2 was typed after the bool flag --no-verify", hint: "rancher auth login --help"},
+		secretRow{flag: "password-stdin", name: "a word that reads as a bool is named by position", argv: line("create user bob --password-stdin --dry-run TRUE"), canary: "TRUE", tolerate: boolRule("--dry-run"), code: validation, message: "create user: argument at position 2 was typed after the bool flag --dry-run", hint: "rancher create user --help"},
 		secretRow{flag: "password-stdin", name: "a word after a bare dash is counted, not named", argv: line("create user bob --password-stdin -", c), code: validation, message: "1 word after a - on its own is not used"},
 		secretRow{flag: "from-literal", name: "words after a bare dash are counted, not named", argv: line("create secret s --cluster c-x --namespace d -", "--from-literal", "pw="+c), code: validation, message: "2 words after a - on its own are not used"},
 		secretRow{flag: "password-stdin", name: "a password typed with a leading dash is not named", argv: line("create user bob --password-stdin", "-"+c), code: validation, message: "unknown flag at argument 7 after rancher"},
@@ -683,7 +687,13 @@ func TestSecretInputErrorsNeverQuoteTheValue(t *testing.T) {
 			stdout, stderr, code := runSecretRow(t, row)
 
 			canary := cmp.Or(row.canary, secretCanary)
-			assertNoCanary(t, canary, map[string]string{"stdout": stdout, "stderr": stderr})
+			without := func(text string) string {
+				if row.tolerate == "" {
+					return text
+				}
+				return strings.ReplaceAll(text, row.tolerate, "")
+			}
+			assertNoCanary(t, canary, map[string]string{"stdout": without(stdout), "stderr": without(stderr)})
 			if row.noRefusal {
 				for _, bad := range append([]string{"the server URL in"}, row.forbid...) {
 					assert.NotContains(t, stdout+stderr, bad)
@@ -710,7 +720,7 @@ func TestSecretInputErrorsNeverQuoteTheValue(t *testing.T) {
 			if row.hint != "" {
 				assert.Equal(t, row.hint, ce.Hint)
 			}
-			assertNoCanary(t, canary, map[string]string{"code": ce.Code, "message": ce.Message, "hint": ce.Hint})
+			assertNoCanary(t, canary, map[string]string{"code": ce.Code, "message": without(ce.Message), "hint": ce.Hint})
 		})
 	}
 }

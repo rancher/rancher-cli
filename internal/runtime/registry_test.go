@@ -123,14 +123,14 @@ func TestValidateRejectsUnknownCapabilityTier(t *testing.T) {
 	assert.ErrorContains(t, err, "unknown capability tier")
 }
 
-func TestValidateRejectsPrimeWithoutDetectorKey(t *testing.T) {
+func TestValidateRejectsPrimeWithoutFeatureName(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{})
 	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly,
 		Capability: CapabilityRequirement{Tier: CapabilityPrime}}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "detector Feature key")
+	assert.ErrorContains(t, err, "requires a Feature name")
 }
 
 func TestValidatePassesWellFormedCapability(t *testing.T) {

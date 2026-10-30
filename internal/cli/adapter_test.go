@@ -146,7 +146,7 @@ func TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker(t *testing.T) {
 	}
 	err := root.Run(t.Context(), []string{"rancher", "primeping"})
 	require.Error(t, err)
-	assert.Contains(t, errOut.String(), "no capability checker is wired")
+	assert.Contains(t, errOut.String(), "no capability checker is set up")
 	assert.NotContains(t, out.String(), `"Pong"`, "execution must never reach the command")
 }
 

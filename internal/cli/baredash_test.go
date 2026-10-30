@@ -34,7 +34,7 @@ func bareDashMessage(more int, words ...string) string {
 	if more > 0 {
 		text += " and " + strconv.Itoa(more) + " more"
 	}
-	return text + " after a - on its own; a - on its own ends the command line"
+	return droppedWordsPrefix + text
 }
 
 // bareDashCountMessage is the message of that refusal when it counts the
@@ -42,9 +42,9 @@ func bareDashMessage(more int, words ...string) string {
 // that takes a secret input, written independently of the pipeline.
 func bareDashCountMessage(count int) string {
 	if count == 1 {
-		return "1 word after a - on its own is not used; a - on its own ends the command line"
+		return "1 word after a - on its own is not used"
 	}
-	return strconv.Itoa(count) + " words after a - on its own are not used; a - on its own ends the command line"
+	return strconv.Itoa(count) + " words after a - on its own are not used"
 }
 
 // TestEveryLeafRefusesWordsAfterABareDash asserts that every leaf of the
@@ -99,7 +99,7 @@ func TestEveryLeafRefusesWordsAfterABareDash(t *testing.T) {
 			assert.Equal(t, clierr.CodeValidation, ce.Code, label)
 			want := bareDashMessage(0, "--dry-run")
 			if secretInput[name] {
-				want = "1 word after a - on its own is not used; a - on its own ends the command line"
+				want = "1 word after a - on its own is not used"
 			}
 			assert.Equal(t, want, ce.Message, label)
 			assert.Equal(t, bareDashHint, ce.Hint, label)

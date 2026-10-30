@@ -76,10 +76,10 @@ func TestResolveScopeProjectFromContext(t *testing.T) {
 	assert.Zero(t, client.lists, "the scope lists nothing to find the project")
 }
 
-// TestResolveScopeTypedProjectWithoutContextIsCommandBug asserts a typed
-// --project with no project on the context is a GENERIC command bug, never
+// TestResolveScopeTypedProjectWithoutContextIsInternalError asserts a typed
+// --project with no project on the context is a GENERIC internal error, never
 // a scope built from the typed value.
-func TestResolveScopeTypedProjectWithoutContextIsCommandBug(t *testing.T) {
+func TestResolveScopeTypedProjectWithoutContextIsInternalError(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{gets: map[string]*unstructured.Unstructured{
 		"c-x/p-x": {Object: map[string]any{"metadata": map[string]any{"name": "p-x"}}},
@@ -88,7 +88,7 @@ func TestResolveScopeTypedProjectWithoutContextIsCommandBug(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	require.ErrorContains(t, err, "command bug")
+	require.ErrorContains(t, err, "internal error")
 }
 
 func TestResolveScopeNoneIsValidationError(t *testing.T) {

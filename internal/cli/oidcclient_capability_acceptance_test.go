@@ -140,7 +140,7 @@ func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
 		require.Error(t, err)
 		env := oidcErrEnvelope(t, stdout, stderr)
 		assert.Equal(t, clierr.CodeValidation, env.Data.Error.Code)
-		assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled on this server")
+		assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled on the connected server")
 		assert.Contains(t, env.Data.Error.Message, clierr.LearnMorePrimeURL)
 		assert.Empty(t, env.Data.Error.Hint)
 		assert.Zero(t, hits.Load(), "disabled must make zero target requests")
@@ -229,6 +229,6 @@ func TestCreateResourceOIDCClientManifestDisabledAfterEnabled(t *testing.T) {
 	require.Error(t, err)
 	env := oidcErrEnvelope(t, stdout, stderr)
 	assert.Equal(t, clierr.CodeValidation, env.Data.Error.Code)
-	assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled on this server")
+	assert.Contains(t, env.Data.Error.Message, "oidc-provider is disabled on the connected server")
 	assert.Zero(t, hits.Load(), "create resource -f must make zero target requests before a disabled refusal")
 }

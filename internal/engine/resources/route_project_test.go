@@ -182,7 +182,7 @@ func TestRouteDownstreamNSPlainListWithoutNamespaceCarriesMemberSet(t *testing.T
 
 // TestRouteReadsTheProjectOnTheClientCluster asserts Route reads the
 // project with the cluster it resolved from --cluster: a project resolved
-// on another cluster is refused as a command bug, never used.
+// on another cluster is refused as an internal error, never used.
 func TestRouteReadsTheProjectOnTheClientCluster(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()

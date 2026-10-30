@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -211,7 +212,7 @@ func TestProjectWarningPrecedesOtherNotices(t *testing.T) {
 
 // TestTypedProjectOnRefusesAProjectNobodyLookedUp asserts a command reading
 // the project it takes gets the project when the pipeline looked it up,
-// nothing when no --project was typed, and a GENERIC command-bug error -
+// nothing when no --project was typed, and a GENERIC internal error -
 // never an unscoped run - when --project was typed but not looked up.
 func TestTypedProjectOnRefusesAProjectNobodyLookedUp(t *testing.T) {
 	p, ok, err := TypedProjectOn(WithProject(t.Context(), Project{Cluster: "c-1", ID: "p-1"}), typedProject("web"), "c-1")
@@ -229,14 +230,14 @@ func TestTypedProjectOnRefusesAProjectNobodyLookedUp(t *testing.T) {
 		ce, isCE := errors.AsType[*clierr.Error](err)
 		require.True(t, isCE, "%v", err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
-		assert.Equal(t, "command bug: --project was typed but the pipeline did not look it up", ce.Message)
+		assert.Equal(t, "internal error: --project was typed but no project lookup was set up before the command ran", ce.Message)
 	}
 }
 
-// TestProjectStageWithoutAResolverIsACommandBug asserts a command that
+// TestProjectStageWithoutAResolverIsAnInternalError asserts a command that
 // takes --project, typed, reaching the project stage with no resolver
-// wired is GENERIC before the command runs.
-func TestProjectStageWithoutAResolverIsACommandBug(t *testing.T) {
+// set up is GENERIC before the command runs.
+func TestProjectStageWithoutAResolverIsAnInternalError(t *testing.T) {
 	cmd := &projectRead{d: declaring()}
 	var out, errBuf bytes.Buffer
 	in := typedProject("web")
@@ -244,6 +245,54 @@ func TestProjectStageWithoutAResolverIsACommandBug(t *testing.T) {
 	_, ce := Run(t.Context(), cmd, in, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Equal(t, "command bug: get pod takes --project but no project resolver is wired", ce.Message)
+	assert.Equal(t, "internal error: get pod takes --project but no project resolver is set up", ce.Message)
 	assert.False(t, cmd.ok, "the command did not run")
+}
+
+// TestProjectInternalErrorMessagesStartWithThePrefix asserts every message
+// of a defect in how the project stage is used starts with "internal error: "
+// and has the GENERIC code.
+func TestProjectInternalErrorMessagesStartWithThePrefix(t *testing.T) {
+	asError := func(t *testing.T, err error) *clierr.Error {
+		t.Helper()
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "%v", err)
+		return ce
+	}
+	for _, tc := range []struct {
+		name string
+		got  func(t *testing.T) *clierr.Error
+		want string
+	}{
+		{"the project resolved on another cluster", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			_, _, err := projectOn(WithProject(t.Context(), Project{Cluster: "c-1"}), "c-2")
+			return asError(t, err)
+		}, "internal error: --project was resolved on cluster c-1; the command acts on c-2"},
+		{"a typed project with no lookup", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			_, _, err := TypedProjectOn(t.Context(), typedProject("web"), "c-1")
+			return asError(t, err)
+		}, "internal error: --project was typed but no project lookup was set up before the command ran"},
+		{"a project resolved with no cluster", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			return asError(t, MissingClusterError(WithProject(t.Context(), Project{Cluster: "c-1"})))
+		}, "internal error: --project resolved with no --cluster"},
+		{"no project resolver", func(t *testing.T) *clierr.Error {
+			t.Helper()
+			in := typedProject("web")
+			in.s["cluster"] = "c-1"
+			var out, errBuf bytes.Buffer
+			_, ce := Run(t.Context(), &projectRead{d: declaring()}, in, IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
+			require.NotNil(t, ce)
+			return ce
+		}, "internal error: get pod takes --project but no project resolver is set up"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ce := tc.got(t)
+			assert.Equal(t, clierr.CodeGeneric, ce.Code)
+			assert.True(t, strings.HasPrefix(ce.Message, "internal error: "), "message %q", ce.Message)
+			assert.Equal(t, tc.want, ce.Message)
+		})
+	}
 }

@@ -150,7 +150,7 @@ func TestRunResolverNilCheckerFailsLoud(t *testing.T) {
 	var out bytes.Buffer
 	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &out, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce, "a deferred requirement resolving under a nil checker must fail loudly")
-	assert.Contains(t, ce.Message, "no capability checker is wired")
+	assert.Contains(t, ce.Message, "no capability checker is set up")
 }
 
 func TestRunResolverErrorRendersBeforeChecker(t *testing.T) {

@@ -302,7 +302,7 @@ func TestCreateFieldFlagsRefuseEmptyAndSeparateBoolValues(t *testing.T) {
 		{
 			name:    "an empty word after --must-change-password, past the username, is named by position",
 			argv:    []string{"create", "user", "u", "--password-stdin", "--must-change-password", "", "--dry-run", "-o", "json"},
-			message: "create user takes 1 argument (<username>); unexpected argument 2",
+			message: "create user takes 1 argument (<username>); unexpected argument at position 2",
 			hint:    "rancher create user --help",
 		},
 		{
@@ -313,13 +313,13 @@ func TestCreateFieldFlagsRefuseEmptyAndSeparateBoolValues(t *testing.T) {
 		{
 			name:    "--from-literal after the end of the flags is an argument, not a second instance",
 			argv:    []string{"create", "secret", "s1", "--cluster", "c-x", "--from-literal", "a=1", "--dry-run", "-o", "json", "--", "--from-literal", "b=2"},
-			message: "create secret takes 1 argument (<name>); unexpected arguments 2 3",
+			message: "create secret takes 1 argument (<name>); unexpected arguments at positions 2 3",
 			hint:    "rancher create secret --help",
 		},
 		{
 			name:    "false after --must-change-password: a command with a secret input hints its help",
 			argv:    []string{"create", "user", "u", "--password-stdin", "--must-change-password", "false", "--dry-run", "-o", "json"},
-			message: "create user: argument 2 after the bool flag --must-change-password" + boolRule,
+			message: "create user: argument at position 2 was typed after the bool flag --must-change-password" + boolRule("--must-change-password"),
 			hint:    "rancher create user --help",
 		},
 	} {

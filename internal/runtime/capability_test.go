@@ -97,7 +97,7 @@ func TestRunCapabilityNilCheckerFailsLoud(t *testing.T) {
 	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &out, Err: &out, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce, "a requirement-bearing command with no wired checker must fail loudly")
-	assert.Contains(t, ce.Message, "no capability checker is wired")
+	assert.Contains(t, ce.Message, "no capability checker is set up")
 }
 
 func TestRunCapabilityDisabledOnPrimeRefusesWithEnableHint(t *testing.T) {
@@ -126,8 +126,7 @@ func TestRunCapabilityDisabledOnNonPrimeRefusesWithNeutralHint(t *testing.T) {
 		IO{Out: &out, Err: &errBuf, Format: "json", Capability: checker}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "widget-feature is disabled on this server")
-	assert.Contains(t, ce.Message, clierr.LearnMorePrimeURL)
+	assert.Equal(t, "widget-feature is disabled on the connected server, which decides whether it is available - "+clierr.LearnMorePrimeURL, ce.Message)
 	assert.Empty(t, ce.Hint)
 }
 
@@ -178,7 +177,7 @@ func TestRunCapabilityUnsupportedReturnsStructuredError(t *testing.T) {
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
 	assert.Equal(t, 11, ce.ExitCode())
-	assert.Contains(t, ce.Message, "the user-password workflow")
+	assert.Equal(t, "the connected server does not support the user-password workflow; upgrade the server to a version that does", ce.Message)
 	details, ok := ce.Details.(clierr.CapabilityUnsupportedDetails)
 	require.True(t, ok, "Details must carry the structured CapabilityUnsupportedDetails shape")
 	assert.Equal(t, "passwordchangerequests", details.Feature)

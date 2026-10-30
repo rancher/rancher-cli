@@ -203,7 +203,7 @@ func secretInputCommands(wr wiredRegistry) map[string]bool {
 // position for a command that takes a secret input.
 func namedExtra(secretInput bool, word string, position int) string {
 	if secretInput {
-		return strconv.Itoa(position)
+		return "at position " + strconv.Itoa(position)
 	}
 	return clierr.ShellQuote(word)
 }
@@ -237,8 +237,10 @@ func declaredArgsText(args []runtime.ArgSpec) string {
 }
 
 // boolRule is the part of the refusal of a bool value typed as its own
-// word that says what to do instead.
-const boolRule = "; a bool flag takes its value joined with =, and an argument that reads as a bool goes before the flags or after --"
+// word that says what to do instead, for the first flag the message names.
+func boolRule(flag string) string {
+	return "; a bool flag takes its value only as " + flag + "=<value>. To pass an argument such as true or false, put it before the flags or after --"
+}
 
 // TestBoolValueAfterBoolFlagIsRefused asserts the refusal of a positional
 // word typed as its own word directly after a bool flag that accepts it as
@@ -264,85 +266,85 @@ func TestBoolValueAfterBoolFlagIsRefused(t *testing.T) {
 		{
 			name:    "a free required slot: the joined line would lack the argument",
 			argv:    []string{"create", "user", "--password-stdin", "--dry-run", "false", "-o", "json"},
-			message: "create user: argument 1 after the bool flag --dry-run" + boolRule,
+			message: "create user: argument at position 1 was typed after the bool flag --dry-run" + boolRule("--dry-run"),
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "a free required slot, a command with no secret input, names the word as typed",
 			argv:    []string{"create", "namespace", "--dry-run", "false", "--cluster", "c-x", "-o", "json"},
-			message: "create namespace: 'false' after the bool flag --dry-run" + boolRule,
+			message: "create namespace: 'false' was typed after the bool flag --dry-run" + boolRule("--dry-run"),
 			hint:    "rancher create namespace --help",
 		},
 		{
 			name:    "a free required slot, a destructive command",
 			argv:    []string{"delete", "project", "--yes", "true", "--cluster", "c1", "-o", "json"},
-			message: "delete project: 'true' after the bool flag --yes" + boolRule,
+			message: "delete project: 'true' was typed after the bool flag --yes" + boolRule("--yes"),
 			hint:    "rancher delete project --help",
 		},
 		{
 			name:    "a free optional slot: the joined line would leave it empty",
 			argv:    []string{"get", "pod", "--wait", "true", "--cluster", "c1", "-o", "json"},
-			message: "get pod: 'true' after the bool flag --wait" + boolRule,
+			message: "get pod: 'true' was typed after the bool flag --wait" + boolRule("--wait"),
 			hint:    "rancher get pod --help",
 		},
 		{
 			name:    "before the declared argument",
 			argv:    []string{"get", "pod", "--wait", "true", "mypod", "--cluster", "c1", "-o", "json"},
-			message: "get pod: 'true' after the bool flag --wait" + boolRule,
+			message: "get pod: 'true' was typed after the bool flag --wait" + boolRule("--wait"),
 			hint:    "rancher get pod --wait='true' 'mypod' --cluster 'c1' -o 'json'",
 		},
 		{
 			name:    "no free slot, a global bool flag",
 			argv:    []string{"create", "user", "u04", "--password-stdin", "--dry-run", "false", "-o", "json"},
-			message: "create user: argument 2 after the bool flag --dry-run" + boolRule,
+			message: "create user: argument at position 2 was typed after the bool flag --dry-run" + boolRule("--dry-run"),
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "no free slot, a command bool flag, any value strconv.ParseBool accepts",
 			argv:    []string{"get", "pod", "p1", "--wait", "TRUE", "--cluster", "c 1", "-o", "json"},
-			message: "get pod: 'TRUE' after the bool flag --wait" + boolRule,
+			message: "get pod: 'TRUE' was typed after the bool flag --wait" + boolRule("--wait"),
 			hint:    "rancher get pod 'p1' --wait='TRUE' --cluster 'c 1' -o 'json'",
 		},
 		{
 			name:    "two bool flags, global flags ahead of the command",
 			argv:    []string{"-o", "json", "--color=never", "create", "user", "it's", "--yes", "0", "--dry-run", "t", "--password-stdin"},
-			message: "create user: argument 2 after the bool flag --yes, argument 3 after the bool flag --dry-run" + boolRule,
+			message: "create user: argument at position 2 was typed after the bool flag --yes, argument at position 3 after the bool flag --dry-run" + boolRule("--yes"),
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "two bool flags, a command with no secret input, global flags ahead of the command",
 			argv:    []string{"-o", "json", "--color=never", "delete", "project", "it's", "--cluster", "c1", "--yes", "0", "--dry-run", "t"},
-			message: "delete project: '0' after the bool flag --yes, 't' after the bool flag --dry-run" + boolRule,
+			message: "delete project: '0' was typed after the bool flag --yes, 't' after the bool flag --dry-run" + boolRule("--yes"),
 			hint:    `rancher -o 'json' --color='never' delete project 'it'\''s' --cluster 'c1' --yes='0' --dry-run='t'`,
 		},
 		{
 			name:    "a bool value and an extra word that is not one",
 			argv:    []string{"create", "user", "u04", "--dry-run", "false", "extra", "-o", "json"},
-			message: "create user: argument 2 after the bool flag --dry-run" + boolRule + "; create user takes 1 argument (<username>); unexpected argument 3",
+			message: "create user: argument at position 2 was typed after the bool flag --dry-run" + boolRule("--dry-run") + ". create user takes 1 argument (<username>); unexpected argument at position 3",
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "a bool value and an extra word that is not one, a command with no secret input",
 			argv:    []string{"create", "namespace", "ns1", "--dry-run", "false", "extra", "--cluster", "c-x", "-o", "json"},
-			message: "create namespace: 'false' after the bool flag --dry-run" + boolRule + "; create namespace takes 1 argument (<name>); unexpected argument 'extra'",
+			message: "create namespace: 'false' was typed after the bool flag --dry-run" + boolRule("--dry-run") + ". create namespace takes 1 argument (<name>); unexpected argument 'extra'",
 			hint:    "rancher create namespace --help",
 		},
 		{
 			name:    "a value the flag does not accept",
 			argv:    []string{"create", "user", "u04", "--dry-run", "maybe", "-o", "json"},
-			message: "create user takes 1 argument (<username>); unexpected argument 2",
+			message: "create user takes 1 argument (<username>); unexpected argument at position 2",
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "a bool flag with a joined value",
 			argv:    []string{"create", "user", "u04", "--dry-run=true", "false", "-o", "json"},
-			message: "create user takes 1 argument (<username>); unexpected argument 2",
+			message: "create user takes 1 argument (<username>); unexpected argument at position 2",
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "after the end of the flags",
 			argv:    []string{"-o", "json", "create", "user", "u04", "--dry-run", "--", "false"},
-			message: "create user takes 1 argument (<username>); unexpected argument 2",
+			message: "create user takes 1 argument (<username>); unexpected argument at position 2",
 			hint:    "rancher create user --help",
 		},
 	} {

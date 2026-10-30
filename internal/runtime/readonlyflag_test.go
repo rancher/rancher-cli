@@ -54,9 +54,9 @@ func TestRunRefusesTypedReadOnlyOnLocalCommand(t *testing.T) {
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Empty(t, ce.Hint)
 			require.ErrorContains(t, ce, "config path is a local command")
-			require.ErrorContains(t, ce, "--read-only does not govern it")
+			require.ErrorContains(t, ce, "--read-only does not apply to it")
 			require.ErrorContains(t, ce, "without --read-only")
-			require.ErrorContains(t, ce, "and any value typed with it")
+			require.ErrorContains(t, ce, "and without any value typed with it")
 			require.ErrorContains(t, ce, "config readOnly")
 			assert.NotContains(t, ce.Message, "enabled by")
 			assert.NotContains(t, ce.Message, "read-only mode:")
@@ -112,6 +112,7 @@ func TestRunTypedReadOnlyRefusalPrecedesDryRunRefusal(t *testing.T) {
 	_, ce = Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json", DryRun: true}, safety.Binding{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeDryRunNotApplicable, ce.Code)
+	assert.Equal(t, "config path is a local command; re-run without --dry-run", ce.Message)
 	assert.Zero(t, calls)
 }
 

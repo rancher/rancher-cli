@@ -155,7 +155,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 				d.Name, strings.Join(streams.ReadOnlySources, ", "))))
 	}
 
-	// A typed --read-only on a local command is refused: the flag governs
+	// A typed --read-only on a local command is refused: the flag applies to
 	// commands that read or change server resources, and a local command
 	// that ignored it would break the flag's one-way promise. IsSet, not
 	// streams.ReadOnly, so a typed --read-only=false is refused too and the
@@ -164,15 +164,22 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	// always leave a valid command.
 	if d.CommandType == Local && in.IsSet(FlagReadOnly) {
 		return 0, renderErr(streams, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%s is a local command and --read-only does not govern it; run it without --read-only "+
-				"and any value typed with it "+
-				"(RANCHER_CLI_READONLY or config readOnly applies to every run and leaves local commands usable)",
+			fmt.Sprintf("%s is a local command and --read-only does not apply to it; run it without --read-only "+
+				"and without any value typed with it "+
+				"(RANCHER_CLI_READONLY and config readOnly apply to every run and still allow local commands)",
 				d.Name)))
 	}
 
 	if streams.DryRun && d.CommandType != Mutating {
+		kind := string(d.CommandType)
+		switch d.CommandType {
+		case ReadOnly:
+			kind = "read-only"
+		case Local:
+			kind = "local"
+		}
 		return 0, renderErr(streams, clierr.New(clierr.CodeDryRunNotApplicable,
-			fmt.Sprintf("%s is a %s command; re-run without --dry-run", d.Name, d.CommandType)))
+			fmt.Sprintf("%s is a %s command; re-run without --dry-run", d.Name, kind)))
 	}
 
 	if ce := checkProjectFlag(cmd, d, in); ce != nil {
@@ -206,8 +213,8 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 				return 0, renderErr(streams, toClierr(ctx, err))
 			}
 			// Then the resolver's return - an arbitrary runtime value
-			// startup validation never saw. A malformed value is a command
-			// bug, stopped before the checker and Plan/Execute.
+			// startup validation never saw. A malformed value is an internal
+			// error, stopped before the checker and Plan/Execute.
 			if ce := ValidCapabilityShape(req, d.Name); ce != nil {
 				return 0, renderErr(streams, ce)
 			}
@@ -233,7 +240,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 		return runRead(ctx, c, in, streams, b)
 	default:
 		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
-			"command implements neither ReadCommand nor MutatingCommand: "+d.Name))
+			"internal error: command implements neither ReadCommand nor MutatingCommand: "+d.Name))
 	}
 }
 
@@ -282,23 +289,23 @@ func prependOnceOnlyNotice(res Result) Result {
 	return res
 }
 
-// checkPlan enforces the command-bug invariants on a Plan result: a non-nil
-// executor, a valid action, and destructive-delete. It never renders; the
-// caller wraps the returned error.
+// checkPlan enforces the invariants of a Plan result, each an internal error
+// when broken: a non-nil executor, a valid action, and destructive-delete. It
+// never renders; the caller wraps the returned error.
 func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 	if exec == nil {
-		return clierr.New(clierr.CodeGeneric, "command bug: Plan returned no executor")
+		return clierr.New(clierr.CodeGeneric, "internal error: the command returned nothing to run to apply the change")
 	}
 	if !eff.Action.Valid() {
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: invalid effect action %q", eff.Action))
+			fmt.Sprintf("internal error: invalid action %q in the dry-run preview", eff.Action))
 	}
 	if eff.DisplayKind == "" || eff.DisplayName == "" {
 		return clierr.New(clierr.CodeGeneric,
-			"command bug: effect has an empty DisplayKind or DisplayName")
+			"internal error: the dry-run preview has an empty DisplayKind or DisplayName")
 	}
 	if eff.Action == safety.ActionDelete && !eff.Destructive {
-		return clierr.New(clierr.CodeGeneric, "command bug: delete effect must be destructive")
+		return clierr.New(clierr.CodeGeneric, "internal error: a delete in the dry-run preview must be destructive")
 	}
 	return nil
 }
@@ -342,7 +349,7 @@ func validateFormat(format string, secret bool) *clierr.Error {
 					"--output template does not parse; must be valid Go text/template syntax")
 			}
 			return clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("invalid template: %v; must be valid Go text/template syntax", err))
+				fmt.Sprintf("--output template does not parse: %v; must be valid Go text/template syntax", err))
 		}
 		return nil
 	}
@@ -481,20 +488,32 @@ func enumRefusal(d Descriptor, what, value string, enum []string) *clierr.Error 
 // An optional argument counts too: a flag can need it (get refuses --wait
 // without a name). A command that takes a secret input names each word by
 // its position among the arguments typed instead, and its hint is always
-// its help: the typed line holds every flag value.
+// its help: the typed line holds every flag value. vals holds at least one
+// value; an empty list is an internal error.
 func BoolValueError(d Descriptor, args []string, vals []BoolValue, line string) *clierr.Error {
+	if len(vals) == 0 {
+		return clierr.New(clierr.CodeGeneric, "internal error: "+d.Name+" was refused for a bool value but no bool value was found")
+	}
 	named := make([]string, len(vals))
 	isValue := map[int]bool{}
 	for i, v := range vals {
 		word := clierr.ShellQuote(args[v.Index])
 		if d.SecretInput {
-			word = fmt.Sprintf("argument %d", v.Index+1)
+			word = fmt.Sprintf("argument at position %d", v.Index+1)
 		}
 		named[i] = word + " after the bool flag " + v.Flag
+		if i == 0 {
+			named[i] = word + " was typed after the bool flag " + v.Flag
+		}
 		isValue[v.Index] = true
 	}
-	msg := fmt.Sprintf("%s: %s; a bool flag takes its value joined with =, and an argument that reads as a bool goes before the flags or after --",
-		d.Name, firstWords(named, ", "))
+	// Not firstWords: past the cap the count here ends with "after bool flags".
+	list := strings.Join(named[:min(len(named), maxNamedWords)], ", ")
+	if len(named) > maxNamedWords {
+		list += fmt.Sprintf(" and %d more after bool flags", len(named)-maxNamedWords)
+	}
+	msg := fmt.Sprintf("%s: %s; a bool flag takes its value only as %s=<value>. To pass an argument such as true or false, put it before the flags or after --",
+		d.Name, list, vals[0].Flag)
 	var rest []string
 	var positions []int
 	for i, a := range args {
@@ -504,7 +523,7 @@ func BoolValueError(d Descriptor, args []string, vals []BoolValue, line string) 
 		}
 	}
 	if len(rest) > len(d.Args) {
-		return clierr.New(clierr.CodeValidation, msg+"; "+extraArgsMessage(d, rest[len(d.Args):], positions[len(d.Args):])).WithHint(helpHint(d))
+		return clierr.New(clierr.CodeValidation, msg+". "+extraArgsMessage(d, rest[len(d.Args):], positions[len(d.Args):])).WithHint(helpHint(d))
 	}
 	if len(rest) < len(d.Args) || slices.Contains(rest, "") || d.SecretInput {
 		return clierr.New(clierr.CodeValidation, msg).WithHint(helpHint(d))
@@ -528,6 +547,12 @@ func extraArgsMessage(d Descriptor, extra []string, positions []int) string {
 	noun := "argument"
 	if len(extra) > 1 {
 		noun = "arguments"
+	}
+	if d.SecretInput {
+		noun += " at position"
+		if len(extra) > 1 {
+			noun += "s"
+		}
 	}
 	return fmt.Sprintf("%s %s; unexpected %s %s", d.Name, declaredArgs(d.Args), noun, firstWords(quoted, " "))
 }
@@ -635,7 +660,7 @@ func missingFlagError(f ArgSpec) *clierr.Error {
 func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequirement, streams IO) *clierr.Error {
 	if streams.Capability == nil {
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s declares a capability requirement but no capability checker is wired; "+
+			fmt.Sprintf("internal error: %s declares a capability requirement but no capability checker is set up; "+
 				"register the command through the standard server-command path", d.Name))
 	}
 	dec := streams.Capability.Check(ctx, req)
@@ -646,7 +671,7 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 				fmt.Sprintf("%s is disabled; enable it on the connected server", req.Feature))
 		}
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%s is disabled on this server; availability is decided by the connected server - %s",
+			fmt.Sprintf("%s is disabled on the connected server, which decides whether it is available - %s",
 				req.Feature, clierr.LearnMorePrimeURL))
 	case CapabilityPrimeRequired:
 		return clierr.New(clierr.CodePrimeRequired,
@@ -655,7 +680,7 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 			WithDetails(clierr.PrimeRequiredDetails{Feature: req.Feature, Server: dec.Server})
 	case CapabilityUnsupported:
 		return clierr.New(clierr.CodeCapabilityUnsupported,
-			fmt.Sprintf("this server does not support %s; upgrade the connected server to a version that carries this workflow", req.Unsupported)).
+			fmt.Sprintf("the connected server does not support %s; upgrade the server to a version that does", req.Unsupported)).
 			WithDetails(clierr.CapabilityUnsupportedDetails{Feature: req.Feature, Server: dec.Server})
 	default: // CapabilityProceed, CapabilityUnknown
 		return nil
@@ -678,19 +703,19 @@ func ValidCapabilityShape(req CapabilityRequirement, name string) *clierr.Error 
 		return nil
 	case req.Tier == "":
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s: capability requirement has Feature/Unsupported set with no Tier", name))
+			fmt.Sprintf("internal error: %s: capability requirement has Feature/Unsupported set with no Tier", name))
 	case req.Tier != CapabilityPrime && req.Tier != CapabilityExtDiscovery:
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s: unknown capability tier %q", name, req.Tier))
+			fmt.Sprintf("internal error: %s: unknown capability tier %q", name, req.Tier))
 	case req.Feature == "":
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s: capability tier %q requires a detector Feature key", name, req.Tier))
+			fmt.Sprintf("internal error: %s: capability tier %q requires a Feature name", name, req.Tier))
 	case req.Tier == CapabilityPrime && req.Unsupported != "":
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s: capability tier %q does not use Unsupported", name, req.Tier))
+			fmt.Sprintf("internal error: %s: capability tier %q does not use Unsupported", name, req.Tier))
 	case req.Tier == CapabilityExtDiscovery && req.Unsupported == "":
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s: capability tier %q requires Unsupported", name, req.Tier))
+			fmt.Sprintf("internal error: %s: capability tier %q requires Unsupported", name, req.Tier))
 	default:
 		return nil
 	}
@@ -712,9 +737,9 @@ func missingFlags(streams IO, eff safety.Effect, b safety.Binding) []string {
 }
 
 // payloadExclusivityRule is the single source for the Result channel
-// invariant: Text, Raw, and RawBytes each claim the whole stdout; Summary
-// rides only the envelope/Data path.
-const payloadExclusivityRule = "Text, Raw, and RawBytes each claim the whole stdout; Summary rides only the envelope/Data path"
+// invariant: only one of Text, Raw and RawBytes can be set, because each uses
+// the whole stdout, and Summary cannot be set with any of them.
+const payloadExclusivityRule = "only one of Text, Raw and RawBytes can be set, because each uses the whole stdout; Summary cannot be set with any of them"
 
 // tableFormat reports whether format is one of the two formats rendered as text
 // tables: the default ("") and the explicit "table" value.
@@ -731,7 +756,7 @@ func textRenderFormat(format string) bool {
 
 // checkResultShape verifies res's actual payload against d's declared
 // OutputShape - the closed-world conformance contract every registered
-// command commits to. A mismatch is a command bug, the same posture as
+// command commits to. A mismatch is an internal error, the same posture as
 // payloadExclusivityRule: the command populated the wrong Result field (or
 // none) for the shape its own Descriptor declares.
 //
@@ -753,40 +778,40 @@ func textRenderFormat(format string) bool {
 func checkResultShape(d Descriptor, res Result, format string) *clierr.Error {
 	if res.OnceOnlyNotice != "" && d.Delivery != DeliveryOnceOnly {
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: %s is not DeliveryOnceOnly but returned OnceOnlyNotice", d.Name))
+			fmt.Sprintf("internal error: %s is not DeliveryOnceOnly but returned OnceOnlyNotice", d.Name))
 	}
 	if res.StyledText != nil && res.Text == "" {
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: %s returned StyledText but no Text", d.Name))
+			fmt.Sprintf("internal error: %s returned StyledText but no Text", d.Name))
 	}
 	if res.WideText != "" && (d.Shape != ShapeText || res.Text == "") {
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: %s returned WideText without a ShapeText Text", d.Name))
+			fmt.Sprintf("internal error: %s returned WideText without a ShapeText Text", d.Name))
 	}
 	if res.WideText != "" && res.StyledText != nil {
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: %s returned both WideText and StyledText", d.Name))
+			fmt.Sprintf("internal error: %s returned both WideText and StyledText", d.Name))
 	}
 	switch d.Shape {
 	case ShapeTabular:
 		if _, ok := res.Data.(output.Tabular); !ok {
 			return clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("command bug: %s declares ShapeTabular but its Data does not implement output.Tabular", d.Name))
+				fmt.Sprintf("internal error: %s declares ShapeTabular but its Data does not implement output.Tabular", d.Name))
 		}
 	case ShapeText:
 		if textRenderFormat(format) && res.Text == "" {
 			return clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("command bug: %s declares ShapeText but returned no Text", d.Name))
+				fmt.Sprintf("internal error: %s declares ShapeText but returned no Text", d.Name))
 		}
 	case ShapeBytes:
 		if res.RawBytes == nil {
 			return clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("command bug: %s declares ShapeBytes but returned no RawBytes", d.Name))
+				fmt.Sprintf("internal error: %s declares ShapeBytes but returned no RawBytes", d.Name))
 		}
 	case ShapeExecJSON:
 		if !res.Raw {
 			return clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("command bug: %s declares ShapeExecJSON but Result.Raw is not set", d.Name))
+				fmt.Sprintf("internal error: %s declares ShapeExecJSON but Result.Raw is not set", d.Name))
 		}
 	}
 	return nil
@@ -830,7 +855,7 @@ func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s sty
 // nil when the branch taken mirrors warnings straight to the real stderr
 // (Text, RawBytes, Raw, and every non-json/yaml envelope format) or when
 // nothing was recorded; the drained slice itself when nothing was written
-// at all (an early command-bug return) or when the only place the notices
+// at all (an early return for an internal error) or when the only place the notices
 // landed is inside the json/yaml bytes just handed to streams.Out - bytes a
 // once-only caller may still discard if the real stdout write that follows
 // fails. An ordinary (non-buffered) caller's streams.Out IS real stdout, so
@@ -847,7 +872,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		return notices, ce
 	}
 	// Result's payload channels are mutually exclusive (payloadExclusivityRule);
-	// any combination is a command bug.
+	// any combination is an internal error.
 	claimed := 0
 	if res.Text != "" {
 		claimed++
@@ -859,14 +884,14 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		claimed++
 	}
 	if claimed > 1 || (res.Summary != "" && claimed > 0) {
-		return notices, clierr.New(clierr.CodeGeneric, "command bug: "+payloadExclusivityRule)
+		return notices, clierr.New(clierr.CodeGeneric, "internal error: "+payloadExclusivityRule)
 	}
 	// Summary rides only over a real table: the JSON-fallback-era use (a
 	// Summary line papering over non-Tabular Data) is gone along with the
 	// fallback itself.
 	if res.Summary != "" {
 		if _, ok := res.Data.(output.Tabular); !ok {
-			return notices, clierr.New(clierr.CodeGeneric, "command bug: Summary requires Tabular Data")
+			return notices, clierr.New(clierr.CodeGeneric, "internal error: Summary requires Tabular Data")
 		}
 	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
@@ -1023,11 +1048,11 @@ func dryRunText(eff safety.Effect) string {
 		lines = append(lines, output.Printable(fmt.Sprintf("%s: %s -> %s", d.Path, diffValueText(d.From), diffValueText(d.To))))
 	}
 	lines = append(lines, ObjectLines(eff.Objects, eff.DisplayKind)...)
-	gate := "dry run - re-run with --apply"
+	gate := "dry-run preview - re-run with --apply"
 	if eff.Destructive {
 		gate += " --yes"
 	}
-	gate += " to execute"
+	gate += " to apply the change"
 	lines = append(lines, gate)
 	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, eff.DisplayKind, eff.DisplayName), lines...).Text
 }
@@ -1161,9 +1186,9 @@ func errorText(ce *clierr.Error, s style.Style) string {
 
 // detailsFallbackLine is the neutral line rendered when a details payload
 // reached the renderer without going through clierr.Error.WithDetails (an
-// Error literal setting Details directly, for example) - a command bug, not
+// Error literal setting Details directly, for example) - an internal error, not
 // a supported way to ship an unreviewed details type.
-const detailsFallbackLine = "additional detail recorded - re-run with -o json to inspect"
+const detailsFallbackLine = "the error has more details - re-run with -o json to see them"
 
 // detailsTextLines projects an error's Details field onto its default-format
 // text lines: the payload's own TextDetails() when it implements the
@@ -1191,7 +1216,7 @@ func detailsTextLines(details any) []string {
 func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	if !allowedExitStatus(d.SuccessExitCodes, res.ExitStatus) {
 		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: %s returned undeclared exit status %d", d.Name, res.ExitStatus)))
+			fmt.Sprintf("internal error: %s returned undeclared exit status %d", d.Name, res.ExitStatus)))
 	}
 	if d.Delivery == DeliveryOnceOnly {
 		return finishOnceOnlyResult(streams, d, res)
@@ -1213,7 +1238,7 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 // real stderr immediately - only the once-only stdout payload is
 // buffered), then written to the real stdout in a single Write. A
 // DeliveryOnceOnly executor MUST return a non-nil Result.CommittedContext
-// on every successful return; its absence is a command-bug error, never a
+// on every successful return; its absence is an internal error, never a
 // silent skip, since a later render failure would otherwise have nothing
 // to report. When the buffered render fails, or the final single write
 // fails, the failure is emitted as a structured, non-retryable error
@@ -1231,7 +1256,7 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 	_, errStyle := stylesFor(streams)
 	if res.CommittedContext == nil {
 		return 0, renderErrDrained(streams, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: %s is DeliveryOnceOnly but returned no CommittedContext", d.Name)).
+			fmt.Sprintf("internal error: %s is DeliveryOnceOnly but returned no CommittedContext", d.Name)).
 			WithWarnings(drainNotices(streams)...), errStyle, nil)
 	}
 	buffered := streams
@@ -1246,7 +1271,8 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 		// Nothing was written anywhere (checkResultShape and the
 		// exclusivity/Summary checks all return before any write): every
 		// drained notice is still unaccounted for.
-		return 0, renderErrDrained(streams, committedContextError(res.CommittedContext, false, ce.Message).
+		return 0, renderErrDrained(streams, committedContextError(res.CommittedContext, false,
+			"the change was applied, but its output could not be formatted: "+ce.Message).
 			WithWarnings(pending...), errStyle, nil)
 	}
 	n, err := streams.Out.Write(buf.Bytes())
@@ -1257,17 +1283,18 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 		// branches) means nothing to add - those notices already reached
 		// the real stderr inside the renderResult call above, independent
 		// of this failing stdout write.
-		return 0, renderErrDrained(streams, committedContextError(res.CommittedContext, n > 0, err.Error()).
+		return 0, renderErrDrained(streams, committedContextError(res.CommittedContext, n > 0,
+			"the change was applied, but writing its output failed: "+err.Error()).
 			WithWarnings(pending...), errStyle, nil)
 	}
 	return res.ExitStatus, nil
 }
 
 // committedContextError builds the shared post-commit-failure shape: a
-// GENERIC, non-retryable error carrying clierr.CommittedContextDetails.
-func committedContextError(cc *CommittedContext, partialOutput bool, cause string) *clierr.Error {
-	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("rendering failed after the mutation committed: %s", cause)).
+// GENERIC, non-retryable error carrying clierr.CommittedContextDetails, with
+// message as its text.
+func committedContextError(cc *CommittedContext, partialOutput bool, message string) *clierr.Error {
+	return clierr.New(clierr.CodeGeneric, message).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed:     true,
 			ResourceKind:  cc.ResourceKind,
@@ -1388,7 +1415,7 @@ func DroppedWordsError(words []string) *clierr.Error {
 		text += fmt.Sprintf(" and %d more", rest)
 	}
 	return clierr.New(clierr.CodeValidation,
-		text+" after a - on its own; a - on its own ends the command line").
+		"the words after a - on its own are not used: "+text).
 		WithHint("put - last, or after -- when it is meant as an argument")
 }
 
@@ -1401,7 +1428,7 @@ func DroppedWordsCountError(count int) *clierr.Error {
 	if count == 1 {
 		text = "1 word after a - on its own is not used"
 	}
-	return clierr.New(clierr.CodeValidation, text+"; a - on its own ends the command line").
+	return clierr.New(clierr.CodeValidation, text).
 		WithHint("put - last, or after -- when it is meant as an argument")
 }
 

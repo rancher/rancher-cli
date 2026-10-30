@@ -97,9 +97,9 @@ func helpCard(usage string) lineWant { return lineWant{usage: usage} }
 // versionOut is a line that prints the version.
 var versionOut = lineWant{stdout: `^rancher version v-test\n$`}
 
-// droppedWordsRule is the end of the message that refuses words after a "-"
-// on its own, after the words it names.
-const droppedWordsRule = " after a - on its own; a - on its own ends the command line"
+// droppedWordsPrefix is the start of the message that refuses words after a
+// "-" on its own, before the words it names.
+const droppedWordsPrefix = "the words after a - on its own are not used: "
 
 // TestCommandLineRowsGiveTheirResult asserts the result of command lines
 // that hold a "-" on its own, a bool flag typed with "=" and an empty value
@@ -136,7 +136,7 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		for i, w := range words {
 			quoted[i] = clierr.ShellQuote(w)
 		}
-		return refused(strings.Join(quoted, " ")+droppedWordsRule, dashHint)
+		return refused(droppedWordsPrefix+strings.Join(quoted, " "), dashHint)
 	}
 
 	rows := []struct {
@@ -177,15 +177,15 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"an empty bool value then help", with(get, "--apply=", "--help"), helpCard(getPod)},
 		{"a bool value as its own word then help", with(get, "--dry-run", "false", "--help"), helpCard(getPod)},
 		{"a padded bool value", line("create", "user", "--dry-run", " false", "--password-stdin", "-o", "json"),
-			refused("create user: argument 1 after the bool flag --dry-run"+boolRule, "rancher create user --help")},
+			refused("create user: argument at position 1 was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher create user --help")},
 		{"a padded bool value, a command with no secret input", line("create", "namespace", "--dry-run", " false", "--cluster", "c-x", "-o", "json"),
-			refused("create namespace: ' false' after the bool flag --dry-run"+boolRule, "rancher create namespace --help")},
+			refused("create namespace: ' false' was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher create namespace --help")},
 		{"a bool value with a tab", line("create", "user", "u04", "--dry-run", "false\t", "--password-stdin", "-o", "json"),
-			refused("create user: argument 2 after the bool flag --dry-run"+boolRule, "rancher create user --help")},
+			refused("create user: argument at position 2 was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher create user --help")},
 		{"a bool value with a tab, a command with no secret input", line("create", "namespace", "ns1", "--dry-run", "false\t", "--cluster", "c-x", "-o", "json"),
-			refused("create namespace: 'false\t' after the bool flag --dry-run"+boolRule, "rancher create namespace 'ns1' --dry-run='false' --cluster 'c-x' -o 'json'")},
+			refused("create namespace: 'false\t' was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher create namespace 'ns1' --dry-run='false' --cluster 'c-x' -o 'json'")},
 		{"a padded extra word, a command with a secret input, is named by position", line("create", "user", "u04", " extra", "--password-stdin", "-o", "json"),
-			refused("create user takes 1 argument (<username>); unexpected argument 2", "rancher create user --help")},
+			refused("create user takes 1 argument (<username>); unexpected argument at position 2", "rancher create user --help")},
 		{"a padded extra word, a command with no secret input, is named as typed", line("create", "namespace", "ns1", " extra", "--cluster", "c-x", "-o", "json"),
 			refused("create namespace takes 1 argument (<name>); unexpected argument ' extra'", "rancher create namespace --help")},
 		{"a padded command name", line(" get", "pods"), unknownCommand(" get")},
@@ -201,11 +201,11 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"a blank bool value then a dash and a word", with(get, "--yes= ", "-", "x"), droppedRefused("x")},
 		{"a bool value as its own word then a dash and a word", with(get, "--dry-run", "false", "-", "x"), droppedRefused("x")},
 		{"a bool value as its own word on a command that is not a mutation", line("schema", "--dry-run", "false"),
-			refused("schema: 'false' after the bool flag --dry-run"+boolRule, "rancher schema --help")},
+			refused("schema: 'false' was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher schema --help")},
 		{"a bool value as its own word and a format", with(get, "--dry-run", "false", "-o", "json"),
-			refused("get pod: 'false' after the bool flag --dry-run"+boolRule, "rancher get pod --help")},
+			refused("get pod: 'false' was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher get pod --help")},
 		{"a bool value as its own word and a format that does not exist", with(get, "--dry-run", "false", "-o", "bogus"),
-			refused("get pod: 'false' after the bool flag --dry-run"+boolRule, "rancher get pod --help")},
+			refused("get pod: 'false' was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher get pod --help")},
 		{"a dash after the hidden completion command", line("__completion", "-", "x"), unknownCommand("-")},
 		{"a dash last is the name to create", line("create", "namespace", "--cluster", "local", "--apply", "-o", "json", " - "),
 			lineWant{requests: []string{
@@ -224,7 +224,7 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"a blank bool value then help and an undefined flag, then a format", line("create", "namespace", "ns1", "--cluster", "local", "--apply= ", "--help", "--bogus", "-o", "json"), emptyBoolRefused("--apply")},
 		{"a blank bool value then an unknown command and a format", line("--yes= ", "bogus", "x", "-o", "json"), emptyBoolRefused("--yes")},
 		{"a bool value as its own word after the command name typed past two dashes", line("create", "--", "namespace", "ns1", "--cluster", "local", "--dry-run", "false", "-o", "json"),
-			refused("create namespace: 'false' after the bool flag --dry-run"+boolRule, "rancher create -- namespace 'ns1' --cluster 'local' --dry-run='false' -o 'json'")},
+			refused("create namespace: 'false' was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher create -- namespace 'ns1' --cluster 'local' --dry-run='false' -o 'json'")},
 		{"a dash on its own at the root", line("-"), unknownCommand("-")},
 		{"a dash on its own at a group", line("get", "-"), unknownCommand("-")},
 	}
@@ -315,7 +315,7 @@ func TestAPaddedBoolValueIsRefusedBeforeThePasswordIsRead(t *testing.T) {
 	root.Reader = input
 	assert.Equal(t, 2, runMain(t, root, "create", "user", "--yes", "--apply", " false", "--password-stdin", "-o", "json"))
 	ce := renderedError(t, "json", errOut.String())
-	assert.Equal(t, "create user: argument 1 after the bool flag --apply"+boolRule, ce.Message)
+	assert.Equal(t, "create user: argument at position 1 was typed after the bool flag --apply"+boolRule("--apply"), ce.Message)
 	assert.Equal(t, "rancher create user --help", ce.Hint)
 	assert.Equal(t, len("a-password\n"), input.Len(), "standard input is not read")
 	requests, _ := rec.take()
@@ -343,10 +343,10 @@ func TestBoolRefusalsRenderInTheFormatAndColorTheLineSelects(t *testing.T) {
 		styled  bool
 		message string
 	}{
-		{"a bool value in JSON", append(slices.Clone(base), "--dry-run", "false", "-o", "json"), "json", false, "create namespace: 'false' after the bool flag --dry-run" + boolRule},
-		{"a bool value in YAML", append(slices.Clone(base), "--dry-run", "false", "-o", "yaml"), "yaml", false, "create namespace: 'false' after the bool flag --dry-run" + boolRule},
-		{"a bool value in color", append(slices.Clone(base), "--dry-run", "false", "--color", "always"), "", true, "create namespace: 'false' after the bool flag --dry-run" + boolRule},
-		{"a bool value without color", append(slices.Clone(base), "--dry-run", "false", "--color", "always", "--color", "never"), "", false, "create namespace: 'false' after the bool flag --dry-run" + boolRule},
+		{"a bool value in JSON", append(slices.Clone(base), "--dry-run", "false", "-o", "json"), "json", false, "create namespace: 'false' was typed after the bool flag --dry-run" + boolRule("--dry-run")},
+		{"a bool value in YAML", append(slices.Clone(base), "--dry-run", "false", "-o", "yaml"), "yaml", false, "create namespace: 'false' was typed after the bool flag --dry-run" + boolRule("--dry-run")},
+		{"a bool value in color", append(slices.Clone(base), "--dry-run", "false", "--color", "always"), "", true, "create namespace: 'false' was typed after the bool flag --dry-run" + boolRule("--dry-run")},
+		{"a bool value without color", append(slices.Clone(base), "--dry-run", "false", "--color", "always", "--color", "never"), "", false, "create namespace: 'false' was typed after the bool flag --dry-run" + boolRule("--dry-run")},
 		{"an empty bool value in YAML", append(slices.Clone(base), "--apply=", "-o", "yaml"), "yaml", false, "--apply= has an empty value; a bool flag typed with = takes true or false"},
 		{"an empty bool value in color", append(slices.Clone(base), "--apply=", "--color", "always"), "", true, "--apply= has an empty value; a bool flag typed with = takes true or false"},
 		{"an empty bool value without color", append(slices.Clone(base), "--apply=", "--color=always", "--color=never"), "", false, "--apply= has an empty value; a bool flag typed with = takes true or false"},

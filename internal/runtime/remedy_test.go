@@ -262,7 +262,7 @@ func TestDrainedNoticesNameTheInvocationsDirectory(t *testing.T) {
 				require.Nil(t, ce, "the %s must not fail", tc.name)
 			}
 			if tc.dryRun {
-				require.Contains(t, out.String(), "dry run", "the preview rendered")
+				require.Contains(t, out.String(), "dry-run preview", "the preview rendered")
 			}
 			assert.Contains(t, errBuf.String(), "# warning: "+want+"\n")
 			assert.NotContains(t, errBuf.String(), clierr.RemedyMarker)

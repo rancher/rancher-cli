@@ -500,13 +500,13 @@ implements. `create resource -f` is the one resolver today: its Descriptor is
 kind-independent, and the manifest names the kind only after Plan would otherwise
 resolve it, so the static stage alone would silently un-gate a Prime-backed kind reached
 through a manifest. Whichever value is in play, `Run` validates it in full (not merely
-`IsSet`) before use - a half-set value (`{Feature, no Tier}`) is a startup/command-bug
-rejection, never silently read as absent - then runs the SAME check against it: before
+`IsSet`) before use - a half-set value (`{Feature, no Tier}`) is an internal error (refused at
+startup or at run time), never silently read as absent - then runs the SAME check against it: before
 any resource access (reads) or the server-side dry-run `Plan` issues (mutations), so a
 Prime-backed kind that may not exist on a community server never gets to 404 first. A
 static requirement always wins; a command cannot carry both a static requirement and a
 resolver (rejected at startup), and a requirement-bearing command reaching this stage
-with no capability checker wired fails loudly rather than silently skipping the gate.
+with no capability checker set up fails loudly rather than silently skipping the gate.
 
 **Mutating flow** (`MutatingCommand`, e.g. `delete pod`, `create project`):
 

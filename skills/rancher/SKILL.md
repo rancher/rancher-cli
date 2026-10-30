@@ -842,14 +842,14 @@ rancher oidc-client rotate-secret my-app --apply --yes
   `=` and an empty or blank value (`--apply="$APPLY"` with `APPLY` unset) is
   refused too; write `--apply` or `--apply=true|false`.
 - **Arguments and bool flags:** extra positional arguments are refused with
-  `VALIDATION`; a bool flag takes its value joined with `=`
-  (`--dry-run=false`), and a separate word the flag reads as a bool
-  (`true`, `false`, `1`, `0`, ...) after it is refused - put an argument
-  that reads as a bool before the flags or after `--`. A `-` on its own
-  ends the command line: a word after it is refused (`--help` after a
-  command's name, or `--version` at the root, before the `-` still shows
-  the help or the version), so keep
-  `-` last or as a flag's value (`-f -`).
+  `VALIDATION`; a bool flag takes its value only as `--flag=value`
+  (`--dry-run=false`), and a separate word typed after it that the flag
+  could take as its value (`true`, `false`, `1`, `0`, ...) is refused - put
+  an argument such as `true` or `false` before the flags or after `--`. The
+  words after a `-` on its own are not used: a word after it is refused
+  (`--help` after a command's name, or `--version` at the root, before the
+  `-` still shows the help or the version); keep `-` last or as a flag's
+  value (`-f -`).
 - **Isolation for scripted sessions:** point `RANCHER_CLI_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CLI_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain. A kubeconfig written

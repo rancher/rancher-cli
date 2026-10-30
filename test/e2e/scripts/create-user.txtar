@@ -42,7 +42,7 @@ jsonquery secret.raw.json metadata.name $USERID
 # workflow is present, no server-side effect), then apply.
 stdin new-password.txt
 exec rancher create password-change-request $USERID --password-stdin --dry-run
-stdout 'dry run'
+stdout 'dry-run preview'
 
 stdin new-password.txt
 exec rancher create password-change-request $USERID --password-stdin --apply --yes -o json

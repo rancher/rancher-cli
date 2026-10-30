@@ -266,7 +266,7 @@ func TestRenderResultStyledTextKeepsShownOnceBold(t *testing.T) {
 }
 
 // TestCheckResultShapeRejectsStyledTextWithoutText asserts the pairing rule: a
-// non-nil StyledText with no Text is a command bug, regardless of shape.
+// non-nil StyledText with no Text is an internal error, regardless of shape.
 func TestCheckResultShapeRejectsStyledTextWithoutText(t *testing.T) {
 	t.Parallel()
 	d := Descriptor{Name: "do thing", Shape: ShapeText}

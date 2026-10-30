@@ -73,14 +73,14 @@ func TestValidateInputRefusesExtraArguments(t *testing.T) {
 			name:    "a secret input: one extra word named by its position, not its value",
 			d:       secretOne,
 			in:      mapInput{a: []string{"u1", "s3cretcanary9"}},
-			message: "create user takes 1 argument (<username>); unexpected argument 2",
+			message: "create user takes 1 argument (<username>); unexpected argument at position 2",
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "a secret input: several extra words named by position",
 			d:       secretOne,
 			in:      mapInput{a: []string{"u1", "s3cretcanary9", "it's"}},
-			message: "create user takes 1 argument (<username>); unexpected arguments 2 3",
+			message: "create user takes 1 argument (<username>); unexpected arguments at positions 2 3",
 			hint:    "rancher create user --help",
 		},
 		{
@@ -101,7 +101,7 @@ func TestValidateInputRefusesExtraArguments(t *testing.T) {
 			name:    "a secret input: many extra words, the first five positions and the count of the rest",
 			d:       Descriptor{Name: "config path", CommandType: Local, SecretInput: true},
 			in:      mapInput{a: many},
-			message: "config path takes no arguments; unexpected arguments 1 2 3 4 5 and 2995 more",
+			message: "config path takes no arguments; unexpected arguments at positions 1 2 3 4 5 and 2995 more",
 			hint:    "rancher config path --help",
 		},
 		{
@@ -150,10 +150,10 @@ func TestValidateInputRefusesExtraArguments(t *testing.T) {
 
 // TestBoolValueErrorNamesEachValueAndItsFlag asserts the refusal of
 // positional arguments typed as the separate value of a bool flag: the
-// message names each such word, as typed, and its flag, says a bool flag
-// takes its value joined with = and where an argument that reads as a bool
-// goes, and the hint is the joined line when the arguments left fill every
-// declared one, and the command's help otherwise.
+// message names each such word, as typed, and its flag, and says a bool flag
+// takes its value only as <flag>=<value> and where an argument such as true
+// or false goes; the hint is the joined line when the arguments left fill
+// every declared one, and the command's help otherwise.
 func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 	t.Parallel()
 	none := Descriptor{Name: "config path", CommandType: Local}
@@ -164,7 +164,9 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 		{Name: "verb", Type: "string", Required: true},
 		{Name: "resource", Type: "string"},
 	}}
-	const boolRule = "; a bool flag takes its value joined with =, and an argument that reads as a bool goes before the flags or after --"
+	boolRule := func(flag string) string {
+		return "; a bool flag takes its value only as " + flag + "=<value>. To pass an argument such as true or false, put it before the flags or after --"
+	}
 
 	for _, tc := range []struct {
 		name    string
@@ -181,7 +183,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"u1", "false", "1"},
 			vals:    []BoolValue{{Index: 1, Flag: "--a"}, {Index: 2, Flag: "--b"}},
 			line:    "rancher create user 'u1' --a='false' --b='1'",
-			message: "create user: 'false' after the bool flag --a, '1' after the bool flag --b" + boolRule,
+			message: "create user: 'false' was typed after the bool flag --a, '1' after the bool flag --b" + boolRule("--a"),
 			hint:    "rancher create user 'u1' --a='false' --b='1'",
 		},
 		{
@@ -190,7 +192,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"false"},
 			vals:    []BoolValue{{Index: 0, Flag: "--dry-run"}},
 			line:    "rancher create user --dry-run='false'",
-			message: "create user: 'false' after the bool flag --dry-run" + boolRule,
+			message: "create user: 'false' was typed after the bool flag --dry-run" + boolRule("--dry-run"),
 			hint:    "rancher create user --help",
 		},
 		{
@@ -199,7 +201,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"get", "true"},
 			vals:    []BoolValue{{Index: 1, Flag: "--wait"}},
 			line:    "rancher access can 'get' --wait='true'",
-			message: "access can: 'true' after the bool flag --wait" + boolRule,
+			message: "access can: 'true' was typed after the bool flag --wait" + boolRule("--wait"),
 			hint:    "rancher access can --help",
 		},
 		{
@@ -208,7 +210,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"get", "pods", "true"},
 			vals:    []BoolValue{{Index: 2, Flag: "--wait"}},
 			line:    "rancher access can 'get' 'pods' --wait='true'",
-			message: "access can: 'true' after the bool flag --wait" + boolRule,
+			message: "access can: 'true' was typed after the bool flag --wait" + boolRule("--wait"),
 			hint:    "rancher access can 'get' 'pods' --wait='true'",
 		},
 		{
@@ -217,7 +219,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"get", "", "true"},
 			vals:    []BoolValue{{Index: 2, Flag: "--wait"}},
 			line:    "rancher access can 'get' '' --wait='true'",
-			message: "access can: 'true' after the bool flag --wait" + boolRule,
+			message: "access can: 'true' was typed after the bool flag --wait" + boolRule("--wait"),
 			hint:    "rancher access can --help",
 		},
 		{
@@ -226,7 +228,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"", "true"},
 			vals:    []BoolValue{{Index: 1, Flag: "--wait"}},
 			line:    "rancher create user '' --wait='true'",
-			message: "create user: 'true' after the bool flag --wait" + boolRule,
+			message: "create user: 'true' was typed after the bool flag --wait" + boolRule("--wait"),
 			hint:    "rancher create user --help",
 		},
 		{
@@ -235,7 +237,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"true", "mypod"},
 			vals:    []BoolValue{{Index: 0, Flag: "--wait"}},
 			line:    "rancher create user --wait='true' 'mypod'",
-			message: "create user: 'true' after the bool flag --wait" + boolRule,
+			message: "create user: 'true' was typed after the bool flag --wait" + boolRule("--wait"),
 			hint:    "rancher create user --wait='true' 'mypod'",
 		},
 		{
@@ -244,7 +246,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"u1", "true"},
 			vals:    []BoolValue{{Index: 1, Flag: "--password-stdin"}},
 			line:    "rancher create user 'u1' --from-literal='pw=hunter2' --password-stdin='true'",
-			message: "create user: argument 2 after the bool flag --password-stdin" + boolRule,
+			message: "create user: argument at position 2 was typed after the bool flag --password-stdin" + boolRule("--password-stdin"),
 			hint:    "rancher create user --help",
 		},
 		{
@@ -253,7 +255,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"u1", "false", "extra"},
 			vals:    []BoolValue{{Index: 1, Flag: "--dry-run"}},
 			line:    "rancher create user 'u1' --dry-run='false' 'extra'",
-			message: "create user: argument 2 after the bool flag --dry-run" + boolRule + "; create user takes 1 argument (<username>); unexpected argument 3",
+			message: "create user: argument at position 2 was typed after the bool flag --dry-run" + boolRule("--dry-run") + ". create user takes 1 argument (<username>); unexpected argument at position 3",
 			hint:    "rancher create user --help",
 		},
 		{
@@ -262,7 +264,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{" false", "u1"},
 			vals:    []BoolValue{{Index: 0, Flag: "--dry-run"}},
 			line:    "rancher create user --dry-run='false' 'u1'",
-			message: "create user: ' false' after the bool flag --dry-run" + boolRule,
+			message: "create user: ' false' was typed after the bool flag --dry-run" + boolRule("--dry-run"),
 			hint:    "rancher create user --dry-run='false' 'u1'",
 		},
 		{
@@ -271,7 +273,7 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			args:    []string{"u1", "false", "extra"},
 			vals:    []BoolValue{{Index: 1, Flag: "--dry-run"}},
 			line:    "rancher create user 'u1' --dry-run='false' 'extra'",
-			message: "create user: 'false' after the bool flag --dry-run" + boolRule + "; create user takes 1 argument (<username>); unexpected argument 'extra'",
+			message: "create user: 'false' was typed after the bool flag --dry-run" + boolRule("--dry-run") + ". create user takes 1 argument (<username>); unexpected argument 'extra'",
 			hint:    "rancher create user --help",
 		},
 		{
@@ -281,8 +283,8 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			vals: []BoolValue{{Index: 0, Flag: "--a"}, {Index: 1, Flag: "--a"}, {Index: 2, Flag: "--a"}, {Index: 3, Flag: "--a"},
 				{Index: 4, Flag: "--a"}, {Index: 5, Flag: "--a"}, {Index: 6, Flag: "--a"}},
 			line: "rancher config path --a='1' --a='1' --a='1' --a='1' --a='1' --a='1' --a='1'",
-			message: "config path: '1' after the bool flag --a, '1' after the bool flag --a, '1' after the bool flag --a, " +
-				"'1' after the bool flag --a, '1' after the bool flag --a and 2 more" + boolRule,
+			message: "config path: '1' was typed after the bool flag --a, '1' after the bool flag --a, '1' after the bool flag --a, " +
+				"'1' after the bool flag --a, '1' after the bool flag --a and 2 more after bool flags" + boolRule("--a"),
 			hint: "rancher config path --a='1' --a='1' --a='1' --a='1' --a='1' --a='1' --a='1'",
 		},
 	} {
@@ -304,8 +306,8 @@ func TestDroppedWordsCountErrorNamesNoWord(t *testing.T) {
 	t.Parallel()
 	one := DroppedWordsCountError(1)
 	assert.Equal(t, clierr.CodeValidation, one.Code)
-	assert.Equal(t, "1 word after a - on its own is not used; a - on its own ends the command line", one.Message)
+	assert.Equal(t, "1 word after a - on its own is not used", one.Message)
 	assert.Equal(t, "put - last, or after -- when it is meant as an argument", one.Hint)
 	assert.Equal(t, 2, one.ExitCode())
-	assert.Equal(t, "3 words after a - on its own are not used; a - on its own ends the command line", DroppedWordsCountError(3).Message)
+	assert.Equal(t, "3 words after a - on its own are not used", DroppedWordsCountError(3).Message)
 }

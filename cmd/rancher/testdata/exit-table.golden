@@ -273,13 +273,13 @@ stderr:
 $ rancher get pod - x
 exit: 2
 stderr:
-> error (VALIDATION): 'x' after a - on its own; a - on its own ends the command line
+> error (VALIDATION): the words after a - on its own are not used: 'x'
 >   hint: put - last, or after -- when it is meant as an argument
 
 $ rancher - get pod
 exit: 2
 stderr:
-> error (VALIDATION): 2 words after a - on its own are not used; a - on its own ends the command line
+> error (VALIDATION): 2 words after a - on its own are not used
 >   hint: put - last, or after -- when it is meant as an argument
 
 $ rancher config path --yes=
@@ -297,7 +297,7 @@ stderr:
 $ rancher config path --read-only
 exit: 2
 stderr:
-> error (VALIDATION): config path is a local command and --read-only does not govern it; run it without --read-only and any value typed with it (RANCHER_CLI_READONLY or config readOnly applies to every run and leaves local commands usable)
+> error (VALIDATION): config path is a local command and --read-only does not apply to it; run it without --read-only and without any value typed with it (RANCHER_CLI_READONLY and config readOnly apply to every run and still allow local commands)
 
 $ rancher delete pod x --cluster local --apply --yes
 env: RANCHER_CLI_READONLY=1

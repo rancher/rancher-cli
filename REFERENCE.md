@@ -645,9 +645,8 @@ set. A bool flag typed with `=` and an empty or blank value
 command takes (`rancher schema <command>` lists them) are refused the same way,
 and so is a separate argument after a bool flag that the flag could take as its
 value: give a bool flag its value with `=` (`--dry-run=false`), and put a
-positional argument the flag could read as a bool (such as `true` or `false`)
-before the flags or after `--`.
-A `-` on its own ends the command line: a line with any argument after it
+positional argument such as `true` or `false` before the flags or after `--`.
+The words after a `-` on its own are not used: a line with any argument after it
 (`rancher get pods - --cluster c1`) is refused the same way, whether the `-`
 comes before or after the command name. A `-` as a flag's value (`-f -`) or
 after `--` is accepted, and `--help` after a command's name, or `--version` at
@@ -1373,7 +1372,7 @@ commands (below). Under config or environment read-only mode, local commands
 logging in and editing the config. A typed `--read-only` on a local command
 is refused with `VALIDATION` before the command does anything
 (`--read-only=false` included), with no hint: run the command without
-`--read-only` and any value typed with it. The environment variable and the
+`--read-only` and without any value typed with it. The environment variable and the
 config field are the only forms that apply to every run. An agent that types
 `--read-only` on every call loses `auth status`, `config *` and
 `kubeconfig`; set `RANCHER_CLI_READONLY` for the process instead.

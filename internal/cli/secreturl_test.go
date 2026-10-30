@@ -376,7 +376,7 @@ func secretURLRows() []secretRow {
 		row(secretRow{flag: "user-id", name: "auth get-token, a flag left without its value takes --user-id=<canary>", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "--user-id=" + urlCanary},
 			message: "flag --cluster got flag --user-id as its value"}),
 		row(secretRow{flag: "server", name: "auth get-token, an extra argument holds the canary", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", urlCanary},
-			message: "auth get-token takes no arguments; unexpected argument 1"}),
+			message: "auth get-token takes no arguments; unexpected argument at position 1"}),
 		row(secretRow{flag: "server", name: "token, an extra argument holds the canary", argv: []string{"token", "--server", "{url}", "--user", "kube", "--cluster", "c-1", urlCanary},
 			message: "unexpected argument"}),
 		row(secretRow{flag: "server", name: "auth get-token, a bool flag is given the canary", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--no-input=" + urlCanary},

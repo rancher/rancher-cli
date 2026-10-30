@@ -441,8 +441,6 @@ var wordingPathAllowlist = []wordingPath{
 	{"budget", "skills/rancher/SKILL.md", "10. Role grants and secrets", 1, "text not yet reworded"},
 	{"budget", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
 	{"canonical owner identity", "internal/engine/inspect/shared.go", "", 1, "a panic text no user sees"},
-	{"command bug", "internal/runtime/pipeline.go", "", 16, "text not yet reworded"},
-	{"command bug", "internal/runtime/project.go", "", 4, "text not yet reworded"},
 	{"degrades to", "skills/rancher/SKILL.md", "9. Observability & support", 1, "text not yet reworded"},
 	{"direct context", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
 	{"direct context", "REFERENCE.md", "What each part means", 1, "text not yet reworded"},

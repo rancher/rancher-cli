@@ -44,16 +44,16 @@ func runOnceOnly(t *testing.T, out, errW *bytes.Buffer, res Result, format strin
 }
 
 // TestFinishResultRequiresCommittedContextForDeliveryOnceOnly asserts the
-// command-bug guard: a DeliveryOnceOnly executor that returns a Result with
+// internal-error guard: a DeliveryOnceOnly executor that returns a Result with
 // no CommittedContext must never render - the absence is a structured
-// command-bug error, never a silent skip.
+// internal error, never a silent skip.
 func TestFinishResultRequiresCommittedContextForDeliveryOnceOnly(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer
 	_, ce := runOnceOnly(t, &out, &errBuf, Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}}, "json")
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "command bug")
+	assert.Contains(t, ce.Message, "internal error")
 	assert.Contains(t, ce.Message, "CommittedContext")
 	assert.Empty(t, out.String(), "no bytes may reach stdout without committed context")
 }
@@ -77,6 +77,24 @@ func TestFinishOnceOnlyResultBuffersAndRenders(t *testing.T) {
 	env := decodeEnvelope(t, out.Bytes())
 	assert.Equal(t, "WidgetCreated", env["kind"])
 	assert.Empty(t, errBuf.String())
+}
+
+// TestFinishOnceOnlyResultRenderFailureMessage asserts the message of the
+// error emitted when the buffered render fails after the change was applied:
+// it says the change was applied and carries the render error's text.
+func TestFinishOnceOnlyResultRenderFailureMessage(t *testing.T) {
+	t.Parallel()
+	var out, errBuf bytes.Buffer
+	res := Result{
+		Kind: "WidgetCreated", Text: "x", Raw: true,
+		CommittedContext: &CommittedContext{ResourceKind: "Widget", ResourceName: "w1"},
+	}
+	_, ce := runOnceOnly(t, &out, &errBuf, res, "json")
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Equal(t, "the change was applied, but its output could not be formatted: internal error: "+
+		"only one of Text, Raw and RawBytes can be set, because each uses the whole stdout; "+
+		"Summary cannot be set with any of them", ce.Message)
 }
 
 // TestFinishOnceOnlyResultFailingStdoutWriter proves 3b's render-failure
@@ -108,6 +126,7 @@ func TestFinishOnceOnlyResultFailingStdoutWriter(t *testing.T) {
 			require.NotNil(t, ce)
 			assert.Zero(t, status)
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
+			assert.Equal(t, "the change was applied, but writing its output failed: disk full", ce.Message)
 			assert.False(t, ce.Retryable, "a post-commit render failure must never look retryable")
 			details, ok := ce.Details.(clierr.CommittedContextDetails)
 			require.True(t, ok, "details must be clierr.CommittedContextDetails, got %T", ce.Details)

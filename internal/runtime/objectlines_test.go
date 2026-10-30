@@ -68,9 +68,9 @@ func TestDryRunTextListsTheEffectObjects(t *testing.T) {
 		"  namespaces:\n"+
 		"    rancher keeps: apps\n"+
 		"    rancher deletes: legacy\n"+
-		"  dry run - re-run with --apply --yes to execute\n", dryRunText(eff))
+		"  dry-run preview - re-run with --apply --yes to apply the change\n", dryRunText(eff))
 	eff.Objects = nil
-	assert.Equal(t, "delete project/p-1\n  cluster: c-abc\n  dry run - re-run with --apply --yes to execute\n", dryRunText(eff))
+	assert.Equal(t, "delete project/p-1\n  cluster: c-abc\n  dry-run preview - re-run with --apply --yes to apply the change\n", dryRunText(eff))
 }
 
 // TestEffectObjectsMarshalAsAnArrayOnlyWhenPresent asserts the JSON key
