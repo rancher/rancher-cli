@@ -54,7 +54,7 @@ var refusalExemptions = map[string]refusalExemption{
 	"kubeconfig":                     {[]int{http.StatusForbidden}, []string{"local"}, 0, "a 403 on a direct-endpoint read is an omission notice and the proxy-only file is printed; a 401 fails with AUTH", nil},
 	"support-bundle":                 {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 0, "a bundle records each refused read and goes on", nil},
 	"patch clusterregistrationtoken": {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: the kind is read-only", nil},
-	"patch management-token":         {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: writes go through Rancher's auth lifecycle", nil},
+	"patch management-token":         {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher sets the token fields itself and the CLI does not change them", nil},
 	"auth logout": {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 0, localDeletionReason,
 		map[int]int{http.StatusUnauthorized: 3, http.StatusForbidden: 2}},
 	"config delete-server": {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 0, localDeletionReason,

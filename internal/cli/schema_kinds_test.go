@@ -94,7 +94,7 @@ func TestSchemaKindsManifestFields(t *testing.T) {
 	require.True(t, ok)
 	patch := crt.Verbs["patch"]
 	assert.Equal(t, runtime.VerbRefused, patch.State)
-	assert.Equal(t, "read-only: consumed, not edited", patch.Note)
+	assert.Equal(t, "read-only: the CLI only reads it, never edits it", patch.Note)
 
 	pc, ok := byName["provisioning-cluster"]
 	require.True(t, ok)

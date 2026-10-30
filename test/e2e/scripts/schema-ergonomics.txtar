@@ -12,7 +12,7 @@ stdout '(?m)^gates: --apply --yes$'
 # patch refusal with its note
 exec rancher schema clusterregistrationtoken
 stdout '(?m)^kind: clusterregistrationtoken$'
-stdout '(?m)^  patch: refused - read-only: consumed, not edited$'
+stdout '(?m)^  patch: refused - read-only: the CLI only reads it, never edits it$'
 
 # --search finds matches and exits 0
 exec rancher schema --search kubeconfig

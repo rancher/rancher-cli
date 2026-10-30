@@ -210,12 +210,12 @@ func (r *rootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
 		if ce := tlstrust.TypedError(err); ce != nil {
 			return nil, ce
 		}
-		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %v", path, err))
+		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("GET %s on the Rancher server: %v", path, err))
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return body, nil
 	}
-	return nil, clierr.FromResponse("rancher root GET "+path, http.MethodGet, resp.StatusCode, body, &clierr.Request{})
+	return nil, clierr.FromResponse("GET "+path+" on the Rancher server", http.MethodGet, resp.StatusCode, body, &clierr.Request{})
 }
 
 // ServerInfo resolves the memoized /rancherversion version+edition for this
@@ -625,7 +625,7 @@ func emptyConfigFlag(c *ucli.Command) *clierr.Error {
 		return nil
 	case set && env == v:
 		return clierr.New(clierr.CodeValidation,
-			config.EnvConfigDir+" is blank; set it to a directory or unset it")
+			config.EnvConfigDir+" is empty; set it to a directory or unset it")
 	default:
 		return runtime.EmptyValueError("config")
 	}

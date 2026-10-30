@@ -27,7 +27,7 @@ env RANCHER_CLI_READONLY=
 # manifest - not just env/flag sources.
 exec rancher --config ro-config schema -o json
 jsonquery stdout data.readOnly true
-jsonquery stdout data.readOnlySources.0 'config readOnly'
+jsonquery stdout data.readOnlySources.0 'config setting readOnly'
 
 # a typed --read-only on a local command is refused before the command
 # does anything; the environment source leaves the same command usable

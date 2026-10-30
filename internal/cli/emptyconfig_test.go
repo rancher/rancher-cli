@@ -45,7 +45,7 @@ func TestEmptyConfigFlagAndVariable(t *testing.T) {
 		{"variable empty, no flag", str(""), []string{"config", "path"}, ""},
 		{"flag blank, variable a directory", str("/tmp/x"), []string{"--config", "", "config", "path"}, "--config is empty; pass a value or omit --config"},
 		{"flag blank, variable empty", str(""), []string{"--config", "", "config", "path"}, ""},
-		{"variable blank, no flag", str(" "), []string{"config", "path"}, "RANCHER_CLI_CONFIG_DIR is blank; set it to a directory or unset it"},
+		{"variable blank, no flag", str(" "), []string{"config", "path"}, "RANCHER_CLI_CONFIG_DIR is empty; set it to a directory or unset it"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// The rows that run use the default directory: keep it under
@@ -64,7 +64,6 @@ func TestEmptyConfigFlagAndVariable(t *testing.T) {
 			decoded := json.Unmarshal([]byte(strings.TrimSpace(stderr)), &env) == nil
 			if tc.want == "" {
 				assert.NotContains(t, stderr, "is empty")
-				assert.NotContains(t, stderr, "is blank")
 				assert.True(t, !decoded || env.Data.Error.Code == "", "runs with no error envelope: %s", stderr)
 				var out struct {
 					Data struct {

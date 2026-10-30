@@ -11768,7 +11768,7 @@
         },
         "patch": {
           "contract": "internal",
-          "note": "writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it",
+          "note": "Rancher sets these token fields itself (the key, a TTL within the server's maximum TTL, and the user the token belongs to); the CLI does not change them",
           "stability": "deprecated",
           "state": "refused"
         }
@@ -12013,7 +12013,7 @@
         },
         "patch": {
           "contract": "internal",
-          "note": "read-only: consumed, not edited",
+          "note": "read-only: the CLI only reads it, never edits it",
           "stability": "beta",
           "state": "refused"
         }

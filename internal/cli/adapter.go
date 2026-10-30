@@ -34,10 +34,10 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.BoolFlag{Name: "yes", Usage: "confirm a destructive change"},
 		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "allow writing to a deprecated resource"},
 		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; fail with an error when the input is ambiguous"},
-		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template=<tpl>"},
+		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|wide|json|yaml|name|template=<go-template>"},
 		&ucli.StringFlag{Name: "color", Usage: "auto|always|never"},
-		&ucli.StringFlag{Name: "project", Usage: "the project, by id or display name (only commands that take --project)"},
-		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes this session (one-way); not accepted by local commands"},
+		&ucli.StringFlag{Name: "project", Usage: "the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)"},
+		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it"},
 	}
 }
 
@@ -184,7 +184,7 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 			config.SetProcessCacheAnchor(anchor.WithConfig(cfg))
 			completionDebugf("config loaded: dir=%s currentServer=%q servers=%d", dir, cfg.CurrentServer, len(cfg.Servers))
 			if cfg.ReadOnly {
-				sources = append(sources, "config readOnly")
+				sources = append(sources, "config setting readOnly")
 			}
 		} else {
 			completionDebugf("config load failed: %v", err)
@@ -503,7 +503,7 @@ var notFoundHints = []hintEntry[notFoundInput]{
 		match: func(in notFoundInput) bool {
 			return in.c.Name == "delete" && (in.name == "cluster" || in.name == "clusters")
 		},
-		detail: constText[notFoundInput]("cluster deletion goes through rancher delete provisioning-cluster <name> (management clusters are not directly deletable)"),
+		detail: constText[notFoundInput]("to delete a cluster, use rancher delete provisioning-cluster <name>; management clusters cannot be deleted directly"),
 	},
 	{
 		// There is no help command; help is the --help flag. The hint is the
@@ -584,14 +584,15 @@ func isAllNamespacesFlag(err error) bool {
 var allNamespacesEntry = hintEntry[usageErrorInput]{
 	// kubectl reflex -A/--all-namespaces: only a few leaves declare it;
 	// the group commands and the other leaves do not.
-	// Under the get group the wording explains that lists already
-	// span all namespaces; elsewhere the base message alone covers it.
+	// Under the get group the wording explains that a get command lists
+	// every namespace when --namespace is omitted, except for a kind with a
+	// default namespace; elsewhere the base message alone covers it.
 	// One entry, wording chosen here - no order-dependent
 	// specialize-then-generalize pair.
 	match: func(in usageErrorInput) bool { return isAllNamespacesFlag(in.err) },
 	detail: func(in usageErrorInput) string {
 		if p := in.c.Path(); len(p) >= 2 && p[1] == "get" {
-			return noAllNamespacesFlag + " - list operations already span all namespaces; use --namespace where the kind accepts one"
+			return noAllNamespacesFlag + " - a get command lists every namespace when you omit --namespace, except for a kind with a default namespace (fleet-default); use --namespace for a kind that takes one"
 		}
 		return noAllNamespacesFlag
 	},
@@ -680,10 +681,14 @@ func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
 	return exit(ce)
 }
 
-// quotedValueTails are the reasons urfave gives after the flag name in an
-// "invalid value ... for flag -name: <reason>" error that quote nothing:
-// a second instance of a flag declared once, and a bool flag given a value.
-var quotedValueTails = []string{"can't duplicate this flag", "parse error"}
+// quotedValueTails maps the reasons urfave gives after the flag name in an
+// "invalid value ... for flag -name: <reason>" error that quote nothing to
+// the reason shown: a second instance of a flag declared once, and a bool
+// flag given a value that is not true or false.
+var quotedValueTails = map[string]string{
+	"can't duplicate this flag": "can't duplicate this flag",
+	"parse error":               "the value must be true or false",
+}
 
 // usageErrorText is the text of the flag-parse error err of command c. A
 // command that takes a secret input fails closed, since any text urfave
@@ -743,8 +748,8 @@ func invalidValueText(msg string) string {
 	}
 	name, tail, _ := strings.Cut(flagAndReason, ": ")
 	out := "invalid value for flag -" + name
-	if slices.Contains(quotedValueTails, tail) {
-		out += ": " + tail
+	if shown, ok := quotedValueTails[tail]; ok {
+		out += ": " + shown
 	}
 	return out
 }
@@ -803,7 +808,7 @@ func unknownFlagText(name string, argv []string) string {
 			continue
 		}
 		if flag, _, _ := strings.Cut(strings.TrimLeft(w, "-"), "="); flag == name {
-			return fmt.Sprintf("unknown flag at word %d after rancher", i+1)
+			return fmt.Sprintf("unknown flag at argument %d after rancher", i+1)
 		}
 	}
 	return "unknown flag"

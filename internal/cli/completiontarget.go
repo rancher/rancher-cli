@@ -75,7 +75,7 @@ func validateCompletionTargets(leaves map[string]runtime.Descriptor, completers 
 		if src.Claim == nil || targets[name] || !claimsWithoutCredential(leaves[name], src) {
 			continue
 		}
-		return fmt.Errorf("command %s has a completion source that needs no credential and no CompletionTarget", name)
+		return fmt.Errorf("command %s has a completion source that needs no credential, but the command has no completion target (the server to connect to)", name)
 	}
 	return nil
 }

@@ -80,7 +80,7 @@ func TestCheckSourceDeclared(t *testing.T) {
 	require.NoError(t, checkSourceDeclared("the generic kinds source", kindscomplete.KindSource("")))
 
 	err := checkSourceDeclared("command x", completion.Source{Claim: localClaim, Complete: good.Complete})
-	require.ErrorContains(t, err, "Claim is declared in "+modulePath+"/internal/cli, not in a complete package")
+	require.ErrorContains(t, err, "Claim is declared in "+modulePath+"/internal/cli, which is not a live completion package")
 
 	err = checkSourceDeclared("command x", completion.Source{Claim: good.Claim, Complete: localComplete})
 	require.ErrorContains(t, err, "Complete is declared in "+modulePath+"/internal/cli")
@@ -119,19 +119,19 @@ func TestValidateLiveWiring(t *testing.T) {
 		{name: "completer outside the set", completers: map[string]completion.Source{"grant": {Claim: localClaim, Complete: localComplete}},
 			wantErr: "command grant: Claim is declared in " + modulePath + "/internal/cli"},
 		{name: "shared flag passes", flags: map[string]completion.Source{"cluster": good, "namespace": good, "project": good}},
-		{name: "flag outside the shared set", flags: map[string]completion.Source{"role": good}, wantErr: "--role is not a shared completion flag"},
-		{name: "shared flag no leaf declares", flags: map[string]completion.Source{"node": good}, wantErr: "no command declares --node"},
+		{name: "flag outside the shared set", flags: map[string]completion.Source{"role": good}, wantErr: "--role has a live completion source but is not a shared completion flag"},
+		{name: "shared flag no leaf declares", flags: map[string]completion.Source{"node": good}, wantErr: "no command declares --node, which has a live completion source"},
 		{name: "flag source outside the set", flags: map[string]completion.Source{"cluster": {Claim: localClaim, Complete: localComplete}},
 			wantErr: "--cluster: Claim is declared in"},
 		{name: "kind key passes", kindTable: map[string]completion.Source{"user": good, "managementcluster": good, "provisioningcluster": good}},
-		{name: "kind name is not a key", kindTable: map[string]completion.Source{"cluster": good}, wantErr: `"cluster" is not a kind key`},
-		{name: "kind not completable", kindTable: map[string]completion.Source{"secret": good}, wantErr: `kind "secret" is not Completable`},
+		{name: "kind name is not a key", kindTable: map[string]completion.Source{"cluster": good}, wantErr: `"cluster" has a live completion source but is not a kind key`},
+		{name: "kind not completable", kindTable: map[string]completion.Source{"secret": good}, wantErr: `kind "secret" has a live completion source but is not eligible for live name completion`},
 		{name: "kind source outside the set", kindTable: map[string]completion.Source{"user": {Claim: localClaim, Complete: localComplete}},
 			wantErr: "kind user: Claim is declared in"},
 		{name: "positional passes", positional: map[string]string{"inspect pod": "provisioningcluster", "logs": "user"}},
-		{name: "positional unknown command", positional: map[string]string{"inspect cluster": "managementcluster"}, wantErr: `"inspect cluster" is not an adapted command`},
-		{name: "positional unknown kind", positional: map[string]string{"logs": "cluster"}, wantErr: `"logs" names "cluster", which is not a kind key`},
-		{name: "positional non-completable kind", positional: map[string]string{"logs": "secret"}, wantErr: `names kind "secret", which is not Completable`},
+		{name: "positional unknown command", positional: map[string]string{"inspect cluster": "managementcluster"}, wantErr: `"inspect cluster" is listed for completing its first argument but is not a command`},
+		{name: "positional unknown kind", positional: map[string]string{"logs": "cluster"}, wantErr: `completing the first argument of "logs" names "cluster", which is not a kind key`},
+		{name: "positional non-completable kind", positional: map[string]string{"logs": "secret"}, wantErr: `completing the first argument of "logs" names kind "secret", which is not eligible for live name completion`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

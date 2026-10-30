@@ -86,7 +86,7 @@ func TestCompletionDebugTrace(t *testing.T) {
 		}
 		phases := []string{
 			"config loaded:",
-			"budget: 500ms",
+			"time limit: 500ms",
 			"connection: url=" + srv.URL,
 			"token: RANCHER_CLI_TOKEN (full capability)",
 			"source: claimed by the managementcluster kind source",

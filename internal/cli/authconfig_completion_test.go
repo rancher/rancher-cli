@@ -422,7 +422,7 @@ func TestACommandNeedingNoCredentialNeedsACompletionTarget(t *testing.T) {
 	completers := map[string]completion.Source{"x login": tokencomplete.AuthConfigSource()}
 
 	err := validateCompletionTargets(leaves, completers, map[string]bool{})
-	require.ErrorContains(t, err, "command x login has a completion source that needs no credential and no CompletionTarget")
+	require.ErrorContains(t, err, "command x login has a completion source that needs no credential, but the command has no completion target (the server to connect to)")
 	require.NoError(t, validateCompletionTargets(leaves, completers, map[string]bool{"x login": true}))
 
 	managed := map[string]completion.Source{"x login": {

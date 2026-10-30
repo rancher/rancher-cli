@@ -20,9 +20,12 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/rbac/complete"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	tokencomplete "github.com/rancher/rancher-cli/internal/token/complete"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ucli "github.com/urfave/cli/v3"
@@ -737,7 +740,68 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 	}}
 	_, _, werr := wireEntry(reg, resolver, "", bad)
 	require.Error(t, werr)
-	assert.ErrorContains(t, werr, "token")
+	require.ErrorContains(t, werr, `internal error: command name "get pod extra" must have one or two space-separated parts, has 3`)
+}
+
+// TestWireEntryRefusesWithInternalError asserts the whole text of the
+// refusals wireEntry and lookupRow raise for a defect in the command tables.
+func TestWireEntryRefusesWithInternalError(t *testing.T) {
+	t.Parallel()
+	resolver, err := runtime.ComposeResolvers(runtime.MapResolver(provider.NewResolver()), runtime.MapResolver(kinds.Bindings()))
+	require.NoError(t, err)
+	reg := runtime.NewRegistry(resolver)
+
+	_, _, werr := wireEntry(reg, resolver, "", entry{group: "get"})
+	require.EqualError(t, werr, `internal error: the entry in group "get" has no function that creates its command`)
+
+	mismatched := entry{group: "get", make: func(runDeps) runtime.Command {
+		return fakeEngineCmd{name: "create thing"}
+	}}
+	_, _, werr = wireEntry(reg, resolver, "", mismatched)
+	require.EqualError(t, werr, `internal error: command "create thing" is listed under group "get" but its name belongs to group "create"`)
+
+	_, lerr := lookupRow("no-such-kind")
+	require.EqualError(t, lerr, `internal error: kind "no-such-kind" not found`)
+}
+
+// TestValidateWiringLeadsWithInternalError asserts that each failure of the
+// checks of a built command tree reaches the caller with its lead: a registry
+// with an invalid command, a live completion table with a flag that is not
+// shared, and a command whose completion source needs no credential but has no
+// completion target.
+func TestValidateWiringLeadsWithInternalError(t *testing.T) {
+	t.Parallel()
+	resolver, err := runtime.ComposeResolvers(runtime.MapResolver(provider.NewResolver()), runtime.MapResolver(kinds.Bindings()))
+	require.NoError(t, err)
+	leaves := map[string]runtime.Descriptor{"x login": {Name: "x login", Flags: []runtime.ArgSpec{{Name: "auth-provider", Type: "string"}}}}
+	noCredential := map[string]completion.Source{"x login": tokencomplete.AuthConfigSource()}
+
+	invalid := runtime.NewRegistry(resolver)
+	invalid.Register(fakeEngineCmd{name: "get a"})
+	err = validateWiring(invalid, nil, nil, nil, nil, nil, nil)
+	require.ErrorContains(t, err, `internal error: command definitions: command "get a"`)
+
+	empty := runtime.NewRegistry(resolver)
+	err = validateWiring(empty, leaves, nil, nil, map[string]completion.Source{"role": complete.RoleSource()}, nil, nil)
+	require.EqualError(t, err, "internal error: live completion setup: --role has a live completion source but is not a shared completion flag")
+
+	err = validateWiring(empty, leaves, noCredential, map[string]bool{}, nil, nil, nil)
+	require.EqualError(t, err, "internal error: live completion setup: command x login has a completion source that needs no credential, but the command has no completion target (the server to connect to)")
+
+	require.NoError(t, validateWiring(empty, leaves, noCredential, map[string]bool{"x login": true}, nil, nil, nil))
+}
+
+// TestBuildWiredRegistryFailsThroughValidateWiring asserts that the build of
+// the command tree returns the error of the wiring checks as it is: a flag
+// source for a flag that is not shared fails the build with the lead. Not
+// parallel: it replaces the package table of flag sources for the run.
+func TestBuildWiredRegistryFailsThroughValidateWiring(t *testing.T) {
+	orig := flagSources
+	t.Cleanup(func() { flagSources = orig })
+	flagSources = map[string]completion.Source{"role": complete.RoleSource()}
+
+	_, err := buildWiredRegistry("v-test", nil)
+	require.EqualError(t, err, "internal error: live completion setup: --role has a live completion source but is not a shared completion flag")
 }
 
 // TestBuildRootWiresProvisioningClusterDelete asserts, for real, that
@@ -746,8 +810,8 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 // the del override registered is the extra resolver entry BuildRoot composes
 // for that exact op string, derived from the row's own Binding (see
 // TestDeleteProvisioningClusterBindingTracksKindRow for the derivation check).
-// Without that entry, BuildRoot fails with wireEntry's "no resolver binding"
-// error; this test guards against that.
+// Without that entry, BuildRoot fails with wireEntry's "has no contract and
+// stability set" error; this test guards against that.
 func TestBuildRootWiresProvisioningClusterDelete(t *testing.T) {
 	// Not t.Parallel: schemaCommandNames calls t.Setenv, which panics when
 	// combined with t.Parallel (same constraint TestBuildRootWiresGeneratedCommands
@@ -874,7 +938,7 @@ func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {
 	}}
 	_, _, werr := wireEntry(reg, resolver, "", bad)
 	require.Error(t, werr)
-	assert.ErrorContains(t, werr, "binding")
+	require.ErrorContains(t, werr, `internal error: command "get gizmo" has no contract and stability set`)
 }
 
 func TestSchemaCommandEndToEnd(t *testing.T) {
@@ -930,7 +994,7 @@ func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(out.Bytes(), &env))
 	assert.True(t, env.Data.ReadOnly)
-	assert.Contains(t, env.Data.ReadOnlySources, "config readOnly")
+	assert.Contains(t, env.Data.ReadOnlySources, "config setting readOnly")
 }
 
 // An unknown top-level command or an unknown kind under a group
@@ -1133,7 +1197,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-	assert.Contains(t, env.Data.Error.Message, "provisioning-cluster")
+	assert.Equal(t, "unknown command \"cluster\"; to delete a cluster, use rancher delete provisioning-cluster <name>; management clusters cannot be deleted directly", env.Data.Error.Message)
 	assert.Equal(t, "rancher schema", env.Data.Error.Hint,
 		"no single concrete command names both provisioning-cluster and the missing name - the hint stays generic")
 
@@ -1144,7 +1208,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
-	assert.Contains(t, env2.Data.Error.Message, "provisioning-cluster")
+	assert.Equal(t, "unknown command \"clusters\"; to delete a cluster, use rancher delete provisioning-cluster <name>; management clusters cannot be deleted directly", env2.Data.Error.Message)
 
 	// unknown token under delete → generic message, not the cluster-specific one.
 	errOut.Reset()
@@ -1180,9 +1244,10 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 }
 
 // TestAllNamespacesHintTargeted asserts the -A/--all-namespaces friction point:
-// both flags are unknown on every get command (list operations already span
-// all namespaces), so the hint must say so directly instead of pointing at
-// rancher schema. A genuinely unknown flag must still get the generic hint.
+// both flags are unknown on every get command (it lists every namespace when
+// --namespace is omitted, except for a kind with a default namespace), so the
+// hint must say so directly instead of pointing at rancher schema. A
+// genuinely unknown flag must still get the generic hint.
 // Mirrors TestDeleteClusterHintsAtProvisioningCluster one seam over.
 func TestAllNamespacesHintTargeted(t *testing.T) {
 	orig := rawArgv
@@ -1203,7 +1268,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		t.Logf("urfave -A error message: %q", env.Data.Error.Message)
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - list operations already span all namespaces; use --namespace where the kind accepts one")
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - a get command lists every namespace when you omit --namespace, except for a kind with a default namespace (fleet-default); use --namespace for a kind that takes one")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 
@@ -1222,7 +1287,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		t.Logf("urfave --all-namespaces error message: %q", env.Data.Error.Message)
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - list operations already span all namespaces; use --namespace where the kind accepts one")
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - a get command lists every namespace when you omit --namespace, except for a kind with a default namespace (fleet-default); use --namespace for a kind that takes one")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 
@@ -1281,7 +1346,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag",
 			"create namespace -A must get the verb-agnostic detail, not the get-specific wording")
-		assert.NotContains(t, env.Data.Error.Message, "list operations already span all namespaces",
+		assert.NotContains(t, env.Data.Error.Message, "a get command lists every namespace",
 			"the get-specific wording must not leak onto a non-get verb")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
@@ -1319,7 +1384,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - list operations already span all namespaces; use --namespace where the kind accepts one",
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - a get command lists every namespace when you omit --namespace, except for a kind with a default namespace (fleet-default); use --namespace for a kind that takes one",
 			"bare get group -A (path length 2) must yield the get-scoped wording, asserting the >= 2 boundary")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
@@ -1564,7 +1629,7 @@ func TestFeaturePatchWarnsWhenFlagIsNotDynamic(t *testing.T) {
 			w, ok := featureRestartWarning(tc.orig)
 			assert.Equal(t, tc.warned, ok)
 			if tc.warned {
-				assert.Contains(t, w, "restarts itself to apply it")
+				assert.Contains(t, w, "Rancher restarts to apply it")
 			} else {
 				assert.Empty(t, w)
 			}

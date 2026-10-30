@@ -168,13 +168,13 @@ stderr:
 $ rancher --bogus
 exit: 2
 stderr:
-> error (VALIDATION): unknown flag at word 1 after rancher; pass --help for usage
+> error (VALIDATION): unknown flag at argument 1 after rancher; pass --help for usage
 >   hint: rancher schema
 
 $ rancher get --bogus
 exit: 2
 stderr:
-> error (VALIDATION): unknown flag at word 2 after rancher; pass --help for usage
+> error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage
 >   hint: rancher schema
 
 $ rancher get pod --bogus
@@ -202,7 +202,7 @@ stderr:
 $ rancher __completion --bogus
 exit: 2
 stderr:
-> error (VALIDATION): unknown flag at word 2 after rancher; pass --help for usage
+> error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage
 >   hint: rancher schema
 
 $ rancher get pod --output

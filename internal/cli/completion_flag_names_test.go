@@ -290,7 +290,7 @@ func TestFlagNameCompletionFormatColonSeparated(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 
-	// Flag colon format: --output has usage "table|json|yaml|name|template=<tpl>".
+	// Flag colon format: --output has usage "table|wide|json|yaml|name|template=<go-template>".
 	flagOut := runNameLikeCompletion(t, []string{"usage"}, "--")
 	foundFlagColon := false
 	for line := range strings.SplitSeq(strings.TrimSpace(flagOut), "\n") {

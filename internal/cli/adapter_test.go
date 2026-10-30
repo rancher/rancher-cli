@@ -244,7 +244,7 @@ func TestResolveReadOnlyConfigSource(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("readOnly: true\n"), 0o600))
 	active, sources := runResolveReadOnly(t, []string{"x", "--config", dir})
 	assert.True(t, active)
-	assert.Equal(t, []string{"config readOnly"}, sources)
+	assert.Equal(t, []string{"config setting readOnly"}, sources)
 }
 
 func TestResolveReadOnlyAllThreeCombineOrdered(t *testing.T) {
@@ -252,7 +252,7 @@ func TestResolveReadOnlyAllThreeCombineOrdered(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("readOnly: true\n"), 0o600))
 	t.Setenv("RANCHER_CLI_READONLY", "1")
 	_, sources := runResolveReadOnly(t, []string{"x", "--config", dir, "--read-only"})
-	assert.Equal(t, []string{"config readOnly", "RANCHER_CLI_READONLY", "--read-only"}, sources)
+	assert.Equal(t, []string{"config setting readOnly", "RANCHER_CLI_READONLY", "--read-only"}, sources)
 }
 
 func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
@@ -343,4 +343,29 @@ func TestAdaptedStringSliceFlagRoundTrip(t *testing.T) {
 		assert.False(t, echo.setPresent)
 		assert.False(t, echo.boolSet)
 	})
+}
+
+// TestGlobalFlagUsageTexts asserts the usage text of the global flags --config,
+// --output, --project and --read-only, word for word.
+func TestGlobalFlagUsageTexts(t *testing.T) {
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	want := map[string]string{
+		"config":    "path to the config directory",
+		"output":    "table|wide|json|yaml|name|template=<go-template>",
+		"project":   "the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)",
+		"read-only": "refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it",
+	}
+	got := map[string]string{}
+	for _, f := range root.Flags {
+		switch fl := f.(type) {
+		case *ucli.StringFlag:
+			got[fl.Name] = fl.Usage
+		case *ucli.BoolFlag:
+			got[fl.Name] = fl.Usage
+		}
+	}
+	for name, usage := range want {
+		assert.Equal(t, usage, got[name], "usage of --%s", name)
+	}
 }

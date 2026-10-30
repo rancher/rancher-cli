@@ -602,7 +602,7 @@ binding, or `BuildRoot` fails.
 **Declarative registration (`internal/cli/root.go`).** Commands live in one `entry` table
 (`group`, and exactly one of an `engine` or `local` constructor). `BuildRoot` loops the
 table: probes `Describe()` for nil-safety, validates (unique name; command name is 1 or 2
-space-separated tokens and its group matches the leading token; `commandType` matches the
+space-separated parts and its group matches the leading token; `commandType` matches the
 implemented interface; engine commands resolve to a binding), registers into the registry
 for schema, and wires the adapter. Command groups are derived from the entries in
 first-appearance order - there is **no group allowlist**; an unknown group still yields a

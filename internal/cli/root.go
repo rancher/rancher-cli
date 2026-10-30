@@ -195,13 +195,13 @@ func delOverrideOnNonDeletable(k kinds.Kind, ov kindOverride) bool {
 // patch is refused outright - the row is read-only surface.
 // featureRestartWarning returns the advisory for a feature whose read
 // status.dynamic is false: the server must restart to apply the change, and
-// until it has come back the next command can fail confusingly.
+// until the server is available again the next command can fail confusingly.
 func featureRestartWarning(orig *unstructured.Unstructured) (string, bool) {
 	dynamic, found, _ := unstructured.NestedBool(orig.Object, "status", "dynamic")
 	if !found || dynamic {
 		return "", false
 	}
-	return "this feature flag is not dynamic: the server restarts itself to apply it - wait for the server to come back before running more commands", true
+	return "this feature flag is not dynamic: Rancher restarts to apply it - wait until the server is available again before running more commands", true
 }
 
 // primeFeatureCommunityWarning warns that a rendered Feature's VALUE column
@@ -238,22 +238,22 @@ var kindOverrideTable = map[string]kindOverride{
 	"clusterregistrationtoken": {
 		get:      func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewGetCRT(k, d.roots) },
 		patch:    func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewRefuseCRTPatch(k) },
-		refusals: map[string]string{"patch": "read-only: consumed, not edited"},
+		refusals: map[string]string{"patch": "read-only: the CLI only reads it, never edits it"},
 	},
-	// managementtoken: patch is refused - writes go through Rancher's auth
-	// lifecycle; the CLI does not bypass it. Delete is guarded against removing
-	// the token backing the current session.
+	// managementtoken: patch is refused - Rancher sets the key, the TTL and the
+	// user of a token itself; the CLI does not change them. Delete is guarded
+	// against removing the token backing the current session.
 	"managementtoken": {
 		patch: func(k kinds.Kind, d runDeps) runtime.Command { return managementtoken.NewRefusePatch(k) },
 		del: func(k kinds.Kind, d runDeps) runtime.Command {
 			return managementtoken.NewDeleteGuard(k, d.clients, d.sessionNamer)
 		},
-		refusals: map[string]string{"patch": "writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it"},
+		refusals: map[string]string{"patch": "Rancher sets these token fields itself (the key, a TTL within the server's maximum TTL, and the user the token belongs to); the CLI does not change them"},
 	},
 	// feature: patching a flag whose status.dynamic is false takes effect
-	// only after the server restarts itself - on a single-node server that
-	// is a real outage window, and the CLI otherwise says nothing. Advisory
-	// only, never a gate. get carries the community-edition counterpart: a
+	// only after Rancher restarts - on a single-node server that is a real
+	// outage window, and the CLI otherwise says nothing. Advisory only,
+	// never a gate. get carries the community-edition counterpart: a
 	// prime-classified feature that reads enabled is inert there regardless
 	// of what the object says.
 	"feature": {
@@ -392,24 +392,24 @@ func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.Ver
 // the single run adapter.
 func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string, e entry) (*ucli.Command, string, error) {
 	if e.make == nil {
-		return nil, "", fmt.Errorf("entry in group %q has no constructor", e.group)
+		return nil, "", fmt.Errorf("internal error: the entry in group %q has no function that creates its command", e.group)
 	}
 	d := e.make(runDeps{}).Describe()
 
-	// The tree is two levels deep: a command name is exactly one token (a
-	// top-level command) or two (group + leaf). Reject 3+ tokens with a clear
-	// message rather than a misleading group mismatch.
+	// The tree is two levels deep: a command name is exactly one part (a
+	// top-level command) or two (group + leaf). Reject 3 or more parts with a
+	// clear message rather than a misleading group mismatch.
 	if n := strings.Count(d.Name, " "); n > 1 {
-		return nil, "", fmt.Errorf("command name %q must be one or two space-separated tokens, has %d", d.Name, n+1)
+		return nil, "", fmt.Errorf("internal error: command name %q must have one or two space-separated parts, has %d", d.Name, n+1)
 	}
 	if g := groupName(d.Name); g != e.group {
-		return nil, "", fmt.Errorf("command %q is wired under group %q but its name implies %q", d.Name, e.group, g)
+		return nil, "", fmt.Errorf("internal error: command %q is listed under group %q but its name belongs to group %q", d.Name, e.group, g)
 	}
 	// Engine commands (read or mutating) must resolve to a binding; Local
 	// config/auth commands carry no contract.
 	if d.CommandType != runtime.Local {
 		if _, ok := resolver.Resolve(d.Name); !ok {
-			return nil, "", fmt.Errorf("engine command %q has no resolver binding", d.Name)
+			return nil, "", fmt.Errorf("internal error: command %q has no contract and stability set", d.Name)
 		}
 	}
 
@@ -421,19 +421,19 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string,
 // entries but absent here still gets a (usage-less) group command - command
 // reachability never depends on an allowlist.
 var groupUsages = map[string]string{
-	"auth":        "Auth operations",
-	"config":      "Config operations",
+	"auth":        "Auth commands",
+	"config":      "Config commands",
 	"create":      "Create resources",
-	"get":         "Read resources",
+	"get":         "Get resources",
 	"patch":       "Patch resources",
 	"delete":      "Delete resources",
-	"inspect":     "Inspect related resources together",
-	"project":     "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
-	"skill":       "Installation of the rancher-cli agent skill in coding-agent harnesses",
-	"telemetry":   "Local usage recording: status, on, off, reset and show",
-	"oidc-client": "OIDC client secret lifecycle (create oidc-client creates the client itself)",
-	"cluster":     "Cluster scaling and autoscaling (create a provisioning cluster with 'create cluster' and delete it with 'delete provisioning-cluster')",
-	"access":      "Where a subject can go, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
+	"inspect":     "Inspect a cluster, workload or project with its related objects",
+	"project":     "Project namespace commands (project membership is managed with 'rancher grant' and 'rancher revoke')",
+	"skill":       "Install, remove and check the agent skills that come with rancher-cli",
+	"telemetry":   "Local usage recording: status, turn on, turn off, delete and list events",
+	"oidc-client": "Manage OIDC client secrets (create oidc-client creates the client itself)",
+	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with 'create cluster' and delete it with 'delete provisioning-cluster')",
+	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 
 // aliasAwareGroupComplete is a verb group's own ShellComplete. urfave's
@@ -718,7 +718,7 @@ var bespokePublicOps = map[string]bool{
 func lookupRow(key string) (kinds.Kind, error) {
 	row, ok := kinds.Lookup(key)
 	if !ok {
-		return kinds.Kind{}, fmt.Errorf("kind table: %q kind not found", key)
+		return kinds.Kind{}, fmt.Errorf("internal error: kind %q not found", key)
 	}
 	return row, nil
 }
@@ -776,7 +776,7 @@ func composeBindings() (runtime.Resolver, error) {
 		var err error
 		resolver, err = runtime.ComposeResolvers(resolver, src)
 		if err != nil {
-			return nil, fmt.Errorf("resolver: %w", err)
+			return nil, fmt.Errorf("internal error: command contracts: %w", err)
 		}
 	}
 	return resolver, nil
@@ -800,7 +800,7 @@ type wiredRegistry struct {
 // the real CLI path and nil for callers that only need the manifest shape.
 func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wiredRegistry, error) {
 	if err := kinds.Validate(); err != nil {
-		return wiredRegistry{}, fmt.Errorf("kind table: %w", err)
+		return wiredRegistry{}, fmt.Errorf("internal error: kind definitions: %w", err)
 	}
 	resolver, err := composeBindings()
 	if err != nil {
@@ -820,7 +820,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	groups := map[string][]*ucli.Command{}
 	sectionCmds := map[string][]string{}
 	var order []string
-	// leaves and completers feed the live completion wiring check below:
+	// leaves and completers feed the live completion setup check below:
 	// every adapted command's descriptor, and the source of every command
 	// that owns live completion, taken from the same zero-dependency
 	// probe adaptEntry installs the TAB callback on.
@@ -914,14 +914,8 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	}
 	reg.SetGroups(sections)
 
-	if err := reg.Validate(); err != nil {
-		return wiredRegistry{}, fmt.Errorf("command registry: %w", err)
-	}
-	if err := validateLiveWiring(leaves, completers, flagSources, kindSources, positionalKinds); err != nil {
-		return wiredRegistry{}, fmt.Errorf("live completion wiring: %w", err)
-	}
-	if err := validateCompletionTargets(leaves, completers, targets); err != nil {
-		return wiredRegistry{}, fmt.Errorf("live completion wiring: %w", err)
+	if err := validateWiring(reg, leaves, completers, targets, flagSources, kindSources, positionalKinds); err != nil {
+		return wiredRegistry{}, err
 	}
 	return wiredRegistry{
 		reg:    reg,
@@ -929,6 +923,23 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		groups: groups,
 		order:  order,
 	}, nil
+}
+
+// validateWiring runs the checks of a built command tree: the registry's own
+// rules, then the live completion tables and the completion targets. Each
+// failure is a defect of the CLI and leads with "internal error: ".
+func validateWiring(reg *runtime.Registry, leaves map[string]runtime.Descriptor, completers map[string]completion.Source, targets map[string]bool,
+	flags, kindTable map[string]completion.Source, positional map[string]string) error {
+	if err := reg.Validate(); err != nil {
+		return fmt.Errorf("internal error: command definitions: %w", err)
+	}
+	if err := validateLiveWiring(leaves, completers, flags, kindTable, positional); err != nil {
+		return fmt.Errorf("internal error: live completion setup: %w", err)
+	}
+	if err := validateCompletionTargets(leaves, completers, targets); err != nil {
+		return fmt.Errorf("internal error: live completion setup: %w", err)
+	}
+	return nil
 }
 
 func BuildRoot(version string) (*ucli.Command, error) {
@@ -975,12 +986,12 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 	return &ucli.Command{
 		Name:          "rancher",
 		ShellComplete: noCompletionAfterDoubleDash(rootShellComplete),
-		Usage:         "Rancher CLI",
+		Usage:         "rancher-cli",
 		Version:       version,
 		Flags: append([]ucli.Flag{
 			// --debug is accepted and currently a no-op.
 			&ucli.BoolFlag{Name: "debug", Usage: "accepted; currently no effect"},
-			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "path to rancher config directory",
+			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "path to the config directory",
 				Sources: ucli.EnvVars(config.EnvConfigDir)},
 		}, GlobalFlags()...),
 		CommandNotFound: commandNotFound,

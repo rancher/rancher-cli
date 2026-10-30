@@ -151,7 +151,7 @@ func checkSourceDeclared(where string, src completion.Source) error {
 			return fmt.Errorf("live completion source for %s has no %s function", where, name)
 		}
 		if !liveSourcePackages[pkg] {
-			return fmt.Errorf("live completion source for %s: %s is declared in %s, not in a complete package", where, name, pkg)
+			return fmt.Errorf("live completion source for %s: %s is declared in %s, which is not a live completion package", where, name, pkg)
 		}
 	}
 	return nil
@@ -175,7 +175,7 @@ func validateLiveWiring(leaves map[string]runtime.Descriptor, completers map[str
 	}
 	for _, flag := range slices.Sorted(maps.Keys(flags)) {
 		if !sharedCompletionFlags[flag] {
-			return fmt.Errorf("flagSources: --%s is not a shared completion flag", flag)
+			return fmt.Errorf("--%s has a live completion source but is not a shared completion flag", flag)
 		}
 		declared := false
 		for _, d := range leaves {
@@ -185,7 +185,7 @@ func validateLiveWiring(leaves map[string]runtime.Descriptor, completers map[str
 			}
 		}
 		if !declared {
-			return fmt.Errorf("flagSources: no command declares --%s", flag)
+			return fmt.Errorf("no command declares --%s, which has a live completion source", flag)
 		}
 		if err := checkSourceDeclared("--"+flag, flags[flag]); err != nil {
 			return err
@@ -194,10 +194,10 @@ func validateLiveWiring(leaves map[string]runtime.Descriptor, completers map[str
 	for _, key := range slices.Sorted(maps.Keys(kindTable)) {
 		k, ok := kinds.ByKey(key)
 		if !ok {
-			return fmt.Errorf("kindSources: %q is not a kind key", key)
+			return fmt.Errorf("%q has a live completion source but is not a kind key", key)
 		}
 		if !k.Completable {
-			return fmt.Errorf("kindSources: kind %q is not Completable", key)
+			return fmt.Errorf("kind %q has a live completion source but is not eligible for live name completion", key)
 		}
 		if err := checkSourceDeclared("kind "+key, kindTable[key]); err != nil {
 			return err
@@ -205,14 +205,14 @@ func validateLiveWiring(leaves map[string]runtime.Descriptor, completers map[str
 	}
 	for _, cmd := range slices.Sorted(maps.Keys(positional)) {
 		if _, ok := leaves[cmd]; !ok {
-			return fmt.Errorf("positionalKinds: %q is not an adapted command", cmd)
+			return fmt.Errorf("%q is listed for completing its first argument but is not a command", cmd)
 		}
 		k, ok := kinds.ByKey(positional[cmd])
 		if !ok {
-			return fmt.Errorf("positionalKinds: %q names %q, which is not a kind key", cmd, positional[cmd])
+			return fmt.Errorf("completing the first argument of %q names %q, which is not a kind key", cmd, positional[cmd])
 		}
 		if !k.Completable {
-			return fmt.Errorf("positionalKinds: %q names kind %q, which is not Completable", cmd, positional[cmd])
+			return fmt.Errorf("completing the first argument of %q names kind %q, which is not eligible for live name completion", cmd, positional[cmd])
 		}
 	}
 	return nil

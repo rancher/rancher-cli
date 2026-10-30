@@ -104,7 +104,7 @@ func boolValueRefusal(p parsedLine) *clierr.Error {
 	leaf := p.levels[p.endIfBlankAccepted.level]
 	d, ok := commandDescriptor(leaf.cmd)
 	if !ok {
-		return clierr.New(clierr.CodeGeneric, "internal error: "+p.commandName(p.endIfBlankAccepted.level)+" has no command descriptor")
+		return clierr.New(clierr.CodeGeneric, "internal error: "+p.commandName(p.endIfBlankAccepted.level)+" has no command definition")
 	}
 	byIndex := map[int]lineWord{}
 	inLeaf := map[int]bool{}

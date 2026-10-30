@@ -129,9 +129,9 @@ func TestKnownCommandLinesKeepTheirResult(t *testing.T) {
 	// A group that reports an undefined flag with no leaf command left on the
 	// line may hold a command that takes a secret, so the flag is named by its
 	// position, not as typed.
-	const noLeafFlagError = "unknown flag at word 4 after rancher; pass --help for usage"
-	const noLeafAllNamespaces = "unknown flag at word 4 after rancher; pass --help for usage; there is no all-namespaces flag"
-	const getDetail = " - list operations already span all namespaces; use --namespace where the kind accepts one"
+	const noLeafFlagError = "unknown flag at argument 4 after rancher; pass --help for usage"
+	const noLeafAllNamespaces = "unknown flag at argument 4 after rancher; pass --help for usage; there is no all-namespaces flag"
+	const getDetail = " - a get command lists every namespace when you omit --namespace, except for a kind with a default namespace (fleet-default); use --namespace for a kind that takes one"
 
 	rows := []struct {
 		argv    []string

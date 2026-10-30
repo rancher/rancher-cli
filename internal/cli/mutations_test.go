@@ -95,8 +95,8 @@ func TestPatchFlagSpellings(t *testing.T) {
 	}{
 		{"-p is --patch", []string{"-p", "{}"}, "invalid patch: "},
 		{"--patch-file reads the file", []string{"--patch-file", "does-not-exist.json"}, `cannot read patch "does-not-exist.json"`},
-		{"-f is unknown", []string{"-f", "ops.json"}, "unknown flag at word 8 after rancher"},
-		{"--filename is unknown", []string{"--filename", "ops.json"}, "unknown flag at word 8 after rancher"},
+		{"-f is unknown", []string{"-f", "ops.json"}, "unknown flag at argument 8 after rancher"},
+		{"--filename is unknown", []string{"--filename", "ops.json"}, "unknown flag at argument 8 after rancher"},
 		{"--type takes json or merge", []string{"--type", "strategic", "-p", "{}"}, "--type value is not one of json|merge"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -76,7 +76,7 @@ func TestStyledHelpRootCardBoldsHeaders(t *testing.T) {
 	for _, header := range []string{"NAME:", "USAGE:", "VERSION:", "COMMANDS:", "GLOBAL OPTIONS:"} {
 		assert.Contains(t, styled, style.Style{Enabled: true}.Bold(header), "header %q must be bold", header)
 	}
-	nameLine := lineContaining(t, styled, "rancher - Rancher CLI")
+	nameLine := lineContaining(t, styled, "rancher - rancher-cli")
 	assert.NotContains(t, nameLine, "\x1b[", "the NAME line's content stays plain")
 
 	versionLine := lineContaining(t, styled, "v-test")

@@ -380,7 +380,7 @@ func secretURLRows() []secretRow {
 		row(secretRow{flag: "server", name: "token, an extra argument holds the canary", argv: []string{"token", "--server", "{url}", "--user", "kube", "--cluster", "c-1", urlCanary},
 			message: "unexpected argument"}),
 		row(secretRow{flag: "server", name: "auth get-token, a bool flag is given the canary", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--no-input=" + urlCanary},
-			message: "invalid value for flag -no-input: parse error"}),
+			message: "invalid value for flag -no-input: the value must be true or false"}),
 		row(secretRow{flag: "server", name: "auth get-token, --auth-flow holds the canary", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--auth-flow", urlCanary},
 			message: "--auth-flow value is not one of devicecode|authcode"}),
 		row(secretRow{flag: "user-id", name: "auth get-token --user-id holds the canary", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--user-id", urlCanary},

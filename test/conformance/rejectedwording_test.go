@@ -91,8 +91,7 @@ import (
 //     be told from "named ops" (the operations a kind supports) and
 //     "server ops" (the CLI's commands) by pattern.
 //   - cascades, consumed: other text still uses them in their own sense (the
-//     description of a user delete in skills/rancher/SKILL.md; the kind table's
-//     read-only note for a cluster registration token).
+//     description of a user delete in skills/rancher/SKILL.md).
 //   - decoding: an ordinary word ("decoding the object of row 3"); the decode
 //     errors of the registration token commands now say "cannot read".
 //   - converges: an ordinary Kubernetes word.
@@ -428,14 +427,12 @@ var wordingPathAllowlist = []wordingPath{
 	{"as you", "internal/engine/access/list.go", "", 1, "text not yet reworded"},
 	{"as you", "internal/engine/access/whocan.go", "", 1, "text not yet reworded"},
 	{"auth bootstrap", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
-	{"auth lifecycle", "internal/cli/root.go", "", 1, "text not yet reworded"},
 	{"bespoke", "internal/cli/capability_coverage.go", "", 4, "text not yet reworded"},
 	{"bin-dir", "install.ps1", "", 1, "the dry-run output key, kept because a test asserts it"},
 	{"bin-dir", "install.sh", "", 1, "the dry-run output key, kept because a test asserts it"},
 	{"budget", "COMMANDS.md", "Servers & configuration", 1, "text not yet reworded"},
 	{"budget", "MIGRATING.md", "Changed in this CLI", 1, "text not yet reworded"},
 	{"budget", "REFERENCE.md", "Revoking the CLI's tokens", 2, "text not yet reworded"},
-	{"budget", "internal/cli/completion_debug.go", "", 1, "text not yet reworded"},
 	{"budget", "internal/commands/configcmd/config_info.go", "", 1, "text not yet reworded"},
 	{"budget", "internal/commands/configcmd/set_completion.go", "", 2, "text not yet reworded"},
 	{"budget", "internal/engine/access/fanout.go", "", 2, "text not yet reworded"},

@@ -98,6 +98,23 @@ func TestRootClientTimesOut(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestRootClientTransportFailureNamesTheRequest asserts a request that never
+// reaches the server fails with the method and path and no internal client
+// name.
+func TestRootClientTransportFailureNamesTheRequest(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	f := seedRootConfig(t, srv)
+	srv.Close()
+	rc, err := f.Root()
+	require.NoError(t, err)
+	_, err = rc.GetJSON(t.Context(), "/x")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "the failure is a typed error")
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.True(t, strings.HasPrefix(ce.Message, "GET /x on the Rancher server: "), ce.Message)
+	assert.NotContains(t, ce.Message, "rancher root GET")
+}
+
 // TestRootClientMapsStatusToClierr asserts the root client classifies a
 // non-2xx answer through the status table and keeps the status readable
 // through clierr.HTTPStatus.
@@ -114,13 +131,13 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 		retryable   bool
 	}{
 		{"401 Rancher body", http.StatusUnauthorized, object, `{"type":"error","code":"Unauthorized","message":"must authenticate","status":401}`,
-			clierr.CodeAuth, "rancher root GET /x: the server rejected the credential (401)", clierr.AuthStatusRemedy, false},
+			clierr.CodeAuth, "GET /x on the Rancher server: the server rejected the credential (401)", clierr.AuthStatusRemedy, false},
 		{"403 steve object", http.StatusForbidden, object, `{"type":"error","links":{},"code":"PermissionDenied","message":"can not get management.cattle.io.clusterregistrationtokens","status":403}`,
-			clierr.CodeRBAC, "rancher root GET /x: can not get management.cattle.io.clusterregistrationtokens", "", false},
+			clierr.CodeRBAC, "GET /x on the Rancher server: can not get management.cattle.io.clusterregistrationtokens", "", false},
 		{"403 no body", http.StatusForbidden, "", "",
-			clierr.CodeRBAC, "rancher root GET /x: the server refused the request (403) and gave no reason", "", false},
+			clierr.CodeRBAC, "GET /x on the Rancher server: the server refused the request (403) and gave no reason", "", false},
 		{"404", http.StatusNotFound, "text/plain", "nope",
-			clierr.CodeNotFound, "rancher root GET /x: the server could not find the requested resource", "", false},
+			clierr.CodeNotFound, "GET /x on the Rancher server: the server could not find the requested resource", "", false},
 		{"409 steve object", http.StatusConflict, object, `{"type":"error","code":"Conflict","message":"conflict","status":409}`,
 			clierr.CodeConflict, "the resource changed on the server since it was last read; retry the command", "", true},
 		{"400", http.StatusBadRequest, "text/plain", "bad",
@@ -130,9 +147,9 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 		{"429", http.StatusTooManyRequests, "text/plain", "slow down",
 			clierr.CodeGeneric, " - retry later", "", true},
 		{"503 no body", http.StatusServiceUnavailable, "", "",
-			clierr.CodeGeneric, "rancher root GET /x: the server is currently unable to handle the request - retrying may succeed", "", true},
+			clierr.CodeGeneric, "GET /x on the Rancher server: the server is currently unable to handle the request - retrying may succeed", "", true},
 		{"500 steve object", http.StatusInternalServerError, object, `{"type":"error","links":{},"code":"ServerError","message":"etcdserver: request timed out","status":500}`,
-			clierr.CodeGeneric, `rancher root GET /x: an error on the server ("etcdserver: request timed out") has prevented the request from succeeding - retrying may succeed`, "", true},
+			clierr.CodeGeneric, `GET /x on the Rancher server: an error on the server ("etcdserver: request timed out") has prevented the request from succeeding - retrying may succeed`, "", true},
 	}
 	var row int
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -154,7 +171,7 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 		require.True(t, ok, r.name)
 		assert.Equal(t, r.code, ce.Code, r.name)
 		if strings.HasPrefix(r.message, " - ") {
-			assert.True(t, strings.HasPrefix(ce.Message, "rancher root GET /x: "), r.name)
+			assert.True(t, strings.HasPrefix(ce.Message, "GET /x on the Rancher server: "), r.name)
 			assert.True(t, strings.HasSuffix(ce.Message, r.message), "%s: %q", r.name, ce.Message)
 		} else if r.message != "" {
 			assert.Equal(t, r.message, ce.Message, r.name)

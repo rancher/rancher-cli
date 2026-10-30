@@ -64,12 +64,12 @@ func TestALeafWithoutADescriptorIsAnInternalError(t *testing.T) {
 	require.NotNil(t, ce)
 	assert.False(t, wholeLine)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Equal(t, "internal error: rancher bare has no command descriptor", ce.Message)
+	assert.Equal(t, "internal error: rancher bare has no command definition", ce.Message)
 	assert.Equal(t, 1, ce.ExitCode())
 
 	var errOut bytes.Buffer
 	root := newRoot()
 	root.Writer, root.ErrWriter = &bytes.Buffer{}, &errOut
 	assert.Equal(t, 1, runMain(t, root, "bare"))
-	assert.Contains(t, errOut.String(), "rancher bare has no command descriptor")
+	assert.Contains(t, errOut.String(), "rancher bare has no command definition")
 }

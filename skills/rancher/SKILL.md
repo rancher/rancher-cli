@@ -788,8 +788,8 @@ fails any mutation with `VALIDATION` naming the feature - "enable feature
 oidc-provider" on a Prime server, a neutral disabled statement on every
 other edition. The flag is not dynamic: patching it
 (`patch feature oidc-provider ... --apply --yes`) warns "this feature flag
-is not dynamic: the server restarts itself to apply it - wait for the
-server to come back before running more commands" - wait out the restart
+is not dynamic: Rancher restarts to apply it - wait until the server is
+available again before running more commands" - wait out the restart
 before running oidc-client commands.
 
 `rotate-secret <client> [secret-name]` may omit `secret-name` only when the

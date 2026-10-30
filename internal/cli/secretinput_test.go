@@ -266,9 +266,9 @@ func secretRows() []secretRow {
 		add(
 			secretRow{flag: "password-stdin", name: cmd.line + ": an empty password", argv: line(cmd.line, "--password-stdin"), code: validation, message: "the password read from stdin is empty"},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the flag without the pipe", argv: line(cmd.line), stdin: c, code: validation, message: "--password-stdin is required"},
-			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed after the flag with =", argv: line(cmd.line, "--password-stdin="+c), code: validation, message: "invalid value for flag -password-stdin: parse error"},
+			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed after the flag with =", argv: line(cmd.line, "--password-stdin="+c), code: validation, message: "invalid value for flag -password-stdin: the value must be true or false"},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed as an argument", argv: line(cmd.line, "--password-stdin", c), code: validation, message: cmd.extra},
-			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed after a flag that does not exist", argv: line(cmd.line, "--password", c), code: validation, message: "unknown flag at word 7 after rancher"},
+			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed after a flag that does not exist", argv: line(cmd.line, "--password", c), code: validation, message: "unknown flag at argument 7 after rancher"},
 		)
 	}
 	short := shortSecretCanary
@@ -282,7 +282,7 @@ func secretRows() []secretRow {
 		secretRow{flag: "token-stdin", name: "a token with no id", argv: line(loginLine, "--token-stdin"), stdin: ":" + c, code: validation, message: "invalid token (expected non-empty id:secret)"},
 		secretRow{flag: "token-stdin", name: "a token the server refuses", argv: line(loginLine, "--token-stdin"), stdin: "id:" + c, code: string(clierr.CodeAuth), message: "the server rejected the credential"},
 		secretRow{flag: "token-stdin", name: "a token with no colon, not verified", argv: line(loginLine, "--token-stdin", "--no-verify"), stdin: c, code: validation, message: "invalid token (expected non-empty id:secret)"},
-		secretRow{flag: "token-stdin", name: "the token typed after the flag with =", argv: line(loginLine, "--token-stdin="+c), code: validation, message: "invalid value for flag -token-stdin: parse error"},
+		secretRow{flag: "token-stdin", name: "the token typed after the flag with =", argv: line(loginLine, "--token-stdin="+c), code: validation, message: "invalid value for flag -token-stdin: the value must be true or false"},
 		secretRow{flag: "token-stdin", name: "the token typed as an argument", argv: line(loginLine, "--token-stdin", c), code: validation, message: "unexpected argument 2"},
 	)
 
@@ -331,18 +331,18 @@ func secretRows() []secretRow {
 		secretRow{flag: "password-stdin", name: "a word that reads as a bool is named by position", argv: line("create user bob --password-stdin --dry-run TRUE"), canary: "TRUE", code: validation, message: "create user: argument 2 after the bool flag --dry-run", hint: "rancher create user --help"},
 		secretRow{flag: "password-stdin", name: "a word after a bare dash is counted, not named", argv: line("create user bob --password-stdin -", c), code: validation, message: "1 word after a - on its own is not used"},
 		secretRow{flag: "from-literal", name: "words after a bare dash are counted, not named", argv: line("create secret s --cluster c-x --namespace d -", "--from-literal", "pw="+c), code: validation, message: "2 words after a - on its own are not used"},
-		secretRow{flag: "password-stdin", name: "a password typed with a leading dash is not named", argv: line("create user bob --password-stdin", "-"+c), code: validation, message: "unknown flag at word 7 after rancher"},
-		secretRow{flag: "token-stdin", name: "a token typed with a leading dash is not named", argv: line("auth login x --token-stdin", "-"+c), code: validation, message: "unknown flag at word 7 after rancher"},
+		secretRow{flag: "password-stdin", name: "a password typed with a leading dash is not named", argv: line("create user bob --password-stdin", "-"+c), code: validation, message: "unknown flag at argument 7 after rancher"},
+		secretRow{flag: "token-stdin", name: "a token typed with a leading dash is not named", argv: line("auth login x --token-stdin", "-"+c), code: validation, message: "unknown flag at argument 7 after rancher"},
 		secretRow{flag: "password-stdin", name: "words after a bare dash at a group level are counted, not named", argv: line("create -", c, "--password-stdin"), code: validation, message: "2 words after a - on its own are not used"},
 		secretRow{flag: "password-stdin", name: "words after a bare dash at the root are counted, not named", argv: line("-", c), code: validation, message: "1 word after a - on its own is not used"},
 		secretRow{flag: "from-literal", name: "a flag typed without its value is named, since the command defines it", argv: line(createSecretLine, "--from-literal"), code: validation, message: "flag needs an argument: --from-literal"},
 		secretRow{flag: "password-stdin", name: "a password typed after a padded flag word gives no position", argv: line("create user bob --password-stdin", " -"+c), code: validation, message: "unknown flag"},
 		secretRow{flag: "password-stdin", name: "a password typed after three dashes gives no word", argv: line("create user bob --password-stdin", "---"+c), code: validation, message: "unknown flag"},
-		secretRow{flag: "password-stdin", name: "an unknown flag typed at a group before the command name is named by position", argv: line("create -" + c + " user bob --password-stdin"), code: validation, message: "unknown flag at word 4 after rancher"},
-		secretRow{flag: "password-stdin", name: "an unknown flag typed before the group name is named by position", argv: line("-" + c + " create user bob --password-stdin"), code: validation, message: "unknown flag at word 3 after rancher"},
-		secretRow{flag: "url", name: "an unknown flag typed before a command with a secret input is named by position", argv: line("-" + c + " config add-server"), code: validation, message: "unknown flag at word 3 after rancher"},
-		secretRow{flag: "password-stdin", name: "a value for a flag typed before the group name is not named", argv: line("--debug=" + c + " create user bob --password-stdin"), code: validation, message: "invalid value for flag -debug: parse error"},
-		secretRow{flag: "password-stdin", name: "a value for a flag typed at a group is not named", argv: line("create --debug=" + c + " user bob --password-stdin"), code: validation, message: "invalid value for flag -debug: parse error"},
+		secretRow{flag: "password-stdin", name: "an unknown flag typed at a group before the command name is named by position", argv: line("create -" + c + " user bob --password-stdin"), code: validation, message: "unknown flag at argument 4 after rancher"},
+		secretRow{flag: "password-stdin", name: "an unknown flag typed before the group name is named by position", argv: line("-" + c + " create user bob --password-stdin"), code: validation, message: "unknown flag at argument 3 after rancher"},
+		secretRow{flag: "url", name: "an unknown flag typed before a command with a secret input is named by position", argv: line("-" + c + " config add-server"), code: validation, message: "unknown flag at argument 3 after rancher"},
+		secretRow{flag: "password-stdin", name: "a value for a flag typed before the group name is not named", argv: line("--debug=" + c + " create user bob --password-stdin"), code: validation, message: "invalid value for flag -debug: the value must be true or false"},
+		secretRow{flag: "password-stdin", name: "a value for a flag typed at a group is not named", argv: line("create --debug=" + c + " user bob --password-stdin"), code: validation, message: "invalid value for flag -debug: the value must be true or false"},
 		secretRow{flag: "from-literal", name: "a --color value that is the canary is not named", argv: line(createSecretLine, "--from-literal", "a=b", "--color", c), code: validation, message: "--color value is not one of auto|always|never"},
 		secretRow{flag: "password-stdin", name: "an enum flag given the canary is not named", argv: line(createUserLine, "--password-stdin", "--enabled", c), code: validation, message: "--enabled value is not one of true|false"},
 		secretRow{flag: "patch", name: "the patch type given the canary is not named", argv: line(patchLine, "-p", "[]", "--type", c), code: validation, message: "--type value is not one of json|merge"},
@@ -760,8 +760,8 @@ func TestUsageErrorTextLeavesTheValueOutForASecretInput(t *testing.T) {
 		name, err, ordinary, secret string
 	}{
 		{"a flag given twice", `invalid value "k=v" for flag -from-literal: can't duplicate this flag`, `invalid value "k=v" for flag -from-literal: can't duplicate this flag`, "invalid value for flag -from-literal: can't duplicate this flag"},
-		{"a bool flag with a value", `invalid value "pw" for flag -password-stdin: parse error`, `invalid value "pw" for flag -password-stdin: parse error`, "invalid value for flag -password-stdin: parse error"},
-		{"a value that holds the text around it", `invalid value "x for flag -y: parse error" for flag -z: parse error`, `invalid value "x for flag -y: parse error" for flag -z: parse error`, "invalid value for flag -z: parse error"},
+		{"a bool flag with a value", `invalid value "pw" for flag -password-stdin: parse error`, `invalid value "pw" for flag -password-stdin: parse error`, "invalid value for flag -password-stdin: the value must be true or false"},
+		{"a value that holds the text around it", `invalid value "x for flag -y: parse error" for flag -z: parse error`, `invalid value "x for flag -y: parse error" for flag -z: parse error`, "invalid value for flag -z: the value must be true or false"},
 		{"a reason that quotes the value", `invalid value "abc" for flag -n: strconv.ParseInt: parsing "abc": invalid syntax`, `invalid value "abc" for flag -n: strconv.ParseInt: parsing "abc": invalid syntax`, "invalid value for flag -n"},
 		{"no flag named", `invalid value "abc"`, `invalid value "abc"`, "invalid value for a flag"},
 		{"a flag typed without its value, which the command defines", "flag needs an argument: -p", "flag needs an argument: -p", "flag needs an argument: -p"},
@@ -791,8 +791,8 @@ func TestUsageErrorTextLeavesTheValueOutForASecretInput(t *testing.T) {
 func TestUnknownFlagTextGivesThePositionOfTheWord(t *testing.T) {
 	t.Parallel()
 	argv := []string{"-o", "json", "create", "user", "bob", "--password=s3cretcanary9", "-s3cretcanary8", "--dry-run"}
-	assert.Equal(t, "unknown flag at word 6 after rancher", unknownFlagText("password", argv))
-	assert.Equal(t, "unknown flag at word 7 after rancher", unknownFlagText("s3cretcanary8", argv))
+	assert.Equal(t, "unknown flag at argument 6 after rancher", unknownFlagText("password", argv))
+	assert.Equal(t, "unknown flag at argument 7 after rancher", unknownFlagText("s3cretcanary8", argv))
 	assert.Equal(t, "unknown flag", unknownFlagText("absent", argv))
 	assert.Equal(t, "unknown flag", unknownFlagText("bob", argv), "a word with no dash is not a flag")
 	assert.Equal(t, "unknown flag", unknownFlagText("x", []string{" -x"}), "a word padded with a space gives no position")
@@ -872,13 +872,13 @@ func TestUnknownFlagTextAtResolvesTheLeafOfTheLine(t *testing.T) {
 		argv []string
 		want string
 	}{
-		{"a leaf that takes a secret input", []string{"-x", "secret"}, "unknown flag at word 1 after rancher"},
+		{"a leaf that takes a secret input", []string{"-x", "secret"}, "unknown flag at argument 1 after rancher"},
 		{"a leaf that takes no secret input", []string{"-x", "plain"}, msg},
-		{"a leaf with no descriptor", []string{"-x", "bare"}, "unknown flag at word 1 after rancher"},
-		{"a leaf of a group, with a secret input", []string{"group", "-x", "secret"}, "unknown flag at word 2 after rancher"},
-		{"a leaf of a group, with no descriptor", []string{"group", "-x", "bare"}, "unknown flag at word 2 after rancher"},
-		{"no leaf", []string{"-x"}, "unknown flag at word 1 after rancher"},
-		{"no leaf, at a group", []string{"group", "-x"}, "unknown flag at word 2 after rancher"},
+		{"a leaf with no descriptor", []string{"-x", "bare"}, "unknown flag at argument 1 after rancher"},
+		{"a leaf of a group, with a secret input", []string{"group", "-x", "secret"}, "unknown flag at argument 2 after rancher"},
+		{"a leaf of a group, with no descriptor", []string{"group", "-x", "bare"}, "unknown flag at argument 2 after rancher"},
+		{"no leaf", []string{"-x"}, "unknown flag at argument 1 after rancher"},
+		{"no leaf, at a group", []string{"group", "-x"}, "unknown flag at argument 2 after rancher"},
 		{"a word not found in the line", []string{"secret"}, "unknown flag"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -905,7 +905,7 @@ func TestAnUnknownFlagBeforeTheCommandNameIsNamedByTheCommand(t *testing.T) {
 		want   string
 		noWord bool
 	}{
-		{"no command is named", []string{"-" + secretCanary}, "unknown flag at word 3 after rancher", true},
+		{"no command is named", []string{"-" + secretCanary}, "unknown flag at argument 3 after rancher", true},
 		{"a command with no secret input, an alias, at a group", []string{"get", "-typo", "pods"}, "flag provided but not defined: -typo", false},
 		{"two unknown flags before a command with no secret input", []string{"-x", "get", "-y", "pods"}, "flag provided but not defined: -x", false},
 	} {
@@ -997,7 +997,7 @@ func TestOutputAndColorValuesOfACommandThatTakesASecretAreNotNamed(t *testing.T)
 		{"--color given the canary", []string{"create", "secret", "s1", "--color", c}, "--color value is not one of auto|always|never", true},
 		{"an ordinary command keeps the value of -o", []string{"get", "pods", "-o", "typo"}, `--output="typo" is not one of ` + oneOf, false},
 		{"an ordinary command keeps the value of --color", []string{"get", "pods", "--color", "typo"}, `--color="typo" is not one of auto|always|never`, false},
-		{"the hidden completion command names the unknown flag by position", []string{"__completion", "--" + c}, "unknown flag at word 2 after rancher; pass --help for usage", true},
+		{"the hidden completion command names the unknown flag by position", []string{"__completion", "--" + c}, "unknown flag at argument 2 after rancher; pass --help for usage", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stdout, stderr, code := runWithStdin(t, tc.argv, "")
