@@ -120,7 +120,7 @@ func TestRefuseUnsupportedTokenLookupRows(t *testing.T) {
 			assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
 			assert.Equal(t, 11, ce.ExitCode())
 			assert.Contains(t, ce.Message, "Rancher "+tt.version+" ")
-			assert.Contains(t, ce.Message, "use Rancher 2.15 or later")
+			assert.Contains(t, ce.Message, "use Rancher v2.15 or later")
 			assert.Equal(t, "rancher auth login 'prod' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
 			assert.True(t, clierr.HasRemedy(ce.Hint), "the login command is a remedy command")
 			assert.Equal(t, clierr.CapabilityUnsupportedDetails{Feature: "create kubeconfig", Server: tt.version}, ce.Details)
@@ -140,7 +140,7 @@ func TestRefuseUnsupportedTokenLookupMessageAndHint(t *testing.T) {
 	clients := versionFactory{c: &fakeClient{}, version: "v2.14.5", login: "prod's", versionAsks: &asks}
 	ce := refuseUnsupportedTokenLookup(t.Context(), clients, lookupForbidden(t)).(*clierr.Error)
 	const command = `rancher auth login 'prod'\''s' --token-stdin`
-	assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher 2.15 or later, or an API token (pipe id:secret to "+command+")",
+	assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or an API token (pipe id:secret to "+command+")",
 		clierr.ExpandRemedies(ce.Message, ""))
 	assert.Equal(t, command, clierr.ExpandRemedies(ce.Hint, ""))
 	assert.Contains(t, ce.Message, ce.Hint, "the message names the same command, marker included")
@@ -183,7 +183,7 @@ func TestRefuseUnsupportedTokenLookupWithoutAStoredLogin(t *testing.T) {
 			ce := refuseUnsupportedTokenLookup(t.Context(), tc.f(&asks), lookupForbidden(t)).(*clierr.Error)
 			assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
 			assert.Empty(t, ce.Hint)
-			assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher 2.15 or later, or set RANCHER_CLI_TOKEN to an API token", ce.Message)
+			assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or set RANCHER_CLI_TOKEN to an API token", ce.Message)
 		})
 	}
 }
@@ -199,7 +199,7 @@ func TestRefuseUnsupportedTokenLookupWithAnUnprintableConfigDirectory(t *testing
 	ce := refuseUnsupportedTokenLookup(t.Context(), clients, lookupForbidden(t)).(*clierr.Error)
 	out := runtime.IO{RemedyDir: "/tmp/dir\x01"}.ExpandError(ce)
 	assert.Empty(t, out.Hint)
-	assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher 2.15 or later, or an API token; "+runtime.UnprintableConfigDirNote, out.Message)
+	assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or an API token; "+runtime.UnprintableConfigDirNote, out.Message)
 }
 
 func TestRefuseUnsupportedTokenLookupVersionUnavailable(t *testing.T) {

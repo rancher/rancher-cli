@@ -56,7 +56,7 @@ func decodeCluster(path string, index int, raw json.RawMessage) (string, Cluster
 		return "", Cluster{}, protocolError(path, fmt.Sprintf("item %d has no id", index))
 	}
 	if item.Metadata.Name != "" && item.Metadata.Name != item.ID {
-		return "", Cluster{}, protocolError(path, fmt.Sprintf("item %q names itself %q", item.ID, item.Metadata.Name))
+		return "", Cluster{}, protocolError(path, fmt.Sprintf("item %q has metadata.name %q, which differs from its id", item.ID, item.Metadata.Name))
 	}
 	return item.ID, Cluster{ID: item.ID, DisplayName: item.Spec.DisplayName}, nil
 }

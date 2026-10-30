@@ -141,7 +141,7 @@ func TestCreatePasswordChangeRequestOldServerDryRunNotFoundRefusesFriendly(t *te
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
-	assert.Contains(t, ce.Message, "password-change-request resource is absent")
+	assert.Contains(t, ce.Message, "PasswordChangeRequest resource is absent")
 }
 
 // TestCreatePasswordChangeRequestDryRunOtherErrorsPassThrough proves only

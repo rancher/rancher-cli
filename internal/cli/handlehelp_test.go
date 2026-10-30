@@ -97,7 +97,7 @@ func TestListProjectsReturnsTheReadError(t *testing.T) {
 	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
 	f.rootOnce.Do(func() { f.root = &projectsRoot{} })
 	_, err := f.ListProjects(t.Context(), "c-other")
-	require.ErrorContains(t, err, "answered 404; this server does not serve Rancher's steve API as expected")
+	require.ErrorContains(t, err, "returned 404; Rancher's steve API does not return this status for this request")
 }
 
 // TestGetProjectByDisplayNameNamesTheIDThroughTheFactory asserts a named get

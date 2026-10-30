@@ -246,7 +246,7 @@ func TestReadCollectionEmptyFirstPageWithoutCountIsZeroRows(t *testing.T) {
 
 	more := clustersServer(t, map[string]stevePage{"": {Data: []map[string]any{}, Continue: "n", Revision: "5"}})
 	_, err = Clusters(t.Context(), more.getter())
-	require.ErrorContains(t, err, "without a count")
+	require.ErrorContains(t, err, "has no count")
 	assert.False(t, retryable(t, err))
 }
 
@@ -260,13 +260,13 @@ func TestReadCollectionProtocolErrorsAreTerminal(t *testing.T) {
 		pages map[string]stevePage
 		want  string
 	}{
-		"data without count":       {map[string]stevePage{"": {Data: item, Revision: "1"}}, "without a count"},
-		"negative count":           {map[string]stevePage{"": {Data: item, Count: new(-1), Revision: "1"}}, "without a count"},
-		"no count on a later page": {map[string]stevePage{"": {Data: item, Count: new(2), Continue: "n", Revision: "1"}, "n": {Data: []map[string]any{steveCluster("c-2", "")}, Revision: "1"}}, "without a count"},
-		"no revision":              {map[string]stevePage{"": {Data: item, Count: new(1)}}, "without a revision"},
-		"repeated continue token":  {map[string]stevePage{"": {Data: item, Count: new(3), Continue: "t", Revision: "1"}, "t": {Data: []map[string]any{steveCluster("c-2", "")}, Count: new(3), Continue: "t", Revision: "1"}}, "the continue token repeated"},
+		"data without count":       {map[string]stevePage{"": {Data: item, Revision: "1"}}, "has no count"},
+		"negative count":           {map[string]stevePage{"": {Data: item, Count: new(-1), Revision: "1"}}, "has no count"},
+		"no count on a later page": {map[string]stevePage{"": {Data: item, Count: new(2), Continue: "n", Revision: "1"}, "n": {Data: []map[string]any{steveCluster("c-2", "")}, Revision: "1"}}, "has no count"},
+		"no revision":              {map[string]stevePage{"": {Data: item, Count: new(1)}}, "has no revision"},
+		"repeated continue token":  {map[string]stevePage{"": {Data: item, Count: new(3), Continue: "t", Revision: "1"}, "t": {Data: []map[string]any{steveCluster("c-2", "")}, Count: new(3), Continue: "t", Revision: "1"}}, "the server returned the same continue token twice"},
 		"item without an id":       {map[string]stevePage{"": {Data: []map[string]any{{"metadata": map[string]any{"name": "x"}}}, Count: new(1), Revision: "1"}}, "item 0 has no id"},
-		"metadata name disagrees":  {map[string]stevePage{"": {Data: []map[string]any{{"id": "c-1", "metadata": map[string]any{"name": "c-2"}}}, Count: new(1), Revision: "1"}}, `"c-1" names itself "c-2"`},
+		"metadata name disagrees":  {map[string]stevePage{"": {Data: []map[string]any{{"id": "c-1", "metadata": map[string]any{"name": "c-2"}}}, Count: new(1), Revision: "1"}}, `"c-1" has metadata.name "c-2", which differs from its id`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -293,10 +293,10 @@ func TestReadCollectionNotJSONIsTerminal(t *testing.T) {
 	assert.Len(t, srv.requests(), 1)
 }
 
-// TestReadCollectionCountMovedBetweenPagesIsRetryable asserts a count that
+// TestReadCollectionCountDiffersBetweenPagesIsRetryable asserts a count that
 // differs between pages is retried once as a whole, then reported as a
 // retryable change.
-func TestReadCollectionCountMovedBetweenPagesIsRetryable(t *testing.T) {
+func TestReadCollectionCountDiffersBetweenPagesIsRetryable(t *testing.T) {
 	t.Parallel()
 	srv := clustersServer(t, map[string]stevePage{
 		"":  {Data: []map[string]any{steveCluster("c-1", "")}, Count: new(2), Continue: "n", Revision: "1"},
@@ -304,13 +304,13 @@ func TestReadCollectionCountMovedBetweenPagesIsRetryable(t *testing.T) {
 	})
 	_, err := Clusters(t.Context(), srv.getter())
 	assert.True(t, retryable(t, err))
-	require.ErrorContains(t, err, "count moved between pages (2, then 3)")
+	require.ErrorContains(t, err, "the count differs between pages: 2, then 3")
 	assert.Len(t, srv.requests(), 4, "two walks of two pages")
 }
 
-// TestReadCollectionRevisionMovedIsRetriedOnceThenRetryable asserts a
-// revision that moves between pages makes exactly two whole walks.
-func TestReadCollectionRevisionMovedIsRetriedOnceThenRetryable(t *testing.T) {
+// TestReadCollectionRevisionDiffersIsRetriedOnceThenRetryable asserts a
+// revision that differs between pages makes exactly two whole walks.
+func TestReadCollectionRevisionDiffersIsRetriedOnceThenRetryable(t *testing.T) {
 	t.Parallel()
 	srv := clustersServer(t, map[string]stevePage{
 		"":  {Data: []map[string]any{steveCluster("c-a", "a")}, Count: new(2), Continue: "n", Revision: "1"},
@@ -318,7 +318,7 @@ func TestReadCollectionRevisionMovedIsRetriedOnceThenRetryable(t *testing.T) {
 	})
 	_, err := Clusters(t.Context(), srv.getter())
 	assert.True(t, retryable(t, err))
-	require.ErrorContains(t, err, "revision moved between pages")
+	require.ErrorContains(t, err, "the revision differs between pages")
 	assert.Equal(t, []string{clustersPath, clustersPath + "?continue=n", clustersPath, clustersPath + "?continue=n"}, srv.requests())
 }
 
@@ -349,7 +349,7 @@ func TestReadCollectionCountMustMatchTheRowsRead(t *testing.T) {
 	})
 	_, err := Clusters(t.Context(), srv.getter())
 	assert.True(t, retryable(t, err))
-	require.ErrorContains(t, err, "count 2, read 1")
+	require.ErrorContains(t, err, "the server reported 2 items but 1 were read")
 	assert.Len(t, srv.requests(), 2)
 }
 
@@ -363,7 +363,7 @@ func TestReadCollectionRepeatedContinueTokenIsTerminal(t *testing.T) {
 	})
 	_, err := Clusters(t.Context(), srv.getter())
 	assert.False(t, retryable(t, err))
-	require.ErrorContains(t, err, "the continue token repeated")
+	require.ErrorContains(t, err, "the server returned the same continue token twice")
 	assert.Len(t, srv.requests(), 2)
 }
 
@@ -399,7 +399,7 @@ func TestReadCollectionDuplicates(t *testing.T) {
 	})
 	_, err = Clusters(t.Context(), disagree.getter())
 	assert.True(t, retryable(t, err))
-	require.ErrorContains(t, err, "repeated item c-1 disagrees with itself")
+	require.ErrorContains(t, err, "item c-1 appears twice with different contents")
 	assert.Len(t, disagree.requests(), 2)
 }
 
@@ -424,7 +424,7 @@ func TestClustersOnceWalksOnceAndNeverRetries(t *testing.T) {
 	once := clustersServer(t, moved)
 	_, err = ClustersOnce(t.Context(), once.getter())
 	assert.True(t, retryable(t, err))
-	require.ErrorContains(t, err, "revision moved between pages")
+	require.ErrorContains(t, err, "the revision differs between pages")
 	assert.Equal(t, []string{clustersPath, clustersPath + "?continue=n"}, once.requests(), "one walk")
 
 	twice := clustersServer(t, moved)

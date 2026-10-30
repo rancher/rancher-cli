@@ -133,7 +133,7 @@ func TestListClustersFollowsContinueAndEncodesTheToken(t *testing.T) {
 	assert.Equal(t, []string{steveClustersPath, steveClustersPath + "?continue=2+of+3", steveClustersPath + "?continue=x%26y"}, *paths)
 }
 
-func TestListClustersRetriesOnceThenReportsAMovedRevision(t *testing.T) {
+func TestListClustersRetriesOnceThenReportsADifferentRevision(t *testing.T) {
 	t.Parallel()
 	srv, paths := pagedServer(t, map[string]stevePage{
 		"":  {Data: []map[string]any{steveItem("c-m-a", "a")}, Count: new(2), Continue: "n", Revision: "1"},
@@ -143,7 +143,7 @@ func TestListClustersRetriesOnceThenReportsAMovedRevision(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.True(t, ce.Retryable)
-	require.ErrorContains(t, err, "revision moved between pages")
+	require.ErrorContains(t, err, "the revision differs between pages")
 	assert.Len(t, *paths, 4, "the whole read is retried once before the failure is reported")
 }
 
@@ -172,11 +172,11 @@ func TestListClustersProtocolErrorsAreTerminal(t *testing.T) {
 		want  string
 	}{
 		"missing id":     {map[string]stevePage{"": {Data: []map[string]any{{"metadata": map[string]any{"name": "x"}}}, Count: new(1), Revision: "1"}}, "has no id"},
-		"name disagrees": {map[string]stevePage{"": {Data: []map[string]any{{"id": "c-1", "metadata": map[string]any{"name": "c-2"}}}, Count: new(1), Revision: "1"}}, `names itself "c-2"`},
-		"no revision":    {map[string]stevePage{"": {Data: []map[string]any{steveItem("c-1", "")}, Count: new(1)}}, "without a revision"},
-		"repeated token": {map[string]stevePage{"": {Data: []map[string]any{steveItem("c-1", "")}, Count: new(3), Continue: "t", Revision: "1"}, "t": {Data: []map[string]any{steveItem("c-2", "")}, Count: new(3), Continue: "t", Revision: "1"}}, "continue token repeated"},
-		"missing count":  {map[string]stevePage{"": {Data: []map[string]any{steveItem("c-1", "")}, Revision: "1"}}, "without a count"},
-		"negative count": {map[string]stevePage{"": {Data: []map[string]any{steveItem("c-1", "")}, Count: new(-1), Revision: "1"}}, "without a count"},
+		"name disagrees": {map[string]stevePage{"": {Data: []map[string]any{{"id": "c-1", "metadata": map[string]any{"name": "c-2"}}}, Count: new(1), Revision: "1"}}, `has metadata.name "c-2", which differs from its id`},
+		"no revision":    {map[string]stevePage{"": {Data: []map[string]any{steveItem("c-1", "")}, Count: new(1)}}, "has no revision"},
+		"repeated token": {map[string]stevePage{"": {Data: []map[string]any{steveItem("c-1", "")}, Count: new(3), Continue: "t", Revision: "1"}, "t": {Data: []map[string]any{steveItem("c-2", "")}, Count: new(3), Continue: "t", Revision: "1"}}, "same continue token twice"},
+		"missing count":  {map[string]stevePage{"": {Data: []map[string]any{steveItem("c-1", "")}, Revision: "1"}}, "has no count"},
+		"negative count": {map[string]stevePage{"": {Data: []map[string]any{steveItem("c-1", "")}, Count: new(-1), Revision: "1"}}, "has no count"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -207,7 +207,7 @@ func TestListClustersDuplicateMustAgree(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.True(t, ce.Retryable)
-	require.ErrorContains(t, err, "disagrees with itself")
+	require.ErrorContains(t, err, "appears twice with different contents")
 }
 
 func TestListClustersNotJSONIsTerminal(t *testing.T) {
@@ -247,7 +247,7 @@ func TestListClustersCountMustAgreeAcrossPages(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.True(t, ce.Retryable)
-	require.ErrorContains(t, err, "count moved between pages (2, then 3)")
+	require.ErrorContains(t, err, "the count differs between pages: 2, then 3")
 	assert.Len(t, *paths, 4, "one whole-read retry before the failure")
 }
 

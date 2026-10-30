@@ -2680,7 +2680,7 @@ func TestResolveClusterIDForCreateClassifiesRejections(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
-	assert.Equal(t, "the server refused GET /v1/management.cattle.io.clusters (403); Rancher answers this request with 200 for every signed-in user; a proxy in front of Rancher or an unsupported Rancher refused it", ce.Message)
+	assert.Equal(t, "the server refused GET /v1/management.cattle.io.clusters (403); Rancher returns 200 for this request to every signed-in user; a proxy in front of Rancher or an unsupported Rancher version refused it", ce.Message)
 
 	url, client = answer(http.StatusBadGateway)
 	_, _, err = resolveClusterIDForCreate(t.Context(), client, url, "b", "testcluster")

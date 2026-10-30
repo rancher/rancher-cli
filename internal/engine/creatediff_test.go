@@ -206,7 +206,7 @@ func TestCreateDiffRefusesAMissingOrForeignRedaction(t *testing.T) {
 	require.ErrorContains(t, err, "internal error: create preview of projects has no redaction for its kind")
 	assert.Nil(t, diff)
 	diff, err = CreateDiff(testGVR, obj, rowRedaction(t, "secret"))
-	require.ErrorContains(t, err, "internal error: create preview of projects has the redaction of secrets")
+	require.ErrorContains(t, err, "internal error: create preview of projects uses the redaction for secrets")
 	assert.Nil(t, diff)
 }
 
@@ -219,7 +219,7 @@ func TestPlanCreateRefusesAMissingOrForeignRedaction(t *testing.T) {
 		want      string
 	}{
 		"zero":    {kinds.Redaction{}, "internal error: create preview of projects has no redaction for its kind"},
-		"foreign": {rowRedaction(t, "secret"), "internal error: create preview of projects has the redaction of secrets"},
+		"foreign": {rowRedaction(t, "secret"), "internal error: create preview of projects uses the redaction for secrets"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -245,7 +245,7 @@ func TestPlanUpdateRefusesAMissingOrForeignRedaction(t *testing.T) {
 		want      string
 	}{
 		"zero":    {kinds.Redaction{}, "internal error: update preview of projects has no redaction for its kind"},
-		"foreign": {rowRedaction(t, "secret"), "internal error: update preview of projects has the redaction of secrets"},
+		"foreign": {rowRedaction(t, "secret"), "internal error: update preview of projects uses the redaction for secrets"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

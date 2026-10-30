@@ -21,4 +21,4 @@ exec rancher create token --ttl 90d --description e2e-ci --apply --yes -o json
 jsonquery stdout data.name fac-token-4
 jsonquery stdout data.bearerToken ext/fac-token-4:fac-secret-4
 ! jsonquery stdout data.expiresAt ''
-jsonquery stdout 'warnings.0' 'this token value is shown exactly once - store it now'
+jsonquery stdout 'warnings.0' 'this bearer token is shown exactly once - store it now'

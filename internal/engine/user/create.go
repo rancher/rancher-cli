@@ -58,15 +58,15 @@ func (createCmd) Describe() runtime.Descriptor {
 		Name:  "create user",
 		Usage: "Create a local user",
 		Desc: "Creates the management.cattle.io/v3 User, then a same-named Secret in " +
-			"cattle-local-user-passwords carrying the password - the server hashes it on " +
-			"write (never the CLI). Requires the connected server's user-password workflow " +
-			"(ext.cattle.io PasswordChangeRequest support is the declared marker).",
+			"cattle-local-user-passwords that holds the password - the server hashes it on " +
+			"write (never the CLI). Requires a server that supports local user passwords " +
+			"(it serves the ext.cattle.io PasswordChangeRequest resource).",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
-			{Name: "username", Type: "string", Required: true, Desc: "local username (the server assigns the object's own id)"},
+			{Name: "username", Type: "string", Required: true, Desc: "local username (the server assigns the user id)"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)"},
+			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)"},
 			{Name: "display-name", Type: "string", Desc: "display name (default: the username)"},
 			{Name: "enabled", Type: "string", Enum: []string{"true", "false"}, Desc: "account enabled state (server default true)"},
 			{Name: "description", Type: "string", Desc: "short `description` of the user"},
@@ -145,7 +145,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	// acceptance of the shape matters here.
 	secretKind, ok := kinds.Lookup("secret")
 	if !ok {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: no kind row for secret")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: no kind named secret")
 	}
 	secretPreview := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1",
@@ -155,8 +155,8 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	}}
 	if _, _, err := engine.PlanCreate(ctx, client, secretGVR, secretNamespace, secretPreview, secretKind.Redaction(), engine.LocalCluster, "secret", "Secret", true); err != nil {
 		return safety.Effect{}, nil, engine.RefuseUnsupportedWorkflow(err,
-			"the cattle-local-user-passwords password-secret namespace is absent",
-			"upgrade the connected server to a version that carries this workflow, or restore the cattle-local-user-passwords namespace if it was removed")
+			"the cattle-local-user-passwords namespace is absent",
+			"upgrade the server to a version that supports them, or restore the cattle-local-user-passwords namespace if it was removed")
 	}
 	// The name is never stated: previewUser.GetName() is a dry-run-only
 	// placeholder that will not match the Secret's real committed name
@@ -187,7 +187,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		return runtime.Result{}, err
 	}
 	name := createdUser.GetName()
-	recovery := fmt.Sprintf(`the user %s was created without a password - set one without it touching argv or shell history: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | rancher create resource -f - --cluster local --apply --yes (a password containing a double quote or backslash must be JSON-escaped in the manifest)`, name, name)
+	recovery := fmt.Sprintf(`the user %s was created without a password - set one without putting it on the command line or in shell history: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | rancher create resource -f - --cluster local --apply --yes (a password containing a double quote or backslash must be JSON-escaped in the manifest)`, name, name)
 
 	secretObj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1",
@@ -230,7 +230,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	}
 	res := runtime.MutationText("user", username, "created",
 		"id: "+name,
-		"password secret: "+createdSecret.GetName(),
+		"password Secret: "+createdSecret.GetName(),
 	)
 	res.Kind = "UserCreated"
 	res.Data = data

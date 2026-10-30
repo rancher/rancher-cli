@@ -46,7 +46,7 @@ func SelectorFrom(dep *unstructured.Unstructured) (string, error) {
 	}
 	var ls metav1.LabelSelector
 	if err := k8sruntime.DefaultUnstructuredConverter.FromUnstructured(selMap, &ls); err != nil {
-		return "", fmt.Errorf("decoding spec.selector: %w", err)
+		return "", fmt.Errorf("could not parse spec.selector: %w", err)
 	}
 	sel, err := metav1.LabelSelectorAsSelector(&ls)
 	if err != nil {

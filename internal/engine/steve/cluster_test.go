@@ -168,7 +168,7 @@ func TestResolveClusterGetByIDOnAMiss(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"id":"c-other","metadata":{"name":"c-other"}}`)
 		})
 		_, _, err := ResolveCluster(t.Context(), srv.getter(), readable, "c-new", cliText("c-new"))
-		require.ErrorContains(t, err, `the answer is cluster "c-other"`)
+		require.ErrorContains(t, err, `the response names cluster "c-other", not the cluster requested`)
 	})
 }
 

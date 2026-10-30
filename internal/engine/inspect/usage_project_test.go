@@ -313,7 +313,7 @@ func TestUsageByProjectProjectsCollection403IsRBAC(t *testing.T) {
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
-	assert.Equal(t, "the server refused GET /v1/management.cattle.io.projects/c-abc (403); Rancher answers this request with 200 for every signed-in user; a proxy in front of Rancher or an unsupported Rancher refused it", cerr.Message)
+	assert.Equal(t, "the server refused GET /v1/management.cattle.io.projects/c-abc (403); Rancher returns 200 for this request to every signed-in user; a proxy in front of Rancher or an unsupported Rancher version refused it", cerr.Message)
 	assert.False(t, client.listed(nsKind.GVR), "no namespace read after the refusal")
 }
 

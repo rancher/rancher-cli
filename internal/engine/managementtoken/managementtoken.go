@@ -22,11 +22,11 @@ type refusePatchCmd struct {
 }
 
 // NewRefusePatch builds the patch override for the management-token row: a
-// VALIDATION refusal - writes to management.cattle.io/v3 Token must go
-// through Rancher's auth lifecycle (key generation, TTL clamp, identity
-// derivation). Its Descriptor mirrors resources.NewPatch(k, ...) exactly so
-// the row's schema/completion surface is unchanged; Plan refuses before any
-// network call.
+// VALIDATION refusal - Rancher sets the token fields itself (the key, a TTL
+// within the server's maximum TTL, and the user the token belongs to) and
+// the CLI does not change them. Its Descriptor mirrors
+// resources.NewPatch(k, ...) exactly so the row's schema/completion surface
+// is unchanged; Plan refuses before any network call.
 func NewRefusePatch(k kinds.Kind) runtime.Command {
 	return &refusePatchCmd{k: k}
 }
@@ -37,8 +37,8 @@ func (c *refusePatchCmd) Describe() runtime.Descriptor {
 
 func (c *refusePatchCmd) Plan(_ context.Context, _ runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		c.k.Name+": patch is not supported - writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); "+
-			"the CLI does not bypass it; use the Rancher API or UI to manage token fields")
+		c.k.Name+": patch is not supported - Rancher sets these token fields itself (the key, a TTL within the server's maximum TTL, and the user the token belongs to); "+
+			"the CLI does not change them; use the Rancher API or UI to manage token fields")
 }
 
 var _ runtime.MutatingCommand = (*refusePatchCmd)(nil)
@@ -124,8 +124,8 @@ func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		return resources.PlanFromFetched(ctx, mgmt, c.k, ns, args[0], obj, effectCluster)
 	}
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		"refusing to delete "+c.k.Name+" "+args[0]+": this token backs the current CLI session - deleting it would cut off the CLI's own access mid-command; "+
-			"switch credentials first (re-login or set RANCHER_CLI_TOKEN), then delete this token from another session or the Rancher UI")
+		"refusing to delete "+c.k.Name+" "+args[0]+": the CLI is using this token for this command, and deleting it would stop the CLI from reaching the server during the command; "+
+			"switch to other credentials first (log in again or set RANCHER_CLI_TOKEN), then delete this token with those credentials or in the Rancher UI")
 }
 
 var _ runtime.MutatingCommand = (*deleteGuardCmd)(nil)

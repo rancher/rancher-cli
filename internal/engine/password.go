@@ -36,7 +36,7 @@ func ReadPasswordStdin(src FileSource, in runtime.Input) (string, error) {
 		password = strings.TrimSuffix(password, "\n")
 	}
 	if password == "" {
-		return "", clierr.New(clierr.CodeValidation, "--password-stdin produced an empty password; pipe a non-empty password on stdin")
+		return "", clierr.New(clierr.CodeValidation, "the password read from stdin is empty; pipe a non-empty password on stdin")
 	}
 	return password, nil
 }

@@ -31,8 +31,8 @@ func (createTokenCmd) Describe() runtime.Descriptor {
 		Usage:       "Create a token on the server",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
-			{Name: "ttl", Type: "string", Desc: "token lifetime, e.g. 30d, 12h (omit for server default)"},
-			{Name: "description", Type: "string", Desc: "note attached to the token for identification"},
+			{Name: "ttl", Type: "string", Desc: "token expiration, e.g. 30d, 12h (omit for server default)"},
+			{Name: "description", Type: "string", Desc: "description of the token, to identify it"},
 			{Name: "cluster", Type: "string", Desc: "scope the token to this cluster `id|name`"},
 		},
 		Examples: []string{
@@ -104,7 +104,7 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 				})
 		}
 		expiresAt, _, _ := unstructured.NestedString(created.Object, "status", "expiresAt")
-		bearerLine, shownOnce := runtime.OnceOnlyLine("bearer token", bearer, "token value")
+		bearerLine, shownOnce := runtime.OnceOnlyLine("bearer token", bearer, "bearer token")
 		lines := []string{bearerLine}
 		if expiresAt != "" {
 			lines = append(lines, "expires: "+expiresAt)

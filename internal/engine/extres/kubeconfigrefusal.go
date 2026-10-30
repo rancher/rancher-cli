@@ -74,7 +74,7 @@ func refuseUnsupportedTokenLookup(ctx context.Context, clients engine.ClusterCli
 		remedy = "an API token (pipe id:secret to " + hint + ")"
 	}
 	return clierr.New(clierr.CodeCapabilityUnsupported,
-		fmt.Sprintf("Rancher %s cannot create a kubeconfig with the token this command used; use Rancher %s or later, or %s",
+		fmt.Sprintf("Rancher %s cannot create a kubeconfig with the token this command used; use Rancher v%s or later, or %s",
 			server, kubeconfigTokenFloor, remedy)).
 		WithHint(hint).
 		WithDetails(clierr.CapabilityUnsupportedDetails{Feature: "create kubeconfig", Server: server}).

@@ -746,9 +746,9 @@ Never present a role list as permissions.
   `v3 User` plus its password secret) - the password only ever arrives on
   stdin, never a flag. `rancher create password-change-request <user id>
   --password-stdin` changes an existing local user's password the same way
-  (completes synchronously - no wait needed). Both require the connected
-  server's user-password workflow; on a server without it they refuse with
-  `CAPABILITY_UNSUPPORTED` (exit `11`) rather than a raw error.
+  (completes synchronously - no wait needed). Both require a server that
+  supports local user passwords; on a server without that support they
+  refuse with `CAPABILITY_UNSUPPORTED` (exit `11`) rather than a raw error.
 - `rancher get roletemplates -o json` - filter `context=="cluster"` or
   `context=="project"` to find role names for `--role`; `-o table` shows the
   same as a CONTEXT column. Once a scope flag (`--cluster`, `--project`, or

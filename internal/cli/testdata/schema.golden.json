@@ -1246,17 +1246,17 @@
           "type": "string"
         },
         {
-          "desc": "credential lifetime, e.g. 30d, 12h (omit for server default)",
+          "desc": "expiration of the tokens in the kubeconfig, e.g. 30d, 12h (omit for server default)",
           "name": "ttl",
           "type": "string"
         },
         {
-          "desc": "note attached to the kubeconfig for identification",
+          "desc": "description of the kubeconfig, to identify it",
           "name": "description",
           "type": "string"
         },
         {
-          "desc": "include the Rancher server's own entry (server default true; pass false, with --clusters, to generate a cluster-only kubeconfig)",
+          "desc": "include the Rancher server's default entry (server default true; pass false, with --clusters, to leave it out)",
           "enum": [
             "true",
             "false"
@@ -1484,14 +1484,14 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Submits an ext.cattle.io/v1 PasswordChangeRequest, which completes synchronously. Requires the connected server's user-password workflow (the same one `create user` uses).",
+      "desc": "Submits an ext.cattle.io/v1 PasswordChangeRequest, which completes synchronously. Requires a server that supports local user passwords (the same support `create user` needs).",
       "destructive": "true",
       "examples": [
         "echo -n \"$NEWPASSWORD\" | rancher create password-change-request u-abc123 --password-stdin --apply --yes"
       ],
       "flags": [
         {
-          "desc": "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)",
+          "desc": "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)",
           "name": "password-stdin",
           "type": "bool"
         }
@@ -1683,12 +1683,12 @@
       ],
       "flags": [
         {
-          "desc": "token lifetime, e.g. 30d, 12h (omit for server default)",
+          "desc": "token expiration, e.g. 30d, 12h (omit for server default)",
           "name": "ttl",
           "type": "string"
         },
         {
-          "desc": "note attached to the token for identification",
+          "desc": "description of the token, to identify it",
           "name": "description",
           "type": "string"
         },
@@ -1720,7 +1720,7 @@
     {
       "args": [
         {
-          "desc": "local username (the server assigns the object's own id)",
+          "desc": "local username (the server assigns the user id)",
           "name": "username",
           "required": true,
           "type": "string"
@@ -1729,14 +1729,14 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Creates the management.cattle.io/v3 User, then a same-named Secret in cattle-local-user-passwords carrying the password - the server hashes it on write (never the CLI). Requires the connected server's user-password workflow (ext.cattle.io PasswordChangeRequest support is the declared marker).",
+      "desc": "Creates the management.cattle.io/v3 User, then a same-named Secret in cattle-local-user-passwords that holds the password - the server hashes it on write (never the CLI). Requires a server that supports local user passwords (it serves the ext.cattle.io PasswordChangeRequest resource).",
       "destructive": "true",
       "examples": [
         "echo -n \"$PASSWORD\" | rancher create user alice --password-stdin --apply --yes"
       ],
       "flags": [
         {
-          "desc": "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)",
+          "desc": "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)",
           "name": "password-stdin",
           "type": "bool"
         },

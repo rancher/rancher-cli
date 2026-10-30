@@ -76,7 +76,7 @@ func readOnce[T comparable](ctx context.Context, get Getter, r Request, decode D
 			return nil, protocolError(path, "not a steve collection: "+err.Error())
 		}
 		if col.Revision == "" {
-			return nil, protocolError(path, "a page without a revision")
+			return nil, protocolError(path, "a page has no revision")
 		}
 		if col.Count == nil && n == 0 && len(col.Data) == 0 && col.Continue == "" {
 			// The apiserver omits a zero count: an empty first and only
@@ -84,16 +84,16 @@ func readOnce[T comparable](ctx context.Context, get Getter, r Request, decode D
 			return nil, nil
 		}
 		if col.Count == nil || *col.Count < 0 {
-			return nil, protocolError(path, "a page without a count")
+			return nil, protocolError(path, "a page has no count")
 		}
 		if n == 0 {
 			revision, total = col.Revision, col.Count
 		} else {
 			if col.Revision != revision {
-				return nil, collectionChanged(path, "revision moved between pages")
+				return nil, collectionChanged(path, "the revision differs between pages")
 			}
 			if *col.Count != *total {
-				return nil, collectionChanged(path, fmt.Sprintf("count moved between pages (%d, then %d)", *total, *col.Count))
+				return nil, collectionChanged(path, fmt.Sprintf("the count differs between pages: %d, then %d", *total, *col.Count))
 			}
 		}
 		for i, item := range col.Data {
@@ -103,7 +103,7 @@ func readOnce[T comparable](ctx context.Context, get Getter, r Request, decode D
 			}
 			if prev, dup := byID[id]; dup {
 				if prev != row {
-					return nil, collectionChanged(path, "repeated item "+id+" disagrees with itself")
+					return nil, collectionChanged(path, "item "+id+" appears twice with different contents")
 				}
 				continue
 			}
@@ -115,13 +115,13 @@ func readOnce[T comparable](ctx context.Context, get Getter, r Request, decode D
 			break
 		}
 		if seen[col.Continue] {
-			return nil, protocolError(path, "the continue token repeated")
+			return nil, protocolError(path, "the server returned the same continue token twice")
 		}
 		seen[col.Continue] = true
 		r.Continue = col.Continue
 	}
 	if *total != raw {
-		return nil, collectionChanged(path, fmt.Sprintf("count %d, read %d", *total, raw))
+		return nil, collectionChanged(path, fmt.Sprintf("the server reported %d items but %d were read", *total, raw))
 	}
 	return rows, nil
 }
@@ -136,5 +136,5 @@ func collectionChanged(path, why string) *clierr.Error {
 // protocolError is the terminal answer to a response the reader cannot
 // trust: a shape it does not recognize is never guessed at.
 func protocolError(path, why string) *clierr.Error {
-	return clierr.New(clierr.CodeGeneric, fmt.Sprintf("unexpected answer from %s: %s", path, why))
+	return clierr.New(clierr.CodeGeneric, fmt.Sprintf("unexpected response from %s: %s", path, why))
 }

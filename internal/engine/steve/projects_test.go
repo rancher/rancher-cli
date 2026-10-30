@@ -125,7 +125,7 @@ func TestProjectsProtocolErrorsAreTerminal(t *testing.T) {
 		"extra segment":           {map[string]any{"id": "c-m-a/p-1/extra", "metadata": map[string]any{"name": "p-1/extra"}, "spec": map[string]any{"clusterName": "c-m-a"}}, `"c-m-a/p-1/extra" is not a <cluster>/<project> id`},
 		"no clusterName":          {map[string]any{"id": "c-m-a/p-1", "spec": map[string]any{}}, `"c-m-a/p-1" has no spec.clusterName`},
 		"clusterName disagrees":   {map[string]any{"id": "c-m-a/p-1", "spec": map[string]any{"clusterName": "c-m-b"}}, `"c-m-a/p-1" belongs to cluster "c-m-b"`},
-		"metadata.name disagrees": {map[string]any{"id": "c-m-a/p-1", "metadata": map[string]any{"name": "p-2"}, "spec": map[string]any{"clusterName": "c-m-a"}}, `"c-m-a/p-1" names itself "p-2"`},
+		"metadata.name disagrees": {map[string]any{"id": "c-m-a/p-1", "metadata": map[string]any{"name": "p-2"}, "spec": map[string]any{"clusterName": "c-m-a"}}, `"c-m-a/p-1" has metadata.name "p-2", which differs from its id`},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -139,11 +139,11 @@ func TestProjectsProtocolErrorsAreTerminal(t *testing.T) {
 	}
 }
 
-func TestProjectsDuplicateThatDisagreesIsAChangedCollection(t *testing.T) {
+func TestProjectsDuplicateWithDifferentContentsIsAChangedCollection(t *testing.T) {
 	t.Parallel()
 	srv := projectsServer(t, allProjectsPath, onePage(steveProject("c-m-a", "p-1", "a"), steveProject("c-m-a", "p-1", "b")))
 	_, err := Projects(t.Context(), srv.getter(), "")
-	require.ErrorContains(t, err, "repeated item c-m-a/p-1 disagrees with itself")
+	require.ErrorContains(t, err, "item c-m-a/p-1 appears twice with different contents")
 	assert.True(t, codeOf(t, err).Retryable)
 	assert.Len(t, srv.requests(), 2, "one whole-read retry, then the retryable failure")
 }
@@ -165,9 +165,9 @@ func TestProjectsOneClusterReadsItsNamespaceAndRefusesAnotherClustersItem(t *tes
 
 // TestProjectsCollectionRefusals asserts a 401 keeps the root client's AUTH
 // error, a 403 is RBAC naming the refused request, a 404 is a generic error
-// saying the server does not serve steve as expected, a 409 is the same
-// generic error and not retryable, and a 429 or a 5xx keeps the root client's
-// retryable error.
+// saying Rancher's steve API does not return that status for the request, a
+// 409 is the same generic error and not retryable, and a 429 or a 5xx keeps
+// the root client's retryable error.
 func TestProjectsCollectionRefusals(t *testing.T) {
 	t.Parallel()
 	const path = "/v1/management.cattle.io.projects/c-abc"
@@ -187,7 +187,7 @@ func TestProjectsCollectionRefusals(t *testing.T) {
 		srv := newServer(t, map[string]route{path: {status: http.StatusForbidden}})
 		_, err := Projects(t.Context(), srv.getter(), "c-abc")
 		assert.Equal(t, clierr.CodeRBAC, codeOf(t, err).Code)
-		require.ErrorContains(t, err, "the server refused GET "+path+" (403); Rancher answers this request with 200 for every signed-in user")
+		require.ErrorContains(t, err, "the server refused GET "+path+" (403); Rancher returns 200 for this request to every signed-in user")
 		se, ok := clierr.HTTPStatus(err)
 		require.True(t, ok, "the cause stays in the chain")
 		assert.Equal(t, http.StatusForbidden, se)
@@ -197,7 +197,7 @@ func TestProjectsCollectionRefusals(t *testing.T) {
 		srv := newServer(t, map[string]route{path: {status: http.StatusNotFound}})
 		_, err := Projects(t.Context(), srv.getter(), "c-abc")
 		assert.Equal(t, clierr.CodeGeneric, codeOf(t, err).Code)
-		require.ErrorContains(t, err, "GET "+path+" answered 404; this server does not serve Rancher's steve API as expected")
+		require.ErrorContains(t, err, "GET "+path+" returned 404; Rancher's steve API does not return this status for this request")
 	})
 	t.Run("Conflict", func(t *testing.T) {
 		t.Parallel()
@@ -206,7 +206,7 @@ func TestProjectsCollectionRefusals(t *testing.T) {
 		ce := codeOf(t, err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		assert.False(t, ce.Retryable)
-		require.ErrorContains(t, err, "GET "+path+" answered 409; this server does not serve Rancher's steve API as expected")
+		require.ErrorContains(t, err, "GET "+path+" returned 409; Rancher's steve API does not return this status for this request")
 	})
 	t.Run("Too Many Requests", func(t *testing.T) {
 		t.Parallel()

@@ -62,8 +62,8 @@ target for the legacy `server switch` command.
 | `create token` | Create a server-side derived token (`ext.Token`), shown once - sensitive; dry-run/apply --yes |
 | `create kubeconfig` | Create a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once - sensitive; dry-run/apply --yes |
 | `create oidc-client <name>` | Create an OIDC client for Rancher's embedded OIDC provider; waits for provisioning, prints the initial client secret once with live discovery endpoints - sensitive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
-| `create user <username> --password-stdin` | Create a local user (`v3 User`) plus its password secret (`cattle-local-user-passwords`); password never on the command line - sensitive; dry-run/apply --yes. Requires the connected server's user-password workflow. |
-| `create password-change-request <user> --password-stdin` | Change a local user's password (`ext.cattle.io PasswordChangeRequest`); completes synchronously; password never on the command line - sensitive; dry-run/apply --yes. Requires the connected server's user-password workflow. |
+| `create user <username> --password-stdin` | Create a local user (`v3 User`) plus its password secret (`cattle-local-user-passwords`); password never on the command line - sensitive; dry-run/apply --yes. Requires a server that supports local user passwords. |
+| `create password-change-request <user> --password-stdin` | Change a local user's password (`ext.cattle.io PasswordChangeRequest`); completes synchronously; password never on the command line - sensitive; dry-run/apply --yes. Requires a server that supports local user passwords. |
 | `create cluster <name>` | Create a provisioning cluster: imported, custom, or node-driver with one machine pool - dry-run/apply |
 | `create machine-config <kind> <name>` | Create a standalone machine config for `create cluster --machine-config` - dry-run/apply; flag details in [REFERENCE.md](REFERENCE.md#cluster-provisioning) |
 

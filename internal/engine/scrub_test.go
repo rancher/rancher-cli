@@ -245,14 +245,14 @@ func TestCheckRedactionRefusesAReadRedaction(t *testing.T) {
 	require.True(t, read.IsRead())
 
 	err := checkRedaction(secret.GVR, read, "create")
-	require.ErrorContains(t, err, "internal error: create preview of secrets has the redaction of a read")
+	require.ErrorContains(t, err, "internal error: create preview of secrets uses the redaction for reads")
 	require.NoError(t, checkRedaction(secret.GVR, secret.Redaction(), "create"))
 
 	client := &obsClient{}
 	obj := newObj(map[string]any{"metadata": map[string]any{"name": "s", "namespace": "ns"}})
 	_, _, _, err = PlanCreateObserved(t.Context(), client, secret.GVR, "ns", obj, read, "c-x", "secret", "Secret", false)
-	require.ErrorContains(t, err, "has the redaction of a read")
+	require.ErrorContains(t, err, "uses the redaction for reads")
 	_, _, _, err = PlanUpdateObserved(t.Context(), client, secret.GVR, "ns", obj, read, "c-x", "secret", "Secret", nil, false)
-	require.ErrorContains(t, err, "has the redaction of a read")
+	require.ErrorContains(t, err, "uses the redaction for reads")
 	assert.Empty(t, client.dryRuns, "no request before the refusal")
 }

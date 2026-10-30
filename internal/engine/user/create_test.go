@@ -252,7 +252,7 @@ func TestCreateOldServerSecretDryRunNotFoundRefusesFriendly(t *testing.T) {
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
-	assert.Contains(t, ce.Message, "does not support the user-password workflow")
+	assert.Contains(t, ce.Message, "the connected server does not support local user passwords")
 }
 
 // notFoundOnSecretDryRunClient wraps fakeUserClient to fail the Secret

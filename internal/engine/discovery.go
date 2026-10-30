@@ -23,7 +23,7 @@ type DiscoveryIncomplete struct {
 }
 
 func (e *DiscoveryIncomplete) Error() string {
-	return "discovery incomplete: the server could not describe API groups " + strings.Join(e.Groups(), ", ")
+	return "API discovery incomplete: the server could not list the resources of API groups " + strings.Join(e.Groups(), ", ")
 }
 
 // Groups returns the failed groups' names ("core" for the empty group),

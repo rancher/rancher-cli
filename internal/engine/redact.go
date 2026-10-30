@@ -53,10 +53,10 @@ func checkRedaction(gvr schema.GroupVersionResource, r kinds.Redaction, action s
 			"internal error: "+action+" preview of "+gvr.Resource+" has no redaction for its kind")
 	case r.IsRead():
 		return clierr.New(clierr.CodeGeneric,
-			"internal error: "+action+" preview of "+gvr.Resource+" has the redaction of a read")
+			"internal error: "+action+" preview of "+gvr.Resource+" uses the redaction for reads")
 	case r.GVR() != gvr:
 		return clierr.New(clierr.CodeGeneric,
-			"internal error: "+action+" preview of "+gvr.Resource+" has the redaction of "+r.GVR().Resource)
+			"internal error: "+action+" preview of "+gvr.Resource+" uses the redaction for "+r.GVR().Resource)
 	}
 	return nil
 }

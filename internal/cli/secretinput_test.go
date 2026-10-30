@@ -264,7 +264,7 @@ func secretRows() []secretRow {
 
 	for _, cmd := range []struct{ line, extra string }{{createUserLine, "unexpected argument 2"}, {passwordLine, "unexpected argument 2"}} {
 		add(
-			secretRow{flag: "password-stdin", name: cmd.line + ": an empty password", argv: line(cmd.line, "--password-stdin"), code: validation, message: "produced an empty password"},
+			secretRow{flag: "password-stdin", name: cmd.line + ": an empty password", argv: line(cmd.line, "--password-stdin"), code: validation, message: "the password read from stdin is empty"},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the flag without the pipe", argv: line(cmd.line), stdin: c, code: validation, message: "--password-stdin is required"},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed after the flag with =", argv: line(cmd.line, "--password-stdin="+c), code: validation, message: "invalid value for flag -password-stdin: parse error"},
 			secretRow{flag: "password-stdin", name: cmd.line + ": the password typed as an argument", argv: line(cmd.line, "--password-stdin", c), code: validation, message: cmd.extra},

@@ -90,7 +90,7 @@ func DecodeRowObjects(t *metav1.Table) error {
 		}
 		var meta metav1.PartialObjectMetadata
 		if err := json.Unmarshal(row.Object.Raw, &meta); err != nil {
-			return fmt.Errorf("decoding the object of row %d of the table: %w", i, err)
+			return fmt.Errorf("could not read the object in row %d of the table: %w", i, err)
 		}
 		row.Object.Object = &meta
 	}

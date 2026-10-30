@@ -477,7 +477,7 @@ func TestJoinedFormHintRunsVerbatim(t *testing.T) {
 			}
 			ce := renderedError(t, "json", stderr)
 			if ce.Code == clierr.CodeValidation {
-				assert.True(t, strings.HasPrefix(ce.Message, "--password-stdin produced an empty password"),
+				assert.True(t, strings.HasPrefix(ce.Message, "the password read from stdin is empty"),
 					"%s: refused before running: %s", hint, ce.Message)
 			}
 		})

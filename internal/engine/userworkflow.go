@@ -9,15 +9,15 @@ import (
 )
 
 // UserPasswordWorkflowCapability is the discovery-based requirement shared
-// by create user and create password-change-request: the user-password
-// workflow (the hashed password Secret plus the ext.cattle.io
-// PasswordChangeRequest resource) is absent entirely on older servers,
-// with no Feature flag involved, so its capability signal is the resource's
-// presence in ext.cattle.io discovery.
+// by create user and create password-change-request: local user passwords
+// (the hashed password Secret plus the ext.cattle.io PasswordChangeRequest
+// resource) are absent entirely on older servers, with no Feature flag
+// involved; the capability signal is the resource's presence in
+// ext.cattle.io discovery.
 func UserPasswordWorkflowCapability() runtime.CapabilityRequirement {
 	return runtime.CapabilityRequirement{
 		Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests",
-		Unsupported: "the user-password workflow",
+		Unsupported: "local user passwords",
 	}
 }
 
@@ -39,7 +39,7 @@ func RefuseUnsupportedWorkflow(err error, evidence, detail string) error {
 		return err
 	}
 	return clierr.New(clierr.CodeCapabilityUnsupported,
-		"this server does not support the user-password workflow ("+evidence+"); "+detail)
+		"the connected server does not support local user passwords ("+evidence+"); "+detail)
 }
 
 // CommittedPartialSuccess wraps a post-commit step failure with the given

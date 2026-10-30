@@ -47,14 +47,14 @@ func (createPasswordChangeRequestCmd) Describe() runtime.Descriptor {
 		Name:  "create password-change-request",
 		Usage: "Change a local user's password",
 		Desc: "Submits an ext.cattle.io/v1 PasswordChangeRequest, which completes " +
-			"synchronously. Requires the connected server's user-password workflow " +
-			"(the same one `create user` uses).",
+			"synchronously. Requires a server that supports local user passwords " +
+			"(the same support `create user` needs).",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
 			{Name: "user", Type: "string", Required: true, Desc: "user `id` (see: rancher get users)"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)"},
+			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)"},
 		},
 		Examples: []string{
 			`echo -n "$NEWPASSWORD" | rancher create password-change-request u-abc123 --password-stdin --apply --yes`,
@@ -99,8 +99,8 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 	}
 	if _, err := client.Create(ctx, passwordChangeRequestGVR, "", obj, true); err != nil {
 		return safety.Effect{}, nil, engine.RefuseUnsupportedWorkflow(err,
-			"the ext.cattle.io password-change-request resource is absent",
-			"upgrade the connected server to a version that carries this workflow")
+			"the ext.cattle.io PasswordChangeRequest resource is absent",
+			"upgrade the server to a version that supports them")
 	}
 	eff := safety.Effect{
 		Action:            safety.ActionCreate,

@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"cmp"
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -160,6 +161,68 @@ func TestRejectedWordingStaysOut(t *testing.T) {
 
 	for _, failure := range checkWording(rejectedWording, wordingPhraseAllowlist, wordingPathAllowlist, units) {
 		assert.Fail(t, failure)
+	}
+}
+
+// helpFlag is the part of a flag's entry in the schema golden that the help
+// text test reads.
+type helpFlag struct {
+	Name string `json:"name"`
+	Desc string `json:"desc"`
+}
+
+// helpLifetimeAllowed lists the flags whose help may still say "lifetime",
+// each with the reason. A listed flag whose help no longer says it fails the
+// test, so the entry goes when the text changes.
+var helpLifetimeAllowed = map[string]string{
+	"auth login --ttl": "text not yet reworded",
+}
+
+// TestHelpTextUsesDecidedWords asserts that no flag help in the schema golden
+// says "lifetime" except the flags in helpLifetimeAllowed (a token's time
+// setting is its "expiration"), and that no flag named description begins
+// its help with "note" (the value is a "description").
+// The schema golden is tied to the code by TestSchemaManifestGolden, so the
+// help in the code is covered through it. The two words are not rows of
+// rejectedWording: "lifetime" and "note" are ordinary nouns elsewhere.
+func TestHelpTextUsesDecidedWords(t *testing.T) {
+	raw, err := os.ReadFile("internal/cli/testdata/schema.golden.json")
+	require.NoError(t, err)
+	var manifest struct {
+		Commands []struct {
+			Name  string     `json:"name"`
+			Flags []helpFlag `json:"flags"`
+		} `json:"commands"`
+		GlobalFlags []helpFlag `json:"globalFlags"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+	require.NotEmpty(t, manifest.Commands)
+
+	lifetime := regexp.MustCompile(`(?i)\blifetime\b`)
+	seen := map[string]bool{}
+	check := func(command string, flag helpFlag) {
+		label := strings.TrimSpace(command + " --" + strings.TrimPrefix(flag.Name, "--"))
+		if lifetime.MatchString(flag.Desc) {
+			if _, ok := helpLifetimeAllowed[label]; ok {
+				seen[label] = true
+			} else {
+				assert.Fail(t, label+": the help says \"lifetime\"; say \"expiration\": "+flag.Desc)
+			}
+		}
+		if strings.TrimPrefix(flag.Name, "--") == "description" && strings.HasPrefix(strings.ToLower(flag.Desc), "note") {
+			assert.Fail(t, label+": the help begins with \"note\"; say \"description\": "+flag.Desc)
+		}
+	}
+	for _, command := range manifest.Commands {
+		for _, flag := range command.Flags {
+			check(command.Name, flag)
+		}
+	}
+	for _, flag := range manifest.GlobalFlags {
+		check("", flag)
+	}
+	for label := range helpLifetimeAllowed {
+		assert.True(t, seen[label], "%s is listed in helpLifetimeAllowed but its help no longer says \"lifetime\"", label)
 	}
 }
 
@@ -330,7 +393,9 @@ var rejectedWording = []wordingRow{
 	{[]string{"text card"}, "text output"},
 	{[]string{"the pair"}, "the two binaries"},
 	{[]string{"the plan"}, "the dry-run preview"},
+	{[]string{"unexpected answer", "the answer is cluster"}, "unexpected response"},
 	{[]string{"user record", "user records"}, "User object"},
+	{[]string{"user-password workflow", "declared marker"}, "local user passwords"},
 	{[]string{"verified empty", "verified-empty"}, "the result has no rows"},
 	{[]string{"wins over", "win over", "won over"}, "takes precedence over"},
 	{[]string{"withheld"}, "left out"},
@@ -364,7 +429,6 @@ var wordingPathAllowlist = []wordingPath{
 	{"as you", "internal/engine/access/whocan.go", "", 1, "text not yet reworded"},
 	{"auth bootstrap", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
 	{"auth lifecycle", "internal/cli/root.go", "", 1, "text not yet reworded"},
-	{"auth lifecycle", "internal/engine/managementtoken/managementtoken.go", "", 1, "text not yet reworded"},
 	{"bespoke", "internal/cli/capability_coverage.go", "", 4, "text not yet reworded"},
 	{"bin-dir", "install.ps1", "", 1, "the dry-run output key, kept because a test asserts it"},
 	{"bin-dir", "install.sh", "", 1, "the dry-run output key, kept because a test asserts it"},
@@ -419,6 +483,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"provider list", "internal/token/token.go", "", 2, "text not yet reworded"},
 	{"stamped", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
 	{"the plan", "skills/rancher/SKILL.md", "4. Mutation safety loop - never skip", 1, "text not yet reworded"},
+	{"unexpected answer", "internal/engine/access/discovery.go", "", 1, "text not yet reworded"},
 	{"wins over", "REFERENCE.md", "Access management", 1, "text not yet reworded"},
 	{"wins over", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
 }

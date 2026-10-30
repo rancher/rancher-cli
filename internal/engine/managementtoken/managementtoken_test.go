@@ -81,7 +81,7 @@ func TestDeleteGuardRefusesSessionToken(t *testing.T) {
 	requireValidation(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Contains(t, ce.Message, "backs the current CLI session")
+	assert.Contains(t, ce.Message, "the CLI is using this token for this command")
 	assert.NotContains(t, ce.Message, "auth logout", "message must not promise logout revokes the session")
 	assert.Contains(t, ce.Message, "RANCHER_CLI_TOKEN")
 }

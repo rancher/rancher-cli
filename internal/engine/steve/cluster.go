@@ -69,7 +69,7 @@ func ResolveCluster(ctx context.Context, get Getter, list []Cluster, v string, t
 		return "", "", derr
 	}
 	if got != v {
-		return "", "", protocolError(r.Path(), fmt.Sprintf("the answer is cluster %q", got))
+		return "", "", protocolError(r.Path(), fmt.Sprintf("the response names cluster %q, not the cluster requested", got))
 	}
 	return v, "", nil
 }

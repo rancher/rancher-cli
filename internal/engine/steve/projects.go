@@ -58,7 +58,7 @@ func Projects(ctx context.Context, get Getter, clusterID string) ([]Project, err
 		case clusterID != "" && cluster != clusterID:
 			return "", Project{}, protocolError(path, fmt.Sprintf("item %q is not on cluster %q", item.ID, clusterID))
 		case item.Metadata.Name != "" && item.Metadata.Name != name:
-			return "", Project{}, protocolError(path, fmt.Sprintf("item %q names itself %q", item.ID, item.Metadata.Name))
+			return "", Project{}, protocolError(path, fmt.Sprintf("item %q has metadata.name %q, which differs from its id", item.ID, item.Metadata.Name))
 		}
 		return item.ID, Project{Cluster: cluster, ID: name, DisplayName: item.Spec.DisplayName}, nil
 	})
@@ -69,11 +69,11 @@ func Projects(ctx context.Context, get Getter, clusterID string) ([]Project, err
 }
 
 // collectionRefusal words a collection read's non-2xx answer: steve
-// answers a signed-in user's collection read with 200, so a 403 came from
-// something in front of it, and a status steve's API does not send for a
-// collection, 404 included, means the server does not serve steve as
-// expected. A 401, a 429 and a 5xx keep the root client's error,
-// classified by the status table.
+// answers a signed-in user's collection read with 200; a 403 came from
+// something in front of it, and any other status, 404 included, is
+// reported as one Rancher's steve API does not return for this request. A
+// 401, a 429 and a 5xx keep the root client's error, classified by the
+// status table.
 func collectionRefusal(r Request, err error) error {
 	st, ok := clierr.HTTPStatus(err)
 	if !ok {
@@ -84,14 +84,14 @@ func collectionRefusal(r Request, err error) error {
 		return err
 	case http.StatusForbidden:
 		return clierr.New(clierr.CodeRBAC, fmt.Sprintf(
-			"the server refused GET %s (403); Rancher answers this request with 200 for every signed-in user; a proxy in front of Rancher or an unsupported Rancher refused it",
+			"the server refused GET %s (403); Rancher returns 200 for this request to every signed-in user; a proxy in front of Rancher or an unsupported Rancher version refused it",
 			r.Path())).WithCause(err)
 	default:
 		if st >= http.StatusInternalServerError {
 			return err
 		}
 		return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
-			"GET %s answered %d; this server does not serve Rancher's steve API as expected", r.Path(), st)).WithCause(err)
+			"GET %s returned %d; Rancher's steve API does not return this status for this request", r.Path(), st)).WithCause(err)
 	}
 }
 

@@ -36,11 +36,11 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: "clusters", Type: "string", Desc: "comma-separated cluster `id|name` list, or `*` for all accessible"},
 			{Name: "current-context", Type: "string", Desc: "cluster to use as the kubeconfig's current context"},
-			{Name: "ttl", Type: "string", Desc: "credential lifetime, e.g. 30d, 12h (omit for server default)"},
-			{Name: "description", Type: "string", Desc: "note attached to the kubeconfig for identification"},
+			{Name: "ttl", Type: "string", Desc: "expiration of the tokens in the kubeconfig, e.g. 30d, 12h (omit for server default)"},
+			{Name: "description", Type: "string", Desc: "description of the kubeconfig, to identify it"},
 			// A bool flag cannot distinguish omitted from false; the server
 			// field is a *bool defaulting true, so tri-state is a string enum.
-			{Name: "include-default-entry", Type: "string", Enum: []string{"true", "false"}, Desc: "include the Rancher server's own entry (server default true; pass false, with --clusters, to generate a cluster-only kubeconfig)"},
+			{Name: "include-default-entry", Type: "string", Enum: []string{"true", "false"}, Desc: "include the Rancher server's default entry (server default true; pass false, with --clusters, to leave it out)"},
 		},
 		Examples: []string{
 			"rancher create kubeconfig --clusters prod,staging --ttl 30d --apply > ci.yaml",
@@ -100,7 +100,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 		}
 		if !hasWildcard && !slices.Contains(clusterList, resolved) {
 			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--current-context %q must name one of --clusters", raw))
+				fmt.Sprintf("--current-context %q must be one of the clusters listed in --clusters", raw))
 		}
 		currentContext = resolved
 	}
@@ -170,7 +170,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 					Committed: true, ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery,
 				})
 		}
-		header := fmt.Sprintf("# ext kubeconfig %q - shown exactly once; revoke with: rancher delete kubeconfig %s\n", name, name)
+		header := fmt.Sprintf("# Kubeconfig %q - shown exactly once; revoke with: rancher delete kubeconfig %s\n", name, name)
 		return runtime.Result{
 			RawBytes:         append([]byte(header), []byte(value)...),
 			CommittedContext: &runtime.CommittedContext{ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery},
