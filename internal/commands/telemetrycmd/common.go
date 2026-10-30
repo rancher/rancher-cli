@@ -66,7 +66,7 @@ func variableWarning(s state) []string {
 	if s.decision.IgnoredVariable == "" {
 		return nil
 	}
-	return []string{fmt.Sprintf("%s is set to %q and is ignored; only true or false count",
+	return []string{fmt.Sprintf("%s is set to %q and is ignored; only true or false are valid",
 		telemetry.EnvTelemetry, s.decision.IgnoredVariable)}
 }
 
@@ -76,7 +76,7 @@ func keyWarning(dir string, s state) []string {
 	if telemetry.ConfigSettingOf(s.key) != telemetry.ConfigInvalid {
 		return nil
 	}
-	return []string{fmt.Sprintf("the telemetry key in %s is %q and is ignored; only true or false count",
+	return []string{fmt.Sprintf("the telemetry key in %s is %q and is ignored; only true or false are valid",
 		config.FilePath(dir), *s.key)}
 }
 
@@ -86,7 +86,7 @@ func keepWarnings(dir string, s state) []string {
 	return append(variableWarning(s), keyWarning(dir, s)...)
 }
 
-// overrideWarning names the control that keeps recording in a state other
+// overrideWarning names what keeps recording in a state other
 // than the one a command just set.
 func overrideWarning(s state, want bool) []string {
 	if s.decision.On == want {
@@ -96,7 +96,7 @@ func overrideWarning(s state, want bool) []string {
 	if !s.decision.On {
 		now = valueRecordingOff
 	}
-	return []string{fmt.Sprintf("recording stays %s: %s decides", now, s.decision.By)}
+	return []string{fmt.Sprintf("recording stays %s: decided by %s", now, s.decision.By)}
 }
 
 // keyText is the telemetry key as the file holds it.
@@ -155,21 +155,21 @@ func deleteRecorded(c changes, dir string) (left []string, errs []error) {
 func clearedList() []string { return []string{clearedEvents, clearedFacts, clearedDirectory} }
 
 // deleteFailure is the typed error for deletes that left data behind. head
-// says what is true of the setting; the message then names what is left,
-// where, and why. When the store could not be opened, every item failed for
-// that one reason, which is said once after the list of items. Otherwise
-// each item is followed by its own error, separated by "; ".
+// says what is true after the command ran; the message then names what could
+// not be deleted, where and why. When the store could not be opened, every
+// item failed for that one reason, which is said once after the path.
+// Otherwise each item is followed by its own error, separated by "; ".
 func deleteFailure(head, dir string, left []string, errs []error, warnings []string) error {
-	prefix := fmt.Sprintf("%s: recorded data is still in %s: ", head, telemetryPath(dir))
+	path := telemetryPath(dir)
 	var msg string
 	if open, ok := sameOpenFailure(errs); ok {
-		msg = fmt.Sprintf("%s%s (%v)", prefix, strings.Join(left, ", "), open)
+		msg = fmt.Sprintf("%s: could not delete %s from %s (%v)", head, strings.Join(left, ", "), path, open)
 	} else {
 		parts := make([]string, len(left))
 		for i, name := range left {
 			parts[i] = fmt.Sprintf("%s (%v)", name, errs[i])
 		}
-		msg = prefix + strings.Join(parts, "; ")
+		msg = fmt.Sprintf("%s: could not delete from %s: %s", head, path, strings.Join(parts, "; "))
 	}
 	return clierr.New(clierr.CodeGeneric, msg).WithWarnings(warnings...)
 }

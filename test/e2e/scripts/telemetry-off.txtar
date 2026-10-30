@@ -38,7 +38,7 @@ exec rancher telemetry off -o json
 jsonquery stdout data.state on
 jsonquery stdout data.decidedBy RANCHER_CLI_TELEMETRY
 jsonquery stdout 'warnings.#' 1
-jsonquery stdout 'warnings.0' 'recording stays on: RANCHER_CLI_TELEMETRY decides'
+jsonquery stdout 'warnings.0' 'recording stays on: decided by RANCHER_CLI_TELEMETRY'
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/events
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/servers
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id

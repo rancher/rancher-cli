@@ -229,7 +229,7 @@ func TestStatusConfigKeyCases(t *testing.T) {
 			}
 			if tc.warns {
 				require.Len(t, res.Warnings, 1)
-				assert.Contains(t, res.Warnings[0], "is "+quoted(tc.key.(string))+" and is ignored; only true or false count")
+				assert.Contains(t, res.Warnings[0], "is "+quoted(tc.key.(string))+" and is ignored; only true or false are valid")
 				assert.NotContains(t, res.Warnings[0], "\n", "the value is quoted, so a newline stays on one line")
 			} else {
 				assert.Empty(t, res.Warnings)
@@ -286,7 +286,7 @@ func TestStatusVariableValues(t *testing.T) {
 				return
 			}
 			require.Len(t, res.Warnings, 1)
-			assert.Contains(t, res.Warnings[0], "RANCHER_CLI_TELEMETRY is set to "+quoted(tc.value)+" and is ignored; only true or false count")
+			assert.Contains(t, res.Warnings[0], "RANCHER_CLI_TELEMETRY is set to "+quoted(tc.value)+" and is ignored; only true or false are valid")
 		})
 	}
 }
@@ -370,6 +370,71 @@ func TestStatusWarnsForAnUnsafeOrUnreadableTelemetryPath(t *testing.T) {
 			if outside != "" {
 				assert.Equal(t, before, snapshot(t, outside))
 			}
+		})
+	}
+}
+
+// TestStatusTextLines asserts the whole text of `telemetry status` for a
+// store with events and an id, with the key off, with no config directory and
+// with the variable off.
+func TestStatusTextLines(t *testing.T) {
+	const id = "11111111-1111-4111-8111-111111111111"
+	counts := func(dir string) string {
+		return "  config directory: " + dir + " (exists)\n" +
+			"  recorded events: 2\n  dropped events: 0\n  contract version: " + telemetry.ContractVersion +
+			"\n  config directory id: " + id + "\n"
+	}
+	for _, tc := range []struct {
+		name     string
+		seed     bool
+		config   string
+		variable string
+		want     func(dir string) string
+	}{
+		{
+			name: "default with events",
+			seed: true,
+			want: func(dir string) string { return "recording is on\n  decided by: default\n" + counts(dir) },
+		},
+		{
+			name:   "key off",
+			seed:   true,
+			config: "telemetry: \"false\"\n",
+			want: func(dir string) string {
+				return "recording is off\n  decided by: config\n  key in config.yaml: telemetry: \"false\"\n" + counts(dir)
+			},
+		},
+		{
+			name: "missing directory",
+			want: func(dir string) string {
+				return "recording is on; nothing is recorded because the config directory does not exist\n  decided by: default\n  config directory: " +
+					dir + " (does not exist)\n  recorded events: 0\n  dropped events: 0\n  contract version: " + telemetry.ContractVersion + "\n"
+			},
+		},
+		{
+			name:     "variable off",
+			seed:     true,
+			variable: "false",
+			want: func(dir string) string {
+				return "recording is off\n  decided by: RANCHER_CLI_TELEMETRY\n" + counts(dir)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			controlsEnv(t)
+			dir := newDir(t)
+			if tc.seed {
+				seedStore(t, dir)
+			}
+			if tc.config != "" {
+				writeConfig(t, dir, tc.config)
+			}
+			if tc.variable != "" {
+				t.Setenv(telemetry.EnvTelemetry, tc.variable)
+			}
+			res, err := execute(t, NewStatus(dir))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want(dir), res.Text)
 		})
 	}
 }

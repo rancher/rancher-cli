@@ -2008,10 +2008,10 @@ the CLI has no upload code.
 
 | Command | What it does |
 |---|---|
-| `rancher telemetry status` | Shows whether recording is on and which control decided, the counts of recorded and dropped events, the contract version and the config directory id. Creates nothing and works while recording is off. |
+| `rancher telemetry status` | Shows whether recording is on and what decided it, the counts of recorded and dropped events, the contract version and the config directory id. Creates nothing and works while recording is off. |
 | `rancher telemetry on` | Writes `telemetry: "true"` to config.yaml. Creates the config directory when it is missing and deletes nothing. |
 | `rancher telemetry off` | Writes `telemetry: "false"`, then deletes the recorded events, the server facts and the config directory id. Creates the config directory when it is missing. |
-| `rancher telemetry reset` | Deletes the recorded events, the server facts and the config directory id, and keeps the setting. |
+| `rancher telemetry reset` | Deletes the recorded events, the server facts and the config directory id, and keeps the `telemetry` key. |
 | `rancher telemetry show` | Lists the recorded events, oldest first; `-o json` carries every stored field of each event. |
 
 None of them makes a request to a server or reads a credential.
@@ -2082,7 +2082,7 @@ it succeeds and recording is on, and records no event. A call that serves a
 cached credential sends nothing. The answers reach the next recorded event,
 never the one just written.
 
-Recording is on by default. The first of these controls that applies decides,
+Recording is on by default. The first of these that applies decides,
 in this order, and `rancher telemetry status` names it as `decidedBy`:
 
 1. `RANCHER_CLI_TELEMETRY`: `true` turns recording on and `false` turns it

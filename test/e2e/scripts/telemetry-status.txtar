@@ -20,14 +20,14 @@ jsonquery stdout data.state off
 jsonquery stdout data.decidedBy RANCHER_CLI_TELEMETRY
 ! exists $RANCHER_CLI_CONFIG_DIR
 
-# Only the exact texts true and false count: off is ignored, the default
+# Only the exact texts true and false are valid: off is ignored, the default
 # decides and the warning names the value.
 env RANCHER_CLI_TELEMETRY=off
 exec rancher telemetry status -o json
 jsonquery stdout data.state on
 jsonquery stdout data.decidedBy default
 jsonquery stdout 'warnings.#' 1
-jsonquery stdout 'warnings.0' 'RANCHER_CLI_TELEMETRY is set to "off" and is ignored; only true or false count'
+jsonquery stdout 'warnings.0' 'RANCHER_CLI_TELEMETRY is set to "off" and is ignored; only true or false are valid'
 ! exists $RANCHER_CLI_CONFIG_DIR
 
 # A seeded store shows its counts and id, with recording off.

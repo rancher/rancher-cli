@@ -203,11 +203,11 @@
         },
         {
           "name": "telemetry reset",
-          "usage": "Delete what is recorded and keep the setting"
+          "usage": "Delete what is recorded and keep the telemetry key"
         },
         {
           "name": "telemetry show",
-          "usage": "List the recorded usage events"
+          "usage": "List the recorded events"
         }
       ],
       "desc": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. Recorded events stay on this machine.",

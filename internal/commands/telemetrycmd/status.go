@@ -11,7 +11,7 @@ import (
 type statusCmd struct{ dir string }
 
 // NewStatus builds `telemetry status` (local): whether recording is on,
-// which control decided, and what is recorded. It creates nothing and works
+// what decided it, and what is recorded. It creates nothing and works
 // while recording is off.
 func NewStatus(dir string) runtime.Command { return &statusCmd{dir: dir} }
 
@@ -19,7 +19,7 @@ func (statusCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "telemetry status",
 		Usage: "Show whether usage recording is on and what is recorded",
-		Desc: "Shows whether recording is on, which control decided (the RANCHER_CLI_TELEMETRY variable, " +
+		Desc: "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, " +
 			"the telemetry key of config.yaml, or the default), the number of recorded events, the number of " +
 			"dropped events, the contract version (the version of the event format) and the config directory id " +
 			"(a random id stored for this config directory). " +

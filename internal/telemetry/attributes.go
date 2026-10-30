@@ -164,71 +164,71 @@ var attributes = []Attribute{
 	{
 		Name: attrServiceVersion, Kind: KindString, Stability: StabilityDevelopment, Standard: "OpenTelemetry stable",
 		Events: bothEvents, Required: true, Placement: PlaceResource, Pattern: versionPattern, MaxLength: 64,
-		Why:    "Tells which release of the producer wrote the event. A customer-specific hotfix id is removed; text that fits no form becomes _OTHER.",
+		Why:    "Tells which release of the producer wrote the event. A customer-specific hotfix id is removed; a version that matches none of the forms this contract lists becomes _OTHER.",
 		Absent: "Never absent; the event is invalid without it.",
 	},
 	{
 		Name: attrInstanceID, Kind: KindString, Stability: StabilityDevelopment, Standard: "OpenTelemetry stable",
 		Events: bothEvents, Required: true, Placement: PlaceResource, Pattern: randomIDPattern,
-		Why:    "A random id for one process; ties together the events of one run. It names no person and no machine.",
+		Why:    "A random id for one process, the same on every event that describes that process. It names no person and no machine.",
 		Absent: "Never absent; the event is invalid without it.",
 	},
 	{
 		Name: attrConfigDirID, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
 		Events: bothEvents, Placement: PlaceResource, Pattern: randomIDPattern,
-		Why:    "A random id per CLI configuration directory. It is not a user and not a machine: agents use several directories at once, and CI and test runs use fresh ones.",
-		Absent: "The directory id did not exist yet, or another process was creating it; treat the event as from an unknown directory.",
+		Why:    "A random id per CLI config directory. It is not a user and not a machine: coding agents use several directories at once, and CI and test runs use new ones.",
+		Absent: "The config directory id did not exist yet, or another process was creating it; treat the event as from an unknown config directory.",
 	},
 	{
 		Name: attrOSType, Kind: KindString, Stability: StabilityDevelopment, Standard: "OpenTelemetry development",
 		Events: bothEvents, Placement: PlaceResource,
 		Values: func(ContractInputs) []string { return OSValues() },
-		Why:    "Tells which operating systems the CLI runs on.",
+		Why:    "Tells which operating systems the producer runs on.",
 		Absent: "The producer did not report an operating system.",
 	},
 	{
 		Name: attrHostArch, Kind: KindString, Stability: StabilityDevelopment, Standard: "OpenTelemetry development",
 		Events: bothEvents, Placement: PlaceResource,
 		Values: func(ContractInputs) []string { return ArchValues() },
-		Why:    "Tells which processor architectures the CLI runs on.",
+		Why:    "Tells which processor architectures the producer runs on.",
 		Absent: "The producer did not report an architecture.",
 	},
 	{
 		Name: attrClientType, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord,
 		Values: fixed(string(ClientPerson), string(ClientAgent), string(ClientAutomation)),
-		Why:    "A hint, never proof, of who ran the command: an AI agent, a person at a terminal, or automation (CI, scripts, kubectl calling the exec plugin, output piped to another program).",
-		Absent: "The producer did not classify the caller.",
+		Why:    "A hint, never proof, of who ran the command: a coding agent, a person at a terminal, or automation (CI, scripts, kubectl calling the exec plugin, output piped to another program).",
+		Absent: "The producer did not report who ran the command.",
 	},
 	{
 		Name: attrClientAgent, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord,
 		Values: func(ContractInputs) []string { return AgentValues() },
-		Why:    "Tells which AI agent harness ran the command, from a closed list; agent stands for a harness not on the list.",
-		Absent: "No agent harness was detected.",
+		Why:    "Tells which coding-agent harness ran the command, from a fixed list; agent stands for a harness not on the list.",
+		Absent: "No coding-agent harness was detected.",
 	},
 	{
 		Name: attrClientCI, Kind: KindBoolean, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord,
-		Why:    "True when a CI system's variable was set; reported beside the client type and never changes it.",
+		Why:    "True when an environment variable that a CI system sets was present; recorded beside the client type and never changes the client type.",
 		Absent: "Always written; never absent.",
 	},
 	{
 		Name: attrExecPlugin, Kind: KindBoolean, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord,
-		Why:    "True when kubectl ran the command as its exec credential plugin.",
+		Why:    "True when kubectl ran the command as its exec plugin.",
 		Absent: "Always written; never absent.",
 	},
 	{
 		Name: attrRecordUID, Kind: KindString, Stability: StabilityDevelopment, Standard: "OpenTelemetry development",
 		Events: bothEvents, Required: true, Placement: PlaceRecord, Pattern: randomIDPattern,
-		Why:    "A random id per event, never time-ordered; lets a receiver remove duplicates.",
+		Why:    "A random id per event, never time-ordered; lets a consumer remove duplicates.",
 		Absent: "Never absent; the event is invalid without it.",
 	},
 	{
 		Name: attrCommand, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord, Pattern: commandPattern, MaxLength: 98,
-		Why:    "The registered command name (an alias resolves to it); never a positional value. Valid names are in the rancher schema manifest of the event's service.version.",
+		Why:    "The command name (an alias is replaced by the name it stands for); never an argument value. Valid names are in the rancher schema manifest of the event's service.version.",
 		Absent: "The name did not follow the name rule and was left out.",
 	},
 	{
@@ -240,7 +240,7 @@ var attributes = []Attribute{
 	{
 		Name: attrOutcome, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord, Values: fixed(string(OutcomeOK), string(OutcomeError)),
-		Why:    "Whether the command succeeded. A declared success exit status counts as ok.",
+		Why:    "Whether the command succeeded. An exit code that the command lists as success in the rancher schema manifest (`successExitCodes`) counts as ok.",
 		Absent: "The producer did not report an outcome.",
 	},
 	{
@@ -253,8 +253,8 @@ var attributes = []Attribute{
 	{
 		Name: attrExitCode, Kind: KindInteger, Stability: StabilityDevelopment, Standard: "OpenTelemetry release candidate",
 		Events: runOnly, Placement: PlaceRecord, Minimum: 0, Maximum: 255, HasMinimum: true, HasMaximum: true,
-		Why:    "The exit status the process returns to its caller.",
-		Absent: "The producer did not report an exit status.",
+		Why:    "The exit code the process returns to its caller.",
+		Absent: "The producer did not report an exit code.",
 	},
 	{
 		Name: attrDuration, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
@@ -284,13 +284,13 @@ var attributes = []Attribute{
 		Name: attrMissingReason, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord,
 		Values: fixed(string(ReasonNoServer), string(ReasonNotPermitted), string(ReasonNotFetched), string(ReasonInvalid)),
-		Why:    "Why the install id is absent: no_server (the run had no server), not_permitted (the server answered 403 or 404), not_fetched (no fresh answer yet), invalid (the value was not a UUID). Present exactly when the install id is absent.",
+		Why:    "Why the install id is absent: no_server (the run had no server), not_permitted (the server's response was 403 or 404), not_fetched (no fresh response yet), invalid (the value was not a UUID). Present exactly when the install id is absent.",
 		Absent: "The install id is present.",
 	},
 	{
 		Name: attrDroppedCount, Kind: KindInteger, Stability: StabilityDevelopment, Standard: "new",
 		Events: []string{EventEventsDropped}, Required: true, Placement: PlaceRecord, Minimum: 1, HasMinimum: true,
-		Why:    "How many events one finished hour lost because every try found a taken slot. Consumers report usage as lower bounds when this event exists.",
+		Why:    "How many events were dropped in one finished hour because every slot (a numbered file) the producer tried was taken. Consumers report usage as lower bounds when this event exists.",
 		Absent: "Never absent; the event is invalid without it.",
 	},
 }
@@ -309,7 +309,7 @@ type EventSpec struct {
 func Events() []EventSpec {
 	return []EventSpec{
 		{EventCommandRun, "One finished command run."},
-		{EventEventsDropped, "One finished hour that lost events: every slot the producer tried was taken."},
+		{EventEventsDropped, "One finished hour in which events were dropped: every slot (a numbered file) the producer tried was taken."},
 	}
 }
 

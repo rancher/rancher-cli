@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:io.rancher:telemetry:contract:1.0.0:event",
-  "title": "Rancher usage event, flat form, contract 1.0.0",
-  "description": "One event as the flat contract form: the fixed keys event.name, time and schema_version, then one key per attribute. Consumers accept keys they do not know.",
+  "title": "Rancher usage event (flat event), contract 1.0.0",
+  "description": "One flat event: the fixed keys event.name, time and schema_version, then one key per attribute. Consumers must accept keys they do not know.",
   "oneOf": [
     {
       "$ref": "#/$defs/io.rancher.cli.command.run"
@@ -59,23 +59,23 @@
           "type": "string",
           "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+(?:-(?:alpha|beta|rc)\\.?[0-9]+|-hotfix)?|dev|dev-[0-9a-f]{1,40}|dev-unknown|unknown|_OTHER)$",
           "maxLength": 64,
-          "description": "Tells which release of the producer wrote the event. A customer-specific hotfix id is removed; text that fits no form becomes _OTHER.",
+          "description": "Tells which release of the producer wrote the event. A customer-specific hotfix id is removed; a version that matches none of the forms this contract lists becomes _OTHER.",
           "x-stability": "development",
           "x-absent": "Never absent; the event is invalid without it."
         },
         "service.instance.id": {
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-          "description": "A random id for one process; ties together the events of one run. It names no person and no machine.",
+          "description": "A random id for one process, the same on every event that describes that process. It names no person and no machine.",
           "x-stability": "development",
           "x-absent": "Never absent; the event is invalid without it."
         },
         "io.rancher.cli.config_directory.id": {
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-          "description": "A random id per CLI configuration directory. It is not a user and not a machine: agents use several directories at once, and CI and test runs use fresh ones.",
+          "description": "A random id per CLI config directory. It is not a user and not a machine: coding agents use several directories at once, and CI and test runs use new ones.",
           "x-stability": "development",
-          "x-absent": "The directory id did not exist yet, or another process was creating it; treat the event as from an unknown directory."
+          "x-absent": "The config directory id did not exist yet, or another process was creating it; treat the event as from an unknown config directory."
         },
         "os.type": {
           "type": "string",
@@ -92,7 +92,7 @@
             "z_os",
             "_OTHER"
           ],
-          "description": "Tells which operating systems the CLI runs on.",
+          "description": "Tells which operating systems the producer runs on.",
           "x-stability": "development",
           "x-absent": "The producer did not report an operating system."
         },
@@ -107,7 +107,7 @@
             "x86",
             "_OTHER"
           ],
-          "description": "Tells which processor architectures the CLI runs on.",
+          "description": "Tells which processor architectures the producer runs on.",
           "x-stability": "development",
           "x-absent": "The producer did not report an architecture."
         },
@@ -118,9 +118,9 @@
             "agent",
             "automation"
           ],
-          "description": "A hint, never proof, of who ran the command: an AI agent, a person at a terminal, or automation (CI, scripts, kubectl calling the exec plugin, output piped to another program).",
+          "description": "A hint, never proof, of who ran the command: a coding agent, a person at a terminal, or automation (CI, scripts, kubectl calling the exec plugin, output piped to another program).",
           "x-stability": "development",
-          "x-absent": "The producer did not classify the caller."
+          "x-absent": "The producer did not report who ran the command."
         },
         "io.rancher.client.agent": {
           "type": "string",
@@ -138,26 +138,26 @@
             "pi",
             "agent"
           ],
-          "description": "Tells which AI agent harness ran the command, from a closed list; agent stands for a harness not on the list.",
+          "description": "Tells which coding-agent harness ran the command, from a fixed list; agent stands for a harness not on the list.",
           "x-stability": "development",
-          "x-absent": "No agent harness was detected."
+          "x-absent": "No coding-agent harness was detected."
         },
         "io.rancher.client.ci": {
           "type": "boolean",
-          "description": "True when a CI system's variable was set; reported beside the client type and never changes it.",
+          "description": "True when an environment variable that a CI system sets was present; recorded beside the client type and never changes the client type.",
           "x-stability": "development",
           "x-absent": "Always written; never absent."
         },
         "io.rancher.cli.exec_plugin": {
           "type": "boolean",
-          "description": "True when kubectl ran the command as its exec credential plugin.",
+          "description": "True when kubectl ran the command as its exec plugin.",
           "x-stability": "development",
           "x-absent": "Always written; never absent."
         },
         "log.record.uid": {
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-          "description": "A random id per event, never time-ordered; lets a receiver remove duplicates.",
+          "description": "A random id per event, never time-ordered; lets a consumer remove duplicates.",
           "x-stability": "development",
           "x-absent": "Never absent; the event is invalid without it."
         },
@@ -165,7 +165,7 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{0,31}( [a-z][a-z0-9-]{0,31}){0,2}$",
           "maxLength": 98,
-          "description": "The registered command name (an alias resolves to it); never a positional value. Valid names are in the rancher schema manifest of the event's service.version.",
+          "description": "The command name (an alias is replaced by the name it stands for); never an argument value. Valid names are in the rancher schema manifest of the event's service.version.",
           "x-stability": "development",
           "x-absent": "The name did not follow the name rule and was left out."
         },
@@ -187,7 +187,7 @@
             "ok",
             "error"
           ],
-          "description": "Whether the command succeeded. A declared success exit status counts as ok.",
+          "description": "Whether the command succeeded. An exit code that the command lists as success in the rancher schema manifest (`successExitCodes`) counts as ok.",
           "x-stability": "development",
           "x-absent": "The producer did not report an outcome."
         },
@@ -223,9 +223,9 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 255,
-          "description": "The exit status the process returns to its caller.",
+          "description": "The exit code the process returns to its caller.",
           "x-stability": "development",
-          "x-absent": "The producer did not report an exit status."
+          "x-absent": "The producer did not report an exit code."
         },
         "io.rancher.cli.command.duration.bucket": {
           "type": "string",
@@ -271,7 +271,7 @@
             "not_fetched",
             "invalid"
           ],
-          "description": "Why the install id is absent: no_server (the run had no server), not_permitted (the server answered 403 or 404), not_fetched (no fresh answer yet), invalid (the value was not a UUID). Present exactly when the install id is absent.",
+          "description": "Why the install id is absent: no_server (the run had no server), not_permitted (the server's response was 403 or 404), not_fetched (no fresh response yet), invalid (the value was not a UUID). Present exactly when the install id is absent.",
           "x-stability": "development",
           "x-absent": "The install id is present."
         }
@@ -319,7 +319,7 @@
     },
     "io.rancher.cli.events.dropped": {
       "type": "object",
-      "description": "One finished hour that lost events: every slot the producer tried was taken.",
+      "description": "One finished hour in which events were dropped: every slot (a numbered file) the producer tried was taken.",
       "required": [
         "event.name",
         "time",
@@ -334,7 +334,7 @@
         "event.name": {
           "type": "string",
           "const": "io.rancher.cli.events.dropped",
-          "description": "One finished hour that lost events: every slot the producer tried was taken."
+          "description": "One finished hour in which events were dropped: every slot (a numbered file) the producer tried was taken."
         },
         "time": {
           "type": "string",
@@ -365,23 +365,23 @@
           "type": "string",
           "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+(?:-(?:alpha|beta|rc)\\.?[0-9]+|-hotfix)?|dev|dev-[0-9a-f]{1,40}|dev-unknown|unknown|_OTHER)$",
           "maxLength": 64,
-          "description": "Tells which release of the producer wrote the event. A customer-specific hotfix id is removed; text that fits no form becomes _OTHER.",
+          "description": "Tells which release of the producer wrote the event. A customer-specific hotfix id is removed; a version that matches none of the forms this contract lists becomes _OTHER.",
           "x-stability": "development",
           "x-absent": "Never absent; the event is invalid without it."
         },
         "service.instance.id": {
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-          "description": "A random id for one process; ties together the events of one run. It names no person and no machine.",
+          "description": "A random id for one process, the same on every event that describes that process. It names no person and no machine.",
           "x-stability": "development",
           "x-absent": "Never absent; the event is invalid without it."
         },
         "io.rancher.cli.config_directory.id": {
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-          "description": "A random id per CLI configuration directory. It is not a user and not a machine: agents use several directories at once, and CI and test runs use fresh ones.",
+          "description": "A random id per CLI config directory. It is not a user and not a machine: coding agents use several directories at once, and CI and test runs use new ones.",
           "x-stability": "development",
-          "x-absent": "The directory id did not exist yet, or another process was creating it; treat the event as from an unknown directory."
+          "x-absent": "The config directory id did not exist yet, or another process was creating it; treat the event as from an unknown config directory."
         },
         "os.type": {
           "type": "string",
@@ -398,7 +398,7 @@
             "z_os",
             "_OTHER"
           ],
-          "description": "Tells which operating systems the CLI runs on.",
+          "description": "Tells which operating systems the producer runs on.",
           "x-stability": "development",
           "x-absent": "The producer did not report an operating system."
         },
@@ -413,21 +413,21 @@
             "x86",
             "_OTHER"
           ],
-          "description": "Tells which processor architectures the CLI runs on.",
+          "description": "Tells which processor architectures the producer runs on.",
           "x-stability": "development",
           "x-absent": "The producer did not report an architecture."
         },
         "log.record.uid": {
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-          "description": "A random id per event, never time-ordered; lets a receiver remove duplicates.",
+          "description": "A random id per event, never time-ordered; lets a consumer remove duplicates.",
           "x-stability": "development",
           "x-absent": "Never absent; the event is invalid without it."
         },
         "io.rancher.cli.events.dropped.count": {
           "type": "integer",
           "minimum": 1,
-          "description": "How many events one finished hour lost because every try found a taken slot. Consumers report usage as lower bounds when this event exists.",
+          "description": "How many events were dropped in one finished hour because every slot (a numbered file) the producer tried was taken. Consumers report usage as lower bounds when this event exists.",
           "x-stability": "development",
           "x-absent": "Never absent; the event is invalid without it."
         }

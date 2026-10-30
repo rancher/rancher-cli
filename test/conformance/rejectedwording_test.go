@@ -130,6 +130,15 @@ import (
 //   - rancher cli: the term is rancher-cli, and other text still says
 //     rancher cli.
 //   - whole value: an ordinary phrase.
+//   - setting, settings: ordinary words with other uses (a Rancher Setting,
+//     the settings of a command); the replaced sense, the telemetry key,
+//     cannot be told from them by pattern.
+//   - control, controls: ordinary words with other uses; the replaced
+//     sense (what decided recording) cannot be told from them by pattern.
+//   - lost (alone): an ordinary adjective; only the phrases lose events and
+//     lost events are refused.
+//   - receiver: an ordinary word (a method receiver); the replaced sense, a
+//     reader of usage events, cannot be told from it by pattern.
 func TestRejectedWordingStaysOut(t *testing.T) {
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -285,6 +294,7 @@ type wordingRow struct {
 // form.
 var rejectedWording = []wordingRow{
 	{[]string{"ace clusters"}, "clusters with an Authorized Cluster Endpoint"},
+	{[]string{"ai agent", "ai agent harness", "ai agents"}, "coding agent (a coding-agent harness)"},
 	{[]string{"allowlisted"}, "a fixed list of"},
 	{[]string{"api-reachable"}, "what Rancher's Kubernetes API can reach"},
 	{[]string{"as you"}, "with your permissions"},
@@ -303,8 +313,10 @@ var rejectedWording = []wordingRow{
 	{[]string{"cdn fetch", "storage fetch"}, "could not download from the redirect URL"},
 	{[]string{"channel server route"}, "name the path: it was not found on the server"},
 	{[]string{"clears cleanly"}, "succeeds and changes nothing"},
+	{[]string{"closed list", "closed lists"}, "fixed list"},
 	{[]string{"command bug", "command bugs"}, "internal error"},
 	{[]string{"computed statement"}, "say that the bindings do not show what a user can do"},
+	{[]string{"configuration directory"}, "config directory"},
 	{[]string{"controller-owned"}, "a controller creates and manages it"},
 	{[]string{"correlation"}, "the lookup of the provisioning Cluster"},
 	{[]string{"could not be checked"}, "could not be read"},
@@ -321,9 +333,12 @@ var rejectedWording = []wordingRow{
 	{[]string{"dry-run effect", "dry-run effects"}, "dry-run preview"},
 	{[]string{"envelope key", "envelope keys"}, "top-level Kubernetes object field"},
 	{[]string{"escalates to", "escalate to"}, "requires"},
+	{[]string{"exec credential plugin"}, "exec plugin"},
 	{[]string{"exec entry", "exec entries", "exec user entry"}, "exec block"},
 	{[]string{"executable", "executables"}, "binaries"},
+	{[]string{"exit status"}, "exit code"},
 	{[]string{"first-level reference"}, "the pod's direct owner"},
+	{[]string{"flat contract form", "flat form"}, "flat event"},
 	{[]string{"fleet workspace namespace"}, "Fleet workspace (namespace)"},
 	{[]string{"floor", "floors", "version-floor", "version-floors"}, "minimum"},
 	{[]string{"go duration"}, "a duration such as 90m or 12h"},
@@ -338,6 +353,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"killed"}, "stopped"},
 	{[]string{"layout is corrupt"}, "the data directory is damaged"},
 	{[]string{"listing is exhausted"}, "no published release found in the release listing"},
+	{[]string{"lose events", "lost events"}, "dropped events"},
 	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},
 	{[]string{"main container"}, "the containers and init containers of each pod"},
 	{[]string{"manual quantity"}, "number of nodes"},
@@ -362,6 +378,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"paired warning", "paired warnings"}, "one warning for each entry"},
 	{[]string{"pass a project namespace"}, "pass one of the project's namespaces"},
 	{[]string{"per-replica"}, "of a single replica"},
+	{[]string{"positional value", "positional values"}, "argument value"},
 	{[]string{"principal form", "principal forms"}, "principal prefix"},
 	{[]string{"project bucket", "project-namespace rows"}, "one row for the project"},
 	{[]string{"provider list", "provider lists"}, "list of auth configs"},
@@ -385,6 +402,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"server dry run"}, "server-side dry-run"},
 	{[]string{"single-node docker install"}, "Rancher running as a single Docker container"},
 	{[]string{"spliced", "splices"}, "replaced"},
+	{[]string{"stability marker", "stability markers"}, "stability level"},
 	{[]string{"stamped", "stamps", "unstamped"}, "set (an annotation)"},
 	{[]string{"steve collection envelope"}, "Rancher API collection"},
 	{[]string{"tag grammar"}, "a valid release tag"},
@@ -393,6 +411,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"the pair"}, "the two binaries"},
 	{[]string{"the plan"}, "the dry-run preview"},
 	{[]string{"unexpected answer", "the answer is cluster"}, "unexpected response"},
+	{[]string{"upload stage"}, "say what happens: when uploading is added"},
 	{[]string{"user record", "user records"}, "User object"},
 	{[]string{"user-password workflow", "declared marker"}, "local user passwords"},
 	{[]string{"verified empty", "verified-empty"}, "the result has no rows"},
@@ -441,6 +460,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"budget", "skills/rancher/SKILL.md", "10. Role grants and secrets", 1, "text not yet reworded"},
 	{"budget", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
 	{"canonical owner identity", "internal/engine/inspect/shared.go", "", 1, "a panic text no user sees"},
+	{"configuration directory", "internal/config/lock.go", "", 1, "text not yet reworded"},
 	{"degrades to", "skills/rancher/SKILL.md", "9. Observability & support", 1, "text not yet reworded"},
 	{"direct context", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
 	{"direct context", "REFERENCE.md", "What each part means", 1, "text not yet reworded"},
@@ -452,6 +472,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"direct context", "skills/rancher/SKILL.md", "8. kubectl interop", 2, "text not yet reworded"},
 	{"dry-run effect", "skills/rancher/SKILL.md", "4. Mutation safety loop - never skip", 2, "text not yet reworded"},
 	{"escalates to", "skills/rancher/SKILL.md", "11. OIDC clients", 1, "text not yet reworded"},
+	{"exec credential plugin", "REFERENCE.md", "What each part means", 1, "text not yet reworded"},
 	{"exec entry", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
 	{"exec entry", "REFERENCE.md", "Environment variables", 2, "text not yet reworded"},
 	{"exec entry", "REFERENCE.md", "The user a kubeconfig names (`--user-id`)", 3, "text not yet reworded"},
@@ -465,6 +486,8 @@ var wordingPathAllowlist = []wordingPath{
 	{"exec entry", "internal/token/signin.go", "", 1, "text not yet reworded"},
 	{"exec entry", "skills/rancher/SKILL.md", "8. kubectl interop", 4, "text not yet reworded"},
 	{"executable", "install.sh", "", 1, "a file permission in an error message, not a program"},
+	{"exit status", "internal/runtime/pipeline.go", "", 1, "text not yet reworded"},
+	{"exit status", "skills/rancher/SKILL.md", "2. Discover, don't guess", 1, "text not yet reworded"},
 	{"floor", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"floor", "skills/rancher/SKILL.md", "1. Verify auth before anything else", 1, "text not yet reworded"},
 	{"hard-error", "CREDENTIAL_HELPERS.md", "Responses", 1, "text not yet reworded"},

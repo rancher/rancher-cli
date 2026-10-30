@@ -31,7 +31,7 @@ const (
 
 // ErrUnsafeDir is the error OpenStore returns for a telemetry path that is a
 // symlink or is not a directory.
-var ErrUnsafeDir = errors.New("telemetry path is not a plain directory")
+var ErrUnsafeDir = errors.New("telemetry path is a symlink or not a directory")
 
 // Status is what Record did.
 type Status int

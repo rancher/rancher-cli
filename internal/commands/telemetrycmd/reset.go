@@ -18,9 +18,9 @@ func NewReset(dir string) runtime.Command { return &resetCmd{dir: dir, changes: 
 func (resetCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "telemetry reset",
-		Usage: "Delete what is recorded and keep the setting",
-		Desc: "Deletes the recorded events, the server facts and the config directory id, and keeps the telemetry key " +
-			"and the rest of config.yaml. " +
+		Usage: "Delete what is recorded and keep the telemetry key",
+		Desc: "Deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server) " +
+			"and the config directory id, and keeps the telemetry key and the rest of config.yaml. " +
 			"Creates nothing; with no config directory there is nothing to delete.",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher telemetry reset"},

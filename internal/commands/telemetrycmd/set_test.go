@@ -125,7 +125,7 @@ func TestOnReportsAHigherControl(t *testing.T) {
 	res, err = execute(t, NewOn(dir))
 	require.NoError(t, err)
 	require.Len(t, res.Warnings, 1)
-	assert.Equal(t, "recording stays off: RANCHER_CLI_TELEMETRY decides", res.Warnings[0])
+	assert.Equal(t, "recording stays off: decided by RANCHER_CLI_TELEMETRY", res.Warnings[0])
 	d := dataMap(t, res)
 	assert.Equal(t, "off", d["state"])
 	assert.Equal(t, "RANCHER_CLI_TELEMETRY", d["decidedBy"])
@@ -210,14 +210,17 @@ func TestOffAfterAFailedDeleteReportsWhatIsLeft(t *testing.T) {
 	}
 }
 
-// unsafeTail is the end of the failure message when the telemetry path cannot
-// be opened: every item left, then the one reason, once.
-const unsafeTail = "events, server facts, config directory id (telemetry path is not a plain directory)"
+// The failure message when the telemetry path cannot be opened names every
+// item, then the path, then the one reason, once.
+const (
+	unsafeItems  = "events, server facts, config directory id"
+	unsafeReason = "telemetry path is a symlink or not a directory"
+)
 
 // TestOffAndResetOverAnUnsafeTelemetryPath asserts a telemetry symlink and a
-// telemetry regular file each give a typed error that names the path once and
-// the reason once after the items left, leave the symlink target untouched,
-// and for off leave the key false.
+// telemetry regular file each give a typed error that names the items left,
+// the path once and the reason once, leave the symlink target untouched, and
+// for off leave the key false.
 func TestOffAndResetOverAnUnsafeTelemetryPath(t *testing.T) {
 	controlsEnv(t)
 	for _, kind := range []string{"symlink", "regular file"} {
@@ -244,8 +247,8 @@ func TestOffAndResetOverAnUnsafeTelemetryPath(t *testing.T) {
 				if name == "reset" {
 					head = "telemetry reset is incomplete"
 				}
-				require.ErrorContains(t, err, head+": recorded data is still in "+filepath.Join(dir, "telemetry")+": "+unsafeTail)
-				assert.Equal(t, 1, strings.Count(ce.Message, "not a plain directory"), ce.Message)
+				require.ErrorContains(t, err, head+": could not delete "+unsafeItems+" from "+filepath.Join(dir, "telemetry")+" ("+unsafeReason+")")
+				assert.Equal(t, 1, strings.Count(ce.Message, "a symlink or not a directory"), ce.Message)
 				assert.Equal(t, 1, strings.Count(ce.Message, filepath.Join(dir, "telemetry")), ce.Message)
 				assert.Equal(t, before, snapshot(t, outside), "nothing is followed through the symlink")
 				if name == "off" {
@@ -268,12 +271,19 @@ func TestFailedDeletesEachNameTheirOwnError(t *testing.T) {
 			f := &fakeChanges{eventsErr: errors.New("busy"), idErr: errors.New("access denied")}
 			_, err := execute(t, commandWith(name, dir, f))
 			require.ErrorContains(t, err, ": events (busy); config directory id (access denied)")
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			head := `the telemetry key is "false"`
+			if name == "reset" {
+				head = "telemetry reset is incomplete"
+			}
+			assert.Equal(t, head+": could not delete from "+filepath.Join(dir, "telemetry")+": events (busy); config directory id (access denied)", ce.Message)
 			f = &fakeChanges{eventsErr: errors.New("busy"), factsErr: errors.New("busy"), idErr: errors.New("access denied")}
 			_, err = execute(t, commandWith(name, dir, f))
 			require.ErrorContains(t, err, ": events (busy); server facts (busy); config directory id (access denied)")
-			f = &fakeChanges{eventsErr: errors.New("busy"), factsErr: &openError{err: errors.New("not a plain directory")}}
+			f = &fakeChanges{eventsErr: errors.New("busy"), factsErr: &openError{err: errors.New("telemetry path is a symlink or not a directory")}}
 			_, err = execute(t, commandWith(name, dir, f))
-			require.ErrorContains(t, err, ": events (busy); server facts (not a plain directory)")
+			require.ErrorContains(t, err, ": events (busy); server facts (telemetry path is a symlink or not a directory)")
 		})
 	}
 }
@@ -320,7 +330,7 @@ func TestOffAndResetDeleteWhateverTheVariableSays(t *testing.T) {
 				assert.Equal(t, []string{"pruned"}, names(t, filepath.Join(dir, "telemetry")))
 				if name == "off" && value == "true" {
 					require.Len(t, res.Warnings, 1)
-					assert.Equal(t, "recording stays on: RANCHER_CLI_TELEMETRY decides", res.Warnings[0])
+					assert.Equal(t, "recording stays on: decided by RANCHER_CLI_TELEMETRY", res.Warnings[0])
 					assert.Equal(t, "on", dataMap(t, res)["state"])
 				} else {
 					assert.Empty(t, res.Warnings)
@@ -506,7 +516,7 @@ func TestWarningsPerCommand(t *testing.T) {
 				writeConfig(t, dir, "currentServer: \"\"\n")
 				res, err := execute(t, build(name, dir))
 				require.NoError(t, err)
-				want := "RANCHER_CLI_TELEMETRY is set to " + quoted(value) + " and is ignored; only true or false count"
+				want := "RANCHER_CLI_TELEMETRY is set to " + quoted(value) + " and is ignored; only true or false are valid"
 				assert.Contains(t, res.Warnings, want)
 				for _, w := range res.Warnings {
 					assert.NotContains(t, w, "\n")
@@ -522,7 +532,7 @@ func TestWarningsPerCommand(t *testing.T) {
 				writeConfig(t, dir, "telemetry: "+quoted(key)+"\n")
 				res, err := execute(t, build(name, dir))
 				require.NoError(t, err)
-				keyWarning := "the telemetry key in " + filepath.Join(dir, "config.yaml") + " is " + quoted(key) + " and is ignored; only true or false count"
+				keyWarning := "the telemetry key in " + filepath.Join(dir, "config.yaml") + " is " + quoted(key) + " and is ignored; only true or false are valid"
 				switch name {
 				case "on", "off":
 					assert.NotContains(t, res.Warnings, keyWarning)

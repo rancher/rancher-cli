@@ -9702,7 +9702,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Sets the telemetry key of config.yaml to false, then deletes the recorded events, the server facts and the config directory id, which leaves nothing recorded. Keeps config.yaml. Creates the config directory when it is missing, to hold the key. The RANCHER_CLI_TELEMETRY variable overrides the key; the command warns when it does. Deletes even when RANCHER_CLI_TELEMETRY is set.",
+      "desc": "Sets the telemetry key of config.yaml to false, then deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server) and the config directory id, which leaves nothing recorded. Keeps config.yaml. Creates the config directory when it is missing, to hold the key. The RANCHER_CLI_TELEMETRY variable overrides the key; the command warns when it does. Deletes even when RANCHER_CLI_TELEMETRY is set.",
       "examples": [
         "rancher telemetry off"
       ],
@@ -9730,7 +9730,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Deletes the recorded events, the server facts and the config directory id, and keeps the telemetry key and the rest of config.yaml. Creates nothing; with no config directory there is nothing to delete.",
+      "desc": "Deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server) and the config directory id, and keeps the telemetry key and the rest of config.yaml. Creates nothing; with no config directory there is nothing to delete.",
       "examples": [
         "rancher telemetry reset"
       ],
@@ -9739,7 +9739,7 @@
       "serverAccess": "none",
       "shape": "text",
       "toolset": "core",
-      "usage": "Delete what is recorded and keep the setting"
+      "usage": "Delete what is recorded and keep the telemetry key"
     },
     {
       "auth": false,
@@ -9754,12 +9754,12 @@
       "serverAccess": "none",
       "shape": "tabular",
       "toolset": "core",
-      "usage": "List the recorded usage events"
+      "usage": "List the recorded events"
     },
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Shows whether recording is on, which control decided (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). Recorded events stay on this machine. Creates nothing and works while recording is off.",
+      "desc": "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). Recorded events stay on this machine. Creates nothing and works while recording is off.",
       "examples": [
         "rancher telemetry status",
         "rancher telemetry status -o json"

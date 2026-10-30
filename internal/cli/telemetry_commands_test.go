@@ -258,6 +258,6 @@ func TestTelemetryOffFailureEnvelopeNamesEachError(t *testing.T) {
 	assert.Equal(t, 1, code)
 	ce := renderedError(t, "json", stderr)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Regexp(t, `^the telemetry key is "false": recorded data is still in .*telemetry: events \(.+\); server facts \(.+\)$`, ce.Message)
+	assert.Regexp(t, `^the telemetry key is "false": could not delete from .*telemetry: events \(.+\); server facts \(.+\)$`, ce.Message)
 	assert.NotContains(t, ce.Message, "config directory id")
 }

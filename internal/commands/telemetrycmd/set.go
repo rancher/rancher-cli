@@ -56,8 +56,9 @@ func (offCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "telemetry off",
 		Usage: "Turn usage recording off and delete what is recorded",
-		Desc: "Sets the telemetry key of config.yaml to false, then deletes the recorded events, the server facts and the " +
-			"config directory id, which leaves nothing recorded. Keeps config.yaml. " +
+		Desc: "Sets the telemetry key of config.yaml to false, then deletes the recorded events, the server facts " +
+			"(the version, edition and install id stored for each Rancher server) and the config directory id, " +
+			"which leaves nothing recorded. Keeps config.yaml. " +
 			"Creates the config directory when it is missing, to hold the key. " +
 			"The RANCHER_CLI_TELEMETRY variable overrides the key; the command warns when it does. " +
 			"Deletes even when RANCHER_CLI_TELEMETRY is set.",

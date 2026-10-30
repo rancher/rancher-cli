@@ -62,7 +62,7 @@ func NewShow(dir string) runtime.Command { return &showCmd{dir: dir} }
 func (showCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "telemetry show",
-		Usage: "List the recorded usage events",
+		Usage: "List the recorded events",
 		Desc: "Lists the recorded events, oldest first. The table shows the time, event name, command, outcome and exit " +
 			"code; -o json and -o yaml carry every stored field of each event. " +
 			"Events that cannot be read are skipped. Creates nothing and works while recording is off.",

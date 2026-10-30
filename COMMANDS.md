@@ -142,7 +142,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 
 | Command | Purpose |
 |---|---|
-| `telemetry status` | Show whether usage recording is on, which control decided (the `RANCHER_CLI_TELEMETRY` variable, the `telemetry` key of `config.yaml`, or the default), the counts of recorded and dropped events, the contract version and the config directory id; creates nothing and works while recording is off |
+| `telemetry status` | Show whether usage recording is on, what decided it (the `RANCHER_CLI_TELEMETRY` variable, the `telemetry` key of `config.yaml`, or the default), the counts of recorded and dropped events, the contract version and the config directory id; creates nothing and works while recording is off |
 | `telemetry on` | Set the `telemetry` key to `true`; creates the config directory when it is missing and deletes nothing |
 | `telemetry off` | Set the `telemetry` key to `false`, then delete the recorded events, the server facts and the config directory id; creates the config directory when it is missing |
 | `telemetry reset` | Delete the recorded events, the server facts and the config directory id; keeps the `telemetry` key |
