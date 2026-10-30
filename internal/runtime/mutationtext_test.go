@@ -2,9 +2,11 @@ package runtime
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +21,7 @@ func TestTextLinesStyledTextBoldsFirstLineOnly(t *testing.T) {
 	enabled := style.Style{Enabled: true}
 
 	styled := res.StyledText(enabled)
-	assert.Equal(t, res.Text, style.Strip(styled))
+	assert.Equal(t, res.Text, style.Unstyled(styled))
 	assert.Equal(t, res.Text, res.StyledText(style.Style{}), "disabled style returns Text unchanged")
 
 	lines := splitKeepNewline(styled)
@@ -36,7 +38,7 @@ func TestMutationTextStyledTextBoldsFirstLineOnly(t *testing.T) {
 	t.Parallel()
 	res := MutationText("thing", "x", "created", "detail: y")
 	styled := res.StyledText(style.Style{Enabled: true})
-	assert.Equal(t, res.Text, style.Strip(styled))
+	assert.Equal(t, res.Text, style.Unstyled(styled))
 	lines := splitKeepNewline(styled)
 	require.Len(t, lines, 2)
 	assert.Contains(t, lines[0], "\x1b[1m")
@@ -54,7 +56,7 @@ func TestAccentLineColorsDetailLineYellowKeepingHeadlineBold(t *testing.T) {
 	enabled := style.Style{Enabled: true}
 
 	styled := res.StyledText(enabled)
-	assert.Equal(t, res.Text, style.Strip(styled))
+	assert.Equal(t, res.Text, style.Unstyled(styled))
 	assert.Equal(t, res.Text, res.StyledText(style.Style{}))
 
 	lines := splitKeepNewline(styled)
@@ -74,7 +76,7 @@ func TestAccentLineOnHeadlineReplacesBoldWithYellow(t *testing.T) {
 	res := TextLines(headline)
 	res = AccentLine(res, headline)
 	styled := res.StyledText(style.Style{Enabled: true})
-	assert.Equal(t, res.Text, style.Strip(styled))
+	assert.Equal(t, res.Text, style.Unstyled(styled))
 	assert.Contains(t, styled, "\x1b[33m", "the headline turns yellow")
 	assert.NotContains(t, styled, "\x1b[1m", "yellow replaces bold, it does not compound with it")
 }
@@ -110,4 +112,35 @@ func TestRenderResultMutationTextKeepsShownOnceBold(t *testing.T) {
 	require.Len(t, lines, 3)
 	assert.Contains(t, lines[0], "\x1b[1m", "the MutationText headline is bold")
 	assert.Contains(t, lines[1], "\x1b[1m", "the shown-once line gains bold through composition")
+}
+
+// TestOnceOnlyLineGivesAValueWithACharacterTheFilterRemovesInQuotedForm
+// asserts a clean value is written as "<label>: <value>" plus the shown-once
+// suffix; a value that holds only an escape character, only a newline, only
+// U+202E or only U+2063 is written in Go's quoted form with the note, ends
+// with the suffix and passes output.PrintableLines unchanged; and the notice
+// is the same for both.
+func TestOnceOnlyLineGivesAValueWithACharacterTheFilterRemovesInQuotedForm(t *testing.T) {
+	t.Parallel()
+	line, notice := OnceOnlyLine("token", "abc-123", "token")
+	assert.Equal(t, "token: abc-123"+ShownOnceSuffix, line)
+	for _, tc := range []struct{ name, value string }{
+		{"an escape character", "ab\x1b[2Jcd"},
+		{"a newline", "ab\ncd"},
+		{"U+202E", "ab\u202ecd"},
+		{"U+2063", "ab\u2063cd"},
+		{"a carriage return", "ab\rcd"},
+		{"U+2028", "ab\u2028cd"},
+		{"an invalid UTF-8 byte", "ab\xffcd"},
+		{"a raw 0x9b byte", "ab\x9bcd"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, gotNotice := OnceOnlyLine("token", tc.value, "token")
+			assert.Equal(t, "token "+QuotedValueNote+": "+strconv.Quote(tc.value)+ShownOnceSuffix, got)
+			assert.True(t, strings.HasSuffix(got, ShownOnceSuffix))
+			assert.Equal(t, output.PrintableLines(got), got, "the line holds no character the filter removes")
+			assert.Equal(t, notice, gotNotice)
+		})
+	}
 }

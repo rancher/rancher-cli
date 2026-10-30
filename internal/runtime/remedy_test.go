@@ -382,3 +382,14 @@ func TestOnceOnlyNoticeIsPrintedOnce(t *testing.T) {
 	require.Nil(t, ce)
 	assert.NotContains(t, errBuf.String(), "shown once", "the notice the text carries is not mirrored again")
 }
+
+// TestPrintableRemediesIsOneLineWithTheMarkersKept asserts a two-line text
+// with a marked command and an escape character comes back as one line that
+// keeps this process's marker and holds no escape character.
+func TestPrintableRemediesIsOneLineWithTheMarkersKept(t *testing.T) {
+	t.Parallel()
+	got := PrintableRemedies("first\x1b[2J\nrun " + clierr.Rancher + " auth status\r\nlast\u202e")
+	assert.Equal(t, "first[2Jrun "+clierr.Rancher+" auth statuslast", got)
+	assert.NotContains(t, got, "\n")
+	assert.NotContains(t, got, "\x1b")
+}

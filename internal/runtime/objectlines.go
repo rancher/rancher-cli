@@ -33,7 +33,10 @@ var objectOutcomeOrder = []string{
 // headline already names), a "<kind>s:" line, then one line per outcome
 // with at most five names and a count of the rest. A name whose object
 // carries a Message shows it in parentheses for the outcomes that give a
-// reason (not deleted, failed). The caller indents the lines.
+// reason (not deleted, failed). Kind, outcome, name and message all pass
+// output.Printable for printing; the grouping by kind, the match of an outcome
+// and the condition on a message use the values as given. The caller indents
+// the lines.
 func ObjectLines(objs []safety.Object, headlineKind string) []string {
 	var kindOrder []string
 	byKind := map[string][]safety.Object{}
@@ -48,7 +51,7 @@ func ObjectLines(objs []safety.Object, headlineKind string) []string {
 	}
 	var lines []string
 	for _, kind := range kindOrder {
-		lines = append(lines, kind+"s:")
+		lines = append(lines, output.Printable(kind)+"s:")
 		for _, outcome := range outcomesOf(byKind[kind]) {
 			var names []string
 			for _, o := range byKind[kind] {
@@ -61,7 +64,7 @@ func ObjectLines(objs []safety.Object, headlineKind string) []string {
 				}
 				names = append(names, name)
 			}
-			lines = append(lines, "  "+outcome+": "+NameList(names))
+			lines = append(lines, "  "+output.Printable(outcome)+": "+NameList(names))
 		}
 	}
 	return lines

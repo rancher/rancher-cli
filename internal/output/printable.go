@@ -3,12 +3,14 @@ package output
 import (
 	"strings"
 	"unicode"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // Printable is the terminal-safety boundary for server-sourced text. It
 // strips control characters (U+0000-U+001F, including the ANSI escape
 // introducer, newline and tab; DEL; and U+0080-U+009F, including the
-// one-byte sequence introducer U+009B), Unicode format characters
+// control sequence introducer U+009B), Unicode format characters
 // (category Cf: bidi overrides, zero-width marks, the invisible
 // separator) and the line and paragraph
 // separators U+2028 and U+2029, so a string that originates from IdP
@@ -16,11 +18,67 @@ import (
 // data can neither drive the terminal nor forge, reorder, or hide what a
 // text format shows. The table, wide, and name renderers apply it to every
 // cell; text builders apply it at each insertion of a server field; the
-// runtime applies it to warning and error lines. Structured formats (json,
-// yaml, template) never pass through it - they return the bytes verbatim.
+// runtime applies it to warning and error lines and to the preview fields.
+// Structured formats (json, yaml, template) never pass through it - they
+// return the bytes verbatim. A whole text with its own lines goes through
+// PrintableLines, which the runtime applies to every text print and
+// preview and internal/ui to every notice and prompt label.
+//
+// A byte that is not valid UTF-8, the control sequence introducer 0x9B
+// included, is written as U+FFFD REPLACEMENT CHARACTER, which is printable
+// and stays: strings.Map writes it for each invalid byte, so no byte a
+// terminal in an 8-bit mode reads as a control reaches the terminal.
 func Printable(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' {
+		if removed(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// removed reports whether Printable removes r: a control rune, a format
+// rune, or the line or paragraph separator. Printable and PrintableLines
+// both use it, so the text print and the one-line channels cannot differ.
+func removed(r rune) bool {
+	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029'
+}
+
+// PrintableLines applies Printable to each line of s. It keeps every "\n"
+// between lines and every copy of this process's remedy marker followed by
+// the word rancher (clierr.Rancher), which the invocation replaces with the
+// command it names before anything is written. Every other character
+// Printable removes is removed, a bare U+2063 INVISIBLE SEPARATOR and
+// another process's marker included, and "\r\n" becomes "\n". A text it
+// does not change is returned as it is. An invalid UTF-8 byte becomes U+FFFD
+// REPLACEMENT CHARACTER, as it does in Printable.
+//
+// Joining the pieces cannot form a marker: the pieces between two kept
+// markers hold no format character after the filter, and a marker begins
+// with U+2063.
+func PrintableLines(s string) string {
+	if !strings.Contains(s, clierr.Rancher) {
+		return printableKeepingNewlines(s)
+	}
+	parts := strings.Split(s, clierr.Rancher)
+	changed := false
+	for i, p := range parts {
+		if q := printableKeepingNewlines(p); q != p {
+			parts[i] = q
+			changed = true
+		}
+	}
+	if !changed {
+		return s
+	}
+	return strings.Join(parts, clierr.Rancher)
+}
+
+// printableKeepingNewlines is Printable for a text whose "\n" separate its
+// lines.
+func printableKeepingNewlines(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r != '\n' && removed(r) {
 			return -1
 		}
 		return r

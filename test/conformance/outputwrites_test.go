@@ -24,15 +24,19 @@ import (
 const (
 	outputWritesDir = "test/conformance/testdata/outputwrites"
 	urfaveCLIPath   = "github.com/urfave/cli/v3"
+	uiPath          = modulePrefix + "internal/ui"
 )
 
-// fieldReference is one reference to a struct field: the function it is in
-// and whether it writes the field (a composite literal key, the left side of an
-// assignment or an increment, or the operand of &).
+// fieldReference is one reference to a struct field: the function it is in,
+// whether it writes the field (a composite literal key, the left side of an
+// assignment or an increment, or the operand of &) and what holds it, as
+// referenceCallee names it. A scan that does not look at what holds a
+// reference leaves callee empty.
 type fieldReference struct {
 	function string
 	write    bool
 	pos      string
+	callee   string
 }
 
 // fieldOwner is the type whose struct declares the field a selection
@@ -80,7 +84,13 @@ func fieldReferences(pkgs []*packages.Package, pkgPath, typeName, fieldName stri
 			for _, decl := range f.Decls {
 				function := declarationFunction(pkg, decl)
 				writes := map[ast.Expr]bool{}
+				var stack []ast.Node
 				ast.Inspect(decl, func(n ast.Node) bool {
+					if n == nil {
+						stack = stack[:len(stack)-1]
+						return true
+					}
+					stack = append(stack, n)
 					switch n := n.(type) {
 					case *ast.AssignStmt:
 						for _, lhs := range n.Lhs {
@@ -99,7 +109,8 @@ func fieldReferences(pkgs []*packages.Package, pkgPath, typeName, fieldName stri
 						for _, e := range n.Elts {
 							if kv, ok := e.(*ast.KeyValueExpr); ok {
 								if id, ok := kv.Key.(*ast.Ident); ok && id.Name == fieldName {
-									out = append(out, fieldReference{function, true, pkg.Fset.Position(id.Pos()).String()})
+									literal := "literal " + path.Base(pkgPath) + "." + typeName + "." + fieldName
+									out = append(out, fieldReference{function: function, write: true, pos: pkg.Fset.Position(id.Pos()).String(), callee: literal})
 								}
 							}
 						}
@@ -109,7 +120,7 @@ func fieldReferences(pkgs []*packages.Package, pkgPath, typeName, fieldName stri
 							return true
 						}
 						if owner := fieldOwner(sel); owner != nil && isNamedType(owner, pkgPath, typeName) {
-							out = append(out, fieldReference{function, writes[n], pkg.Fset.Position(n.Sel.Pos()).String()})
+							out = append(out, fieldReference{function: function, write: writes[n], pos: pkg.Fset.Position(n.Sel.Pos()).String(), callee: referenceCallee(info, stack)})
 						}
 					}
 					return true
@@ -141,6 +152,138 @@ func allReferencesByFunction(refs []fieldReference) map[string]int {
 	return out
 }
 
+// referencesByCallee counts every reference in refs by the function it is in
+// and what holds it, written "<function> -> <callee>".
+func referencesByCallee(refs []fieldReference) map[string]int {
+	out := map[string]int{}
+	for _, r := range refs {
+		out[r.function+" -> "+r.callee]++
+	}
+	return out
+}
+
+// noCall is the callee of a reference that no call holds directly.
+const noCall = "no call"
+
+// untypedNoCall is noCall for a file read without types.
+const untypedNoCall = "untyped " + noCall
+
+// heldBy walks up the nodes enclosing the reference at the top of stack and
+// returns the call that holds it directly as an argument, or the selector
+// that has it as its receiver and the call of that selector. Parentheses are
+// removed. Anything deeper is not held directly: a reference inside a
+// function literal or a composite literal that is an argument is held by
+// whatever holds it inside that literal. At most one of call and receiver is
+// set; both are nil when no call holds the reference.
+func heldBy(stack []ast.Node) (call *ast.CallExpr, receiver *ast.SelectorExpr) {
+	node := stack[len(stack)-1]
+	for i := len(stack) - 2; i >= 0; i-- {
+		switch parent := stack[i].(type) {
+		case *ast.ParenExpr:
+			node = parent
+		case *ast.CallExpr:
+			for _, arg := range parent.Args {
+				if ast.Node(arg) == node {
+					return parent, nil
+				}
+			}
+			return nil, nil
+		case *ast.SelectorExpr:
+			if ast.Node(parent.X) != node || i == 0 {
+				return nil, nil
+			}
+			if c, ok := stack[i-1].(*ast.CallExpr); ok && ast.Node(ast.Unparen(c.Fun)) == ast.Node(parent) {
+				return nil, parent
+			}
+			return nil, nil
+		default:
+			return nil, nil
+		}
+	}
+	return nil, nil
+}
+
+// referenceCallee names what holds the reference at the top of stack in a
+// type-checked file:
+//   - an argument of a call to a declared function or method: the function,
+//     as "<package>.<function>" or "<package>.<Type>.<method>" with the
+//     module prefix trimmed, a method of an interface included;
+//   - an argument of a call through a function-typed variable, parameter or
+//     field: "func value <the call's function as written>";
+//   - the receiver of a method call: "receiver of <the method as above>";
+//   - a direct argument of a conversion or a built-in: "conversion <type>"
+//     or "builtin <name>";
+//   - every other place: noCall.
+func referenceCallee(info *types.Info, stack []ast.Node) string {
+	call, receiver := heldBy(stack)
+	switch {
+	case call != nil:
+		return calleeOfCall(info, call)
+	case receiver != nil:
+		if s := info.Selections[receiver]; s != nil && s.Kind() == types.MethodVal {
+			if fn, ok := s.Obj().(*types.Func); ok {
+				return "receiver of " + declaredFunctionKey(fn)
+			}
+		}
+		return "receiver of " + types.ExprString(receiver)
+	}
+	return noCall
+}
+
+// untypedCallee is referenceCallee for a file read without types: "untyped "
+// and the call's function as written, or untypedNoCall.
+func untypedCallee(stack []ast.Node) string {
+	call, receiver := heldBy(stack)
+	switch {
+	case call != nil:
+		return "untyped " + types.ExprString(call.Fun)
+	case receiver != nil:
+		return "untyped " + types.ExprString(receiver)
+	}
+	return untypedNoCall
+}
+
+// calleeOfCall names the function a call calls, as referenceCallee does.
+func calleeOfCall(info *types.Info, call *ast.CallExpr) string {
+	fun := ast.Unparen(call.Fun)
+	if tv, ok := info.Types[fun]; ok {
+		switch {
+		case tv.IsType():
+			return "conversion " + types.TypeString(tv.Type, func(p *types.Package) string { return p.Name() })
+		case tv.IsBuiltin():
+			return "builtin " + types.ExprString(fun)
+		}
+	}
+	var obj types.Object
+	switch f := fun.(type) {
+	case *ast.Ident:
+		obj = info.Uses[f]
+	case *ast.SelectorExpr:
+		if s := info.Selections[f]; s != nil {
+			if s.Kind() == types.MethodVal {
+				obj = s.Obj()
+			}
+		} else {
+			obj = info.Uses[f.Sel]
+		}
+	}
+	if fn, ok := obj.(*types.Func); ok {
+		return declaredFunctionKey(fn)
+	}
+	return "func value " + types.ExprString(fun)
+}
+
+// declaredFunctionKey is the key of a declared function or method with the module
+// prefix trimmed: "<package path>.<function>" or "<package path>.<Type>.<method>".
+func declaredFunctionKey(fn *types.Func) string {
+	name := fn.FullName()
+	if rest, ok := strings.CutPrefix(name, "("); ok {
+		recv, method, _ := strings.Cut(rest, ").")
+		name = strings.TrimPrefix(recv, "*") + "." + method
+	}
+	return strings.TrimPrefix(name, modulePrefix)
+}
+
 // objectUses returns every reference in the non-test files of pkgs to an
 // object match accepts (a call, a value, a read), outside the definition of a
 // function, by the object go/types resolves for the identifier.
@@ -154,7 +297,7 @@ func objectUses(pkgs []*packages.Package, match func(types.Object) bool) []field
 				ast.Inspect(decl, func(n ast.Node) bool {
 					if id, ok := n.(*ast.Ident); ok {
 						if obj := info.Uses[id]; obj != nil && match(obj) {
-							out = append(out, fieldReference{function, false, pkg.Fset.Position(id.Pos()).String()})
+							out = append(out, fieldReference{function: function, pos: pkg.Fset.Position(id.Pos()).String()})
 						}
 					}
 					return true
@@ -312,7 +455,13 @@ func syntacticFieldReferences(pkgPath string, fset *token.FileSet, f *ast.File, 
 	for _, decl := range f.Decls {
 		function := declarationFunction(pkg, decl)
 		writes := map[ast.Expr]bool{}
+		var stack []ast.Node
 		ast.Inspect(decl, func(n ast.Node) bool {
+			if n == nil {
+				stack = stack[:len(stack)-1]
+				return true
+			}
+			stack = append(stack, n)
 			switch n := n.(type) {
 			case *ast.AssignStmt:
 				for _, lhs := range n.Lhs {
@@ -326,11 +475,11 @@ func syntacticFieldReferences(pkgPath string, fset *token.FileSet, f *ast.File, 
 				}
 			case *ast.KeyValueExpr:
 				if id, ok := n.Key.(*ast.Ident); ok && id.Name == fieldName {
-					out = append(out, fieldReference{function, true, fset.Position(id.Pos()).String()})
+					out = append(out, fieldReference{function: function, write: true, pos: fset.Position(id.Pos()).String(), callee: untypedNoCall})
 				}
 			case *ast.SelectorExpr:
 				if n.Sel.Name == fieldName {
-					out = append(out, fieldReference{function, writes[n], fset.Position(n.Sel.Pos()).String()})
+					out = append(out, fieldReference{function: function, write: writes[n], pos: fset.Position(n.Sel.Pos()).String(), callee: untypedCallee(stack)})
 				}
 			}
 			return true
@@ -352,7 +501,7 @@ func syntacticIdentifierUses(pkgPath string, fset *token.FileSet, f *ast.File, n
 		}
 		ast.Inspect(decl, func(n ast.Node) bool {
 			if id, ok := n.(*ast.Ident); ok && id.Name == name && id != declared {
-				out = append(out, fieldReference{function, false, fset.Position(id.Pos()).String()})
+				out = append(out, fieldReference{function: function, pos: fset.Position(id.Pos()).String()})
 			}
 			return true
 		})
@@ -392,7 +541,7 @@ func syntacticStdoutUses(pkgPath string, fset *token.FileSet, f *ast.File) []fie
 			}
 			switch p := imported[id.Name]; {
 			case p == "os" && sel.Sel.Name == "Stdout", p == "fmt" && slices.Contains([]string{"Print", "Printf", "Println"}, sel.Sel.Name):
-				out = append(out, fieldReference{function, false, fset.Position(sel.Sel.Pos()).String()})
+				out = append(out, fieldReference{function: function, pos: fset.Position(sel.Sel.Pos()).String()})
 			}
 			return true
 		})
@@ -474,28 +623,73 @@ func assertReferencesListed(t assert.TestingT, what string, list map[string][]st
 	assert.Equal(t, want, got, what)
 }
 
+// Every reason of the lists below starts with its class, followed by a colon:
+//   - "filtered:" the text goes through a filter that removes control and
+//     format characters before the write; the reason ends with the rows of
+//     TestServerTextCannotDriveTheTerminal that plant server text in the
+//     channel, as "(rows: <name>, <name>)";
+//   - "raw:" the bytes are the data, or the output of another program, and are
+//     written as they are; the reason says why and may end with rows;
+//   - "no text:" the reference writes no text of its own: a terminal check, the
+//     assignment of a writer, the swap to a buffer, the final write of text a
+//     listed reference rendered, the line end of a cancelled read.
+//
+// One reference has one reason. A reference whose formats differ (the
+// envelope writer, which filters table, wide and name and writes json, yaml
+// and template as they are) names both classes in its one reason: the reason
+// starts with the class the check reads, "filtered:", gives the "raw:" part
+// after it, and ends with the rows of both parts.
+//
+// TestEveryListedWriterNamesItsTerminalTextRows checks the classes and rows of
+// every list; it reads the class at the start of a reason only.
+
 // ioOutReferences is every reference to the field Out of runtime.IO in a
 // non-test file, one reason for each occurrence. Every text channel the
 // pipeline writes goes through one of them, so a new reference is a new
 // channel that is listed here with the expansion it uses.
 var ioOutReferences = map[string][]string{
 	"internal/runtime.renderResult": {
-		"the text print, expanded for the invocation's directory (or plain for a PlainText command)",
-		"the bytes of a file or script, written as they are",
-		"the exec credential encoder, which writes the plugin's one JSON object",
-		"the summary line over a table, expanded for the invocation's directory",
-		"the envelope writer, which removes this process's marker from result data",
+		"filtered: the text print, through output.PrintableLines and expanded for the invocation's directory; a PlainText command's text is raw: the output of a program in a container (rows: text, styled text, styled text with server text, styled text adds conceal, styled text adds clear screen, wide text, once-only line, logs text)",
+		"raw: the bytes of a file or script, written as they are (rows: raw bytes)",
+		"raw: the exec credential encoder, which writes the plugin's one JSON object",
+		"filtered: the summary line over a table, one line, expanded for the invocation's directory (rows: summary line)",
+		"filtered: the envelope writer, which removes this process's marker from result data; the table, wide and name renderers filter each header and cell; raw: json, yaml and template, whose bytes are the data (rows: table, wide, name, json, yaml, template)",
 	},
 	"internal/runtime.renderEffect": {
-		"the dry-run preview text, expanded for the invocation's directory",
-		"the envelope writer, which removes this process's marker from result data",
+		"filtered: the dry-run preview text, through output.PrintableLines and expanded for the invocation's directory (rows: preview)",
+		"raw: the envelope writer, which removes this process's marker from result data; an Effect is not a table, and its name and template output is the data",
 	},
 	"internal/runtime.finishOnceOnlyResult": {
-		"the swap to a buffer, so the render is discarded when the final write fails",
-		"the final write of the buffered output",
+		"no text: the swap to a buffer, so the render is discarded when the final write fails",
+		"no text: the final write of the buffered output, which renderResult rendered",
 	},
 	"internal/cli.buildIO": {
-		"the writer of the root command becomes the invocation's output",
+		"no text: the writer of the root command becomes the invocation's output",
+	},
+}
+
+// ioErrReferences is every reference to the field Err of runtime.IO in a
+// non-test file, keyed "<function> -> <what holds the reference>" (see
+// referenceCallee), one reason for each occurrence.
+var ioErrReferences = map[string][]string{
+	"internal/runtime.runRead -> internal/ui.New": {
+		"filtered: the prompter, which filters every notice and prompt label (rows: notice, prompt label, secret prompt label)",
+	},
+	"internal/runtime.renderResult -> internal/runtime.mirrorWarnings": {
+		"filtered: the warnings of a text result (rows: warnings text)",
+		"filtered: the warnings of a result that writes bytes (rows: warnings raw bytes)",
+		"filtered: the warnings of an exec credential result (rows: warnings exec credential)",
+		"filtered: the warnings of a result whose envelope is not json or yaml (rows: warnings envelope)",
+	},
+	"internal/runtime.renderEffect -> internal/runtime.mirrorWarnings": {
+		"filtered: the warnings of a dry-run preview text (rows: warnings preview text)",
+		"filtered: the warnings of a dry-run preview envelope that is not json or yaml (rows: warnings preview envelope)",
+	},
+	"internal/runtime.renderErrDrained -> internal/runtime.RenderErrorStyled": {
+		"filtered: the error block and the warnings of a failed run (rows: warnings failed run, error block)",
+	},
+	"internal/cli.buildIO -> literal runtime.IO.Err": {
+		"no text: the writer of the root command becomes the invocation's error output",
 	},
 }
 
@@ -527,24 +721,76 @@ func TestEveryReferenceToIOOutIsListed(t *testing.T) {
 // remedy command.
 var rootWriterReferences = map[string][]string{
 	"internal/cli.buildIO": {
-		"the writer becomes the invocation's output, which the pipeline expands",
-		"the terminal check of the output",
+		"no text: the writer becomes the invocation's output, which the pipeline expands",
+		"no text: the terminal check of the output",
 	},
 	"internal/cli.universalShellCompleteFunc": {
-		"completion candidates, which are not a remedy channel",
-		"completion candidates for a shell the root does not know, which are not a remedy channel",
+		"raw: completion candidates, which pass their own filter and are not a remedy channel",
+		"raw: completion candidates for a shell the root does not know, which pass their own filter and are not a remedy channel",
 	},
 	"internal/cli.completeCurrentWord": {
-		"completion candidates, which are not a remedy channel",
+		"raw: completion candidates, which pass their own filter and are not a remedy channel",
 	},
 	"internal/cli.showHelpCard": {
-		"urfave's help text, which holds no remedy command",
+		"raw: urfave's help text, which holds only text the CLI wrote as literals and no remedy command",
 	},
 	"internal/cli.helpStyle": {
-		"the terminal check that decides the help's styling",
+		"no text: the terminal check that decides the help's styling",
 	},
 	"internal/cli.recordRun": {
-		"the terminal check of a recorded run",
+		"no text: the terminal check of a recorded run",
+	},
+}
+
+// prompterErrReferences is every reference to the unexported field err of
+// ui.Prompter in a non-test file, one reason for each occurrence, by
+// function.
+var prompterErrReferences = map[string][]string{
+	"internal/ui.New": {
+		"no text: the writer a prompter is built with",
+	},
+	"internal/ui.Discard": {
+		"no text: the writer of the prompter that drops what it is given",
+	},
+	"internal/ui.Prompter.Notice": {
+		"filtered: every notice, after the rewrite (rows: notice)",
+	},
+	"internal/ui.Prompter.writeErr": {
+		"filtered: every prompt label (rows: prompt label, secret prompt label)",
+	},
+	"internal/ui.Prompter.readLine": {
+		"no text: the line end after a cancelled read",
+	},
+}
+
+// urfaveErrWriterReferences is every reference to the field ErrWriter of
+// urfave's Command in a non-test file, one reason for each occurrence, by
+// function.
+var urfaveErrWriterReferences = map[string][]string{
+	"internal/cli.buildIO": {
+		"no text: the writer becomes the invocation's error output",
+		"no text: the terminal check of the error output",
+	},
+	"internal/cli.Adapt": {
+		"filtered: the error block of a refused flag value, written by RenderErrorStyled (rows: error block)",
+	},
+	"internal/cli.renderDepsError": {
+		"filtered: the error block of a failure to open the directory, written by RenderErrorStyled (rows: error block)",
+	},
+	"internal/cli.renderRawArgvError": {
+		"filtered: the error block of a command line that did not parse, written by RenderErrorStyled (rows: error block)",
+	},
+	"internal/cli.adaptEntry": {
+		"filtered: the error block of a refused flag value, written by RenderErrorStyled (rows: error block)",
+		"filtered: the error block of an empty --config value, written by RenderErrorStyled (rows: error block)",
+	},
+	"internal/cli.errStyle": {
+		"no text: the terminal check that decides the error block's styling",
+	},
+	"internal/cli.runArgv": {
+		"no text: the nil check before the root's writer is set",
+		"no text: the assignment of the default error writer",
+		"filtered: the error block of a refused command line, written by RenderErrorStyled (rows: error block)",
 	},
 }
 
@@ -566,6 +812,201 @@ func TestEveryReferenceToTheRootWriterIsListed(t *testing.T) {
 	require.NoError(t, err)
 	got := allReferencesByFunction(sets.references(fieldScan(urfaveCLIPath, "Command", "Writer")))
 	assertReferencesListed(t, "the field Writer of urfave's Command", rootWriterReferences, got)
+}
+
+// TestEveryReferenceToIOErrIsListed asserts every reference to the field Err
+// of runtime.IO in a non-test file is listed with a reason, by enclosing
+// function and by what holds the reference: the function it is passed to,
+// the method it is the receiver of, a literal key, or no call. Swapping the
+// call a reference is passed to fails even when the count stays. It follows
+// a selector (read or written, also one promoted through an embedded
+// struct) and a key of a composite literal of the type, resolves the callee
+// through go/types, and reads every file whatever its build constraint on the
+// system or the architecture (the files only another release platform builds
+// without types: the callee is "untyped" and the call's function as written).
+// It does not follow a write through a value that holds a copy of the writer
+// (the reference where the copy is made is counted as "no call"), os.NewFile,
+// the print built-ins, a file behind another build tag, or what urfave writes
+// through its own writer field inside the library.
+func TestEveryReferenceToIOErrIsListed(t *testing.T) {
+	t.Parallel()
+	sets, err := outputWritePackages()
+	require.NoError(t, err)
+	got := referencesByCallee(sets.references(fieldScan(runtimePath, "IO", "Err")))
+	assertReferencesListed(t, "the field Err of runtime.IO", ioErrReferences, got)
+}
+
+// TestEveryReferenceToThePrompterErrorWriterIsListed asserts every reference
+// to the unexported field err of ui.Prompter in a non-test file (a selector,
+// read or assigned, and a key of a composite literal) is listed with a
+// reason, by enclosing function. A field named err of another type is not
+// counted in the type-checked files. It does not follow a copy of the writer,
+// os.NewFile, the print built-ins or a file behind another build tag.
+func TestEveryReferenceToThePrompterErrorWriterIsListed(t *testing.T) {
+	t.Parallel()
+	sets, err := outputWritePackages()
+	require.NoError(t, err)
+	got := allReferencesByFunction(sets.references(fieldScan(uiPath, "Prompter", "err")))
+	assertReferencesListed(t, "the field err of ui.Prompter", prompterErrReferences, got)
+}
+
+// TestEveryReferenceToTheRootErrorWriterIsListed asserts every reference to
+// the field ErrWriter of the Command type of github.com/urfave/cli/v3 in a
+// non-test file (a selector, read or assigned, and a key of a composite
+// literal) is listed with a reason, by enclosing function; a function literal
+// counts in the function that declares it. It reads every file whatever its
+// build constraint on the system or the architecture (the files only another
+// release platform builds without types, where every selector named ErrWriter
+// counts) and does not follow what urfave writes through the field inside
+// the library.
+func TestEveryReferenceToTheRootErrorWriterIsListed(t *testing.T) {
+	t.Parallel()
+	sets, err := outputWritePackages()
+	require.NoError(t, err)
+	got := allReferencesByFunction(sets.references(fieldScan(urfaveCLIPath, "Command", "ErrWriter")))
+	assertReferencesListed(t, "the field ErrWriter of urfave's Command", urfaveErrWriterReferences, got)
+}
+
+// rawBytesWriters are the functions that write the field RawBytes of
+// runtime.Result, one reason for each. The pipeline writes the bytes as they
+// are, so a command that returns its text this way bypasses the writer filter.
+var rawBytesWriters = map[string][]string{
+	"internal/cli.completionCommand.Execute": {
+		"the shell completion script, a file for the shell",
+	},
+	"internal/engine/extres.createKubeconfigCmd.Plan": {
+		"the kubeconfig file the command creates, a file for kubectl",
+	},
+	"internal/engine/kubeconfig.kubeconfigCmd.Execute": {
+		"the kubeconfig file the command writes, a file for kubectl",
+	},
+}
+
+// rawWriters are the functions that write the field Raw of runtime.Result,
+// one reason for each. The pipeline encodes the result's data as the one JSON
+// object kubectl reads from the exec plugin.
+var rawWriters = map[string][]string{
+	"internal/token.tokenCmd.runWithParams": {
+		"the exec credential the plugin prints after it obtained one",
+	},
+	"internal/token.tokenCmd.cachedResultOnce": {
+		"the exec credential the plugin prints from its cache",
+	},
+	"internal/token.probeCacheWith": {
+		"the exec credential the plugin prints from a cache probe",
+	},
+}
+
+// TestRawPayloadsAreWrittenInListedFunctionsOnly asserts the fields RawBytes
+// and Raw of runtime.Result are written (a key of a composite literal, an
+// assignment or the operand of &) only in the listed functions: a command
+// whose text reaches the terminal as a raw payload bypasses the writer filter,
+// so a new writer is listed with its reason first.
+func TestRawPayloadsAreWrittenInListedFunctionsOnly(t *testing.T) {
+	t.Parallel()
+	sets, err := outputWritePackages()
+	require.NoError(t, err)
+	assertReferencesListed(t, "writes of Result.RawBytes", rawBytesWriters,
+		referencesByFunction(sets.references(fieldScan(runtimePath, "Result", "RawBytes")), true))
+	assertReferencesListed(t, "writes of Result.Raw", rawWriters,
+		referencesByFunction(sets.references(fieldScan(runtimePath, "Result", "Raw")), true))
+}
+
+// terminalClasses are the classes a reason of the writer lists starts with.
+var terminalClasses = []string{"filtered:", "raw:", "no text:"}
+
+// terminalRowsSuffix finds the rows a reason ends with: "(rows: a, b)".
+var terminalRowsSuffix = regexp.MustCompile(`\(rows: ([^)]+)\)\s*$`)
+
+// checkWriterReasons asserts every reason of list starts with exactly one of
+// the classes, a filtered reason names at least one row, a no text reason
+// names none, and every row a reason names is in rows; it adds the rows to
+// named.
+func checkWriterReasons(t assert.TestingT, what string, list map[string][]string, rows, named map[string]bool) {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+	for function, reasons := range list {
+		for _, reason := range reasons {
+			var class string
+			classes := 0
+			for _, c := range terminalClasses {
+				if strings.HasPrefix(reason, c) {
+					class = c
+					classes++
+				}
+			}
+			if !assert.Equal(t, 1, classes, "%s: the reason of %s starts with exactly one of %v: %q", what, function, terminalClasses, reason) {
+				continue
+			}
+			var names []string
+			if m := terminalRowsSuffix.FindStringSubmatch(reason); m != nil {
+				for name := range strings.SplitSeq(m[1], ",") {
+					names = append(names, strings.TrimSpace(name))
+				}
+			}
+			switch class {
+			case "filtered:":
+				assert.NotEmpty(t, names, "%s: the filtered reason of %s names the rows that plant text in it: %q", what, function, reason)
+			case "no text:":
+				assert.Empty(t, names, "%s: the no text reason of %s names no row: %q", what, function, reason)
+			}
+			for _, name := range names {
+				assert.True(t, rows[name], "%s: %s names the row %q, which is not a row", what, function, name)
+				named[name] = true
+			}
+		}
+	}
+}
+
+// TestEveryListedWriterNamesItsTerminalTextRows asserts the reasons of the
+// five writer lists carry a class and the rows of
+// TestServerTextCannotDriveTheTerminal that exercise them, and that every
+// row is named by at least one reason: a listed writer with no row, and a row
+// for a writer that is gone, both fail.
+func TestEveryListedWriterNamesItsTerminalTextRows(t *testing.T) {
+	t.Parallel()
+	rows := map[string]bool{}
+	for _, name := range terminalRowNames() {
+		assert.False(t, rows[name], "the row %q is listed twice", name)
+		rows[name] = true
+	}
+	named := map[string]bool{}
+	for what, list := range map[string]map[string][]string{
+		"ioOutReferences":           ioOutReferences,
+		"rootWriterReferences":      rootWriterReferences,
+		"ioErrReferences":           ioErrReferences,
+		"prompterErrReferences":     prompterErrReferences,
+		"urfaveErrWriterReferences": urfaveErrWriterReferences,
+	} {
+		checkWriterReasons(t, what, list, rows, named)
+	}
+	assert.Equal(t, slices.Sorted(maps.Keys(rows)), slices.Sorted(maps.Keys(named)), "the rows the reasons name and the rows of the table")
+}
+
+// TestWriterReasonCheckFailsForABadReason asserts the check fails for a
+// reason with no class, a class in another case, a filtered reason with no
+// rows, a no text reason with rows and a row that does not exist, and passes
+// for a good list.
+func TestWriterReasonCheckFailsForABadReason(t *testing.T) {
+	t.Parallel()
+	rows := map[string]bool{"a": true, "b": true}
+	var ok failureRecorder
+	named := map[string]bool{}
+	checkWriterReasons(&ok, "x", map[string][]string{"f": {"filtered: one (rows: a, b)", "raw: two", "raw: three (rows: a)", "no text: four"}}, rows, named)
+	assert.Empty(t, ok.failures)
+	assert.Equal(t, map[string]bool{"a": true, "b": true}, named)
+	for name, reason := range map[string]string{
+		"no class":                 "the text print",
+		"a class in another case":  "Filtered: one (rows: a)",
+		"a filtered reason no row": "filtered: one",
+		"a no text reason, a row":  "no text: one (rows: a)",
+		"a row that is not one":    "filtered: one (rows: missing)",
+	} {
+		var rec failureRecorder
+		checkWriterReasons(&rec, "x", map[string][]string{"f": {reason}}, rows, map[string]bool{})
+		assert.NotEmpty(t, rec.failures, name)
+	}
 }
 
 // plainRemedyUses is every reference to the package function plainRemedies
@@ -658,11 +1099,20 @@ var outputWriteFixtures = sync.OnceValues(func() (systemPackages, error) {
 })
 
 // outputWriteFixtureNames are the fixture packages on disk.
-var outputWriteFixtureNames = []string{"clean", "ioout", "plainother", "plainuse", "plaintext", "rootwriter", "stdout"}
+var outputWriteFixtureNames = []string{"clean", "errwriter", "ioerr", "ioout", "plainother", "plainuse", "plaintext", "prompterr", "rawpayload", "rootwriter", "stdout"}
 
-// TestOutputWriteScanFixtures asserts each scan on the fixtures, which the
-// host type-checks and the other platforms the release builds contribute only
-// the files they alone build: the references to the field Out of runtime.IO as
+// TestOutputWriteScanFixtures asserts each scan on the fixtures, among them the
+// references to the field Err of runtime.IO with what holds each one (an
+// argument of a declared function, of fmt.Fprint, of a method and of a
+// function value; the receiver of a method call; a literal key; no call for
+// an assignment, a return, a comparison, a method value, and a reference
+// inside a function literal or a composite literal that is an argument; a
+// conversion; a built-in; and, in a file only windows builds, an untyped
+// call and no call), the err of a Prompter, the ErrWriter of urfave's Command
+// and the writes of the fields RawBytes and Raw of runtime.Result, each with a
+// field of another type left out. The host type-checks the fixtures and the
+// other platforms the release builds contribute only the files they alone
+// build: the references to the field Out of runtime.IO as
 // a selector, a promoted selector, an assignment, a key of a composite
 // literal, one in a function literal, one at package level, one in a file only
 // windows builds and one in a file only s390x builds, with a field Out of
@@ -725,6 +1175,72 @@ func TestOutputWriteScanFixtures(t *testing.T) {
 		}, allReferencesByFunction(both.references(fieldScan(urfaveCLIPath, "Command", "Writer"))))
 	})
 
+	t.Run("IO.Err", func(t *testing.T) {
+		t.Parallel()
+		both := sets.only("ioerr", "clean")
+		const (
+			consume = outputWritesDir + "/ioerr.consume"
+			write   = "receiver of io.Writer.Write"
+		)
+		assert.Equal(t, map[string]int{
+			key("ioerr", "passedToFunction") + " -> " + consume:                             1,
+			key("ioerr", "passedToFmt") + " -> fmt.Fprint":                                  1,
+			key("ioerr", "passedToMethod") + " -> " + outputWritesDir + "/ioerr.sink.write": 1,
+			key("ioerr", "passedToClosure") + " -> func value f":                            1,
+			key("ioerr", "receiver") + " -> " + write:                                       1,
+			key("ioerr", "literalKey") + " -> literal runtime.IO.Err":                       1,
+			key("ioerr", "assigned") + " -> no call":                                        1,
+			key("ioerr", "returned") + " -> no call":                                        1,
+			key("ioerr", "methodValue") + " -> no call":                                     1,
+			key("ioerr", "inClosure") + " -> " + write:                                      1,
+			key("ioerr", "compared") + " -> no call":                                        1,
+			key("ioerr", "inFuncLitArgument") + " -> no call":                               1,
+			key("ioerr", "inCompositeArgument") + " -> no call":                             1,
+			key("ioerr", "converted") + " -> conversion io.Writer":                          1,
+			key("ioerr", "appended") + " -> builtin append":                                 1,
+			key("ioerr", "methodValueArgument") + " -> no call":                             1,
+			key("ioerr", "windowsWrite") + " -> untyped fmt.Fprint":                         1,
+			key("ioerr", "windowsAssigned") + " -> untyped no call":                         1,
+		}, referencesByCallee(both.references(fieldScan(runtimePath, "IO", "Err"))))
+	})
+
+	t.Run("Prompter.err", func(t *testing.T) {
+		t.Parallel()
+		both := sets.only("prompterr", "clean")
+		assert.Equal(t, map[string]int{
+			key("prompterr", "Prompter.Notice"): 1,
+			key("prompterr", "New"):             1,
+			key("prompterr", "assign"):          1,
+		}, allReferencesByFunction(both.references(fieldScan(pathOf("prompterr"), "Prompter", "err"))))
+	})
+
+	t.Run("urfave Command.ErrWriter", func(t *testing.T) {
+		t.Parallel()
+		both := sets.only("errwriter", "clean")
+		assert.Equal(t, map[string]int{
+			key("errwriter", "read"):       1,
+			key("errwriter", "assign"):     1,
+			key("errwriter", "literalKey"): 1,
+			key("errwriter", "root"):       1,
+		}, allReferencesByFunction(both.references(fieldScan(urfaveCLIPath, "Command", "ErrWriter"))))
+	})
+
+	t.Run("Result.RawBytes and Result.Raw", func(t *testing.T) {
+		t.Parallel()
+		both := sets.only("rawpayload", "clean")
+		assert.Equal(t, map[string]int{
+			key("rawpayload", "bytesLiteralKey"): 1,
+			key("rawpayload", "bytesAssign"):     1,
+			key("rawpayload", "bytesAddress"):    1,
+		}, referencesByFunction(both.references(fieldScan(runtimePath, "Result", "RawBytes")), true))
+		assert.Equal(t, map[string]int{
+			key("rawpayload", "rawLiteralKey"): 1,
+			key("rawpayload", "rawAssign"):     1,
+		}, referencesByFunction(both.references(fieldScan(runtimePath, "Result", "Raw")), true))
+		assert.Equal(t, map[string]int{key("rawpayload", "read"): 1}, referencesByFunction(both.references(fieldScan(runtimePath, "Result", "Raw")), false),
+			"a read is not a write; a field Raw of another type is not counted")
+	})
+
 	t.Run("plainRemedies", func(t *testing.T) {
 		t.Parallel()
 		both := sets.only("plainuse", "plainother", "clean")
@@ -761,7 +1277,7 @@ func TestOutputWriteScanFixtures(t *testing.T) {
 		t.Parallel()
 		var files []extraFile
 		for _, platform := range sets.platforms {
-			files = append(files, sets.extras[platform]...)
+			files = append(files, sets.only("ioout").extras[platform]...)
 		}
 		require.NotEmpty(t, files)
 		for _, e := range files {

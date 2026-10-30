@@ -70,7 +70,7 @@ func TestStyleConfigInfoTextStripInvariant(t *testing.T) {
 
 	styled := styleConfigInfoText(res.Text, enabled)
 	assert.NotEqual(t, res.Text, styled)
-	assert.Equal(t, res.Text, style.Strip(styled))
+	assert.Equal(t, res.Text, style.Unstyled(styled))
 	assert.Equal(t, res.Text, styleConfigInfoText(res.Text, style.Style{}), "disabled style returns text unchanged")
 	assert.Contains(t, styled, "\x1b[1mcompletion:\x1b[0m\n")
 	assert.NotContains(t, styled, "\x1b[1mpath:", "a flat key: value line must not be styled")

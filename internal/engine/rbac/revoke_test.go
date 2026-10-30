@@ -482,7 +482,7 @@ func TestRevokeMultiBindingBoldsEveryConfirmationLine(t *testing.T) {
 	t.Parallel()
 	text := "globalrolebinding/grb-a deleted\nglobalrolebinding/grb-b deleted\n"
 	styled := runtime.StyleEveryLineBold(text)(style.Style{Enabled: true})
-	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, style.Unstyled(styled))
 	assert.Equal(t, 2, strings.Count(styled, "\x1b[1m"))
 	assert.Equal(t, text, runtime.StyleEveryLineBold(text)(style.Style{}))
 }

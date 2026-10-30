@@ -1225,15 +1225,23 @@ keep the CLI's columns.
 Some commands (e.g. `logs`) render a plain-text default
 under `table`/default format instead, with warnings on stderr as
 `# warning: <w>` lines; `-o json`/`yaml`/`template=`/`name` still see the
-normal envelope over `data`. Every text format - `table`, `wide`, `name`,
-the text of composites and `access`, the `# warning:` and `error (...)`
-lines on stderr, and the dry-run preview - strips control characters
-(including ANSI escape introducers) and Unicode format characters from
-server-sourced text before it reaches the terminal, so a description or
-condition message cannot forge a row or drive the terminal. Three outputs
-are verbatim by design and are untrusted content when echoed: `json`,
-`yaml`, and `template=` (the bytes are the data), and `logs` (container
-output whose newlines are its structure). Structured output (json, yaml, and template)
+normal envelope over `data`.
+Every text format - `table`, `wide`, `name`, the text of composites and
+`access`, the dry-run preview, and the `# warning:` lines and `error (...)`
+lines on stderr - removes control characters (including the escape character
+that starts an ANSI sequence, carriage return and tab) and Unicode format
+characters from server-sourced text before it reaches the terminal, so server
+text cannot drive the terminal. Progress messages on stderr get the same
+treatment under every `-o` format. Table cells, `-o name`, the `# warning:`
+and `error (...)` lines, the summary line and the dry-run preview also remove
+newlines, so a value cannot add a row or a line there. Verbatim by design, and
+untrusted content when echoed: `json`, `yaml` and `template=` (the bytes are
+the data), `logs` (container output whose newlines are its structure), and the
+file and script output of `kubeconfig`, `create kubeconfig` and `completion`.
+A value a command shows only once (a bearer token, a client secret) that holds
+such a character prints in Go's quoted form, and its line says so; `-o json`
+carries the value as it is.
+Structured output (json, yaml, and template)
 omits `metadata.managedFields` (kubectl-parity; no opt-out flag - read the
 raw API for
 [server-side-apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/)

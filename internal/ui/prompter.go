@@ -1,7 +1,10 @@
 // Package ui provides the single injected prompter/notifier for interactive
-// commands. Prompts and notices go to Err. Stdout is owned by the pipeline for
-// machine output (e.g. the exec-credential JSON). Prompting is refused unless
-// attached to a TTY and not running under --no-input.
+// commands. Prompts and notices go to Err, each through
+// output.PrintableLines, so a control or format character in a message or a
+// label never reaches the terminal, under every output format. Stdout is
+// owned by the pipeline for machine output (e.g. the exec-credential JSON).
+// Prompting is refused unless attached to a TTY and not running under
+// --no-input.
 package ui
 
 import (
@@ -15,6 +18,8 @@ import (
 	"sync"
 
 	"golang.org/x/term"
+
+	"github.com/rancher/rancher-cli/internal/output"
 )
 
 // ErrNoInput is returned by Prompt/PromptSecret when interaction is disallowed
@@ -64,17 +69,22 @@ func (p *Prompter) CanPrompt() bool { return p.isTTY && !p.noInput }
 // a TTY (CanPrompt).
 func (p *Prompter) NoInput() bool { return p.noInput }
 
-// Notice writes an informational/warning line to Err (never Out).
+// Notice writes an informational/warning line to Err (never Out): the
+// message after the rewrite, with every control and format character removed
+// except the newlines between its lines and this process's remedy markers
+// (output.PrintableLines).
 func (p *Prompter) Notice(msg string) {
 	if p.rewrite != nil {
 		msg = p.rewrite(msg)
 	}
+	msg = output.PrintableLines(msg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	_, _ = fmt.Fprintln(p.err, msg)
 }
 
-// Prompt writes label to Err and reads one line from In, honoring ctx.
+// Prompt writes label to Err, filtered as a notice is, and reads one line
+// from In, honoring ctx.
 func (p *Prompter) Prompt(ctx context.Context, label string) (string, error) {
 	if !p.CanPrompt() {
 		return "", ErrNoInput
@@ -145,13 +155,14 @@ func selectCancelable[T any](ctx context.Context, read func() (T, error), onCanc
 	}
 }
 
-// writeErr writes s to err under mu - held only for the write itself, never
-// across a blocking read, so a concurrent Notice (e.g. from a background
-// callback handler) is never blocked behind a pending prompt.
+// writeErr writes s to err, through output.PrintableLines, under mu - held
+// only for the write itself, never across a blocking read, so a concurrent
+// Notice (e.g. from a background callback handler) is never blocked behind a
+// pending prompt.
 func (p *Prompter) writeErr(s string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	_, _ = fmt.Fprint(p.err, s)
+	_, _ = fmt.Fprint(p.err, output.PrintableLines(s))
 }
 
 // ReadLine reads a single line from In, honoring ctx, with NO TTY/NoInput gating.

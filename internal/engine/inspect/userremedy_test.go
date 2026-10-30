@@ -19,9 +19,9 @@ import (
 // whose display name and last login hold U+2063 followed by the word rancher
 // (text a server sends, not this process's marker) is printed with no
 // directory by the whole pipeline, with a config directory in use: the
-// last login line is printed as it is, the display name loses the character
-// as every printed name does, no line holds --config, and the json output
-// holds the last login byte for byte.
+// text print removes the character from the last login line and from the
+// display name, so neither is a command form, no line holds --config, and
+// the json output holds the last login byte for byte.
 func TestInspectUserKeepsAServerValueThatLooksLikeACommand(t *testing.T) {
 	t.Parallel()
 	const planted = "\u2063rancher delete x"
@@ -49,7 +49,7 @@ func TestInspectUserKeepsAServerValueThatLooksLikeACommand(t *testing.T) {
 		_, ce := runtime.Run(t.Context(), newCmd(), input{args: []string{"u-abc"}}, runtime.IO{Out: &out, Err: &errBuf, RemedyDir: dir}, safety.Binding{})
 		require.Nil(t, ce)
 		got := out.String()
-		assert.Contains(t, got, "  lastLogin: "+planted+"\n")
+		assert.Contains(t, got, "  lastLogin: rancher delete x\n")
 		assert.Contains(t, got, "  displayName: rancher delete x\n")
 		assert.NotContains(t, got, "--config")
 		assert.NotContains(t, got, clierr.RemedyMarker)

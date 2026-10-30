@@ -37,6 +37,21 @@ func (s Style) wrap(code, text string) string {
 	return code + text + ansiReset
 }
 
+// codeRemover removes the six codes a wrap writes.
+var codeRemover = strings.NewReplacer(
+	ansiReset, "", ansiBold, "", ansiRed, "", ansiYellow, "", ansiCyan, "", ansiGreen, "",
+)
+
+// Unstyled removes every copy of the six codes a Style wrap writes (bold,
+// red, yellow, cyan, green and the reset) and nothing else. It differs from
+// Strip, which removes everything from an ESC [ up to the next m: a text
+// that adds the conceal code ESC [ 8 m (or any other color or SGR code that
+// is not one of the six) is not equal to its plain form after Unstyled,
+// where it is after Strip. The clear-screen code ESC [ 2 J does not end in
+// m: Strip leaves it unless an m follows later in the text, and then removes
+// everything in between, which is a change to the text as well.
+func Unstyled(text string) string { return codeRemover.Replace(text) }
+
 // Strip removes every ANSI SGR escape sequence from text, restoring the
 // exact plain bytes a Style wrap was built from.
 func Strip(text string) string {

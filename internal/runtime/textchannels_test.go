@@ -206,7 +206,8 @@ func plainTextResults(text string) []struct {
 // text command returns, prints a command of the CLI as the plain command and
 // keeps a text from a server (U+2063 followed by the word rancher) as it is,
 // for a directory that can be printed and for one that cannot; and that the
-// same three results without PlainText name the directory.
+// same three results without PlainText name the directory and print the text
+// from a server without the U+2063, so it is no command form.
 func TestPlainTextCommandPrintsTheCommandWithNoDirectory(t *testing.T) {
 	t.Parallel()
 	text := "ran " + clierr.Rancher + " get pods\nserver said " + plantedRemedy + "\n"
@@ -229,7 +230,12 @@ func TestPlainTextCommandPrintsTheCommandWithNoDirectory(t *testing.T) {
 					_, ce := runtime.Run(t.Context(), cmd, siteInput{}, streams, safety.Binding{})
 					require.Nil(t, ce)
 					got := out.String()
-					assert.Contains(t, got, plantedRemedy, "a text from a server is written as it is")
+					if plain {
+						assert.Contains(t, got, "server said "+plantedRemedy, "a text from a server is written as it is")
+					} else {
+						assert.Contains(t, got, "server said rancher delete x", "a text from a server loses the U+2063")
+						assert.NotContains(t, got, plantedRemedy)
+					}
 					assert.NotContains(t, got, clierr.RemedyMarker, "no marker is left")
 					switch {
 					case plain:

@@ -747,9 +747,10 @@ func tableFormat(format string) bool {
 	return format == "" || format == "table"
 }
 
-// textRenderFormat reports whether format renders a ShapeText Result's Text
-// field verbatim: table/default, plus "wide" - for a ShapeText command,
-// -o wide is table-family (no separate wide body exists for text).
+// textRenderFormat reports whether format prints a ShapeText Result's Text
+// field through output.PrintableLines (as it is for a PlainText command):
+// table/default, plus "wide" - for a ShapeText command, -o wide is
+// table-family (no separate wide body exists for text).
 func textRenderFormat(format string) bool {
 	return tableFormat(format) || format == "wide"
 }
@@ -847,6 +848,25 @@ func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s sty
 	}
 }
 
+// printableText is the text print of a result that is not the output of
+// another program: the wide text or the text with control and format
+// characters removed (newlines and this process's remedy markers kept). A
+// styled text is chosen only when the text had nothing to remove and
+// removing the six codes a style writes from the styled text gives the text
+// back, so a styled text that adds any other sequence is written plain.
+func printableText(res Result, wide bool, s style.Style) string {
+	if wide {
+		return output.PrintableLines(res.WideText)
+	}
+	clean := output.PrintableLines(res.Text)
+	if res.StyledText != nil && clean == res.Text {
+		if styled := res.StyledText(s); style.Unstyled(styled) == res.Text {
+			return styled
+		}
+	}
+	return clean
+}
+
 // renderResult renders res per d's declared shape, having first drained
 // streams' NoticeSource and merged it ahead of res.Warnings (recorded
 // earliest, delivered first - the same merge order RenderError applies on
@@ -896,14 +916,21 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
 		expand := streams.ExpandLines
+		wide := streams.Format == "wide" && res.WideText != ""
+		var text string
 		if d.PlainText {
+			// The output of another program: written as it is.
 			expand = plainRemedies
-		}
-		text := res.Text
-		if streams.Format == "wide" && res.WideText != "" {
-			text = res.WideText
-		} else if res.StyledText != nil {
-			text = res.StyledText(outStyle)
+			switch {
+			case wide:
+				text = res.WideText
+			case res.StyledText != nil:
+				text = res.StyledText(outStyle)
+			default:
+				text = res.Text
+			}
+		} else {
+			text = printableText(res, wide, outStyle)
 		}
 		// Composed, not either-or: a once-only command that also styles
 		// its text must not lose the shown-once emphasis. No double
@@ -960,7 +987,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// "table" and "wide" - `get --wait`'s wide output is table-family too,
 	// not a separate body, so the wait line belongs on it as well.
 	if textRenderFormat(streams.Format) && res.Summary != "" {
-		if _, err := fmt.Fprintln(streams.Out, streams.ExpandLines(res.Summary)); err != nil {
+		if _, err := fmt.Fprintln(streams.Out, streams.ExpandLines(PrintableRemedies(res.Summary))); err != nil {
 			return notices, clierr.From(err)
 		}
 	}
@@ -999,7 +1026,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	// later invocation happens to drain it.
 	eff.Warnings = streams.expandAll(append(drainNotices(streams), eff.Warnings...))
 	if textRenderFormat(streams.Format) {
-		if _, err := streams.Out.Write([]byte(streams.ExpandLines(dryRunText(eff)))); err != nil {
+		if _, err := streams.Out.Write([]byte(streams.ExpandLines(output.PrintableLines(dryRunText(eff))))); err != nil {
 			return clierr.From(err)
 		}
 		// Effect.Warnings are deliberately excluded from dryRunText's body -
@@ -1034,10 +1061,10 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 func dryRunText(eff safety.Effect) string {
 	var lines []string
 	if eff.Server != "" {
-		lines = append(lines, "server: "+eff.Server)
+		lines = append(lines, "server: "+PrintableRemedies(eff.Server))
 	}
 	if eff.Cluster != "" {
-		lines = append(lines, "cluster: "+eff.Cluster)
+		lines = append(lines, "cluster: "+PrintableRemedies(eff.Cluster))
 	}
 	for _, d := range eff.Diff {
 		// d.Path is an RFC 6901 JSON Pointer ("~1" for "/", "~0" for "~"),
@@ -1054,7 +1081,7 @@ func dryRunText(eff safety.Effect) string {
 	}
 	gate += " to apply the change"
 	lines = append(lines, gate)
-	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, eff.DisplayKind, eff.DisplayName), lines...).Text
+	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, PrintableRemedies(eff.DisplayKind), PrintableRemedies(eff.DisplayName)), lines...).Text
 }
 
 // diffValueText renders one side of a diff entry for the text preview: a
@@ -1139,7 +1166,7 @@ func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Sty
 	}
 	var b strings.Builder
 	for _, warn := range warnings {
-		fmt.Fprintf(&b, "%s %s\n", s.Yellow("# warning:"), warn)
+		fmt.Fprintf(&b, "%s %s\n", s.Yellow("# warning:"), output.Printable(warn))
 	}
 	b.WriteString(errorText(ce, s))
 	_, err := w.Write([]byte(b.String()))

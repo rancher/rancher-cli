@@ -547,7 +547,7 @@ func TestStyleUserTextStripInvariant(t *testing.T) {
 	enabled := style.Style{Enabled: true}
 	styled := styleUserText(text, enabled)
 	assert.NotEqual(t, text, styled)
-	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, style.Unstyled(styled))
 	assert.Equal(t, text, styleUserText(text, style.Style{}), "disabled style returns text unchanged")
 
 	assert.Contains(t, styled, "\x1b[1mUSER [system] [disabled]\x1b[0m\n")
@@ -578,7 +578,7 @@ func TestStyleUserTextGroupRowNeverTakesSubheaderBold(t *testing.T) {
 		"    admin  [grb-x]",
 	}, "\n") + "\n"
 	styled := styleUserText(text, style.Style{Enabled: true})
-	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, style.Unstyled(styled))
 	assert.Contains(t, styled, "\x1b[1mUSER [system]\x1b[0m")
 	assert.Contains(t, styled, "  GLOBAL-ADMINS (activedirectory)  [ad_group://cn=ga]\n", "the group row stays plain")
 	assert.NotContains(t, styled, "\x1b[1m  GLOBAL-ADMINS")

@@ -737,7 +737,7 @@ func TestStyleAuthCheckTextStripInvariant(t *testing.T) {
 
 	styled := styleAuthCheckText(text, true, enabled)
 	assert.NotEqual(t, text, styled)
-	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, style.Unstyled(styled))
 	assert.Equal(t, text, styleAuthCheckText(text, true, style.Style{}), "disabled style returns text unchanged")
 
 	for _, header := range []string{"AUTH STATUS", "VERSIONS", "IDENTITY", "TOKEN", "CREDENTIAL STORE"} {
@@ -755,7 +755,7 @@ func TestStyleAuthCheckTextAccentsFalseOK(t *testing.T) {
 	enabled := style.Style{Enabled: true}
 
 	styled := styleAuthCheckText(text, false, enabled)
-	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, style.Unstyled(styled))
 	assert.Contains(t, styled, "\x1b[33m  ok: false\x1b[0m\n")
 }
 

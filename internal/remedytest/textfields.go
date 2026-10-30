@@ -82,42 +82,71 @@ func TextPaths(typ reflect.Type) []string {
 // it cannot set, an unexported one.
 func PlantMarked(t *testing.T, typ reflect.Type) reflect.Value {
 	t.Helper()
-	return plant(t, typ, "", nil)
+	return plant(t, typ, "", nil, markedLeaves())
 }
 
-func plant(t *testing.T, typ reflect.Type, path string, stack []reflect.Type) reflect.Value {
+// PlantText is a value of typ with value(path) in every text field: a
+// string field, a field of an interface type (which holds the string), and a
+// nested *clierr.Error (whose message is the string). It fails the test for a
+// text field it cannot set, an unexported one.
+func PlantText(t *testing.T, typ reflect.Type, value func(path string) string) reflect.Value {
+	t.Helper()
+	return plant(t, typ, "", nil, leaves{
+		text:  value,
+		iface: func(path string) any { return value(path) },
+		err:   func(path string) *clierr.Error { return clierr.New(clierr.CodeGeneric, value(path)) },
+	})
+}
+
+// leaves is what a planter puts in each kind of text field.
+type leaves struct {
+	text  func(path string) string
+	iface func(path string) any
+	err   func(path string) *clierr.Error
+}
+
+// markedLeaves plant a marked command naming the path.
+func markedLeaves() leaves {
+	return leaves{
+		text:  func(path string) string { return clierr.Rancher + " plant " + path },
+		iface: func(path string) any { return MarkedDetails{Text: clierr.Rancher + " plant " + path} },
+		err:   func(path string) *clierr.Error { return clierr.New(clierr.CodeGeneric, clierr.Rancher+" plant "+path) },
+	}
+}
+
+func plant(t *testing.T, typ reflect.Type, path string, stack []reflect.Type, leaf leaves) reflect.Value {
 	t.Helper()
 	switch typ.Kind() {
 	case reflect.String:
 		v := reflect.New(typ).Elem()
-		v.SetString(clierr.Rancher + " plant " + path)
+		v.SetString(leaf.text(path))
 		return v
 	case reflect.Interface:
 		v := reflect.New(typ).Elem()
-		v.Set(reflect.ValueOf(MarkedDetails{Text: clierr.Rancher + " plant " + path}))
+		v.Set(reflect.ValueOf(leaf.iface(path)))
 		return v
 	case reflect.Pointer:
 		if typ == errorPointer {
-			return reflect.ValueOf(clierr.New(clierr.CodeGeneric, clierr.Rancher+" plant "+path))
+			return reflect.ValueOf(leaf.err(path))
 		}
 		v := reflect.New(typ.Elem())
 		if !slices.Contains(stack, typ.Elem()) {
-			v.Elem().Set(plant(t, typ.Elem(), path, stack))
+			v.Elem().Set(plant(t, typ.Elem(), path, stack, leaf))
 		}
 		return v
 	case reflect.Slice:
 		v := reflect.MakeSlice(typ, 1, 1)
-		v.Index(0).Set(plant(t, typ.Elem(), path+"[]", stack))
+		v.Index(0).Set(plant(t, typ.Elem(), path+"[]", stack, leaf))
 		return v
 	case reflect.Array:
 		v := reflect.New(typ).Elem()
 		for i := range v.Len() {
-			v.Index(i).Set(plant(t, typ.Elem(), path+"[]", stack))
+			v.Index(i).Set(plant(t, typ.Elem(), path+"[]", stack, leaf))
 		}
 		return v
 	case reflect.Map:
 		v := reflect.MakeMap(typ)
-		v.SetMapIndex(plant(t, typ.Key(), path+"{key}", stack), plant(t, typ.Elem(), path+"{}", stack))
+		v.SetMapIndex(plant(t, typ.Key(), path+"{key}", stack, leaf), plant(t, typ.Elem(), path+"{}", stack, leaf))
 		return v
 	case reflect.Struct:
 		v := reflect.New(typ).Elem()
@@ -136,7 +165,7 @@ func plant(t *testing.T, typ reflect.Type, path string, stack []reflect.Type) re
 				}
 				continue
 			}
-			v.Field(i).Set(plant(t, f.Type, name, append(stack, typ)))
+			v.Field(i).Set(plant(t, f.Type, name, append(stack, typ), leaf))
 		}
 		return v
 	default:

@@ -1,6 +1,7 @@
 package style
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -81,4 +82,42 @@ func TestStripUnterminatedEscape(t *testing.T) {
 	t.Parallel()
 	malformed := "prefix \x1b[999 rest of line, no reset code"
 	assert.Equal(t, malformed, Strip(malformed))
+}
+
+// TestUnstyledRemovesTheCodesOfEveryWrap asserts that, for each exported
+// method of Style of the form func(string) string, found by reflection,
+// Unstyled of the method's result for a word is the word. A wrap added later
+// whose code Unstyled does not remove fails here, naming the method.
+func TestUnstyledRemovesTheCodesOfEveryWrap(t *testing.T) {
+	t.Parallel()
+	s := Style{Enabled: true}
+	typ := reflect.TypeOf(s)
+	found := map[string]bool{}
+	for m := range typ.Methods() {
+		if m.Type.NumIn() != 2 || m.Type.NumOut() != 1 || m.Type.In(1).Kind() != reflect.String || m.Type.Out(0).Kind() != reflect.String {
+			continue
+		}
+		found[m.Name] = true
+		got := reflect.ValueOf(s).MethodByName(m.Name).Call([]reflect.Value{reflect.ValueOf("word")})[0].String()
+		assert.NotEqual(t, "word", got, "%s writes a code when enabled", m.Name)
+		assert.Equal(t, "word", Unstyled(got), "Unstyled removes the codes %s writes", m.Name)
+	}
+	for _, name := range []string{"Bold", "Red", "Yellow", "Cyan", "Green"} {
+		assert.True(t, found[name], "%s is found by reflection", name)
+	}
+}
+
+// TestUnstyledKeepsEverySequenceThatIsNotAWrapCode asserts that the conceal
+// and clear-screen sequences and a code of another colour stay, so a text
+// that adds one is not equal to its plain form, where Strip would remove
+// the conceal and the colour.
+func TestUnstyledKeepsEverySequenceThatIsNotAWrapCode(t *testing.T) {
+	t.Parallel()
+	for _, seq := range []string{"\x1b[8m", "\x1b[2J", "\x1b[35m", "\x1b[m", "\x1b]0;title\a"} {
+		in := Style{Enabled: true}.Bold("a" + seq + "b")
+		assert.Equal(t, "a"+seq+"b", Unstyled(in))
+	}
+	assert.Equal(t, "plain", Unstyled("plain"))
+	assert.Equal(t, "", Unstyled(""))
+	assert.Equal(t, "ab", Strip("a\x1b[8mb"), "Strip removes a conceal code, Unstyled does not")
 }

@@ -93,3 +93,30 @@ func TestEffectObjectsMarshalAsAnArrayOnlyWhenPresent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &decoded))
 	assert.NotContains(t, decoded, "objects")
 }
+
+// TestObjectLinesGroupAndCompareByTheValuesAsGiven asserts the filter on the
+// kind and the outcome is for printing only: a kind that differs from the
+// headline kind only by a character the filter removes gets its own line,
+// and two outcomes that differ only by one stay two lines, each with its own
+// names and message; no line holds the character.
+func TestObjectLinesGroupAndCompareByTheValuesAsGiven(t *testing.T) {
+	t.Parallel()
+	t.Run("kind", func(t *testing.T) {
+		t.Parallel()
+		objs := []safety.Object{
+			{Kind: "Cluster", Name: "same", Outcome: safety.OutcomeRancherKeeps},
+			{Kind: "Clu\x1bster", Name: "other", Outcome: safety.OutcomeRancherKeeps},
+		}
+		lines := ObjectLines(objs, "Cluster")
+		assert.Equal(t, []string{"Clusters:", "  rancher keeps: other"}, lines)
+	})
+	t.Run("outcome", func(t *testing.T) {
+		t.Parallel()
+		objs := []safety.Object{
+			{Kind: "namespace", Name: "a", Outcome: safety.OutcomeFailed, Message: "first"},
+			{Kind: "namespace", Name: "b", Outcome: "fail\x1bed", Message: "second"},
+		}
+		lines := ObjectLines(objs, "project")
+		assert.Equal(t, []string{"namespaces:", "  failed: a (first)", "  failed: b"}, lines)
+	})
+}

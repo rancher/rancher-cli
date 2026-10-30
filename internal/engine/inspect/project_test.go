@@ -553,7 +553,7 @@ func TestStyleProjectTextStripInvariant(t *testing.T) {
 
 	styled := styleProjectText(text, enabled)
 	assert.NotEqual(t, text, styled)
-	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, style.Unstyled(styled))
 	assert.Equal(t, text, styleProjectText(text, style.Style{}), "disabled style returns text unchanged")
 
 	for _, header := range []string{"PROJECT", "NAMESPACES", "MEMBERS", "RESOURCE QUOTA", "USAGE"} {

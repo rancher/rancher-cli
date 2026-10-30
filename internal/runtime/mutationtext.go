@@ -2,8 +2,10 @@ package runtime
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 )
 
@@ -96,12 +98,27 @@ func AccentLine(res Result, content string) Result {
 // it without inspecting the value itself.
 const ShownOnceSuffix = "   (shown once - store it now)"
 
+// QuotedValueNote is the words on the line of a once-only value that the
+// line gives in Go's quoted form.
+const QuotedValueNote = "(quoted, it holds characters a terminal cannot show)"
+
 // OnceOnlyLine builds the Text line for a DeliveryOnceOnly command's
 // unretrievable value ("<label>: <value>" plus ShownOnceSuffix) together
 // with the matching Result.OnceOnlyNotice sentence ("this <subject> is
 // shown exactly once - store it now"), so a command cannot produce the
 // inline emphasis without the paired advisory, or vice versa.
+//
+// A value that output.Printable would change (it holds a control or format
+// character or an invalid UTF-8 byte) is given in Go's quoted form, with
+// QuotedValueNote after the
+// label: "<label> <note>: <quoted value>". The value stays complete and the
+// line holds no character the terminal filter removes. Every other value is
+// written as it is. The command's json and yaml output carry the value as
+// it is.
 func OnceOnlyLine(label, value, subject string) (line, notice string) {
-	return label + ": " + value + ShownOnceSuffix,
-		"this " + subject + " is shown exactly once - store it now"
+	notice = "this " + subject + " is shown exactly once - store it now"
+	if output.Printable(value) != value {
+		return label + " " + QuotedValueNote + ": " + strconv.Quote(value) + ShownOnceSuffix, notice
+	}
+	return label + ": " + value + ShownOnceSuffix, notice
 }

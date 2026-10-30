@@ -206,13 +206,10 @@ func (p plainRemedyWriter) Write(b []byte) (int, error) {
 }
 
 // PrintableRemedies is output.Printable for a line that holds remedy
-// commands: every character a terminal line cannot show is removed except
-// the markers, which the invocation's prompter expands when it prints the
-// line.
+// commands: output.PrintableLines, the one place of the marker rule, with
+// every newline removed, so the result is one line. Every character a
+// terminal line cannot show is removed except the markers, which the
+// invocation expands when it prints the line.
 func PrintableRemedies(s string) string {
-	parts := strings.Split(s, clierr.Rancher)
-	for i, p := range parts {
-		parts[i] = output.Printable(p)
-	}
-	return strings.Join(parts, clierr.Rancher)
+	return strings.ReplaceAll(output.PrintableLines(s), "\n", "")
 }

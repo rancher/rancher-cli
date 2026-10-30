@@ -357,21 +357,29 @@ type Result struct {
 	// YAML document. Mutually exclusive with Raw; renderResult rejects a
 	// Result that sets both.
 	RawBytes []byte
-	// Text, when non-empty, is written verbatim to stdout under format ""/
-	// "table" (with Warnings rendered to stderr per the field's doc above);
+	// Text, when non-empty, is written to stdout under format ""/"table"
+	// (with Warnings rendered to stderr per the field's doc above) through
+	// output.PrintableLines: control and format characters are removed,
+	// newlines and this process's remedy markers are kept. A command whose
+	// descriptor sets PlainText has it written as given;
 	// json/yaml/template/name render the envelope over Data as usual.
 	// Mutually exclusive with RawBytes; renderResult rejects a Result that
 	// sets both.
 	Text string
 	// StyledText, when set, renders Text through the invocation's active
-	// output Style instead of writing Text verbatim - the table-family
-	// render path (renderResult's Text branch) calls it with the resolved
-	// Style and writes its return value; every other format ignores it and
+	// output Style instead of writing Text - the table-family render path
+	// (renderResult's Text branch) calls it with the resolved Style and
+	// writes its return value only when Text holds nothing
+	// output.PrintableLines removes and removing the six codes of
+	// style.Unstyled from the return value gives Text; otherwise it writes
+	// the filtered Text with no styling. Every other format ignores it and
 	// renders Data as usual. StyledText(style.Style{}) must return Text
-	// unchanged, and style.Strip(StyledText(s)) must equal Text
-	// byte-for-byte for any s: styling may only add ANSI escapes around
-	// Text's own bytes, never change them. checkResultShape rejects a
-	// non-nil StyledText paired with an empty Text - the pairing is a
+	// unchanged, and style.Unstyled(StyledText(s)) must equal Text
+	// byte-for-byte for any s: styling may only add the six codes a
+	// style.Style wrap writes around Text's own bytes, never change them. A
+	// closure that writes any other sequence has its text written with no
+	// styling at all. checkResultShape rejects a non-nil StyledText paired
+	// with an empty Text - the pairing is a
 	// command bug, not a valid combination. A func field is unmarshalable;
 	// tagged json:"-" so marshaling a Result directly (as some tests do,
 	// independent of the real envelope encoding, which only ever encodes

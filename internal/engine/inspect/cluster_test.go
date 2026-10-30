@@ -1915,7 +1915,7 @@ func TestStyleClusterTextStripInvariant(t *testing.T) {
 
 	styled := styleClusterText(text, enabled)
 	assert.NotEqual(t, text, styled)
-	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, style.Unstyled(styled))
 	assert.Equal(t, text, styleClusterText(text, style.Style{}), "disabled style returns text unchanged")
 
 	for _, header := range []string{"CLUSTER", "CONDITIONS", "MACHINE POOLS", "MEMBERS", "MACHINES", "REGISTRATION"} {

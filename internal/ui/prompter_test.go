@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 func TestCanPrompt(t *testing.T) {
@@ -174,4 +176,58 @@ func TestReadLineCancellationEndsPromptLine(t *testing.T) {
 	_, err := p.ReadLine(ctx)
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Equal(t, "\n", errBuf.String(), "the open prompt line must be terminated")
+}
+
+// TestPrompterWritesNoticesAndLabelsWithoutControlCharacters asserts a
+// Prompter with no rewrite writes this process's marker as it is and no
+// escape character, carriage return or format character for a notice, a
+// prompt label and a secret prompt label; the newlines of a notice stay.
+func TestPrompterWritesNoticesAndLabelsWithoutControlCharacters(t *testing.T) {
+	t.Parallel()
+	text := "a\x1b[2Jb\r\nrun " + clierr.Rancher + " auth status\u202e\u2063\nlast"
+	want := "a[2Jb\nrun " + clierr.Rancher + " auth status\nlast"
+	t.Run("notice", func(t *testing.T) {
+		t.Parallel()
+		var errw bytes.Buffer
+		New(&errw, strings.NewReader(""), false, true).Notice(text)
+		assert.Equal(t, want+"\n", errw.String())
+	})
+	t.Run("prompt label", func(t *testing.T) {
+		t.Parallel()
+		var errw bytes.Buffer
+		_, err := New(&errw, strings.NewReader("x\n"), false, true).Prompt(t.Context(), text)
+		require.NoError(t, err)
+		assert.Equal(t, want, errw.String())
+	})
+	t.Run("secret prompt label", func(t *testing.T) {
+		t.Parallel()
+		var errw bytes.Buffer
+		_, err := New(&errw, strings.NewReader("x\n"), false, true).PromptSecret(t.Context(), text)
+		require.NoError(t, err)
+		assert.Equal(t, want, errw.String())
+	})
+}
+
+// TestPrompterRunsTheNoticeRewriteBeforeTheFilter asserts that a rewrite
+// that appends an escape sequence leaves none in the written notice, that
+// the rewrite sees the message as it was given, and that a label is not
+// rewritten: only a notice is.
+func TestPrompterRunsTheNoticeRewriteBeforeTheFilter(t *testing.T) {
+	t.Parallel()
+	var seen string
+	rewrite := func(s string) string {
+		seen = s
+		return strings.ReplaceAll(s, clierr.Rancher, "rancher --config 'd'") + "\x1b[2J"
+	}
+	var errw bytes.Buffer
+	p := New(&errw, strings.NewReader("x\n"), false, true).WithNoticeRewrite(rewrite)
+	given := "run " + clierr.Rancher + " auth status\x1b[31m"
+	p.Notice(given)
+	assert.Equal(t, given, seen)
+	assert.Equal(t, "run rancher --config 'd' auth status[31m[2J\n", errw.String())
+
+	errw.Reset()
+	_, err := p.Prompt(t.Context(), "label "+clierr.Rancher+" x")
+	require.NoError(t, err)
+	assert.Equal(t, "label "+clierr.Rancher+" x", errw.String(), "a label is written as it is, with this process's marker")
 }

@@ -764,7 +764,7 @@ func TestStyleLogoutTextStripInvariant(t *testing.T) {
 
 	styled := styleLogoutText(text, len(deletedFrom), enabled)
 	assert.NotEqual(t, text, styled)
-	assert.Equal(t, text, style.Strip(styled))
+	assert.Equal(t, text, style.Unstyled(styled))
 	assert.Equal(t, text, styleLogoutText(text, len(deletedFrom), style.Style{}), "disabled style returns text unchanged")
 
 	assert.Contains(t, styled, "\x1b[1mlogged out of acme (https://acme.ex)\x1b[0m\n")
