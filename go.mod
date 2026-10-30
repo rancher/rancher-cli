@@ -17,7 +17,7 @@ require (
 	github.com/tidwall/gjson v1.20.0
 	github.com/urfave/cli/v3 v3.14.0
 	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.49.0
