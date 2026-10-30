@@ -193,8 +193,8 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	}
 
 	// The entries render from their own projections: entryReport owns the
-	// JSON shape (list-shaped records, shared with set-token-reuse and
-	// delete-server), entrySection the text.
+	// JSON shape (list-shaped records, shared with set-token-reuse),
+	// entrySection the text.
 	if len(serverSections) > 0 {
 		text.WriteString("servers:\n")
 		renderFields(serverSections, "  ", &text)

@@ -11,16 +11,22 @@ import (
 // tokenRecovery is the commands that revoke a token: the administrator's
 // delete for a v3 token, which no login of the entry's user can delete,
 // else the sequence that logs in as the token's owner and deletes it. A
-// server that cannot go into a command gives an empty list. entry is the
-// stored entry the token belongs to and entryURL its current URL; serverURL
-// is the server the token is recorded on.
+// server that cannot go into a command gives an empty list. Each command is
+// a remedy command (clierr.MarkRemedy), so the json and yaml output name the
+// invocation's config directory in it. entry is the stored entry the token
+// belongs to and entryURL its current URL; serverURL is the server the token
+// is recorded on.
 func tokenRecovery(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) []string {
 	if ref.Kind == clierr.TokenKindV3 {
 		_, revoke := clierr.RecoveryCommands(ref)
-		return []string{revoke}
+		return []string{clierr.MarkRemedy(revoke)}
 	}
 	if advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: entryURL}, serverURL, userID, ref); advice.Text == "" {
-		return advice.Sequence
+		commands := make([]string, len(advice.Sequence))
+		for i, command := range advice.Sequence {
+			commands[i] = clierr.MarkRemedy(command)
+		}
+		return commands
 	}
 	return []string{}
 }

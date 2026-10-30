@@ -60,7 +60,7 @@ func TestSetTokenReuseOffListsDormantPluginLogins(t *testing.T) {
 	require.Len(t, recs, 1)
 	assert.Equal(t, "differentOwner", recs[0]["state"])
 	seq := recs[0]["recovery"].([]string)
-	assert.Equal(t, "rancher config use-server 'recover-r.ex'", seq[1])
+	assert.Equal(t, clierr.MarkRemedy("rancher config use-server 'recover-r.ex'"), seq[1])
 	text := res.Text
 	logout := strings.Index(text, "rancher auth logout 'exec-login-r.ex'")
 	del := strings.Index(text, "rancher config delete-server 'exec-login-r.ex'")

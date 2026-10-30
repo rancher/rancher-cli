@@ -87,10 +87,12 @@ type IO struct {
 	// directory that cannot be compared, and always for the commands whose
 	// directory can come from somewhere the operator's shell does not carry
 	// (Descriptor.RemedyConfigDir). The renderers of this invocation -
-	// errors, warnings, notices, result text, the summary line and the
-	// dry-run preview - write it after the word rancher in every remedy
-	// command (clierr.RemedyMarker); result data and the text of a command
-	// whose descriptor sets PlainText print the plain command; it is never a
+	// errors, warnings, notices, result text, the summary line, the
+	// dry-run preview and the json and yaml output (the data of a result and
+	// the envelope of a preview included) - write it after the word rancher
+	// in every remedy command (clierr.RemedyMarker); the table, wide, name and
+	// template output of result data and the text of a command whose
+	// descriptor sets PlainText print the plain command; it is never a
 	// process-wide value.
 	RemedyDir string
 
@@ -982,7 +984,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	}
 	env := output.NewEnvelope(res.Kind, res.Data)
 	env.Warnings = res.Warnings
-	env.Summary = streams.ExpandText(res.Summary)
+	env.Summary = res.Summary
 	// The Summary annotation line prints over the table under both ""/
 	// "table" and "wide" - `get --wait`'s wide output is table-family too,
 	// not a separate body, so the wait line belongs on it as well.
@@ -991,7 +993,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 			return notices, clierr.From(err)
 		}
 	}
-	if err := output.RenderStyled(plainRemedyWriter{streams.Out}, streams.Format, env, outStyle); err != nil {
+	if err := output.RenderWith(plainRemedyWriter{streams.Out}, streams.Format, env, outStyle, streams.expandData); err != nil {
 		return notices, clierr.From(err)
 	}
 	// renderTable (output/render.go) only ever reads env.Data, so an
@@ -1038,7 +1040,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	}
 	env := output.NewEnvelope("Effect", eff)
 	env.Warnings = append(env.Warnings, eff.Warnings...)
-	if err := output.Render(plainRemedyWriter{streams.Out}, streams.Format, env); err != nil {
+	if err := output.RenderWith(plainRemedyWriter{streams.Out}, streams.Format, env, style.Style{}, streams.expandData); err != nil {
 		return clierr.From(err)
 	}
 	// renderTable (render.go) encodes env.Data alone, so envelope-level

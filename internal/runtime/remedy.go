@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"strings"
 
@@ -166,6 +167,71 @@ func (streams IO) ExpandLines(s string) string {
 	return strings.Join(lines, "")
 }
 
+// expandData is the JSON document b with every remedy command in it written
+// for this invocation, for the json and yaml output of a result or a preview.
+// Each string of the document, an object key included, that holds this
+// process's marker is decoded, mapped with ExpandText and written again: for a
+// directory that can be printed every command names it with --config, for one
+// that cannot be printed the string is the words before the clause with the
+// first command followed by UnprintableConfigDirNote, or the note alone, and
+// for an invocation with no directory it is the plain command. Only this
+// process's marker is matched, so a string from a server, a file or another
+// process, a U+2063 followed by the word rancher included, is written as it
+// is. A changed string is written by a json.Encoder with HTML escaping off, so
+// an escape in it can change spelling (the escape \u003c that a type's own
+// MarshalJSON, built on json.Marshal, writes for "<" becomes "<") while its
+// decoded value stays; every byte outside a changed string, key order and the
+// digits of a number included, is copied as it is. For a directory that
+// cannot be printed a key that starts with a command becomes the note, and a
+// key with words before the command becomes those words and the note, so
+// keys of one object can become the same key: json holds both, yaml keeps
+// the last value (no production map is keyed by a command). A string that does not
+// decode or encode leaves b as it is (the bytes come from encoding/json, so a
+// string always decodes), and plainRemedyWriter then drops the marker.
+func (streams IO) expandData(b []byte) []byte {
+	if !bytes.Contains(b, markedRancher) {
+		return b
+	}
+	var out bytes.Buffer
+	copied := 0
+	for i := 0; i < len(b); i++ {
+		if b[i] != '"' {
+			continue
+		}
+		start := i
+		for i++; i < len(b) && b[i] != '"'; i++ {
+			if b[i] == '\\' {
+				i++
+			}
+		}
+		if i >= len(b) {
+			break
+		}
+		literal := b[start : i+1]
+		if !bytes.Contains(literal, markedRancher) {
+			continue
+		}
+		var s string
+		if err := json.Unmarshal(literal, &s); err != nil {
+			return b
+		}
+		var encoded bytes.Buffer
+		enc := json.NewEncoder(&encoded)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(streams.ExpandText(s)); err != nil {
+			return b
+		}
+		out.Write(b[copied:start])
+		out.Write(bytes.TrimSuffix(encoded.Bytes(), []byte("\n")))
+		copied = i + 1
+	}
+	if copied == 0 {
+		return b
+	}
+	out.Write(b[copied:])
+	return out.Bytes()
+}
+
 // expandAll maps ExpandText over warnings.
 func (streams IO) expandAll(warnings []string) []string {
 	if len(warnings) == 0 {
@@ -179,18 +245,21 @@ func (streams IO) expandAll(warnings []string) []string {
 }
 
 // plainRemedies is s with every remedy command written without a
-// directory: the form for result data, for the text of a command whose
-// descriptor sets PlainText (the output of another program) and for a
-// renderer that has no invocation to ask.
+// directory: the form for the text of a command whose descriptor sets
+// PlainText (the output of another program) and for a renderer that has no
+// invocation to ask.
 func plainRemedies(s string) string { return clierr.ExpandRemedies(s, "") }
 
 // plainRemedyWriter removes this process's marker from every remedy command
-// written through it. Result data is not a remedy channel, so a command that
-// reaches it prints as the plain command. Each Write is taken whole: an
-// encoder writes one value in one call, so a command is never split
-// across two. The one change it makes to structured output: this process's
-// marker directly before the word rancher is dropped; every other byte is
-// written as it is, a U+2063 or a marker from any other source included.
+// written through it. The table, wide, name and template output of result
+// data is not a remedy channel, so a command that reaches it prints as the
+// plain command. For json and yaml, expandData has written each command
+// before the bytes reach this writer, so it finds no marker there unless
+// expandData left the document as it was. Each Write is taken whole: an
+// encoder writes one value in one call, so a command is never split across
+// two. The one change it makes: this process's marker
+// directly before the word rancher is dropped; every other byte is written as
+// it is, a U+2063 or a marker from any other source included.
 type plainRemedyWriter struct{ w io.Writer }
 
 var markedRancher = []byte(clierr.Rancher)

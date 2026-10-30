@@ -892,8 +892,16 @@ func secretCanonicalRecordRows() []secretOKRow {
 				assert.NotEqual(t, "otherServer", state)
 				want := clierr.RecoverySequence(secretServerURL, sameServerRecord.UserID, sameServerRecord.Ref)
 				require.Len(t, recovery, len(want))
+				// Each entry, with the run's --config words removed, is the plain
+				// sequence. The words are removed from the decoded string, where a
+				// Windows path holds one byte for each backslash; check already gets
+				// stdout without them, so the row does not assert that they were there
+				// (the recovery tests of the configcmd package do).
+				runWords := "--config " + clierr.ShellQuote(remedyDirFor(os.Getenv(config.EnvConfigDir))) + " "
 				for i, c := range want {
-					assert.Equal(t, c, recovery[i])
+					entry, ok := recovery[i].(string)
+					require.True(t, ok, "recovery entry %d is a string: %v", i, recovery[i])
+					assert.Equal(t, c, strings.ReplaceAll(entry, runWords, ""))
 				}
 			}},
 		{name: "auth logout x, a usable entry and a record at its URL with user information", argv: []string{"auth", "logout", "x"}, stored: same,

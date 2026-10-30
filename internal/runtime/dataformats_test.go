@@ -75,16 +75,20 @@ func (c dataCommand) Execute(_ context.Context, _ runtime.Input, _ runtime.Promp
 }
 
 // TestAMarkedCommandInResultDataLeavesNoMarkerInAnyFormat asserts, one
-// format at a time, that a marked command in the data of a result is
-// written as the plain command, with no character of the remedy marker
-// (U+2060 to U+2064), with a config directory in use.
+// format at a time, with a config directory in use, that a marked command in
+// the data of a result leaves no character of the remedy marker (U+2060 to
+// U+2064): json and yaml write it with the directory after the word rancher,
+// and table, wide, name and template write the plain command.
 func TestAMarkedCommandInResultDataLeavesNoMarkerInAnyFormat(t *testing.T) {
 	t.Parallel()
 	for _, f := range dataFormats {
 		t.Run(f.name, func(t *testing.T) {
 			t.Parallel()
 			var out, errBuf bytes.Buffer
-			streams := runtime.IO{Out: &out, Err: &errBuf, Format: f.format, RemedyDir: t.TempDir()}
+			dir := t.TempDir()
+			prefix, printable := runtime.RemedyPrefix(dir)
+			require.True(t, printable)
+			streams := runtime.IO{Out: &out, Err: &errBuf, Format: f.format, RemedyDir: dir}
 			_, ce := runtime.Run(t.Context(), dataCommand{runtime.Result{Kind: "Report", Data: newMarkedRow("a value")}}, siteInput{}, streams, safety.Binding{})
 			require.Nil(t, ce)
 			assert.False(t, holdsMarkerRune(out.String()), "%s output holds a character of the remedy marker: %q", f.name, out.String())
@@ -95,8 +99,8 @@ func TestAMarkedCommandInResultDataLeavesNoMarkerInAnyFormat(t *testing.T) {
 					Data markedRow `json:"data"`
 				}
 				require.NoError(t, yaml.Unmarshal(out.Bytes(), &doc))
-				assert.Equal(t, "rancher get pods", doc.Data.Name)
-				assert.Equal(t, "rancher config status", doc.Data.Next)
+				assert.Equal(t, "rancher"+prefix+" get pods", doc.Data.Name)
+				assert.Equal(t, "rancher"+prefix+" config status", doc.Data.Next)
 			case "name":
 				assert.Contains(t, out.String(), "rancher get pods")
 			default:
@@ -109,12 +113,16 @@ func TestAMarkedCommandInResultDataLeavesNoMarkerInAnyFormat(t *testing.T) {
 // TestAServerValueInResultDataKeepsItsBytesInStructuredOutput asserts text
 // in the data of a result that holds U+2063 and the word rancher, which a
 // server, a file or another process can send, is written as it is in json and
-// yaml: it is not this process's marker, so nothing removes it.
+// yaml: it is not this process's marker, so nothing removes it or names the
+// directory in it, while the marked command beside it names the directory.
 func TestAServerValueInResultDataKeepsItsBytesInStructuredOutput(t *testing.T) {
 	t.Parallel()
 	for _, format := range []string{"json", "yaml"} {
 		var out, errBuf bytes.Buffer
-		streams := runtime.IO{Out: &out, Err: &errBuf, Format: format, RemedyDir: t.TempDir()}
+		dir := t.TempDir()
+		prefix, printable := runtime.RemedyPrefix(dir)
+		require.True(t, printable)
+		streams := runtime.IO{Out: &out, Err: &errBuf, Format: format, RemedyDir: dir}
 		_, ce := runtime.Run(t.Context(), dataCommand{runtime.Result{Kind: "Report", Data: newMarkedRow(plantedRemedy)}}, siteInput{}, streams, safety.Binding{})
 		require.Nil(t, ce)
 		var doc struct {
@@ -122,7 +130,7 @@ func TestAServerValueInResultDataKeepsItsBytesInStructuredOutput(t *testing.T) {
 		}
 		require.NoError(t, yaml.Unmarshal(out.Bytes(), &doc))
 		assert.Equal(t, plantedRemedy, doc.Data.Server, format)
-		assert.Equal(t, "rancher get pods", doc.Data.Name, "the marked command beside it is plain: %s", format)
+		assert.Equal(t, "rancher"+prefix+" get pods", doc.Data.Name, "the marked command beside it names the directory: %s", format)
 		if format == "json" {
 			require.True(t, json.Valid(out.Bytes()))
 		}
@@ -144,15 +152,19 @@ func (dryRunData) Plan(context.Context, runtime.Input) (safety.Effect, runtime.E
 
 // TestAMarkedCommandInADryRunLeavesNoMarkerInStructuredOutput asserts the
 // preview of a dry run, written as json, yaml or a template, holds a marked
-// command in a field its envelope carries as the plain command, with no
-// character of the remedy marker.
+// command in a field its envelope carries with no character of the remedy
+// marker: json and yaml write the command with the directory after the word
+// rancher, a template writes the plain command.
 func TestAMarkedCommandInADryRunLeavesNoMarkerInStructuredOutput(t *testing.T) {
 	t.Parallel()
 	for name, format := range map[string]string{"json": "json", "yaml": "yaml", "template": "template={{.displayName}} {{.target}}"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			var out, errBuf bytes.Buffer
-			streams := runtime.IO{Out: &out, Err: &errBuf, Format: format, DryRun: true, RemedyDir: t.TempDir()}
+			dir := t.TempDir()
+			prefix, printable := runtime.RemedyPrefix(dir)
+			require.True(t, printable)
+			streams := runtime.IO{Out: &out, Err: &errBuf, Format: format, DryRun: true, RemedyDir: dir}
 			_, ce := runtime.Run(t.Context(), dryRunData{}, siteInput{}, streams, safety.Binding{})
 			require.Nil(t, ce)
 			assert.False(t, holdsMarkerRune(out.String()), "%s output holds a character of the remedy marker: %q", name, out.String())
@@ -167,8 +179,8 @@ func TestAMarkedCommandInADryRunLeavesNoMarkerInStructuredOutput(t *testing.T) {
 				} `json:"data"`
 			}
 			require.NoError(t, yaml.Unmarshal(out.Bytes(), &doc))
-			assert.Equal(t, "rancher config status", doc.Data.DisplayName)
-			assert.Equal(t, "rancher get pods", doc.Data.Target)
+			assert.Equal(t, "rancher"+prefix+" config status", doc.Data.DisplayName)
+			assert.Equal(t, "rancher"+prefix+" get pods", doc.Data.Target)
 		})
 	}
 }

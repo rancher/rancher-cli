@@ -680,9 +680,10 @@ func withheldMessage() string {
 // default-token in the cluster's own namespace (namespace = management
 // cluster id), so the concrete get command can be rendered with the values
 // Execute already holds. Tests assert an exact match so any wording change
-// fails loudly.
+// fails loudly. The hint is a remedy command, so the json and yaml output name
+// the invocation's config directory in it.
 func withheldHint(clusterID string) string {
-	return "rancher get clusterregistrationtoken default-token --namespace " + clusterID
+	return clierr.Rancher + " get clusterregistrationtoken default-token --namespace " + clusterID
 }
 
 // registration carries BOTH workflow pairs explicitly - the node pair

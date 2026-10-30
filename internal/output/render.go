@@ -55,7 +55,7 @@ func Render(w io.Writer, format string, env *Envelope) error {
 	return RenderStyled(w, format, env, style.Style{})
 }
 
-// RenderStyled is Render with presentation control: under "table" or the ""
+// RenderStyled is RenderWith with no rewrite: under "table" or the ""
 // default, s bolds the rendered header row - applied to the header LINE
 // after tabwriter has already column-aligned it, never to a column's own
 // bytes, which would inflate the byte-counted widths tabwriter measures.
@@ -63,6 +63,15 @@ func Render(w io.Writer, format string, env *Envelope) error {
 // byte-identical to Render, regardless of s.Enabled - json, yaml, name, and
 // template stay plain no matter what the caller passes.
 func RenderStyled(w io.Writer, format string, env *Envelope, s style.Style) error {
+	return RenderWith(w, format, env, s, nil)
+}
+
+// RenderWith is RenderStyled with a rewrite of the structured output: rewrite
+// gets the whole encoded JSON document of the json format, and the JSON the
+// yaml format is converted from, before it is written, and returns the
+// document to write. A nil rewrite writes what RenderStyled writes. No other
+// format is rewritten. The json and yaml formats each make one Write.
+func RenderWith(w io.Writer, format string, env *Envelope, s style.Style, rewrite func([]byte) []byte) error {
 	switch format {
 	case "", "table":
 		return renderTable(w, env, s)
@@ -73,17 +82,33 @@ func RenderStyled(w io.Writer, format string, env *Envelope, s style.Style) erro
 		if err != nil {
 			return err
 		}
-		return encodeJSON(w, src)
+		var buf bytes.Buffer
+		if err := encodeJSON(&buf, src); err != nil {
+			return err
+		}
+		b := buf.Bytes()
+		if rewrite != nil {
+			b = rewrite(b)
+		}
+		_, err = w.Write(b)
+		return err
 	case "yaml":
 		src, err := renderSource(env)
 		if err != nil {
 			return err
 		}
-		b, err := yaml.Marshal(src)
+		b, err := json.Marshal(src)
+		if err != nil {
+			return fmt.Errorf("error marshaling into JSON: %w", err)
+		}
+		if rewrite != nil {
+			b = rewrite(b)
+		}
+		y, err := yaml.JSONToYAML(b)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write(b)
+		_, err = w.Write(y)
 		return err
 	case "name":
 		return renderName(w, env)

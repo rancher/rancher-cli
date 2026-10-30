@@ -113,10 +113,11 @@ func TestRemedyCommandsNameTheInvocationsDirectory(t *testing.T) {
 	}
 }
 
-// TestRemedyCommandsInResultDataArePlain asserts a remedy command in result
-// data (json and yaml) prints as the plain command, with or without a
-// RemedyDir: result data is not a remedy channel.
-func TestRemedyCommandsInResultDataArePlain(t *testing.T) {
+// TestRemedyCommandsInStructuredResultDataNameTheDirectory asserts a remedy
+// command in the data of a result written as json or yaml names the
+// invocation's config directory after the word rancher, with no character of
+// the remedy marker left.
+func TestRemedyCommandsInStructuredResultDataNameTheDirectory(t *testing.T) {
 	t.Parallel()
 	cmdText := clierr.Rancher + " config status"
 	for _, format := range []string{"json", "yaml"} {
@@ -127,10 +128,14 @@ func TestRemedyCommandsInResultDataArePlain(t *testing.T) {
 			_, ce := Run(t.Context(), noticingRead{d: Descriptor{Name: "config status", CommandType: Local}, res: res},
 				mapInput{}, IO{Out: &out, Err: &errBuf, Format: format, RemedyDir: "/d"}, safety.Binding{})
 			require.Nil(t, ce)
-			got := strings.Join(decodedStrings(t, format, out.Bytes()), "\n")
-			assert.Contains(t, got, "rancher config status")
-			assert.NotContains(t, got, clierr.RemedyMarker)
-			assert.NotContains(t, got, "--config")
+			var doc struct {
+				Data struct {
+					Next string `json:"next"`
+				} `json:"data"`
+			}
+			require.NoError(t, yaml.Unmarshal(out.Bytes(), &doc))
+			assert.Equal(t, "rancher --config '/d' config status", doc.Data.Next)
+			assert.False(t, strings.ContainsFunc(out.String(), func(r rune) bool { return r >= '\u2060' && r <= '\u2064' }), "%q", out.String())
 		})
 	}
 }

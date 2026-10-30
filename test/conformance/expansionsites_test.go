@@ -24,8 +24,9 @@ const (
 
 // expansionMethods are the methods of runtime.IO that write the remedy
 // commands of a text for the invocation. ExpandLines is for the text
-// output, which has many lines.
-var expansionMethods = []string{"ExpandError", "ExpandText", "expandAll", "ExpandLines"}
+// output, which has many lines; expandData is for the encoded json document
+// of a result or a preview, whose strings it expands one by one.
+var expansionMethods = []string{"ExpandError", "ExpandText", "expandAll", "ExpandLines", "expandData"}
 
 // expansionSite is the enclosing function and the callee of one place that
 // expands remedy commands.
@@ -81,7 +82,7 @@ func expansionDefinition(file, name string) bool {
 	file = filepath.ToSlash(file)
 	switch {
 	case strings.HasSuffix(file, "/internal/runtime/remedy.go"):
-		return slices.Contains([]string{"ExpandText", "ExpandLines", "ExpandError", "expandAll", "plainRemedies"}, name)
+		return slices.Contains([]string{"ExpandText", "ExpandLines", "ExpandError", "expandAll", "expandData", "plainRemedies"}, name)
 	case strings.HasSuffix(file, "/internal/clierr/remedy.go"):
 		return name == "ExpandRemedies"
 	}
@@ -157,10 +158,12 @@ func expansionSites(pkgs []*packages.Package) (sites map[expansionSite]int, empt
 var expansionSiteList = map[string]int{
 	"internal/runtime.runRead ExpandText":           1,
 	"internal/runtime.renderResult expandAll":       2,
-	"internal/runtime.renderResult ExpandText":      2,
+	"internal/runtime.renderResult ExpandText":      1,
 	"internal/runtime.renderResult ExpandLines":     2,
+	"internal/runtime.renderResult expandData":      1,
 	"internal/runtime.renderEffect expandAll":       1,
 	"internal/runtime.renderEffect ExpandLines":     1,
+	"internal/runtime.renderEffect expandData":      1,
 	"internal/runtime.renderErrDrained ExpandError": 1,
 	"internal/runtime.renderErrDrained expandAll":   1,
 	"internal/cli.renderDepsError ExpandError":      1,
@@ -178,7 +181,7 @@ var emptyPrefixAllowlist = map[string]string{
 // TestEveryPlaceThatExpandsRemediesHasARow asserts the places the production
 // tree expands remedy commands for the invocation are exactly the listed
 // ones, with their counts: a call or method value of IO.ExpandError,
-// IO.ExpandText, IO.expandAll or IO.ExpandLines, or of clierr.ExpandRemedies
+// IO.ExpandText, IO.expandAll, IO.ExpandLines or IO.expandData, or of clierr.ExpandRemedies
 // with a prefix, outside the definitions. A new place fails until it is
 // listed here and has rows in internal/runtime (TestRuntimeRowsMatchTheScans
 // compares the two lists by key: it cannot tell whether the drive of a row

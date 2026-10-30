@@ -233,6 +233,16 @@ func siteRows() []siteRow {
 		}},
 	}
 	rows = append(rows, textRows()...)
+	rows = append(rows,
+		siteRow{site: "internal/runtime.renderResult expandData", channel: "result data", jsonOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			return drivenResult(t, r, siteRead{res: runtime.Result{Kind: "Report", Data: map[string]string{"next": r.text}}}, nil)
+		}},
+		siteRow{site: "internal/runtime.renderEffect expandData", channel: "dry-run envelope", jsonOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			return drivenResult(t, r, previewCommand(r.text), func(io *runtime.IO) { io.DryRun = true })
+		}},
+	)
 	for _, row := range errorRows {
 		rows = append(rows,
 			siteRow{site: "internal/runtime.renderErrDrained ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, drive: func(t *testing.T, r siteRun) (string, string) {
@@ -271,9 +281,8 @@ func previewCommand(displayName string) runtime.Command {
 }
 
 // textRows are the rows of the text channels of a result and of the dry-run
-// preview, and of the summary of the envelope. Each row builds its own result:
-// the styled and wide forms need Text beside them, and a summary needs
-// tabular data and no Text.
+// preview. Each row builds its own result: the styled and wide forms need Text
+// beside them, and a summary needs tabular data and no Text.
 func textRows() []siteRow {
 	return []siteRow{
 		{site: "internal/runtime.renderResult ExpandLines", channel: "result text", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
@@ -294,10 +303,6 @@ func textRows() []siteRow {
 			t.Helper()
 			return drivenResult(t, r, resultCommand(runtime.ShapeTabular, runtime.Result{Data: summaryTable{}, Summary: r.text}), nil)
 		}},
-		{site: "internal/runtime.renderResult ExpandText", channel: "envelope summary", jsonOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
-			t.Helper()
-			return drivenResult(t, r, resultCommand(runtime.ShapeTabular, runtime.Result{Kind: "Report", Data: summaryTable{}, Summary: r.text}), nil)
-		}},
 		{site: "internal/runtime.renderEffect ExpandLines", channel: "preview text", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			return drivenResult(t, r, previewCommand(r.text), func(io *runtime.IO) { io.DryRun = true })
@@ -311,10 +316,12 @@ func textRows() []siteRow {
 var siteRowCounts = map[string]int{
 	"internal/runtime.runRead ExpandText":           1,
 	"internal/runtime.renderResult expandAll":       2,
-	"internal/runtime.renderResult ExpandText":      2,
+	"internal/runtime.renderResult ExpandText":      1,
 	"internal/runtime.renderResult ExpandLines":     4,
+	"internal/runtime.renderResult expandData":      1,
 	"internal/runtime.renderEffect expandAll":       2,
 	"internal/runtime.renderEffect ExpandLines":     1,
+	"internal/runtime.renderEffect expandData":      1,
 	"internal/runtime.renderErrDrained ExpandError": 12,
 	"internal/runtime.renderErrDrained expandAll":   1,
 	"internal/cli.renderDepsError ExpandError":      12,

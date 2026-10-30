@@ -903,8 +903,10 @@ success, never `NOT_FOUND`) so teardown scripts stay green.
 that process's marker opens a remedy. `runtime.IO.RemedyDir`,
 set by the CLI layer before the config load, makes that invocation's renderers - errors
 in text and JSON with their details, warnings, the prompter's notices, result text, the
-summary line (and the `summary` field of the json and yaml output) and the dry-run
-preview - write `--config` and the directory, shell-quoted, after rancher. It is set unless a command
+summary line, the dry-run preview and the json and yaml output (the data of a result and
+the envelope of a preview included: `IO.expandData`, passed to `output.RenderWith`, rewrites
+each string of the encoded document that holds this process's marker) - write `--config`
+and the directory, shell-quoted, after rancher. It is set unless a command
 pasted without `--config` in the same environment would open the same directory: the run's
 directory is the platform default (`config.IsDefaultDir`) and `config.ResolveDir("")` is
 that directory too (a directory that cannot be compared is named, and so is the default
@@ -913,11 +915,12 @@ command whose descriptor sets `RemedyConfigDir` (`auth get-token` except in a ca
 `--user-id` and no `--name`, and `kubeconfig`), whose directory can come from an exec entry
 or a flag that shell does not carry. Error details name it too, through the payload's
 `MapText`. A bare command that sets `RemedyConfigDir` has its directory resolved in the bare
-branch only to name it. Result data prints the plain command and never carries the marker
-(structured output drops only this process's marker before the word rancher; a U+2063 or
-marker that came from server text, a file or another process is never expanded and stays an
-invisible character in json, yaml and template output); so does the text of a command whose
-descriptor sets `PlainText` (`rancher logs`, whose text is the output of programs in
+branch only to name it. Table, wide, name and template output of result data print the
+plain command and never carry the marker (`plainRemedyWriter` drops only this process's
+marker before the word rancher; a U+2063 or marker that came from server text, a file or
+another process is never expanded and stays an invisible character in json, yaml and
+template output); so does the text of a command whose descriptor sets `PlainText`
+(`rancher logs`, whose text is the output of programs in
 containers). Errors rendered before the
 directory is resolved (an unknown command or flag, a flag value that is another flag)
 print plain commands. A command that reads no directory (`--help`, `--version`, `schema`,

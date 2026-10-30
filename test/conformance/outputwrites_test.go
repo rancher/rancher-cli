@@ -25,6 +25,7 @@ const (
 	outputWritesDir = "test/conformance/testdata/outputwrites"
 	urfaveCLIPath   = "github.com/urfave/cli/v3"
 	uiPath          = modulePrefix + "internal/ui"
+	outputPath      = modulePrefix + "internal/output"
 )
 
 // fieldReference is one reference to a struct field: the function it is in,
@@ -653,11 +654,11 @@ var ioOutReferences = map[string][]string{
 		"raw: the bytes of a file or script, written as they are (rows: raw bytes)",
 		"raw: the exec credential encoder, which writes the plugin's one JSON object",
 		"filtered: the summary line over a table, one line, expanded for the invocation's directory (rows: summary line)",
-		"filtered: the envelope writer, which removes this process's marker from result data; the table, wide and name renderers filter each header and cell; raw: json, yaml and template, whose bytes are the data (rows: table, wide, name, json, yaml, template)",
+		"filtered: the envelope writer, which expands json and yaml data for the invocation and removes this process's marker from the other formats; the table, wide and name renderers filter each header and cell; raw: json, yaml and template, whose bytes are the data (rows: table, wide, name, json, yaml, template)",
 	},
 	"internal/runtime.renderEffect": {
 		"filtered: the dry-run preview text, through output.PrintableLines and expanded for the invocation's directory (rows: preview)",
-		"raw: the envelope writer, which removes this process's marker from result data; an Effect is not a table, and its name and template output is the data",
+		"raw: the envelope writer, which expands json and yaml data for the invocation and removes this process's marker from the other formats; an Effect is not a table, and its name and template output is the data",
 	},
 	"internal/runtime.finishOnceOnlyResult": {
 		"no text: the swap to a buffer, so the render is discarded when the final write fails",
@@ -1031,6 +1032,59 @@ func TestEveryPlainRemedyUseIsListed(t *testing.T) {
 	require.NoError(t, err)
 	got := allReferencesByFunction(sets.references(functionScan(runtimePath, "plainRemedies")))
 	assertReferencesListed(t, "plainRemedies", plainRemedyUses, got)
+}
+
+// renderWithUses is every reference to the package function RenderWith of
+// internal/output outside its definition, one reason for each occurrence.
+var renderWithUses = map[string][]string{
+	"internal/runtime.renderResult": {
+		"the result envelope, whose json and yaml data this invocation expands",
+	},
+	"internal/runtime.renderEffect": {
+		"the dry-run envelope, whose json and yaml data this invocation expands",
+	},
+	"internal/output.RenderStyled": {
+		"no rewrite: the styled form for a caller outside the result path",
+	},
+}
+
+// renderStyledUses is every reference to the package function RenderStyled of
+// internal/output outside its definition, one reason for each occurrence.
+var renderStyledUses = map[string][]string{
+	"internal/output.Render": {
+		"the form with no style",
+	},
+}
+
+// renderUses is every reference to the package function Render of
+// internal/output outside its definition, one reason for each occurrence.
+var renderUses = map[string][]string{
+	"internal/runtime.RenderErrorStyled": {
+		"the error envelope, whose remedy commands ExpandError has written",
+	},
+}
+
+// TestEveryRenderCallIsListed asserts every reference to the package
+// functions RenderWith, RenderStyled and Render of internal/output outside
+// their definitions, a call or a function value, is listed with a reason, by
+// enclosing function: a render path that writes an envelope without the
+// invocation's expansion of json and yaml data is a new entry here. It reads
+// every file whatever its build constraint on the system or the architecture,
+// package output included, and resolves each function by go/types. It does
+// not follow an encoder a command builds itself:
+// TestEveryReferenceToIOOutIsListed lists every writer of the output stream.
+func TestEveryRenderCallIsListed(t *testing.T) {
+	t.Parallel()
+	sets, err := outputWritePackages()
+	require.NoError(t, err)
+	for name, list := range map[string]map[string][]string{
+		"RenderWith":   renderWithUses,
+		"RenderStyled": renderStyledUses,
+		"Render":       renderUses,
+	} {
+		got := allReferencesByFunction(sets.references(functionScan(outputPath, name)))
+		assertReferencesListed(t, name, list, got)
+	}
 }
 
 // TestPlainTextIsWrittenAndReadInOneFunctionEach asserts the field PlainText

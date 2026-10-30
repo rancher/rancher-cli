@@ -370,10 +370,10 @@ func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
 	assert.Equal(t, "sameOwner", recs[1]["state"])
 	assert.Equal(t, "failed", recs[1]["lastAttempt"].(map[string]any)["result"])
 	assert.Equal(t, "unknownOwner", recs[2]["state"])
-	assert.Equal(t, []string{"rancher delete management-token kubeconfig-u-x --apply --yes --allow-deprecated"}, recs[1]["recovery"],
+	assert.Equal(t, []string{clierr.MarkRemedy("rancher delete management-token kubeconfig-u-x --apply --yes --allow-deprecated")}, recs[1]["recovery"],
 		"a v3 token's recovery is the administrator's delete alone")
 	ext := recs[0]["recovery"].([]string)
-	assert.Equal(t, "rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-b'", ext[0])
+	assert.Equal(t, clierr.MarkRemedy("rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-b'"), ext[0])
 
 	p := servers["prod"].(map[string]any)
 	assert.Equal(t, "2026-09-04T12:00:00Z", p["loggedOutAt"])
