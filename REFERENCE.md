@@ -1333,8 +1333,10 @@ names it (chosen with `--config`, `RANCHER_CLI_CONFIG_DIR` or a custom
 `XDG_CONFIG_HOME`), and so does a run against the platform default when
 `RANCHER_CLI_CONFIG_DIR` or `XDG_CONFIG_HOME` points elsewhere; a run whose
 directory is the default and nothing else says otherwise prints no
-`--config`. A command's own text output and its json or yaml result data
-print remedy commands without it. Errors rendered before the directory is
+`--config`. Result text, the summary line, the dry-run preview and the
+`summary` field of the json and yaml output name the directory like the other
+channels; the text of `rancher logs` and the rest of the json or yaml result
+data print remedy commands without it. Errors rendered before the directory is
 resolved (an unknown command or flag, a flag value that is another flag)
 print them without it too, and so do commands that read no directory
 (`--help`, `--version`, `rancher schema`, `rancher completion`,

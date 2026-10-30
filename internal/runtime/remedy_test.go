@@ -113,27 +113,21 @@ func TestRemedyCommandsNameTheInvocationsDirectory(t *testing.T) {
 	}
 }
 
-// TestRemedyCommandsInResultDataArePlain asserts a remedy command that
-// reaches result data or result text prints as the plain command, with or
-// without a RemedyDir: data is not a remedy channel.
+// TestRemedyCommandsInResultDataArePlain asserts a remedy command in result
+// data (json and yaml) prints as the plain command, with or without a
+// RemedyDir: result data is not a remedy channel.
 func TestRemedyCommandsInResultDataArePlain(t *testing.T) {
 	t.Parallel()
 	cmdText := clierr.Rancher + " config status"
-	for _, format := range []string{"json", "yaml", "table"} {
+	for _, format := range []string{"json", "yaml"} {
 		t.Run(format, func(t *testing.T) {
 			t.Parallel()
 			var out, errBuf bytes.Buffer
 			res := Result{Kind: "Report", Data: map[string]string{"next": cmdText}}
-			if format == "table" {
-				res = Result{Text: "next: " + cmdText + "\n"}
-			}
 			_, ce := Run(t.Context(), noticingRead{d: Descriptor{Name: "config status", CommandType: Local}, res: res},
 				mapInput{}, IO{Out: &out, Err: &errBuf, Format: format, RemedyDir: "/d"}, safety.Binding{})
 			require.Nil(t, ce)
-			got := out.String()
-			if format != "table" {
-				got = strings.Join(decodedStrings(t, format, out.Bytes()), "\n")
-			}
+			got := strings.Join(decodedStrings(t, format, out.Bytes()), "\n")
 			assert.Contains(t, got, "rancher config status")
 			assert.NotContains(t, got, clierr.RemedyMarker)
 			assert.NotContains(t, got, "--config")
@@ -374,48 +368,17 @@ func TestAnUnprintableDirectorySaysWhyOnce(t *testing.T) {
 	assert.Equal(t, []string{UnprintableConfigDirNote}, onlyCommands.Warnings())
 }
 
-// remedyRows is tabular result data for the Summary row.
-type remedyRows struct{}
-
-func (remedyRows) Columns() []string { return []string{"NAME"} }
-func (remedyRows) Rows() [][]string  { return [][]string{{"a"}} }
-
-// TestResultAndPreviewTextPrintMarkedCommandsPlain asserts the result's
-// summary line, a dry-run preview's header and a once-only result's
-// silenced notice - text that is not a remedy channel, or is matched by
-// value - print a marked command as the plain command, and the once-only
-// notice is still printed once, not twice.
-func TestResultAndPreviewTextPrintMarkedCommandsPlain(t *testing.T) {
+// TestOnceOnlyNoticeIsPrintedOnce asserts a once-only result whose notice
+// holds a marked command is printed once: the text the result carries is
+// not mirrored to the error stream a second time.
+func TestOnceOnlyNoticeIsPrintedOnce(t *testing.T) {
 	t.Parallel()
 	marked := clierr.Rancher + " config status"
-	t.Run("summary", func(t *testing.T) {
-		t.Parallel()
-		var out, errBuf bytes.Buffer
-		_, ce := Run(t.Context(), noticingRead{d: Descriptor{Name: "get thing", CommandType: ReadOnly, Shape: ShapeTabular},
-			res: Result{Data: remedyRows{}, Summary: "see " + marked}}, mapInput{}, IO{Out: &out, Err: &errBuf, RemedyDir: "/d"}, safety.Binding{})
-		require.Nil(t, ce)
-		assert.Contains(t, out.String(), "see rancher config status\n")
-		assert.NotContains(t, out.String(), clierr.RemedyMarker)
-	})
-	t.Run("dry-run preview", func(t *testing.T) {
-		t.Parallel()
-		var out, errBuf bytes.Buffer
-		cmd := fakeMutating{d: Descriptor{Name: "clusters scale", CommandType: Mutating},
-			eff:  safety.Effect{Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: marked},
-			exec: func(context.Context) (Result, error) { return Result{}, nil }}
-		_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, DryRun: true, RemedyDir: "/d"}, safety.Binding{})
-		require.Nil(t, ce)
-		assert.Contains(t, out.String(), "Cluster/rancher config status")
-		assert.NotContains(t, out.String(), clierr.RemedyMarker)
-	})
-	t.Run("once-only notice", func(t *testing.T) {
-		t.Parallel()
-		var out, errBuf bytes.Buffer
-		notice := "shown once; see " + marked
-		res := Result{Text: "secret\n", OnceOnlyNotice: notice, CommittedContext: &CommittedContext{ResourceKind: "token", ResourceName: "t"}}
-		cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t"}, exec: onceOnlyExec(res)}
-		_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Apply: true, RemedyDir: "/d"}, safety.Binding{})
-		require.Nil(t, ce)
-		assert.NotContains(t, errBuf.String(), "shown once", "the notice the text carries is not mirrored again")
-	})
+	var out, errBuf bytes.Buffer
+	notice := "shown once; see " + marked
+	res := Result{Text: "secret\n", OnceOnlyNotice: notice, CommittedContext: &CommittedContext{ResourceKind: "token", ResourceName: "t"}}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t"}, exec: onceOnlyExec(res)}
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Apply: true, RemedyDir: "/d"}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.NotContains(t, errBuf.String(), "shown once", "the notice the text carries is not mirrored again")
 }

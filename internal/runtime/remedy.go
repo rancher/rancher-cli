@@ -38,20 +38,35 @@ func (streams IO) remedyPrefix() (string, bool) {
 	return RemedyPrefix(streams.RemedyDir)
 }
 
-// withoutCommands is s with its remedy commands left out, for a directory
-// no command can name: the text up to the clause that holds the first one
-// (a clause opens after "; " or " ("), then UnprintableConfigDirNote. A
-// text whose first clause holds a command becomes the note alone.
-func withoutCommands(s string) string {
-	kept, _, found := strings.Cut(s, clierr.Rancher)
+// keptBeforeCommand is the text kept from s when its remedy commands are left
+// out: the text up to the clause that holds the first one (a clause opens
+// after "; " or " ("), empty when the first clause holds it. found is false
+// for a text with no command.
+func keptBeforeCommand(s string) (kept string, found bool) {
+	before, _, found := strings.Cut(s, clierr.Rancher)
 	if !found {
-		return s
+		return s, false
 	}
-	cut := max(strings.LastIndex(kept, "; "), strings.LastIndex(kept, " ("))
+	cut := max(strings.LastIndex(before, "; "), strings.LastIndex(before, " ("))
 	if cut <= 0 {
+		return "", true
+	}
+	return before[:cut], true
+}
+
+// withoutCommands is s with its remedy commands left out, for a directory
+// no command can name: the text up to the clause that holds the first one,
+// then UnprintableConfigDirNote. A text whose first clause holds a command
+// becomes the note alone.
+func withoutCommands(s string) string {
+	kept, found := keptBeforeCommand(s)
+	switch {
+	case !found:
+		return s
+	case kept == "":
 		return UnprintableConfigDirNote
 	}
-	return kept[:cut] + "; " + UnprintableConfigDirNote
+	return kept + "; " + UnprintableConfigDirNote
 }
 
 // ExpandText is s with every remedy command it holds written for this
@@ -105,6 +120,52 @@ func (streams IO) ExpandError(ce *clierr.Error) *clierr.Error {
 	return out
 }
 
+// resetCode is the escape sequence style.Style writes after the text of
+// every wrap.
+const resetCode = "\x1b[0m"
+
+// ExpandLines is s with every remedy command it holds written for this
+// invocation, for the text of a command's output, which has many lines. For a
+// directory a command can name it writes what ExpandText writes. When the
+// directory cannot be printed it changes only the lines that hold a command:
+// such a line keeps its words up to the clause with the first command (a
+// clause opens after "; " or " (") and then says why no command is offered, or
+// is that sentence alone when the first clause holds the command. When the
+// part of the line left out held the reset code of a styled span, the line
+// ends with the reset code, so a style never runs into the next line. Every
+// line keeps its line ending ("\n" or "\r\n"). A line with no command, and a
+// text with none, is written as it is.
+func (streams IO) ExpandLines(s string) string {
+	if !clierr.HasRemedy(s) {
+		return s
+	}
+	prefix, printable := streams.remedyPrefix()
+	if printable {
+		return clierr.ExpandRemedies(s, prefix)
+	}
+	lines := strings.SplitAfter(s, "\n")
+	for i, line := range lines {
+		if !clierr.HasRemedy(line) {
+			continue
+		}
+		body, newline := strings.CutSuffix(line, "\n")
+		body, carriageReturn := strings.CutSuffix(body, "\r")
+		kept, _ := keptBeforeCommand(body)
+		out := withoutCommands(body)
+		if strings.Contains(body[len(kept):], resetCode) {
+			out += resetCode
+		}
+		if carriageReturn {
+			out += "\r"
+		}
+		if newline {
+			out += "\n"
+		}
+		lines[i] = out
+	}
+	return strings.Join(lines, "")
+}
+
 // expandAll maps ExpandText over warnings.
 func (streams IO) expandAll(warnings []string) []string {
 	if len(warnings) == 0 {
@@ -118,9 +179,9 @@ func (streams IO) expandAll(warnings []string) []string {
 }
 
 // plainRemedies is s with every remedy command written without a
-// directory: the form for text that is not a remedy channel of the
-// invocation (result text and data) and for a renderer that has no
-// invocation to ask.
+// directory: the form for result data, for the text of a command whose
+// descriptor sets PlainText (the output of another program) and for a
+// renderer that has no invocation to ask.
 func plainRemedies(s string) string { return clierr.ExpandRemedies(s, "") }
 
 // plainRemedyWriter removes this process's marker from every remedy command

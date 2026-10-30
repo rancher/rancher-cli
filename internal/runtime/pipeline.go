@@ -86,10 +86,11 @@ type IO struct {
 	// RANCHER_CLI_CONFIG_DIR or XDG_CONFIG_HOME points elsewhere, for a
 	// directory that cannot be compared, and always for the commands whose
 	// directory can come from somewhere the operator's shell does not carry
-	// (Descriptor.RemedyConfigDir). The renderers of this invocation
-	// - errors, warnings and the prompter's notices - write it after the
-	// word rancher in every remedy command (clierr.RemedyMarker); a
-	// command's own text and result data print it without; it is never a
+	// (Descriptor.RemedyConfigDir). The renderers of this invocation -
+	// errors, warnings, notices, result text, the summary line and the
+	// dry-run preview - write it after the word rancher in every remedy
+	// command (clierr.RemedyMarker); result data and the text of a command
+	// whose descriptor sets PlainText print the plain command; it is never a
 	// process-wide value.
 	RemedyDir string
 
@@ -869,6 +870,10 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		}
 	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
+		expand := streams.ExpandLines
+		if d.PlainText {
+			expand = plainRemedies
+		}
 		text := res.Text
 		if streams.Format == "wide" && res.WideText != "" {
 			text = res.WideText
@@ -884,7 +889,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		if d.Delivery == DeliveryOnceOnly {
 			text = boldShownOnceLine(text, outStyle)
 		}
-		if _, err := streams.Out.Write([]byte(plainRemedies(text))); err != nil {
+		if _, err := streams.Out.Write([]byte(expand(text))); err != nil {
 			return notices, clierr.From(err)
 		}
 		// Mirror every Warnings entry to stderr except OnceOnlyNotice
@@ -925,12 +930,12 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	}
 	env := output.NewEnvelope(res.Kind, res.Data)
 	env.Warnings = res.Warnings
-	env.Summary = res.Summary
+	env.Summary = streams.ExpandText(res.Summary)
 	// The Summary annotation line prints over the table under both ""/
 	// "table" and "wide" - `get --wait`'s wide output is table-family too,
 	// not a separate body, so the wait line belongs on it as well.
 	if textRenderFormat(streams.Format) && res.Summary != "" {
-		if _, err := fmt.Fprintln(streams.Out, plainRemedies(res.Summary)); err != nil {
+		if _, err := fmt.Fprintln(streams.Out, streams.ExpandLines(res.Summary)); err != nil {
 			return notices, clierr.From(err)
 		}
 	}
@@ -969,7 +974,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	// later invocation happens to drain it.
 	eff.Warnings = streams.expandAll(append(drainNotices(streams), eff.Warnings...))
 	if textRenderFormat(streams.Format) {
-		if _, err := streams.Out.Write([]byte(plainRemedies(dryRunText(eff)))); err != nil {
+		if _, err := streams.Out.Write([]byte(streams.ExpandLines(dryRunText(eff)))); err != nil {
 			return clierr.From(err)
 		}
 		// Effect.Warnings are deliberately excluded from dryRunText's body -

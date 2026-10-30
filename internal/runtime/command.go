@@ -223,6 +223,14 @@ type Descriptor struct {
 	// and a bool-value refusal hints the command's help instead of the
 	// typed line. Go-only; the manifest does not carry it.
 	SecretInput bool `json:"-"`
+	// PlainText makes the pipeline print the command's text output
+	// (Result.Text, StyledText and WideText) with each remedy command
+	// written without --config and the directory: for a command whose text
+	// is the output of another program (container logs) and is never a
+	// remedy channel of this invocation. Go-only; the manifest does not
+	// carry it. It does not apply to Result.Summary or to the dry-run
+	// preview.
+	PlainText bool `json:"-"`
 }
 
 // EffectiveServerAccess is the server access the command runs with: the

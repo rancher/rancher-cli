@@ -24,7 +24,7 @@ const (
 
 // expansionMethods are the methods of runtime.IO that write the remedy
 // commands of a text for the invocation. ExpandLines is for the text
-// output; no code calls it yet.
+// output, which has many lines.
 var expansionMethods = []string{"ExpandError", "ExpandText", "expandAll", "ExpandLines"}
 
 // expansionSite is the enclosing function and the callee of one place that
@@ -81,7 +81,7 @@ func expansionDefinition(file, name string) bool {
 	file = filepath.ToSlash(file)
 	switch {
 	case strings.HasSuffix(file, "/internal/runtime/remedy.go"):
-		return slices.Contains([]string{"ExpandText", "ExpandError", "expandAll", "plainRemedies"}, name)
+		return slices.Contains([]string{"ExpandText", "ExpandLines", "ExpandError", "expandAll", "plainRemedies"}, name)
 	case strings.HasSuffix(file, "/internal/clierr/remedy.go"):
 		return name == "ExpandRemedies"
 	}
@@ -157,8 +157,10 @@ func expansionSites(pkgs []*packages.Package) (sites map[expansionSite]int, empt
 var expansionSiteList = map[string]int{
 	"internal/runtime.runRead ExpandText":           1,
 	"internal/runtime.renderResult expandAll":       2,
-	"internal/runtime.renderResult ExpandText":      1,
+	"internal/runtime.renderResult ExpandText":      2,
+	"internal/runtime.renderResult ExpandLines":     2,
 	"internal/runtime.renderEffect expandAll":       1,
+	"internal/runtime.renderEffect ExpandLines":     1,
 	"internal/runtime.renderErrDrained ExpandError": 1,
 	"internal/runtime.renderErrDrained expandAll":   1,
 	"internal/cli.renderDepsError ExpandError":      1,
@@ -236,6 +238,7 @@ var expansionFixtureCases = []struct {
 		expansionSitesDir + "/methods.call ExpandText":     1,
 		expansionSitesDir + "/methods.value ExpandError":   1,
 		expansionSitesDir + "/methods.embedded ExpandText": 1,
+		expansionSitesDir + "/methods.lines ExpandLines":   1,
 	}, map[string]int{}},
 	{"othertype", map[string]int{}, map[string]int{}},
 	{"prefixed", map[string]int{

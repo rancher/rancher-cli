@@ -95,6 +95,9 @@ type siteRow struct {
 	// jsonOnly is true for a channel the text output does not print, which has
 	// no text run.
 	jsonOnly bool
+	// textOnly is true for a channel only the text output prints, which has
+	// no json run.
+	textOnly bool
 	drive    func(t *testing.T, r siteRun) (stdout, stderr string)
 }
 
@@ -185,21 +188,21 @@ func withOtherCommand(ce *clierr.Error, channel, cli string) *clierr.Error {
 // says so.
 func siteRows() []siteRow {
 	rows := []siteRow{
-		{"internal/runtime.runRead ExpandText", "prompter notice", false, func(t *testing.T, r siteRun) (string, string) {
+		{site: "internal/runtime.runRead ExpandText", channel: "prompter notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			return drivenResult(t, r, siteRead{notice: r.text, res: reportResult()}, nil)
 		}},
-		{"internal/runtime.renderResult expandAll", "drained notice", false, func(t *testing.T, r siteRun) (string, string) {
+		{site: "internal/runtime.renderResult expandAll", channel: "drained notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			return drivenResult(t, r, siteRead{res: reportResult()}, func(io *runtime.IO) { io.Notices = &siteNotices{[]string{r.text}} })
 		}},
-		{"internal/runtime.renderResult expandAll", "result warning", false, func(t *testing.T, r siteRun) (string, string) {
+		{site: "internal/runtime.renderResult expandAll", channel: "result warning", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			res := reportResult()
 			res.Warnings = []string{r.text}
 			return drivenResult(t, r, siteRead{res: res}, nil)
 		}},
-		{"internal/runtime.renderResult ExpandText", "once-only notice", false, func(t *testing.T, r siteRun) (string, string) {
+		{site: "internal/runtime.renderResult ExpandText", channel: "once-only notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			res := reportResult()
 			res.OnceOnlyNotice = r.text
@@ -212,33 +215,34 @@ func siteRows() []siteRow {
 			}
 			return drivenResult(t, r, cmd, func(io *runtime.IO) { io.Apply = true })
 		}},
-		{"internal/runtime.renderEffect expandAll", "drained notice", false, func(t *testing.T, r siteRun) (string, string) {
+		{site: "internal/runtime.renderEffect expandAll", channel: "drained notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			return drivenResult(t, r, dryRun(safety.Effect{}), func(io *runtime.IO) {
 				io.DryRun = true
 				io.Notices = &siteNotices{[]string{r.text}}
 			})
 		}},
-		{"internal/runtime.renderEffect expandAll", "effect warning", false, func(t *testing.T, r siteRun) (string, string) {
+		{site: "internal/runtime.renderEffect expandAll", channel: "effect warning", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			return drivenResult(t, r, dryRun(safety.Effect{Warnings: []string{r.text}}), func(io *runtime.IO) { io.DryRun = true })
 		}},
-		{"internal/runtime.renderErrDrained expandAll", "drained notice", false, func(t *testing.T, r siteRun) (string, string) {
+		{site: "internal/runtime.renderErrDrained expandAll", channel: "drained notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			cmd := siteRead{err: clierr.New(clierr.CodeGeneric, "failed")}
 			return drivenResult(t, r, cmd, func(io *runtime.IO) { io.Notices = &siteNotices{[]string{r.text}} })
 		}},
 	}
+	rows = append(rows, textRows()...)
 	for _, row := range errorRows {
 		rows = append(rows,
-			siteRow{"internal/runtime.renderErrDrained ExpandError", row.channel, row.jsonOnly, func(t *testing.T, r siteRun) (string, string) {
+			siteRow{site: "internal/runtime.renderErrDrained ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, drive: func(t *testing.T, r siteRun) (string, string) {
 				t.Helper()
 				return drivenResult(t, r, siteRead{err: withOtherCommand(row.build(r.text), row.channel, r.cli)}, nil)
 			}},
 			// renderDepsError is in package cli, which this package cannot
 			// import: the row drives IO.ExpandError with RenderErrorStyled,
 			// the two calls that function makes.
-			siteRow{"internal/cli.renderDepsError ExpandError", row.channel, row.jsonOnly, func(t *testing.T, r siteRun) (string, string) {
+			siteRow{site: "internal/cli.renderDepsError ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, drive: func(t *testing.T, r siteRun) (string, string) {
 				t.Helper()
 				var out, errBuf bytes.Buffer
 				require.NoError(t, runtime.RenderErrorStyled(&errBuf, r.format, r.io(&out, &errBuf).ExpandError(withOtherCommand(row.build(r.text), row.channel, r.cli)), style.Style{}))
@@ -255,14 +259,62 @@ func dryRun(eff safety.Effect) runtime.Command {
 	return siteMutating{d: runtime.Descriptor{Name: "clusters scale", CommandType: runtime.Mutating}, eff: eff}
 }
 
+// previewCommand is a mutating command whose preview holds displayName in
+// the field that keeps a command of the CLI: DisplayName is not filtered by
+// output.Printable, which removes the marker from the diff lines and the
+// object names.
+func previewCommand(displayName string) runtime.Command {
+	return siteMutating{
+		d:   runtime.Descriptor{Name: "clusters scale", CommandType: runtime.Mutating},
+		eff: safety.Effect{Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: displayName},
+	}
+}
+
+// textRows are the rows of the text channels of a result and of the dry-run
+// preview, and of the summary of the envelope. Each row builds its own result:
+// the styled and wide forms need Text beside them, and a summary needs
+// tabular data and no Text.
+func textRows() []siteRow {
+	return []siteRow{
+		{site: "internal/runtime.renderResult ExpandLines", channel: "result text", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			return drivenResult(t, r, resultCommand(runtime.ShapeText, runtime.Result{Text: r.text + "\n"}), nil)
+		}},
+		{site: "internal/runtime.renderResult ExpandLines", channel: "styled text", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			res := runtime.Result{Text: r.text + "\n", StyledText: func(s style.Style) string { return s.Bold(r.text) + "\n" }}
+			return drivenResult(t, r, resultCommand(runtime.ShapeText, res), func(io *runtime.IO) { io.Color = "always" })
+		}},
+		{site: "internal/runtime.renderResult ExpandLines", channel: "wide text", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			res := runtime.Result{Text: "narrow\n", WideText: r.text + "\n"}
+			return drivenResult(t, r, resultCommand(runtime.ShapeText, res), func(io *runtime.IO) { io.Format = "wide" })
+		}},
+		{site: "internal/runtime.renderResult ExpandLines", channel: "summary print", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			return drivenResult(t, r, resultCommand(runtime.ShapeTabular, runtime.Result{Data: summaryTable{}, Summary: r.text}), nil)
+		}},
+		{site: "internal/runtime.renderResult ExpandText", channel: "envelope summary", jsonOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			return drivenResult(t, r, resultCommand(runtime.ShapeTabular, runtime.Result{Kind: "Report", Data: summaryTable{}, Summary: r.text}), nil)
+		}},
+		{site: "internal/runtime.renderEffect ExpandLines", channel: "preview text", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			return drivenResult(t, r, previewCommand(r.text), func(io *runtime.IO) { io.DryRun = true })
+		}},
+	}
+}
+
 // siteRowCounts is the number of rows each site has, kept apart from the
 // rows: a site with a row added or removed fails until this list matches.
 // The scan in test/conformance holds the sites themselves.
 var siteRowCounts = map[string]int{
 	"internal/runtime.runRead ExpandText":           1,
 	"internal/runtime.renderResult expandAll":       2,
-	"internal/runtime.renderResult ExpandText":      1,
+	"internal/runtime.renderResult ExpandText":      2,
+	"internal/runtime.renderResult ExpandLines":     4,
 	"internal/runtime.renderEffect expandAll":       2,
+	"internal/runtime.renderEffect ExpandLines":     1,
 	"internal/runtime.renderErrDrained ExpandError": 12,
 	"internal/runtime.renderErrDrained expandAll":   1,
 	"internal/cli.renderDepsError ExpandError":      12,
@@ -314,7 +366,10 @@ func jsonStrings(v any) []string {
 // CLI names it, in four runs: the planted text alone, the command alone, both
 // in the one text, and (for an error) the planted text in the row's channel
 // with the command in another field. A text whose channel the output does not
-// print has no text run, only the json run.
+// print has no text run, only the json run; a channel only the text output
+// prints runs in the default, table and wide formats and has no json run, and
+// its command-alone run holds no character of the remedy marker (the wide row
+// writes the wide form in each of the three).
 func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -325,7 +380,11 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 	cliExpanded := "rancher" + prefix + " get pods"
 	both := "server said " + plantedRemedy + "; run " + cliCommand
 	for _, row := range siteRows() {
-		for _, format := range []string{"", "json"} {
+		formats := []string{"", "json"}
+		if row.textOnly {
+			formats = []string{"", "table", "wide"}
+		}
+		for _, format := range formats {
 			if format == "" && row.jsonOnly {
 				continue
 			}
@@ -334,6 +393,9 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 				run := func(r siteRun) string {
 					r.format, r.dir = format, dir
 					out, errOut := row.drive(t, r)
+					if row.textOnly && r.text == cliCommand {
+						assert.False(t, holdsMarkerRune(out+errOut), "a character of the marker is left in the text output: %q", out)
+					}
 					shown := visibleText(t, out, errOut)
 					assert.NotContains(t, shown, plantedExpanded, "the planted text gets no directory")
 					assert.NotContains(t, shown, clierr.RemedyMarker, "no marker is left")
