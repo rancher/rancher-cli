@@ -19,7 +19,7 @@ concurrency:
 jobs:
   install-windows-early:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       # Informational: names the host and nothing gates on it. Prints one line
       # per processor. A query error is not shown and does not fail the step,
