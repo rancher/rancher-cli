@@ -1,0 +1,53 @@
+# With recording on, the exec plugin's sign-in asks the server for its install
+# id with the login token before it deletes that token, and the first call
+# that creates the config directory writes only the server's facts file. A
+# later call that serves a cached credential records an event with the install
+# id. The check after the script asserts both install id requests carried a
+# deleted login token, never a cluster token.
+# Prompts need a real pty; see auth-login-local.txtar.
+[!unix] skip 'ttyin (real pty) is unix-only'
+env RANCHER_CLI_CREDENTIAL_STORE=file
+env RANCHER_CLI_TELEMETRY=true
+
+# The first call creates the config directory: it writes the facts file and
+# nothing else under telemetry.
+! exists $RANCHER_CLI_CONFIG_DIR
+ttyin -stdin creds.txt
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name prod --auth-provider localProvider
+jsonquery stdout kind ExecCredential
+cp stderr signed-in-recorded.txt
+exists $RANCHER_CLI_CONFIG_DIR/telemetry/servers
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/events
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/pruned
+
+# A cached credential is recorded now, with the install id and the version
+# from the facts file.
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name prod --auth-provider localProvider
+exec rancher telemetry show -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.io\.rancher\.manager\.install\.id 7c9e6679-7425-40de-944b-e07fc1f90ae7
+jsonquery stdout data.0.io\.rancher\.manager\.version 2.15.2
+
+# With the directory present and no facts file, a second sign-in asks again,
+# and the next cached credential's event carries the install id.
+rm $RANCHER_CLI_CONFIG_DIR/telemetry/servers
+ttyin -stdin creds.txt
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name other --auth-provider localProvider
+jsonquery stdout kind ExecCredential
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name other --auth-provider localProvider
+exec rancher telemetry show -o json
+jsonquery stdout 'data.#' 3
+jsonquery stdout 'data.#(io\.rancher\.manager\.install\.id=="7c9e6679-7425-40de-944b-e07fc1f90ae7")#|#' 2
+
+# The same sign-in with recording off, in another config directory, prints the
+# same on standard error.
+env RANCHER_CLI_TELEMETRY=false
+env RANCHER_CLI_CONFIG_DIR=$WORK/other-config
+ttyin -stdin creds.txt
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name prod --auth-provider localProvider
+cmp stderr signed-in-recorded.txt
+
+-- creds.txt --
+e2e-user
+e2e-pass

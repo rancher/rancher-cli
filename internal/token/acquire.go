@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
+	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -283,6 +285,10 @@ func signInForClusterToken(ctx context.Context, client *http.Client, input *logi
 	if err != nil {
 		return clusterSignIn{}, fail(createRefusal(err, resolved, ct.Kind == TokenKindExt), clierr.StageClusterToken, ct)
 	}
+
+	// The server's facts requests go out with the login token while it is
+	// still valid, never with the cluster token handed to kubectl.
+	httpx.SendSignInRequest(ctx, st.base, provider.InstallIDFetch(client, st.base, s.Bearer))
 
 	c, cancel := cleanupContext(ctx)
 	loginOut := revokeToken(c, client, st.base, *s.Ref, s.Bearer)

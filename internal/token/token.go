@@ -25,6 +25,7 @@ import (
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
+	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -591,7 +592,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// The interactive login's token has no parent bearer: it deletes
 		// itself if the wait below is cancelled.
 		fresh := newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer)
-		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: fresh, binding: binding}
+		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: fresh, binding: binding, loginToken: res.Create.Bearer, loginIsNew: true}
 	case err != nil:
 		// The plugin-created login reaches the same sign-in prompts.
 		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, keepsLogin: pluginLane, userID: params.UserID, authConfig: params.authConfigOfCall()})
@@ -677,6 +678,13 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		if w := signIn.warning(); w != "" {
 			loginWarnings = append(loginWarnings, w)
 		}
+	}
+	if rancherToken.loginToken != "" {
+		// The call got its credential: the install id request after the
+		// run carries the login token the call holds, never the token
+		// handed to kubectl.
+		origin := kube.BaseURL(server)
+		httpx.RegisterInstallIDFetcher(origin, provider.InstallIDFetch(client, origin, rancherToken.loginToken), rancherToken.loginIsNew)
 	}
 	return runtime.Result{Raw: true, Kind: "ExecCredential", Warnings: loginWarnings, Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
 }
@@ -2316,7 +2324,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			} else {
 				p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyTokenTTL))
 			}
-			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache, binding: binding}, cfg.TokenReuse, binding, nil
+			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache, binding: binding, loginToken: stored}, cfg.TokenReuse, binding, nil
 		case errors.Is(err, errCredentialUnauthorized), errors.Is(err, errCredentialForbidden):
 			return Token{}, cfg.TokenReuse, binding, t.classifyRejection(err, sc, p)
 		default:
@@ -2348,7 +2356,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			}
 		}
 	}
-	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: fresh, binding: binding}, cfg.TokenReuse, binding, nil
+	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: fresh, binding: binding, loginToken: stored}, cfg.TokenReuse, binding, nil
 }
 
 // classifyRejection maps a 401 or 403 from any credential-authenticated

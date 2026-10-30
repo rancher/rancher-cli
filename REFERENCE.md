@@ -2056,16 +2056,22 @@ with `--project`. A command that names only the `local` cluster, such as
 for it with the token it stored, after it checked a pasted token or signed in
 through an auth provider; never for a pasted token stored with `--no-verify`.
 `auth status` asks with the token it checked, after the server answered its
-connectivity check. These requests go out after the output is written, add up
+connectivity check. `auth get-token` and `token` ask for the install id only
+when they do not serve a cached credential, with the token they signed in with
+or the stored login. These requests go out after the output is written, add up
 to 2 seconds, and never change the output or the exit code. A fact is asked
 for again 24 hours after an answer the CLI could use or one it could not, 6
-hours after a 403 or 404, and an hour after any other failure. After `auth
-login`, the install id is asked for again whatever failure is stored. The
-first `auth login --url` when the config directory does not exist yet asks too
-when it succeeds and recording is on: it writes only the server's facts file
-and records no event. The exec plugin never sends them when it serves a cached
-credential. The answers reach the next recorded event, never the one just
-written.
+hours after a 403 or 404, and an hour after any other failure. After
+`auth login`, and after an `auth get-token` or `token` call that signed in or
+created a login, the install id is asked for again whatever failure is stored.
+A call of `auth get-token` or `token` that signs in asks during the sign-in
+instead, before it deletes the token it signed in with, and for the version
+and edition when those are due too; kubectl can wait up to 2 seconds longer
+for the credential. The first `auth login --url`, `auth get-token` or `token`
+run that creates the config directory writes only the server's facts file when
+it succeeds and recording is on, and records no event. A call that serves a
+cached credential sends nothing. The answers reach the next recorded event,
+never the one just written.
 
 Recording is on by default. The first of these controls that applies decides,
 in this order, and `rancher telemetry status` names it as `decidedBy`:

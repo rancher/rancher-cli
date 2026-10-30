@@ -59,7 +59,8 @@ type Options struct {
 	ConfigDir string
 	// DirExisted is true when the caller saw the directory exist: at the
 	// start of the run for an event, at the end of the run for the facts
-	// file of the first login. False records and writes nothing.
+	// file of the first run of a command that creates the directory. False
+	// records and writes nothing.
 	DirExisted bool
 	// Getenv reads the control variables; nil reads none.
 	Getenv func(string) string

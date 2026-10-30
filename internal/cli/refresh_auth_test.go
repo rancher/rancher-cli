@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -468,15 +469,15 @@ func TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse(t *testing.T) {
 	}, shaped)
 }
 
-// TestTheFirstLoginDecisionSaysYesForAuthLoginOnly asserts that, with
+// TestTheFirstLoginDecisionSaysYesForTheThreeCommands asserts that, with
 // recording on, the directory missing when the run started and present now,
 // and exit code 0, the decision of the first login gives a refresh for
-// auth login alone among the registered commands, does no file operation for
-// any other, and gives nothing for auth login when recording is off, when
-// the directory was there at the start, when the line was not parsed, when
-// the run failed, when no server is named or when the directory is still
-// missing at the end.
-func TestTheFirstLoginDecisionSaysYesForAuthLoginOnly(t *testing.T) {
+// auth login, auth get-token and token among the registered commands, does
+// no file operation for any other, and gives nothing for auth login when
+// recording is off, when the directory was there at the start, when the line
+// was not parsed, when the run failed, when no server is named or when the
+// directory is still missing at the end.
+func TestTheFirstLoginDecisionSaysYesForTheThreeCommands(t *testing.T) {
 	dir := recordingEnv(t)
 	const server = "https://rancher.example.com"
 	withServer := &config.Config{CurrentServer: "prod", Servers: map[string]config.Server{"prod": {URL: server}}}
@@ -486,6 +487,11 @@ func TestTheFirstLoginDecisionSaysYesForAuthLoginOnly(t *testing.T) {
 	root := newRoot(t)
 	fresh := recordingState{dir: dir, on: true}
 	lineOf := func(name string) keptLine {
+		if name == "token" {
+			// The legacy command reads only a typed --server; kubectl always
+			// passes one.
+			name += " --server " + server
+		}
 		return keptLine{line: parseLine(root, strings.Fields(name)), parsed: true}
 	}
 	ops := observeFiles(t)
@@ -493,7 +499,7 @@ func TestTheFirstLoginDecisionSaysYesForAuthLoginOnly(t *testing.T) {
 	for _, c := range wr.reg.Commands() {
 		name := c.Describe().Name
 		got := firstLoginRefresh(lineOf(name), fresh, runResult{})
-		if name != "auth login" {
+		if !slices.Contains([]string{"auth login", "auth get-token", "token"}, name) {
 			assert.Equal(t, refreshInput{}, got, name)
 			continue
 		}
@@ -502,7 +508,8 @@ func TestTheFirstLoginDecisionSaysYesForAuthLoginOnly(t *testing.T) {
 		assert.True(t, got.opts.DirExisted, "the directory exists at the end of the run")
 		assert.True(t, got.start.Usable, "no telemetry directory is an empty read")
 	}
-	assert.Equal(t, []string{"stat " + dir, "openroot .", "lstat telemetry"}, *ops, "only auth login touches a file")
+	read := []string{"stat " + dir, "openroot .", "lstat telemetry"}
+	assert.Equal(t, slices.Concat(read, read, read), *ops, "only the three commands touch a file")
 
 	login := lineOf("auth login")
 	assert.Equal(t, refreshInput{}, firstLoginRefresh(login, recordingState{dir: dir}, runResult{}), "recording off")

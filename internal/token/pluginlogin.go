@@ -247,7 +247,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		// lookup above read, with the entry this login just wrote as its
 		// last write wrote it - from the write itself, never a re-read.
 		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt, fresh: newFreshToken(ct, in.client, base, cred.Token),
-			binding: out.CacheBindingOver(t.cacheDir(), lookup)}
+			binding: out.CacheBindingOver(t.cacheDir(), lookup), loginToken: cred.Token, loginIsNew: true}
 		warnings = append(warnings, st.Warnings...)
 		// A login token that outlives the sign-in is listed with how it ends.
 		loginFate := SessionTokenFate(cred)

@@ -91,6 +91,45 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	"inspect-cluster": func(o *testrancher.Options) { o.ClusterVisibility = withStoredClusters(o.ClusterVisibility) },
 	// The direct-endpoint clusters the scenario asks kubeconfig for by name.
 	"kubeconfig": func(o *testrancher.Options) { o.ClusterVisibility = withDirectEndpointClusters(o.ClusterVisibility) },
+	// The server's version and install id, answered before the router and
+	// with the bearer of each install id request kept for the check.
+	"exec-plugin-facts": func(o *testrancher.Options) {
+		execPluginFacts = &factsAnswers{}
+		o.Fallthrough = execPluginFacts.wrap(o.Fallthrough)
+	},
+}
+
+// execPluginFactsID is the install id the exec-plugin-facts scenario's
+// Rancher answers with.
+const execPluginFactsID = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+
+// execPluginFacts is the answers of the exec-plugin-facts scenario's
+// Rancher, for its check.
+var execPluginFacts *factsAnswers
+
+// factsAnswers answers GET /rancherversion and the install id setting, and
+// keeps the bearer of each install id request.
+type factsAnswers struct {
+	mu      sync.Mutex
+	bearers []string
+}
+
+func (a *factsAnswers) wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rancherversion":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"Version":"v2.15.2","GitCommit":"abc","RancherPrime":"false"}`))
+		case "/v1/management.cattle.io.settings/install-uuid":
+			a.mu.Lock()
+			a.bearers = append(a.bearers, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			a.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"value":"` + execPluginFactsID + `"}`))
+		default:
+			next.ServeHTTP(w, r)
+		}
+	})
 }
 
 // shimClusters are the management Clusters the facade's steve collection
@@ -315,6 +354,7 @@ var scriptChecks = map[string]func(t testscript.T, f *testrancher.Facade){
 	"login-recovery":      checkLoginRecovery,
 	"exec-token-reuse":    checkExecTokenReuse,
 	"orphan-helper-erase": checkOrphanHelperErase,
+	"exec-plugin-facts":   checkExecPluginFacts,
 }
 
 // scriptSkipped reports whether the script ended in a skip (a `[!unix]
@@ -1783,4 +1823,25 @@ func handleStatusLever(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// checkExecPluginFacts asserts the Rancher saw one install id request for
+// each of the scenario's two sign-ins, and that each carried a login token:
+// not a live cluster token, and a token the sign-in had deleted by the end.
+func checkExecPluginFacts(t testscript.T, f *testrancher.Facade) {
+	execPluginFacts.mu.Lock()
+	bearers := slices.Clone(execPluginFacts.bearers)
+	execPluginFacts.mu.Unlock()
+	if len(bearers) != 2 {
+		t.Fatal(fmt.Sprintf("expected two install id requests, one for each sign-in, got %d", len(bearers)))
+	}
+	cluster := f.BearersOfKind("ext")
+	for _, b := range bearers {
+		if b == "" || slices.Contains(cluster, b) {
+			t.Fatal("an install id request carried a cluster token or no token")
+		}
+		if f.ValidBearer(b) {
+			t.Fatal("an install id request carried a token that is still valid: the sign-in did not delete its login token")
+		}
+	}
 }

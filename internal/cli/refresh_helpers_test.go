@@ -187,12 +187,15 @@ func serverFiles(t *testing.T, dir string) []string {
 	return out
 }
 
-// resetFactsRecords clears the process-wide records now and when the test
-// ends. A test that uses it must not call t.Parallel().
+// resetFactsRecords clears the process-wide records and the answers a
+// sign-in held, now and when the test ends. A test that uses it must not call
+// t.Parallel().
 func resetFactsRecords(t *testing.T) {
 	t.Helper()
 	httpx.ClearRecords()
+	clearHeldFacts()
 	t.Cleanup(httpx.ClearRecords)
+	t.Cleanup(clearHeldFacts)
 }
 
 // writePEM writes the CA of the server to a file and returns its path.

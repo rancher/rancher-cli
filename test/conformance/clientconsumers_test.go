@@ -45,12 +45,27 @@ var clientConsumerAllowed = map[string]requestAllowance{
 }
 
 // fetcherRegistrationAllowed lists where production code may register the
-// install id fetcher: the root client's builder, and the two auth commands
-// after their check; no other command ever fetches the install id.
+// install id fetcher: the root client's builder, the two auth commands after
+// their check, and the exec plugin's cache miss; no other command ever
+// fetches the install id.
 var fetcherRegistrationAllowed = map[string]requestAllowance{
 	"internal/cli/engine.go:Root":                          {1, "the root client registers the fetcher with its own client and token when a command builds it"},
 	"internal/commands/auth/login.go:authenticateAndStore": {1, "auth login registers the token it stored, after the verify call accepted a pasted token or the provider issued the token"},
 	"internal/commands/auth/authcheck.go:Execute":          {1, "auth status registers the token it checked, after the connectivity check passed"},
+	"internal/token/token.go:runWithParams":                {1, "the exec plugin's cache miss registers the login token the miss holds, after the miss succeeded"},
+}
+
+// signInRequestSendAllowed lists where production code may call the function
+// a sign-in sends its facts requests through: the plugin's sign-in, between
+// the creation of the cluster token and the deletion of the login token.
+var signInRequestSendAllowed = map[string]requestAllowance{
+	"internal/token/acquire.go:signInForClusterToken": {1, "the plugin's sign-in sends the server's facts requests with the login token before it deletes it"},
+}
+
+// signInRequestRegisterAllowed lists where production code may register that
+// function: the command line runner, once the line is parsed and not refused.
+var signInRequestRegisterAllowed = map[string]requestAllowance{
+	"internal/cli/run.go:runArgv": {1, "the runner registers the function with the parse of the line, after the line is accepted"},
 }
 
 // usesOf returns one match per use of a function for which kind returns a
@@ -109,6 +124,23 @@ func fetcherRegistrationKind(fn *types.Func) string {
 	return ""
 }
 
+// signInRequestSendKind names a call of the function a sign-in sends its
+// facts requests through, or "".
+func signInRequestSendKind(fn *types.Func) string {
+	if fn.Pkg().Path() == httpxPackage && receiverName(fn) == "" && fn.Name() == "SendSignInRequest" {
+		return "httpx.SendSignInRequest"
+	}
+	return ""
+}
+
+// signInRequestRegisterKind names a registration of that function, or "".
+func signInRequestRegisterKind(fn *types.Func) string {
+	if fn.Pkg().Path() == httpxPackage && receiverName(fn) == "" && fn.Name() == "RegisterSignInRequest" {
+		return "httpx.RegisterSignInRequest"
+	}
+	return ""
+}
+
 func loadClientConsumerFixture(t *testing.T) *packages.Package {
 	t.Helper()
 	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedFiles}
@@ -149,10 +181,11 @@ func TestEveryClientConsumerIsListedWithWhereItsConfigComes(t *testing.T) {
 	}
 }
 
-// TestTheInstallIDFetcherIsRegisteredOnlyByTheRootClientAndTheAuthCommands
-// asserts production code registers the install id fetcher only in the root
-// client's builder and in the two auth commands after their check.
-func TestTheInstallIDFetcherIsRegisteredOnlyByTheRootClientAndTheAuthCommands(t *testing.T) {
+// TestTheInstallIDFetcherIsRegisteredOnlyByItsListedCallers asserts
+// production code registers the install id fetcher only in the root
+// client's builder, in the two auth commands after their check, and in the
+// exec plugin's cache miss after the miss succeeded.
+func TestTheInstallIDFetcherIsRegisteredOnlyByItsListedCallers(t *testing.T) {
 	t.Parallel()
 	pkgs, err := fieldManagerPackages()
 	require.NoError(t, err)
@@ -169,6 +202,38 @@ func TestTheInstallIDFetcherIsRegisteredOnlyByTheRootClientAndTheAuthCommands(t 
 		t.Error(problem)
 	}
 	for key, a := range fetcherRegistrationAllowed {
+		assert.NotEmpty(t, a.why, key)
+	}
+}
+
+// TestTheSignInRequestFunctionIsSentAndRegisteredOnlyWhereListed asserts
+// production code calls the function a sign-in sends its facts requests
+// through only in the plugin's sign-in, and registers it only in the command
+// line runner.
+func TestTheSignInRequestFunctionIsSentAndRegisteredOnlyWhereListed(t *testing.T) {
+	t.Parallel()
+	pkgs, err := fieldManagerPackages()
+	require.NoError(t, err)
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	var sends, registers []requestMatch
+	for _, pkg := range pkgs {
+		if pkg.PkgPath == httpxPackage || strings.HasPrefix(pkg.PkgPath, modulePrefix+"internal/testrancher") {
+			continue
+		}
+		sends = append(sends, usesOf(pkg, wd, signInRequestSendKind)...)
+		registers = append(registers, usesOf(pkg, wd, signInRequestRegisterKind)...)
+	}
+	for _, problem := range checkRequestMatches(sends, signInRequestSendAllowed) {
+		t.Error(problem)
+	}
+	for _, problem := range checkRequestMatches(registers, signInRequestRegisterAllowed) {
+		t.Error(problem)
+	}
+	for key, a := range signInRequestSendAllowed {
+		assert.NotEmpty(t, a.why, key)
+	}
+	for key, a := range signInRequestRegisterAllowed {
 		assert.NotEmpty(t, a.why, key)
 	}
 }
@@ -193,6 +258,8 @@ func TestClientConsumerScanFixtures(t *testing.T) {
 		"kube.HTTPClient", "kube.Dynamic", "kube.Discovery", "kube.Clientset", "kube.TableClient", "httpx.NewExternal", "kube.Dynamic",
 	}, kinds(usesOf(pkg, wd, clientConsumerKind)))
 	assert.Equal(t, []string{"httpx.RegisterInstallIDFetcher"}, kinds(usesOf(pkg, wd, fetcherRegistrationKind)))
+	assert.Equal(t, []string{"httpx.SendSignInRequest"}, kinds(usesOf(pkg, wd, signInRequestSendKind)))
+	assert.Equal(t, []string{"httpx.RegisterSignInRequest"}, kinds(usesOf(pkg, wd, signInRequestRegisterKind)))
 }
 
 // TestClientConsumerAllowlistRules asserts a use outside the list is reported
@@ -215,6 +282,18 @@ func TestClientConsumerAllowlistRules(t *testing.T) {
 	}
 	assert.Len(t, checkRequestMatches([]requestMatch{one, {one.key, "internal/cli/engine.go:3: httpx.RegisterInstallIDFetcher"}}, allowed), 1)
 	assert.Len(t, checkRequestMatches(nil, allowed), 1, "a stale row")
+	sendRow := "internal/token/acquire.go:signInForClusterToken"
+	send := requestMatch{sendRow, "internal/token/acquire.go:1: httpx.SendSignInRequest"}
+	assert.Empty(t, checkRequestMatches([]requestMatch{send}, signInRequestSendAllowed))
+	sendElsewhere := requestMatch{"internal/token/token.go:runWithParams", "internal/token/token.go:2: httpx.SendSignInRequest"}
+	assert.Len(t, checkRequestMatches([]requestMatch{send, sendElsewhere}, signInRequestSendAllowed), 1, "a send in a function with no row")
+	assert.Len(t, checkRequestMatches(nil, signInRequestSendAllowed), 1, "a send row that nothing used")
+	registerRow := "internal/cli/run.go:runArgv"
+	register := requestMatch{registerRow, "internal/cli/run.go:1: httpx.RegisterSignInRequest"}
+	assert.Empty(t, checkRequestMatches([]requestMatch{register}, signInRequestRegisterAllowed))
+	registerElsewhere := requestMatch{"internal/cli/adapter.go:resolveReadOnly", "internal/cli/adapter.go:2: httpx.RegisterSignInRequest"}
+	assert.Len(t, checkRequestMatches([]requestMatch{register, registerElsewhere}, signInRequestRegisterAllowed), 1, "a registration in a function with no row")
+	assert.Len(t, checkRequestMatches(nil, signInRequestRegisterAllowed), 1, "a registration row that nothing used")
 	newUse := requestMatch{"internal/client/provider/new.go:Build", "internal/client/provider/new.go:9: kube.Dynamic"}
 	assert.Len(t, checkRequestMatches([]requestMatch{newUse}, map[string]requestAllowance{}), 1)
 }

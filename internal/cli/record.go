@@ -127,7 +127,8 @@ func recordDecision(k keptLine, st recordingState) (runtime.Descriptor, bool) {
 // recordingTarget is recordDecision, and the canonical URL of the server the
 // run targeted, "" when it had none. It is the decision that a run records an
 // event, and for which server, that the event and the server facts refresh
-// follow; the first login on a fresh install has its own, firstLoginRefresh.
+// follow; the first run of a command in firstLoginCommands on a fresh install has
+// its own, firstLoginRefresh.
 func recordingTarget(k keptLine, st recordingState) (d runtime.Descriptor, server string, ok bool) {
 	d, ok = recordDecision(k, st)
 	if !ok {
@@ -140,9 +141,9 @@ func recordingTarget(k keptLine, st recordingState) (d runtime.Descriptor, serve
 // the decision says so. Nothing it does changes the run's output or exit
 // code: a failure to record is dropped, and a panic is recovered. It returns
 // what the server facts refresh needs: the server, the recording options and
-// what the event read of the server's facts file; for the first login on a
-// fresh install, which records no event, what firstLoginRefresh gives; the
-// zero value when the run records nothing.
+// what the event read of the server's facts file; for the first run of a
+// command in firstLoginCommands on a fresh install, which records no event,
+// what firstLoginRefresh gives; the zero value when the run records nothing.
 func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (in refreshInput) {
 	defer func() {
 		if recover() != nil {
@@ -181,9 +182,9 @@ func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (
 }
 
 // firstLoginCommands are the commands whose run may create the config
-// directory and then write the server's facts file, with no event: only the
-// first login on a fresh install.
-var firstLoginCommands = []string{"auth login"}
+// directory and then write the server's facts file, with no event: the first
+// run of auth login, auth get-token or token on a fresh install.
+var firstLoginCommands = []string{"auth login", "auth get-token", "token"}
 
 // firstLoginRefresh is what a run that created the config directory hands the
 // server facts refresh, and the zero value when the run is not one. It says

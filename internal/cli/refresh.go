@@ -14,7 +14,8 @@ import (
 )
 
 // factsBudget is how long the requests of one refresh share: one deadline,
-// counted from the start of the first. A package var so tests shrink it.
+// counted from the start of the first, or from the start of the sign-in's
+// request when the sign-in sent one. A package var so tests shrink it.
 var factsBudget = 2 * time.Second
 
 // factsDeadline is the time the requests of a refresh that started at start
@@ -171,6 +172,10 @@ func sendRequest(ctx context.Context, send func(context.Context) telemetry.Answe
 // and the install id record that are due, and writes the facts file once
 // when a record changed. It runs after the event is recorded and never changes
 // the run: it prints nothing, a failure is dropped, and a panic is recovered.
+// A request the sign-in already sent is not sent again: its answer is written
+// with the others, and the budget counts from when the sign-in's request
+// started. A request that would start at or after the deadline is not sent
+// and stores nothing.
 // It does nothing when the run recorded no server, when the event could not
 // read the facts file, when the run's context is done, or when no host that
 // answered matches the server.
@@ -183,30 +188,42 @@ func refreshServerFacts(ctx context.Context, in refreshInput) {
 	if !ok {
 		return
 	}
+	held, isHeld := heldFactsFor(in.server)
 	facts := in.start.Facts
 	at := time.Now()
-	versionReq := requestFor(ctx, versionRecord, facts, at, target)
-	installIDReq := requestFor(ctx, installIDRecord, facts, at, target)
-	if versionReq == nil && installIDReq == nil {
+	var versionReq, installIDReq func(context.Context) telemetry.Answer
+	if held.version == nil {
+		versionReq = requestFor(ctx, versionRecord, facts, at, target)
+	}
+	if held.installID == nil {
+		installIDReq = requestFor(ctx, installIDRecord, facts, at, target)
+	}
+	if versionReq == nil && installIDReq == nil && !isHeld {
 		return
 	}
-	reqCtx, cancel := context.WithDeadline(ctx, factsDeadline(time.Now()))
-	defer cancel()
-	var answers refreshAnswers
-	var wg sync.WaitGroup
-	if versionReq != nil {
-		wg.Go(func() {
-			a := sendRequest(reqCtx, versionReq)
-			answers.version = &a
-		})
+	deadline := factsDeadline(time.Now())
+	if isHeld {
+		deadline = factsDeadline(held.start)
 	}
-	if installIDReq != nil {
-		wg.Go(func() {
-			a := sendRequest(reqCtx, installIDReq)
-			answers.installID = &a
-		})
+	answers := refreshAnswers{version: held.version, installID: held.installID}
+	if time.Now().Before(deadline) {
+		reqCtx, cancel := context.WithDeadline(ctx, deadline)
+		defer cancel()
+		var wg sync.WaitGroup
+		if versionReq != nil {
+			wg.Go(func() {
+				a := sendRequest(reqCtx, versionReq)
+				answers.version = &a
+			})
+		}
+		if installIDReq != nil {
+			wg.Go(func() {
+				a := sendRequest(reqCtx, installIDReq)
+				answers.installID = &a
+			})
+		}
+		wg.Wait()
 	}
-	wg.Wait()
 	stored := time.Now()
 	versionChanged := answers.version != nil && facts.StoreVersion(*answers.version, stored)
 	installIDChanged := answers.installID != nil && facts.StoreInstallID(*answers.installID, stored)

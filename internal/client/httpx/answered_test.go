@@ -12,12 +12,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// resetRecords clears both records now and when the test ends. A test that
+// resetRecords clears the records now and when the test ends. A test that
 // uses the records must not call t.Parallel(): they are process-wide.
 func resetRecords(t *testing.T) {
 	t.Helper()
@@ -169,20 +170,81 @@ func TestTheFetcherCarriesTheSkipItWasRegisteredWith(t *testing.T) {
 	assert.False(t, f.SkipFailureWait, "a clear drops the skip with the fetcher")
 }
 
-// TestClearRecordsEmptiesBothRecords asserts the one clear function empties
-// the hosts and the fetcher.
-func TestClearRecordsEmptiesBothRecords(t *testing.T) {
+// TestClearRecordsEmptiesEveryRecord asserts the one clear function empties
+// the hosts, the fetcher and the sign-in request function.
+func TestClearRecordsEmptiesEveryRecord(t *testing.T) {
 	resetRecords(t)
 	RecordAnswered(&url.URL{Scheme: "https", Host: "h"}, &stubTransport{"a"})
 	RegisterInstallIDFetcher("https://h", func(context.Context) (string, int, error) { return "", 0, nil }, false)
+	var calls int
+	RegisterSignInRequest(func(context.Context, string, InstallIDFunc) { calls++ })
 	ClearRecords()
 	assert.Empty(t, AnsweredHosts())
 	_, ok := RegisteredInstallIDFetcher()
 	assert.False(t, ok)
+	SendSignInRequest(t.Context(), "https://h", nil)
+	assert.Zero(t, calls, "a clear drops the sign-in request function")
+}
+
+// TestTheSignInRequestFunctionKeepsTheLastRegistration asserts the last
+// registration wins, nil records nothing, and a send passes its arguments on.
+func TestTheSignInRequestFunctionKeepsTheLastRegistration(t *testing.T) {
+	resetRecords(t)
+	var first, second int
+	var gotOrigin string
+	var gotFetch InstallIDFunc
+	fetch := func(context.Context) (string, int, error) { return "v", 200, nil }
+	RegisterSignInRequest(func(context.Context, string, InstallIDFunc) { first++ })
+	RegisterSignInRequest(func(_ context.Context, origin string, f InstallIDFunc) {
+		second++
+		gotOrigin, gotFetch = origin, f
+	})
+	RegisterSignInRequest(nil)
+	SendSignInRequest(t.Context(), "https://h", fetch)
+	assert.Zero(t, first)
+	assert.Equal(t, 1, second)
+	assert.Equal(t, "https://h", gotOrigin)
+	require.NotNil(t, gotFetch)
+	value, status, err := gotFetch(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "v", value)
+	assert.Equal(t, 200, status)
+}
+
+// TestSendingWithNoSignInRequestFunctionDoesNothing asserts a send with none
+// registered returns without a call.
+func TestSendingWithNoSignInRequestFunctionDoesNothing(t *testing.T) {
+	resetRecords(t)
+	assert.NotPanics(t, func() { SendSignInRequest(t.Context(), "https://h", nil) })
+}
+
+// TestAPanickingSignInRequestFunctionDoesNotReachTheCaller asserts the send
+// recovers a panic of the registered function.
+func TestAPanickingSignInRequestFunctionDoesNotReachTheCaller(t *testing.T) {
+	resetRecords(t)
+	RegisterSignInRequest(func(context.Context, string, InstallIDFunc) { panic("boom") })
+	assert.NotPanics(t, func() { SendSignInRequest(t.Context(), "https://h", nil) })
+}
+
+// TestTheSignInRequestFunctionRunsOutsideItsLock asserts a registered
+// function that registers another function does not deadlock the send.
+func TestTheSignInRequestFunctionRunsOutsideItsLock(t *testing.T) {
+	resetRecords(t)
+	done := make(chan struct{})
+	RegisterSignInRequest(func(context.Context, string, InstallIDFunc) {
+		RegisterSignInRequest(func(context.Context, string, InstallIDFunc) {})
+		close(done)
+	})
+	go SendSignInRequest(t.Context(), "https://h", nil)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the sign-in request function did not run to its end")
+	}
 }
 
 // TestTheRecordsHoldUnderConcurrentUse asserts, under the race detector,
-// that many goroutines can record, read, register and clear at once.
+// that many goroutines can record, read, register, send and clear at once.
 func TestTheRecordsHoldUnderConcurrentUse(t *testing.T) {
 	resetRecords(t)
 	var wg sync.WaitGroup
@@ -194,6 +256,8 @@ func TestTheRecordsHoldUnderConcurrentUse(t *testing.T) {
 				_ = AnsweredHosts()
 				RegisterInstallIDFetcher("https://"+host, func(context.Context) (string, int, error) { return host, 200, nil }, false)
 				_, _ = RegisteredInstallIDFetcher()
+				RegisterSignInRequest(func(context.Context, string, InstallIDFunc) {})
+				SendSignInRequest(t.Context(), "https://"+host, nil)
 				if i%8 == 0 {
 					ClearRecords()
 				}

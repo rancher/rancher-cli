@@ -30,6 +30,15 @@ type Token struct {
 	// write, where a second load could pair this credential with the id of
 	// a login that replaced it since. Never serialized.
 	binding config.CacheBinding
+	// loginToken is the login token the call that built this Token holds:
+	// the stored login, or the login the call created. The install id
+	// request carries it, never the token handed to kubectl. Empty when the
+	// call holds none. Kept in memory only and never serialized.
+	loginToken string
+	// loginIsNew is set when this call created or replaced the login in
+	// loginToken: the install id is then asked for again whatever failure
+	// the server's facts file holds. Never serialized.
+	loginIsNew bool
 }
 
 // recordBinding is the binding the token's cache record is written under:

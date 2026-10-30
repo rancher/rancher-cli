@@ -32,23 +32,34 @@ type InstallIDFunc func(ctx context.Context) (value string, status int, err erro
 
 // InstallIDFetcher is the install id request a command registered, the
 // scheme and host it targets, and whether the request skips the wait after a
-// stored failure: a command that just stored the token the request carries
-// asks again whatever failure the server's facts file holds.
+// stored failure: a command that just created or stored the login token the
+// request carries asks again whatever failure the server's facts file holds.
 type InstallIDFetcher struct {
 	Origin          string
 	Fetch           InstallIDFunc
 	SkipFailureWait bool
 }
 
-// The two records of a run: the hosts that answered, in the order each was
-// last recorded, and the install id fetcher with its skip. Requests run
-// concurrently; each record has a lock.
+// SignInRequestFunc is what a sign-in calls once its cluster token exists
+// and before it deletes the login token: it sends the server's facts
+// requests, with fetch for the install id request. origin is the scheme and
+// host of the server the sign-in talked to. It returns nothing and never
+// changes the sign-in.
+type SignInRequestFunc func(ctx context.Context, origin string, fetch InstallIDFunc)
+
+// The three records of a run: the hosts that answered, in the order each was
+// last recorded, the install id fetcher with its skip, and the function a
+// sign-in calls for its facts requests. Requests run concurrently; each
+// record has a lock.
 var (
 	answeredMu    sync.Mutex
 	answeredHosts []AnsweredHost
 
 	fetcherMu sync.Mutex
 	fetcher   InstallIDFetcher
+
+	signInRequestMu sync.Mutex
+	signInRequest   SignInRequestFunc
 )
 
 // RecordAnswered records the scheme and host of u and the transport that
@@ -96,10 +107,36 @@ func RegisteredInstallIDFetcher() (InstallIDFetcher, bool) {
 	return fetcher, fetcher.Fetch != nil
 }
 
-// ClearRecords empties the hosts that answered and the install id fetcher,
-// its skip included.
-// A run clears both before it starts: nothing carries over to the next run
-// of the same process.
+// RegisterSignInRequest records the function a sign-in calls for its facts
+// requests. The last registration wins; nil records nothing.
+func RegisterSignInRequest(fn SignInRequestFunc) {
+	if fn == nil {
+		return
+	}
+	signInRequestMu.Lock()
+	defer signInRequestMu.Unlock()
+	signInRequest = fn
+}
+
+// SendSignInRequest calls the registered sign-in request function with
+// origin and fetch, and does nothing when none is registered. The function
+// runs after the lock is released. A panic in it is recovered: the sign-in
+// that called goes on.
+func SendSignInRequest(ctx context.Context, origin string, fetch InstallIDFunc) {
+	signInRequestMu.Lock()
+	fn := signInRequest
+	signInRequestMu.Unlock()
+	if fn == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	fn(ctx, origin, fetch)
+}
+
+// ClearRecords empties the hosts that answered, the install id fetcher with
+// its skip, and the sign-in request function.
+// A run clears all three before it starts: nothing carries over to the next
+// run of the same process.
 func ClearRecords() {
 	answeredMu.Lock()
 	answeredHosts = nil
@@ -107,6 +144,9 @@ func ClearRecords() {
 	fetcherMu.Lock()
 	fetcher = InstallIDFetcher{}
 	fetcherMu.Unlock()
+	signInRequestMu.Lock()
+	signInRequest = nil
+	signInRequestMu.Unlock()
 }
 
 // VersionResponse is what GET /rancherversion got: the status, and the body

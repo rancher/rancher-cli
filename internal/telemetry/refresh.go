@@ -90,10 +90,10 @@ func (f Facts) VersionDue(now time.Time) bool { return f.Version.due(now, false)
 // at now.
 func (f Facts) InstallIDDue(now time.Time) bool { return f.InstallID.due(now, false) }
 
-// InstallIDDueSkippingFailureWait is InstallIDDue for a command that stored the
-// token the request carries: a stored failure of any kind is due at once,
-// because it may have come from a different token. The wait after a good
-// value does not change.
+// InstallIDDueSkippingFailureWait is InstallIDDue for a command whose request
+// carries a token it has just created or stored as the login: a stored failure
+// of any kind is due at once, because it may have come from a different
+// token. The wait after a good value does not change.
 func (f Facts) InstallIDDueSkippingFailureWait(now time.Time) bool { return f.InstallID.due(now, true) }
 
 // due reports whether the record is due at now: nothing is stored, or the
@@ -137,9 +137,10 @@ type FactsRead struct {
 // SaveFacts writes the facts file of a server under the recording gates: the
 // controls are on and the caller says the configuration directory existed:
 // at the start of the run for an event, at the end of the run for the facts
-// file of the first login. It never creates the configuration directory and
-// writes nothing through a telemetry path OpenStore refuses. It reports
-// whether the file was written; a failure or a panic is dropped.
+// file of the first run of a command that creates the directory. It never
+// creates the configuration directory and writes nothing through a
+// telemetry path OpenStore refuses. It reports whether the file was written;
+// a failure or a panic is dropped.
 func SaveFacts(canonicalURL string, f Facts, opts Options) (written bool) {
 	if !Resolve(ControlInput{Getenv: opts.Getenv, Config: opts.Config}).On || !opts.DirExisted {
 		return false

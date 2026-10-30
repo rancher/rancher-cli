@@ -21,11 +21,14 @@ import (
 // After the command ends and its output is written, Run records one usage
 // event when recording is on and the config directory existed when the root
 // Before hook ran. It then may ask the server the command reached for its
-// version and edition and, when the command built the root client or auth
-// login or auth status registered one after their check, its install id,
-// within 2 seconds, when they are due; the answers reach the next event,
-// never this one. The first auth login on a fresh install, which creates the
-// config directory, records no event; when it succeeds with recording on, it
+// version and edition and, when the command built the root client, auth
+// login or auth status registered one after their check, or a kubectl plugin
+// call created a credential, its install id, within 2 seconds, when they are
+// due; the answers reach the next event, never this one. A plugin call that
+// signs in asks during the sign-in instead, before it deletes its login
+// token, and the answers are written after the event. The first auth login,
+// auth get-token or token run on a fresh install, which creates the config
+// directory, records no event; when it succeeds with recording on, it
 // writes the server's facts file the same way. A line with no chosen command
 // (an unknown command, a group or the root alone, help, the version,
 // urfave's flag errors, the refusals above, a completion request) and the
@@ -41,6 +44,7 @@ func run(ctx context.Context, root *ucli.Command, args []string) runResult {
 	clearUnknownCommand(root)
 	resetRecordingState()
 	httpx.ClearRecords()
+	clearHeldFacts()
 	k, err := runArgv(ctx, root, args)
 	res := resolveExit(root, err, recordedUnknownCommand(root))
 	refreshServerFacts(ctx, recordRun(root, k, res, start))
@@ -71,6 +75,12 @@ func runArgv(ctx context.Context, root *ucli.Command, args []string) (k keptLine
 			}
 			return k, exit(ce)
 		}
+		// A kubectl plugin call that signs in sends its facts requests
+		// through this function, with the parse of this line.
+		kept := k
+		httpx.RegisterSignInRequest(func(ctx context.Context, origin string, fetch httpx.InstallIDFunc) {
+			requestFactsDuringSignIn(ctx, kept, origin, fetch)
+		})
 	}
 	return k, root.Run(ctx, SanitizedArgs(args))
 }
