@@ -15,8 +15,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -77,11 +79,14 @@ func main() {
 
 	// configwrite [-nolock] <dir> <server-name>: load config.yaml, announce
 	// "loaded" on stdout, wait for <dir>/release, add the named server entry,
-	// write, announce "done". With -nolock the entire sequence runs without
-	// calling config.WithLock; without -nolock it runs inside WithLock. The
-	// ready/start/loaded/release/done barrier protocol lets the parent
-	// synchronize two children so that both have loaded before either writes,
-	// which deterministically exposes the lost-update bug the lock closes.
+	// write, announce "done". The "loaded" line carries the names of the
+	// servers the load found, sorted and separated by one space: "loaded" alone
+	// for a config.yaml with no server, "loaded server-a" for one entry. With
+	// -nolock the entire sequence runs without calling config.WithLock; without
+	// -nolock it runs inside WithLock. The ready/start/loaded/release/done
+	// barrier protocol lets the parent synchronize two children so that both
+	// have loaded before either writes, which deterministically exposes the
+	// lost-update bug the lock closes.
 	if len(os.Args) >= 4 && os.Args[1] == "configwrite" {
 		nolock := false
 		args := os.Args[2:]
@@ -117,7 +122,11 @@ func main() {
 			if err != nil {
 				return err
 			}
-			fmt.Println("loaded")
+			loaded := "loaded"
+			for _, name := range slices.Sorted(maps.Keys(cfg.Servers)) {
+				loaded += " " + name
+			}
+			fmt.Println(loaded)
 			pollFor("release", filepath.Join(dir, "release"))
 			if cfg.Servers == nil {
 				cfg.Servers = map[string]config.Server{}
@@ -126,9 +135,8 @@ func main() {
 			if err := cfg.Write(); err != nil {
 				return err
 			}
-			// Print "done" while the lock is still held so that
-			// lock_process_test.go's firstDoneIdx < secondLoadedIdx ordering
-			// is enforced by mutual exclusion, not just the 100 ms poll gap.
+			// Print "done" while the lock is still held: the second writer
+			// takes the lock, and loads, only after this entry is on disk.
 			fmt.Println("done")
 			return nil
 		}

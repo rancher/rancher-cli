@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -105,8 +106,9 @@ func waitExit(t *testing.T, waitCh <-chan error, who string, timeout time.Durati
 // that WithLock closes.
 //
 // Protocol: both children print "ready" → parent creates start → both poll
-// and load (printing "loaded") → parent creates release → both write → one
-// entry survives.
+// and load (printing "loaded", bare because config.yaml has no server yet and
+// both read an empty file) → parent creates release → both write → one entry
+// survives.
 //
 // No t.Parallel(): fakehelper is compiled once via a shared package-level
 // sync.Once; the process-level configLockMu would also serialize -nolock
@@ -146,15 +148,24 @@ func TestConfigWriteNoLockLosesUpdate(t *testing.T) {
 }
 
 // TestConfigWriteWithLockPreservesUpdate is the green test that asserts the fix:
-// two processes each wrapped in WithLock serialize through the flock so the
-// second's load happens after the first's write, and both entries survive.
+// two processes each wrapped in WithLock serialize through the flock; the
+// second child's load happens after the first child's write and both entries
+// survive.
 //
-// The contention window (300ms) proves the second process is parked on the
-// flock and has not yet loaded - its "loaded" must appear after the first's
-// "done" in the combined event stream.
+// It asserts what each child loaded, not the order in which lines arrive: the
+// two children write to separate pipes and the parent cannot see the order of
+// their writes. The first "loaded" line to arrive names no server (the winner
+// read an empty file). The second child's "loaded" line names the first
+// child's server, which proves its load saw the first write. The contention
+// window (300ms) asserts the second child printed nothing while the first
+// child held the flock.
 //
 // No t.Parallel(): uses fakeHelperOnce (shared package-level binary build).
 func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
+	// The children inherit the environment; a variable that skips the file
+	// lock would run both of them unlocked.
+	t.Setenv(EnvConfigNoLock, "")
+
 	dir := t.TempDir()
 
 	linesA, waitA := startConfigWrite(t, dir, "server-a", false)
@@ -167,8 +178,9 @@ func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
 	// race for the flock. One acquires it and loads; the other blocks.
 	createSignal(t, dir, "start")
 
-	// Collect events from both children in arrival order so we can assert
-	// the serialization ordering after the release barrier.
+	// Collect the lines of both children into one channel. The arrival order
+	// across the two pipes is not the order of the writes; it only keeps the
+	// lines for the checks below and for failure messages.
 	type tagged struct {
 		who, line string
 	}
@@ -192,24 +204,25 @@ func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
 		close(combined)
 	}()
 
-	// Wait for the FIRST "loaded" - the child that won the flock race. Note
-	// its identity as "first".
+	// Wait for the first "loaded" line: the child that won the flock race. It
+	// read an empty file and the line names no server.
 	var firstWho string
 	select {
 	case ev, ok := <-combined:
 		require.True(t, ok, "combined channel closed before first loaded")
-		require.Equal(t, "loaded", ev.line, "expected loaded from winner, got %q from %s", ev.line, ev.who)
+		require.Equal(t, "loaded", ev.line, "the first child to load read an empty file; got %q from %s", ev.line, ev.who)
 		firstWho = ev.who
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out waiting for first loaded")
 	}
-	secondWho := "B"
+	secondWho, firstServer := "B", "server-a"
 	if firstWho == "B" {
-		secondWho = "A"
+		secondWho, firstServer = "A", "server-b"
 	}
 
 	// Contention window: the second child is parked on the flock and must
-	// not have printed "loaded" yet. A 300ms silence proves it.
+	// not have printed "loaded" yet. The window asserts 300ms of silence; the
+	// check of its "loaded" line after the release covers a later load.
 	select {
 	case ev, ok := <-combined:
 		if ok {
@@ -247,24 +260,17 @@ func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
 	waitExit(t, waitA, "A", 10*time.Second)
 	waitExit(t, waitB, "B", 10*time.Second)
 
-	// Assert event ordering: the second child's "loaded" must appear after
-	// the first child's "done". This proves the second read happened after
-	// the first write - the serialization the flock provides.
-	firstDoneIdx := -1
-	secondLoadedIdx := -1
-	for i, ev := range eventLog {
-		if ev.who == firstWho && ev.line == "done" && firstDoneIdx < 0 {
-			firstDoneIdx = i
-		}
-		if ev.who == secondWho && ev.line == "loaded" && secondLoadedIdx < 0 {
-			secondLoadedIdx = i
+	// The second child loaded after the first child's write: its "loaded" line
+	// names the first child's server.
+	var secondLoaded []string
+	for _, ev := range eventLog {
+		if ev.who == secondWho && strings.HasPrefix(ev.line, "loaded") {
+			secondLoaded = append(secondLoaded, ev.line)
 		}
 	}
-	require.GreaterOrEqual(t, firstDoneIdx, 0, "first child (%s) must print done; log: %v", firstWho, eventLog)
-	require.GreaterOrEqual(t, secondLoadedIdx, 0, "second child (%s) must print loaded after release; log: %v", secondWho, eventLog)
-	assert.Less(t, firstDoneIdx, secondLoadedIdx,
-		"second child's loaded (idx %d) must come after first child's done (idx %d); log: %v",
-		secondLoadedIdx, firstDoneIdx, eventLog)
+	require.Equal(t, []string{"loaded " + firstServer}, secondLoaded,
+		"second child (%s) must load once, after the first child (%s) wrote %s; log: %v",
+		secondWho, firstWho, firstServer, eventLog)
 
 	// Both server entries must survive - no lost update.
 	cfg, err := Load(FilePath(dir))
