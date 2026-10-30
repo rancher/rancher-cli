@@ -2,13 +2,17 @@
 set -e
 cd "$(dirname "$0")/.."
 
-# One definition of the commit gate, in two parts CI runs as parallel jobs:
-#   static  formatting, vet, module tidiness, lint, the shell and workflow
-#           gates, the local-doc reference gate
-#   tests   the unit tests and the build contract
-# With no argument both parts run, static first. Each part is a function
-# called as a plain statement: inside an if, && or ||, set -e stops
-# applying within the function.
+# One definition of the commit gate. CI runs three parts as parallel jobs:
+#   static        formatting, vet, module tidiness, lint, the shell and
+#                 workflow gates, the local-doc reference gate
+#   tests-race    the unit tests with the race detector
+#   tests-norace  the unit tests without it, then the build contract
+# The part tests runs tests-race and tests-norace in one process, for the
+# commit hook and make validate: the same go test calls in the same order,
+# each pass even when the one before it failed. With no argument static
+# and tests run, static first. Each part is a function called as a plain
+# statement: inside an if, && or ||, set -e stops applying within the
+# function.
 
 static() {
   # gofmt: fail on any unformatted file the repository carries. The files
@@ -109,13 +113,9 @@ static() {
   fi
 }
 
-tests() {
-  # -vet=off: go vet ./... runs in the static part (the lint job in CI);
-  # make validate runs both.
-  ./scripts/test -vet=off
-
-  # Build contract: both executables, built from current source - never
-  # trusting leftovers in bin/.
+# Build contract: both executables, built from current source - never
+# trusting leftovers in bin/.
+build_contract() {
   ./scripts/build
   EXT=""
   if [ "$(go env GOOS)" = "windows" ]; then EXT=".exe"; fi
@@ -127,8 +127,32 @@ tests() {
   done
 }
 
+# The tests parts pass -vet=off: go vet ./... runs in the static part (the
+# lint job in CI); make validate runs both.
+tests_race() {
+  ./scripts/test -vet=off -pass=race
+}
+
+tests_norace() {
+  ./scripts/test -vet=off -pass=norace
+  build_contract
+}
+
+# Both test parts in one process. A failed call is recorded so that the
+# second one still runs; only the two calls on the left of || are exempt
+# from set -e. The build contract runs only when both passed.
+tests() {
+  status=0
+  ./scripts/test -vet=off -pass=race || status=1
+  ./scripts/test -vet=off -pass=norace || status=1
+  if [ "$status" -ne 0 ]; then
+    exit 1
+  fi
+  build_contract
+}
+
 usage() {
-  echo "usage: scripts/validate [static|tests]" >&2
+  echo "usage: scripts/validate [static|tests|tests-race|tests-norace]" >&2
   exit 2
 }
 
@@ -141,6 +165,8 @@ case $# in
     case "$1" in
       static) static ;;
       tests) tests ;;
+      tests-race) tests_race ;;
+      tests-norace) tests_norace ;;
       *) usage ;;
     esac
     ;;

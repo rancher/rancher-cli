@@ -1,0 +1,108 @@
+name: go-cache
+description: >-
+  Restore the Go module and build caches for one job from the entries the
+  main branch saved, and clear the Go test cache so every test runs. The
+  job saves the caches itself with actions/cache/save, on a main push only,
+  using the outputs of this action. Not for the release workflow, which
+  restores no cache.
+
+inputs:
+  name:
+    description: >-
+      The cache name. In ci.yaml, the job id, with each matrix value
+      appended and joined with a hyphen. In a copy of a ci.yaml job in
+      another workflow, that ci.yaml job's name.
+    required: true
+  setup-go-key:
+    description: >-
+      "true" also checks whether the entry actions/setup-go looks up
+      exists, so the job can save it and keep the workflows that use the
+      setup-go cache warm.
+    default: "false"
+
+outputs:
+  key:
+    description: The key the job saves the caches under.
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+  path:
+    description: The module cache and build cache directories, one per line.
+    value: |
+      ${{ steps.paths.outputs.gomodcache }}
+      ${{ steps.paths.outputs.gocache }}
+  cache-hit:
+    description: >-
+      "true" on an exact match of the key, "false" when a restore-key matched
+      instead, empty when nothing matched.
+    value: ${{ steps.restore.outputs.cache-hit }}
+  setup-go-key:
+    description: The key actions/setup-go looks up. Empty without setup-go-key.
+    value: ${{ steps.setup-go-key.outputs.key }}
+  setup-go-cache-hit:
+    description: >-
+      "true" when that entry exists, else empty. Empty without setup-go-key.
+    value: ${{ steps.setup-go-lookup.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - id: paths
+      shell: bash
+      # A run body here holds no expression: inputs and outputs reach a
+      # body only through env. The carriage return that Git Bash on Windows
+      # leaves on a command result would change the cache version, so it is
+      # removed.
+      run: |
+        gomodcache=$(go env GOMODCACHE | tr -d '\r')
+        gocache=$(go env GOCACHE | tr -d '\r')
+        goversion=$(go env GOVERSION | tr -d '\r')
+        {
+          printf '%s\n' "gomodcache=${gomodcache}"
+          printf '%s\n' "gocache=${gocache}"
+          printf '%s\n' "goversion=${goversion#go}"
+          printf '%s\n' "day=$(date -u +%Y-%m-%d)"
+        } >> "$GITHUB_OUTPUT"
+
+    - id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ steps.paths.outputs.gomodcache }}
+          ${{ steps.paths.outputs.gocache }}
+        key: go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-${{ steps.paths.outputs.day }}
+        restore-keys: |
+          go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-
+          go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-
+          setup-go-${{ runner.os }}-
+
+    # The key below is the one actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+    # builds: its source file src/cache-restore.ts, line primaryKey. The
+    # operating system and the architecture come from the runner, the hash
+    # is that of go.mod, and setup-go adds ImageOS to the key on Linux only,
+    # as this step does.
+    - id: setup-go-key
+      if: inputs.setup-go-key == 'true'
+      shell: bash
+      env:
+        GO_VERSION: ${{ steps.paths.outputs.goversion }}
+        GO_MOD_HASH: ${{ hashFiles('go.mod') }}
+      run: |
+        arch=$(printf '%s' "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')
+        image=
+        if [ "$RUNNER_OS" = Linux ]; then
+          image="${ImageOS}-"
+        fi
+        printf '%s\n' "key=setup-go-${RUNNER_OS}-${arch}-${image}go-${GO_VERSION}-${GO_MOD_HASH}" >> "$GITHUB_OUTPUT"
+
+    - id: setup-go-lookup
+      if: inputs.setup-go-key == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        lookup-only: true
+        path: |
+          ${{ steps.paths.outputs.gomodcache }}
+          ${{ steps.paths.outputs.gocache }}
+        key: ${{ steps.setup-go-key.outputs.key }}
+
+    # Test results never come from a restored cache: every test runs.
+    - shell: bash
+      run: go clean -testcache

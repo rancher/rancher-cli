@@ -19,10 +19,11 @@ concurrency:
 # never replaces a full run of this workflow: a merge requires the full run.
 # A change to a Windows job here is made in the copy in the same commit.
 jobs:
-  # The two parts of scripts/validate run as parallel jobs; the commit hook
-  # and make validate run the same two parts in one process, so the hook and
-  # CI share one definition. The static part includes the shell gate (syntax
-  # and shellcheck over install.sh and scripts/*).
+  # The three parts of scripts/validate run as parallel jobs; the commit
+  # hook and make validate run static and then tests, which runs both test
+  # parts in one process, so the hook and CI share one definition. The
+  # static part includes the shell gate (syntax and shellcheck over
+  # install.sh and scripts/*).
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -33,10 +34,20 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: lint
       - uses: $/.github/actions/setup-tools
         with:
           shells: "false"
       - run: ./scripts/validate static
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
 
   test:
     runs-on: ubuntu-latest
@@ -48,6 +59,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: test
       - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
@@ -78,16 +94,42 @@ jobs:
             status=1
           fi
           exit "$status"
-      - run: ./scripts/validate tests
+      - run: ./scripts/validate tests-race
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
+
+  test-norace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: test-norace
+      - run: ./scripts/validate tests-norace
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
 
   # Compile-check every release platform so an arch-specific break (endian,
   # 32/64 assumptions) surfaces on the PR, not at tag time. The list must
-  # match the build loop in release.yaml. linux/amd64 duplicates the test
-  # job's native build; it is kept for the 1:1 mapping with the release
-  # matrix. One job per platform, each with its own build cache, so the
-  # platforms build in parallel and reuse their own compiled packages:
-  # setup-go's cache key is shared by every Linux job and is saved by
-  # whichever job finishes first, so it cannot hold six platforms' builds.
+  # match the build loop in release.yaml. linux/amd64 is kept for the 1:1
+  # mapping with the release matrix, although the build contract in
+  # test-norace builds the same platform. One job per platform, so the
+  # platforms build in parallel; each job, like every other job that uses
+  # Go, has its own cache entry through go-cache.
   cross-compile:
     name: cross-compile (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
@@ -106,26 +148,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: setup-go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
-      - name: Cache Go build and modules
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-cache
+        uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}-go${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum') }}
-          restore-keys: |
-            cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}-go${{ steps.setup-go.outputs.go-version }}-
+          name: cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}
       - name: Compile
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: go build ./...
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
 
   e2e:
     runs-on: ubuntu-latest
@@ -137,6 +178,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: e2e
+          setup-go-key: "true"
       - name: Cache envtest assets
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -144,6 +191,16 @@ jobs:
           key: envtest-${{ runner.os }}-${{ hashFiles('scripts/e2e') }}
       - run: make e2e
         timeout-minutes: 20
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.setup-go-cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.setup-go-key }}
   install-windows:
     # The installer's behavior and security tests (token handling,
     # checksums, the atomic junction switch) only execute on Windows -
@@ -158,6 +215,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: install-windows
       # Only the Windows suite: the package's POSIX-sh installer tests
       # assume sh/symlink semantics and fail on a Windows runner. -race
       # per the repo's testing mandate (the runner ships gcc).
@@ -222,6 +284,11 @@ jobs:
       # calls: the directory as spelled, volumes, both separators and ~\ in
       # --exec-command, and the remedies naming a quoted Windows path.
       - run: go test -race -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
 
   e2e-windows:
     # The same suite as the e2e job, on the platform whose exec, path,
@@ -242,6 +309,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: e2e-windows
       - name: Cache envtest assets
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -254,3 +326,8 @@ jobs:
       # compile reuses the Go build cache the e2e step above filled.
       - run: go test -count=1 -v -run TestPwsh ./internal/cli/completions/
         timeout-minutes: 10
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}

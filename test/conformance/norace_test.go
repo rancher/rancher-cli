@@ -8,12 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // noRaceScriptPath is the script that lists the packages whose tests run
@@ -281,5 +284,185 @@ func TestFreshPackagesRunUncached(t *testing.T) {
 	require.NoError(t, err)
 	for _, dir := range fresh {
 		assert.Contains(t, norace, dir, "%s is in fresh but not in norace", dir)
+	}
+}
+
+// passCall is one go test call that the go stub logged.
+type passCall struct {
+	race, count1 bool
+	flags, pkgs  []string
+}
+
+// passStubModule is the module path the go stub prints for go list -m.
+const passStubModule = "example.com/m"
+
+// passRun is the result of one run of the copied scripts/test.
+type passRun struct {
+	code   int
+	stderr string
+	goLog  []string
+	calls  []passCall
+}
+
+// runPassScript copies the real scripts/test into a temp directory, puts a
+// go stub first on PATH and runs the copy with args. The stub logs every
+// call; go list -m prints passStubModule and go list ./... prints packages.
+func runPassScript(t *testing.T, packages []string, args ...string) passRun {
+	t.Helper()
+	root := t.TempDir()
+	copyRepositoryFile(t, noRaceScriptPath, root)
+	stubs := filepath.Join(root, "stubs")
+	logPath := filepath.Join(root, "go.log")
+	listPath := filepath.Join(root, "packages.txt")
+	writeTestFile(t, listPath, strings.Join(packages, "\n")+"\n", 0o644)
+	writeTestFile(t, filepath.Join(stubs, "go"), `#!/bin/bash
+printf 'go %s\n' "$*" >> "$STUB_LOG"
+if [ "$1" = list ]; then
+  if [ "$2" = -m ]; then
+    echo "`+passStubModule+`"
+  else
+    cat "$STUB_PACKAGES"
+  fi
+fi
+`, 0o755)
+	env := []string{
+		"PATH=" + stubs + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"STUB_LOG=" + logPath,
+		"STUB_PACKAGES=" + listPath,
+	}
+	code, stderr := runScript(t, root, filepath.Join(root, noRaceScriptPath), env, args...)
+	run := passRun{code: code, stderr: stderr, goLog: readLog(t, logPath)}
+	for _, line := range run.goLog {
+		rest, ok := strings.CutPrefix(line, "go test ")
+		if !ok {
+			continue
+		}
+		var call passCall
+		for word := range strings.FieldsSeq(rest) {
+			switch {
+			case word == "-race":
+				call.race = true
+			case word == "-count=1":
+				call.count1 = true
+			case strings.HasPrefix(word, passStubModule):
+				call.pkgs = append(call.pkgs, word)
+			default:
+				call.flags = append(call.flags, word)
+			}
+		}
+		run.calls = append(run.calls, call)
+	}
+	return run
+}
+
+// TestTestPassesSplitTheRun asserts that scripts/test with -pass=race makes
+// one go test call with the race detector over every listed package except
+// the norace ones; with -pass=norace, two calls without it, the norace
+// packages that are not fresh and then the fresh ones with -count=1; with
+// no -pass, the race call followed by the two norace calls, so that every
+// listed package appears in exactly one call; that -pass takes its value
+// in the four spellings the flag package accepts; that every call carries
+// exactly the flags the script was given (two flags; with none, the default
+// -cover) and none carries -pass; and that an
+// unknown, empty, missing or repeated -pass exits 2 before any go call. The
+// norace and fresh lists are read from the script, so the stub package list
+// has the real classes.
+func TestTestPassesSplitTheRun(t *testing.T) {
+	t.Parallel()
+	testfs.SkipOnWindows(t, posixOnlyReason)
+	script, err := os.ReadFile(noRaceScriptPath)
+	require.NoError(t, err)
+	noRaceDirs, err := noRacePackages(string(script))
+	require.NoError(t, err)
+	freshLists := freshListRE.FindAllStringSubmatch(string(script), -1)
+	require.Len(t, freshLists, 1)
+	freshDirs := strings.Fields(freshLists[0][1])
+	require.NotEmpty(t, freshDirs)
+
+	var listed, racePkgs, noRaceOnly, fresh []string
+	for _, dir := range noRaceDirs {
+		pkg := passStubModule + "/" + dir
+		listed = append(listed, pkg)
+		if slices.Contains(freshDirs, dir) {
+			fresh = append(fresh, pkg)
+		} else {
+			noRaceOnly = append(noRaceOnly, pkg)
+		}
+	}
+	for _, name := range []string{"", "/internal/a", "/internal/b"} {
+		listed = append(listed, passStubModule+name)
+		racePkgs = append(racePkgs, passStubModule+name)
+	}
+	require.NotEmpty(t, noRaceOnly, "the norace list holds a package that is not fresh")
+
+	scriptFlags := []string{"-vet=off", "-run=TestX"}
+	run := func(args ...string) passRun {
+		t.Helper()
+		return runPassScript(t, listed, append(slices.Clone(scriptFlags), args...)...)
+	}
+	assertCalls := func(name string, r passRun) {
+		t.Helper()
+		require.Zero(t, r.code, "%s: %s", name, r.stderr)
+		for i, call := range r.calls {
+			assert.Equal(t, scriptFlags, call.flags, "%s: call %d carries exactly the flags the script was given, and no -pass", name, i+1)
+		}
+	}
+	for _, args := range [][]string{nil, {"-pass=race"}, {"-pass=norace"}} {
+		r := runPassScript(t, listed, args...)
+		require.Zero(t, r.code, "arguments %q: %s", args, r.stderr)
+		require.NotEmpty(t, r.calls, "arguments %q", args)
+		for i, call := range r.calls {
+			assert.Equal(t, []string{"-cover"}, call.flags, "arguments %q: call %d of a run with no flags carries the default -cover", args, i+1)
+		}
+	}
+
+	raceOnly := run("-pass=race")
+	assertCalls("-pass=race", raceOnly)
+	require.Len(t, raceOnly.calls, 1, "race mode makes exactly one go test call, got %q", raceOnly.goLog)
+	assert.True(t, raceOnly.calls[0].race, "race mode runs with -race")
+	assert.Equal(t, racePkgs, raceOnly.calls[0].pkgs, "race mode names every listed package except the norace ones")
+
+	noRaceRun := run("-pass=norace")
+	assertCalls("-pass=norace", noRaceRun)
+	require.Len(t, noRaceRun.calls, 2, "norace mode makes exactly two go test calls, got %q", noRaceRun.goLog)
+	for i, call := range noRaceRun.calls {
+		assert.False(t, call.race, "norace call %d runs without -race", i+1)
+	}
+	assert.Equal(t, noRaceOnly, noRaceRun.calls[0].pkgs)
+	assert.False(t, noRaceRun.calls[0].count1, "the norace packages that are not fresh may come from the test cache")
+	assert.Equal(t, fresh, noRaceRun.calls[1].pkgs)
+	assert.True(t, noRaceRun.calls[1].count1, "the fresh packages run with -count=1")
+
+	for _, spelling := range [][]string{{"-pass", "race"}, {"-pass=race"}, {"--pass", "race"}, {"--pass=race"}} {
+		r := run(spelling...)
+		assertCalls(strings.Join(spelling, " "), r)
+		require.Len(t, r.calls, 1, "%q makes the -pass=race call, got %q", spelling, r.goLog)
+		assert.True(t, r.calls[0].race, "%q", spelling)
+		assert.Equal(t, racePkgs, r.calls[0].pkgs, "%q", spelling)
+	}
+
+	both := run()
+	assertCalls("no -pass", both)
+	assert.Equal(t, slices.Concat(raceOnly.calls, noRaceRun.calls), both.calls, "no -pass makes the race call, then the norace calls")
+	counts := map[string]int{}
+	for _, call := range both.calls {
+		for _, pkg := range call.pkgs {
+			counts[pkg]++
+		}
+	}
+	for _, pkg := range listed {
+		assert.Equal(t, 1, counts[pkg], "%s must appear in exactly one go test call", pkg)
+	}
+
+	for _, args := range [][]string{
+		{"-pass=other"}, {"-pass", "other"}, {"-pass="}, {"-pass", ""}, {"--pass=Race"},
+		{"-pass"}, {"--pass"},
+		{"-pass=race", "-pass=race"}, {"-pass=race", "-pass=norace"}, {"-pass=norace", "--pass=race"},
+		{"-pass", "race", "-pass=race"}, {"--pass", "norace", "--pass", "norace"},
+	} {
+		r := run(args...)
+		assert.Equal(t, 2, r.code, "arguments %q", args)
+		assert.Empty(t, r.goLog, "arguments %q must make no go call", args)
+		assert.Equal(t, 1, strings.Count(r.stderr, "\n"), "arguments %q: want one line on stderr, got %q", args, r.stderr)
 	}
 }

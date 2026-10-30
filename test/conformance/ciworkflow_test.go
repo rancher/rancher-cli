@@ -3,9 +3,12 @@ package conformance
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"slices"
@@ -30,22 +33,32 @@ const (
 
 // workflowFile holds the parts of a workflow file the checks below read.
 type workflowFile struct {
-	Jobs map[string]workflowJob `yaml:"jobs"`
+	Env      yaml.Node              `yaml:"env"`
+	Defaults yaml.Node              `yaml:"defaults"`
+	Jobs     map[string]workflowJob `yaml:"jobs"`
 }
 
 // The continue-on-error fields are nodes so that an absent field (a zero
 // node) differs from any value, true or an expression included.
 type workflowJob struct {
+	Name            string         `yaml:"name"`
+	Uses            string         `yaml:"uses"`
+	RunsOn          yaml.Node      `yaml:"runs-on"`
+	Env             yaml.Node      `yaml:"env"`
+	Defaults        yaml.Node      `yaml:"defaults"`
 	Needs           yaml.Node      `yaml:"needs"`
 	If              string         `yaml:"if"`
 	ContinueOnError yaml.Node      `yaml:"continue-on-error"`
 	TimeoutMinutes  int            `yaml:"timeout-minutes"`
+	Strategy        yaml.Node      `yaml:"strategy"`
 	Steps           []workflowStep `yaml:"steps"`
 }
 
 type workflowStep struct {
+	ID               string            `yaml:"id"`
 	Name             string            `yaml:"name"`
 	Uses             string            `yaml:"uses"`
+	Env              yaml.Node         `yaml:"env"`
 	Run              string            `yaml:"run"`
 	Shell            string            `yaml:"shell"`
 	WorkingDirectory string            `yaml:"working-directory"`
@@ -80,16 +93,21 @@ func readWorkflow(t *testing.T, path string) workflowFile {
 	return wf
 }
 
-// The rules for the run bodies of ci.yaml are an allowlist: the two part
+// The rules for the run bodies of ci.yaml are an allowlist: the three part
 // steps are exact, every other body must not mention validate or
 // scripts/ci, and a make word may only be followed by the e2e target.
 // A list of forbidden spellings would always miss one.
 const (
-	staticStepBody = "./scripts/validate static"
-	testsStepBody  = "./scripts/validate tests"
+	staticStepBody      = "./scripts/validate static"
+	testsRaceStepBody   = "./scripts/validate tests-race"
+	testsNoRaceStepBody = "./scripts/validate tests-norace"
 )
 
 var (
+	// envWriteRE matches a run body that writes the environment file or the
+	// path file of later steps, or the file go env -w writes: each can change
+	// what a later part step runs.
+	envWriteRE     = regexp.MustCompile(`GITHUB_(?:ENV|PATH)|\bgo\s+env\b[^\n]*\s-w\b`)
 	validateWordRE = regexp.MustCompile(`(^|[^A-Za-z0-9_])(validate|scripts/(\./)*ci)([^A-Za-z0-9_]|$)`)
 	makeWordRE     = regexp.MustCompile(`(^|[^A-Za-z0-9_.-])(g?make|\$MAKE|\$\{MAKE\}|\$\(MAKE\))([^A-Za-z0-9_-]|$)`)
 	// e2e must be the only target: every script is a make target, so
@@ -98,12 +116,15 @@ var (
 )
 
 // ciRunBodyProblems returns what is wrong with a run body of ci.yaml that
-// is not one of the two part steps. The allowed make targets are listed
+// is not one of the three part steps. The allowed make targets are listed
 // here: e2e only.
 func ciRunBodyProblems(body string) []string {
 	var problems []string
+	if envWriteRE.MatchString(body) {
+		problems = append(problems, "the body writes GITHUB_ENV or GITHUB_PATH or runs go env -w: no ci.yaml run body may change what a later step runs")
+	}
 	if validateWordRE.MatchString(body) {
-		problems = append(problems, "the word validate or scripts/ci appears; only the two part steps may run the gate")
+		problems = append(problems, "the word validate or scripts/ci appears; only the three part steps may run the gate")
 	}
 	for _, m := range makeWordRE.FindAllStringSubmatchIndex(body, -1) {
 		if !makeTargetRE.MatchString(body[m[5]:]) {
@@ -126,6 +147,7 @@ func TestCIRunBodyRules(t *testing.T) {
 		"./scripts/validate static || true", "./scripts/validate", "bash scripts/ci",
 		"make\nvalidate", "echo x; make\n", "make e2e ci", "make e2e all",
 		"make e2e \\\nci", "bash scripts/./ci", "# make validation",
+		`echo "GOFLAGS=-run=^$" >> "$GITHUB_ENV"`, "echo /x >> $GITHUB_PATH", "go env -w GOFLAGS=-run=^$", "go   env -w GOFLAGS=x", "go env GOPATH && go env -w GOFLAGS=x",
 	} {
 		assert.NotEmpty(t, ciRunBodyProblems(body), "%q must be refused", body)
 	}
@@ -138,71 +160,354 @@ func TestCIRunBodyRules(t *testing.T) {
 	}
 }
 
-// TestCIRunsTheTwoValidateParts asserts that ci.yaml runs the static and
-// tests parts of scripts/validate, each as the whole run body of one
-// step, in two separate jobs that do not name each other in needs; that
-// no other run body mentions validate or scripts/ci or runs make with a
-// target but e2e (TestCIRunBodyRules); that neither job nor any of its
-// steps can be turned off; and that each job installs only the tools its
-// part uses.
-func TestCIRunsTheTwoValidateParts(t *testing.T) {
+// isCacheSaveUses reports whether a uses value is the cache save action,
+// in any letter case and with any ref.
+func isCacheSaveUses(uses string) bool {
+	name, _, _ := strings.Cut(strings.ToLower(uses), "@")
+	return name == "actions/cache/save"
+}
+
+// completionStepBody is the exact body of the step of the test job that runs
+// the completion script tests under every shell.
+const completionStepBody = `log="${RUNNER_TEMP}/completions.log"
+if ! go test -count=1 -v ./internal/cli/completions/ > "$log" 2>&1; then
+  cat "$log"
+  exit 1
+fi
+grep -E '^(--- |ok)' "$log"
+echo "shells used:"
+grep -ho 'shell [a-z]*: .*' "$log" | sort | uniq -c
+status=0
+for shell in bash zsh fish pwsh; do
+  if ! grep -q "shell ${shell}: " "$log"; then
+    echo "no completion test used ${shell}" >&2
+    status=1
+  fi
+done
+if grep -E '^\s*--- SKIP' "$log"; then
+  echo "a completion shell test skipped" >&2
+  status=1
+fi
+exit "$status"
+`
+
+// readRawSteps decodes the steps of every job of a workflow as plain maps,
+// so that a step is compared whole, with every key it has.
+func readRawSteps(t *testing.T, path string) map[string][]map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var wf struct {
+		Jobs map[string]struct {
+			Steps []map[string]any `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	require.NoError(t, yaml.Unmarshal(data, &wf), path)
+	out := map[string][]map[string]any{}
+	for id, job := range wf.Jobs {
+		out[id] = job.Steps
+	}
+	return out
+}
+
+// readRawJobs decodes every job of a workflow as a plain map, so that a job
+// is checked with every key it has.
+func readRawJobs(t *testing.T, path string) map[string]map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var wf struct {
+		Jobs map[string]map[string]any `yaml:"jobs"`
+	}
+	require.NoError(t, yaml.Unmarshal(data, &wf), path)
+	return wf.Jobs
+}
+
+// partJobKeyProblems returns what is wrong with the keys of a part job: it
+// has exactly runs-on, timeout-minutes and steps, and runs on ubuntu-latest.
+// Any other key (container, services, env, defaults, strategy, a runner
+// list) can change the environment the steps run in.
+func partJobKeyProblems(jobID string, job map[string]any) []string {
+	var out []string
+	if keys := slices.Sorted(maps.Keys(job)); !slices.Equal(keys, []string{"runs-on", "steps", "timeout-minutes"}) {
+		out = append(out, fmt.Sprintf("job %s has the keys %v and must have exactly runs-on, timeout-minutes and steps", jobID, keys))
+	}
+	if runsOn := job["runs-on"]; runsOn != "ubuntu-latest" {
+		out = append(out, fmt.Sprintf("job %s runs on %v and must run on ubuntu-latest", jobID, runsOn))
+	}
+	return out
+}
+
+// allowedPartSteps lists every step a part job may have, each as the whole
+// step: checkout, setup-go, go-cache and the cache save with the commits
+// recorded in cacheUsesPins, the tools install the part needs, the
+// completion shell tests step of the tests-race part, and the part step.
+// Any other step in a part job can change what the part runs.
+func allowedPartSteps(jobID, part string) []map[string]any {
+	pinned := func(name string) string { return name + "@" + cacheUsesPins[name] }
+	steps := []map[string]any{
+		{"uses": pinned("actions/checkout"), "with": map[string]any{"persist-credentials": false}},
+		{"uses": pinned("actions/setup-go"), "with": map[string]any{"go-version-file": "go.mod", "cache": false}},
+		{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": jobID}},
+		{"uses": pinned("actions/cache/save"), "if": expectedSaveIf(jobID, "go-cache", "cache-hit"), "with": map[string]any{
+			"path": goCacheOutputExpr("go-cache", "path"),
+			"key":  goCacheOutputExpr("go-cache", "key"),
+		}},
+		{"run": part},
+	}
+	switch part {
+	case staticStepBody:
+		steps = append(steps, map[string]any{"uses": setupToolsAction, "with": map[string]any{"shells": "false"}})
+	case testsRaceStepBody:
+		steps = append(steps,
+			map[string]any{"uses": setupToolsAction, "with": map[string]any{"lint-tools": "false"}},
+			map[string]any{"name": "Completion shell tests", "run": completionStepBody})
+	}
+	return steps
+}
+
+// partStepProblems returns the steps of a part job that are none of the
+// allowed steps of its part.
+func partStepProblems(jobID, part string, steps []map[string]any) []string {
+	var out []string
+	allowed := allowedPartSteps(jobID, part)
+	for i, step := range steps {
+		if !slices.ContainsFunc(allowed, func(a map[string]any) bool { return reflect.DeepEqual(a, step) }) {
+			out = append(out, fmt.Sprintf("job %s step %d is none of the steps a part job may have (checkout, setup-go, go-cache, setup-tools, the completion shell tests step, the part step and the cache save, each exactly as listed in allowedPartSteps): %v", jobID, i+1, step))
+		}
+	}
+	return out
+}
+
+// TestCIRunsEveryValidatePartOnce asserts that ci.yaml runs the static,
+// tests-race and tests-norace parts of scripts/validate, each as the whole
+// run body of exactly one step, in three separate jobs that do not name
+// each other in needs; that no other run body mentions validate or
+// scripts/ci or runs make with a target but e2e (TestCIRunBodyRules); that
+// no job or step can be turned off, except that a cache save step may
+// carry an if (TestOnlyMainPushesSaveCaches checks its expression); that
+// the workflow, the three part jobs and the part steps set no env, which
+// could select no test (GOFLAGS=-run=^$) and still pass; that the workflow
+// and the three part jobs set no defaults, which could change the shell
+// that runs a part; that no other run body writes the environment file, the
+// path file or the go env file; that every step of the three part jobs is
+// one of the listed steps, each matched whole; that each part job has
+// exactly the keys runs-on (ubuntu-latest), timeout-minutes and steps; and
+// that each job installs only the tools its part uses.
+// TestSharedActionsHoldNoEnvWrites holds the two local actions the part jobs
+// call (go-cache and setup-tools) to the same environment-write rule.
+//
+// The remaining limit: the steps and keys of the part jobs are listed and
+// the two local actions are held to the environment-write rule, but what an
+// earlier step or an action does outside that rule (a file it replaces, a
+// program it puts on PATH, what a third-party action does inside itself) is
+// left to review.
+func TestCIRunsEveryValidatePartOnce(t *testing.T) {
 	t.Parallel()
 	wf := readWorkflow(t, ciWorkflowPath)
 
+	assert.Zero(t, wf.Env.Kind, "ci.yaml must set no workflow-level env: an env can change what every part runs")
+	assert.Zero(t, wf.Defaults.Kind, "ci.yaml must set no workflow-level defaults: a shell can turn a part into a no-op")
+	parts := []string{staticStepBody, testsRaceStepBody, testsNoRaceStepBody}
 	partJobs := map[string][]string{}
-	for name, job := range wf.Jobs {
-		for i, step := range job.Steps {
-			switch strings.TrimSpace(step.Run) {
-			case staticStepBody:
-				partJobs["static"] = append(partJobs["static"], name)
-				assert.Empty(t, step.Shell, "job %s step %d must not change the shell", name, i+1)
-				assert.Empty(t, step.WorkingDirectory, "job %s step %d must not change the directory", name, i+1)
-			case testsStepBody:
-				partJobs["tests"] = append(partJobs["tests"], name)
-				assert.Empty(t, step.Shell, "job %s step %d must not change the shell", name, i+1)
-				assert.Empty(t, step.WorkingDirectory, "job %s step %d must not change the directory", name, i+1)
-			default:
-				assert.Empty(t, ciRunBodyProblems(step.Run), "job %s step %d", name, i+1)
+	for _, name := range slices.Sorted(maps.Keys(wf.Jobs)) {
+		for i, step := range wf.Jobs[name].Steps {
+			body := strings.TrimSpace(step.Run)
+			if !slices.Contains(parts, body) {
+				assert.Empty(t, ciRunBodyProblems(step.Run), "job %s step %d: the body is not one of the three allowed part bodies", name, i+1)
+				continue
+			}
+			partJobs[body] = append(partJobs[body], name)
+			assert.Empty(t, step.Shell, "job %s step %d must not change the shell", name, i+1)
+			assert.Empty(t, step.WorkingDirectory, "job %s step %d must not change the directory", name, i+1)
+			assert.Zero(t, step.Env.Kind, "job %s step %d must set no env: an env can change what the part runs", name, i+1)
+		}
+	}
+	for _, body := range parts {
+		assert.Len(t, partJobs[body], 1, "%q must be the run body of exactly one step (found %d)", body, len(partJobs[body]))
+	}
+	require.Len(t, partJobs[staticStepBody], 1)
+	require.Len(t, partJobs[testsRaceStepBody], 1)
+	require.Len(t, partJobs[testsNoRaceStepBody], 1)
+	staticJob, raceJob, noRaceJob := partJobs[staticStepBody][0], partJobs[testsRaceStepBody][0], partJobs[testsNoRaceStepBody][0]
+	jobNames := []string{staticJob, raceJob, noRaceJob}
+	require.Len(t, slices.Compact(slices.Sorted(slices.Values(jobNames))), 3, "the three parts must run in different jobs, got %q", jobNames)
+	for _, a := range jobNames {
+		for _, b := range jobNames {
+			if a != b {
+				assert.NotContains(t, wf.Jobs[a].needsNames(), b, "job %s must not wait for job %s", a, b)
 			}
 		}
 	}
-	require.Len(t, partJobs["static"], 1, "%q must be the run body of exactly one step", staticStepBody)
-	require.Len(t, partJobs["tests"], 1, "%q must be the run body of exactly one step", testsStepBody)
-	staticJob, testsJob := partJobs["static"][0], partJobs["tests"][0]
-	require.NotEqual(t, staticJob, testsJob, "the two parts must run in different jobs")
-
-	assert.NotContains(t, wf.Jobs[staticJob].needsNames(), testsJob, "job %s must not wait for job %s", staticJob, testsJob)
-	assert.NotContains(t, wf.Jobs[testsJob].needsNames(), staticJob, "job %s must not wait for job %s", testsJob, staticJob)
 
 	for _, c := range []struct {
 		job, part, needs, drops string
+		setups                  int
 	}{
-		{staticJob, "static", "lint-tools", "shells"},
-		{testsJob, "tests", "shells", "lint-tools"},
+		{staticJob, "static", "lint-tools", "shells", 1},
+		{raceJob, "tests-race", "shells", "lint-tools", 1},
+		{noRaceJob, "tests-norace", "", "", 0},
 	} {
 		job := wf.Jobs[c.job]
 		assert.Empty(t, job.If, "job %s must not be conditional", c.job)
+		assert.Zero(t, job.Env.Kind, "job %s must set no env: an env can change what the part runs", c.job)
+		assert.Zero(t, job.Defaults.Kind, "job %s must set no defaults: a shell can turn the part into a no-op", c.job)
 		assert.Zero(t, job.ContinueOnError.Kind, "job %s must not set continue-on-error", c.job)
 		setups := 0
 		for i, step := range job.Steps {
-			assert.Empty(t, step.If, "job %s step %d must not be conditional", c.job, i+1)
+			if !isCacheSaveUses(step.Uses) {
+				assert.Empty(t, step.If, "job %s step %d must not be conditional", c.job, i+1)
+			}
 			assert.Zero(t, step.ContinueOnError.Kind, "job %s step %d must not set continue-on-error", c.job, i+1)
 			if step.Uses != setupToolsAction {
 				continue
 			}
 			setups++
+			if c.needs == "" {
+				continue
+			}
 			if v, ok := step.With[c.needs]; ok {
 				assert.Equal(t, "true", v, "job %s runs the %s part and needs %s installed", c.job, c.part, c.needs)
 			}
 			assert.Equal(t, "false", step.With[c.drops], "job %s does not use %s and must not install it", c.job, c.drops)
 		}
-		require.Equal(t, 1, setups, "job %s must use %s once", c.job, setupToolsAction)
+		assert.Equal(t, c.setups, setups, "job %s must use %s %d times for the %s part", c.job, setupToolsAction, c.setups, c.part)
 	}
 
-	assert.Equal(t, 30, wf.Jobs[staticJob].TimeoutMinutes, "job %s timeout-minutes", staticJob)
-	assert.Equal(t, 30, wf.Jobs[testsJob].TimeoutMinutes, "job %s timeout-minutes", testsJob)
+	rawSteps := readRawSteps(t, ciWorkflowPath)
+	rawJobs := readRawJobs(t, ciWorkflowPath)
+	for _, name := range jobNames {
+		assert.Empty(t, partJobKeyProblems(name, rawJobs[name]))
+	}
+	for part, name := range map[string]string{staticStepBody: staticJob, testsRaceStepBody: raceJob, testsNoRaceStepBody: noRaceJob} {
+		assert.Empty(t, partStepProblems(name, part, rawSteps[name]))
+	}
+	for _, name := range jobNames {
+		assert.Equal(t, 30, wf.Jobs[name].TimeoutMinutes, "job %s timeout-minutes", name)
+	}
 	require.Contains(t, wf.Jobs, "cross-compile")
 	assert.Equal(t, 20, wf.Jobs["cross-compile"].TimeoutMinutes, "job cross-compile timeout-minutes")
+}
+
+// TestPartJobStepRules asserts what the step allowlist of the part jobs
+// accepts and refuses: the listed steps, each whole, and nothing else.
+func TestPartJobStepRules(t *testing.T) {
+	t.Parallel()
+	const job = "test-norace"
+	good := func() []map[string]any {
+		a := allowedPartSteps(job, testsNoRaceStepBody)
+		return []map[string]any{a[0], a[1], a[2], a[4], a[3]}
+	}
+	assert.Empty(t, partStepProblems(job, testsNoRaceStepBody, good()), "the listed steps")
+	race := allowedPartSteps("test", testsRaceStepBody)
+	assert.Empty(t, partStepProblems("test", testsRaceStepBody, race), "the steps of the tests-race part, with its tools and completion steps")
+	static := allowedPartSteps("lint", staticStepBody)
+	assert.Empty(t, partStepProblems("lint", staticStepBody, static), "the steps of the static part")
+
+	setupGoWith := func(key string, value any) map[string]any {
+		steps := good()
+		step := maps.Clone(steps[1])
+		step[key] = value
+		steps[1] = step
+		return steps[1]
+	}
+	refused := map[string][]map[string]any{
+		"a step that copies over a script":    append(good()[:3:3], map[string]any{"run": "cp /bin/true scripts/test"}, good()[3]),
+		"a step that writes the go env file":  append(good()[:3:3], map[string]any{"run": `printf 'GOFLAGS=-run=^$\n' > "$(go env GOENV)"`}, good()[3]),
+		"a setup-go with an env":              {setupGoWith("env", map[string]any{"A": "b"})},
+		"a setup-go with an if":               {setupGoWith("if", "always()")},
+		"a part step with a shell":            {{"run": testsNoRaceStepBody, "shell": "bash"}},
+		"a part step with an env":             {{"run": testsNoRaceStepBody, "env": map[string]any{"GOFLAGS": "-run=^$"}}},
+		"a save whose if is another":          {{"uses": "actions/cache/save@" + cacheUsesPins["actions/cache/save"], "if": "always()", "with": map[string]any{"path": goCacheOutputExpr("go-cache", "path"), "key": goCacheOutputExpr("go-cache", "key")}}},
+		"a go-cache with another name":        {{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": "other"}}},
+		"a go-cache that passes setup-go-key": {{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": job, "setup-go-key": "true"}}},
+		"a checkout at another commit":        {{"uses": "actions/checkout@" + cacheUsesPins["actions/setup-go"], "with": map[string]any{"persist-credentials": false}}},
+	}
+	for name, steps := range refused {
+		assert.NotEmpty(t, partStepProblems(job, testsNoRaceStepBody, steps), "must refuse: %s", name)
+	}
+	okJob := map[string]any{"runs-on": "ubuntu-latest", "timeout-minutes": 30, "steps": []any{}}
+	assert.Empty(t, partJobKeyProblems(job, okJob), "a job with the three keys")
+	for name, edit := range map[string]func(map[string]any){
+		"a container with an env": func(j map[string]any) {
+			j["container"] = map[string]any{"image": "ubuntu:24.04", "env": map[string]any{"GOFLAGS": "-run=^$"}}
+		},
+		"a bare container":  func(j map[string]any) { j["container"] = "ubuntu:24.04" },
+		"a runner list":     func(j map[string]any) { j["runs-on"] = []any{"self-hosted", "linux"} },
+		"another runner":    func(j map[string]any) { j["runs-on"] = "windows-latest" },
+		"a services key":    func(j map[string]any) { j["services"] = map[string]any{} },
+		"an env":            func(j map[string]any) { j["env"] = map[string]any{"A": "b"} },
+		"defaults":          func(j map[string]any) { j["defaults"] = map[string]any{} },
+		"a name":            func(j map[string]any) { j["name"] = "x" },
+		"no timeout":        func(j map[string]any) { delete(j, "timeout-minutes") },
+		"a strategy":        func(j map[string]any) { j["strategy"] = map[string]any{} },
+		"an if":             func(j map[string]any) { j["if"] = "always()" },
+		"continue-on-error": func(j map[string]any) { j["continue-on-error"] = true },
+	} {
+		j := maps.Clone(okJob)
+		edit(j)
+		assert.NotEmpty(t, partJobKeyProblems(job, j), "must refuse: %s", name)
+	}
+	assert.NotEmpty(t, partStepProblems("test", testsRaceStepBody, []map[string]any{{"name": "Completion shell tests", "run": completionStepBody + "true\n"}}), "a completion step with another body")
+	assert.NotEmpty(t, partStepProblems(job, testsNoRaceStepBody, []map[string]any{{"uses": setupToolsAction, "with": map[string]any{"shells": "false"}}}), "tools the norace part does not use")
+}
+
+// goPathStepBody is the exact body of the one step of setup-tools that may
+// write the path file.
+const goPathStepBody = `echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"`
+
+// sharedActionEnvProblems returns the run bodies of a local action that
+// write the environment file, the path file or the go env file, except the
+// step of setup-tools that puts GOPATH/bin on PATH, matched by its name and
+// exact body.
+func sharedActionEnvProblems(actionPath string, steps []workflowStep) []string {
+	var out []string
+	for i, step := range steps {
+		if !envWriteRE.MatchString(step.Run) {
+			continue
+		}
+		if actionPath == setupToolsFile && step.Name == "Put GOPATH/bin on PATH" && strings.TrimSpace(step.Run) == goPathStepBody {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s step %d: a run body of a local action the part jobs call must not write GITHUB_ENV or GITHUB_PATH or run go env -w", actionPath, i+1))
+	}
+	return out
+}
+
+// TestSharedActionsHoldNoEnvWrites asserts that no run body of go-cache or
+// setup-tools writes the environment file, the path file or the go env file,
+// except the setup-tools step that puts GOPATH/bin on PATH.
+func TestSharedActionsHoldNoEnvWrites(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{goCacheActionFile, setupToolsFile} {
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		var action struct {
+			Runs struct {
+				Steps []workflowStep `yaml:"steps"`
+			} `yaml:"runs"`
+		}
+		require.NoError(t, yaml.Unmarshal(data, &action), path)
+		require.NotEmpty(t, action.Runs.Steps, path)
+		assert.Empty(t, sharedActionEnvProblems(path, action.Runs.Steps), path)
+	}
+
+	goPath := workflowStep{Name: "Put GOPATH/bin on PATH", Run: goPathStepBody}
+	assert.Empty(t, sharedActionEnvProblems(setupToolsFile, []workflowStep{goPath, {Run: "go install x"}}), "the one allowed step")
+	for name, c := range map[string]struct {
+		path  string
+		steps []workflowStep
+	}{
+		"a second path write in setup-tools":   {setupToolsFile, []workflowStep{goPath, {Run: `echo /x >> "$GITHUB_PATH"`}}},
+		"an environment write in setup-tools":  {setupToolsFile, []workflowStep{{Run: `echo "GOFLAGS=-run=^$" >> "$GITHUB_ENV"`}}},
+		"the path step with another body":      {setupToolsFile, []workflowStep{{Name: "Put GOPATH/bin on PATH", Run: goPathStepBody + ` && echo y >> "$GITHUB_ENV"`}}},
+		"the path step under another name":     {setupToolsFile, []workflowStep{{Name: "Other", Run: goPathStepBody}}},
+		"the path step in go-cache":            {goCacheActionFile, []workflowStep{goPath}},
+		"go env -w in go-cache":                {goCacheActionFile, []workflowStep{{Run: "go env -w GOFLAGS=-run=^$"}}},
+		"go env -w with extra spaces in tools": {setupToolsFile, []workflowStep{{Run: "go   env  -w GOFLAGS=x"}}},
+	} {
+		assert.NotEmpty(t, sharedActionEnvProblems(c.path, c.steps), "must refuse: %s", name)
+	}
 }
 
 // TestSetupToolsInputs asserts that both inputs of the setup-tools action
@@ -438,70 +743,116 @@ func readLog(t *testing.T, path string) []string {
 
 // TestValidateRunsThePartsInOrder asserts that scripts/validate with no
 // argument runs the static part (vet, the lint version check, lint) and
-// then the tests part (the unit tests, then the build), that each part
-// alone runs only its own commands, that a failing command ends the run
-// with a non-zero exit before any later command, and that any other
-// arguments exit 2 with a usage line naming both parts.
+// then the tests part (the race pass, the passes without the race
+// detector, then the build); that each part alone runs only its own
+// commands; that the tests part logs the tests-race log followed by the
+// tests-norace log, line for line, and the no-argument run the static log
+// followed by the tests log; that a failing command ends the run with a
+// non-zero exit before any later command, except that a failing race pass
+// still runs the passes without the race detector and then ends the part
+// before the build; that each of the two CI parts alone exits non-zero when
+// its own test call fails, and tests-norace then runs no build; and that
+// any other arguments exit 2 with a usage line naming all four parts. Every
+// comparison runs with CI set and empty.
 func TestValidateRunsThePartsInOrder(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip(posixOnlyReason)
 	}
+	const (
+		raceCall   = "scripts/test -vet=off -pass=race"
+		noRaceCall = "scripts/test -vet=off -pass=norace"
+		buildCall  = "scripts/build"
+		goOSCall   = "go env GOOS"
+	)
 	root, env, logPath := dispatchLayout(t)
-	run := func(extraEnv []string, args ...string) (int, string, []string) {
-		_ = os.Remove(logPath)
-		code, stderr := runScript(t, root, filepath.Join(root, validateScript), append(slices.Clone(env), extraEnv...), args...)
-		return code, stderr, readLog(t, logPath)
-	}
-	index := func(log []string, line string) int {
-		t.Helper()
-		i := slices.Index(log, line)
-		require.GreaterOrEqual(t, i, 0, "%q is not in the log %q", line, log)
-		return i
-	}
+	for _, ci := range []string{"CI=1", "CI="} {
+		run := func(extraEnv []string, args ...string) (int, string, []string) {
+			_ = os.Remove(logPath)
+			full := append(append(slices.Clone(env), ci), extraEnv...)
+			code, stderr := runScript(t, root, filepath.Join(root, validateScript), full, args...)
+			return code, stderr, readLog(t, logPath)
+		}
+		index := func(log []string, line string) int {
+			t.Helper()
+			i := slices.Index(log, line)
+			require.GreaterOrEqual(t, i, 0, "%s: %q is not in the log %q", ci, line, log)
+			return i
+		}
+		hasPrefix := func(log []string, prefix string) bool {
+			return slices.ContainsFunc(log, func(line string) bool { return strings.HasPrefix(line, prefix) })
+		}
 
-	code, stderr, log := run(nil)
-	require.Zero(t, code, stderr)
-	vet := index(log, "go vet ./...")
-	version := index(log, "golangci-lint version")
-	lint := index(log, "golangci-lint run")
-	unit := index(log, "scripts/test -vet=off")
-	build := index(log, "scripts/build")
-	assert.Less(t, vet, lint)
-	assert.Less(t, version, lint)
-	assert.Less(t, lint, unit)
-	assert.Less(t, unit, build)
+		code, stderr, all := run(nil)
+		require.Zero(t, code, "%s: %s", ci, stderr)
+		vet := index(all, "go vet ./...")
+		version := index(all, "golangci-lint version")
+		lint := index(all, "golangci-lint run")
+		race := index(all, raceCall)
+		noRace := index(all, noRaceCall)
+		build := index(all, buildCall)
+		assert.Less(t, vet, lint, ci)
+		assert.Less(t, version, lint, ci)
+		assert.Less(t, lint, race, ci)
+		assert.Less(t, race, noRace, ci)
+		assert.Less(t, noRace, build, ci)
 
-	code, stderr, log = run(nil, "static")
-	require.Zero(t, code, stderr)
-	assert.Contains(t, log, "go vet ./...")
-	assert.Contains(t, log, "golangci-lint run")
-	assert.NotContains(t, log, "scripts/test -vet=off")
-	assert.NotContains(t, log, "scripts/build")
+		code, stderr, static := run(nil, "static")
+		require.Zero(t, code, "%s: %s", ci, stderr)
+		assert.Contains(t, static, "go vet ./...", ci)
+		assert.Contains(t, static, "golangci-lint run", ci)
+		assert.NotContains(t, static, raceCall, ci)
+		assert.NotContains(t, static, noRaceCall, ci)
+		assert.NotContains(t, static, buildCall, ci)
 
-	code, stderr, log = run(nil, "tests")
-	require.Zero(t, code, stderr)
-	assert.Contains(t, log, "scripts/test -vet=off")
-	assert.Contains(t, log, "scripts/build")
-	assert.NotContains(t, log, "go vet ./...")
-	assert.NotContains(t, log, "golangci-lint run")
+		code, stderr, raceLog := run(nil, "tests-race")
+		require.Zero(t, code, "%s: %s", ci, stderr)
+		assert.Equal(t, []string{raceCall}, raceLog, "%s: tests-race", ci)
 
-	code, _, log = run([]string{"STUB_FAIL=go vet ./..."})
-	assert.NotZero(t, code, "a failing go vet must fail the run")
-	assert.Contains(t, log, "go vet ./...")
-	assert.NotContains(t, log, "scripts/test -vet=off", "no test runs after a failing static part")
+		code, stderr, noRaceLog := run(nil, "tests-norace")
+		require.Zero(t, code, "%s: %s", ci, stderr)
+		assert.Equal(t, []string{noRaceCall, buildCall, goOSCall}, noRaceLog, "%s: tests-norace", ci)
 
-	code, _, log = run([]string{"STUB_FAIL=scripts/test -vet=off"})
-	assert.NotZero(t, code, "a failing unit test run must fail the run")
-	assert.Contains(t, log, "scripts/test -vet=off")
-	assert.NotContains(t, log, "scripts/build", "no build after failing tests")
+		code, stderr, tests := run(nil, "tests")
+		require.Zero(t, code, "%s: %s", ci, stderr)
+		assert.Equal(t, slices.Concat(raceLog, noRaceLog), tests, "%s: tests must log tests-race then tests-norace", ci)
+		assert.NotContains(t, tests, "go vet ./...", ci)
+		assert.NotContains(t, tests, "golangci-lint run", ci)
 
-	for _, args := range [][]string{{"bogus"}, {"static", "tests"}} {
-		code, stderr, log = run(nil, args...)
-		assert.Equal(t, 2, code, "arguments %q", args)
-		assert.Contains(t, stderr, "static", "arguments %q", args)
-		assert.Contains(t, stderr, "tests", "arguments %q", args)
-		assert.Empty(t, log, "arguments %q must run nothing", args)
+		assert.Equal(t, slices.Concat(static, tests), all, "%s: no argument must log static then tests", ci)
+
+		code, _, log := run([]string{"STUB_FAIL=go vet ./..."})
+		assert.NotZero(t, code, "%s: a failing go vet must fail the run", ci)
+		assert.Contains(t, log, "go vet ./...", ci)
+		assert.False(t, hasPrefix(log, "scripts/test"), "%s: no test runs after a failing static part, got %q", ci, log)
+		assert.False(t, hasPrefix(log, buildCall), "%s: no build after a failing static part, got %q", ci, log)
+
+		code, _, log = run([]string{"STUB_FAIL=" + raceCall}, "tests")
+		assert.NotZero(t, code, "%s: a failing race pass must fail the part", ci)
+		assert.Contains(t, log, raceCall, ci)
+		assert.Contains(t, log, noRaceCall, "%s: the passes without the race detector still run", ci)
+		assert.NotContains(t, log, buildCall, "%s: no build after failing tests", ci)
+
+		code, _, log = run([]string{"STUB_FAIL=" + noRaceCall}, "tests")
+		assert.NotZero(t, code, "%s: a failing pass without the race detector must fail the part", ci)
+		assert.NotContains(t, log, buildCall, "%s: no build after failing tests", ci)
+
+		code, _, log = run([]string{"STUB_FAIL=" + raceCall}, "tests-race")
+		assert.NotZero(t, code, "%s: a failing race pass must fail the tests-race part, the required check of CI", ci)
+		assert.Equal(t, []string{raceCall}, log, "%s: tests-race", ci)
+
+		code, _, log = run([]string{"STUB_FAIL=" + noRaceCall}, "tests-norace")
+		assert.NotZero(t, code, "%s: a failing pass without the race detector must fail the tests-norace part", ci)
+		assert.Equal(t, []string{noRaceCall}, log, "%s: tests-norace runs no build after a failing pass", ci)
+
+		for _, args := range [][]string{{"bogus"}, {"static", "tests"}} {
+			code, stderr, log = run(nil, args...)
+			assert.Equal(t, 2, code, "%s: arguments %q", ci, args)
+			for _, part := range []string{"static", "tests", "tests-race", "tests-norace"} {
+				assert.Contains(t, stderr, part, "%s: arguments %q", ci, args)
+			}
+			assert.Empty(t, log, "%s: arguments %q must run nothing", ci, args)
+		}
 	}
 }
 

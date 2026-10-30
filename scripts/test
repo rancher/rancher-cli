@@ -5,6 +5,14 @@
 # script exits non-zero when any failed. Flags given to this script go to
 # every pass and replace the default -cover.
 #
+# -pass=race runs only the race pass. -pass=norace runs only the passes
+# without the race detector: the norace packages that are not fresh, then
+# the fresh ones. With no -pass all three run in that order: race, norace,
+# fresh. The option takes its value as -pass=VALUE or -pass VALUE, with one
+# or two leading dashes, may be given once, and is not passed to go test.
+# Any other value exits 2 before any go command runs. CI runs the two
+# passes as separate jobs.
+#
 # -coverprofile=FILE is the one flag that writes a file. Each pass writes
 # its own profile and they are merged into FILE (the profiles hold
 # different packages); -covermode=atomic is added unless the flags name a
@@ -48,11 +56,40 @@ for f in "${fresh[@]}"; do
   fi
 done
 
+# take_pass records the value of -pass: race or norace, once.
+pass=
+pass_given=
+take_pass() {
+  if [ -n "$pass_given" ]; then
+    echo "error: -pass is given more than once" >&2
+    exit 2
+  fi
+  pass_given=1
+  case "$1" in
+    race | norace) pass=$1 ;;
+    *)
+      echo "error: -pass takes race or norace, not \"$1\"" >&2
+      exit 2
+      ;;
+  esac
+}
+
 flags=()
 profile=
 covermode=
 while [ $# -gt 0 ]; do
   case "$1" in
+    -pass=* | --pass=*)
+      take_pass "${1#*=}"
+      ;;
+    -pass | --pass)
+      if [ $# -lt 2 ]; then
+        echo "error: $1 needs race or norace" >&2
+        exit 2
+      fi
+      take_pass "$2"
+      shift
+      ;;
     -coverprofile=* | --coverprofile=*)
       profile=${1#*=}
       ;;
@@ -137,12 +174,16 @@ if [ -n "$profile" ]; then
 fi
 
 status=0
-go test -race "${race_flags[@]}" "${race_pkgs[@]}" || status=1
-if [ ${#norace_pkgs[@]} -gt 0 ]; then
-  go test "${norace_flags[@]}" "${norace_pkgs[@]}" || status=1
+if [ "$pass" != norace ]; then
+  go test -race "${race_flags[@]}" "${race_pkgs[@]}" || status=1
 fi
-if [ ${#fresh_pkgs[@]} -gt 0 ]; then
-  go test "${fresh_flags[@]}" "${fresh_pkgs[@]}" || status=1
+if [ "$pass" != race ]; then
+  if [ ${#norace_pkgs[@]} -gt 0 ]; then
+    go test "${norace_flags[@]}" "${norace_pkgs[@]}" || status=1
+  fi
+  if [ ${#fresh_pkgs[@]} -gt 0 ]; then
+    go test "${fresh_flags[@]}" "${fresh_pkgs[@]}" || status=1
+  fi
 fi
 
 if [ -n "$profile" ]; then
