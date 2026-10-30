@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,13 +17,11 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
-	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 )
@@ -269,83 +268,83 @@ func TestListPassesLabelSelector(t *testing.T) {
 	assert.Empty(t, lastSelector)
 }
 
-// TestLogsFetchesTail asserts Logs returns the fake clientset's canned log
-// body and maps LogOptions onto corev1.PodLogOptions 1:1, including the
-// nil-vs-set SinceSeconds distinction (nil = no limit; *0 = "since now").
+// TestLogsFetchesTail asserts Logs returns the server's log body and maps
+// LogOptions onto the request's query parameters, including the nil-vs-set
+// SinceSeconds distinction (nil = no limit; *0 = "since now").
 func TestLogsFetchesTail(t *testing.T) {
 	t.Parallel()
 
-	lastOpts := func(t *testing.T, cs *k8sfake.Clientset) *corev1.PodLogOptions {
+	logsClient := func(t *testing.T) (client engine.ClusterClient, lastRequest func() *http.Request) {
 		t.Helper()
-		for _, a := range cs.Actions() {
-			gen, ok := a.(k8stesting.GenericActionImpl)
-			if !ok || a.GetSubresource() != "log" {
-				continue
-			}
-			opts, ok := gen.Value.(*corev1.PodLogOptions)
-			require.True(t, ok)
-			return opts
-		}
-		t.Fatal("expected a get pods/log action")
-		return nil
+		var last atomic.Pointer[http.Request]
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			last.Store(r)
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte("line one\nline two\n"))
+		}))
+		t.Cleanup(srv.Close)
+		c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "c-1")
+		require.NoError(t, err)
+		return c, last.Load
 	}
 
 	t.Run("maps container, tail, previous, timestamps", func(t *testing.T) {
 		t.Parallel()
-		pod := &corev1.Pod{Name: "web", Namespace: "ns1"}
-		cs := k8sfake.NewClientset(pod)
-		r := &dynamicClient{cs: cs}
+		c, last := logsClient(t)
 
 		tail := int64(50)
-		out, err := r.Logs(t.Context(), "ns1", "web", engine.LogOptions{
+		out, err := c.Logs(t.Context(), "ns1", "web", engine.LogOptions{
 			Container: "app", TailLines: &tail, Previous: true, Timestamps: true,
 		})
 		require.NoError(t, err)
-		assert.NotEmpty(t, out)
+		assert.Equal(t, "line one\nline two\n", out)
 
-		opts := lastOpts(t, cs)
-		assert.Equal(t, "app", opts.Container)
-		require.NotNil(t, opts.TailLines)
-		assert.Equal(t, int64(50), *opts.TailLines)
-		assert.True(t, opts.Previous)
-		assert.True(t, opts.Timestamps)
-		assert.Nil(t, opts.SinceSeconds, "SinceSeconds omitted must stay nil (no limit), not become *0")
+		req := last()
+		require.NotNil(t, req)
+		assert.Equal(t, http.MethodGet, req.Method)
+		assert.Equal(t, "/api/v1/namespaces/ns1/pods/web/log", req.URL.Path)
+		q := req.URL.Query()
+		assert.Equal(t, "app", q.Get("container"))
+		assert.Equal(t, "50", q.Get("tailLines"))
+		assert.Equal(t, "true", q.Get("previous"))
+		assert.Equal(t, "true", q.Get("timestamps"))
+		assert.NotContains(t, q, "sinceSeconds", "SinceSeconds omitted must stay unset (no limit), not become 0")
 	})
 
 	t.Run("SinceSeconds nil means no limit", func(t *testing.T) {
 		t.Parallel()
-		pod := &corev1.Pod{Name: "web", Namespace: "ns1"}
-		cs := k8sfake.NewClientset(pod)
-		r := &dynamicClient{cs: cs}
+		c, last := logsClient(t)
 
-		_, err := r.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
+		_, err := c.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
 		require.NoError(t, err)
-		assert.Nil(t, lastOpts(t, cs).SinceSeconds)
+		req := last()
+		require.NotNil(t, req)
+		assert.NotContains(t, req.URL.Query(), "sinceSeconds")
 	})
 
 	t.Run("TailLines nil means no limit, not a request for zero lines", func(t *testing.T) {
 		t.Parallel()
-		pod := &corev1.Pod{Name: "web", Namespace: "ns1"}
-		cs := k8sfake.NewClientset(pod)
-		r := &dynamicClient{cs: cs}
+		c, last := logsClient(t)
 
-		_, err := r.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
+		_, err := c.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
 		require.NoError(t, err)
-		assert.Nil(t, lastOpts(t, cs).TailLines)
+		req := last()
+		require.NotNil(t, req)
+		assert.NotContains(t, req.URL.Query(), "tailLines")
 	})
 
 	t.Run("SinceSeconds set is passed through verbatim, including zero", func(t *testing.T) {
 		t.Parallel()
-		pod := &corev1.Pod{Name: "web", Namespace: "ns1"}
-		cs := k8sfake.NewClientset(pod)
-		r := &dynamicClient{cs: cs}
+		c, last := logsClient(t)
 		zero := int64(0)
 
-		_, err := r.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app", SinceSeconds: &zero})
+		_, err := c.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app", SinceSeconds: &zero})
 		require.NoError(t, err)
-		got := lastOpts(t, cs).SinceSeconds
-		require.NotNil(t, got)
-		assert.Equal(t, int64(0), *got)
+		req := last()
+		require.NotNil(t, req)
+		q := req.URL.Query()
+		require.Contains(t, q, "sinceSeconds")
+		assert.Equal(t, "0", q.Get("sinceSeconds"))
 	})
 }
 

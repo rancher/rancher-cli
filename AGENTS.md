@@ -75,6 +75,16 @@ Gotchas:
   `E2E_FIDELITY_ADMIN_TOKEN`, `E2E_FIDELITY_CACERT` (a PEM, or the literal
   `system` to trust your OS root store), `E2E_FIDELITY_DOWNSTREAM` (the
   cluster id). Never on PRs.
+- **A test the Windows jobs run takes no recovered hardware fault.** On
+  Windows a fault the runtime recovers from (a nil dereference that `fmt`
+  catches) can corrupt memory on some hosts. The Linux job `fault-check`
+  runs the Windows jobs' commands without `-race` under strace and fails on a
+  fault with no row in `.github/fault-allowlist`; a change to a Windows job's
+  tests is made in `fault-check` too. Locally on Linux: `FAULT_LOG_DIR=$(mktemp -d)
+  GOFLAGS=-exec=$PWD/scripts/fault-trace go test -count=1 <package>`, then
+  `FAULT_LOG_DIR=<that dir> scripts/fault-check`; on macOS `dlv trace --exec
+  <test binary> '^runtime\.sigpanic$' -- -test.count=1`. It cannot see
+  `_windows.go` files or tests that skip on Linux.
 
 ## Invariants - do not break these
 

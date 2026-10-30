@@ -1,0 +1,9 @@
+# package|program|count|reason
+#
+# One row per (package, program) that takes recovered hardware faults in the
+# commands the job fault-check traces. count is a positive integer, or any
+# for a program this repository does not build. A program built here (a name
+# ending in .test, or starting with rancher) takes an exact count only. The
+# job fails on a fault with no row, on more faults than a row allows and on
+# fewer (delete or lower the row in the change that removes the faults). A
+# count is the total over every traced run of the package in one job.

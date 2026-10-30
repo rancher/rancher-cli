@@ -1,0 +1,186 @@
+#!/bin/bash
+# Reads the logs scripts/fault-trace wrote into FAULT_LOG_DIR and compares the
+# hardware faults they hold with the allowlist (.github/fault-allowlist, or
+# the file FAULT_ALLOWLIST names). Prints every traced package and every
+# (package, program) fault count, and exits 1 on a fault with no allowlist
+# row, a count that differs from an exact row, a row for a package that no
+# traced run covers, a malformed row, or no log at all.
+#
+# A fault is a SIGSEGV, SIGBUS or SIGFPE line in a strace log whose si_code is
+# not one of the codes of a signal a process sent. The program of a fault is
+# the base name of the last successful execve of the process that took it.
+# Tools: bash and the common tools awk, dirname, cat, rm and mktemp, which
+# macOS and Linux both have, because the tests run it on both.
+set -u
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+dir=${FAULT_LOG_DIR:-}
+allowlist=${FAULT_ALLOWLIST:-$repo/.github/fault-allowlist}
+
+if [ -z "$dir" ] || [ ! -d "$dir" ]; then
+  echo "scripts/fault-check: FAULT_LOG_DIR must name an existing directory" >&2
+  exit 1
+fi
+if [ ! -f "$allowlist" ]; then
+  echo "scripts/fault-check: no allowlist file $allowlist" >&2
+  exit 1
+fi
+
+# One awk program per log: prints "<program><TAB><count>" for each program
+# with a fault. An id is a thread id; strace prefixes every line with it.
+# The thread name after the id is ignored, because a program may rename its
+# threads.
+# shellcheck disable=SC2016 # awk programs: nothing in them is for the shell
+naming='
+{ id = $0; sub(/<.*/, "", id) }
+$0 ~ /^[0-9]+<[^>]*> execve\(/ {
+  p = $0; sub(/^[^(]*\("/, "", p); sub(/".*/, "", p)
+  n = split(p, a, "/"); name = a[n]
+  if ($0 ~ /\) *= 0$/) { prog[id] = name } else if ($0 ~ /<unfinished \.\.\.>$/) { pend[id] = name }
+  next
+}
+$0 ~ /^[0-9]+<[^>]*> <\.\.\. execve resumed>/ {
+  if ($0 ~ /\) *= 0$/ && (id in pend)) prog[id] = pend[id]
+  delete pend[id]
+  next
+}
+$0 ~ /(clone3?|fork|vfork)( resumed|\()/ && match($0, /= [0-9]+</) {
+  child = substr($0, RSTART + 2, RLENGTH - 3)
+  if (!(child in prog)) prog[child] = prog[id]
+  next
+}
+$0 ~ /^[0-9]+<[^>]*> \+\+\+ (exited|killed)/ { delete prog[id]; next }
+$0 ~ /--- SIG(SEGV|BUS|FPE) \{/ {
+  code = $0; sub(/.*si_code=/, "", code); sub(/[,}].*/, "", code)
+  if (code ~ /^(SI_USER|SI_TKILL|SI_QUEUE|SI_MESGQ|SI_TIMER|SI_ASYNCIO|SI_SIGIO)$/) next
+  name = (id in prog) ? prog[id] : "(unknown)"
+  cnt[name]++
+}
+END { for (k in cnt) print k "\t" cnt[k] }
+'
+
+# Reads the allowlist and prints "A<TAB>package<TAB>program<TAB>count" for
+# each row; a malformed row is reported and ends in exit status 1.
+# shellcheck disable=SC2016 # awk programs: nothing in them is for the shell
+rows='
+BEGIN { FS = "|" }
+/^[ \t]*#/ || /^[ \t]*$/ { next }
+{
+  for (i = 1; i <= NF; i++) gsub(/^[ \t]+|[ \t]+$/, "", $i)
+  bad = ""
+  if (NF != 4) bad = "want four fields separated by |: package|program|count|reason"
+  else if ($1 == "" || $2 == "") bad = "the package and the program must not be empty"
+  else if ($2 ~ /\//) bad = "the program is a base name and holds no /"
+  else if ($3 != "any" && $3 !~ /^[1-9][0-9]*$/) bad = "the count is a positive integer or any"
+  else if ($4 == "" || index($4, "#") > 0) bad = "the reason must be one non-empty line without #"
+  else if (($1 SUBSEP $2) in seen) bad = "a second row for the same package and program"
+  if (bad != "") {
+    printf "%s:%d: malformed allowlist row: %s\n", FILENAME, NR, bad
+    fail = 1
+    next
+  }
+  seen[$1 SUBSEP $2] = 1
+  print "A\t" $1 "\t" $2 "\t" $3
+}
+END { exit fail }
+'
+
+# Compares the rows, the counts ("C<TAB>package<TAB>program<TAB>count") and
+# the traced packages ("T<TAB>package", one per log) and prints the table.
+# shellcheck disable=SC2016 # awk programs: nothing in them is for the shell
+compare='
+BEGIN { FS = "\t" }
+function sorted(src, dst,    k, n, i, j, t) {
+  n = 0
+  for (k in src) dst[++n] = k
+  for (i = 2; i <= n; i++) {
+    t = dst[i]
+    for (j = i - 1; j >= 1 && dst[j] > t; j--) dst[j + 1] = dst[j]
+    dst[j + 1] = t
+  }
+  return n
+}
+$1 == "T" { runs[$2]++; next }
+$1 == "A" { rowcount[$2 SUBSEP $3] = $4; keys[$2 SUBSEP $3] = 1; next }
+$1 == "C" { faults[$2 SUBSEP $3] += $4; keys[$2 SUBSEP $3] = 1; next }
+END {
+  print "traced packages (runs):"
+  n = sorted(runs, order)
+  for (i = 1; i <= n; i++) print "  " order[i] "\t" runs[order[i]]
+  print "faults per package and program (faults, allowed):"
+  n = sorted(keys, order)
+  for (i = 1; i <= n; i++) {
+    k = order[i]
+    split(k, part, SUBSEP)
+    pkg = part[1]; prog = part[2]
+    cnt = faults[k] + 0
+    want = (k in rowcount) ? rowcount[k] : ""
+    result = "ok"
+    if (!(pkg in runs)) {
+      result = "FAIL the allowlist row names a package no traced run covers"
+    } else if (want == "") {
+      result = "FAIL a fault with no allowlist row"
+    } else if (want != "any" && cnt > want + 0) {
+      result = "FAIL more faults than the row allows"
+    } else if (want != "any" && cnt < want + 0) {
+      result = "FAIL fewer faults than the row allows: lower or delete the row"
+    }
+    if (want == "") want = "-"
+    if (result != "ok") { problems++; if (cnt > 0) hint[pkg] = 1 }
+    print "  " pkg "\t" prog "\t" cnt "\t" want "\t" result
+  }
+  if (problems == 0) { print "no unexpected faults"; exit 0 }
+  print problems " problem(s)"
+  for (p in hint) {
+    print "to name the test that takes a fault in " p ", build its test binary (go test -c, with the -tags of the traced command)"
+    print "and run each test alone: for t in $(bin.test -test.list \".*\"); do strace -f -Y -q -e trace=none -e signal=SIGSEGV,SIGBUS,SIGFPE -o /tmp/x.log bin.test -test.run \"^$t\\$\" >/dev/null 2>&1; n=$(grep -c \" --- SIG\" /tmp/x.log); [ \"$n\" -gt 0 ] && echo \"$t $n\"; done"
+    print "on macOS: dlv trace --exec bin.test --stack 30 \"^runtime\\.sigpanic$\" -- -test.count=1"
+  }
+  exit 1
+}
+'
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/fault-check.XXXXXX") || exit 1
+trap 'rm -rf "$tmp"' EXIT
+
+status=0
+logs=0
+for log in "$dir"/*.log; do
+  [ -e "$log" ] || continue
+  logs=$((logs + 1))
+  side=${log%.log}.pkg
+  if [ ! -f "$side" ]; then
+    echo "scripts/fault-check: $log has no package file $side" >&2
+    status=1
+    continue
+  fi
+  pkg=$(cat "$side")
+  printf 'T\t%s\n' "$pkg" >>"$tmp/all"
+  awk "$naming" "$log" >"$tmp/names" || {
+    echo "scripts/fault-check: awk failed on $log: its faults cannot be counted" >&2
+    exit 1
+  }
+  awk -F '\t' -v pkg="$pkg" '{ print "C\t" pkg "\t" $1 "\t" $2 }' "$tmp/names" >>"$tmp/all" || {
+    echo "scripts/fault-check: awk failed on $log: its faults cannot be counted" >&2
+    exit 1
+  }
+done
+for side in "$dir"/*.pkg; do
+  [ -e "$side" ] || continue
+  if [ ! -f "${side%.pkg}.log" ]; then
+    echo "scripts/fault-check: $side has no log ${side%.pkg}.log" >&2
+    status=1
+  fi
+done
+if [ "$logs" -eq 0 ]; then
+  echo "scripts/fault-check: no *.log file in $dir: nothing was traced" >&2
+  exit 1
+fi
+[ "$status" -eq 0 ] || exit 1
+
+awk "$rows" "$allowlist" >"$tmp/rows" || {
+  cat "$tmp/rows" >&2
+  exit 1
+}
+cat "$tmp/rows" >>"$tmp/all"
+awk "$compare" "$tmp/all"

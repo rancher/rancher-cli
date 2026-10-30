@@ -201,6 +201,66 @@ jobs:
         with:
           path: ${{ steps.go-cache.outputs.path }}
           key: ${{ steps.go-cache.outputs.setup-go-key }}
+  # Runs the tests the two Windows jobs run, on Linux under strace, and fails
+  # on every hardware fault (SIGSEGV, SIGBUS, SIGFPE) a test takes that has no
+  # row in .github/fault-allowlist, including the faults Go recovers from. On
+  # Windows the kernel writes the exception frame onto the stack of the
+  # goroutine that took the fault, and on hosts with AMX the frame is larger
+  # than the space the runtime keeps below a stack: a fault can corrupt
+  # memory there. scripts/fault-trace is the go test -exec program that traces
+  # each test binary and every program it starts; scripts/fault-check counts.
+  # Its commands are the Windows jobs' commands with -race removed: the faults
+  # a test takes do not depend on the race detector, which needs cgo and
+  # installs signal handling of its own. A change to the tests a Windows job
+  # runs is made here in the same commit.
+  fault-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOFLAGS: -exec=${{ github.workspace }}/scripts/fault-trace
+      FAULT_LOG_DIR: /tmp/fault-logs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: fault-check
+      - name: Cache envtest assets
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/kubebuilder-envtest
+          key: envtest-${{ runner.os }}-${{ hashFiles('scripts/e2e') }}
+      - name: Install strace
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends strace
+          strace -V | sed -n 1p
+          mkdir -p "$FAULT_LOG_DIR"
+      - run: go test -count=1 -run TestWindows ./install/
+      - run: go test -count=1 ./internal/config/
+      - run: go test -count=1 ./internal/telemetry/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      - run: go test -count=1 -v ./internal/testfs/
+      - run: go test -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed' ./internal/cli/
+      - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
+      - run: go test -count=1 -v -run 'TestRenameOverAnOpenTarget|TestRemoveOfAnOpenFile|TestReadsRetryASharingViolation|TestShareRetryLeavesOtherErrorsAlone|TestConcurrentWritersOfOneFile|TestReadsDuringReplace|TestRootReadsDuringRootReplace' ./internal/config/
+      - run: go test -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
+      - run: go test -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
+      - run: bash scripts/e2e
+      - run: go test -count=1 -v -run TestPwsh ./internal/cli/completions/
+      - name: Fault check
+        if: ${{ !cancelled() }}
+        run: ./scripts/fault-check
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
   install-windows:
     # The installer's behavior and security tests (token handling,
     # checksums, the atomic junction switch) only execute on Windows -
@@ -209,6 +269,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
+      # Informational: names the host and nothing gates on it. Prints one line
+      # per processor. A query error is not shown and does not fail the step,
+      # so a runner without WMI access prints nothing.
+      - name: CPU model
+        shell: pwsh
+        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -304,6 +370,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
+      # Informational: names the host and nothing gates on it. Prints one line
+      # per processor. A query error is not shown and does not fail the step,
+      # so a runner without WMI access prints nothing.
+      - name: CPU model
+        shell: pwsh
+        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
       # Before checkout: the e2e goldens and txtar fixtures are
       # byte-compared, so a CRLF working tree fails them by
       # construction.

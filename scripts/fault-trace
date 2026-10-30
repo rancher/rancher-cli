@@ -1,0 +1,55 @@
+#!/bin/bash
+# A `go test -exec` program: runs a test binary under strace and records the
+# hardware faults (SIGSEGV, SIGBUS, SIGFPE) the binary and every program it
+# starts take, even when the runtime recovers from them. scripts/fault-check
+# reads what it writes.
+#
+#   FAULT_LOG_DIR=<existing directory> GOFLAGS=-exec=$PWD/scripts/fault-trace \
+#     go test -count=1 <package>
+#
+# Each traced run writes <name>.log (the strace output) and <name>.pkg (the
+# package: go test runs the binary in the package's directory) into
+# FAULT_LOG_DIR. The program's exit status is the script's.
+set -u
+
+if [ "$(uname -s)" != Linux ]; then
+  echo "scripts/fault-trace: Linux only (macOS: dlv trace --exec <test binary> '^runtime\\.sigpanic\$' -- -test.count=1)" >&2
+  exit 2
+fi
+if [ -z "${FAULT_LOG_DIR:-}" ] || [ ! -d "$FAULT_LOG_DIR" ] || [ $# -eq 0 ]; then
+  echo "usage: FAULT_LOG_DIR=<existing directory> scripts/fault-trace <program> [args...]" >&2
+  exit 2
+fi
+# A traced process cannot be traced again: a test that runs go test itself
+# starts a child that inherits the -exec flag, and the outer strace already
+# follows it.
+tracer=$(awk '/^TracerPid:/ {print $2}' /proc/self/status) || {
+  echo "scripts/fault-trace: cannot read /proc/self/status" >&2
+  exit 2
+}
+case "$tracer" in
+  0) ;;
+  0* | '' | *[!0-9]*)
+    echo "scripts/fault-trace: unexpected TracerPid value \"$tracer\"" >&2
+    exit 2
+    ;;
+  *) exec "$@" ;;
+esac
+if ! command -v strace >/dev/null 2>&1; then
+  echo "scripts/fault-trace: strace is required" >&2
+  exit 127
+fi
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+pkg=${PWD#"$repo"}
+pkg=${pkg#/}
+[ -n "$pkg" ] || pkg=.
+base=$(mktemp "$FAULT_LOG_DIR/run.XXXXXX") || {
+  echo "scripts/fault-trace: cannot create a log file in $FAULT_LOG_DIR" >&2
+  exit 2
+}
+printf '%s\n' "$pkg" >"$base.pkg" || {
+  echo "scripts/fault-trace: cannot write $base.pkg" >&2
+  exit 2
+}
+exec strace --seccomp-bpf -f -Y -q -e trace=execve,clone,clone3,fork,vfork -e signal=SIGSEGV,SIGBUS,SIGFPE -o "$base.log" -- "$@"
