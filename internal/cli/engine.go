@@ -21,6 +21,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/telemetry"
 	ucli "github.com/urfave/cli/v3"
 )
 
@@ -456,6 +457,9 @@ type runDeps struct {
 	anchor       *config.CacheAnchor
 	version      string
 	sessionNamer engine.SessionTokenNamer
+	// experiments is what the experiment variable turned on for this run, for
+	// the one command that lists it.
+	experiments telemetry.ExperimentView
 }
 
 // adaptEntry wires one declarative entry through the single run path: it
@@ -547,8 +551,9 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				io.ServerIdentity = f.Identity
 				io.Capability = newCapabilityChecker(f)
 				io.Projects = projectResolver{f}
-				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f})
+				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: experimentView()})
 			}
+			addExperimentNotices(&io, d.Name)
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
 			if ce != nil {
 				return exit(ce)

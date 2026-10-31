@@ -45,6 +45,9 @@ var realSurface = surfaceRules{
 		// ReadServerFacts takes the server's canonical URL, which only
 		// names the facts file it reads.
 		"ReadServerFacts",
+		// IsDevelopmentVersion answers a question about a version text and
+		// returns a bool; it puts nothing into an event.
+		"IsDevelopmentVersion",
 	},
 	types: []string{
 		"Attribute", "ContractInputs", "EventSpec", "Options", "RunInput", "ControlInput",
@@ -53,6 +56,9 @@ var realSurface = surfaceRules{
 		// and StoreInstallID normalize it. FactsRead holds the Facts that
 		// Record read, which were stored through the same normalizers.
 		"Answer", "FactsRead",
+		// ExperimentView is the text `telemetry status` prints about the
+		// experiment variable; no event holds one.
+		"ExperimentView",
 	},
 }
 

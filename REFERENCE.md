@@ -27,6 +27,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [kubectl integration](#kubectl-integration)
 - [Token reuse for kubectl (opt-in)](#token-reuse-for-kubectl-opt-in)
 - [Usage recording](#usage-recording)
+- [Experiments](#experiments)
 - [TLS & proxy](#tls--proxy)
 - [What the CLI sends to the server](#what-the-cli-sends-to-the-server)
 
@@ -250,6 +251,9 @@ take it; `-` means no flag. A variable and its flag relate in different ways:
   variables; under `--color=auto` the variables decide.
 - `RANCHER_CLI_TELEMETRY` set to `true` or `false` takes precedence over the
   `telemetry` config key; any other value is ignored. It has no flag.
+- `RANCHER_CLI_EXPERIMENT` lists experimental settings. Only a development
+  build reads it; a release build ignores it. It has no flag. See
+  [Experiments](#experiments).
 
 | Var | Flag | Effect |
 |---|---|---|
@@ -264,6 +268,7 @@ take it; `-` means no flag. A variable and its flag relate in different ways:
 | `CATTLE_OAUTH_AUTH_FLOW` | `--auth-flow` | older name of `RANCHER_CLI_OAUTH_AUTH_FLOW`, read when that one is empty |
 | `CATTLE_OAUTH_CALLBACK_PORT` | - | older name of `RANCHER_CLI_OAUTH_CALLBACK_PORT`, read when that one is empty |
 | `RANCHER_CLI_TELEMETRY` | - | `true` or `false`; turns usage recording on or off and overrides the `telemetry` key of config.yaml, see [Usage recording](#usage-recording); empty counts as unset and any other value is ignored |
+| `RANCHER_CLI_EXPERIMENT` | - | experimental, development builds only: a comma-separated list of `name` or `name=value` items, see [Experiments](#experiments); `telemetryupload=<url>` is accepted and listed by `rancher telemetry status`, and nothing is sent in this version |
 | `RANCHER_CLI_READONLY` | `--read-only` | when non-empty, every run refuses commands that make changes; local commands stay usable; see [Read-only mode](#read-only-mode) |
 | `NO_COLOR` | `--color` | when non-empty, turns off styling under `--color=auto`; see [Color](#color) |
 | `CLICOLOR_FORCE` | `--color` | when non-empty and not `0`, turns on styling under `--color=auto` unless `NO_COLOR` is set; see [Color](#color) |
@@ -2018,7 +2023,7 @@ the CLI has no upload code.
 
 | Command | What it does |
 |---|---|
-| `rancher telemetry status` | Shows whether recording is on and what decided it, the counts of recorded and dropped events, the contract version and the config directory id. Creates nothing and works while recording is off. |
+| `rancher telemetry status` | Shows whether recording is on and what decided it, the counts of recorded and dropped events, the contract version and the config directory id. In a development build with `RANCHER_CLI_EXPERIMENT` set, it also lists the active experiments and the upload endpoint; the endpoint is accepted and listed, and nothing is sent in this version. Creates nothing and works while recording is off. |
 | `rancher telemetry on` | Writes `telemetry: "true"` to config.yaml. Creates the config directory when it is missing and deletes nothing. |
 | `rancher telemetry off` | Writes `telemetry: "false"`, then deletes the recorded events, the server facts and the config directory id. Creates the config directory when it is missing. |
 | `rancher telemetry reset` | Deletes the recorded events, the server facts and the config directory id, and keeps the `telemetry` key. |
@@ -2115,6 +2120,44 @@ variable keeps recording on.
 
 A config.yaml the CLI cannot load stops these commands like every config
 command: repair the file first, or choose another config directory.
+
+## Experiments
+
+`RANCHER_CLI_EXPERIMENT` turns on experimental settings. An experiment can
+change or go away in any release. Only a development build reads the variable:
+a build whose version is `dev`, `dev-<hex>` or `dev-unknown`. A release build
+never reads it and prints no warning for it.
+
+The value is a comma-separated list of `name` or `name=value` items:
+
+- An item splits at its first `=`; the value runs to the next comma. An empty
+  item is skipped, and nothing is trimmed. An empty value is the same as the
+  bare name.
+- A name is lower-case letters and digits, starting with a letter. Any other
+  item is ignored with the warning `ignored an unrecognized item (item <n>)`,
+  where `<n>` counts the items from 1, empty ones included. The warning never
+  holds the item, because it can hold a password.
+- A name that is not in the table is ignored with a warning that names it.
+- The last item of a name decides. An invalid value leaves the experiment off,
+  with a warning that names the experiment and the reason and never shows the
+  value, and an earlier item of the same name does not apply.
+
+A warning goes to stderr, or to `warnings` in `-o json` and `-o yaml`. There is
+none for completion, `--help`, `--version`, the kubectl exec plugin (the
+commands `auth get-token` and `token`, and any run with `KUBERNETES_EXEC_INFO`
+set) or a command that fails before it runs. `rancher telemetry status` lists
+the warnings in every other run, and none in an exec plugin run.
+
+| Experiment | Value | Effect |
+|---|---|---|
+| `telemetryupload` | `scheme://host[:port]` with a path that is empty or `/`: `https`, or `http` for `localhost`, `::1` and `127.0.0.0/8`; a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); a host that is an IP address or a DNS name in ASCII (write an international name in its `xn--` form); no user name, password, query or fragment | the upload endpoint, shown by `rancher telemetry status` as its canonical origin; accepted and listed, and nothing is sent in this version |
+
+`telemetryupload` with no value warns that it has no endpoint, and
+`rancher telemetry status` shows `upload endpoint: not set`. There is no
+default endpoint.
+
+Set the variable for one shell, not in a shell profile, and check
+`rancher telemetry status`.
 
 ## TLS & proxy
 

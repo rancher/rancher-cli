@@ -23,9 +23,10 @@ import (
 // that package.
 
 const (
-	telemetryDir = "internal/telemetry"
-	fsaclDir     = "internal/fsacl"
-	windowsSys   = "golang.org/x/sys/windows"
+	telemetryDir     = "internal/telemetry"
+	telemetrysendDir = "internal/telemetrysend"
+	fsaclDir         = "internal/fsacl"
+	windowsSys       = "golang.org/x/sys/windows"
 )
 
 // bannedImports are the packages no closure may hold: full import paths and
@@ -57,6 +58,19 @@ func isNetworkPath(path string) bool {
 }
 
 var directRules = map[string]directRule{
+	// The check of the experiment endpoint makes no request and starts no
+	// process: the standard library without the network packages and os/exec,
+	// except net/url and net/netip, which parse the value, and credhelper's URL
+	// check.
+	telemetrysendDir: {
+		standard: func(p string) bool {
+			if p == "net/url" || p == "net/netip" {
+				return true
+			}
+			return !isNetworkPath(p) && p != "os/exec"
+		},
+		others: []string{modulePrefix + "credhelper"},
+	},
 	telemetryDir: {
 		standard: func(p string) bool { return !isNetworkPath(p) },
 		others:   []string{modulePrefix + "internal/invocation", modulePrefix + "internal/fsacl"},
@@ -189,6 +203,18 @@ func TestDirectImportCheckCatchesFixtures(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.True(t, strings.HasSuffix(got[0], "imports "+modulePrefix+"internal/client/httpx"), got)
 	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/clean", directRules[telemetrycmdDir]))
+
+	sendRule := directRules[telemetrysendDir]
+	got = directImportFindings(t, "test/conformance/testdata/importguard/netdirect", sendRule)
+	require.Len(t, got, 1)
+	assert.True(t, strings.HasSuffix(got[0], "netdirect.go imports net"), got)
+	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/clean", sendRule))
+	for _, p := range []string{"net/url", "net/netip", "errors", "strings", "strconv"} {
+		assert.True(t, sendRule.standard(p), p)
+	}
+	for _, p := range []string{"net", "net/http", "net/http/httptrace", "net/smtp", "crypto/tls", "os/exec"} {
+		assert.False(t, sendRule.standard(p), p)
+	}
 }
 
 // TestTelemetryImportClosureHasNoNetworkOrCredentialPackage asserts, for

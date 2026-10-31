@@ -77,7 +77,8 @@ const completionProtocolMarker = "--rancher-completion-proto=2"
 //     while a line is completed, and completionDebugEnabled, which keeps the
 //     completion trace to completion requests, and resolveReadOnly, which
 //     keeps a completion request from deciding whether to record a usage
-//     event. None picks a way to complete; a completion callback
+//     event, and noteExperiments, which keeps a completion request from
+//     reading the experiment variable. None picks a way to complete; a completion callback
 //     (universalShellCompleteFunc, aliasAwareGroupComplete, the root's,
 //     completeCurrentWord) runs only for a marked line and must not ask.
 //   - completionDebugEnabled: completionDebugf, which writes the trace.
@@ -88,7 +89,7 @@ var completionNames = map[string][]string{
 	"protoSentinel":    {"completionRequest", "SanitizedArgs", "CaptureArgv"},
 	"completionFlag":   {"OutdatedCompletionScript", "SanitizedArgs", "CaptureArgv"},
 	"rawCompleting":    {"completionActive", "CaptureArgv"},
-	"completionActive": {"Adapt", "adaptEntry", "completionDebugEnabled", "resolveReadOnly"},
+	"completionActive": {"Adapt", "adaptEntry", "completionDebugEnabled", "noteExperiments", "resolveReadOnly"},
 	// completionDebugEnabled carries completionActive, so it is watched too.
 	"completionDebugEnabled": {"completionDebugf"},
 }

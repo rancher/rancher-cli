@@ -91,6 +91,8 @@ what drifted the previous revision of this doc).
 | `internal/client/httpx` | Constructs the hardened `*http.Client`s: `New` (TLS floor / CA / insecure, proxy, timeouts) for Rancher-origin callers (`internal/token`'s auth flows, `internal/client/provider`'s `/rancherversion` probe and `InstallIDFetchFor`, `internal/cli`'s GET-only `engine.RootClient`), `NewExternal` (operating-system roots only) for identity-provider endpoints, the shared `RejectCrossOriginRedirect` policy every client carries, and the closed `Origin` tuple those decisions compare. `New` also sends the process's User-Agent (`SetUserAgent`, set once by `cmd/rancher`) on every request, replacing any the caller set. Three process-wide records, cleared at the start of each run: the hosts that answered (scheme, host and the transport below the one that recorded it), the install id request the root client, an auth command or the exec plugin registered with whether it skips a stored failure's wait, and the function a plugin sign-in calls with its login token's install id request before it deletes that token. It also sends the unauthenticated `GET /rancherversion` through a recorded transport, and reads a body through a limit. |
 | `internal/invocation` | Describes how the process was started (version, platform, agent harness session, exec plugin, CI) from the environment, in one place, and builds the User-Agent from it. Standard library only; `cmd/rancher` builds it and hands the string to `httpx` and the whole context to `cli.SetInvocation`; `internal/cli` passes the context to `internal/telemetry`, which reads its agent, CI and exec plugin facts to describe the producer of a usage event. |
 | `internal/telemetry` | The usage event contract and the local recording package: the event types and normalizers (every value a closed list, a pattern, a count, a bucket or a random id), the flat JSON encoder, the generator of the published contract files (`telemetry/contract`), the on and off controls, and the store under `<config dir>/telemetry` (exclusive create of a random slot per event, an hourly compaction and age pass, one facts file per server), and the rules for the server facts: when each record is due, with the install id's rule that skips a stored failure's wait, what each answer stores, and the read of a server's facts file under the recording controls. It imports the standard library without network packages, `internal/invocation` and `internal/fsacl` only; a conformance test checks the direct imports and the import closure on every release platform. It takes no lock and never creates the config directory. |
+| `internal/experiment` | The table of experimental settings the `RANCHER_CLI_EXPERIMENT` variable turns on (development builds only) and the parser of the variable. Standard library only; it reads no environment and no file. |
+| `internal/telemetrysend` | The check of the `telemetryupload` experiment's value: an origin, https or http to a loopback host, built on `credhelper.CheckServerURL`. It makes no request and imports no HTTP package; a conformance test limits its direct imports. |
 | `internal/fsacl` | Owner-only access lists where the operating system ignores Unix mode bits: `Harden` for one file, `HardenInheritable` for a directory whose new entries inherit the list. Windows only does anything; every other platform is a no-op. Standard library and `golang.org/x/sys/windows` only; `internal/config` and `internal/telemetry` both call it. |
 | `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, attributes it to a request by normalized origin (`ClassifyForOrigin`, `KindOf`), and picks the candidate trust anchor from the chain the failed handshake itself already observed - no separate probe dial. `WrapTransport` is the `http.RoundTripper` wrapper that turns a certificate failure of a request to the Rancher server's origin into that error, wording its remedy per command (`Remedy`): `config` builds the wording for a resolved connection, and `kube`, `internal/cli` and `internal/token` install the wrapper on their Rancher clients (`rest.Config.WrapTransport`, `httpx.Options.WrapTransport`); the version probe, the auth-provider sign-in, the install id request `auth login` and `auth status` register (the refresh drops the error of its request, and no wording of it is ever shown) and the completion client are not wrapped. A failure to verify an `https://` proxy is never classified as the server's. |
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl parity). It is also the terminal-safety boundary: `Printable` removes control and Unicode format characters and the line and paragraph separators from one server-sourced value (table cells and headers, names, warning and error lines, dry-run preview fields, and the values text builders filter at insertion); `PrintableLines` does the same for a whole text, keeping its newlines and this process's remedy markers, and the runtime applies it to every text print and the dry-run preview before expansion, and `internal/ui` to every notice and prompt label. json, yaml and template stay verbatim, and so do `RawBytes`, the exec credential and the text of a command whose descriptor sets `PlainText`. A `RawBytes` payload that begins with a comment line shows each server value in Go's quoted form, and gives a command with the value shell-quoted only when the value prints as it is (`create kubeconfig`). |
@@ -162,6 +164,8 @@ graph TD
     httpx["internal/client/httpx"]
     invocation["internal/invocation"]
     telemetry["internal/telemetry"]
+    experiment["internal/experiment"]
+    telemetrysend["internal/telemetrysend"]
     fsacl["internal/fsacl"]
     tlstrust["internal/client/tlstrust"]
     output["internal/output"]
@@ -217,6 +221,8 @@ graph TD
     cli --> tlstrust
     cli --> safety
     cli --> telemetry
+    cli --> experiment
+    cli --> telemetrysend
     cli --> invocation
     cli --> outputstyle
 
@@ -243,6 +249,7 @@ graph TD
     runtime --> ui
     runtime --> clierr
     runtime --> telemetry
+    runtime --> experiment
 
     engine --> runtime
     engine --> safety
@@ -463,6 +470,7 @@ graph TD
     config --> fsacl
     telemetry --> invocation
     telemetry --> fsacl
+    telemetrysend --> credhelper
 
     output --> clierr
     output --> outputstyle

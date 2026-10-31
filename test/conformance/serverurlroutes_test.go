@@ -156,6 +156,7 @@ var serverURLRouteAllowed = map[string]requestAllowance{
 	"internal/config/serverurl.go:identityProblem":                 {2, "the check of an identity before a recovery sequence is built from it; rows config status, config delete-server, auth logout"},
 	"internal/engine/kubeconfig/command.go:Execute":                {1, "kubeconfig; Effective refuses an unusable URL; TestKubeconfigRefusesAMalformedServerURL"},
 	"internal/engine/kubeconfig/records.go:installHint":            {1, "the install hint's wording"},
+	"internal/telemetrysend/origin.go:Origin":                      {1, "the check of the telemetryupload value, which refuses a user name or password; its errors hold no part of the value; TestUploadURLRules"},
 	"internal/token/revocation.go:newClient":                       {1, "a revoke never dials an unusable stored URL; rows config delete-server, auth logout"},
 	"internal/token/token.go:computeCacheProbeKey":                 {1, "a URL with userinfo gives no probe key; rows auth get-token and token, a cache hit"},
 	"internal/token/token.go:checkServerOrigin":                    {1, "the exec plugin's and the shim's check of the URL they connect to; rows auth get-token and token"},

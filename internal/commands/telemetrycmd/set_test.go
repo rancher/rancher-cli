@@ -423,7 +423,7 @@ func TestTheVariableDeletesNothing(t *testing.T) {
 			dir := newDir(t)
 			seedStore(t, dir)
 			before := snapshot(t, filepath.Join(dir, "telemetry"))
-			for _, cmd := range []rt.Command{NewStatus(dir), NewShow(dir), NewOn(dir)} {
+			for _, cmd := range []rt.Command{NewStatus(dir, telemetry.ExperimentView{}), NewShow(dir), NewOn(dir)} {
 				_, err := execute(t, cmd)
 				require.NoError(t, err)
 				assert.Equal(t, before, snapshot(t, filepath.Join(dir, "telemetry")), cmd.Describe().Name)
@@ -497,7 +497,7 @@ func TestWarningsPerCommand(t *testing.T) {
 	build := func(name, dir string) rt.Command {
 		switch name {
 		case "status":
-			return NewStatus(dir)
+			return NewStatus(dir, telemetry.ExperimentView{})
 		case "on":
 			return NewOn(dir)
 		case "off":

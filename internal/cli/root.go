@@ -80,7 +80,7 @@ func buildEntries() []entry {
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewInstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewUninstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewStatus(d.version) }},
-		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewStatus(d.dir) }},
+		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewStatus(d.dir, d.experiments) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewOn(d.dir) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewOff(d.dir) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewReset(d.dir) }},
@@ -1033,6 +1033,7 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 		},
 		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
 			config.SetReadOnlyOverride(resolveReadOnly(c))
+			noteExperiments(version)
 			return ctx, nil
 		},
 		Commands: commandsList,

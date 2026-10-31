@@ -9759,7 +9759,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). Recorded events stay on this machine. Creates nothing and works while recording is off.",
+      "desc": "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). In a development build with RANCHER_CLI_EXPERIMENT set, it also lists the active experiments and the upload endpoint; the endpoint is accepted and listed, and nothing is sent in this version. Recorded events stay on this machine. Creates nothing and works while recording is off.",
       "examples": [
         "rancher telemetry status",
         "rancher telemetry status -o json"
@@ -9769,7 +9769,7 @@
       "serverAccess": "none",
       "shape": "text",
       "toolset": "core",
-      "usage": "Show whether usage recording is on and what is recorded"
+      "usage": "Show whether usage recording is on and what is recorded, and any active experiments"
     },
     {
       "auth": true,
@@ -10023,6 +10023,10 @@
       "name": "RANCHER_CLI_TELEMETRY"
     },
     {
+      "desc": "experimental: a comma-separated list of name[=value] experiments, honored only in a development build; telemetryupload=<url> is accepted and listed by telemetry status, and nothing is sent in this version",
+      "name": "RANCHER_CLI_EXPERIMENT"
+    },
+    {
       "desc": "base directory for the default config directory",
       "name": "XDG_CONFIG_HOME"
     },
@@ -10153,6 +10157,14 @@
     "TLS_TRUST": 10,
     "VALIDATION": 2
   },
+  "experiments": [
+    {
+      "desc": "the endpoint for uploading usage data; accepted and listed by telemetry status, and nothing is sent in this version",
+      "devOnly": true,
+      "name": "telemetryupload",
+      "valueForm": "scheme://host[:port] with path empty or /; https, or http to localhost, ::1 or 127.0.0.0/8; a host that is an IP address or a DNS name in ASCII (write an international name in its xn-- form); a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); no user name, password, query or fragment"
+    }
+  ],
   "globalFlags": [
     {
       "appliesTo": "mutating",

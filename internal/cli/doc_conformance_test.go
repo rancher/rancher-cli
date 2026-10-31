@@ -15,6 +15,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/experiment"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -826,4 +827,75 @@ func TestSplitTableCells(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, []string{"`A`", "-", `x \| y`}, splitTableCells("| `A` | - | x \\| y |"))
 	assert.Equal(t, []string{"a", "b"}, splitTableCells("|a|b|"))
+}
+
+var experimentNamePattern = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
+
+// experimentTableProblems compares the first table under REFERENCE.md's
+// Experiments heading with the experiment names: the first cell of each data
+// row is one code span holding a name, and the names are the same set. Other
+// code spans of the section are not names.
+func experimentTableProblems(doc string, names []string) []string {
+	table := firstTableAfterHeading(doc, "Experiments")
+	if len(table) < 2 {
+		return []string{"no table under the Experiments heading"}
+	}
+	var problems []string
+	got := map[string]bool{}
+	for _, line := range table[2:] {
+		cells := splitTableCells(line)
+		name, ok := codeSpanText(cells[0])
+		if !ok || !experimentNamePattern.MatchString(name) {
+			problems = append(problems, fmt.Sprintf("row %q: the first cell is not one code span holding a name", line))
+			continue
+		}
+		if got[name] {
+			problems = append(problems, name+" has more than one row")
+		}
+		got[name] = true
+	}
+	for _, n := range names {
+		if !got[n] {
+			problems = append(problems, n+" is in the experiment table and has no row")
+		}
+	}
+	for n := range got {
+		if !slices.Contains(names, n) {
+			problems = append(problems, n+" has a row and is not in the experiment table")
+		}
+	}
+	slices.Sort(problems)
+	return problems
+}
+
+// TestReferenceExperimentsMatchTable asserts the experiment names in
+// REFERENCE.md's Experiments section, the first cell of each row of its
+// table, are the names of experiment.Table(), and that the RANCHER_CLI_EXPERIMENT
+// entry of EnvVars() names the variable the table reads.
+func TestReferenceExperimentsMatchTable(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(docPath(t, "REFERENCE.md"))
+	require.NoError(t, err)
+	var names []string
+	for _, e := range experiment.Table() {
+		names = append(names, e.Name)
+	}
+	assert.Empty(t, experimentTableProblems(string(raw), names))
+	assert.True(t, slices.ContainsFunc(runtime.EnvVars(), func(v runtime.EnvVar) bool {
+		return v.Name == experiment.EnvVar && v.Flag == ""
+	}), "EnvVars() has no entry for %s", experiment.EnvVar)
+}
+
+// TestExperimentTableProblemsFixture asserts experimentTableProblems reports a
+// row the table lacks, a table row the document lacks, a first cell that is
+// not a name and a repeated row.
+func TestExperimentTableProblemsFixture(t *testing.T) {
+	t.Parallel()
+	const doc = "## Experiments\n\nSee `x`.\n\n| Experiment | Value | Effect |\n|---|---|---|\n| `alpha` | `v` | e |\n| `beta1` | - | e |\n\n## Next\n"
+	assert.Empty(t, experimentTableProblems(doc, []string{"alpha", "beta1"}))
+	assert.NotEmpty(t, experimentTableProblems(doc, []string{"alpha", "beta1", "gamma"}))
+	assert.NotEmpty(t, experimentTableProblems(doc, []string{"alpha"}))
+	assert.NotEmpty(t, experimentTableProblems(strings.Replace(doc, "`beta1`", "`Beta`", 1), []string{"alpha", "beta1"}))
+	assert.NotEmpty(t, experimentTableProblems(strings.Replace(doc, "`beta1`", "`alpha`", 1), []string{"alpha"}))
+	assert.NotEmpty(t, experimentTableProblems("## Experiments\n\nno table\n", nil))
 }

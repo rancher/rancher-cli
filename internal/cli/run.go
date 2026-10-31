@@ -34,6 +34,9 @@ import (
 // urfave's flag errors, the refusals above, a completion request) and the
 // completion and telemetry commands record nothing. Recording never changes
 // the output or the exit code.
+//
+// With RANCHER_CLI_EXPERIMENT set in a development build, a bad item adds a
+// warning line.
 func Run(ctx context.Context, root *ucli.Command, args []string) int {
 	return run(ctx, root, args).code
 }
@@ -43,6 +46,7 @@ func run(ctx context.Context, root *ucli.Command, args []string) runResult {
 	start := now()
 	clearUnknownCommand(root)
 	resetRecordingState()
+	resetExperimentState()
 	httpx.ClearRecords()
 	clearHeldFacts()
 	k, err := runArgv(ctx, root, args)

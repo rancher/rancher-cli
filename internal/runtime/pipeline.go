@@ -69,10 +69,11 @@ type IO struct {
 	Capability CapabilityChecker
 
 	// Notices drains operator-facing advisories recorded outside any
-	// Result by this invocation's credential-store dependency (a
-	// loose-permission finding, a keychain-degrade warning) - wired from
-	// the resolved store wherever one exists; nil for a command with no
-	// store dependency (schema, a bare local command). renderResult,
+	// Result: those of this invocation's credential-store dependency (a
+	// loose-permission finding, a keychain-degrade warning), wired from
+	// the resolved store wherever one exists, and those of the process
+	// itself (an ignored item of an environment variable), wired by the CLI
+	// layer; nil when a command has neither. renderResult,
 	// renderEffect, renderErr, and finishOnceOnlyResult each drain it
 	// exactly once, feeding the one render they own.
 	Notices NoticeSource
@@ -105,9 +106,10 @@ type IO struct {
 // were recorded, destructively: a call returns only what was recorded since
 // the previous drain. Implemented by a credential store so that resolving it
 // lazily - possibly racing a command-body goroutine - never loses a notice
-// recorded outside any Result. Draining must not itself force a lazy store to
-// resolve: a command that never touches credentials must still see zero
-// store-init side effects.
+// recorded outside any Result, and by the CLI layer for advisories that
+// belong to the process and not to a command. Draining must not itself force
+// a lazy store to resolve: a command that never touches credentials must
+// still see zero store-init side effects.
 type NoticeSource interface {
 	DrainNotices() []string
 }

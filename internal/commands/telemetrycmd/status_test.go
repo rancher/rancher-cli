@@ -89,7 +89,7 @@ func TestStatusCreatesNothingInAnyState(t *testing.T) {
 				before := snapshot(t, dir)
 				for _, cmd := range []string{"status", "show"} {
 					if cmd == "status" {
-						_, err := execute(t, NewStatus(dir))
+						_, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 						require.NoError(t, err)
 					} else {
 						_, err := execute(t, NewShow(dir))
@@ -117,7 +117,7 @@ func TestStatusNamesEachControl(t *testing.T) {
 			c.arrange(t)
 			dir := newDir(t)
 			prepareState(t, dir, stateEmpty, c.configText)
-			res, err := execute(t, NewStatus(dir))
+			res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 			require.NoError(t, err)
 			d := dataMap(t, res)
 			assert.Equal(t, string(c.want), d["decidedBy"])
@@ -137,7 +137,7 @@ func TestStatusReportsWhatIsRecorded(t *testing.T) {
 	controlsEnv(t)
 	dir := newDir(t)
 	seedStore(t, dir)
-	res, err := execute(t, NewStatus(dir))
+	res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 	require.NoError(t, err)
 	d := dataMap(t, res)
 	assert.Equal(t, "on", d["state"])
@@ -161,12 +161,12 @@ func TestStatusWithoutAnIDOmitsIt(t *testing.T) {
 	dir := newDir(t)
 	seedStore(t, dir)
 	require.NoError(t, os.Remove(filepath.Join(dir, "telemetry", "config-directory-id")))
-	res, err := execute(t, NewStatus(dir))
+	res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 	require.NoError(t, err)
 	assert.NotContains(t, dataMap(t, res), "configDirectoryId")
 
 	putFile(t, dir, "telemetry/config-directory-id", "22222222-2222-4222-8222-222222222222")
-	res, err = execute(t, NewStatus(dir))
+	res, err = execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 	require.NoError(t, err)
 	d := dataMap(t, res)
 	assert.Equal(t, "off", d["state"])
@@ -178,7 +178,7 @@ func TestStatusWithoutAnIDOmitsIt(t *testing.T) {
 func TestStatusSaysNothingIsRecordedWithoutADirectory(t *testing.T) {
 	controlsEnv(t)
 	dir := newDir(t)
-	res, err := execute(t, NewStatus(dir))
+	res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 	require.NoError(t, err)
 	assert.Contains(t, res.Text, "recording is on; nothing is recorded because the config directory does not exist")
 	assert.Contains(t, res.Text, "does not exist)")
@@ -212,7 +212,7 @@ func TestStatusConfigKeyCases(t *testing.T) {
 			controlsEnv(t)
 			dir := newDir(t)
 			writeConfig(t, dir, tc.yaml+"\n")
-			res, err := execute(t, NewStatus(dir))
+			res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 			require.NoError(t, err)
 			d := dataMap(t, res)
 			assert.Equal(t, tc.state, d["state"])
@@ -245,7 +245,7 @@ func TestStatusWarnsForAnInvalidKeyWhateverControlDecides(t *testing.T) {
 	t.Setenv(telemetry.EnvTelemetry, "false")
 	dir := newDir(t)
 	writeConfig(t, dir, "telemetry: maybe\n")
-	res, err := execute(t, NewStatus(dir))
+	res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 	require.NoError(t, err)
 	assert.Equal(t, telemetry.EnvTelemetry, dataMap(t, res)["decidedBy"])
 	require.Len(t, res.Warnings, 1)
@@ -276,7 +276,7 @@ func TestStatusVariableValues(t *testing.T) {
 			t.Setenv(telemetry.EnvTelemetry, tc.value)
 			dir := newDir(t)
 			writeConfig(t, dir, "currentServer: \"\"\n")
-			res, err := execute(t, NewStatus(dir))
+			res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 			require.NoError(t, err)
 			d := dataMap(t, res)
 			assert.Equal(t, tc.state, d["state"])
@@ -300,7 +300,7 @@ func TestStatusSettingFollowsTheKeyUnderAnIgnoredVariable(t *testing.T) {
 	t.Setenv(telemetry.EnvTelemetry, "on")
 	dir := newDir(t)
 	writeConfig(t, dir, "telemetry: \"false\"\n")
-	res, err := execute(t, NewStatus(dir))
+	res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 	require.NoError(t, err)
 	d := dataMap(t, res)
 	assert.Equal(t, "off", d["state"])
@@ -320,7 +320,7 @@ func TestStatusCountsTheLimit(t *testing.T) {
 		lines.WriteString(eventJSON(n, "2026-10-20T10:00:00Z", "get project", "ok", 0) + "\n")
 	}
 	putFile(t, dir, "telemetry/events/"+hour+"/"+hour+".jsonl", lines.String())
-	res, err := execute(t, NewStatus(dir))
+	res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 	require.NoError(t, err)
 	d := dataMap(t, res)
 	assert.Equal(t, telemetry.CountLimit, d["events"])
@@ -359,7 +359,10 @@ func TestStatusWarnsForAnUnsafeOrUnreadableTelemetryPath(t *testing.T) {
 				before = snapshot(t, outside)
 			}
 			for _, run := range []func() ([]string, error){
-				func() ([]string, error) { res, err := execute(t, NewStatus(dir)); return res.Warnings, err },
+				func() ([]string, error) {
+					res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
+					return res.Warnings, err
+				},
 				func() ([]string, error) { res, err := execute(t, NewShow(dir)); return res.Warnings, err },
 			} {
 				warnings, err := run()
@@ -432,9 +435,86 @@ func TestStatusTextLines(t *testing.T) {
 			if tc.variable != "" {
 				t.Setenv(telemetry.EnvTelemetry, tc.variable)
 			}
-			res, err := execute(t, NewStatus(dir))
+			res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
 			require.NoError(t, err)
 			assert.Equal(t, tc.want(dir), res.Text)
 		})
 	}
+}
+
+// TestStatusListsExperimentsAndNoAttemptYet asserts the status text lines and
+// data keys of an active experiment with and without an endpoint, that the
+// zero view adds nothing to the text or the data, and that the view's warnings
+// are in the result once.
+func TestStatusListsExperimentsAndNoAttemptYet(t *testing.T) {
+	const interim = "upload: the endpoint is accepted and listed here; nothing is sent in this version"
+	experimentKeys := []string{"experiments", "uploadEndpoint", "uploadLastAttempt"}
+
+	t.Run("zero view", func(t *testing.T) {
+		controlsEnv(t)
+		dir := newDir(t)
+		res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}))
+		require.NoError(t, err)
+		assert.NotContains(t, res.Text, "experiment")
+		assert.NotContains(t, res.Text, "upload")
+		data := dataMap(t, res)
+		for _, k := range experimentKeys {
+			assert.NotContains(t, data, k)
+		}
+		assert.Empty(t, res.Warnings)
+	})
+
+	t.Run("endpoint set", func(t *testing.T) {
+		controlsEnv(t)
+		dir := newDir(t)
+		view := telemetry.ExperimentView{
+			Names:    []string{"telemetryupload"},
+			Endpoint: "https://h.example",
+			Warnings: []string{"RANCHER_CLI_EXPERIMENT: unknown experiment b ignored"},
+		}
+		res, err := execute(t, NewStatus(dir, view))
+		require.NoError(t, err)
+		assert.True(t, strings.HasSuffix(res.Text, "  experiments: telemetryupload\n"+
+			"  upload endpoint: https://h.example\n"+
+			"  last upload attempt: no attempt yet\n"+
+			"  "+interim+"\n"), res.Text)
+		data := dataMap(t, res)
+		assert.Equal(t, []string{"telemetryupload"}, data["experiments"])
+		assert.Equal(t, "https://h.example", data["uploadEndpoint"])
+		assert.Contains(t, data, "uploadLastAttempt")
+		assert.Nil(t, data["uploadLastAttempt"])
+		assert.Equal(t, []string{"RANCHER_CLI_EXPERIMENT: unknown experiment b ignored"}, res.Warnings)
+	})
+
+	t.Run("no endpoint", func(t *testing.T) {
+		controlsEnv(t)
+		dir := newDir(t)
+		res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{Names: []string{"telemetryupload"}}))
+		require.NoError(t, err)
+		assert.Contains(t, res.Text, "  upload endpoint: not set\n")
+		data := dataMap(t, res)
+		assert.Equal(t, []string{"telemetryupload"}, data["experiments"])
+		assert.NotContains(t, data, "uploadEndpoint")
+		assert.Nil(t, data["uploadLastAttempt"])
+	})
+
+	t.Run("warnings without an active experiment", func(t *testing.T) {
+		controlsEnv(t)
+		dir := newDir(t)
+		line := "RANCHER_CLI_EXPERIMENT: unknown experiment b ignored"
+		res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{Warnings: []string{line}}))
+		require.NoError(t, err)
+		assert.NotContains(t, res.Text, "experiments:")
+		assert.Equal(t, []string{line}, res.Warnings)
+	})
+
+	t.Run("recording off", func(t *testing.T) {
+		controlsEnv(t)
+		t.Setenv(telemetry.EnvTelemetry, "false")
+		dir := newDir(t)
+		res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{Names: []string{"telemetryupload"}, Endpoint: "https://h.example"}))
+		require.NoError(t, err)
+		assert.Contains(t, res.Text, "recording is off")
+		assert.Contains(t, res.Text, "  upload endpoint: https://h.example\n")
+	})
 }

@@ -191,7 +191,7 @@
       "commands": [
         {
           "name": "telemetry status",
-          "usage": "Show whether usage recording is on and what is recorded"
+          "usage": "Show whether usage recording is on and what is recorded, and any active experiments"
         },
         {
           "name": "telemetry on",

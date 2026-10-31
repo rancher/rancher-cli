@@ -240,12 +240,13 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			streams := buildIO(c)
 			// A command wired through Adapt has no store dependency
-			// (schema, completion), so streams.Notices stays nil: nothing
-			// here can record a notice, and resolving a dir/store would
+			// (schema, completion), so the only notices are the warnings
+			// of the experiment variable: resolving a dir/store would
 			// cost a config.yaml read+parse on every invocation purely to
-			// fill a seam nothing drains. A future local command that
+			// fill a seam nothing else drains. A future local command that
 			// grows a store dependency registers through adaptEntry,
 			// which wires the store and its notices.
+			addExperimentNotices(&streams, d.Name)
 			status, ce := runtime.Run(ctx, rc, cmdInput{c}, streams, b)
 			if ce != nil {
 				return exit(ce)

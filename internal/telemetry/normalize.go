@@ -63,6 +63,19 @@ func NormalizeVersion(raw string) string {
 	return Other
 }
 
+// IsDevelopmentVersion reports whether raw is a development build's version:
+// NormalizeVersion gives dev, dev-<hex sha> or dev-unknown. unknown, _OTHER
+// and every release form are not. Every development form starts with dev, so
+// the prefix test answers a release version without compiling the version
+// rule's regular expressions.
+func IsDevelopmentVersion(raw string) bool {
+	if !strings.HasPrefix(raw, "dev") {
+		return false
+	}
+	v := NormalizeVersion(raw)
+	return v == "dev" || v == "dev-unknown" || patterns().devVersion.MatchString(v)
+}
+
 // NormalizeUUID reports whether s is a lowercase hyphenated UUID and
 // returns it. Anything else, an uppercase or unhyphenated form included,
 // is rejected.

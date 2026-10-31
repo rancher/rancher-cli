@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -185,5 +186,45 @@ func TestClientTypeRule(t *testing.T) {
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, ClientTypeFor(c.ctx, c.tty), c.name)
+	}
+}
+
+// TestIsDevelopmentVersionEqualsTheVersionRule asserts the prefix shortcut
+// gives the same answer as the rule it stands for: NormalizeVersion returns
+// dev, dev-<hex> or dev-unknown.
+func TestIsDevelopmentVersionEqualsTheVersionRule(t *testing.T) {
+	t.Parallel()
+	rule := func(raw string) bool {
+		v := NormalizeVersion(raw)
+		return v == "dev" || v == "dev-unknown" || regexp.MustCompile(`^dev-[0-9a-f]{1,40}$`).MatchString(v)
+	}
+	for _, tc := range []struct {
+		raw  string
+		want bool
+	}{
+		{"dev", true},
+		{"dev-abc123", true},
+		{"dev-0", true},
+		{"dev-unknown", true},
+		{"dev-" + strings.Repeat("a", 40), true},
+		{"dev-" + strings.Repeat("a", 41), false},
+		{"dev-" + strings.Repeat("a", 61), false},
+		{"devel", false},
+		{"dev-", false},
+		{"dev-ABC", false},
+		{"dev-xyz", false},
+		{"dev-abc-1", false},
+		{"v1.2.3", false},
+		{"1.2.3", false},
+		{"0.1.0-alpha.8", false},
+		{"1.2.3-hotfix-x", false},
+		{"unknown", false},
+		{"_OTHER", false},
+		{"", false},
+		{"Dev", false},
+		{"vdev", false},
+	} {
+		assert.Equal(t, tc.want, IsDevelopmentVersion(tc.raw), tc.raw)
+		assert.Equal(t, rule(tc.raw), IsDevelopmentVersion(tc.raw), "the rule and the shortcut differ for %q", tc.raw)
 	}
 }

@@ -3,26 +3,35 @@ package telemetrycmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 )
 
-type statusCmd struct{ dir string }
+type statusCmd struct {
+	dir  string
+	view telemetry.ExperimentView
+}
 
 // NewStatus builds `telemetry status` (local): whether recording is on,
-// what decided it, and what is recorded. It creates nothing and works
-// while recording is off.
-func NewStatus(dir string) runtime.Command { return &statusCmd{dir: dir} }
+// what decided it, and what is recorded. It also lists the experiments the
+// view holds. It creates nothing and works while recording is off. The zero
+// view lists nothing.
+func NewStatus(dir string, view telemetry.ExperimentView) runtime.Command {
+	return &statusCmd{dir: dir, view: view}
+}
 
 func (statusCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "telemetry status",
-		Usage: "Show whether usage recording is on and what is recorded",
+		Usage: "Show whether usage recording is on and what is recorded, and any active experiments",
 		Desc: "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, " +
 			"the telemetry key of config.yaml, or the default), the number of recorded events, the number of " +
 			"dropped events, the contract version (the version of the event format) and the config directory id " +
 			"(a random id stored for this config directory). " +
+			"In a development build with RANCHER_CLI_EXPERIMENT set, it also lists the active experiments and the " +
+			"upload endpoint; the endpoint is accepted and listed, and nothing is sent in this version. " +
 			"Recorded events stay on this machine. Creates nothing and works while recording is off.",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher telemetry status", "rancher telemetry status -o json"},
@@ -104,9 +113,25 @@ func (c statusCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompte
 		lines = append(lines, "config directory id: "+id)
 	}
 
+	if c.view.Active() {
+		data["experiments"] = c.view.Names
+		data["uploadLastAttempt"] = nil
+		endpoint := "not set"
+		if c.view.Endpoint != "" {
+			data["uploadEndpoint"] = c.view.Endpoint
+			endpoint = c.view.Endpoint
+		}
+		lines = append(lines,
+			"experiments: "+strings.Join(c.view.Names, ", "),
+			"upload endpoint: "+endpoint,
+			"last upload attempt: no attempt yet",
+			"upload: the endpoint is accepted and listed here; nothing is sent in this version",
+		)
+	}
+
 	res := runtime.TextLines(headline, lines...)
 	res.Kind = "TelemetryStatus"
 	res.Data = data
-	res.Warnings = warnings
+	res.Warnings = append(warnings, c.view.Warnings...)
 	return res, nil
 }

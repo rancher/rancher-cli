@@ -142,6 +142,7 @@ func EnvVars() []EnvVar {
 		{Name: "CATTLE_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "older name of RANCHER_CLI_OAUTH_AUTH_FLOW; used only when that variable is not set or is empty"},
 		{Name: "CATTLE_OAUTH_CALLBACK_PORT", Desc: "older name of RANCHER_CLI_OAUTH_CALLBACK_PORT; used only when that variable is not set or is empty"},
 		{Name: "RANCHER_CLI_TELEMETRY", Desc: "true or false: turns usage recording on or off and overrides the telemetry key of config.yaml; empty counts as unset and any other value is ignored"},
+		{Name: "RANCHER_CLI_EXPERIMENT", Desc: "experimental: a comma-separated list of name[=value] experiments, honored only in a development build; telemetryupload=<url> is accepted and listed by telemetry status, and nothing is sent in this version"},
 		{Name: "XDG_CONFIG_HOME", Desc: "base directory for the default config directory"},
 		{Name: "VISUAL", Desc: "preferred editor for config edit"},
 		{Name: "EDITOR", Desc: "fallback editor for config edit"},
@@ -308,7 +309,11 @@ type Manifest struct {
 	// Telemetry is the usage contract version and the controls that decide
 	// whether recording is on; fixed text, the same on every machine.
 	Telemetry TelemetryManifest `json:"telemetry"`
-	Commands  []SchemaCommand   `json:"commands"`
+	// Experiments is the table of experimental settings the
+	// RANCHER_CLI_EXPERIMENT variable turns on; fixed text, the same on every
+	// machine.
+	Experiments []SchemaExperiment `json:"experiments"`
+	Commands    []SchemaCommand    `json:"commands"`
 	// Kinds is the kind vocabulary with its effective verb surface;
 	// Groups are the root's ordered sections. Both are set
 	// by BuildRoot via SetKinds/SetGroups; registries built without them
@@ -547,6 +552,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 		EnvVars:           EnvVars(),
 		EffectSchema:      effectSchema(),
 		Telemetry:         telemetryManifest(),
+		Experiments:       experimentsManifest(),
 		ShellCompletion:   ShellCompletionShells(),
 		Kinds:             reg.kinds,
 		Groups:            reg.groups,
