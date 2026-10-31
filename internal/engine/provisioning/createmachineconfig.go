@@ -70,7 +70,7 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 		Usage: "Create a machine config for the machine pool of a node-driver cluster",
 		Desc: "Creates a machine config (an rke-machine-config.cattle.io custom resource) " +
 			"in the fleet-default namespace. Pass it to " +
-			"`create cluster --machine-config <kind>/<name>` afterwards. Driver fields " +
+			"`rancher create cluster --machine-config <kind>/<name>` afterwards. Driver fields " +
 			"are top-level fields of the object, not under spec. digitaloceanconfig " +
 			"has its own flags for common fields; amazonec2config, azureconfig, " +
 			"harvesterconfig and vmwarevsphereconfig take their fields with " +
@@ -201,7 +201,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 			if e.key != canonical {
 				msg = fmt.Sprintf("%q is the credential field %q and cannot be set on a machine config", e.key, canonical)
 			}
-			msg += "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential to create cluster with --cloud-credential"
+			msg += "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential to " + clierr.Rancher + " create cluster with --cloud-credential"
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, msg)
 		}
 		fields[e.key] = parseSetValue(e.raw)

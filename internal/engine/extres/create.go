@@ -95,7 +95,7 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 			return runtime.Result{}, err
 		}
 		name := created.GetName()
-		recovery := fmt.Sprintf("delete token %s, then create again", name)
+		recovery := clierr.Rancher + fmt.Sprintf(" delete token %s, then create again", clierr.ShellQuote(name))
 		bearer, _, _ := unstructured.NestedString(created.Object, "status", "bearerToken")
 		if bearer == "" {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,

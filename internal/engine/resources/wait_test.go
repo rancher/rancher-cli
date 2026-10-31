@@ -706,12 +706,12 @@ func TestFreshSuccessWarning(t *testing.T) {
 
 		w := freshSuccessWarning(young, "gitrepo", "repo-1", "team-a")
 		assert.Contains(t, w, "re-check shortly")
-		assert.Contains(t, w, "rancher get gitrepo repo-1 --namespace team-a",
+		assert.Contains(t, w, clierr.Rancher+" get gitrepo 'repo-1' --namespace 'team-a'",
 			"the re-check must target the namespace the wait resolved")
 		assert.NotContains(t, w, "conditions", "the advisory is condition-agnostic - state= waits satisfy it too")
 
 		clusterScoped := freshSuccessWarning(young, "gitrepo", "repo-1", "")
-		assert.Contains(t, clusterScoped, "rancher get gitrepo repo-1")
+		assert.Contains(t, clusterScoped, clierr.Rancher+" get gitrepo 'repo-1'")
 		assert.NotContains(t, clusterScoped, "--namespace")
 
 		time.Sleep(5 * time.Minute)

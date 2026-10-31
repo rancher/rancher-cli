@@ -21,15 +21,15 @@ func TestHandleRowsAndTheirDescriptions(t *testing.T) {
 		desc   string
 	}{
 		"user": {[]HandleField{{Path: []string{"username"}, Label: "username"}, display},
-			"user id (the NAME column of rancher get users), not the username or display name"},
+			"user id (the NAME column of `rancher get users`), not the username or display name"},
 		"project": {[]HandleField{specDisplay},
-			"project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)"},
+			"project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)"},
 		"roletemplate": {[]HandleField{display},
-			"role template id (the NAME column of rancher get roletemplates), not the display name"},
+			"role template id (the NAME column of `rancher get roletemplates`), not the display name"},
 		"globalrole": {[]HandleField{display},
-			"global role id (the NAME column of rancher get globalroles), not the display name"},
+			"global role id (the NAME column of `rancher get globalroles`), not the display name"},
 		"nodedriver": {[]HandleField{specDisplay},
-			"node driver id (the NAME column of rancher get nodedrivers), not the display name"},
+			"node driver id (the NAME column of `rancher get nodedrivers`), not the display name"},
 	}
 	got := map[string]bool{}
 	for _, k := range All() {

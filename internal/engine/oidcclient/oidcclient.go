@@ -89,9 +89,9 @@ func readClientSecret(ctx context.Context, clients engine.ClusterClientFactory, 
 
 // recoveryHint builds the standard non-mutating re-check command every
 // oidc-client verb points a caller at after a post-commit or Plan-time
-// refusal: "get oidcclient <name> -o json". The ONE shared spelling -
+// refusal: rancher get oidcclient '<name>' -o json. The ONE shared spelling -
 // never a second hand-authored copy - so a future wording change (e.g.
 // adding --cluster local) only has to be made here.
 func recoveryHint(name string) string {
-	return fmt.Sprintf("get oidcclient %s -o json", name)
+	return clierr.Rancher + " get oidcclient " + clierr.ShellQuote(name) + " -o json"
 }

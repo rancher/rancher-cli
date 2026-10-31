@@ -185,7 +185,7 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	require.NotNil(t, res.CommittedContext, "a DeliveryOnceOnly Result must carry CommittedContext")
 	assert.Equal(t, "Kubeconfig", res.CommittedContext.ResourceKind)
 	assert.Equal(t, "kubeconfig-abc", res.CommittedContext.ResourceName)
-	assert.Contains(t, res.CommittedContext.Recovery, "delete kubeconfig kubeconfig-abc")
+	assert.Contains(t, res.CommittedContext.Recovery, clierr.Rancher+" delete kubeconfig 'kubeconfig-abc'")
 }
 
 // TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam asserts that create
@@ -243,7 +243,7 @@ func TestCreateKubeconfigExecEmptyValueIsError(t *testing.T) {
 		assert.True(t, details.Committed)
 		assert.Equal(t, "Kubeconfig", details.ResourceKind)
 		assert.Equal(t, "kubeconfig-abc", details.ResourceName)
-		assert.Contains(t, details.Recovery, "delete kubeconfig kubeconfig-abc")
+		assert.Contains(t, details.Recovery, clierr.Rancher+" delete kubeconfig 'kubeconfig-abc'")
 	})
 
 	t.Run("empty string", func(t *testing.T) {

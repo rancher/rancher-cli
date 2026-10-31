@@ -1342,10 +1342,11 @@ names it (chosen with `--config`, `RANCHER_CLI_CONFIG_DIR` or a custom
 directory is the default and nothing else says otherwise prints no
 `--config`. Result text, the summary line, the dry-run preview and the json and
 yaml output, result data included, name the directory like the other channels;
-the text of `rancher logs`, table, wide, name and template output, and the
-`recovery` commands in `notRevoked` of `config delete-server`, `config
-update-server`, `auth logout` and `auth delete-token` print remedy commands
-without it. Errors rendered before the directory is
+the text of `rancher logs`, table, wide, name and template output, the
+messages, hints and warnings of `auth login`, `auth logout`, `auth status` and
+`auth delete-token`, and the `recovery` commands in `notRevoked` of `config
+delete-server`, `config update-server`, `auth logout` and `auth delete-token`
+print remedy commands without it. Errors rendered before the directory is
 resolved (an unknown command or flag, a flag value that is another flag)
 print them without it too, and so do commands that read no directory
 (`--help`, `--version`, `rancher schema`, `rancher completion`,

@@ -167,6 +167,7 @@ var expansionSiteList = map[string]int{
 	"internal/runtime.renderErrDrained ExpandError": 1,
 	"internal/runtime.renderErrDrained expandAll":   1,
 	"internal/cli.renderDepsError ExpandError":      1,
+	"internal/cli.completionDebugf ExpandText":      1,
 }
 
 // emptyPrefixAllowlist is every function that expands remedy commands with

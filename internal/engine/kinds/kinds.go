@@ -392,7 +392,7 @@ var table = []Kind{
 
 		ArgDesc: "cluster id or display name",
 
-		NoDeleteReason: "to delete a cluster, use delete provisioning-cluster",
+		NoDeleteReason: "to delete a cluster, use `rancher delete provisioning-cluster`",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns:        []Column{{Header: "DISPLAY NAME", Path: []string{"spec", "displayName"}}, {Header: "READY", Condition: "Ready"}},
@@ -403,7 +403,7 @@ var table = []Kind{
 		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
-		ArgDesc: "project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)",
+		ArgDesc: "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",
 
 		// Rancher deletes the namespaces of the project that carry
 		// field.cattle.io/creatorId and keeps the rest, removing their project
@@ -422,7 +422,7 @@ var table = []Kind{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"},
 		Policy: NSNone, K8sKind: "Node", Scope: Downstream, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's number of nodes with cluster scale), or outside Rancher for an imported, custom or local cluster",
+		NoDeleteReason: "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's number of nodes with `rancher cluster scale`), or outside Rancher for an imported, custom or local cluster",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable:    true,
@@ -653,7 +653,7 @@ var table = []Kind{
 			{Path: []string{"username"}, Label: "username"},
 			{Path: []string{"displayName"}, Label: "display name"},
 		}},
-		ArgDesc: "user id (the NAME column of rancher get users), not the username or display name",
+		ArgDesc: "user id (the NAME column of `rancher get users`), not the username or display name",
 
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		// The Norman v3 user store hides any user whose principalIds carry a
@@ -693,7 +693,7 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "RoleTemplate", Scope: Management, Deletable: false, Completable: true, Sensitive: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
-		ArgDesc: "role template id (the NAME column of rancher get roletemplates), not the display name",
+		ArgDesc: "role template id (the NAME column of `rancher get roletemplates`), not the display name",
 
 		NoDeleteReason: "role templates and global roles are the roles that grant gives and revoke takes away",
 		Binding:        safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
@@ -705,7 +705,7 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "GlobalRole", Scope: Management, Deletable: false, Completable: true, Sensitive: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
-		ArgDesc: "global role id (the NAME column of rancher get globalroles), not the display name",
+		ArgDesc: "global role id (the NAME column of `rancher get globalroles`), not the display name",
 
 		NoDeleteReason: "role templates and global roles are the roles that grant gives and revoke takes away",
 		Binding:        safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
@@ -806,21 +806,21 @@ var table = []Kind{
 		Key: "capimachine", Name: "machine", Aliases: []string{"machines"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Machine", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's number of nodes with cluster scale",
+		NoDeleteReason: "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's number of nodes with `rancher cluster scale`",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachineset", Name: "machineset", Aliases: []string{"machinesets"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinesets"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineSet", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with cluster scale",
+		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with `rancher cluster scale`",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachinedeployment", Name: "machinedeployment", Aliases: []string{"machinedeployments"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinedeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineDeployment", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with cluster scale",
+		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with `rancher cluster scale`",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
@@ -967,7 +967,7 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "NodeDriver", Scope: Management, Deletable: false, Sensitive: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
-		ArgDesc: "node driver id (the NAME column of rancher get nodedrivers), not the display name",
+		ArgDesc: "node driver id (the NAME column of `rancher get nodedrivers`), not the display name",
 
 		NoDeleteReason: "a node driver is deactivated by setting spec.active to false, not deleted; Rancher manages the built-in drivers",
 		Completable:    true,

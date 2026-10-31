@@ -262,7 +262,7 @@ func TestCommitCreateExistingDifferentURLConflictsWithUpdateHint(t *testing.T) {
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Contains(t, ce.Message, "https://old.example.com")
 	assert.Contains(t, ce.Message, "choose a different name")
-	assert.Equal(t, "rancher config update-server 'qa1' --url 'https://new.example.com'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config update-server 'qa1' --url 'https://new.example.com'", ce.Hint)
 	assert.Equal(t, config.Server{URL: "https://old.example.com"}, cfg.Servers["qa1"], "never a silent upsert")
 }
 
@@ -280,7 +280,7 @@ func TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint(t *testin
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Contains(t, ce.Message, "different CA")
-	assert.Equal(t, "rancher config update-server 'qa1' --cacert "+clierr.ShellQuote(cmdtest.CAPem2), ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config update-server 'qa1' --cacert "+clierr.ShellQuote(cmdtest.CAPem2), ce.Hint)
 	assert.Equal(t, config.Server{URL: "https://qa1.example.com", CA: cmdtest.CAPem1}, cfg.Servers["qa1"], "never a silent upsert")
 }
 
@@ -296,7 +296,7 @@ func TestCommitCreateExistingSameURLClearedCAConflictsWithClearCacertHint(t *tes
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
-	assert.Equal(t, "rancher config update-server 'qa1' --clear-cacert", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config update-server 'qa1' --clear-cacert", ce.Hint)
 }
 
 func TestCommitCreateConcurrentIdenticalCreationIsIdempotent(t *testing.T) {

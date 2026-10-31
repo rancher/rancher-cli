@@ -54,7 +54,7 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"noLock (the change ran with RANCHER_CLI_CONFIG_NO_LOCK; a login or logout of the entry clears it), " +
 			"or none (the next exec-credential cache miss or credential change resumes it). " +
 			"Also reports credentialStoreChange when the directory has a credential store change record, read the way every " +
-			"auth login, auth logout, config delete-server and config update-server --url reads it before its own work: " +
+			"`rancher auth login`, `rancher auth logout`, `rancher config delete-server` and `rancher config update-server --url` reads it before its own work: " +
 			"state active (unfinished; those commands retry the work left), abandoned (a change that never started; the next of them removes it) " +
 			"or damaged (the record cannot be read or trusted, named by config.yaml or not; error names the file and what to do, and those commands refuse until it is restored or moved aside), " +
 			"the record's id, the id config.yaml names, the file, and under remaining each piece of work left: " +
@@ -342,7 +342,7 @@ func pauseReasonText(dir, entry, reason string) string {
 	case config.PauseReasonChangeRecordUnreadable:
 		return "changeRecordUnreadable - the credential store change record " + config.TransitionPath(dir) + " cannot be read; inspect it, then restore a valid copy or move it aside; credentialStoreChange says why it cannot be read"
 	case config.PauseReasonNoLock:
-		return "noLock - the change ran with " + config.EnvConfigNoLock + "; a login or logout of the entry clears it: rancher auth login " + clierr.ShellQuote(entry)
+		return "noLock - the change ran with " + config.EnvConfigNoLock + "; a login or logout of the entry clears it: " + clierr.Rancher + " auth login " + clierr.ShellQuote(entry)
 	}
 	return "none - the next exec-credential cache miss or credential change resumes it"
 }

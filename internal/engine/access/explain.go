@@ -231,7 +231,7 @@ func explainText(out explainResult) string {
 		fmt.Fprintf(&b, "  reason: %s\n", output.Printable(out.Reason))
 	}
 	if out.Note != "" {
-		fmt.Fprintf(&b, "  note: %s\n", output.Printable(out.Note))
+		fmt.Fprintf(&b, "  note: %s\n", runtime.PrintableRemedies(out.Note))
 	}
 	if out.EvaluationError != "" {
 		fmt.Fprintf(&b, "  evaluation error: %s\n", output.Printable(out.EvaluationError))
@@ -239,7 +239,7 @@ func explainText(out explainResult) string {
 	if out.Tree != nil {
 		mark := "[" + string(out.Decision) + "]"
 		for _, line := range renderTree(*out.Tree, mark) {
-			b.WriteString(output.Printable(line) + "\n")
+			b.WriteString(runtime.PrintableRemedies(line) + "\n")
 		}
 	}
 	if out.Chain != chainComplete {
@@ -253,7 +253,7 @@ func explainText(out explainResult) string {
 			if i.Object != "" {
 				object = " " + i.Object
 			}
-			fmt.Fprintf(&b, "  %s%s: %s - %s\n", i.Stage, output.Printable(object), i.Code, output.Printable(i.Message))
+			fmt.Fprintf(&b, "  %s%s: %s - %s\n", i.Stage, output.Printable(object), i.Code, runtime.PrintableRemedies(i.Message))
 		}
 	}
 	fmt.Fprintf(&b, "source: %s | identity: %s", out.ResultSource, out.Identity)

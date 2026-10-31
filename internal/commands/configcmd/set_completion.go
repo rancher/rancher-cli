@@ -52,7 +52,7 @@ func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ ru
 	if networkStr == "" && timeoutStr == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"provide --network and/or --timeout (e.g. --timeout=500ms)").
-			WithHint("rancher config set-completion --network=true")
+			WithHint(clierr.Rancher + " config set-completion --network=true")
 	}
 	if networkStr != "" && networkStr != "true" && networkStr != "false" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,

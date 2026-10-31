@@ -395,7 +395,7 @@ func whoCanSARRefusal(clusterID string) *clierr.Error {
 	}
 	return clierr.New(clierr.CodeRBAC,
 		fmt.Sprintf("cannot ask the authorizer about other subjects on %s: you lack create subjectaccessreviews there", where)).
-		WithHint("rancher get globalroles")
+		WithHint(clierr.Rancher + " get globalroles")
 }
 
 // cachedGroup reports whether Rancher may hold members for a candidate
@@ -474,7 +474,7 @@ func whoCanText(out subjectsResult, showDenied, allNamespaces bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "who can %s %s%s\n", out.Question.Verb, target, where)
 	if out.Note != "" {
-		fmt.Fprintf(&b, "  note: %s\n", output.Printable(out.Note))
+		fmt.Fprintf(&b, "  note: %s\n", runtime.PrintableRemedies(out.Note))
 	}
 	multi := out.Scope.Project != "" || out.Scope.AllNamespaces
 	var shown []subjectRow

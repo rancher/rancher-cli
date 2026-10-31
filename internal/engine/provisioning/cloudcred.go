@@ -89,7 +89,7 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 	// The namespaced id form names the same Secret.
 	name := strings.TrimPrefix(nameOrID, cloudCredNamespace+":")
 	t := engine.MatchText{Noun: "cloud credential", Plural: "cloud credentials", Flag: flag,
-		NotFound: "cloud credential not found: " + nameOrID, NotFoundHint: "rancher get cloud-credential"}
+		NotFound: "cloud credential not found: " + nameOrID, NotFoundHint: clierr.Rancher + " get cloud-credential"}
 
 	list, err := client.List(ctx, secretsGVR, cloudCredNamespace, "")
 	if err != nil {

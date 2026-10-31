@@ -451,7 +451,7 @@ func canText(out canResult, allNamespaces bool) string {
 		fmt.Fprintf(&b, "  reason: %s\n", output.Printable(out.Reason))
 	}
 	if out.Note != "" {
-		fmt.Fprintf(&b, "  note: %s\n", output.Printable(out.Note))
+		fmt.Fprintf(&b, "  note: %s\n", runtime.PrintableRemedies(out.Note))
 	}
 	if out.EvaluationError != "" {
 		fmt.Fprintf(&b, "  evaluation error: %s\n", output.Printable(out.EvaluationError))
@@ -459,7 +459,7 @@ func canText(out canResult, allNamespaces bool) string {
 	for _, ns := range out.Namespaces {
 		fmt.Fprintf(&b, "  %-24s %s", output.Printable(ns.Namespace), ns.Decision)
 		if ns.Issue != nil {
-			fmt.Fprintf(&b, "  (%s: %s)", ns.Issue.Code, output.Printable(ns.Issue.Message))
+			fmt.Fprintf(&b, "  (%s: %s)", ns.Issue.Code, runtime.PrintableRemedies(ns.Issue.Message))
 		}
 		b.WriteString("\n")
 	}

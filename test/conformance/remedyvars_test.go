@@ -279,6 +279,7 @@ func varsBuiltOnRancher(pkgs []*packages.Package) (members, carriers map[string]
 var builtOnRancherCarriers = map[string]string{
 	"internal/cli.openDirectory":      "a function value (resolveDeps behind a package variable, so a test can replace it); it is called to open a directory and holds no text",
 	"internal/cli.serverRows":         "a map of functions that read each command's own server from its input; the functions it names lead to a remedy command in an error, and the map holds no text",
+	"internal/cli.notFoundHints":      "a table of the details and hints of an unknown command; the marked text in it is a detail rendered before the config directory is resolved, which is not a hint",
 	"internal/engine/kinds.table":     "a slice of resource kinds, a composite literal the flattener does not read; the marked text in it is the refusal of create from a manifest, which is not a hint",
 	"internal/engine/kinds.kindsByGR": "an index built by a function call over the kinds table; it holds no command text of its own",
 	"internal/runtime.markedRancher":  "its value is a byte conversion call that the flattener does not read, and it is not a hint",
@@ -296,6 +297,8 @@ var builtOnRancherReviewed = []string{
 	"internal/config.unfinishedChangeNote",
 	"internal/config.unreadableChangeNote",
 	"internal/engine.ClusterRequiredHint",
+	"internal/engine/access.anonymousListMessage",
+	"internal/engine/access.localCannotImpersonateNote",
 }
 
 // TestEveryVariableBuiltOnTheMarkerIsReadByTheHintFlattener asserts the

@@ -224,7 +224,7 @@ func TestPlanIdentityImpersonationRefusedRefusesList(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
-	assert.Equal(t, "rancher get globalroles", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get globalroles", ce.Hint)
 }
 
 // TestRefusalMessagesNameTheMissingRight asserts the impersonation and
@@ -240,20 +240,20 @@ func TestRefusalMessagesNameTheMissingRight(t *testing.T) {
 	err := impersonationRefusal(user, "c-phmj7")
 	assert.Equal(t, clierr.CodeRBAC, err.Code)
 	assert.Equal(t, "cannot act as u-abc12 on cluster c-phmj7: your GlobalRoles lack impersonate on users on the management cluster", err.Message)
-	assert.Equal(t, "rancher get globalroles", err.Hint)
+	assert.Equal(t, clierr.Rancher+" get globalroles", err.Hint)
 	require.ErrorContains(t, impersonationRefusal(sa, "c-phmj7"), "lack impersonate on serviceaccounts on the management cluster")
 
 	err = sarRefusal(user, "c-phmj7")
 	assert.Equal(t, clierr.CodeRBAC, err.Code)
 	assert.Equal(t, "cannot ask about u-abc12 on cluster c-phmj7: you lack create subjectaccessreviews on cluster c-phmj7, or impersonate on users on the management cluster", err.Message)
-	assert.Equal(t, "rancher get globalroles", err.Hint)
+	assert.Equal(t, clierr.Rancher+" get globalroles", err.Hint)
 	require.ErrorContains(t, sarRefusal(sa, "c-phmj7"), "or impersonate on serviceaccounts on the management cluster")
 	// A group has nothing to impersonate, and local never impersonates:
 	// only the review right is named.
 	assert.Equal(t, "cannot ask about eng on cluster c-phmj7: you lack create subjectaccessreviews on cluster c-phmj7", sarRefusal(group, "c-phmj7").Message)
 	assert.Equal(t, "cannot ask about u-abc12 on cluster local: you lack create subjectaccessreviews on cluster local", sarRefusal(user, engine.LocalCluster).Message)
 
-	assert.Equal(t, "no server operation lists a group's rules; ask a point question with: rancher access can <verb> <resource> --as github_org://eng",
+	assert.Equal(t, "no server operation lists a group's rules; ask a point question with: "+clierr.Rancher+" access can <verb> <resource> --as 'github_org://eng'",
 		groupListMessage("github_org://eng"))
 	assert.Contains(t, anonymousListMessage, "access can --as system:anonymous")
 }

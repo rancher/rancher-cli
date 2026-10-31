@@ -56,7 +56,7 @@ func TestPwshShowsTheDescriptionAsToolTip(t *testing.T) {
 		t.Fatalf("writing pwsh.ps1: %v", err)
 	}
 	linesFile := filepath.Join(t.TempDir(), "lines")
-	lines := "u-abc12:alice (Alice Smith)\nu-col01:dev: build team\nu-plain\n"
+	lines := "u-abc12:alice (Alice Smith)\nu-col01:dev: build team\nu-plain\nproject:Project namespace commands (managed with `rancher grant`)\n"
 	if err := os.WriteFile(linesFile, []byte(lines), 0o644); err != nil {
 		t.Fatalf("writing stub lines: %v", err)
 	}
@@ -89,6 +89,7 @@ foreach ($m in $r.CompletionMatches) { Write-Output ('MATCH:' + $m.CompletionTex
 		"u-abc12|alice (Alice Smith)",
 		"u-col01|dev: build team",
 		"u-plain|u-plain",
+		"project|Project namespace commands (managed with `rancher grant`)",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("matches\n got:  %q\n want: %q\nfull output:\n%s", got, want, out)

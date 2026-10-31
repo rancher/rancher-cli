@@ -443,7 +443,7 @@ func ProjectRefusal(k kinds.Kind, op Operation, name, cluster, project string) e
 	}
 	if op == OpCreate && k.Policy == kinds.NSNone {
 		ce := clierr.New(clierr.CodeValidation,
-			"--project does not place a namespace created from a manifest in a project; create it with create namespace --project")
+			"--project does not place a namespace created from a manifest in a project; create it with "+clierr.Rancher+" create namespace --project")
 		if name != "" && cluster != "" {
 			ce = ce.WithHint(clierr.Rancher + " create namespace " + clierr.ShellQuote(name) +
 				" --cluster " + clierr.ShellQuote(cluster) + " --project " + clierr.ShellQuote(project) + " --dry-run")

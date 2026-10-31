@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -260,6 +261,17 @@ func siteRows() []siteRow {
 			}},
 		)
 	}
+	rows = append(rows, siteRow{
+		// completionDebugf is in package cli, which this package cannot import:
+		// the row drives IO.ExpandText and writes the line the way the
+		// completion trace does.
+		site: "internal/cli.completionDebugf ExpandText", channel: "completion trace", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			var out, errBuf bytes.Buffer
+			_, err := fmt.Fprintf(&errBuf, "completion +1ms %s\n", r.io(&out, &errBuf).ExpandText(r.text))
+			require.NoError(t, err)
+			return out.String(), errBuf.String()
+		}})
 	return rows
 }
 
@@ -325,6 +337,7 @@ var siteRowCounts = map[string]int{
 	"internal/runtime.renderErrDrained ExpandError": 12,
 	"internal/runtime.renderErrDrained expandAll":   1,
 	"internal/cli.renderDepsError ExpandError":      12,
+	"internal/cli.completionDebugf ExpandText":      1,
 }
 
 // visibleText is every string a run wrote, as a reader sees it: a JSON

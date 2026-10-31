@@ -7,7 +7,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
 // Completion offers no candidates on every failure and never writes to
@@ -37,8 +39,24 @@ func completionDebugf(format string, args ...any) {
 	if !completionDebugEnabled() {
 		return
 	}
+	line := fmt.Sprintf(format, args...)
+	if clierr.HasRemedy(line) {
+		line = completionTraceIO().ExpandText(line)
+	}
 	_, _ = fmt.Fprintf(completionDebugOut, "completion +%s %s\n",
-		time.Since(processStart).Round(time.Millisecond), fmt.Sprintf(format, args...))
+		time.Since(processStart).Round(time.Millisecond), line)
+}
+
+// completionTraceIO is the IO that expands the remedy commands of a trace
+// line: the config directory the completion request loaded, named by the
+// rule every command uses, or none when no directory is stored.
+func completionTraceIO() runtime.IO {
+	storedConfigMu.RLock()
+	defer storedConfigMu.RUnlock()
+	if storedConfigDir == "" {
+		return runtime.IO{}
+	}
+	return runtime.IO{RemedyDir: remedyDirOf(runtime.Descriptor{}, nil, storedConfigDir)}
 }
 
 // completionDeadline applies the live-completion time limit to ctx and

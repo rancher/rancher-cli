@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
@@ -362,7 +363,7 @@ func dispatchSite(
 
 	// Layer 3: live (gated).
 	if !completionNetworkEnabled() {
-		completionDebugf("live completion off: enable with: rancher config set-completion --network=true")
+		completionDebugf("live completion off; enable with: %s config set-completion --network=true", clierr.Rancher)
 		return nil
 	}
 	cands := liveCandidates(ctx, site, d, lc, tail)

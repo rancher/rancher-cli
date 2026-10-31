@@ -228,11 +228,34 @@ func TestCreateSecretFailureAfterUserCommittedNamesRecovery(t *testing.T) {
 	assert.True(t, details.Committed)
 	assert.Equal(t, "User", details.ResourceKind)
 	assert.Equal(t, "u-real2", details.ResourceName)
-	assert.Contains(t, details.Recovery, "create resource -f -",
+	assert.Contains(t, details.Recovery, clierr.Rancher+" create resource -f -",
 		"recovery must create the missing Secret directly, not point at password-change-request")
 	assert.NotContains(t, details.Recovery, "password-change-request")
 	assert.NotContains(t, details.Recovery, "correctHorseBattery1",
 		"the recovery must never embed the actual password value")
+}
+
+// TestCreateSecretFailureWithAnIdThatIsNotAnObjectNamePrintsNoCommand
+// asserts the recovery of a user whose server-assigned id is not a
+// Kubernetes object name names the user, shell-quoted, and prints no
+// command: the id would be written into a manifest where the quoting of
+// a shell cannot apply.
+func TestCreateSecretFailureWithAnIdThatIsNotAnObjectNamePrintsNoCommand(t *testing.T) {
+	t.Parallel()
+	client := &fakeUserClient{userPreviewName: "u-preview1", userRealName: "a'b",
+		secretCreateErr: clierr.New(clierr.CodeGeneric, "boom")}
+	_, exec, err := plan(t, client, fakeSrc{body: []byte("correctHorseBattery1\n")}, planInput("alice"))
+	require.NoError(t, err)
+
+	_, err = exec(t.Context())
+	require.Error(t, err)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	details, ok := ce.Details.(clierr.CommittedContextDetails)
+	require.True(t, ok)
+	assert.Equal(t, "the user 'a'\\''b' was created without a password; the CLI prints no command for an id it cannot quote", details.Recovery)
+	assert.NotContains(t, details.Recovery, "create resource")
+	assert.NotContains(t, details.Recovery, clierr.Rancher)
 }
 
 // TestCreateOldServerSecretDryRunNotFoundRefusesFriendly proves the

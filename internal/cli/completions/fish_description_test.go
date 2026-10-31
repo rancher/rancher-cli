@@ -17,11 +17,13 @@ func TestFishShowsTheDescriptionBesideTheToken(t *testing.T) {
 		"u-abc12:alice (Alice Smith)",
 		"u-col01:dev: build team",
 		"u-plain",
+		"project:Project namespace commands (managed with `rancher grant`)",
 	})
 	want := []string{
 		"u-abc12\talice (Alice Smith)",
 		"u-col01\tdev: build team",
 		"u-plain",
+		"project\tProject namespace commands (managed with `rancher grant`)",
 	}
 	if !sliceEqual(got, want) {
 		t.Errorf("fish output\n got:  %q\n want: %q", got, want)

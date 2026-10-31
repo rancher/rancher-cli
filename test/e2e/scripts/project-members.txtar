@@ -20,7 +20,7 @@ jsonquery stdout 'data.principalIds.0' local://u-alice
 # bad role pre-flight: NOT_FOUND before any binding is attempted.
 ! exec rancher grant alice --role no-such-role --project members-proj --cluster testcluster --dry-run -o json
 jsonquery stderr data.error.code NOT_FOUND
-jsonquery stderr data.error.hint 'rancher get roletemplates'
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' get roletemplates'
 # a needle with no substring overlap must still carry at-scope candidates:
 # assert the first candidate's id is non-empty (stable regardless of list order).
 ! jsonquery stderr data.error.candidates.0.id ''

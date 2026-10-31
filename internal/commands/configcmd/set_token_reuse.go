@@ -29,7 +29,7 @@ func (setTokenReuseCmd) Describe() runtime.Descriptor {
 			"cluster-scoped tokens from it silently for every cluster of that server; with --user-id and no " +
 			"--cluster the token is one for Rancher itself. Off restores the per-cluster interactive login without deleting " +
 			"the stored credential; the output then lists every dormant plugin-created login and the " +
-			"commands that remove it (rancher auth logout <entry>, then rancher config delete-server <entry>) " +
+			"commands that remove it (`rancher auth logout <entry>`, then `rancher config delete-server <entry>`) " +
 			"together with any superseded tokens it still names. auth login credentials are never affected.",
 		CommandType: runtime.Local,
 		Args:        []runtime.ArgSpec{{Name: "state", Type: "string", Required: true, Enum: []string{"on", "off"}, Desc: "on or off"}},
@@ -90,9 +90,9 @@ func dormantPluginLogins(cfg *config.Config) ([]map[string]any, []string) {
 		out = append(out, entry)
 		lines = append(lines, fmt.Sprintf("plugin-created login %s (%s) is dormant, not deleted", n, config.DisplayServerURL(s.URL)))
 		if s.CLIOwned() && s.LoggedOutAt == "" {
-			lines = append(lines, "  remove its credential with: rancher auth logout "+clierr.ShellQuote(n))
+			lines = append(lines, "  remove its credential with: "+clierr.Rancher+" auth logout "+clierr.ShellQuote(n))
 		}
-		lines = append(lines, "  remove the entry and its records with: rancher config delete-server "+clierr.ShellQuote(n))
+		lines = append(lines, "  remove the entry and its records with: "+clierr.Rancher+" config delete-server "+clierr.ShellQuote(n))
 		lines = append(lines, recordLines(n, s, "  ")...)
 	}
 	return out, lines

@@ -32,7 +32,7 @@ func (pauseAutoscalingCmd) Describe() runtime.Descriptor {
 			"A pause applies to the whole cluster: the server has no per-pool pause, and this command has no " +
 			"--pool flag. Pausing scales the cluster autoscaler Deployment in the downstream cluster to zero " +
 			"and keeps every machine pool's autoscalingMinSize and autoscalingMaxSize; while paused, " +
-			"`cluster scale` can change the number of nodes of an autoscaled machine pool. If autoscaling is " +
+			"`rancher cluster scale` can change the number of nodes of an autoscaled machine pool. If autoscaling is " +
 			"already paused, the command succeeds and changes nothing. Like every change to a provisioning " +
 			"cluster, it requires --yes with --apply.",
 		CommandType: runtime.Mutating,

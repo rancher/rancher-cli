@@ -48,10 +48,10 @@ func (createPasswordChangeRequestCmd) Describe() runtime.Descriptor {
 		Usage: "Change a local user's password",
 		Desc: "Submits an ext.cattle.io/v1 PasswordChangeRequest, which completes " +
 			"synchronously. Requires a server that supports local user passwords " +
-			"(the same support `create user` needs).",
+			"(the same support `rancher create user` needs).",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
-			{Name: "user", Type: "string", Required: true, Desc: "user `id` (see: rancher get users)"},
+			{Name: "user", Type: "string", Required: true, Desc: "user `id` (see: `rancher get users`)"},
 		},
 		Flags: []runtime.ArgSpec{
 			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)"},
@@ -124,7 +124,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 				fmt.Sprintf("the server did not confirm the password change for user %s", userID)).
 				WithDetails(clierr.CommittedContextDetails{
 					Committed: true, ResourceKind: "User", ResourceName: userID,
-					Recovery: fmt.Sprintf("get user %s -o json", userID),
+					Recovery: clierr.Rancher + fmt.Sprintf(" get user %s -o json", clierr.ShellQuote(userID)),
 				})
 		}
 		res := runtime.MutationText("password-change-request", userID, "completed")

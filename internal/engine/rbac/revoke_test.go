@@ -253,7 +253,7 @@ func TestRevokeZeroMatchesWithOnlyEmptyHeldRolesGivesTheHint(t *testing.T) {
 	ce := revokeHeldRolesError(t, "", "")
 	assert.Empty(t, ce.Candidates)
 	assert.NotContains(t, ce.Message, "the subject has")
-	assert.Equal(t, "rancher get projectroletemplatebinding --namespace 'p-x' -o json", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get projectroletemplatebinding --namespace 'p-x' -o json", ce.Hint)
 }
 
 func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
@@ -279,7 +279,7 @@ func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 			listsByGVR: map[string]*unstructured.UnstructuredList{
 				"clusterroletemplatebindings": {},
 			},
-			wantHint:   "rancher get clusterroletemplatebinding --cluster 'c-x' -o json",
+			wantHint:   clierr.Rancher + " get clusterroletemplatebinding --cluster 'c-x' -o json",
 			wantNoPlur: "clusterroletemplatebindings",
 		},
 		{
@@ -292,7 +292,7 @@ func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 				"projectroletemplatebindings": {},
 			},
 			gets:       map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
-			wantHint:   "rancher get projectroletemplatebinding --namespace 'p-x' -o json",
+			wantHint:   clierr.Rancher + " get projectroletemplatebinding --namespace 'p-x' -o json",
 			wantNoPlur: "projectroletemplatebindings",
 		},
 		{
@@ -304,7 +304,7 @@ func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 			listsByGVR: map[string]*unstructured.UnstructuredList{
 				"globalrolebindings": {},
 			},
-			wantHint:   "rancher get globalrolebinding -o json",
+			wantHint:   clierr.Rancher + " get globalrolebinding -o json",
 			wantNoPlur: "globalrolebindings",
 		},
 	}

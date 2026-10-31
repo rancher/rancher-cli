@@ -245,7 +245,7 @@ func TestConfigStatusListsEveryPausedEntryWithItsReason(t *testing.T) {
 		{name: "nothing holds it", pause: config.PauseLocked, reason: config.PauseReasonNone,
 			text: "prod: none - the next exec-credential cache miss or credential change resumes it"},
 		{name: "made without the lock", pause: config.PauseNoLock, reason: config.PauseReasonNoLock,
-			text: "prod: noLock - the change ran with RANCHER_CLI_CONFIG_NO_LOCK; a login or logout of the entry clears it: rancher auth login 'prod'"},
+			text: "prod: noLock - the change ran with RANCHER_CLI_CONFIG_NO_LOCK; a login or logout of the entry clears it: " + clierr.Rancher + " auth login 'prod'"},
 		{name: "a pin step left", pause: config.PauseLocked, reason: config.PauseReasonPinStep,
 			text: "prod: pinStep - a credential store change still has to write its pin, which switches where credentials are read from; the next auth login, auth logout, config delete-server or config update-server --url finishes it",
 			setup: func(t *testing.T, dir string) {

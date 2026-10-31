@@ -155,7 +155,7 @@ func TestResolveSubjectUnknownUserIsNotFound(t *testing.T) {
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok)
 		assert.Equal(t, clierr.CodeNotFound, ce.Code)
-		assert.Equal(t, "rancher get users", ce.Hint)
+		assert.Equal(t, clierr.Rancher+" get users", ce.Hint)
 	}
 }
 
@@ -193,7 +193,7 @@ func findUserError(t *testing.T, local *fakeClient, raw string) *clierr.Error {
 	_, err := findRancherUser(t.Context(), local, raw)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "want a *clierr.Error, got %v", err)
-	assert.Equal(t, "rancher get users", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get users", ce.Hint)
 	return ce
 }
 

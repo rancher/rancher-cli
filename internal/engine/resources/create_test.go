@@ -443,7 +443,7 @@ func TestCreateResourceNamespaceWithProjectPointsAtCreateNamespace(t *testing.T)
 	_, _, err = cmd.Plan(unreadProjectContext(t), in)
 	requireValidation(t, err)
 	ce, _ = errors.AsType[*clierr.Error](err)
-	assert.Equal(t, "--project does not place a namespace created from a manifest in a project; create it with create namespace --project", ce.Message)
+	assert.Equal(t, "--project does not place a namespace created from a manifest in a project; create it with "+clierr.Rancher+" create namespace --project", ce.Message)
 	assert.Equal(t, wantHint, ce.Hint)
 
 	assert.Empty(t, fac.clusterCalls)
@@ -512,7 +512,7 @@ func TestCreateResourceProjectRefusalPrecedesEveryRequest(t *testing.T) {
 		{name: "NSPlain kind that is not project scopable", manifest: prtbManifest, cluster: "prod",
 			wantMsg: "--project does not apply to projectroletemplatebinding"},
 		{name: "Namespace", manifest: namespaceManifest, cluster: "prod",
-			wantMsg:  "--project does not place a namespace created from a manifest in a project; create it with create namespace --project",
+			wantMsg:  "--project does not place a namespace created from a manifest in a project; create it with rancher create namespace --project",
 			wantHint: "rancher create namespace 'ns1' --cluster 'prod' --project 'web' --dry-run"},
 		{name: "NSCluster with --cluster and metadata.namespace", manifest: projectManifest, cluster: "prod",
 			wantMsg: "--project does not apply to project"},

@@ -398,11 +398,11 @@ func tableLines(indent string, header []string, rows [][]string) []string {
 }
 
 // printableAll returns cells with every entry passed through
-// output.Printable, leaving the input untouched.
+// runtime.PrintableRemedies, leaving the input untouched.
 func printableAll(cells []string) []string {
 	out := make([]string, len(cells))
 	for i, c := range cells {
-		out[i] = output.Printable(c)
+		out[i] = runtime.PrintableRemedies(c)
 	}
 	return out
 }
@@ -489,12 +489,12 @@ func listText(out listResult, implicitDefault bool) string {
 	}
 	var b strings.Builder
 	if out.Note != "" {
-		fmt.Fprintf(&b, "note: %s\n\n", output.Printable(out.Note))
+		fmt.Fprintf(&b, "note: %s\n\n", runtime.PrintableRemedies(out.Note))
 	}
 	printed := map[string]bool{}
 	for i, ns := range out.Namespaces {
 		if !ns.Evaluated {
-			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n\n", output.Printable(ns.Namespace), ns.Issue.Code, output.Printable(ns.Issue.Message))
+			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n\n", output.Printable(ns.Namespace), ns.Issue.Code, runtime.PrintableRemedies(ns.Issue.Message))
 			continue
 		}
 		key := listGroupKey(ns)
@@ -554,13 +554,13 @@ func listGroupKey(ns listNamespace) string {
 func listWideText(out listResult) string {
 	var b strings.Builder
 	if out.Note != "" {
-		fmt.Fprintf(&b, "note: %s\n\n", output.Printable(out.Note))
+		fmt.Fprintf(&b, "note: %s\n\n", runtime.PrintableRemedies(out.Note))
 	}
 	var resources, nonResources []namespaceRows
 	for _, ns := range out.Namespaces {
 		switch {
 		case !ns.Evaluated:
-			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n", output.Printable(ns.Namespace), ns.Issue.Code, output.Printable(ns.Issue.Message))
+			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n", output.Printable(ns.Namespace), ns.Issue.Code, runtime.PrintableRemedies(ns.Issue.Message))
 			continue
 		case ns.Incomplete:
 			fmt.Fprintf(&b, "namespace %s: incomplete, the server could not enumerate every rule (%s)\n", output.Printable(ns.Namespace), output.Printable(ns.EvaluationError))

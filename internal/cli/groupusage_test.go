@@ -18,11 +18,11 @@ var wantGroupTitles = map[string]string{
 	"patch":       "Patch resources",
 	"delete":      "Delete resources",
 	"inspect":     "Inspect a cluster, workload or project with its related objects",
-	"project":     "Project namespace commands (project membership is managed with 'rancher grant' and 'rancher revoke')",
+	"project":     "Project namespace commands (project membership is managed with `rancher grant` and `rancher revoke`)",
 	"skill":       "Install, remove and check the agent skills that come with rancher-cli",
 	"telemetry":   "Local usage recording: status, turn on, turn off, delete and list events",
-	"oidc-client": "Manage OIDC client secrets (create oidc-client creates the client itself)",
-	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with 'create cluster' and delete it with 'delete provisioning-cluster')",
+	"oidc-client": "Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)",
+	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 

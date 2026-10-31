@@ -290,7 +290,7 @@ func TestRouteCreateNamespaceWithProjectIsRefused(t *testing.T) {
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Equal(t, "--project does not place a namespace created from a manifest in a project; create it with create namespace --project", ce.Message)
+			assert.Equal(t, "--project does not place a namespace created from a manifest in a project; create it with "+clierr.Rancher+" create namespace --project", ce.Message)
 			assert.Equal(t, tc.wantHint, ce.Hint)
 			assert.Empty(t, fac.clusterCalls)
 			assert.Empty(t, client.listCalls)

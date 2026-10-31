@@ -161,7 +161,7 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 		Usage: "Create a provisioning cluster (--import, --custom, or --machine-config for a node-driver cluster)",
 		Desc: "A node-driver cluster is created with one machine pool; the machine pool " +
 			"flags cannot be repeated yet. For a cluster with several machine pools, " +
-			"use `create resource -f` with a full manifest. Before the server-side " +
+			"use `rancher create resource -f` with a full manifest. Before the server-side " +
 			"dry-run, the command gets your user ID with a SelfUser request " +
 			"(ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it: " +
 			"the rancher-webhook validating webhook requires the annotation on a " +

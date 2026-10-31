@@ -591,9 +591,9 @@ func TestConfigEditRejectsAnyCredentialStoreChange(t *testing.T) {
 		want                string
 	}{
 		{name: "set on an undeclared directory", after: "credentialStore: file\n",
-			want: "credentialStore set (use: rancher auth login <name> --credential-store 'file', after logging out the other entries when there are any)"},
+			want: "credentialStore set (use: " + clierr.Rancher + " auth login <name> --credential-store 'file', after logging out the other entries when there are any)"},
 		{name: "changed", before: "credentialStore: keychain\n", after: "credentialStore: exec:vault\n",
-			want: "credentialStore changed (use: rancher auth login <name> --credential-store 'exec:vault', after logging out the other entries when there are any)"},
+			want: "credentialStore changed (use: " + clierr.Rancher + " auth login <name> --credential-store 'exec:vault', after logging out the other entries when there are any)"},
 		{name: "removed", before: "credentialStore: keychain\n",
 			want: "credentialStore removed (no command removes a declaration; a different --config starts a fresh directory)"},
 		{name: "left as it was, spelled another way", before: "credentialStore: file\n", after: "credentialStore: \"file\"\n"},
@@ -630,8 +630,8 @@ func TestConfigEditRejectsChangingTokenReuse(t *testing.T) {
 	for _, tc := range []struct {
 		name, before, after, remedy string
 	}{
-		{name: "turned on", before: "false", after: "true", remedy: "rancher config set-token-reuse on"},
-		{name: "turned off", before: "true", after: "false", remedy: "rancher config set-token-reuse off"},
+		{name: "turned on", before: "false", after: "true", remedy: clierr.Rancher + " config set-token-reuse on"},
+		{name: "turned off", before: "true", after: "false", remedy: clierr.Rancher + " config set-token-reuse off"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("EDITOR", "fake-editor")
@@ -664,11 +664,11 @@ func TestConfigEditJudgesTheTelemetryKeyByItsEffectiveValue(t *testing.T) {
 	for _, tc := range []struct {
 		name, before, after, remedy string
 	}{
-		{name: "true to false", before: `telemetry: "true"`, after: `telemetry: "false"`, remedy: "rancher telemetry off"},
-		{name: "absent to false", before: "", after: "telemetry: false", remedy: "rancher telemetry off"},
-		{name: "false to absent", before: `telemetry: "false"`, after: "", remedy: "rancher telemetry on"},
-		{name: "false to maybe", before: `telemetry: "false"`, after: "telemetry: maybe", remedy: "rancher telemetry on"},
-		{name: "false to true", before: `telemetry: "false"`, after: "telemetry: true", remedy: "rancher telemetry on"},
+		{name: "true to false", before: `telemetry: "true"`, after: `telemetry: "false"`, remedy: clierr.Rancher + " telemetry off"},
+		{name: "absent to false", before: "", after: "telemetry: false", remedy: clierr.Rancher + " telemetry off"},
+		{name: "false to absent", before: `telemetry: "false"`, after: "", remedy: clierr.Rancher + " telemetry on"},
+		{name: "false to maybe", before: `telemetry: "false"`, after: "telemetry: maybe", remedy: clierr.Rancher + " telemetry on"},
+		{name: "false to true", before: `telemetry: "false"`, after: "telemetry: true", remedy: clierr.Rancher + " telemetry on"},
 		{name: "true to absent", before: `telemetry: "true"`},
 		{name: "absent to true", before: "", after: "telemetry: true"},
 		{name: "absent to invalid", before: "", after: "telemetry: maybe"},

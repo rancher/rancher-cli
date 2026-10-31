@@ -36,7 +36,7 @@ func (scaleCmd) Describe() runtime.Descriptor {
 		Desc: "Sets spec.rkeConfig.machinePools[].quantity on the machine pool named by --pool. Refuses when " +
 			"the machine pool has autoscalingMinSize or autoscalingMaxSize set and autoscaling is not " +
 			"paused: the server accepts the change, but the cluster autoscaler sets the number of nodes " +
-			"back to its own value minutes later. Run `cluster pause-autoscaling` first. Refuses on a " +
+			"back to its own value minutes later. Run `rancher cluster pause-autoscaling` first. Refuses on a " +
 			"cluster with no machine pools (imported, custom or local). Every scale, up or down, requires " +
 			"--yes with --apply, like any change to a provisioning cluster. --nodes 0 is allowed on every " +
 			"machine pool, including a control-plane or etcd machine pool; the CLI sets no minimum of its own.",

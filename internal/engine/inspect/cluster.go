@@ -102,7 +102,7 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{{
 			Name: "registration",
 			Type: "bool",
-			Desc: "show the registration commands (they contain the cluster registration token and are left out by default); also available with: rancher get clusterregistrationtoken default-token --namespace <cluster-id>",
+			Desc: "show the registration commands (they contain the cluster registration token and are left out by default); also available with: `rancher get clusterregistrationtoken default-token --namespace <cluster-id>`",
 		}},
 		Auth:  true,
 		Shape: runtime.ShapeText,

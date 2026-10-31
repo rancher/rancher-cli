@@ -210,12 +210,12 @@ func (c *projectsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 	}
 	switch as.Kind {
 	case KindGroup:
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "no server operation lists a group's projects; ask a point question with access can --as "+as.Raw)
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "no server operation lists a group's projects; ask a point question with "+clierr.Rancher+" access can --as "+clierr.ShellQuote(as.Raw))
 	case KindServiceAccount:
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "a service account belongs to one cluster; use access list --cluster <cluster> --as "+as.Raw)
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "a service account belongs to one cluster; use "+clierr.Rancher+" access list --cluster <cluster> --as "+clierr.ShellQuote(as.Raw))
 	}
 	if as.Raw == anonymousUser {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; ask a point question with access can --as system:anonymous")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; ask a point question with "+clierr.Rancher+" access can --as system:anonymous")
 	}
 	budget, err := parseTimeout(in)
 	if err != nil {
@@ -616,7 +616,7 @@ func projectsText(out projectsResult, wide bool) string {
 			if wide {
 				row = append(row, "-")
 			}
-			rows = append(rows, append(row, "-", output.Printable(cr.NamespaceDiscovery.Issue.Message)))
+			rows = append(rows, append(row, "-", runtime.PrintableRemedies(cr.NamespaceDiscovery.Issue.Message)))
 		}
 		for _, pr := range cr.Projects {
 			v := visibility{Visibility: pr.Visibility, AllowedIn: pr.AllowedIn, UnknownIn: pr.UnknownIn}
@@ -632,7 +632,7 @@ func projectsText(out projectsResult, wide bool) string {
 				}
 				row = append(row, cell)
 			}
-			row = append(row, projectGrantedByCell(pr.Bindings, out.BindingsDiscovery), output.Printable(pr.Note))
+			row = append(row, projectGrantedByCell(pr.Bindings, out.BindingsDiscovery), runtime.PrintableRemedies(pr.Note))
 			rows = append(rows, row)
 		}
 	}
@@ -643,7 +643,7 @@ func projectsText(out projectsResult, wide bool) string {
 		reason := "the ProjectRoleTemplateBinding read failed"
 		for _, si := range out.BindingsDiscovery.Issues {
 			if si.Stage == "prtb" {
-				reason = output.Printable(si.Issue.Message)
+				reason = runtime.PrintableRemedies(si.Issue.Message)
 			}
 		}
 		fmt.Fprintf(&b, "%s%s\n", membershipNotDeterminedPrefix, reason)
@@ -700,7 +700,7 @@ func projectsText(out projectsResult, wide bool) string {
 	if out.BindingsDiscovery.Status != "complete" {
 		var reasons []string
 		for _, si := range out.BindingsDiscovery.Issues {
-			reasons = append(reasons, si.Stage+": "+output.Printable(si.Issue.Message))
+			reasons = append(reasons, si.Stage+": "+runtime.PrintableRemedies(si.Issue.Message))
 		}
 		fmt.Fprintf(&b, "bindings: %s (%s)\n", out.BindingsDiscovery.Status, strings.Join(reasons, "; "))
 	}

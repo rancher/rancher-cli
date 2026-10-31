@@ -135,7 +135,7 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 			{Name: flagMatch, Type: "stringSlice",
 				Desc: "Show only images whose reference contains `substr` (repeatable, OR)"},
 		},
-		Examples: []string{"images --all-clusters --match library/elasticsearch: --by workload"},
+		Examples: []string{"rancher images --all-clusters --match library/elasticsearch: --by workload"},
 		Auth:     true,
 		Shape:    runtime.ShapeTabular,
 	}

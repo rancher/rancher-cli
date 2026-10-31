@@ -55,7 +55,7 @@ func TestUpdateServerWriteFailureAfterPurgeNamesClearedCredentials(t *testing.T)
 	require.ErrorContains(t, err, `"qa1"`)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, "rancher auth login 'qa1'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth login 'qa1'", ce.Hint)
 
 	_, terr := store.GetToken(config.ServerRef{Name: "qa1", URL: "https://old.example.com"})
 	require.ErrorIs(t, terr, config.ErrNoToken, "the purge that ran before the failed write is not undone")
@@ -115,7 +115,7 @@ func TestUpdateServerURLChangeClearsCredentials(t *testing.T) {
 	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"])
 	assert.Equal(t, "server qa1 updated\n"+
 		"  url: https://new.example.com (changed)\n"+
-		"  credentials cleared - log in again: rancher auth login 'qa1'\n"+
+		"  credentials cleared - log in again: "+clierr.Rancher+" auth login 'qa1'\n"+
 		"  tokens on https://old.example.com:\n"+
 		"    not revoked: the pasted login token, which is not the CLI's to revoke\n", res.Text)
 

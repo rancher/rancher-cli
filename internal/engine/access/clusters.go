@@ -39,7 +39,7 @@ const (
 	notApplicable = "notApplicable"
 )
 
-const localCannotImpersonateNote = "the management cluster cannot impersonate; ask access can on local"
+var localCannotImpersonateNote = "the management cluster cannot impersonate; ask " + clierr.Rancher + " access can <verb> <resource> --cluster local"
 
 // reachabilitySentence is printed once under the table: what the answer
 // proves and what it does not.
@@ -65,7 +65,7 @@ func (c *clustersCmd) Describe() runtime.Descriptor {
 		Desc: "Lists the management clusters you can see and, for each, whether Rancher's proxy admits you (or an impersonated --as user) to the cluster's API: " +
 			"reachable, refused, or unknown when the probe failed. Beside it, the ClusterRoleTemplateBindings, ProjectRoleTemplateBindings and " +
 			"GlobalRoleBindings on the management cluster that name the subject, its principals, or a group Rancher has cached for it. " +
-			"Reachability is the proxy's answer before any Kubernetes rule is consulted; what the identity may do inside a cluster is access list's question. " +
+			"Reachability is the proxy's answer before any Kubernetes rule is consulted; what the identity may do inside a cluster is `rancher access list`'s question. " +
 			"Exit 0 when every cluster answered, 13 when any is unknown.",
 		Flags: []runtime.ArgSpec{
 			{Name: flagAs, Type: "string", Desc: "user name, id, or principal; omitted = you"},
@@ -172,12 +172,12 @@ func (c *clustersCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 	}
 	switch as.Kind {
 	case KindGroup:
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "no server operation lists a group's clusters; ask a point question with access can --as "+as.Raw)
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "no server operation lists a group's clusters; ask a point question with "+clierr.Rancher+" access can --as "+clierr.ShellQuote(as.Raw))
 	case KindServiceAccount:
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "a service account belongs to one cluster; use access list --cluster <cluster> --as "+as.Raw)
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "a service account belongs to one cluster; use "+clierr.Rancher+" access list --cluster <cluster> --as "+clierr.ShellQuote(as.Raw))
 	}
 	if as.Raw == anonymousUser {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; ask a point question with access can --as system:anonymous")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; ask a point question with "+clierr.Rancher+" access can --as system:anonymous")
 	}
 	budget, err := parseTimeout(in)
 	if err != nil {
@@ -502,7 +502,7 @@ func clustersText(out clustersResult, wide bool) string {
 	if out.BindingsDiscovery.Status != "complete" {
 		var reasons []string
 		for _, si := range out.BindingsDiscovery.Issues {
-			reasons = append(reasons, si.Stage+": "+output.Printable(si.Issue.Message))
+			reasons = append(reasons, si.Stage+": "+runtime.PrintableRemedies(si.Issue.Message))
 		}
 		fmt.Fprintf(&b, "bindings: %s (%s)\n", out.BindingsDiscovery.Status, strings.Join(reasons, "; "))
 	}

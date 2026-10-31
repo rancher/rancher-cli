@@ -165,7 +165,7 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{0,31}( [a-z][a-z0-9-]{0,31}){0,2}$",
           "maxLength": 98,
-          "description": "The command name (an alias is replaced by the name it stands for); never an argument value. Valid names are in the rancher schema manifest of the event's service.version.",
+          "description": "The command name (an alias is replaced by the name it stands for); never an argument value. Valid names are in the `rancher schema` manifest of the event's service.version.",
           "x-stability": "development",
           "x-absent": "The name did not follow the name rule and was left out."
         },
@@ -187,7 +187,7 @@
             "ok",
             "error"
           ],
-          "description": "Whether the command succeeded. An exit code that the command lists as success in the rancher schema manifest (`successExitCodes`) counts as ok.",
+          "description": "Whether the command succeeded. An exit code that the command lists as success in the `rancher schema` manifest (`successExitCodes`) counts as ok.",
           "x-stability": "development",
           "x-absent": "The producer did not report an outcome."
         },

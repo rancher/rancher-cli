@@ -285,7 +285,7 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 	case existing.URL == probe.CanonicalURL && existing.CA == probe.CASelector:
 		// Entry no-op: identical existing entry, nothing to rewrite.
 	case existing.URL != probe.CanonicalURL:
-		hint := fmt.Sprintf("rancher config update-server %s --url %s", clierr.ShellQuote(name), clierr.ShellQuote(probe.CanonicalURL))
+		hint := clierr.Rancher + fmt.Sprintf(" config update-server %s --url %s", clierr.ShellQuote(name), clierr.ShellQuote(probe.CanonicalURL))
 		if _, problem := credhelper.CheckServerURL(existing.URL); problem != nil {
 			// The entry's URL cannot be shown or compared: the entry is
 			// what needs the repair.
@@ -293,16 +293,17 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 		}
 		return CreateOutcome{}, clierr.New(clierr.CodeConflict,
 			fmt.Sprintf(
-				"server entry %q already points at %s; to add a new server choose a different name, or to change this entry's URL run: rancher config update-server %s --url %s",
-				name, config.DisplayServerURL(existing.URL), name, probe.CanonicalURL)).
+				"server entry %q already points at %s; to add a new server choose a different name, or to change this entry's URL run: ",
+				name, config.DisplayServerURL(existing.URL))+hint).
 			WithHint(hint)
 	default:
 		// URL matches; only the CA selector differs.
+		hint := clierr.Rancher + fmt.Sprintf(" config update-server %s %s", clierr.ShellQuote(name), CAUpdateArg(probe.CASelector))
 		return CreateOutcome{}, clierr.New(clierr.CodeConflict,
 			fmt.Sprintf(
-				"server entry %q already exists with a different CA; to add a new server choose a different name, or to change this entry's trust run: rancher config update-server %s %s",
-				name, name, CAUpdateArg(probe.CASelector))).
-			WithHint(fmt.Sprintf("rancher config update-server %s %s", clierr.ShellQuote(name), CAUpdateArg(probe.CASelector)))
+				"server entry %q already exists with a different CA; to add a new server choose a different name, or to change this entry's trust run: ",
+				name)+hint).
+			WithHint(hint)
 	}
 
 	repaired := bootstrapPointer(cfg, name)

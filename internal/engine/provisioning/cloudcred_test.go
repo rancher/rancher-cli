@@ -303,7 +303,7 @@ func TestResolveCloudCredentialMissGetNotFoundKeepsTheDomainError(t *testing.T) 
 	assert.NotContains(t, cerr.Message, "secret", "a miss must not leak the Secret kind implementation detail")
 	require.NotEmpty(t, cerr.Candidates, "a miss must yield candidates from the list")
 	assert.Equal(t, []string{"cc-missing"}, client.gets, "one GET by id")
-	assert.Equal(t, "rancher get cloud-credential", cerr.Hint)
+	assert.Equal(t, clierr.Rancher+" get cloud-credential", cerr.Hint)
 }
 
 // TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID asserts
@@ -561,7 +561,7 @@ func TestResolveCloudCredentialListRefusedFallsBackToOneGet(t *testing.T) {
 	require.True(t, ok, "%v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "cloud credential not found: cc-gone1", ce.Message)
-	assert.Equal(t, "rancher get cloud-credential", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get cloud-credential", ce.Hint)
 	assert.Empty(t, ce.Candidates)
 	assert.Equal(t, []string{"cc-gone1"}, client.gets)
 

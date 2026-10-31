@@ -934,7 +934,9 @@ invocation, never in a process-wide value. For a directory whose path has charac
 are left out: each text keeps its words up to the clause holding its first command
 and says the path has characters a terminal cannot show, the hint is dropped whenever it holds a command, and
 a details payload's command fields are emptied. Text output does this line by line: only a
-line that holds a command changes, and every other line is printed as it is.
+line that holds a command changes, and every other line is printed as it is. A source scan in
+test/conformance fails the build on a remedy command written without `clierr.Rancher` or without
+the word rancher; the commands still written plain are listed there with their reasons.
 
 **Exec-credential cache stays on disk.** Even under the keychain backend, the exec-credential cache
 - live short-lived bearer tokens - still lives in `token-cache.yaml` on disk (0600). The

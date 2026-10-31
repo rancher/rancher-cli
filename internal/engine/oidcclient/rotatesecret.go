@@ -139,7 +139,7 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 				fmt.Sprintf("timed out waiting for oidc-client %s to regenerate secret %s", clientName, secretName)).
 				WithDetails(clierr.CommittedContextDetails{
 					Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName,
-					Recovery: "rotate the same name again once the controller is healthy",
+					Recovery: "once the controller is healthy, rotate the same secret again with: " + clierr.Rancher + " oidc-client rotate-secret " + clierr.ShellQuote(clientName) + " " + clierr.ShellQuote(secretName),
 				})
 		},
 		func(err error) *clierr.Error {

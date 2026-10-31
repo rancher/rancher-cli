@@ -161,7 +161,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 			return runtime.Result{}, refuseUnsupportedTokenLookup(ctx, c.clients, err)
 		}
 		name := created.GetName()
-		recovery := fmt.Sprintf("delete kubeconfig %s, then create again", name)
+		recovery := clierr.Rancher + fmt.Sprintf(" delete kubeconfig %s, then create again", clierr.ShellQuote(name))
 		value, found, _ := unstructured.NestedString(created.Object, "status", "value")
 		if !found || value == "" {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,

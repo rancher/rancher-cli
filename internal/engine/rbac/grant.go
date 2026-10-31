@@ -37,12 +37,12 @@ func (grantCmd) Describe() runtime.Descriptor {
 		Desc: "Checks that the role exists for the scope (a roletemplate for project or cluster scope, " +
 			"a globalrole for global scope), finds the subject, checks that the subject does not already " +
 			"have the role there, and previews creating the binding. " +
-			"List the available roles with: rancher get roletemplates (project and cluster scopes) " +
-			"or rancher get globalroles (global scope).",
+			"List the available roles with: `rancher get roletemplates` (project and cluster scopes) " +
+			"or `rancher get globalroles` (global scope).",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
 		Flags: []runtime.ArgSpec{
-			{Name: "role", Type: "string", Required: true, Desc: "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global); discover with: rancher get roletemplates (project/cluster) or rancher get globalroles (global)"},
+			{Name: "role", Type: "string", Required: true, Desc: "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global); discover with: `rancher get roletemplates` (project/cluster) or `rancher get globalroles` (global)"},
 			runtime.ProjectFlag(false, "project scope: project `id|name`"),
 			{Name: "cluster", Type: "string", Desc: "cluster scope, or the cluster the --project is in"},
 			{Name: "global", Type: "bool", Desc: "global scope"},
@@ -132,7 +132,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		if !bindingMatchesSubject(b, rs, sub, false) {
 			if upn, _, _ := unstructured.NestedString(b.Object, "userPrincipalName"); upn != "" {
 				msg += fmt.Sprintf("; that binding uses another principal of the same user, %q", upn)
-				hint = fmt.Sprintf("rancher revoke %s --role %s%s", clierr.ShellQuote(upn), clierr.ShellQuote(role), scope.Flags())
+				hint = clierr.Rancher + fmt.Sprintf(" revoke %s --role %s%s", clierr.ShellQuote(upn), clierr.ShellQuote(role), scope.Flags())
 			}
 		}
 		if hint == "" {
@@ -259,7 +259,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		// usable pool so the raw webhook error does not surface.
 		if scope != ScopeGlobal {
 			if rtCtx, _, _ := unstructured.NestedString(obj.Object, "context"); rtCtx != string(scope) {
-				hint := "rancher get roletemplates"
+				hint := clierr.Rancher + " get roletemplates"
 				pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 				if perr != nil {
 					return perr
@@ -285,9 +285,9 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		return nil
 	}
 
-	hint := "rancher get roletemplates"
+	hint := clierr.Rancher + " get roletemplates"
 	if scope == ScopeGlobal {
-		hint = "rancher get globalroles"
+		hint = clierr.Rancher + " get globalroles"
 	}
 	pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 	if perr != nil {

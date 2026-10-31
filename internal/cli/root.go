@@ -428,11 +428,11 @@ var groupUsages = map[string]string{
 	"patch":       "Patch resources",
 	"delete":      "Delete resources",
 	"inspect":     "Inspect a cluster, workload or project with its related objects",
-	"project":     "Project namespace commands (project membership is managed with 'rancher grant' and 'rancher revoke')",
+	"project":     "Project namespace commands (project membership is managed with `rancher grant` and `rancher revoke`)",
 	"skill":       "Install, remove and check the agent skills that come with rancher-cli",
 	"telemetry":   "Local usage recording: status, turn on, turn off, delete and list events",
-	"oidc-client": "Manage OIDC client secrets (create oidc-client creates the client itself)",
-	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with 'create cluster' and delete it with 'delete provisioning-cluster')",
+	"oidc-client": "Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)",
+	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 
@@ -876,7 +876,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		"skill":  "Install, remove, and check the agent skills that come with rancher-cli.",
 		"telemetry": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. " +
 			"Recorded events stay on this machine.",
-		"create": "Create Rancher resources. Most commands in this group have their own flags for one kind; `create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
+		"create": "Create Rancher resources. Most commands in this group have their own flags for one kind; `rancher create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
 		// "project" is both a command group and a kind. Resolution order is
 		// command → group → kind, so rancher schema
 		// project returns THIS group's card carrying a kind-view hint, and
@@ -885,7 +885,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// the group would churn the TOC section layout and every agent
 		// prompt that references it.
 		"project":     "Manage a project's namespaces: add namespaces of the project's cluster to a Rancher project, or remove them from it.",
-		"oidc-client": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
+		"oidc-client": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `rancher create oidc-client` creates the client itself.",
 		// "cluster" is both a command group and a management KIND name -
 		// the same deliberate collision "project" already carries (see
 		// TestSchemaGroupKindCollisionsAreDeliberate), covered by the same
@@ -893,7 +893,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// provisioning-cluster`, `get cluster`) stays where it is; `get
 		// provisioning-cluster` is the read path for this family's target.
 		"cluster": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; " +
-			"to create or delete one use `create cluster` and `delete provisioning-cluster`, and to read one use `get provisioning-cluster`.",
+			"to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
 		"inspect": "Show the current state, events and related objects of a cluster, workload or project.",
 		"access": "Questions about access, answered by the server: whether a subject can perform a verb on a resource, the rules a subject has in a namespace, " +
 			"which of the subjects named in the cluster's bindings the authorizer allows to perform a verb on a resource, why the authorizer decided as it did for one subject " +
@@ -902,7 +902,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 			"namespace of the project, summarized per project), kept apart from the ProjectRoleTemplateBindings behind them. " +
 			"The authorizer questions are answered through the Rancher proxy by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview; " +
 			"which clusters a subject can reach is the proxy's own answer; the bindings are only read, and the client never evaluates them.",
-		"get":    "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `get cloud-credential` and `get kubernetes-versions` are dedicated commands.",
+		"get":    "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
 		"patch":  "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
 		"delete": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
 	}

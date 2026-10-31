@@ -51,7 +51,7 @@ func fetchOIDCClient(ctx context.Context, clients engine.ClusterClientFactory, c
 // secrets map alone.
 func errNotProvisioned(clientName string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("oidc-client %s has not been provisioned by the controller; check the oidc-provider feature, then rancher %s",
+		fmt.Sprintf("oidc-client %s has not been provisioned by the controller; check the oidc-provider feature, then %s",
 			clientName, recoveryHint(clientName)))
 }
 

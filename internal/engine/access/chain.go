@@ -15,7 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
-	"github.com/rancher/rancher-cli/internal/output"
+	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
 var (
@@ -982,7 +982,7 @@ func renderTree(node chainNode, mark string) []string {
 			label = mark + " " + label
 		}
 		if n.Note != "" {
-			label += " - " + output.Printable(n.Note)
+			label += " - " + runtime.PrintableRemedies(n.Note)
 		}
 		if root {
 			lines = append(lines, label)

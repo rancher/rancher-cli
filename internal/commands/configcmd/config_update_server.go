@@ -191,7 +191,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			// token is already gone.
 			return clierr.Wrap(err, fmt.Sprintf(
 				"credentials for %q were cleared, but writing the updated server entry failed: %v",
-				name, err)).WithHint(fmt.Sprintf("rancher auth login %s", clierr.ShellQuote(name))).
+				name, err)).WithHint(clierr.Rancher + " auth login " + clierr.ShellQuote(name)).
 				WithWarnings(notices...)
 		}
 		return err
@@ -252,7 +252,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	}
 	credentialsClearedLine := ""
 	if out.CredentialsCleared {
-		credentialsClearedLine = fmt.Sprintf("credentials cleared - log in again: rancher auth login %s", clierr.ShellQuote(out.Name))
+		credentialsClearedLine = "credentials cleared - log in again: " + clierr.Rancher + " auth login " + clierr.ShellQuote(out.Name)
 		lines = append(lines, credentialsClearedLine)
 	}
 	if len(deletedCache) > 0 {

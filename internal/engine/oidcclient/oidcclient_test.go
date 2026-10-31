@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 )
@@ -23,7 +24,7 @@ func (alwaysProceedCapabilityChecker) Check(context.Context, runtime.CapabilityR
 // text is built from - a future wording change only has to happen here.
 func TestRecoveryHint(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "get oidcclient my-app -o json", recoveryHint("my-app"))
+	assert.Equal(t, clierr.Rancher+" get oidcclient 'my-app' -o json", recoveryHint("my-app"))
 }
 
 // TestOidcClientKindResolvesWithoutPanicking asserts oidcClientKind's

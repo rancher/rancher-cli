@@ -235,7 +235,7 @@ func TestCanSARRefusedIsRBACRefusal(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
-	assert.Equal(t, "rancher get globalroles", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get globalroles", ce.Hint)
 }
 
 // TestCanSingleScopeTerminalPassesThroughUnchanged asserts the refusal
@@ -443,7 +443,7 @@ func TestCanProjectSARRefusedIsRBACRefusal(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "cannot ask about u-abc12 on cluster c-phmj7: you lack create subjectaccessreviews on cluster c-phmj7, or impersonate on users on the management cluster", ce.Message)
-	assert.Equal(t, "rancher get globalroles", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get globalroles", ce.Hint)
 }
 
 // TestCanUnknownGroupsNegativeIsUnknown asserts a system: user without a

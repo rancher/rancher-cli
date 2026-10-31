@@ -17,6 +17,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // secretGVR/secretNamespace name the backing password Secret every local
@@ -187,7 +188,11 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		return runtime.Result{}, err
 	}
 	name := createdUser.GetName()
-	recovery := fmt.Sprintf(`the user %s was created without a password - set one without putting it on the command line or in shell history: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | rancher create resource -f - --cluster local --apply --yes (a password containing a double quote or backslash must be JSON-escaped in the manifest)`, name, name)
+	recovery := fmt.Sprintf("the user %s was created without a password; the CLI prints no command for an id it cannot quote", clierr.ShellQuote(name))
+	if len(validation.IsDNS1123Subdomain(name)) == 0 {
+		recovery = fmt.Sprintf(`the user %s was created without a password - set one without putting it on the command line or in shell history: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | `, name, name) +
+			clierr.Rancher + " create resource -f - --cluster local --apply --yes (a password containing a double quote or backslash must be JSON-escaped in the manifest)"
+	}
 
 	secretObj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1",

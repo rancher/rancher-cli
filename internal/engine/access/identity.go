@@ -122,7 +122,7 @@ func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, call
 	if clusterID == engine.LocalCluster {
 		if forList {
 			return identityPlan{}, clierr.New(clierr.CodeRBAC,
-				"the management cluster cannot impersonate; ask a point question with access can, or list on a downstream cluster")
+				"the management cluster cannot impersonate; ask a point question with "+clierr.Rancher+" access can <verb> <resource>, or list on a downstream cluster")
 		}
 		return sarPlan, nil
 	}
@@ -189,11 +189,11 @@ func enrichCaller(ctx context.Context, local engine.ClusterClient, username stri
 
 // anonymousListMessage is the one wording for the anonymous refusal in
 // list: the anonymous identity cannot be impersonated.
-const anonymousListMessage = "no server operation lists the anonymous identity's rules; ask a point question with access can --as system:anonymous"
+var anonymousListMessage = "no server operation lists the anonymous identity's rules; ask a point question with " + clierr.Rancher + " access can --as system:anonymous"
 
 // groupListMessage is the one wording for the group refusal in list.
 func groupListMessage(raw string) string {
-	return fmt.Sprintf("no server operation lists a group's rules; ask a point question with: rancher access can <verb> <resource> --as %s", raw)
+	return "no server operation lists a group's rules; ask a point question with: " + clierr.Rancher + " access can <verb> <resource> --as " + clierr.ShellQuote(raw)
 }
 
 // sarFallback is the fallback when impersonation is refused or the route
@@ -216,7 +216,7 @@ func impersonationRefusal(resolved ResolvedSubject, clusterID string) *clierr.Er
 	}
 	return clierr.New(clierr.CodeRBAC,
 		fmt.Sprintf("cannot act as %s on cluster %s: your GlobalRoles lack %s on the management cluster", resolved.Subject.Name, clusterID, right)).
-		WithHint("rancher get globalroles")
+		WithHint(clierr.Rancher + " get globalroles")
 }
 
 // sarRefusal is the refusal when the review endpoint refuses the caller's
@@ -234,7 +234,7 @@ func sarRefusal(resolved ResolvedSubject, clusterID string) *clierr.Error {
 	}
 	return clierr.New(clierr.CodeRBAC,
 		fmt.Sprintf("cannot ask about %s on %s: you lack %s", resolved.Subject.Name, where, right)).
-		WithHint("rancher get globalroles")
+		WithHint(clierr.Rancher + " get globalroles")
 }
 
 // noRancherBindingsFor reports whether the management plane has no

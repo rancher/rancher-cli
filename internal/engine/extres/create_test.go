@@ -213,7 +213,7 @@ func TestCreateTokenExecMapsBearerTokenAndWarns(t *testing.T) {
 	require.NotNil(t, res.CommittedContext, "a DeliveryOnceOnly Result must carry CommittedContext")
 	assert.Equal(t, "Token", res.CommittedContext.ResourceKind)
 	assert.Equal(t, "token-xyz", res.CommittedContext.ResourceName)
-	assert.Contains(t, res.CommittedContext.Recovery, "delete token token-xyz")
+	assert.Contains(t, res.CommittedContext.Recovery, clierr.Rancher+" delete token 'token-xyz'")
 }
 
 // TestCreateTokenDescriptorDeclaresOnceOnlySeam asserts that create token
@@ -253,7 +253,7 @@ func TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess(t *testing.T) 
 	assert.True(t, details.Committed)
 	assert.Equal(t, "Token", details.ResourceKind)
 	assert.Equal(t, "token-empty", details.ResourceName)
-	assert.Contains(t, details.Recovery, "delete token token-empty")
+	assert.Contains(t, details.Recovery, clierr.Rancher+" delete token 'token-empty'")
 }
 
 func (*fakeClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {

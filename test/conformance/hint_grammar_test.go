@@ -72,6 +72,8 @@ type flattener struct {
 	scope fileScope
 	// funcScope is the file each function was declared in.
 	funcScope map[*ast.FuncDecl]fileScope
+	// read, when set, is called with every string literal flatten reads.
+	read func(*ast.BasicLit)
 }
 
 // fileScope is what names in one file refer to: its own package's import
@@ -123,6 +125,9 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 		s, err := strconv.Unquote(e.Value)
 		if err != nil {
 			return []string{unresolved}
+		}
+		if fl.read != nil {
+			fl.read(e)
 		}
 		return []string{s}
 
@@ -324,8 +329,23 @@ func TestHintGrammarConformance(t *testing.T) {
 	t.Parallel()
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
-	fset, files, paths := tree.fset, tree.files, tree.paths
+	eachHint(tree.files, tree.paths, func(path string, _ ast.Expr, pos token.Pos, literals []string, _ []*ast.BasicLit) {
+		site := path + ":" + strconv.Itoa(tree.fset.Position(pos).Line)
+		for _, literal := range literals {
+			if reason := hintGrammarViolation(literal); reason != "" {
+				t.Errorf("%s: hint %q %s", site, literal, reason)
+			}
+		}
+	})
+}
 
+// eachHint calls visit for every WithHint call argument and every composite
+// literal Hint: value of the files (paths[i] is files[i]'s path relative to
+// the module root) with the expression, the position of its call or key and
+// every literal string the flattener resolves it to and every string literal
+// of the source it read to get there (in the expression, in a constant or in
+// a function it returns from).
+func eachHint(files []*ast.File, paths []string, visit func(path string, expr ast.Expr, pos token.Pos, literals []string, read []*ast.BasicLit)) {
 	funcsByName := map[string][]*ast.FuncDecl{}
 	for _, f := range files {
 		for _, decl := range f.Decls {
@@ -353,14 +373,11 @@ func TestHintGrammarConformance(t *testing.T) {
 			}
 			localAssigns := collectLocalAssigns(fd.Body)
 			check := func(expr ast.Expr, pos token.Pos) {
-				site := path + ":" + strconv.Itoa(fset.Position(pos).Line)
-				for _, literal := range fl.flatten(expr, localAssigns, 0) {
-					reason := hintGrammarViolation(literal)
-					if reason == "" {
-						continue
-					}
-					t.Errorf("%s: hint %q %s", site, literal, reason)
-				}
+				var read []*ast.BasicLit
+				fl.read = func(lit *ast.BasicLit) { read = append(read, lit) }
+				literals := fl.flatten(expr, localAssigns, 0)
+				fl.read = nil
+				visit(path, expr, pos, literals, read)
 			}
 			ast.Inspect(fd.Body, func(n ast.Node) bool {
 				switch node := n.(type) {

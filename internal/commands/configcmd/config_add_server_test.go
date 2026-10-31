@@ -79,7 +79,7 @@ func TestAddServerDifferentURLConflicts(t *testing.T) {
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
-	assert.Equal(t, "rancher config update-server 'qa1' --url 'https://new.example.com'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config update-server 'qa1' --url 'https://new.example.com'", ce.Hint)
 }
 
 func TestAddServerRejectsLegacyPrefixedName(t *testing.T) {

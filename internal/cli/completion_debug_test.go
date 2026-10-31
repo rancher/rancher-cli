@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -50,10 +55,9 @@ func TestCompletionDebugTrace(t *testing.T) {
 	}
 	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
 
-	setup := func(t *testing.T, networkOn bool) {
+	setupIn := func(t *testing.T, dir string, networkOn bool) {
 		t.Helper()
 		keyring.MockInit()
-		dir := t.TempDir()
 		cfg := &config.Config{
 			CurrentServer: "srv",
 			Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
@@ -62,9 +66,15 @@ func TestCompletionDebugTrace(t *testing.T) {
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
 		setStoredConfigForTest(t, cfg, dir)
-		t.Setenv(config.EnvConfigDir, dir)
 		t.Setenv(config.EnvToken, "mgmt-token")
 		t.Setenv(config.EnvCredentialStore, "file")
+	}
+	setup := func(t *testing.T, networkOn bool) string {
+		t.Helper()
+		dir := t.TempDir()
+		setupIn(t, dir, networkOn)
+		t.Setenv(config.EnvConfigDir, dir)
+		return dir
 	}
 
 	t.Run("trace off leaves stderr untouched", func(t *testing.T) {
@@ -111,12 +121,45 @@ func TestCompletionDebugTrace(t *testing.T) {
 		assert.Contains(t, trace, "done: 0 candidates")
 	})
 
-	t.Run("trace reports the network gate", func(t *testing.T) {
-		setup(t, false)
+	t.Run("trace names a directory other than the default in the command it suggests", func(t *testing.T) {
+		dir := setup(t, false)
 		t.Setenv(config.EnvCompletionDebug, "1")
 		stdout, trace := runCompletionTraced(t, []string{"get", "cluster"})
 		assert.Empty(t, stdout)
-		assert.Contains(t, trace, "live completion off: enable with: rancher config set-completion --network=true")
+		assert.Contains(t, trace, "live completion off; enable with: rancher --config "+clierr.ShellQuote(remedyDirFor(dir))+" config set-completion --network=true")
+		assert.NotContains(t, trace, clierr.RemedyMarker, "no marker is left")
+	})
+
+	t.Run("trace names no directory when it is the default", func(t *testing.T) {
+		testfs.SkipOnWindows(t, "the default directory comes from APPDATA there")
+		directoryRuleEnv(t)
+		dir := platformDefaultDir(t)
+		require.NoError(t, os.MkdirAll(dir, 0o700))
+		setupIn(t, dir, false)
+		t.Setenv(config.EnvCompletionDebug, "1")
+		stdout, trace := runCompletionTraced(t, []string{"get", "cluster"})
+		assert.Empty(t, stdout)
+		assert.Contains(t, trace, "live completion off; enable with: rancher config set-completion --network=true")
+		assert.NotContains(t, trace, "--config")
+		assert.NotContains(t, trace, clierr.RemedyMarker, "no marker is left")
+	})
+
+	t.Run("trace keeps its reason when the directory cannot be printed", func(t *testing.T) {
+		// A name with a control character is refused on NTFS: the config load
+		// fails there and no directory is stored, so the line names none.
+		testfs.SkipOnWindows(t, "NTFS refuses a control character in a name")
+		keyring.MockInit()
+		// A missing file loads as an empty config; the path holds U+0001
+		// START OF HEADING, which a terminal cannot show.
+		t.Setenv(config.EnvConfigDir, filepath.Join(t.TempDir(), "a\u0001b"))
+		t.Setenv(config.EnvCredentialStore, "file")
+		t.Setenv(config.EnvCompletionDebug, "1")
+		stdout, trace := runCompletionTraced(t, []string{"get", "cluster"})
+		assert.Empty(t, stdout)
+		assert.Contains(t, trace, "live completion off")
+		assert.Contains(t, trace, runtime.UnprintableConfigDirNote)
+		assert.NotContains(t, trace, clierr.RemedyMarker, "no marker is left")
+		assert.NotContains(t, trace, "config set-completion", "no command is offered")
 	})
 }
 

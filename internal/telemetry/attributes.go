@@ -228,7 +228,7 @@ var attributes = []Attribute{
 	{
 		Name: attrCommand, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord, Pattern: commandPattern, MaxLength: 98,
-		Why:    "The command name (an alias is replaced by the name it stands for); never an argument value. Valid names are in the rancher schema manifest of the event's service.version.",
+		Why:    "The command name (an alias is replaced by the name it stands for); never an argument value. Valid names are in the `rancher schema` manifest of the event's service.version.",
 		Absent: "The name did not follow the name rule and was left out.",
 	},
 	{
@@ -240,7 +240,7 @@ var attributes = []Attribute{
 	{
 		Name: attrOutcome, Kind: KindString, Stability: StabilityDevelopment, Standard: "new",
 		Events: runOnly, Placement: PlaceRecord, Values: fixed(string(OutcomeOK), string(OutcomeError)),
-		Why:    "Whether the command succeeded. An exit code that the command lists as success in the rancher schema manifest (`successExitCodes`) counts as ok.",
+		Why:    "Whether the command succeeded. An exit code that the command lists as success in the `rancher schema` manifest (`successExitCodes`) counts as ok.",
 		Absent: "The producer did not report an outcome.",
 	},
 	{

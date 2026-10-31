@@ -261,7 +261,7 @@
           "usage": "Create a machine config for the machine pool of a node-driver cluster"
         }
       ],
-      "desc": "Create Rancher resources. Most commands in this group have their own flags for one kind; `create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
+      "desc": "Create Rancher resources. Most commands in this group have their own flags for one kind; `rancher create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
       "name": "create"
     },
     {
@@ -296,7 +296,7 @@
           "usage": "Remove a client secret from an OIDC client"
         }
       ],
-      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
+      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `rancher create oidc-client` creates the client itself.",
       "name": "oidc-client"
     },
     {
@@ -326,7 +326,7 @@
           "usage": "Resume the cluster autoscaler cluster-wide"
         }
       ],
-      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; to create or delete one use `create cluster` and `delete provisioning-cluster`, and to read one use `get provisioning-cluster`.",
+      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
       "name": "cluster"
     },
     {
@@ -396,7 +396,7 @@
           "usage": "List available Kubernetes versions (rke2/k3s)"
         }
       ],
-      "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `get cloud-credential` and `get kubernetes-versions` are dedicated commands.",
+      "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "generated": {
         "count": 49,
         "pattern": "get <kind>"

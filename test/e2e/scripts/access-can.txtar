@@ -78,8 +78,8 @@ stderr 'cluster not found: ''testcluster''; it is not among the clusters you can
 # hint. The subject is a service account so the refusal under test is the
 # impersonation one, not a management-plane read the standard user also lacks.
 env RANCHER_CLI_TOKEN=e2e-std:secret
-! exec rancher access can get pods --cluster testcluster -n team-a --as system:serviceaccount:team-a:ci
-stderr 'rancher get globalroles'
+! exec rancher access can get pods --cluster testcluster -n team-a --as system:serviceaccount:team-a:ci -o json
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' get globalroles'
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # a named subject on the management cluster uses SubjectAccessReview

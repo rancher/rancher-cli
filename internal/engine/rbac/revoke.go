@@ -81,8 +81,8 @@ func (revokeCmd) Describe() runtime.Descriptor {
 		Usage: "Revoke a subject's role(s) at project, cluster, or global scope",
 		Desc: "Finds the subject's bindings at the scope (only those for --role when it is given), " +
 			"checks each deletion with a server-side dry-run, and previews deleting them one at a time. " +
-			"List the available roles with: rancher get roletemplates (project and cluster scopes) " +
-			"or rancher get globalroles (global scope).",
+			"List the available roles with: `rancher get roletemplates` (project and cluster scopes) " +
+			"or `rancher get globalroles` (global scope).",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
 		Flags: []runtime.ArgSpec{
@@ -180,11 +180,11 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 			// all-namespaces/all-clusters list.
 			switch scope.Kind {
 			case ScopeProject:
-				hint = fmt.Sprintf("rancher get %s --namespace %s -o json", bindKind.Name, clierr.ShellQuote(scope.NS))
+				hint = clierr.Rancher + fmt.Sprintf(" get %s --namespace %s -o json", bindKind.Name, clierr.ShellQuote(scope.NS))
 			case ScopeCluster:
-				hint = fmt.Sprintf("rancher get %s --cluster %s -o json", bindKind.Name, clierr.ShellQuote(scope.Cluster))
+				hint = clierr.Rancher + fmt.Sprintf(" get %s --cluster %s -o json", bindKind.Name, clierr.ShellQuote(scope.Cluster))
 			default: // ScopeGlobal - no namespace qualifier needed
-				hint = "rancher get " + bindKind.Name + " -o json"
+				hint = clierr.Rancher + " get " + bindKind.Name + " -o json"
 			}
 		}
 		e := clierr.New(clierr.CodeNotFound, msg)

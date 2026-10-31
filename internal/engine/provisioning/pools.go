@@ -147,7 +147,7 @@ func poolLessClusterError(clusterName, verb string, fieldPresent bool) *clierr.E
 func poolNotFoundError(clusterName, poolName string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"cluster %q has no machine pool named %q", clusterName, poolName)).
-		WithHint(fmt.Sprintf("rancher inspect cluster %s", clierr.ShellQuote(clusterName)))
+		WithHint(clierr.Rancher + fmt.Sprintf(" inspect cluster %s", clierr.ShellQuote(clusterName)))
 }
 
 // autoscaledPoolGuardError is cluster scale's CLI-only check: the server
@@ -160,7 +160,7 @@ func autoscaledPoolGuardError(clusterName, poolName string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"machine pool %q on cluster %q is managed by the cluster autoscaler; the server accepts a change to the number of nodes, but the cluster autoscaler sets it back to its own value minutes later - pause autoscaling first to scale it yourself",
 		poolName, clusterName)).
-		WithHint(fmt.Sprintf("rancher cluster pause-autoscaling %s", clierr.ShellQuote(clusterName)))
+		WithHint(clierr.Rancher + fmt.Sprintf(" cluster pause-autoscaling %s", clierr.ShellQuote(clusterName)))
 }
 
 // provisioningClusterSensitive reads the provisioningcluster kind row's

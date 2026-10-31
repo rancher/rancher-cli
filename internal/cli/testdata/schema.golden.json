@@ -97,7 +97,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "public",
-      "desc": "Lists the management clusters you can see and, for each, whether Rancher's proxy admits you (or an impersonated --as user) to the cluster's API: reachable, refused, or unknown when the probe failed. Beside it, the ClusterRoleTemplateBindings, ProjectRoleTemplateBindings and GlobalRoleBindings on the management cluster that name the subject, its principals, or a group Rancher has cached for it. Reachability is the proxy's answer before any Kubernetes rule is consulted; what the identity may do inside a cluster is access list's question. Exit 0 when every cluster answered, 13 when any is unknown.",
+      "desc": "Lists the management clusters you can see and, for each, whether Rancher's proxy admits you (or an impersonated --as user) to the cluster's API: reachable, refused, or unknown when the probe failed. Beside it, the ClusterRoleTemplateBindings, ProjectRoleTemplateBindings and GlobalRoleBindings on the management cluster that name the subject, its principals, or a group Rancher has cached for it. Reachability is the proxy's answer before any Kubernetes rule is consulted; what the identity may do inside a cluster is `rancher access list`'s question. Exit 0 when every cluster answered, 13 when any is unknown.",
       "examples": [
         "rancher access clusters",
         "rancher access clusters --as alice",
@@ -646,7 +646,7 @@
     {
       "auth": true,
       "commandType": "local",
-      "desc": "Checks the current server's connectivity and stored credential and reports the server and Rancher versions, the identity, the token and the credential store. Also reports credentialStoreChange when the directory has a credential store change record, the same report config status gives. A failure before the report keeps its own hint and names an unfinished change in its message; while the change record cannot be read, rancher config status is the hint and the failure's own remedy stays in its message.",
+      "desc": "Checks the current server's connectivity and stored credential and reports the server and Rancher versions, the identity, the token and the credential store. Also reports credentialStoreChange when the directory has a credential store change record, the same report config status gives. A failure before the report keeps its own hint and names an unfinished change in its message; while the change record cannot be read, `rancher config status` is the hint and the failure's own remedy stays in its message.",
       "examples": [
         "rancher auth status -o json"
       ],
@@ -716,7 +716,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning cluster. A pause applies to the whole cluster: the server has no per-pool pause, and this command has no --pool flag. Pausing scales the cluster autoscaler Deployment in the downstream cluster to zero and keeps every machine pool's autoscalingMinSize and autoscalingMaxSize; while paused, `cluster scale` can change the number of nodes of an autoscaled machine pool. If autoscaling is already paused, the command succeeds and changes nothing. Like every change to a provisioning cluster, it requires --yes with --apply.",
+      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning cluster. A pause applies to the whole cluster: the server has no per-pool pause, and this command has no --pool flag. Pausing scales the cluster autoscaler Deployment in the downstream cluster to zero and keeps every machine pool's autoscalingMinSize and autoscalingMaxSize; while paused, `rancher cluster scale` can change the number of nodes of an autoscaled machine pool. If autoscaling is already paused, the command succeeds and changes nothing. Like every change to a provisioning cluster, it requires --yes with --apply.",
       "destructive": "true",
       "examples": [
         "rancher cluster pause-autoscaling my-cluster --apply --yes"
@@ -798,7 +798,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets spec.rkeConfig.machinePools[].quantity on the machine pool named by --pool. Refuses when the machine pool has autoscalingMinSize or autoscalingMaxSize set and autoscaling is not paused: the server accepts the change, but the cluster autoscaler sets the number of nodes back to its own value minutes later. Run `cluster pause-autoscaling` first. Refuses on a cluster with no machine pools (imported, custom or local). Every scale, up or down, requires --yes with --apply, like any change to a provisioning cluster. --nodes 0 is allowed on every machine pool, including a control-plane or etcd machine pool; the CLI sets no minimum of its own.",
+      "desc": "Sets spec.rkeConfig.machinePools[].quantity on the machine pool named by --pool. Refuses when the machine pool has autoscalingMinSize or autoscalingMaxSize set and autoscaling is not paused: the server accepts the change, but the cluster autoscaler sets the number of nodes back to its own value minutes later. Run `rancher cluster pause-autoscaling` first. Refuses on a cluster with no machine pools (imported, custom or local). Every scale, up or down, requires --yes with --apply, like any change to a provisioning cluster. --nodes 0 is allowed on every machine pool, including a control-plane or etcd machine pool; the CLI sets no minimum of its own.",
       "destructive": "true",
       "examples": [
         "rancher cluster scale my-cluster --pool pool1 --nodes 3 --apply --yes"
@@ -1061,7 +1061,7 @@
       ],
       "auth": false,
       "commandType": "local",
-      "desc": "Stores the token-reuse setting in config.yaml (default off). With it on, the first auth get-token cache miss for a server runs one interactive login, stores the resulting unscoped login credential under a server entry named exec-login-<host> (exec-login-<host>-<user id> for a call with --user-id, exec-login-<host>-<user id>-<auth config> with --auth-provider too) with provenance execLogin, and creates cluster-scoped tokens from it silently for every cluster of that server; with --user-id and no --cluster the token is one for Rancher itself. Off restores the per-cluster interactive login without deleting the stored credential; the output then lists every dormant plugin-created login and the commands that remove it (rancher auth logout <entry>, then rancher config delete-server <entry>) together with any superseded tokens it still names. auth login credentials are never affected.",
+      "desc": "Stores the token-reuse setting in config.yaml (default off). With it on, the first auth get-token cache miss for a server runs one interactive login, stores the resulting unscoped login credential under a server entry named exec-login-<host> (exec-login-<host>-<user id> for a call with --user-id, exec-login-<host>-<user id>-<auth config> with --auth-provider too) with provenance execLogin, and creates cluster-scoped tokens from it silently for every cluster of that server; with --user-id and no --cluster the token is one for Rancher itself. Off restores the per-cluster interactive login without deleting the stored credential; the output then lists every dormant plugin-created login and the commands that remove it (`rancher auth logout <entry>`, then `rancher config delete-server <entry>`) together with any superseded tokens it still names. auth login credentials are never affected.",
       "examples": [
         "rancher config set-token-reuse on",
         "rancher config set-token-reuse off"
@@ -1076,7 +1076,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Reports the resolved config file path (and whether it exists), the current server (empty when not logged in), and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the backend pin a login recorded when present. With no pin it reports where the entries' stored credentials are: credentialStoreInUse, keychain when an entry has an identity record or file when only credentials.yaml holds them; credentialStoreError when they are in both, which every credential command refuses; or, when nothing is stored, credentialStoreDefault, the OS-native keychain a login will try first on this platform (named from the platform alone, never probed). Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). Also reports tokenReuse and, under servers, every entry whose current token is CLI-owned or that names superseded tokens: provenance, owner, expiry, logged-out state, and for each token the recovery sequence that revokes it. Also reports cacheWritesPaused: every entry whose exec-credential cache writes are paused while a change of its credential finishes, with the reason the pause stays - pinStep (a credential store change still has to write its pin, which switches where credentials are read from; the next auth login, auth logout, config delete-server or config update-server --url finishes it), changeRecordUnreadable (the store change record cannot be read, as credentialStoreChange reports; restore or move it aside), noLock (the change ran with RANCHER_CLI_CONFIG_NO_LOCK; a login or logout of the entry clears it), or none (the next exec-credential cache miss or credential change resumes it). Also reports credentialStoreChange when the directory has a credential store change record, read the way every auth login, auth logout, config delete-server and config update-server --url reads it before its own work: state active (unfinished; those commands retry the work left), abandoned (a change that never started; the next of them removes it) or damaged (the record cannot be read or trusted, named by config.yaml or not; error names the file and what to do, and those commands refuse until it is restored or moved aside), the record's id, the id config.yaml names, the file, and under remaining each piece of work left: kind (delete or pin), entry, store, cannotFinish when no retry can finish it, and lastError. A change whose last step finished is not reported. The first place to check when tab-completion shows no candidates.",
+      "desc": "Reports the resolved config file path (and whether it exists), the current server (empty when not logged in), and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the backend pin a login recorded when present. With no pin it reports where the entries' stored credentials are: credentialStoreInUse, keychain when an entry has an identity record or file when only credentials.yaml holds them; credentialStoreError when they are in both, which every credential command refuses; or, when nothing is stored, credentialStoreDefault, the OS-native keychain a login will try first on this platform (named from the platform alone, never probed). Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). Also reports tokenReuse and, under servers, every entry whose current token is CLI-owned or that names superseded tokens: provenance, owner, expiry, logged-out state, and for each token the recovery sequence that revokes it. Also reports cacheWritesPaused: every entry whose exec-credential cache writes are paused while a change of its credential finishes, with the reason the pause stays - pinStep (a credential store change still has to write its pin, which switches where credentials are read from; the next auth login, auth logout, config delete-server or config update-server --url finishes it), changeRecordUnreadable (the store change record cannot be read, as credentialStoreChange reports; restore or move it aside), noLock (the change ran with RANCHER_CLI_CONFIG_NO_LOCK; a login or logout of the entry clears it), or none (the next exec-credential cache miss or credential change resumes it). Also reports credentialStoreChange when the directory has a credential store change record, read the way every `rancher auth login`, `rancher auth logout`, `rancher config delete-server` and `rancher config update-server --url` reads it before its own work: state active (unfinished; those commands retry the work left), abandoned (a change that never started; the next of them removes it) or damaged (the record cannot be read or trusted, named by config.yaml or not; error names the file and what to do, and those commands refuse until it is restored or moved aside), the record's id, the id config.yaml names, the file, and under remaining each piece of work left: kind (delete or pin), entry, store, cannotFinish when no retry can finish it, and lastError. A change whose last step finished is not reported. The first place to check when tab-completion shows no candidates.",
       "examples": [
         "rancher config status"
       ],
@@ -1155,7 +1155,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "A node-driver cluster is created with one machine pool; the machine pool flags cannot be repeated yet. For a cluster with several machine pools, use `create resource -f` with a full manifest. Before the server-side dry-run, the command gets your user ID with a SelfUser request (ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it: the rancher-webhook validating webhook requires the annotation on a dry-run, and older rancher-webhook releases set it only on a real create. If the command cannot set the annotation (the request fails or returns no valid user ID), it warns \"creatorId annotation not set\" and continues without the annotation. rancher-webhook may then reject the dry-run, and a rejected dry-run also stops --apply, which runs the same dry-run first. Log in again, or check that you may create selfusers.ext.cattle.io, then retry.",
+      "desc": "A node-driver cluster is created with one machine pool; the machine pool flags cannot be repeated yet. For a cluster with several machine pools, use `rancher create resource -f` with a full manifest. Before the server-side dry-run, the command gets your user ID with a SelfUser request (ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it: the rancher-webhook validating webhook requires the annotation on a dry-run, and older rancher-webhook releases set it only on a real create. If the command cannot set the annotation (the request fails or returns no valid user ID), it warns \"creatorId annotation not set\" and continues without the annotation. rancher-webhook may then reject the dry-run, and a rejected dry-run also stops --apply, which runs the same dry-run first. Log in again, or check that you may create selfusers.ext.cattle.io, then retry.",
       "destructive": "false",
       "examples": [
         "rancher create cluster imported-1 --import --apply",
@@ -1303,7 +1303,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Creates a machine config (an rke-machine-config.cattle.io custom resource) in the fleet-default namespace. Pass it to `create cluster --machine-config <kind>/<name>` afterwards. Driver fields are top-level fields of the object, not under spec. digitaloceanconfig has its own flags for common fields; amazonec2config, azureconfig, harvesterconfig and vmwarevsphereconfig take their fields with --set key=value. A field that holds a credential is rejected: put credentials in a cloud credential (a cc-* Secret), never in a machine config.",
+      "desc": "Creates a machine config (an rke-machine-config.cattle.io custom resource) in the fleet-default namespace. Pass it to `rancher create cluster --machine-config <kind>/<name>` afterwards. Driver fields are top-level fields of the object, not under spec. digitaloceanconfig has its own flags for common fields; amazonec2config, azureconfig, harvesterconfig and vmwarevsphereconfig take their fields with --set key=value. A field that holds a credential is rejected: put credentials in a cloud credential (a cc-* Secret), never in a machine config.",
       "destructive": "false",
       "examples": [
         "rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --dry-run",
@@ -1475,7 +1475,7 @@
     {
       "args": [
         {
-          "desc": "user `id` (see: rancher get users)",
+          "desc": "user `id` (see: `rancher get users`)",
           "name": "user",
           "required": true,
           "type": "string"
@@ -1484,7 +1484,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Submits an ext.cattle.io/v1 PasswordChangeRequest, which completes synchronously. Requires a server that supports local user passwords (the same support `create user` needs).",
+      "desc": "Submits an ext.cattle.io/v1 PasswordChangeRequest, which completes synchronously. Requires a server that supports local user passwords (the same support `rancher create user` needs).",
       "destructive": "true",
       "examples": [
         "echo -n \"$NEWPASSWORD\" | rancher create password-change-request u-abc123 --password-stdin --apply --yes"
@@ -2607,7 +2607,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)",
+          "desc": "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",
           "name": "id",
           "required": true,
           "type": "string"
@@ -3001,7 +3001,7 @@
       ],
       "args": [
         {
-          "desc": "user id (the NAME column of rancher get users), not the username or display name",
+          "desc": "user id (the NAME column of `rancher get users`), not the username or display name",
           "name": "id",
           "required": true,
           "type": "string"
@@ -4086,7 +4086,7 @@
       ],
       "args": [
         {
-          "desc": "global role id (the NAME column of rancher get globalroles), not the display name",
+          "desc": "global role id (the NAME column of `rancher get globalroles`), not the display name",
           "name": "id",
           "type": "string"
         }
@@ -4810,7 +4810,7 @@
       ],
       "args": [
         {
-          "desc": "node driver id (the NAME column of rancher get nodedrivers), not the display name",
+          "desc": "node driver id (the NAME column of `rancher get nodedrivers`), not the display name",
           "name": "id",
           "type": "string"
         }
@@ -5090,7 +5090,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)",
+          "desc": "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",
           "name": "id",
           "type": "string"
         }
@@ -5318,7 +5318,7 @@
       ],
       "args": [
         {
-          "desc": "role template id (the NAME column of rancher get roletemplates), not the display name",
+          "desc": "role template id (the NAME column of `rancher get roletemplates`), not the display name",
           "name": "id",
           "type": "string"
         }
@@ -5720,7 +5720,7 @@
       ],
       "args": [
         {
-          "desc": "user id (the NAME column of rancher get users), not the username or display name",
+          "desc": "user id (the NAME column of `rancher get users`), not the username or display name",
           "name": "id",
           "type": "string"
         }
@@ -5833,7 +5833,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: rancher get roletemplates (project and cluster scopes) or rancher get globalroles (global scope).",
+      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope).",
       "destructive": "true",
       "examples": [
         "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
@@ -5842,7 +5842,7 @@
       ],
       "flags": [
         {
-          "desc": "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global); discover with: rancher get roletemplates (project/cluster) or rancher get globalroles (global)",
+          "desc": "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global); discover with: `rancher get roletemplates` (project/cluster) or `rancher get globalroles` (global)",
           "name": "role",
           "required": true,
           "type": "string"
@@ -5889,7 +5889,7 @@
       "contract": "internal",
       "desc": "Lists container images referenced by active pods (status.phase Running or Pending; Succeeded and Failed pods are excluded, terminating pods are included until they are deleted), reading spec.containers, spec.initContainers, and spec.ephemeralContainers. --match filters by case-sensitive substring over the image reference exactly as written in the pod spec. It is repeatable, and an image matches when it contains any of the values. A short reference is not expanded to a full registry name (a bare nginx:1.25 does not match docker.io). End a value with / or : to avoid matching a longer name that starts the same way: --match registry.old.corp/ does not match registry.old.corp.example/app:1. --match never inspects image contents. --by workload starts at each pod's ownerReferences entry with controller: true (the first entry when none is marked) and moves up: from a ReplicaSet, StatefulSet, DaemonSet or Job it continues to that object's own owner (for example pod to ReplicaSet to Deployment), and it stops at an owner of any other kind. It reports one row per image and owning workload object (apiVersion, kind, name, uid), the last owner it reaches, with the count of pods controlled by exactly that object. When an owner cannot be read, its reference has no uid, or its uid differs from the reference, the row names the pod's direct owner instead and a warning is added. If you cannot read part of the data, the command still exits 0: each section it could not read in full is named in data.degraded ({section, state, code, target}), and each entry has one warning. With --cluster, finding the cluster by id or name and listing the pods are required: the command fails when any of them fails. With --all-clusters, listing the clusters is required, a list with no clusters succeeds with no rows, and the command fails when none of the listed clusters can be read. Sections that can degrade: ownerResolution (partial, target = the owner's apiVersion|kind|namespace|name|uid, prefixed with the cluster id under --all-clusters), clusters (partial, target = cluster id, --all-clusters only).",
       "examples": [
-        "images --all-clusters --match library/elasticsearch: --by workload"
+        "rancher images --all-clusters --match library/elasticsearch: --by workload"
       ],
       "flags": [
         {
@@ -5942,7 +5942,7 @@
       "desc": "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management.cattle.io Cluster's id, name, state, and kubernetesVersion (the observed version first, then the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management.cattle.io Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (a condition with status Unknown is ignored and never shows the agent as not connected) and each field only when its own condition does; an agent that is not connected or a False Ready condition adds a warning - the status of the provisioning.cattle.io Cluster cannot show an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, each row reporting principal, displayName, role, binding (the name of the ClusterRoleTemplateBinding), and system; a failed binding read leaves the members field out of the JSON while the text output shows members: unavailable, with a warning naming the cause; a failure to look up display names leaves out only the display names, never rows; entries whose principal id starts with system: (Rancher's system principals, e.g. system://provisioning/...) carry system: true (accounts Rancher uses internally, not bindings an administrator added)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message - preferring conditions whose reason contains \"Error\"; a failed list leaves the machines field out of the JSON while the text output shows machines: unavailable, with a warning naming the cause; left out when the provisioning cluster was not found), and the commands in the default cluster registration token: nodeCommand and insecureNodeCommand (to add nodes), command and insecureCommand (to import a cluster), and manifestUrl. On an imported cluster (provisioning spec.rkeConfig absent), notApplicable lists the node command fields that are present but do not apply; such fields are marked, never left out. By default the registration section holds only a message and a hint, and the commands are left out, because they contain the cluster registration token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show them. Each section can be missing without affecting the others: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read leave out their sections with a warning naming the cause. If you cannot read part of the data, the command still exits 0: each section it could not read in full is named in data.degraded ({section, state, code, target}), and each entry has one warning. Finding the cluster by id or name and reading its management.cattle.io Cluster are required: the command fails when any of them fails. Sections that can degrade: provisioning (unavailable - the lookup of the provisioning.cattle.io Cluster that matches this cluster, one entry covering the status, machinePools, and machines, which are then left out), machines (unavailable - a machine list that failed after that Cluster was found), members (unavailable - the binding list; a failure to look up display names stays a warning), registration (unavailable - reading the cluster registration token).",
       "flags": [
         {
-          "desc": "show the registration commands (they contain the cluster registration token and are left out by default); also available with: rancher get clusterregistrationtoken default-token --namespace <cluster-id>",
+          "desc": "show the registration commands (they contain the cluster registration token and are left out by default); also available with: `rancher get clusterregistrationtoken default-token --namespace <cluster-id>`",
           "name": "registration",
           "type": "bool"
         }
@@ -7441,7 +7441,7 @@
       ],
       "args": [
         {
-          "desc": "global role id (the NAME column of rancher get globalroles), not the display name",
+          "desc": "global role id (the NAME column of `rancher get globalroles`), not the display name",
           "name": "id",
           "required": true,
           "type": "string"
@@ -8212,7 +8212,7 @@
       ],
       "args": [
         {
-          "desc": "node driver id (the NAME column of rancher get nodedrivers), not the display name",
+          "desc": "node driver id (the NAME column of `rancher get nodedrivers`), not the display name",
           "name": "id",
           "required": true,
           "type": "string"
@@ -8516,7 +8516,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)",
+          "desc": "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",
           "name": "id",
           "required": true,
           "type": "string"
@@ -8765,7 +8765,7 @@
       ],
       "args": [
         {
-          "desc": "role template id (the NAME column of rancher get roletemplates), not the display name",
+          "desc": "role template id (the NAME column of `rancher get roletemplates`), not the display name",
           "name": "id",
           "required": true,
           "type": "string"
@@ -9203,7 +9203,7 @@
       ],
       "args": [
         {
-          "desc": "user id (the NAME column of rancher get users), not the username or display name",
+          "desc": "user id (the NAME column of `rancher get users`), not the username or display name",
           "name": "id",
           "required": true,
           "type": "string"
@@ -9393,7 +9393,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Finds the subject's bindings at the scope (only those for --role when it is given), checks each deletion with a server-side dry-run, and previews deleting them one at a time. List the available roles with: rancher get roletemplates (project and cluster scopes) or rancher get globalroles (global scope).",
+      "desc": "Finds the subject's bindings at the scope (only those for --role when it is given), checks each deletion with a server-side dry-run, and previews deleting them one at a time. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope).",
       "destructive": "true",
       "examples": [
         "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
@@ -9775,7 +9775,7 @@
       "auth": true,
       "commandType": "local",
       "contract": "internal",
-      "desc": "Compatibility adapter for kubeconfigs generated by Rancher with kubeconfig-generate-token disabled, which invoke the legacy CLI's `rancher token`. New integrations and agents use `auth get-token`; this command exists so existing kubeconfigs keep working after swapping the binary. --user is the cache-slot key and basic-auth username default; it does not pick a stored login: the call uses the one user entry for the server that has a login, else the plugin's own login entry while token reuse is on. It fails when several user entries have a login, and when no user entry has one and the server has more than one plugin login entry.",
+      "desc": "Compatibility adapter for kubeconfigs generated by Rancher with kubeconfig-generate-token disabled, which invoke the legacy CLI's `rancher token`. New integrations and agents use `rancher auth get-token`; this command exists so existing kubeconfigs keep working after swapping the binary. --user is the cache-slot key and basic-auth username default; it does not pick a stored login: the call uses the one user entry for the server that has a login, else the plugin's own login entry while token reuse is on. It fails when several user entries have a login, and when no user entry has one and the server has more than one plugin login entry.",
       "examples": [
         "rancher token --server https://rancher.example.com --user my-cluster"
       ],
@@ -10314,7 +10314,7 @@
         "create cluster",
         "create machine-config"
       ],
-      "desc": "Create Rancher resources. Most commands in this group have their own flags for one kind; `create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
+      "desc": "Create Rancher resources. Most commands in this group have their own flags for one kind; `rancher create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
       "name": "create"
     },
     {
@@ -10331,7 +10331,7 @@
         "oidc-client rotate-secret",
         "oidc-client remove-secret"
       ],
-      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
+      "desc": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `rancher create oidc-client` creates the client itself.",
       "name": "oidc-client"
     },
     {
@@ -10342,7 +10342,7 @@
         "cluster pause-autoscaling",
         "cluster resume-autoscaling"
       ],
-      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; to create or delete one use `create cluster` and `delete provisioning-cluster`, and to read one use `get provisioning-cluster`.",
+      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
       "name": "cluster"
     },
     {
@@ -10422,7 +10422,7 @@
         "get nodedriver",
         "get clusterregistrationtoken"
       ],
-      "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `get cloud-credential` and `get kubernetes-versions` are dedicated commands.",
+      "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "name": "get"
     },
     {
@@ -10545,7 +10545,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "to delete a cluster, use delete provisioning-cluster",
+          "note": "to delete a cluster, use `rancher delete provisioning-cluster`",
           "state": "absent"
         },
         "get": {
@@ -10604,7 +10604,7 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
-          "note": "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's number of nodes with cluster scale), or outside Rancher for an imported, custom or local cluster",
+          "note": "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's number of nodes with `rancher cluster scale`), or outside Rancher for an imported, custom or local cluster",
           "state": "absent"
         },
         "get": {
@@ -11595,7 +11595,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's number of nodes with cluster scale",
+          "note": "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's number of nodes with `rancher cluster scale`",
           "state": "absent"
         },
         "get": {
@@ -11624,7 +11624,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with cluster scale",
+          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with `rancher cluster scale`",
           "state": "absent"
         },
         "get": {
@@ -11653,7 +11653,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with cluster scale",
+          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with `rancher cluster scale`",
           "state": "absent"
         },
         "get": {

@@ -36,6 +36,7 @@ func TestZshHandsTheWholeLineToDescribe(t *testing.T) {
 		"u-path:ends in a slash/",
 		"u-eq:ends in an equals sign=",
 		"u-plain",
+		"project:Project namespace commands (managed with `rancher grant`)",
 		"amazonec2config/:machine configs",
 		"template=:a Go template",
 		"template=:a Go template: with a colon",
@@ -82,6 +83,7 @@ _rancher
 		"u-path:ends in a slash/",
 		"u-eq:ends in an equals sign=",
 		"u-plain",
+		"project:Project namespace commands (managed with `rancher grant`)",
 	}
 	if got := splitLines(strings.TrimRight(string(out), "\n")); !sliceEqual(got, want) {
 		t.Errorf("_describe calls\n got:  %q\n want: %q", got, want)

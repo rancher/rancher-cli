@@ -157,7 +157,7 @@ func findRancherUser(ctx context.Context, local engine.ClusterClient, raw string
 	case 1:
 		return matches[0], nil
 	case 0:
-		e := clierr.New(clierr.CodeNotFound, fmt.Sprintf("user %s not found", raw)).WithHint("rancher get users")
+		e := clierr.New(clierr.CodeNotFound, fmt.Sprintf("user %s not found", raw)).WithHint(clierr.Rancher + " get users")
 		// A principal or a system: value has no name to match near.
 		if !strings.Contains(raw, "://") && !strings.HasPrefix(raw, "system:") {
 			var nonSystem []*unstructured.Unstructured
@@ -176,7 +176,7 @@ func findRancherUser(ctx context.Context, local engine.ClusterClient, raw string
 		}
 		return nil, clierr.New(clierr.CodeAmbiguousSelection,
 			fmt.Sprintf("%d users match %s; pass the user id", len(matches), raw)).
-			WithHint("rancher get users").
+			WithHint(clierr.Rancher + " get users").
 			WithCandidates(cands)
 	}
 }

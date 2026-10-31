@@ -533,7 +533,7 @@ func TestWhoCanRefusals(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
-	assert.Equal(t, "rancher get globalroles", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get globalroles", ce.Hint)
 	require.Len(t, f.caller.Reviews, 2, "the first refused review ends the fan-out")
 
 	f = whoCanFactory()

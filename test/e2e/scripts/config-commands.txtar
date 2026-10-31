@@ -76,7 +76,7 @@ jsonquery stdout data.unchanged true
 # the machine hint is the single, fully interpolated update-server command.
 ! exec rancher config add-server qa1 --url https://different.example.com -o json
 jsonquery stderr data.error.code CONFLICT
-jsonquery stderr data.error.hint 'rancher config update-server ''qa1'' --url ''https://different.example.com'''
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' config update-server ''qa1'' --url ''https://different.example.com'''
 
 # config update-server --clear-cacert (system roots) and a URL change
 # against a different host are exercised at the unit level
