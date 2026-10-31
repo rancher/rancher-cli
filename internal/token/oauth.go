@@ -21,6 +21,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output"
 	iruntime "github.com/rancher/rancher-cli/internal/runtime"
 	"golang.org/x/oauth2"
 )
@@ -161,7 +162,7 @@ func oauthAuthCodeAuth(
 	input.signInStarts(p)
 	p.Notice("\nOpening browser for authentication...\n")
 	if err := openBrowser(authURL); err != nil {
-		p.Notice(fmt.Sprintf("Failed to open browser automatically (%v). Please open the following URL manually:\n%s\n", err, authURL))
+		p.Notice(fmt.Sprintf("Failed to open browser automatically (%v). Please open the following URL manually:\n%s\n", err, output.Printable(authURL)))
 	}
 
 	timeout := time.NewTimer(timeoutAfter)
@@ -306,8 +307,8 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 	input.signInStarts(p)
 	p.Notice(fmt.Sprintf(
 		"\nTo sign in, use a web browser to open the page %s and enter the code %s to authenticate.\n",
-		deviceAuthResp.VerificationURI,
-		deviceAuthResp.UserCode,
+		output.Printable(deviceAuthResp.VerificationURI),
+		output.Printable(deviceAuthResp.UserCode),
 	))
 
 	oauthToken, err := oauthConfig.DeviceAccessToken(ctxWithClient, deviceAuthResp)

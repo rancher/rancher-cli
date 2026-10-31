@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output"
+	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
 // Where a token a command deletes comes from.
@@ -883,7 +884,7 @@ func (d *Deletion) TextLines() []string {
 func (d *Deletion) textLine(it *revocationItem) string {
 	name := describe(it)
 	if it.ref != nil {
-		name = it.ref.String()
+		name = output.Printable(it.ref.String())
 	}
 	if it.revoked {
 		what := map[string]string{sourceCache: cacheTokenText(it), sourceSuperseded: "superseded token", sourceLogin: "login token"}[it.source]
@@ -898,11 +899,11 @@ func (d *Deletion) textLine(it *revocationItem) string {
 		}
 		return fmt.Sprintf("not revoked %s (pasted login token)", name)
 	}
-	detail := reasonText(it)
+	detail := runtime.PrintableRemedies(reasonText(it))
 	if e := d.reportedEntry(it); e != "" {
 		detail += "; recorded on " + e
 		if d.retry(it) == retryNextLogin {
-			detail += ": " + d.nextLoginText(e, false) + " revokes it"
+			detail += ": " + output.Printable(d.nextLoginText(e, false)) + " revokes it"
 		}
 	}
 	return fmt.Sprintf("not revoked %s (%s)", name, detail)

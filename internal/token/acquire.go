@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -303,7 +304,7 @@ func signInForClusterToken(ctx context.Context, client *http.Client, input *logi
 func legacyFallbackNotice(expiresAt string) string {
 	note := fmt.Sprintf("this Rancher does not serve ext.cattle.io (requires Rancher >= %s, the supported minimum); storing the session token directly", config.MinRancherVersion)
 	if expiresAt != "" {
-		note += " (expires " + expiresAt + ")"
+		note += " (expires " + output.Printable(expiresAt) + ")"
 	}
 	return note
 }

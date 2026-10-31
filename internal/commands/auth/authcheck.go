@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -278,14 +279,14 @@ func renderAuthCheckText(
 	fmt.Fprintf(&b, "  server: %s\n", serverName)
 
 	fmt.Fprintf(&b, "\nVERSIONS\n")
-	fmt.Fprintf(&b, "  serverVersion: %s\n", serverVersion)
-	fmt.Fprintf(&b, "  rancherVersion: %s\n", ptrStr(rancherVersion))
+	fmt.Fprintf(&b, "  serverVersion: %s\n", output.Printable(serverVersion))
+	fmt.Fprintf(&b, "  rancherVersion: %s\n", output.Printable(ptrStr(rancherVersion)))
 	fmt.Fprintf(&b, "  supported: %s\n", ptrBool(supported))
 
 	fmt.Fprintf(&b, "\nIDENTITY\n")
 	if idMap, idOK := identity.(map[string]any); idOK {
 		userID, _ := idMap["userID"].(string)
-		fmt.Fprintf(&b, "  userID: %s\n", userID)
+		fmt.Fprintf(&b, "  userID: %s\n", output.Printable(userID))
 	} else {
 		fmt.Fprintf(&b, "  identity: unavailable\n")
 	}
@@ -297,10 +298,10 @@ func renderAuthCheckText(
 		prov, _ := tokMap["provider"].(string)
 		expiresAt, _ := tokMap["expiresAt"].(string)
 		current, _ := tokMap["current"].(bool)
-		fmt.Fprintf(&b, "  name: %s\n", name)
+		fmt.Fprintf(&b, "  name: %s\n", output.Printable(name))
 		fmt.Fprintf(&b, "  kind: %s\n", kind)
-		fmt.Fprintf(&b, "  provider: %s\n", prov)
-		fmt.Fprintf(&b, "  expiresAt: %s\n", expiresAt)
+		fmt.Fprintf(&b, "  provider: %s\n", output.Printable(prov))
+		fmt.Fprintf(&b, "  expiresAt: %s\n", output.Printable(expiresAt))
 		fmt.Fprintf(&b, "  current: %v\n", current)
 	} else {
 		fmt.Fprintf(&b, "  token: unavailable\n")
@@ -543,19 +544,19 @@ func credentialReport(s config.Server) (map[string]any, string) {
 	var facts []string
 	if s.TokenUserID != "" {
 		m["userId"] = s.TokenUserID
-		facts = append(facts, "user "+s.TokenUserID)
+		facts = append(facts, "user "+output.Printable(s.TokenUserID))
 	}
 	if s.TokenAuthConfig != "" {
 		m["authConfig"] = s.TokenAuthConfig
-		facts = append(facts, "auth config "+s.TokenAuthConfig)
+		facts = append(facts, "auth config "+output.Printable(s.TokenAuthConfig))
 	}
 	if s.TokenRef != nil {
 		m["tokenRef"] = map[string]any{"kind": string(s.TokenRef.Kind), "name": s.TokenRef.Name}
-		facts = append(facts, "token "+s.TokenRef.String())
+		facts = append(facts, "token "+output.Printable(s.TokenRef.String()))
 	}
 	if s.CredentialExpiresAt != "" {
 		m["expiresAt"] = s.CredentialExpiresAt
-		facts = append(facts, "expires "+s.CredentialExpiresAt)
+		facts = append(facts, "expires "+output.Printable(s.CredentialExpiresAt))
 	}
 	line := "credential: " + string(s.Provenance)
 	if len(facts) > 0 {

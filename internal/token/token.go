@@ -31,6 +31,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
@@ -1273,7 +1274,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 				}
 			}
 			if err != nil {
-				p.Notice("error deleting auth token: " + clierr.From(err).Message)
+				p.Notice("error deleting auth token: " + output.Printable(clierr.From(err).Message))
 			}
 
 			res.Create.ExpiresAt = deposited.ExpiresAt
@@ -1466,7 +1467,7 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, unsuppor
 
 	if len(providers) == 1 {
 		if note != "" && p.CanPrompt() {
-			p.Notice("Auth config: " + authConfigLabel(providers[0]) + "\n" + note)
+			p.Notice("Auth config: " + output.Printable(authConfigLabel(providers[0])) + "\n" + output.Printable(note))
 		}
 		return providers[0], nil
 	}
@@ -1484,10 +1485,10 @@ func chooseAuthConfig(ctx context.Context, entries []typedProvider, note string,
 	if p.CanPrompt() {
 		var b strings.Builder
 		for i, prov := range entries {
-			fmt.Fprintf(&b, "%d - %s\n", i, authConfigLabel(prov))
+			fmt.Fprintf(&b, "%d - %s\n", i, output.Printable(authConfigLabel(prov)))
 		}
 		if note != "" {
-			b.WriteString(note + "\n")
+			b.WriteString(output.Printable(note) + "\n")
 		}
 		p.Notice("Auth configs:\n" + b.String())
 		sel, err := p.Prompt(ctx, "Select auth config: ")
@@ -2377,7 +2378,7 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 			// is the one way to a login here.
 			refresh = ""
 		}
-		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%s); falling back to interactive login%s", sc.name, clierr.From(err).Message, refresh))
+		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%s); falling back to interactive login%s", sc.name, output.Printable(clierr.From(err).Message), refresh))
 		return errStoredCredentialRejected
 	}
 	return err

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/output"
 )
 
 // providerName is Rancher's short name for an auth provider type: the type
@@ -87,7 +88,7 @@ func signInNotice(entries []typedProvider, chosen typedProvider) string {
 		}
 	}
 	if same > 1 {
-		return "Signing in through auth config " + authConfigLabel(chosen) + "."
+		return "Signing in through auth config " + output.Printable(authConfigLabel(chosen)) + "."
 	}
 	return ""
 }

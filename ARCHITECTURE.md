@@ -394,6 +394,7 @@ graph TD
     auth --> register
     auth --> config
     auth --> extres
+    auth --> output
     auth --> outputstyle
     auth --> runtime
     auth --> token

@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/register"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -136,7 +137,9 @@ func trustCard(d tlstrust.Details, priorFingerprint string) string {
 		lines = append(lines,
 			fmt.Sprintf("warning: this server previously presented a certificate with fingerprint %s; it now presents a different one - the certificate may have been replaced, or another server may be answering in its place", priorFingerprint))
 	}
-	lines = append(lines, d.TextDetails()...)
+	for _, l := range d.TextDetails() {
+		lines = append(lines, output.Printable(l))
+	}
 	if strings.Contains(strings.ToLower(d.Subject), dynamiclistenerCAMarker) {
 		lines = append(lines, "the certificate identifies itself as "+dynamiclistenerCAMarker+" (Rancher's generated CA)")
 	} else {

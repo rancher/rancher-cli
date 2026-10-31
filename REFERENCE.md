@@ -1234,8 +1234,17 @@ characters from server-sourced text before it reaches the terminal, so server
 text cannot drive the terminal. Progress messages on stderr get the same
 treatment under every `-o` format. Table cells, `-o name`, the `# warning:`
 and `error (...)` lines, the summary line and the dry-run preview also remove
-newlines, so a value cannot add a row or a line there. Verbatim by design, and
-untrusted content when echoed: `json`, `yaml` and `template=` (the bytes are
+newlines, so a value cannot add a row or a line there. In the text of
+`inspect cluster`, `inspect deployment`, `inspect project`, `inspect user`,
+`config status`, `config set-token-reuse`, `create token`,
+`project remove-namespace`, the OIDC client commands and `auth status`, in the
+revoke lines of `auth logout`, `auth delete-token`, `config delete-server` and
+`config update-server`, and in the messages `auth login` and the kubectl plugin
+print, free text such as a display name, description, condition message or
+error text, and timestamps, token names, user ids and auth config names,
+whether read from the server or from config.yaml, lose their newlines too.
+Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
+`template=` (the bytes are
 the data), `logs` (container output whose newlines are its structure), and the
 file and script output of `kubeconfig`, `create kubeconfig` and `completion`.
 A value a command shows only once (a bearer token, a client secret) that holds
