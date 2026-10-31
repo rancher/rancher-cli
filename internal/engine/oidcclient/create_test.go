@@ -290,7 +290,7 @@ func TestCreateExecFullLifecycleSuccess(t *testing.T) {
 	// OnceOnlyNotice to Warnings before rendering, so it still reaches
 	// -o json without also mirroring to stderr under table/wide.
 	assert.Empty(t, res.Warnings)
-	assert.Contains(t, res.OnceOnlyNotice, "shown exactly once")
+	assert.Equal(t, "this client secret is shown once - store it now", res.OnceOnlyNotice)
 	assert.Equal(t, "oidcclient/my-app created\n"+
 		"  client id: client-abc\n"+
 		"  client secret: super-secret-value   (shown once - store it now)\n"+
@@ -341,7 +341,7 @@ func TestCreateExecDegradedDiscovery(t *testing.T) {
 			// notice and still mirrors the discovery warning normally.
 			require.Len(t, res.Warnings, 1)
 			assert.Contains(t, res.Warnings[0], "could not "+tc.verb+" the discovery document")
-			assert.Contains(t, res.OnceOnlyNotice, "shown exactly once")
+			assert.Equal(t, "this client secret is shown once - store it now", res.OnceOnlyNotice)
 		})
 	}
 }

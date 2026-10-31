@@ -170,7 +170,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 					Committed: true, ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery,
 				})
 		}
-		header := fmt.Sprintf("# Kubeconfig %q - shown exactly once; revoke with: rancher delete kubeconfig %s\n", name, name)
+		header := fmt.Sprintf("# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig %s\n", name, name)
 		return runtime.Result{
 			RawBytes:         append([]byte(header), []byte(value)...),
 			CommittedContext: &runtime.CommittedContext{ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery},

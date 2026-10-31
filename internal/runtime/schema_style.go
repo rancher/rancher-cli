@@ -187,7 +187,7 @@ func labelIndexes(text string, rules []labelRule) map[int]string {
 }
 
 // styleSchemaGroupCard applies the group card's bold spans to text, the
-// plain rendering renderGroupCard already produced: the "group: <name>"
+// plain rendering renderGroupCard already produced: the "command group: <name>"
 // header line (bold, whole line) and the "commands:" label line. The
 // group's Desc renders before the commands label, so the label anchors on
 // its last exact occurrence - and only when the section actually rendered

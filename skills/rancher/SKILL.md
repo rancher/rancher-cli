@@ -165,8 +165,8 @@ curated command - machine configs are created via
 `rancher schema --search <term>` (case-insensitive, spans names, aliases,
 usage, and descriptions); do not pull `schema --all` to find a command
 name. A name that is both a command group and a kind (e.g. `project`)
-resolves to the group card, which names the kind view - pass `--kind`
-for the kind card.
+resolves to the group card, which tells you to pass `--kind` for the
+kind card.
 Kind names have kubectl-style aliases (e.g. `get pods`,
 `get cm`). `get kubernetes-versions` always marks the newest release per
 distro (`newest`); when the server's default version for a distro is empty

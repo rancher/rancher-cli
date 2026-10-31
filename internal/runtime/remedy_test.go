@@ -140,6 +140,14 @@ func TestRemedyCommandsInStructuredResultDataNameTheDirectory(t *testing.T) {
 	}
 }
 
+// TestUnprintableConfigDirNoteText asserts the words of the note a text says
+// in place of its commands when the config directory's path has characters a
+// terminal cannot show.
+func TestUnprintableConfigDirNoteText(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "the config directory's path has characters a terminal cannot show; the commands that would name it are left out", UnprintableConfigDirNote)
+}
+
 // TestRemedyCommandsForAnUnprintableDirectory asserts a directory whose
 // path a terminal line cannot show is never named in a command, nor
 // replaced by a placeholder: every text keeps its words up to the clause

@@ -555,15 +555,19 @@ func TestValidateRejectsMalformedCapability(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		cap  runtime.CapabilityRequirement
+		want string
 	}{
-		{"unknown tier", runtime.CapabilityRequirement{Tier: "bogus", Feature: "widget-feature"}},
-		{"known tier empty feature", runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime}},
-		{"feature no tier", runtime.CapabilityRequirement{Feature: "widget-feature"}},
+		{"unknown tier", runtime.CapabilityRequirement{Tier: "bogus", Feature: "widget-feature"},
+			`foo: unknown capability tier "bogus"`},
+		{"known tier empty feature", runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime},
+			`foo: capability tier "prime" requires a Feature name`},
+		{"feature no tier", runtime.CapabilityRequirement{Feature: "widget-feature"},
+			"foo: capability requirement has Feature/Unsupported set with no Tier"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			bad := []Kind{{Key: "a", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Capability: tt.cap}}
-			assert.Error(t, validateKinds(bad))
+			assert.EqualError(t, validateKinds(bad), tt.want)
 		})
 	}
 	if err := Validate(); err != nil {

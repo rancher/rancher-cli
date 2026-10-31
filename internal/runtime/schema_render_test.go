@@ -151,7 +151,7 @@ func TestSchemaCommandCardReadOnly(t *testing.T) {
 	assert.Contains(t, lines, "examples:")
 	assert.Contains(t, lines, "  rancher get pod -o json")
 	assert.Contains(t, lines, "exit codes: GENERIC=1 · VALIDATION=2 · AUTH=3")
-	assert.Contains(t, lines, "global flags: see `rancher schema --all -o json` (globalFlags)")
+	assert.Contains(t, lines, "global flags: see the globalFlags key in `rancher schema --all -o json`")
 }
 
 // TestSchemaCommandCardPrimeSentence asserts the command card's one appended
@@ -216,7 +216,7 @@ func TestSchemaCommandCardOmitsEmptySections(t *testing.T) {
 	assert.Contains(t, lines, "contract: local")
 	assert.Contains(t, lines, "gates: none (local command)")
 	assert.Contains(t, lines, "exit codes: GENERIC=1 · VALIDATION=2 · AUTH=3")
-	assert.Contains(t, lines, "global flags: see `rancher schema --all -o json` (globalFlags)")
+	assert.Contains(t, lines, "global flags: see the globalFlags key in `rancher schema --all -o json`")
 }
 
 // TestSchemaCommandCardDependsOnInput asserts the dependsOnInput wording on
@@ -264,9 +264,9 @@ func TestSchemaKindCardFields(t *testing.T) {
 	assert.Contains(t, lines, "version: v1alpha1")
 	assert.Contains(t, lines, "resource: gitrepos")
 	assert.Contains(t, lines, "scope: management")
-	assert.Contains(t, lines, "namespace: workspace; named ops take --namespace (default fleet-default)")
-	assert.Contains(t, lines, "wait: --wait or --timeout alone waits for condition=Ready")
-	assert.Contains(t, lines, "traits: sensitive · completable")
+	assert.Contains(t, lines, "namespace: Fleet workspace; commands that take an object name accept --namespace (default fleet-default)")
+	assert.Contains(t, lines, "wait: --wait or --timeout without --for waits for condition=Ready")
+	assert.Contains(t, lines, "properties: sensitive · completable")
 
 	verbsAt := slices.Index(lines, "verbs:")
 	require.GreaterOrEqual(t, verbsAt, 0)
@@ -286,7 +286,7 @@ func TestSchemaKindCardPrimeTrait(t *testing.T) {
 		Verbs: map[string]VerbState{"get": {State: VerbAvailable}, "patch": {State: VerbAvailable}, "delete": {State: VerbAbsent}},
 	}
 	lines := strings.Split(renderKindCard(Manifest{}, k), "\n")
-	assert.Contains(t, lines, "traits: prime")
+	assert.Contains(t, lines, "properties: prime")
 }
 
 // TestSchemaKindCardOmitsEmptyFields asserts the card for a minimal kind: no
@@ -310,7 +310,7 @@ func TestSchemaKindCardOmitsEmptyFields(t *testing.T) {
 		assert.False(t, strings.HasPrefix(l, "group:"))
 		assert.False(t, strings.HasPrefix(l, "version:"))
 		assert.False(t, strings.HasPrefix(l, "wait:"))
-		assert.False(t, strings.HasPrefix(l, "traits:"))
+		assert.False(t, strings.HasPrefix(l, "properties:"))
 	}
 	assert.Contains(t, lines, "  delete: not available")
 }
@@ -324,11 +324,11 @@ func TestSchemaKindNamespaceLine(t *testing.T) {
 		policy, scope, defaultNS, want string
 	}{
 		{"none", "management", "", "namespace: none (cluster-scoped)"},
-		{"none", "downstream", "", "namespace: none (cluster-scoped); named ops need --cluster"},
-		{"cluster", "management", "", "namespace: cluster (the namespace is a cluster id); named ops need --cluster"},
-		{"workspace", "management", "fleet-default", "namespace: workspace; named ops take --namespace (default fleet-default)"},
-		{"plain", "management", "", "namespace: plain; named ops need --namespace"},
-		{"plain", "downstream", "", "namespace: plain; named ops need --namespace and --cluster"},
+		{"none", "downstream", "", "namespace: none (cluster-scoped); commands that take an object name need --cluster"},
+		{"cluster", "management", "", "namespace: cluster (the namespace is a cluster id); commands that take an object name need --cluster"},
+		{"workspace", "management", "fleet-default", "namespace: Fleet workspace; commands that take an object name accept --namespace (default fleet-default)"},
+		{"plain", "management", "", "namespace: the object's namespace; commands that take an object name need --namespace"},
+		{"plain", "downstream", "", "namespace: the object's namespace; commands that take an object name need --namespace and --cluster"},
 	}
 	for _, tc := range cases {
 		got := kindNamespaceLine(SchemaKind{
@@ -384,7 +384,7 @@ func tocManifest() Manifest {
 			{Name: "get pod", Usage: "List pods"},
 			{Name: "grant", Usage: "Grant a role"},
 			{Name: "patch pod", Usage: "Patch a pod"},
-			{Name: "schema", Usage: "Print the capability manifest"},
+			{Name: "schema", Usage: "Print the schema manifest"},
 		},
 		Kinds: []SchemaKind{{Name: "pod", Verbs: map[string]VerbState{
 			"get":    {State: VerbAvailable},
@@ -422,17 +422,17 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 		require.GreaterOrEqual(t, i, 0, "missing TOC line %q\nfull TOC:\n%s", line, text)
 		return i
 	}
-	schemaAt := idx("schema - Print the capability manifest")
+	schemaAt := idx("schema - Print the schema manifest")
 	completionAt := idx("completion - Emit a completion script")
 	authHdrAt := idx("auth:")
 	authAt := idx("  auth login - Log in")
-	blockAt := idx("get/patch/delete <kind> - 2 generated commands across 1 kinds")
-	blockPointerAt := idx("  kind view: rancher schema <kind>")
+	blockAt := idx("get/patch/delete <kind> - 2 commands for 1 kinds")
+	blockPointerAt := idx("  to see one kind, run: rancher schema <kind>")
 	getHdrAt := idx("get:")
 	kvAt := idx("  get kubernetes-versions - List installable versions")
 	grantAt := idx("grant - Grant a role")
 	patchHdrAt := idx("patch:")
-	patchSummaryAt := idx("  patch <kind> - generated for 1 kinds; rancher schema <kind> for any kind's card")
+	patchSummaryAt := idx("  patch <kind> - one command for each of 1 kinds; to see one kind, run: rancher schema <kind>")
 	stripAt := idx("exit codes: GENERIC=1 · VALIDATION=2")
 	pointerAt := idx("full manifest: rancher schema --all -o json")
 
@@ -558,10 +558,10 @@ func TestRenderGroupCardMarksAllPrimeHeader(t *testing.T) {
 	t.Parallel()
 	m := Manifest{}
 	primeGV := groupView{group: SchemaGroup{Name: "oidc-client"}, prime: true}
-	assert.True(t, strings.HasPrefix(renderGroupCard(m, primeGV), "group: oidc-client [Prime]\n"))
+	assert.True(t, strings.HasPrefix(renderGroupCard(m, primeGV), "command group: oidc-client [Prime]\n"))
 
 	mixedGV := groupView{group: SchemaGroup{Name: "cluster"}, prime: false}
-	assert.True(t, strings.HasPrefix(renderGroupCard(m, mixedGV), "group: cluster\n"))
+	assert.True(t, strings.HasPrefix(renderGroupCard(m, mixedGV), "command group: cluster\n"))
 }
 
 func TestSchemaSearchFragment(t *testing.T) {
@@ -576,7 +576,7 @@ func TestSchemaSearchFragment(t *testing.T) {
 		"an alias-only match names the full alias form")
 
 	frag := searchFragment(c, "MANAGEMENT")
-	assert.Contains(t, frag, "desc: ")
+	assert.Contains(t, frag, "description: ")
 	assert.Contains(t, frag, "management proxy")
 	assert.Contains(t, frag, "…", "a mid-desc match is clipped with ellipses")
 

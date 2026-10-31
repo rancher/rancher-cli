@@ -174,7 +174,7 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res.RawBytes)
 
-	wantHeader := `# Kubeconfig "kubeconfig-abc" - shown exactly once; revoke with: rancher delete kubeconfig kubeconfig-abc` + "\n"
+	wantHeader := `# Kubeconfig "kubeconfig-abc" - shown once; revoke with: rancher delete kubeconfig kubeconfig-abc` + "\n"
 	assert.True(t, strings.HasPrefix(string(res.RawBytes), wantHeader))
 	assert.Equal(t, wantHeader+rawKC, string(res.RawBytes), "status.value must travel verbatim after the header")
 

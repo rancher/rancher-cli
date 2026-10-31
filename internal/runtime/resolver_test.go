@@ -14,7 +14,7 @@ func TestComposeResolversRejectsOverlap(t *testing.T) {
 	b := MapResolver{"get cluster": {Contract: safety.ContractInternal, Stability: safety.Beta}}
 	_, err := ComposeResolvers(a, b)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "get cluster", "the error names the overlapping op")
+	assert.EqualError(t, err, `command "get cluster" has its contract and stability set in two places`)
 }
 
 func TestComposeResolversMergesAll(t *testing.T) {

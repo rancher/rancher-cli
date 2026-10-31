@@ -82,7 +82,7 @@ func TestValidateRejectsMutatingWithoutBinding(t *testing.T) {
 	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "no resolver binding")
+	assert.EqualError(t, err, `mutating command "create widget" has no contract and stability set`)
 }
 
 func TestValidateRejectsCommandTypeMismatch(t *testing.T) {
@@ -92,14 +92,14 @@ func TestValidateRejectsCommandTypeMismatch(t *testing.T) {
 		reg.Register(fakeRead{d: Descriptor{Name: "x", CommandType: Mutating}})
 		err := reg.Validate()
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "commandType")
+		assert.EqualError(t, err, `command "x" has commandType "mutating", which does not match the interface it implements (ReadCommand or MutatingCommand)`)
 	})
 	t.Run("mutating command declared readOnly", func(t *testing.T) {
 		reg := NewRegistry(stubResolver{})
 		reg.Register(fakeMutating{d: Descriptor{Name: "y", CommandType: ReadOnly}})
 		err := reg.Validate()
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "commandType")
+		assert.EqualError(t, err, `command "y" has commandType "readOnly", which does not match the interface it implements (ReadCommand or MutatingCommand)`)
 	})
 }
 
@@ -120,7 +120,7 @@ func TestValidateRejectsUnknownCapabilityTier(t *testing.T) {
 		Capability: CapabilityRequirement{Tier: "bogus", Feature: "widget-feature"}}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "unknown capability tier")
+	assert.EqualError(t, err, `get widget: unknown capability tier "bogus"`)
 }
 
 func TestValidateRejectsPrimeWithoutFeatureName(t *testing.T) {
@@ -130,7 +130,7 @@ func TestValidateRejectsPrimeWithoutFeatureName(t *testing.T) {
 		Capability: CapabilityRequirement{Tier: CapabilityPrime}}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "requires a Feature name")
+	assert.EqualError(t, err, `get widget: capability tier "prime" requires a Feature name`)
 }
 
 func TestValidatePassesWellFormedCapability(t *testing.T) {
@@ -148,7 +148,7 @@ func TestValidateRejectsExtDiscoveryWithoutUnsupported(t *testing.T) {
 		Capability: CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "passwordchangerequests"}}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "requires Unsupported")
+	assert.EqualError(t, err, `get widget: capability tier "extDiscovery" requires Unsupported`)
 }
 
 func TestValidateRejectsPrimeWithUnsupportedSet(t *testing.T) {
@@ -158,7 +158,7 @@ func TestValidateRejectsPrimeWithUnsupportedSet(t *testing.T) {
 		Capability: CapabilityRequirement{Tier: CapabilityPrime, Feature: "widget-feature", Unsupported: "widgets"}}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "does not use Unsupported")
+	assert.EqualError(t, err, `get widget: capability tier "prime" does not use Unsupported`)
 }
 
 func TestValidatePassesWellFormedExtDiscoveryCapability(t *testing.T) {
@@ -180,7 +180,7 @@ func TestValidateRejectsFeatureWithoutTier(t *testing.T) {
 		Capability: CapabilityRequirement{Feature: "widget-feature"}}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "no Tier")
+	assert.EqualError(t, err, "get widget: capability requirement has Feature/Unsupported set with no Tier")
 }
 
 // TestValidateRejectsUnknownOutputPolicyFormat asserts the startup rejection for
@@ -242,7 +242,7 @@ func TestValidateRejectsDeliveryOnceOnlyOnReadOnly(t *testing.T) {
 	reg.Register(fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly, Shape: ShapeTabular, Delivery: DeliveryOnceOnly}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "Mutating")
+	assert.ErrorContains(t, err, "is allowed only on mutating commands")
 }
 
 // TestValidateRejectsUnknownDeliveryValue asserts the closed Delivery enum: any
@@ -254,7 +254,7 @@ func TestValidateRejectsUnknownDeliveryValue(t *testing.T) {
 	reg.Register(fakeMutating{d: Descriptor{Name: "create widget", CommandType: Mutating, Shape: ShapeText, Delivery: "bogus"}})
 	err := reg.Validate()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "unknown delivery classification")
+	assert.ErrorContains(t, err, `command "create widget": unknown delivery "bogus"`)
 }
 
 // TestValidatePassesDeliveryOnceOnlyOnMutating asserts the accepted shape.
@@ -314,7 +314,7 @@ func TestSchemaPrimeCommandProjection(t *testing.T) {
 	assert.Empty(t, plain.LearnMore, "learnMore must be absent without the prime marker")
 
 	assert.Equal(t,
-		"A Rancher Prime capability; availability is decided by the connected server.",
+		"A Rancher Prime feature; the connected server decides whether it is available.",
 		PrimeSentence,
 		"classification wording is a reviewed contract; change it deliberately or not at all")
 }
@@ -404,7 +404,7 @@ func TestValidateSuccessExitCodes(t *testing.T) {
 		{"rejects duplicate zero", []int{0, 0, 7}, "must contain 0 exactly once"},
 		{"rejects negative", []int{0, -1}, "must be positive"},
 		{"rejects duplicate", []int{0, 7, 7}, "duplicate"},
-		{"rejects error exit collision", []int{0, 2}, "collides with error exit"},
+		{"rejects error exit collision", []int{0, 2}, "is also an error exit code"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -475,7 +475,7 @@ func TestValidateProjectFlagRules(t *testing.T) {
 		{"a project flag with an enum", fakeRead{d: read(ArgSpec{Name: FlagProject, Type: "string", Enum: []string{"a"}})}, "must be runtime.ProjectFlag's entry"},
 		{"a project flag with an env var", fakeRead{d: read(ArgSpec{Name: FlagProject, Type: "string", Env: []string{"X"}})}, "must be runtime.ProjectFlag's entry"},
 		{"a refusal hint without the flag", hintingRead{fakeRead{d: read()}}, ""},
-		{"a refusal hint beside the flag", hintingRead{fakeRead{d: read(ProjectFlag(false, "d"))}}, "also hints at what to run instead"},
+		{"a refusal hint beside the flag", hintingRead{fakeRead{d: read(ProjectFlag(false, "d"))}}, "also implements ProjectRefusalHinter"},
 		{"a flag named like a global flag", fakeRead{d: read(ArgSpec{Name: "output", Type: "string"})}, `flag "output" reuses the name of a global flag`},
 		{"a flag aliased like a global short form", fakeRead{d: read(ArgSpec{Name: "context", Type: "string", Aliases: []string{"c"}})}, `flag "c" reuses the name of a global flag`},
 		{"a bool flag named like a global flag", fakeRead{d: read(ArgSpec{Name: "dry-run", Type: "bool"})}, `flag "dry-run" reuses the name of a global flag`},

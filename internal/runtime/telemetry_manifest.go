@@ -33,12 +33,12 @@ var telemetryControlText = map[telemetry.Control]TelemetryControl{
 		Source: "config",
 		Key:    "telemetry",
 		Values: []string{"true", "false"},
-		Desc:   "the config.yaml key, written by telemetry on and telemetry off; any other value leaves the default",
+		Desc:   "the telemetry key of config.yaml, set by telemetry on and telemetry off; any other value is ignored and the default applies",
 	},
 	telemetry.ControlDefault: {
 		Source: "default",
 		Values: []string{"on"},
-		Desc:   "applies when nothing above decides",
+		Desc:   "applies when neither RANCHER_CLI_TELEMETRY nor the telemetry key of config.yaml decides",
 	},
 }
 

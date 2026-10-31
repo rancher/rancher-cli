@@ -188,7 +188,7 @@ type Descriptor struct {
 	// an AllowedFormats entry outside OutputFormats/"template".
 	OutputPolicy OutputPolicy
 	// Delivery classifies a command whose successful Result carries a value
-	// shown exactly once (DeliveryOnceOnly; the zero value is ordinary).
+	// shown once (DeliveryOnceOnly; the zero value is ordinary).
 	// Registry.Validate permits it only when CommandType is Mutating. Run
 	// selects BUFFERED rendering for it and requires a non-nil
 	// Result.CommittedContext after a successful executor return - its
@@ -333,9 +333,9 @@ type Result struct {
 	Warnings []string
 	// OnceOnlyNotice is the advisory sentence for the single value a
 	// DeliveryOnceOnly command's Text already shows inline, marked with
-	// ShownOnceSuffix - e.g. "this client secret is shown exactly once -
-	// store it now" beside a Text line ending "...   (shown once - store
-	// it now)". The two are related, not identical: build both together
+	// ShownOnceSuffix - e.g. "this client secret is shown once - store it
+	// now" beside a Text line ending "...   (shown once - store it
+	// now)". The two are related, not identical: build both together
 	// with MutationText's companion OnceOnlyLine so a command cannot set
 	// one without the other. The pipeline prepends OnceOnlyNotice to
 	// Warnings ahead of any other command-declared warning - before a

@@ -35,17 +35,17 @@ func NewSchemaCommand(reg *Registry, cliVersion, minRancherVersion string, readO
 func (s *schemaCmd) Describe() Descriptor {
 	return Descriptor{
 		Name:  "schema",
-		Usage: "Print the capability manifest, optionally filtered to one command",
-		Desc:  "Multi-word command names (\"get pod\") work as a single selector - pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
+		Usage: "Print the schema manifest, optionally filtered to one command",
+		Desc:  "A command name of two words (\"get pod\") can be given unquoted or as one quoted argument. Use --search <text> to search all commands by name, alias, usage, or description.",
 		Args: []ArgSpec{
 			{Name: "command", Type: "string"},
 			{Name: "subcommand", Type: "string", Desc: "the second word of a two-word command name"},
 		},
 		Flags: []ArgSpec{
 			{Name: "all", Type: "bool",
-				Desc: "print the complete capability manifest in structured output (the table view stays the table of contents)"},
+				Desc: "print the complete schema manifest in structured output (table output still shows the table of contents)"},
 			{Name: "kind", Type: "bool",
-				Desc: "resolve the selector as a kind, not a command"},
+				Desc: "treat the argument as a kind name, not a command name"},
 			// The verb enum is a static literal - the descriptor cannot see
 			// the registry's full command set at Describe time. The surface
 			// test TestSchemaVerbEnumMatchesCommandVerbs asserts it to the real
@@ -57,12 +57,12 @@ func (s *schemaCmd) Describe() Descriptor {
 					"project", "revoke", "schema", "skill", "support-bundle", "telemetry", "token", "usage"},
 				Desc: "show only commands with this verb (the first word of the command name)"},
 			{Name: "destructive", Type: "bool",
-				Desc: "show only destructive commands (destructive true or dependsOnInput)"},
+				Desc: "show only destructive commands, including commands that are destructive only for some inputs (destructive true or dependsOnInput)"},
 			// Contracts PRESENT in the manifest, not every declared safety.Contract -
 			// asserted by TestSchemaContractEnumMatchesCommandContracts.
 			{Name: "contract", Type: "string",
 				Enum: []string{"public", "internal"},
-				Desc: "show only commands with this contract designation"},
+				Desc: "show only commands with this contract"},
 			{Name: "mutating", Type: "bool",
 				Desc: "show only mutating commands"},
 			{Name: "search", Type: "string",
@@ -162,7 +162,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		case asKind:
 			return Result{}, allConflict("--kind")
 		case len(in.Args()) > 0:
-			return Result{}, allConflict("the selector")
+			return Result{}, allConflict("the argument")
 		}
 		text := renderTOCText(m, false)
 		return Result{Kind: "Schema", Data: newSchemaView(m), Text: text,
@@ -182,7 +182,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	}
 	if len(in.Args()) == 0 {
 		if asKind {
-			return Result{}, clierr.New(clierr.CodeValidation, "--kind requires a <kind> selector, e.g. kubeconfig").
+			return Result{}, clierr.New(clierr.CodeValidation, "--kind requires a <kind> argument, e.g. kubeconfig").
 				WithHint("rancher schema kubeconfig --kind")
 		}
 		text := renderTOC(m)
@@ -199,7 +199,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 				text := renderCommandCard(m, c)
 				kindHint := ""
 				if k, collides := lookupKind(m.Kinds, want); collides {
-					line, hint := collisionFooter("kind view: rancher schema "+k.Name+" --kind", k.Name)
+					line, hint := collisionFooter("to see this name as a kind, run: rancher schema "+k.Name+" --kind", k.Name)
 					text += line
 					kindHint = hint
 				}
@@ -223,7 +223,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			gv := newGroupView(m, g)
 			text := renderGroupCard(m, gv)
 			if k, collides := lookupKind(m.Kinds, want); collides {
-				line, hint := collisionFooter("kind view: rancher schema "+k.Name+" --kind", k.Name)
+				line, hint := collisionFooter("to see this name as a kind, run: rancher schema "+k.Name+" --kind", k.Name)
 				text += line
 				gv.kindHint = hint
 			}
@@ -242,7 +242,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		// kind's canonical Name - a kind reached via an alias that equals
 		// a group name must not hint a selector that resolves elsewhere.
 		if g, collides := lookupGroup(m.Groups, want); collides {
-			line, hint := collisionFooter("command group: rancher schema "+g.Name, g.Name)
+			line, hint := collisionFooter("to see this name as a command group, run: rancher schema "+g.Name, g.Name)
 			text += line
 			kv.groupHint = hint
 		}
@@ -354,22 +354,22 @@ func filterManifest(m Manifest, f schemaFilters) Manifest {
 // the whole surface and cannot combine with a positional selector or with
 // --kind (which requires one).
 func filterSelectorConflict(f schemaFilters, hasSelector bool) error {
-	with := "--kind"
+	with, remove := "--kind", "--kind"
 	if hasSelector {
-		with = "a schema selector"
+		with, remove = "an argument", "the argument"
 	}
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("%s cannot combine with %s; filters and --search search the whole surface; drop the selector or the filter",
-			strings.Join(f.describe(), ", "), with))
+		fmt.Sprintf("%s cannot combine with %s; filters and --search search all commands; remove %s or the filter",
+			strings.Join(f.describe(), ", "), with, remove))
 }
 
 // allConflict constructs the --all selection-mode conflict error. mode names
 // what the caller also passed: a filter description (from schemaFilters.describe()),
-// "--kind", or "the selector". The four mutually exclusive modes are enumerated
+// "--kind", or "the argument". The four mutually exclusive modes are enumerated
 // at the --all switch site in Execute.
 func allConflict(mode string) error {
 	return clierr.New(clierr.CodeValidation,
-		"--all prints the unfiltered manifest; drop "+mode+" or drop --all")
+		"--all prints the unfiltered manifest; remove "+mode+" or remove --all")
 }
 
 // lookupKind resolves a positional selector against the manifest's kind rows
@@ -438,7 +438,7 @@ func lookupGroup(gs []SchemaGroup, want string) (SchemaGroup, bool) {
 const maxNearestMatches = 10
 
 // commandListCmd and kindsArrayCmd are the two paste-valid pointers to the
-// full surface: -o name for the command list, -o json for the kinds array.
+// full surface: -o name for the command list, -o json for the kind names.
 // unknownSelection names both in its message when the miss is genuinely
 // ambiguous (no single command covers both), and carries the one that
 // applies as the Hint when the tier settles on a single interpretation.
@@ -461,7 +461,7 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	switch {
 	case kindOnly:
 		noun = "kind"
-		guidance = "the kinds array (" + kindsArrayCmd + ") lists every kind name"
+		guidance = kindsArrayCmd + " lists every kind name"
 		hint = kindsArrayCmd
 	case commandShaped:
 		noun = "command"
@@ -469,7 +469,7 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 		hint = commandListCmd
 	default:
 		noun = "command or kind"
-		guidance = "see the full command list (" + commandListCmd + ") or the kinds array (" + kindsArrayCmd + ")"
+		guidance = "see the full command list (" + commandListCmd + ") or the kind names (" + kindsArrayCmd + ")"
 	}
 	ce := clierr.New(clierr.CodeValidation, fmt.Sprintf("unknown %s %q; %s", noun, want, guidance))
 	if hint != "" {

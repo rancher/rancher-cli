@@ -33,7 +33,7 @@ jsonquery stdout data.name create-test
 jsonquery stdout data.clientID client-e2e-1
 jsonquery stdout data.secretName client-secret-1
 jsonquery stdout data.clientSecret super-secret-value
-jsonquery stdout 'warnings.0' 'this client secret is shown exactly once - store it now'
+jsonquery stdout 'warnings.0' 'this client secret is shown once - store it now'
 
 # The facade serves no /oidc/.well-known/openid-configuration route, so
 # discovery degrades: issuer is derived from the effective base, endpoints
@@ -90,7 +90,7 @@ jsonquery stdout data.clientID client-lc-1
 jsonquery stdout data.secretName client-secret-2
 jsonquery stdout data.clientSecret new-secret-2-value
 jsonquery stdout 'warnings.0' 'creates a new client secret on lifecycle-client'
-jsonquery stdout 'warnings.1' 'this client secret is shown exactly once - store it now'
+jsonquery stdout 'warnings.1' 'this client secret is shown once - store it now'
 
 # rotate-secret: client-secret-1's BACKING VALUE changes; its createdAt
 # and the key set do not. Rancher's order (onChange in controller.go): the

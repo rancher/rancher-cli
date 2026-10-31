@@ -85,7 +85,7 @@
       "commands": [
         {
           "name": "schema",
-          "usage": "Print the capability manifest, optionally filtered to one command"
+          "usage": "Print the schema manifest, optionally filtered to one command"
         },
         {
           "name": "completion",

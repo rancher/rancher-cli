@@ -930,9 +930,9 @@ directory is resolved (an unknown command or flag, a flag value that is another 
 print plain commands. A command that reads no directory (`--help`, `--version`, `schema`,
 `completion`, `skill`) is written without the marker, built through
 `clierr.DirectoryFree` when it is not a literal. The directory is carried on the
-invocation, never in a process-wide value. For a directory a terminal line cannot show no
-command is offered: each text keeps its words up to the clause holding its first command
-and says the path cannot be printed, the hint is dropped whenever it holds a command, and
+invocation, never in a process-wide value. For a directory whose path has characters a terminal cannot show, the commands that would name it
+are left out: each text keeps its words up to the clause holding its first command
+and says the path has characters a terminal cannot show, the hint is dropped whenever it holds a command, and
 a details payload's command fields are emptied. Text output does this line by line: only a
 line that holds a command changes, and every other line is printed as it is.
 
@@ -977,8 +977,8 @@ One ordering rule holds across all five: the config lock is always outermost, th
 the transition lock, then exactly one of `credstore-id.lock` or the helper-records
 lock - never both at once. Code holding any of the inner locks must never acquire an
 outer one. `RANCHER_CLI_CONFIG_NO_LOCK`
-(any non-empty value) skips the `flock` - escape hatch for filesystems with broken
-advisory locking - while the process-level semaphore still serializes in-process callers.
+(any non-empty value) skips the `flock`; use it only on a filesystem with broken
+advisory locking. The process-level semaphore still serializes in-process callers.
 Without the flock a concurrent command can replace or remove the one record of a store
 change, the same lost-update class the variable already accepts for `config.yaml`.
 
@@ -1223,7 +1223,7 @@ kubeconfig locking is the cautionary reference: it locked every file in `KUBECON
 so a read-only entry the command never intended to write could turn a valid operation
 into `permission denied` (kubernetes/kubectl#708). This CLI avoids that by using
 a single dedicated lock file per protected data set rather than locking the data files
-themselves, and by exposing `RANCHER_CLI_CONFIG_NO_LOCK` as an escape hatch for
+themselves, and by letting `RANCHER_CLI_CONFIG_NO_LOCK` skip the locks on
 filesystems with broken advisory locking. The grouping rule: one lock per set of
 files that must change together atomically - `config.yaml` and `credentials.yaml`
 share `config.lock` because login/logout must keep the server registration and its
@@ -1241,4 +1241,4 @@ are not interruptible, because `CredStore` carries no context parameter.
 Threading a context through that interface would make them interruptible.
 Waits are bounded at 60 s; a many-server `logout --all` can legitimately
 exceed it (each helper call takes up to 30 s inside the lock);
-`RANCHER_CLI_CONFIG_NO_LOCK` is the escape hatch for that case.
+`RANCHER_CLI_CONFIG_NO_LOCK` skips the locks for that case.

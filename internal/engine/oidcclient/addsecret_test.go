@@ -137,7 +137,7 @@ func TestAddSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t *te
 
 	assert.Contains(t, errBuf.String(), "# warning: creates a new client secret on my-app\n",
 		"the Plan-time safety advisory must still reach stderr after the merge")
-	assert.NotContains(t, errBuf.String(), "shown exactly once",
+	assert.NotContains(t, errBuf.String(), "this client secret is shown once - store it now",
 		"the shown-once note must not double-print to stderr")
 	assert.Contains(t, out.String(), "client secret: new-secret-value   (shown once - store it now)")
 }

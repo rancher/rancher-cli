@@ -105,7 +105,7 @@ const QuotedValueNote = "(quoted, it holds characters a terminal cannot show)"
 // OnceOnlyLine builds the Text line for a DeliveryOnceOnly command's
 // unretrievable value ("<label>: <value>" plus ShownOnceSuffix) together
 // with the matching Result.OnceOnlyNotice sentence ("this <subject> is
-// shown exactly once - store it now"), so a command cannot produce the
+// shown once - store it now"), so a command cannot produce the
 // inline emphasis without the paired advisory, or vice versa.
 //
 // A value that output.Printable would change (it holds a control or format
@@ -116,7 +116,7 @@ const QuotedValueNote = "(quoted, it holds characters a terminal cannot show)"
 // written as it is. The command's json and yaml output carry the value as
 // it is.
 func OnceOnlyLine(label, value, subject string) (line, notice string) {
-	notice = "this " + subject + " is shown exactly once - store it now"
+	notice = "this " + subject + " is shown once - store it now"
 	if output.Printable(value) != value {
 		return label + " " + QuotedValueNote + ": " + strconv.Quote(value) + ShownOnceSuffix, notice
 	}

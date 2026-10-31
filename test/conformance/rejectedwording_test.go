@@ -88,8 +88,8 @@ import (
 //     field. The table headers are checked by
 //     TestDisplayNameColumnsAreHeadedDisplayName in internal/engine/kinds.
 //   - ops: the replaced sense (an RFC 6902 entry, now "operation") cannot
-//     be told from "named ops" (the operations a kind supports) and
-//     "server ops" (the CLI's commands) by pattern.
+//     be told from "server ops" (the CLI's commands) by pattern; the phrase
+//     named ops is a row of the table.
 //   - cascades, consumed: other text still uses them in their own sense (the
 //     description of a user delete in skills/rancher/SKILL.md).
 //   - decoding: an ordinary word ("decoding the object of row 3"); the decode
@@ -309,6 +309,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"caller identity"}, "your user ID"},
 	{[]string{"caller-scoped"}, "with your permissions"},
 	{[]string{"canonical owner identity"}, "the owner's apiVersion|kind|namespace|name|uid"},
+	{[]string{"capability manifest"}, "schema manifest"},
 	{[]string{"capable authenticated"}, "a gh CLI that is logged in and whose 'gh attestation verify' supports --signer-workflow"},
 	{[]string{"cdn fetch", "storage fetch"}, "could not download from the redirect URL"},
 	{[]string{"channel server route"}, "name the path: it was not found on the server"},
@@ -333,6 +334,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"dry-run effect", "dry-run effects"}, "dry-run preview"},
 	{[]string{"envelope key", "envelope keys"}, "top-level Kubernetes object field"},
 	{[]string{"escalates to", "escalate to"}, "requires"},
+	{[]string{"escape hatch"}, "say what it does and when to use it"},
 	{[]string{"exec credential plugin"}, "exec plugin"},
 	{[]string{"exec entry", "exec entries", "exec user entry"}, "exec block"},
 	{[]string{"executable", "executables"}, "binaries"},
@@ -351,7 +353,10 @@ var rejectedWording = []wordingRow{
 	{[]string{"join credentials", "join token"}, "cluster registration token"},
 	{[]string{"junction", "junctions"}, "a Windows directory link (NTFS junction)"},
 	{[]string{"killed"}, "stopped"},
+	{[]string{"kind view", "kind views"}, "a sentence: to see one kind, run: <command>"},
+	{[]string{"kinds array"}, "kind names"},
 	{[]string{"layout is corrupt"}, "the data directory is damaged"},
+	{[]string{"legacy spelling"}, "older name"},
 	{[]string{"listing is exhausted"}, "no published release found in the release listing"},
 	{[]string{"lose events", "lost events"}, "dropped events"},
 	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},
@@ -360,6 +365,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"member namespaces", "member namespace"}, "the project's namespaces"},
 	{[]string{"membership set"}, "the project's namespaces"},
 	{[]string{"named get", "named gets"}, "a get of one object"},
+	{[]string{"named ops"}, "commands that take an object name"},
 	{[]string{"namespace map", "project map"}, "the list of namespaces or projects"},
 	{[]string{"needs auth"}, "needs a GitHub token"},
 	{[]string{"no-follow replace"}, "replace a symlink without following it"},
@@ -387,6 +393,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"receipt skipped"}, "install receipt not written"},
 	{[]string{"release fetch", "release fetches"}, "fetching the releases"},
 	{[]string{"release resolution", "prerelease resolution"}, "look up the latest stable release"},
+	{[]string{"resolver binding"}, "contract and stability set"},
 	{[]string{"role vocabulary"}, "role templates and global roles"},
 	{[]string{"roles across scopes"}, "role bindings at global, cluster and project level"},
 	{[]string{"runaway loop"}, "the listing never ends"},
@@ -400,6 +407,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"scriptblock", "scriptblocks"}, "script block"},
 	{[]string{"selector-scoped"}, "the pods its selector matches"},
 	{[]string{"server dry run"}, "server-side dry-run"},
+	{[]string{"shown exactly once"}, "shown once"},
 	{[]string{"single-node docker install"}, "Rancher running as a single Docker container"},
 	{[]string{"spliced", "splices"}, "replaced"},
 	{[]string{"stability marker", "stability markers"}, "stability level"},
@@ -426,7 +434,9 @@ type wordingPhrase struct {
 
 // wordingPhraseAllowlist: one entry per line, sorted by term, then phrase.
 var wordingPhraseAllowlist = []wordingPhrase{
+	{"escape hatch", "(the CI escape hatch)", "names the CI way to skip credential storage, not the variable that skips the config locks"},
 	{"junction", "(NTFS junction)", "names the Windows link type where the exact kind matters"},
+	{"legacy spelling", "(legacy spelling of --cacert)", "the legacy token command's flag --cacerts, a flag and not an environment variable"},
 }
 
 // wordingPath allows count uses of a term in a file and, for a document,
@@ -455,7 +465,6 @@ var wordingPathAllowlist = []wordingPath{
 	{"budget", "internal/commands/configcmd/config_info.go", "", 1, "text not yet reworded"},
 	{"budget", "internal/commands/configcmd/set_completion.go", "", 2, "text not yet reworded"},
 	{"budget", "internal/engine/access/fanout.go", "", 2, "text not yet reworded"},
-	{"budget", "internal/runtime/registry.go", "", 1, "text not yet reworded"},
 	{"budget", "internal/token/retire.go", "", 1, "text not yet reworded"},
 	{"budget", "skills/rancher/SKILL.md", "10. Role grants and secrets", 1, "text not yet reworded"},
 	{"budget", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},

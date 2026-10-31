@@ -53,7 +53,7 @@ const (
 // supported server version and Prime-gated on the next, so a static surface
 // must never assert "requires" - only the runtime PRIME_REQUIRED error does
 // that, backed by the detector's affirmative per-server evidence.
-const PrimeSentence = "A Rancher Prime capability; availability is decided by the connected server."
+const PrimeSentence = "A Rancher Prime feature; the connected server decides whether it is available."
 
 // PrimeMarker is the token every command list places at the head of a
 // Prime command's usage column, and after an all-Prime group's label. One

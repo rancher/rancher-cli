@@ -44,7 +44,7 @@ func renderCommandCard(m Manifest, c SchemaCommand) string {
 		}
 	}
 	b.WriteString("\n" + exitCodeStrip(m.ExitCodes) + "\n")
-	b.WriteString("global flags: see `rancher schema --all -o json` (globalFlags)\n")
+	b.WriteString("global flags: see the globalFlags key in `rancher schema --all -o json`\n")
 	return b.String()
 }
 
@@ -173,7 +173,7 @@ func gateLine(ct CommandType, destructive, stability string) string {
 func renderGroupCard(m Manifest, gv groupView) string {
 	g := gv.group
 	var b strings.Builder
-	header := "group: " + g.Name
+	header := "command group: " + g.Name
 	if gv.prime {
 		header += " " + PrimeMarker
 	}
@@ -189,7 +189,7 @@ func renderGroupCard(m Manifest, gv groupView) string {
 			b.WriteString("  " + tocLine(c) + "\n")
 		}
 		if gv.generatedCount > 0 {
-			fmt.Fprintf(&b, "  %s - generated for %d kinds; rancher schema <kind> for any kind's card\n",
+			fmt.Fprintf(&b, "  %s - one command for each of %d kinds; to see one kind, run: rancher schema <kind>\n",
 				gv.generatedPattern, gv.generatedCount)
 		}
 	}
@@ -198,7 +198,7 @@ func renderGroupCard(m Manifest, gv groupView) string {
 
 // renderKindCard builds the operator-facing card for one kind:
 // identity (canonical name, key, aliases), the GVR, scope, the namespace
-// policy with the routing flags a named op needs, wait default, traits
+// policy with the routing flags a named op needs, wait default, properties
 // (sensitive, completable), and the effective verb table from the manifest's
 // kind data. Rendered via Result.Text under default/table only; the
 // structured formats keep serving Result.Data.
@@ -220,7 +220,7 @@ func renderKindCard(m Manifest, k SchemaKind) string {
 	b.WriteString("scope: " + k.Scope + "\n")
 	b.WriteString(kindNamespaceLine(k) + "\n")
 	if k.WaitDefault != "" {
-		b.WriteString("wait: --wait or --timeout alone waits for " + k.WaitDefault + "\n")
+		b.WriteString("wait: --wait or --timeout without --for waits for " + k.WaitDefault + "\n")
 	}
 	var traits []string
 	if k.Sensitive {
@@ -233,7 +233,7 @@ func renderKindCard(m Manifest, k SchemaKind) string {
 		traits = append(traits, "prime")
 	}
 	if len(traits) > 0 {
-		b.WriteString("traits: " + strings.Join(traits, " · ") + "\n")
+		b.WriteString("properties: " + strings.Join(traits, " · ") + "\n")
 	}
 	b.WriteString("\nverbs:\n")
 	for _, verb := range []string{"get", "patch", "delete"} {
@@ -251,18 +251,18 @@ func kindNamespaceLine(k SchemaKind) string {
 	switch k.NamespacePolicy {
 	case "none":
 		if k.Scope == "downstream" {
-			return "namespace: none (cluster-scoped); named ops need --cluster"
+			return "namespace: none (cluster-scoped); commands that take an object name need --cluster"
 		}
 		return "namespace: none (cluster-scoped)"
 	case "cluster":
-		return "namespace: cluster (the namespace is a cluster id); named ops need --cluster"
+		return "namespace: cluster (the namespace is a cluster id); commands that take an object name need --cluster"
 	case "workspace":
-		return "namespace: workspace; named ops take --namespace (default " + k.DefaultNamespace + ")"
+		return "namespace: Fleet workspace; commands that take an object name accept --namespace (default " + k.DefaultNamespace + ")"
 	case "plain":
 		if k.Scope == "downstream" {
-			return "namespace: plain; named ops need --namespace and --cluster"
+			return "namespace: the object's namespace; commands that take an object name need --namespace and --cluster"
 		}
-		return "namespace: plain; named ops need --namespace"
+		return "namespace: the object's namespace; commands that take an object name need --namespace"
 	default:
 		return "namespace: " + k.NamespacePolicy
 	}
@@ -332,9 +332,9 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 		// contains generated commands (one collapsed line for all of them).
 		if pGenCount > 0 && !blockDone {
 			blockDone = true
-			fmt.Fprintf(&b, "\nget/patch/delete <kind> - %d generated commands across %d kinds\n",
+			fmt.Fprintf(&b, "\nget/patch/delete <kind> - %d commands for %d kinds\n",
 				genCount, len(m.Kinds))
-			b.WriteString("  kind view: rancher schema <kind>\n")
+			b.WriteString("  to see one kind, run: rancher schema <kind>\n")
 		}
 		hasContent := len(bespoke) > 0 || pGenCount > 0
 		if !hasContent {
@@ -357,7 +357,7 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 			if g.Desc != "" {
 				b.WriteString(indent + g.Desc + "\n")
 			}
-			fmt.Fprintf(&b, "%s%s <kind> - generated for %d kinds; rancher schema <kind> for any kind's card\n",
+			fmt.Fprintf(&b, "%s%s <kind> - one command for each of %d kinds; to see one kind, run: rancher schema <kind>\n",
 				indent, g.Name, pGenCount)
 		}
 	}
@@ -535,7 +535,7 @@ func searchFragment(c SchemaCommand, term string) string {
 		}
 	}
 	if i := strings.Index(strings.ToLower(c.Desc), q); i >= 0 && i+len(term) <= len(c.Desc) {
-		return "desc: " + fragmentAround(c.Desc, i, len(term))
+		return "description: " + fragmentAround(c.Desc, i, len(term))
 	}
 	return ""
 }

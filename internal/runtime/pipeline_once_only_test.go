@@ -358,7 +358,7 @@ func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
 				Data:           map[string]string{"name": "t-abc", "bearerToken": "tok:xxxx"},
 				Text:           text,
 				Warnings:       []string{"unrelated-warning"},
-				OnceOnlyNotice: "this token value is shown exactly once - store it now",
+				OnceOnlyNotice: "this token value is shown once - store it now",
 				CommittedContext: &CommittedContext{
 					ResourceKind: "Token", ResourceName: "t-abc", Recovery: "delete token t-abc, then create again",
 				},

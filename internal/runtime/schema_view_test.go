@@ -227,7 +227,7 @@ func TestTOCGeneratedCountMatchesTheText(t *testing.T) {
 	t.Parallel()
 	m := readOnlyTOCManifest()
 	text := renderTOC(m)
-	re := regexp.MustCompile(` - (\d+) generated commands across`)
+	re := regexp.MustCompile(` - (\d+) commands for`)
 	match := re.FindStringSubmatch(text)
 	require.NotNil(t, match, "bare TOC must render the collapsed generated-commands line for this fixture")
 	want, err := strconv.Atoi(match[1])

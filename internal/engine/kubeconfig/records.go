@@ -78,7 +78,7 @@ func installHint(command, entry, clusterID, dir, serverURL string, carriesCA boo
 func machineNotice(dir, store, command string, commandIsPath bool) string {
 	msg := "this kubeconfig records this machine's config directory " + output.Printable(dir)
 	if output.Printable(dir) != dir {
-		msg += " (its path holds characters that cannot be printed)"
+		msg += " (its path has characters a terminal cannot show)"
 	}
 	if store != "" {
 		msg += ", credential store " + output.Printable(store)

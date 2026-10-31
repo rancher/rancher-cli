@@ -324,7 +324,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 		require.NoError(t, err)
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher kubeconfig", lines[0])
-		assert.Contains(t, lines, "kind view: rancher schema kubeconfig --kind")
+		assert.Contains(t, lines, "to see this name as a kind, run: rancher schema kubeconfig --kind")
 		got := viewCard(t, res)
 		assert.Equal(t, "kubeconfig", got["name"])
 		assert.Equal(t, "kubeconfig", got["kindViewHint"], "kind-collision pointer in structured output")
@@ -345,7 +345,7 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 		res, err := cmd.(ReadCommand).Execute(t.Context(),
 			tin{a: []string{"get", "clusterregistrationtoken"}}, nil)
 		require.NoError(t, err)
-		assert.NotContains(t, res.Text, "kind view:")
+		assert.NotContains(t, res.Text, "to see this name as a kind")
 	})
 
 	t.Run("a kind identifier resolves without --kind", func(t *testing.T) {
@@ -455,7 +455,7 @@ func TestSchemaKindFlagRequiresSelector(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "--kind")
+	assert.Equal(t, "--kind requires a <kind> argument, e.g. kubeconfig", ce.Message)
 }
 
 // TestSchemaKindFlagWithGlobalFlags asserts the success case: --kind
@@ -574,9 +574,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		_, err := kcmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"frobnicate"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
-		assert.Contains(t, ce.Message, "rancher schema -o name")
-		assert.Contains(t, ce.Message, "rancher schema -o json")
-		assert.Contains(t, ce.Message, "kinds array")
+		assert.Equal(t, `unknown command or kind "frobnicate"; see the full command list (rancher schema -o name) or the kind names (rancher schema -o json)`, ce.Message)
 		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 
@@ -601,7 +599,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.Contains(t, ce.Message, `unknown command "get pdo"`)
 		assert.Equal(t, "rancher schema -o name", ce.Hint)
-		assert.NotContains(t, ce.Hint, "kinds array")
+		assert.NotContains(t, ce.Hint, "kind names")
 	})
 
 	t.Run("dual message on kind-shaped miss without --kind covers commands and kinds", func(t *testing.T) {
@@ -611,9 +609,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Message, "rancher schema -o name")
-		assert.Contains(t, ce.Message, "rancher schema -o json")
-		assert.Contains(t, ce.Message, "kinds array")
+		assert.Equal(t, `unknown command or kind "pdo"; see the full command list (rancher schema -o name) or the kind names (rancher schema -o json)`, ce.Message)
 		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 
@@ -625,7 +621,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, "rancher schema -o json", ce.Hint, "the --kind tier's hint is a single paste-valid command")
-		assert.Contains(t, ce.Message, "kinds array")
+		assert.Equal(t, `unknown kind "frobnicate"; rancher schema -o json lists every kind name`, ce.Message)
 		assert.NotContains(t, ce.Hint, "-o name")
 	})
 
@@ -654,9 +650,8 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Message, "kinds array",
+		assert.Equal(t, `unknown command or kind " pod"; see the full command list (rancher schema -o name) or the kind names (rancher schema -o json)`, ce.Message,
 			"padded single token must get the dual guidance, not the command-only guidance")
-		assert.Contains(t, ce.Message, "rancher schema -o name")
 		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 }
@@ -838,7 +833,7 @@ func TestSchemaSearch(t *testing.T) {
 		require.Len(t, groups, 1)
 		entries := groups[0].(map[string]any)["commands"].([]any)
 		assert.Equal(t, "get project", entries[0].(map[string]any)["name"])
-		assert.Contains(t, res.Text, "[desc: ")
+		assert.Contains(t, res.Text, "[description: ")
 		assert.Contains(t, res.Text, "management projects")
 	})
 
@@ -881,9 +876,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Message, "--verb")
-		assert.Contains(t, ce.Message, "selector")
-		assert.Contains(t, ce.Message, "drop the selector or the filter")
+		assert.Equal(t, "--verb get cannot combine with an argument; filters and --search search all commands; remove the argument or the filter", ce.Message)
 	})
 
 	t.Run("kind selector plus --search", func(t *testing.T) {
@@ -905,8 +898,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Message, "--contract")
-		assert.Contains(t, ce.Message, "--kind")
+		assert.Equal(t, "--contract internal cannot combine with --kind; filters and --search search all commands; remove --kind or the filter", ce.Message)
 	})
 
 	t.Run("every filter flag conflicts with a selector", func(t *testing.T) {
@@ -1137,18 +1129,22 @@ func TestSchemaAllConflicts(t *testing.T) {
 	t.Parallel()
 	reg := kindRegistry()
 	cmd := NewSchemaCommand(reg, "v-test", "2.14", nil)
-	cases := []tin{
-		{flags: map[string]bool{"all": true}, a: []string{"get", "pod"}},
-		{flags: map[string]bool{"all": true}, strs: map[string]string{"search": "pod"}},
-		{flags: map[string]bool{"all": true, "kind": true}},
-		{flags: map[string]bool{"all": true, "destructive": true}},
+	const lead = "--all prints the unfiltered manifest; "
+	cases := []struct {
+		in   tin
+		want string
+	}{
+		{tin{flags: map[string]bool{"all": true}, a: []string{"get", "pod"}}, lead + "remove the argument or remove --all"},
+		{tin{flags: map[string]bool{"all": true}, strs: map[string]string{"search": "pod"}}, lead + `remove --search "pod" or remove --all`},
+		{tin{flags: map[string]bool{"all": true, "kind": true}}, lead + "remove --kind or remove --all"},
+		{tin{flags: map[string]bool{"all": true, "destructive": true}}, lead + "remove --destructive or remove --all"},
 	}
-	for _, in := range cases {
-		_, err := cmd.(ReadCommand).Execute(t.Context(), in, nil)
+	for _, tc := range cases {
+		_, err := cmd.(ReadCommand).Execute(t.Context(), tc.in, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Message, "--all")
+		assert.Equal(t, tc.want, ce.Message)
 	}
 }
 
@@ -1353,7 +1349,7 @@ func TestSchemaGroupCardResolution(t *testing.T) {
 		t.Parallel()
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"create"}}, nil)
 		require.NoError(t, err)
-		assert.True(t, strings.HasPrefix(res.Text, "group: create\n"),
+		assert.True(t, strings.HasPrefix(res.Text, "command group: create\n"),
 			"group card text starts with the group name line")
 		assert.Contains(t, res.Text, "create resource -f", "create desc mentions the generic -f path")
 		assert.Contains(t, res.Text, "create project", "member command listed")
@@ -1443,7 +1439,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 		gv, isGroup := res.Data.(groupView)
 		assert.True(t, isGroup, "group wins: a kind must not shadow a command group (--kind reaches the kind)")
 		assert.Equal(t, "create", gv.kindHint, "the group card must name the colliding kind view")
-		assert.Contains(t, res.Text, "kind view: rancher schema create --kind")
+		assert.Contains(t, res.Text, "to see this name as a kind, run: rancher schema create --kind")
 	})
 
 	t.Run("--kind reaches the shadowed kind, with the group-view hint", func(t *testing.T) {
@@ -1463,7 +1459,7 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 		kv, isKind := res.Data.(kindView)
 		assert.True(t, isKind, "--kind must resolve the kind card")
 		assert.Equal(t, "create", kv.groupHint, "the kind card must name the colliding group view")
-		assert.Contains(t, res.Text, "command group: rancher schema create")
+		assert.Contains(t, res.Text, "to see this name as a command group, run: rancher schema create")
 	})
 }
 
@@ -1583,7 +1579,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 		assert.Contains(t, res.Text, "get cloud-credential", "bespoke command listed")
 		assert.Contains(t, res.Text, "Get a cloud credential", "bespoke usage listed")
 		assert.Contains(t, res.Text, "get <kind>", "generated commands collapsed to pattern")
-		assert.Contains(t, res.Text, "generated for 2 kinds", "count in collapsed line")
+		assert.Contains(t, res.Text, "one command for each of 2 kinds", "count in collapsed line")
 		assert.NotContains(t, res.Text, "\n  get pod\n", "generated command not expanded")
 		assert.NotContains(t, res.Text, "\n  get cluster\n", "generated command not expanded")
 	})

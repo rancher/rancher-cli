@@ -141,7 +141,7 @@ func TestRenderResultTableHeaderStyledStripInvariant(t *testing.T) {
 func TestRenderResultShownOnceLineBoldStripInvariant(t *testing.T) {
 	t.Parallel()
 	d := Descriptor{Name: "create token", Delivery: DeliveryOnceOnly, Shape: ShapeText}
-	shownOnce := "this token value is shown exactly once - store it now"
+	shownOnce := "this token value is shown once - store it now"
 	res := Result{
 		Kind:           "TokenCreated",
 		Data:           map[string]string{"name": "t-abc"},
@@ -241,7 +241,7 @@ func TestRenderResultStyledTextKeepsShownOnceBold(t *testing.T) {
 		Kind:             "CredentialCreated",
 		Data:             map[string]string{"name": "x"},
 		Text:             plain,
-		OnceOnlyNotice:   "this value is shown exactly once - store it now",
+		OnceOnlyNotice:   "this value is shown once - store it now",
 		CommittedContext: &CommittedContext{ResourceKind: "Credential", ResourceName: "x", Recovery: "get credential x"},
 		StyledText: func(s style.Style) string {
 			return StyleLines(plain, s, func(i int, body string) (string, bool) {
@@ -408,7 +408,7 @@ func TestStyleSchemaFilteredTOCStripInvariant(t *testing.T) {
 }
 
 // TestStyleSchemaGroupCardStripInvariant asserts the group card's bold spans:
-// the "group: <name>" header line and the "commands:" label, nothing else -
+// the "command group: <name>" header line and the "commands:" label, nothing else -
 // plus the strip invariant and the inactive-style identity.
 func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
 	t.Parallel()
@@ -425,7 +425,7 @@ func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
 
 	plainLines := splitKeepNewline(text)
 	styledLines := splitKeepNewline(styled)
-	assert.Contains(t, styledLines[0], "\x1b[1m", "the group: <name> line must be bold")
+	assert.Contains(t, styledLines[0], "\x1b[1m", "the command group: <name> line must be bold")
 
 	cmdIdx := -1
 	for i, l := range plainLines {
@@ -440,7 +440,7 @@ func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
 }
 
 // TestStyleSchemaGroupCardColorsPrimeHeader asserts an all-Prime group's
-// "group: <name>" header carries a green "[Prime]" span alongside its
+// "command group: <name>" header carries a green "[Prime]" span alongside its
 // existing whole-line bold, and that its Prime member's own row is
 // colorized too - while a non-Prime group's header and rows carry none.
 func TestStyleSchemaGroupCardColorsPrimeHeader(t *testing.T) {
@@ -448,7 +448,7 @@ func TestStyleSchemaGroupCardColorsPrimeHeader(t *testing.T) {
 	s := style.Style{Enabled: true}
 
 	primeCmds := []SchemaCommand{{Name: "oidc-client create", Usage: "Create a client", Prime: true}}
-	primeText := "group: oidc-client [Prime]\ncommands:\n  " + tocLine(primeCmds[0]) + "\n"
+	primeText := "command group: oidc-client [Prime]\ncommands:\n  " + tocLine(primeCmds[0]) + "\n"
 	styled := styleSchemaGroupCard(primeText, true, true, primeCmds, s)
 	assert.Equal(t, primeText, style.Strip(styled))
 	lines := strings.SplitAfter(styled, "\n")
@@ -457,7 +457,7 @@ func TestStyleSchemaGroupCardColorsPrimeHeader(t *testing.T) {
 	assert.Contains(t, lines[2], s.Green("[Prime]"), "the Prime member's own row is colorized")
 
 	mixedCmds := []SchemaCommand{{Name: "cluster scale", Usage: "Scale a pool"}}
-	mixedText := "group: cluster\ncommands:\n  " + tocLine(mixedCmds[0]) + "\n"
+	mixedText := "command group: cluster\ncommands:\n  " + tocLine(mixedCmds[0]) + "\n"
 	styledMixed := styleSchemaGroupCard(mixedText, true, false, mixedCmds, s)
 	mixedLines := strings.SplitAfter(styledMixed, "\n")
 	assert.NotContains(t, mixedLines[0], "[Prime]")
@@ -553,7 +553,7 @@ func TestStyleSchemaCommandCardFlagShapedDescStaysPlain(t *testing.T) {
 		"More text.",
 		"",
 		"exit codes: GENERIC=1",
-		"global flags: see `rancher schema --all -o json` (globalFlags)",
+		"global flags: see the globalFlags key in `rancher schema --all -o json`",
 	}, "\n") + "\n"
 
 	s := style.Style{Enabled: true}
@@ -581,7 +581,7 @@ func TestStyleSchemaCommandCardAbsentSectionNoTheft(t *testing.T) {
 		"More text about the thing.",
 		"",
 		"exit codes: GENERIC=1",
-		"global flags: see `rancher schema --all -o json` (globalFlags)",
+		"global flags: see the globalFlags key in `rancher schema --all -o json`",
 	}, "\n") + "\n"
 
 	s := style.Style{Enabled: true}
@@ -590,7 +590,7 @@ func TestStyleSchemaCommandCardAbsentSectionNoTheft(t *testing.T) {
 	assert.NotContains(t, got, "\x1b[1mexamples:", "a Desc line must not take an absent section's bold")
 	assert.Contains(t, got, "\x1b[1mcontract:\x1b[0m local")
 
-	group := "group: g\nDesc first.\ncommands:\n"
+	group := "command group: g\nDesc first.\ncommands:\n"
 	gotGroup := styleSchemaGroupCard(group, false, false, nil, s)
 	assert.NotContains(t, gotGroup, "\x1b[1mcommands:", "an empty group's Desc line must stay plain")
 }
@@ -621,7 +621,7 @@ func TestStyleSchemaCommandCardDescCollision(t *testing.T) {
 		"  rancher do thing x",
 		"",
 		"exit codes: GENERIC=1",
-		"global flags: see `rancher schema --all -o json` (globalFlags)",
+		"global flags: see the globalFlags key in `rancher schema --all -o json`",
 	}, "\n") + "\n"
 
 	s := style.Style{Enabled: true}

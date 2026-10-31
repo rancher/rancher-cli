@@ -442,7 +442,7 @@ func TestKubeconfigHostileCharacters(t *testing.T) {
 	assert.Contains(t, notices.String(), "kubectl will sign in on first use when it has a terminal; "+runtime.UnprintableConfigDirNote+"\n",
 		"no command is offered for a directory that cannot be printed")
 	assert.NotContains(t, notices.String(), "rancher ")
-	assert.Contains(t, notices.String(), "(its path holds characters that cannot be printed)")
+	assert.Contains(t, notices.String(), "(its path has characters a terminal cannot show)")
 }
 
 // TestKubeconfigEntryNameCannotInjectTheDirectory asserts a server entry

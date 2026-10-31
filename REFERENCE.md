@@ -261,14 +261,14 @@ take it; `-` means no flag. A variable and its flag relate in different ways:
 | `XDG_CONFIG_HOME` | - | base of the default config directory, `$XDG_CONFIG_HOME/rancher`, used when neither `--config` nor `RANCHER_CLI_CONFIG_DIR` is set |
 | `RANCHER_CLI_OAUTH_AUTH_FLOW` | `--auth-flow` | OAuth flow: `devicecode` \| `authcode` |
 | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | - | local callback port for the `authcode` flow |
-| `CATTLE_OAUTH_AUTH_FLOW` | `--auth-flow` | legacy spelling of `RANCHER_CLI_OAUTH_AUTH_FLOW`, read when that one is empty |
-| `CATTLE_OAUTH_CALLBACK_PORT` | - | legacy spelling of `RANCHER_CLI_OAUTH_CALLBACK_PORT`, read when that one is empty |
-| `RANCHER_CLI_TELEMETRY` | - | `true` or `false`; turns usage recording on or off over the `telemetry` config key, see [Usage recording](#usage-recording); empty counts as unset and any other value is ignored |
+| `CATTLE_OAUTH_AUTH_FLOW` | `--auth-flow` | older name of `RANCHER_CLI_OAUTH_AUTH_FLOW`, read when that one is empty |
+| `CATTLE_OAUTH_CALLBACK_PORT` | - | older name of `RANCHER_CLI_OAUTH_CALLBACK_PORT`, read when that one is empty |
+| `RANCHER_CLI_TELEMETRY` | - | `true` or `false`; turns usage recording on or off and overrides the `telemetry` key of config.yaml, see [Usage recording](#usage-recording); empty counts as unset and any other value is ignored |
 | `RANCHER_CLI_READONLY` | `--read-only` | when non-empty, every run refuses commands that make changes; local commands stay usable; see [Read-only mode](#read-only-mode) |
 | `NO_COLOR` | `--color` | when non-empty, turns off styling under `--color=auto`; see [Color](#color) |
 | `CLICOLOR_FORCE` | `--color` | when non-empty and not `0`, turns on styling under `--color=auto` unless `NO_COLOR` is set; see [Color](#color) |
 | `FORCE_COLOR` | `--color` | same as `CLICOLOR_FORCE`; see [Color](#color) |
-| `RANCHER_CLI_CONFIG_NO_LOCK` | - | disables the config directory's cross-process write lock; escape hatch for filesystems with broken file locking |
+| `RANCHER_CLI_CONFIG_NO_LOCK` | - | does not take the locks that stop two CLI processes from writing the config directory at the same time; use it only on a filesystem with broken file locking |
 | `RANCHER_CLI_COMPLETION_DEBUG` | - | when non-empty, traces each phase of a shell completion request to stderr; stdout is unchanged |
 | `VISUAL` | - | editor that `config edit` runs, read before `EDITOR` |
 | `EDITOR` | - | editor that `config edit` runs when `VISUAL` is empty |
@@ -944,9 +944,9 @@ then `rancher --config <dir> kubeconfig --cluster <id>`). A file written in a
 session that used only environment variables, which has no entry, tells you
 which variables to set (`RANCHER_CLI_URL`, `RANCHER_CLI_CACERT` when the file
 carries a CA, and `RANCHER_CLI_TOKEN`) before `rancher --config <dir> kubeconfig
---cluster <id>`. When the directory's path holds characters a terminal line
-cannot show, no command is offered, in `installHint` or in any remedy: the text
-says the path cannot be printed. A second stderr notice comes from the exec
+--cluster <id>`. When the directory's path has characters a terminal
+cannot show, the commands that would name it are left out, in `installHint` or in any
+remedy: the text says why. A second stderr notice comes from the exec
 plugin's own lookup in the credential store it will open: which stored login
 kubectl will use when it is not this session's (under `RANCHER_CLI_TOKEN`, the
 plugin's own login, or an entry named `<current>-<id>`), how to get one when

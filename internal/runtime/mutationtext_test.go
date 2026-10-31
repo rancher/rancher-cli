@@ -96,7 +96,7 @@ func TestRenderResultMutationTextKeepsShownOnceBold(t *testing.T) {
 		Data:           map[string]string{"name": "x"},
 		Text:           mt.Text,
 		StyledText:     mt.StyledText,
-		OnceOnlyNotice: "this value is shown exactly once - store it now",
+		OnceOnlyNotice: "this value is shown once - store it now",
 	}
 
 	var plainOut, styledOut bytes.Buffer
@@ -124,6 +124,7 @@ func TestOnceOnlyLineGivesAValueWithACharacterTheFilterRemovesInQuotedForm(t *te
 	t.Parallel()
 	line, notice := OnceOnlyLine("token", "abc-123", "token")
 	assert.Equal(t, "token: abc-123"+ShownOnceSuffix, line)
+	assert.Equal(t, "this token is shown once - store it now", notice)
 	for _, tc := range []struct{ name, value string }{
 		{"an escape character", "ab\x1b[2Jcd"},
 		{"a newline", "ab\ncd"},

@@ -61,7 +61,7 @@ target for the legacy `server switch` command.
 | `create resource -f <file\|->` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
 | `create token` | Create a server-side derived token (`ext.Token`), shown once - sensitive; dry-run/apply --yes |
 | `create kubeconfig` | Create a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once - sensitive; dry-run/apply --yes |
-| `create oidc-client <name>` | Create an OIDC client for Rancher's embedded OIDC provider; waits for provisioning, prints the initial client secret once with live discovery endpoints - sensitive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `create oidc-client <name>` | Create an OIDC client for Rancher's embedded OIDC provider; waits for provisioning, prints the initial client secret once with live discovery endpoints - sensitive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
 | `create user <username> --password-stdin` | Create a local user (`v3 User`) plus its password secret (`cattle-local-user-passwords`); password never on the command line - sensitive; dry-run/apply --yes. Requires a server that supports local user passwords. |
 | `create password-change-request <user> --password-stdin` | Change a local user's password (`ext.cattle.io PasswordChangeRequest`); completes synchronously; password never on the command line - sensitive; dry-run/apply --yes. Requires a server that supports local user passwords. |
 | `create cluster <name>` | Create a provisioning cluster: imported, custom, or node-driver with one machine pool - dry-run/apply |
@@ -80,9 +80,9 @@ target for the legacy `server switch` command.
 
 | Command | Purpose |
 |---|---|
-| `oidc-client add-secret <client>` | Add a new client secret; waits for the controller, shown once - sensitive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
-| `oidc-client rotate-secret <client> [secret-name]` | Regenerate a client secret (name required with more than one secret); shown once - sensitive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
-| `oidc-client remove-secret <client> <secret-name>` | Remove a client secret - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `oidc-client add-secret <client>` | Add a new client secret; waits for the controller, shown once - sensitive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
+| `oidc-client rotate-secret <client> [secret-name]` | Regenerate a client secret (name required with more than one secret); shown once - sensitive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
+| `oidc-client remove-secret <client> <secret-name>` | Remove a client secret - destructive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
 
 See also `create oidc-client` in [Create](#create), which creates the client itself.
 
@@ -91,10 +91,10 @@ See also `create oidc-client` in [Create](#create), which creates the client its
 | Command | Purpose |
 |---|---|
 | `cluster scale <cluster> --pool <name> --nodes <n>` | Change the number of nodes in a machine pool; refuses when the machine pool has autoscaling turned on and autoscaling is not paused, or when the cluster has no machine pools - destructive; dry-run/apply --yes |
-| `cluster set-autoscaling <cluster> --pool <name> --min <n> --max <m>` | Turn on autoscaling for a machine pool - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
-| `cluster clear-autoscaling <cluster> --pool <name>` | Turn off autoscaling for a machine pool; succeeds and changes nothing when the machine pool has no autoscaling - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
-| `cluster pause-autoscaling <cluster>` | Pause the cluster autoscaler cluster-wide - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
-| `cluster resume-autoscaling <cluster>` | Resume the cluster autoscaler cluster-wide - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `cluster set-autoscaling <cluster> --pool <name> --min <n> --max <m>` | Turn on autoscaling for a machine pool - destructive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
+| `cluster clear-autoscaling <cluster> --pool <name>` | Turn off autoscaling for a machine pool; succeeds and changes nothing when the machine pool has no autoscaling - destructive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
+| `cluster pause-autoscaling <cluster>` | Pause the cluster autoscaler cluster-wide - destructive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
+| `cluster resume-autoscaling <cluster>` | Resume the cluster autoscaler cluster-wide - destructive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
 
 See also `create cluster` in [Create](#create) and `delete provisioning-cluster`
 for lifecycle; `get provisioning-cluster` for reads.
@@ -152,7 +152,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 
 | Command | Purpose |
 |---|---|
-| `schema [command\|kind\|group]` | Capability manifest: bare = grouped table of contents; `<command>`/`<kind>`/`<group>` = one card; filter flags span the whole surface |
+| `schema [command\|kind\|group]` | Schema manifest: bare = grouped table of contents; `<command>`/`<kind>`/`<group>` = one card; filter flags search all commands |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
 | `skill install` | Install the rancher-cli agent skill into coding-agent harnesses |
 | `skill uninstall` | Remove the agent skills that rancher-cli installed (a skill directory that rancher-cli did not install is never removed: the command stops with an error and changes no target) |

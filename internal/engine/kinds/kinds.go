@@ -1104,8 +1104,8 @@ func validateKinds(ts []Kind) error {
 	// always takes precedence over a later kind's defect of a different type.
 	seen := map[string]string{}
 	for _, k := range ts {
-		if ce := runtime.ValidCapabilityShape(k.Capability, k.Name); ce != nil {
-			return ce
+		if problem := runtime.ValidCapabilityShape(k.Capability, k.Name); problem != "" {
+			return fmt.Errorf("%s", problem)
 		}
 		for _, id := range append([]string{k.Name, k.Key}, k.Aliases...) {
 			if prev, dup := seen[id]; dup && prev != k.Key {

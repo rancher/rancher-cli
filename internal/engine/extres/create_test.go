@@ -204,7 +204,7 @@ func TestCreateTokenExecMapsBearerTokenAndWarns(t *testing.T) {
 	// still reaches -o json without also mirroring to stderr under
 	// table/wide.
 	assert.Empty(t, res.Warnings)
-	assert.Contains(t, res.OnceOnlyNotice, "shown exactly once")
+	assert.Equal(t, "this bearer token is shown once - store it now", res.OnceOnlyNotice)
 	assert.Equal(t, "token/token-xyz created\n  bearer token: ext/token-xyz:secretvalue   (shown once - store it now)\n  expires: 2026-08-01T00:00:00Z\n", res.Text)
 
 	require.Len(t, client.dryRuns, 2, "one dry-run from Plan, one real create from exec")

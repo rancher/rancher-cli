@@ -152,7 +152,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 
 // execute runs strictly in this order: mutation -> status wait ->
 // backing-Secret GET (decode) -> discovery GET/degrade -> buffered
-// render. This closure never writes stdout - "shown exactly once"
+// render. This closure never writes stdout - "shown once"
 // describes finishResult's buffered render, not an intermediate step here.
 func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k kinds.Kind, obj *unstructured.Unstructured, timeout time.Duration) (runtime.Result, error) {
 	created, err := client.Create(ctx, k.GVR, "", obj, false)

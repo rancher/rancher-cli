@@ -203,8 +203,8 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	// The static descriptor value is validated BEFORE its IsSet use: IsSet
 	// (Tier != "") cannot see a half-set value, so validating after it
 	// fails open - only a fully valid zero value selects the resolver.
-	if ce := ValidCapabilityShape(d.Capability, d.Name); ce != nil {
-		return 0, renderErr(streams, ce)
+	if problem := ValidCapabilityShape(d.Capability, d.Name); problem != "" {
+		return 0, renderErr(streams, clierr.New(clierr.CodeGeneric, "internal error: "+problem))
 	}
 	req := d.Capability
 	if !req.IsSet() {
@@ -217,8 +217,8 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 			// Then the resolver's return - an arbitrary runtime value
 			// startup validation never saw. A malformed value is an internal
 			// error, stopped before the checker and Plan/Execute.
-			if ce := ValidCapabilityShape(req, d.Name); ce != nil {
-				return 0, renderErr(streams, ce)
+			if problem := ValidCapabilityShape(req, d.Name); problem != "" {
+				return 0, renderErr(streams, clierr.New(clierr.CodeGeneric, "internal error: "+problem))
 			}
 		}
 	}
@@ -689,37 +689,36 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 	}
 }
 
-// ValidCapabilityShape reports the malformation in req as a CodeGeneric
-// error, or nil when req is valid: the complete zero value, or a known Tier
-// with a non-empty Feature (and, for CapabilityExtDiscovery, a non-empty
-// Unsupported). It does not hide behind IsSet (Tier != "") - a half-set
+// ValidCapabilityShape reports the malformation in req as a message that
+// starts with the name of the owning command or kind, or "" when req is
+// valid: the complete zero value, or a known Tier with a non-empty Feature
+// (and, for CapabilityExtDiscovery, a non-empty Unsupported). The message
+// has no "internal error: " lead: Run adds it for its own messages, and
+// the build of the command tree adds it once for the registry and the kind
+// table (buildWiredRegistry and validateWiring in internal/cli/root.go). It
+// does not hide behind IsSet (Tier != "") - a half-set
 // value ({Feature set, Tier ""}) would otherwise read as absent and skip
 // every gate that keys on IsSet, including the coverage rule's
 // Capability-bearing filter. Shared by Registry.Validate, kinds'
 // validateKinds, and both pipeline boundaries in Run, so a malformed value
 // is rejected identically wherever it can appear. name identifies the owning
 // command or kind in the message.
-func ValidCapabilityShape(req CapabilityRequirement, name string) *clierr.Error {
+func ValidCapabilityShape(req CapabilityRequirement, name string) string {
 	switch {
 	case req.Tier == "" && req.Feature == "" && req.Unsupported == "":
-		return nil
+		return ""
 	case req.Tier == "":
-		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("internal error: %s: capability requirement has Feature/Unsupported set with no Tier", name))
+		return fmt.Sprintf("%s: capability requirement has Feature/Unsupported set with no Tier", name)
 	case req.Tier != CapabilityPrime && req.Tier != CapabilityExtDiscovery:
-		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("internal error: %s: unknown capability tier %q", name, req.Tier))
+		return fmt.Sprintf("%s: unknown capability tier %q", name, req.Tier)
 	case req.Feature == "":
-		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("internal error: %s: capability tier %q requires a Feature name", name, req.Tier))
+		return fmt.Sprintf("%s: capability tier %q requires a Feature name", name, req.Tier)
 	case req.Tier == CapabilityPrime && req.Unsupported != "":
-		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("internal error: %s: capability tier %q does not use Unsupported", name, req.Tier))
+		return fmt.Sprintf("%s: capability tier %q does not use Unsupported", name, req.Tier)
 	case req.Tier == CapabilityExtDiscovery && req.Unsupported == "":
-		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("internal error: %s: capability tier %q requires Unsupported", name, req.Tier))
+		return fmt.Sprintf("%s: capability tier %q requires Unsupported", name, req.Tier)
 	default:
-		return nil
+		return ""
 	}
 }
 

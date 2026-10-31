@@ -25,7 +25,7 @@ func ComposeResolvers(a, b Resolver) (Resolver, error) {
 	maps.Copy(merged, a.All())
 	for op, bind := range b.All() {
 		if _, dup := merged[op]; dup {
-			return nil, fmt.Errorf("operation %q resolved by both resolvers", op)
+			return nil, fmt.Errorf("command %q has its contract and stability set in two places", op)
 		}
 		merged[op] = bind
 	}

@@ -792,6 +792,15 @@ type wiredRegistry struct {
 	order  []string
 }
 
+// checkKindTable runs the kind table's own validation and gives its failure
+// the "internal error: " lead, once.
+func checkKindTable(validate func() error) error {
+	if err := validate(); err != nil {
+		return fmt.Errorf("internal error: kind definitions: %w", err)
+	}
+	return nil
+}
+
 // buildWiredRegistry constructs and validates the command registry for the
 // full surface. It handles kind validation, resolver composition, entry wiring,
 // and the fixed schema/completion registrations.
@@ -799,8 +808,8 @@ type wiredRegistry struct {
 // readOnly is wired into the schema command; pass config.ReadOnlyOverride for
 // the real CLI path and nil for callers that only need the manifest shape.
 func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wiredRegistry, error) {
-	if err := kinds.Validate(); err != nil {
-		return wiredRegistry{}, fmt.Errorf("internal error: kind definitions: %w", err)
+	if err := checkKindTable(kinds.Validate); err != nil {
+		return wiredRegistry{}, err
 	}
 	resolver, err := composeBindings()
 	if err != nil {

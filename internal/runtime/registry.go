@@ -127,22 +127,22 @@ type EnvVar struct {
 func EnvVars() []EnvVar {
 	return []EnvVar{
 		{Name: "RANCHER_CLI_CONFIG_DIR", Flag: "-c/--config", Desc: "config directory"},
-		{Name: "RANCHER_CLI_URL", Flag: "--server", Desc: "Rancher server URL, used when --server is omitted"},
-		{Name: "RANCHER_CLI_TOKEN", Desc: "API token (id:secret) for non-interactive auth"},
-		{Name: "RANCHER_CLI_CACERT", Flag: "--cacert", Desc: "PEM CA bundle, a path or the literal PEM"},
+		{Name: "RANCHER_CLI_URL", Flag: "--server", Desc: "Rancher server URL, used when --server is not given"},
+		{Name: "RANCHER_CLI_TOKEN", Desc: "Rancher API token (access-key:secret-key) to authenticate without a prompt"},
+		{Name: "RANCHER_CLI_CACERT", Flag: "--cacert", Desc: "PEM CA bundle, as a file path or as the PEM text itself"},
 		{Name: "RANCHER_CLI_CREDENTIAL_STORE", Flag: "--credential-store", Desc: "credential store backend: auto, keychain, or file"},
 		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, every run refuses commands that make changes; local commands stay usable"},
 		{Name: "NO_COLOR", Flag: "--color", Desc: "when non-empty, turn off styling under --color=auto"},
 		{Name: "CLICOLOR_FORCE", Flag: "--color", Desc: "when set to a value other than \"0\", turn on styling under --color=auto"},
-		{Name: "FORCE_COLOR", Flag: "--color", Desc: "same as CLICOLOR_FORCE; when both are set and disagree, whichever is not \"0\" wins"},
-		{Name: "RANCHER_CLI_CONFIG_NO_LOCK", Desc: "when non-empty, skip the cross-process config write lock - escape hatch for filesystems with broken file locking"},
-		{Name: "RANCHER_CLI_COMPLETION_DEBUG", Desc: "when non-empty, trace each phase of a shell completion request to stderr (config load, token source, budget, requests, candidate count); stdout is unchanged"},
+		{Name: "FORCE_COLOR", Flag: "--color", Desc: "same as CLICOLOR_FORCE; when both are set and one of them is \"0\", the one that is not \"0\" takes precedence"},
+		{Name: "RANCHER_CLI_CONFIG_NO_LOCK", Desc: "when non-empty, do not take the locks that stop two CLI processes from writing the config directory at the same time; use it only on a filesystem with broken file locking"},
+		{Name: "RANCHER_CLI_COMPLETION_DEBUG", Desc: "when non-empty, trace each phase of a shell completion request to stderr (config load, where the token comes from, time limit, requests, number of candidates); stdout is unchanged"},
 		{Name: "RANCHER_CLI_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "OAuth flow: devicecode or authcode"},
 		{Name: "RANCHER_CLI_OAUTH_CALLBACK_PORT", Desc: "local callback port for the authcode OAuth flow"},
-		{Name: "CATTLE_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "legacy spelling honored after RANCHER_CLI_OAUTH_AUTH_FLOW"},
-		{Name: "CATTLE_OAUTH_CALLBACK_PORT", Desc: "legacy spelling honored after RANCHER_CLI_OAUTH_CALLBACK_PORT"},
-		{Name: "RANCHER_CLI_TELEMETRY", Desc: "true or false: turns usage recording on or off over the config key; empty counts as unset and any other value is ignored"},
-		{Name: "XDG_CONFIG_HOME", Desc: "base directory for the default config location"},
+		{Name: "CATTLE_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "older name of RANCHER_CLI_OAUTH_AUTH_FLOW; used only when that variable is not set or is empty"},
+		{Name: "CATTLE_OAUTH_CALLBACK_PORT", Desc: "older name of RANCHER_CLI_OAUTH_CALLBACK_PORT; used only when that variable is not set or is empty"},
+		{Name: "RANCHER_CLI_TELEMETRY", Desc: "true or false: turns usage recording on or off and overrides the telemetry key of config.yaml; empty counts as unset and any other value is ignored"},
+		{Name: "XDG_CONFIG_HOME", Desc: "base directory for the default config directory"},
 		{Name: "VISUAL", Desc: "preferred editor for config edit"},
 		{Name: "EDITOR", Desc: "fallback editor for config edit"},
 	}
@@ -388,21 +388,22 @@ func (reg *Registry) Validate() error {
 			return fmt.Errorf("command %q implements both ReadCommand and MutatingCommand", d.Name)
 		}
 		if isMut != (d.CommandType == Mutating) {
-			return fmt.Errorf("command %q commandType %q does not match implemented interface", d.Name, d.CommandType)
+			return fmt.Errorf("command %q has commandType %q, which does not match the interface it implements (ReadCommand or MutatingCommand)", d.Name, d.CommandType)
 		}
 		if err := validServerAccess(d); err != nil {
 			return err
 		}
 		if isMut {
 			if _, ok := reg.resolver.Resolve(d.Name); !ok {
-				return fmt.Errorf("mutating command %q has no resolver binding", d.Name)
+				return fmt.Errorf("mutating command %q has no contract and stability set", d.Name)
 			}
 		}
 		// Validate's contract is plain errors (every other failure here is
-		// fmt.Errorf); unwrap the shared validator's structured error to its
-		// message rather than leaking one *clierr.Error through this seam.
-		if ce := ValidCapabilityShape(d.Capability, d.Name); ce != nil {
-			return fmt.Errorf("%s", ce.Message)
+		// fmt.Errorf); the shared validator's text carries no "internal
+		// error: " lead, which the build of the command tree adds once
+		// (validateWiring in internal/cli/root.go).
+		if problem := ValidCapabilityShape(d.Capability, d.Name); problem != "" {
+			return fmt.Errorf("%s", problem)
 		}
 		if d.Capability.IsSet() {
 			if _, ok := c.(CapabilityResolver); ok {
@@ -419,10 +420,10 @@ func (reg *Registry) Validate() error {
 		}
 		if d.Delivery != "" {
 			if d.Delivery != DeliveryOnceOnly {
-				return fmt.Errorf("command %q: unknown delivery classification %q", d.Name, d.Delivery)
+				return fmt.Errorf("command %q: unknown delivery %q", d.Name, d.Delivery)
 			}
 			if d.CommandType != Mutating {
-				return fmt.Errorf("command %q: delivery %q is permitted only on Mutating commands", d.Name, d.Delivery)
+				return fmt.Errorf("command %q: delivery %q is allowed only on mutating commands", d.Name, d.Delivery)
 			}
 		}
 		if err := validateProjectFlag(c, d); err != nil {
@@ -446,7 +447,7 @@ func (reg *Registry) Validate() error {
 				case seen[c]:
 					return fmt.Errorf("command %q: duplicate successExitCodes value %d", d.Name, c)
 				case errExits[c]:
-					return fmt.Errorf("command %q: successExitCodes value %d collides with error exit", d.Name, c)
+					return fmt.Errorf("command %q: successExitCodes value %d is also an error exit code", d.Name, c)
 				}
 				if c != 0 {
 					seen[c] = true
@@ -495,7 +496,7 @@ func validateProjectFlag(c Command, d Descriptor) error {
 		}
 	}
 	if _, ok := c.(ProjectRefusalHinter); ok && TakesProject(d) {
-		return fmt.Errorf("command %q: takes --project and also hints at what to run instead of it", d.Name)
+		return fmt.Errorf("command %q: takes --project and also implements ProjectRefusalHinter, which is for a command that does not take --project", d.Name)
 	}
 	return nil
 }

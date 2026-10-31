@@ -54,6 +54,15 @@ func (f fakeEngineCmd) Execute(context.Context, runtime.Input, runtime.Prompter)
 	return runtime.Result{}, nil
 }
 
+// halfSetCapabilityCmd declares a capability with a Feature and no Tier.
+type halfSetCapabilityCmd struct{ fakeEngineCmd }
+
+func (c halfSetCapabilityCmd) Describe() runtime.Descriptor {
+	d := c.fakeEngineCmd.Describe()
+	d.Capability = runtime.CapabilityRequirement{Feature: "f"}
+	return d
+}
+
 func findCommand(cmds []*ucli.Command, name string) *ucli.Command {
 	for _, c := range cmds {
 		if c.Name == name {
@@ -781,6 +790,11 @@ func TestValidateWiringLeadsWithInternalError(t *testing.T) {
 	err = validateWiring(invalid, nil, nil, nil, nil, nil, nil)
 	require.ErrorContains(t, err, `internal error: command definitions: command "get a"`)
 
+	halfSet := runtime.NewRegistry(resolver)
+	halfSet.Register(halfSetCapabilityCmd{fakeEngineCmd{name: "get a"}})
+	err = validateWiring(halfSet, nil, nil, nil, nil, nil, nil)
+	require.EqualError(t, err, "internal error: command definitions: get a: capability requirement has Feature/Unsupported set with no Tier")
+
 	empty := runtime.NewRegistry(resolver)
 	err = validateWiring(empty, leaves, nil, nil, map[string]completion.Source{"role": complete.RoleSource()}, nil, nil)
 	require.EqualError(t, err, "internal error: live completion setup: --role has a live completion source but is not a shared completion flag")
@@ -789,6 +803,18 @@ func TestValidateWiringLeadsWithInternalError(t *testing.T) {
 	require.EqualError(t, err, "internal error: live completion setup: command x login has a completion source that needs no credential, but the command has no completion target (the server to connect to)")
 
 	require.NoError(t, validateWiring(empty, leaves, noCredential, map[string]bool{"x login": true}, nil, nil, nil))
+}
+
+// TestCheckKindTableLeadsWithInternalErrorOnce asserts that a malformed
+// capability in the kind table reaches the caller with one "internal error: "
+// lead and the name of the kind, and that a valid table passes.
+func TestCheckKindTableLeadsWithInternalErrorOnce(t *testing.T) {
+	t.Parallel()
+	malformed := func() error {
+		return fmt.Errorf("%s", runtime.ValidCapabilityShape(runtime.CapabilityRequirement{Tier: "bogus", Feature: "f"}, "foo"))
+	}
+	require.EqualError(t, checkKindTable(malformed), `internal error: kind definitions: foo: unknown capability tier "bogus"`)
+	require.NoError(t, checkKindTable(func() error { return nil }))
 }
 
 // TestBuildWiredRegistryFailsThroughValidateWiring asserts that the build of

@@ -2081,9 +2081,13 @@ func TestInternalErrorMessagesStartWithThePrefix(t *testing.T) {
 	capability := func(req CapabilityRequirement) func(t *testing.T) *clierr.Error {
 		return func(t *testing.T) *clierr.Error {
 			t.Helper()
-			ce := ValidCapabilityShape(req, "get widget")
-			require.NotNil(t, ce)
-			return ce
+			return run(t, fakeRead{d: Descriptor{Name: "get widget", CommandType: ReadOnly, Capability: req}}, IO{})
+		}
+	}
+	resolved := func(req CapabilityRequirement) func(t *testing.T) *clierr.Error {
+		return func(t *testing.T) *clierr.Error {
+			t.Helper()
+			return run(t, refusingExecuteResolverRead{d: deferredDesc("get widget"), resolved: req, t: t}, IO{})
 		}
 	}
 	shape := func(d Descriptor, res Result, format string) func(t *testing.T) *clierr.Error {
@@ -2134,6 +2138,8 @@ func TestInternalErrorMessagesStartWithThePrefix(t *testing.T) {
 			`internal error: get widget: capability tier "prime" does not use Unsupported`},
 		{"a discovery capability tier with no Unsupported", capability(CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "f"}),
 			`internal error: get widget: capability tier "extDiscovery" requires Unsupported`},
+		{"a capability requirement from a resolver with no tier", resolved(CapabilityRequirement{Feature: "f"}),
+			"internal error: get widget: capability requirement has Feature/Unsupported set with no Tier"},
 		{"a notice on a command that is not once-only", shape(Descriptor{Name: "get thing"}, Result{OnceOnlyNotice: "n"}, "json"),
 			"internal error: get thing is not DeliveryOnceOnly but returned OnceOnlyNotice"},
 		{"styled text with no text", shape(Descriptor{Name: "do thing", Shape: ShapeText}, Result{StyledText: styled}, "table"),
@@ -2181,6 +2187,39 @@ func TestInternalErrorMessagesStartWithThePrefix(t *testing.T) {
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
 			assert.True(t, strings.HasPrefix(ce.Message, "internal error: "), "message %q", ce.Message)
 			assert.Equal(t, tc.want, ce.Message)
+		})
+	}
+}
+
+// TestValidCapabilityShapeReturnsTheBareMessage asserts that the message of
+// each malformation starts with the name of the command and has no
+// "internal error: " lead: the registry and the kind table are wrapped with
+// the lead once by the build of the command tree, and Run adds it for its
+// own messages.
+func TestValidCapabilityShapeReturnsTheBareMessage(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		req  CapabilityRequirement
+		want string
+	}{
+		{"the zero value", CapabilityRequirement{}, ""},
+		{"a prime requirement", CapabilityRequirement{Tier: CapabilityPrime, Feature: "f"}, ""},
+		{"a discovery requirement", CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "f", Unsupported: "u"}, ""},
+		{"no tier", CapabilityRequirement{Feature: "f"},
+			"get widget: capability requirement has Feature/Unsupported set with no Tier"},
+		{"an unknown tier", CapabilityRequirement{Tier: "bogus", Feature: "f"},
+			`get widget: unknown capability tier "bogus"`},
+		{"a tier with no feature", CapabilityRequirement{Tier: CapabilityPrime},
+			`get widget: capability tier "prime" requires a Feature name`},
+		{"a prime tier with Unsupported", CapabilityRequirement{Tier: CapabilityPrime, Feature: "f", Unsupported: "u"},
+			`get widget: capability tier "prime" does not use Unsupported`},
+		{"a discovery tier with no Unsupported", CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "f"},
+			`get widget: capability tier "extDiscovery" requires Unsupported`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, ValidCapabilityShape(tc.req, "get widget"))
 		})
 	}
 }

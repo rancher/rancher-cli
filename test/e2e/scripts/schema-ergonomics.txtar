@@ -24,10 +24,10 @@ exec rancher schema --search zzz-no-such-term
 stdout 'no commands match --search "zzz-no-such-term"'
 
 # A command/kind collision resolves as the command card, footnoting
-# the kind view; --kind forces the kind card
+# the way to see the kind; --kind forces the kind card
 exec rancher schema kubeconfig
 stdout '(?m)^rancher kubeconfig$'
-stdout '(?m)^kind view: rancher schema kubeconfig --kind$'
+stdout '(?m)^to see this name as a kind, run: rancher schema kubeconfig --kind$'
 exec rancher schema kubeconfig --kind
 stdout '(?m)^kind: kubeconfig$'
 stdout '(?m)^  get: available \(public · stable\)$'
