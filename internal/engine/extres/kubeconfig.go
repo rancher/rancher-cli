@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -170,11 +171,29 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 					Committed: true, ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery,
 				})
 		}
-		header := fmt.Sprintf("# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig %s\n", name, name)
 		return runtime.Result{
-			RawBytes:         append([]byte(header), []byte(value)...),
+			RawBytes:         append([]byte(kubeconfigHeader(name)), []byte(value)...),
 			CommittedContext: &runtime.CommittedContext{ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery},
 		}, nil
 	}
 	return eff, exec, nil
+}
+
+// kubeconfigHeader returns the comment line that starts the file: the name
+// in the server's reply in Go's quoted form, so a line break or a control
+// character in it cannot end the line, and the command that revokes the
+// kubeconfig with the name quoted for a POSIX shell, and after "--" when the
+// name starts with a dash, so the command reads it as the name and not as a
+// flag. A name that is empty or that output.Printable would change gets no
+// command, because a command built from a changed name would name another
+// object.
+func kubeconfigHeader(name string) string {
+	if name != "" && output.Printable(name) == name {
+		argument := clierr.ShellQuote(name)
+		if strings.HasPrefix(name, "-") {
+			argument = "-- " + argument
+		}
+		return fmt.Sprintf("# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig %s\n", name, argument)
+	}
+	return fmt.Sprintf("# Kubeconfig %q - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show\n", name)
 }
