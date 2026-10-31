@@ -1061,7 +1061,7 @@ var remedyExceptions = []remedyException{
 	{"internal/engine/projects/membership.go", remedyCheckWord, "internal error: project add-namespace ran without --project", false, "an internal error that names the command that is running", "project add-namespace"},
 	{"internal/engine/resources/create.go", remedyCheckWord, "internal error: create resource read manifest %q and was then given %q", false, "an internal error that names the command that is running", "create resource"},
 	{"internal/commands/telemetrycmd/reset.go", remedyCheckWord, "telemetry reset is incomplete", false, "names the command that is running in its failure message", "telemetry reset"},
-	{"internal/commands/skill/skill.go", remedyCheckWord, "skill install changed only part of the selected targets", false, "names the command that is running in its failure message", "skill install"},
+	{"internal/commands/skill/skill.go", remedyCheckWord, "skill install failed for part of the selected targets", false, "names the command that is running in its failure message", "skill install"},
 	{"internal/commands/skill/skill.go", remedyCheckWord, "skill uninstall changed only part of the selected targets", false, "names the command that is running in its failure message", "skill uninstall"},
 	{"internal/config/config.go", remedyCheckWord, "config path is empty", false, "config path is the path of the config file, not a command", "config path"},
 	{"internal/engine/rbac/deleteuser.go", remedyCheckWord, "refusing to delete user ", false, "delete user is the verb of the refusal of the running command", "delete user"},

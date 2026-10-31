@@ -1,11 +1,13 @@
 package skillinstall
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -403,12 +405,18 @@ func validateStaged(staging string) error {
 // written FIRST so the leftover staging entry is owner-marked from its first file -
 // an interrupted population can never strand foreign-looking leftovers.
 func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
-	t := l.target
-	parent := filepath.Dir(t.Dir)
-	warnings, err := cleanStaging(parent)
+	warnings, err := cleanStaging(filepath.Dir(l.target.Dir))
 	if err != nil {
 		return warnings, err
 	}
+	return l.install(cliVersion, force, warnings)
+}
+
+// install is Install after the leftovers in the parent were cleaned; warnings
+// are the ones that cleaning returned, and install returns them with its own.
+func (l *Lease) install(cliVersion string, force bool, warnings []string) ([]string, error) {
+	t := l.target
+	parent := filepath.Dir(t.Dir)
 	files, err := Rendered(cliVersion)
 	if err != nil {
 		return warnings, err
@@ -492,6 +500,40 @@ func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 	}
 	err = os.Rename(staging, t.Dir)
 	return warnings, err
+}
+
+// InstallIfChanged is Install for a target that may already hold what Install
+// would write. A target is current when force is false and every file in it,
+// SKILL.md and the owner marker included, has the same path and the same
+// bytes as the rendered tree. A current target is not touched, apart from the
+// removal of leftovers in its parent; changed is false. Any other state,
+// including a failed read, is installed as Install does and reports the same
+// errors. The bytes are compared, not the version or the recorded digest: two
+// builds can carry one version and different skill text.
+func (l *Lease) InstallIfChanged(cliVersion string, force bool) (changed bool, warnings []string, err error) {
+	warnings, err = cleanStaging(filepath.Dir(l.target.Dir))
+	if err != nil {
+		return false, warnings, err
+	}
+	if !force && l.current(cliVersion) {
+		return false, warnings, nil
+	}
+	warnings, err = l.install(cliVersion, force, warnings)
+	return err == nil, warnings, err
+}
+
+// current reports whether the target holds exactly the rendered tree. It
+// reads the target and writes nothing.
+func (l *Lease) current(cliVersion string) bool {
+	want, err := Rendered(cliVersion)
+	if err != nil {
+		return false
+	}
+	have, err := ReadTree(l.target.Dir)
+	if err != nil {
+		return false
+	}
+	return maps.EqualFunc(have, want, bytes.Equal)
 }
 
 // Uninstall removes the leased owned installation. Absent = no-op success -

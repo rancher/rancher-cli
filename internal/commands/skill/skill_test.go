@@ -16,6 +16,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/skillinstall"
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 type skillInput struct {
@@ -64,6 +65,16 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 	assert.Equal(t, "changed", outs[0].Action)
 	assert.Equal(t, "v1.0.0", outs[0].CLIVersion,
 		"a changed target reports the version that was just installed")
+	assert.Equal(t, skillinstall.VerdictInSync, outs[0].Verdict)
+
+	res, err = NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
+	require.NoError(t, err)
+	outs = res.Data.(skillOutcomes)
+	require.Len(t, outs, 1)
+	assert.Equal(t, "unchanged", outs[0].Action)
+	assert.Equal(t, skillinstall.VerdictInSync, outs[0].Verdict)
+	assert.Equal(t, "v1.0.0", outs[0].CLIVersion)
+	assert.Empty(t, outs[0].Reason)
 
 	res, err = NewStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
@@ -86,6 +97,129 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 	res, err = NewStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus) // absent is neutral
+}
+
+// installRows runs skill install and returns its rows keyed by harness.
+func installRows(t *testing.T, version string, in skillInput) map[string]skillinstall.Outcome {
+	t.Helper()
+	res, err := NewInstall(version).(skillInstallCmd).Execute(t.Context(), in, nil)
+	require.NoError(t, err)
+	rows := map[string]skillinstall.Outcome{}
+	for _, o := range res.Data.(skillOutcomes) {
+		rows[o.Target.Harness] = o
+	}
+	return rows
+}
+
+func TestSkillInstallUpgradeIsChangedAndAgreesWithStatus(t *testing.T) {
+	skillHome(t, ".claude")
+	skillinstall.SetSource(skillTestSource(t))
+	in := skillInput{strings: map[string]string{"agent": "claude", "scope": "user"}}
+
+	installRows(t, "v1.0.0", in)
+	rows := installRows(t, "v2.0.0", in)
+	assert.Equal(t, "changed", rows["claude"].Action)
+	assert.Equal(t, "v2.0.0", rows["claude"].CLIVersion)
+	assert.Equal(t, skillinstall.VerdictInSync, rows["claude"].Verdict)
+
+	res, err := NewStatus("v2.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 0, res.ExitStatus)
+	status := res.Data.(skillOutcomes)
+	require.Len(t, status, 1)
+	assert.Equal(t, rows["claude"].Verdict, status[0].Verdict)
+	assert.Equal(t, rows["claude"].CLIVersion, status[0].CLIVersion)
+}
+
+func TestSkillInstallMixedBatchAndForce(t *testing.T) {
+	home := skillHome(t, ".claude", ".codex")
+	skillinstall.SetSource(skillTestSource(t))
+	in := skillInput{strings: map[string]string{}} // agent=all scope=user
+	installRows(t, "v1.0.0", in)
+
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".codex", "skills", "rancher", "ref.md"), []byte("edited\n"), 0o644))
+	rows := installRows(t, "v1.0.0", in)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "unchanged", rows["claude"].Action)
+	assert.Equal(t, "changed", rows["codex"].Action)
+	for _, o := range rows {
+		assert.Equal(t, skillinstall.VerdictInSync, o.Verdict)
+		assert.Equal(t, "v1.0.0", o.CLIVersion)
+	}
+
+	forced := skillInput{strings: map[string]string{}, bools: map[string]bool{"force": true}}
+	rows = installRows(t, "v1.0.0", forced)
+	require.Len(t, rows, 2)
+	for _, o := range rows {
+		assert.Equal(t, "changed", o.Action)
+		assert.Equal(t, skillinstall.VerdictInSync, o.Verdict)
+	}
+}
+
+// TestSkillInstallTwiceLeavesEveryTargetAlone asserts, for every harness at
+// user and project scope, that a second install of the same content reports
+// unchanged and leaves the target directory as it was: the same files, modes,
+// sizes, times and contents, and no remove or rename.
+func TestSkillInstallTwiceLeavesEveryTargetAlone(t *testing.T) {
+	for _, h := range skillinstall.Harnesses() {
+		for _, scope := range []skillinstall.Scope{skillinstall.ScopeUser, skillinstall.ScopeProject} {
+			t.Run(h.Name+"/"+string(scope), func(t *testing.T) {
+				skillHome(t)
+				skillinstall.SetSource(skillTestSource(t))
+				if scope == skillinstall.ScopeProject {
+					t.Chdir(t.TempDir())
+				}
+				in := skillInput{strings: map[string]string{"agent": h.Name, "scope": string(scope)}}
+
+				first := installRows(t, "v1.0.0", in)
+				require.Len(t, first, 1)
+				var dir string
+				for _, o := range first {
+					assert.Equal(t, "changed", o.Action)
+					dir = o.Target.Dir
+				}
+				before := testfs.Snapshot(t, dir)
+				renames := 0
+				skillinstall.SetRenameHookForTest(func() error { renames++; return nil })
+				defer skillinstall.SetRenameHookForTest(nil)
+
+				second := installRows(t, "v1.0.0", in)
+				require.Len(t, second, 1)
+				for _, o := range second {
+					assert.Equal(t, "unchanged", o.Action)
+					assert.Equal(t, skillinstall.VerdictInSync, o.Verdict)
+					assert.Equal(t, dir, o.Target.Dir)
+				}
+				assert.Equal(t, before, testfs.Snapshot(t, dir))
+				assert.Zero(t, renames)
+			})
+		}
+	}
+}
+
+// When the check that gives the verdict fails, the row keeps its action, has
+// no verdict, and a warning names the directory and the error.
+func TestSkillInstallVerdictCheckFailureKeepsActionAndWarns(t *testing.T) {
+	skillHome(t, ".claude")
+	skillinstall.SetSource(skillTestSource(t))
+	in := skillInput{strings: map[string]string{"agent": "claude", "scope": "user"}}
+	statusTarget = func(skillinstall.Target, string) (skillinstall.Verdict, string, error) {
+		return "", "", fmt.Errorf("induced check failure")
+	}
+	t.Cleanup(func() { statusTarget = skillinstall.StatusTarget })
+
+	for _, want := range []string{"changed", "unchanged"} {
+		res, err := NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
+		require.NoError(t, err)
+		outs := res.Data.(skillOutcomes)
+		require.Len(t, outs, 1)
+		assert.Equal(t, want, outs[0].Action)
+		assert.Empty(t, outs[0].Verdict)
+		assert.Equal(t, "v1.0.0", outs[0].CLIVersion)
+		require.Len(t, res.Warnings, 1)
+		assert.Contains(t, res.Warnings[0], outs[0].Target.Dir)
+		assert.Contains(t, res.Warnings[0], "induced check failure")
+	}
 }
 
 func TestSkillStatusRequireInstalled(t *testing.T) {
@@ -144,8 +278,9 @@ func TestSkillInstallBatchPreflightAllOrNothing(t *testing.T) {
 // warnings (the error's own warning ride) - a sweep warning must survive
 // the error path, not just Result.Warnings.
 func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
-	home := skillHome(t, ".agents", ".claude")
+	home := skillHome(t, ".agents", ".claude", ".codex")
 	skillinstall.SetSource(skillTestSource(t))
+	installRows(t, "v1.0.0", skillInput{strings: map[string]string{"agent": "codex"}})
 
 	// foreign-looking (non-empty, unmarked) leftover temporary directory next to the
 	// claude target: sweep must report it, and the report must survive
@@ -164,16 +299,19 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	})
 	defer skillinstall.SetRenameHookForTest(nil)
 
-	in := skillInput{strings: map[string]string{}} // agent=all → agents+claude (sorted by dir at execution)
+	in := skillInput{strings: map[string]string{}} // agent=all → agents, claude and codex (sorted by dir at execution)
 	_, err := NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	report, ok := ce.Details.(skillinstall.Report)
 	require.True(t, ok)
-	require.Len(t, report.Outcomes, 2)
-	actions := []string{report.Outcomes[0].Action, report.Outcomes[1].Action}
-	assert.ElementsMatch(t, []string{"failed", "changed"}, actions)
+	require.Len(t, report.Outcomes, 3)
+	var actions []string
+	for _, o := range report.Outcomes {
+		actions = append(actions, o.Action)
+	}
+	assert.ElementsMatch(t, []string{"failed", "changed", "unchanged"}, actions)
 	warnings := ce.Warnings()
 	require.Len(t, warnings, 1)
 	assert.Contains(t, warnings[0], ".rancher-skill-staging-cafe")
@@ -186,7 +324,7 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 			failed++
 		}
 	}
-	assert.Equal(t, 1, changed)
+	assert.Equal(t, 2, changed)
 	assert.Equal(t, 1, failed)
 
 	// Default-format text: the cleanup warning (WithWarnings) prints as a
@@ -197,7 +335,8 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	text := errBuf.String()
 	assert.Contains(t, text, "# warning: ")
 	assert.Contains(t, text, ".rancher-skill-staging-cafe")
-	assert.Contains(t, text, "error (GENERIC): skill install changed only part of the selected targets")
+	assert.Contains(t, text, "error (GENERIC): skill install failed for part of the selected targets")
+	assert.Contains(t, text, filepath.Join(home, ".codex", "skills", "rancher")+": unchanged")
 	assert.Contains(t, text, "to see each target's state, run rancher skill status; to see every reason, run the command again with -o json")
 }
 
@@ -213,6 +352,7 @@ func TestSkillOutcomesImplementsTabular(t *testing.T) {
 		{
 			Target:     skillinstall.Target{Harness: "claude", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.claude/skills/rancher"},
 			Action:     "changed",
+			Verdict:    skillinstall.VerdictInSync,
 			CLIVersion: "v1.2.3",
 		},
 		{
@@ -220,17 +360,26 @@ func TestSkillOutcomesImplementsTabular(t *testing.T) {
 			Action: "skipped",
 			Reason: "not installed",
 		},
+		{
+			Target:     skillinstall.Target{Harness: "codex", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.codex/skills/rancher"},
+			Action:     "unchanged",
+			Verdict:    skillinstall.VerdictInSync,
+			CLIVersion: "v1.2.3",
+		},
 	}
 	assert.Equal(t, []string{"HARNESS", "SCOPE", "ACTION", "VERDICT", "VERSION", "DETAIL"}, s.Columns())
 	rows := s.Rows()
-	require.Len(t, rows, 2)
+	require.Len(t, rows, 3)
 	assert.Equal(t, "claude", rows[0][0])
 	assert.Equal(t, "user", rows[0][1])
 	assert.Equal(t, "changed", rows[0][2])
-	assert.Equal(t, "", rows[0][3]) // no verdict for install
+	assert.Equal(t, "in-sync", rows[0][3])
 	assert.Equal(t, "v1.2.3", rows[0][4])
 	assert.Equal(t, "/home/bob/.claude/skills/rancher", rows[0][5]) // dir when no reason
 	assert.Equal(t, "agents", rows[1][0])
 	assert.Equal(t, "skipped", rows[1][2])
 	assert.Equal(t, "not installed", rows[1][5]) // reason when set
+	assert.Equal(t, "unchanged", rows[2][2])
+	assert.Equal(t, "in-sync", rows[2][3])
+	assert.Equal(t, "v1.2.3", rows[2][4])
 }

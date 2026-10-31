@@ -80,6 +80,10 @@ func nothingDetectedErr() *clierr.Error {
 			"supported: claude, codex, copilot, agents; use --scope project to use the current repository instead")
 }
 
+// statusTarget is the check that gives an install row its verdict; tests
+// replace it to reach the error path.
+var statusTarget = skillinstall.StatusTarget
+
 type skillInstallCmd struct{ version string }
 
 // NewSkillInstall builds `skill install`.
@@ -123,19 +127,31 @@ func (c skillInstallCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 	outcomes := make([]skillinstall.Outcome, 0, len(leases))
 	failed := false
 	for _, l := range leases {
-		// A changed target reports the version it now carries; a failed
-		// target reports none - nothing was installed there.
-		o := skillinstall.Outcome{Target: l.Target(), Action: "changed", CLIVersion: c.version}
-		w, err := l.Install(c.version, force)
+		// A changed or unchanged target reports the version it carries; a
+		// failed target reports none - nothing was installed there. The
+		// verdict is the one skill status reports for the same target.
+		o := skillinstall.Outcome{Target: l.Target(), Action: "unchanged", CLIVersion: c.version}
+		changed, w, err := l.InstallIfChanged(c.version, force)
 		warnings = append(warnings, w...)
-		if err != nil {
+		switch {
+		case err != nil:
 			o.Action, o.Reason, o.CLIVersion, failed = "failed", err.Error(), "", true
+		default:
+			if changed {
+				o.Action = "changed"
+			}
+			v, _, statusErr := statusTarget(o.Target, c.version)
+			if statusErr != nil {
+				warnings = append(warnings, fmt.Sprintf("could not check %s: %v", o.Target.Dir, statusErr))
+			} else {
+				o.Verdict = v
+			}
 		}
 		outcomes = append(outcomes, o)
 	}
 	if failed {
 		return runtime.Result{}, clierr.New(clierr.CodeGeneric,
-			"skill install changed only part of the selected targets").
+			"skill install failed for part of the selected targets").
 			WithDetails(skillinstall.Report{Outcomes: outcomes}).
 			WithWarnings(warnings...)
 	}

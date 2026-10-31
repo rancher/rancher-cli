@@ -17,6 +17,11 @@ jsonquery stdout data.0.target.harness claude
 exec rancher skill status -o json
 jsonquery stdout data.0.verdict in-sync
 
+# A second install with the same content changes nothing.
+exec rancher skill install -o json
+jsonquery stdout data.0.action unchanged
+jsonquery stdout data.0.verdict in-sync
+
 # Tamper with an extra file -> modified, nonzero exit, rows still rendered.
 cp extra.md $WORK/home/.claude/skills/rancher/extra.md
 ! exec rancher skill status -o json
@@ -24,6 +29,7 @@ jsonquery stdout data.0.verdict modified
 
 # Repair, then remove.
 exec rancher skill install -o json
+jsonquery stdout data.0.action changed
 exec rancher skill uninstall -o json
 jsonquery stdout data.0.action changed
 exec rancher skill status -o json

@@ -11,6 +11,8 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 func targetIn(t *testing.T) Target {
@@ -33,6 +35,24 @@ func install(t *testing.T, tg Target, version string) {
 	_, err = leases[0].Install(version, false)
 	ReleaseAll(leases)
 	require.NoError(t, err)
+}
+
+// installIfChanged runs InstallIfChanged under a lease, as the command does.
+func installIfChanged(t *testing.T, tg Target, version string, force bool) (bool, []string, error) {
+	t.Helper()
+	leases, err := Acquire(testLockDir(tg), []Target{tg}, "install", force)
+	require.NoError(t, err)
+	defer ReleaseAll(leases)
+	return leases[0].InstallIfChanged(version, force)
+}
+
+// countRenames counts the final renames of an install until the test ends.
+func countRenames(t *testing.T) *int {
+	t.Helper()
+	n := 0
+	renameHook = func() error { n++; return nil }
+	t.Cleanup(func() { renameHook = nil })
+	return &n
 }
 
 func TestInstallThenStatusInSync(t *testing.T) {
@@ -110,6 +130,17 @@ func TestForeignRefusedWithoutForce(t *testing.T) {
 	require.NoError(t, err)
 	v, _, _ = StatusTarget(tg, "v1.0.0")
 	assert.Equal(t, VerdictInSync, v)
+
+	// A SKILL.md with CRLF line endings in its frontmatter does not parse as
+	// an installation of ours.
+	crlf := targetIn(t)
+	install(t, crlf, "v1.0.0")
+	p := filepath.Join(crlf.Dir, "SKILL.md")
+	b, err := os.ReadFile(p)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(p, []byte(strings.ReplaceAll(string(b), "\n", "\r\n")), 0o644))
+	_, err = Acquire(testLockDir(crlf), []Target{crlf}, "install", false)
+	require.ErrorContains(t, err, "did not install")
 }
 
 // A symlinked SKILL.md is the privileged install record path - it must never
@@ -438,4 +469,211 @@ func TestAcquireUnwritableParentChangesNothing(t *testing.T) {
 	require.Error(t, err)
 	_, statErr := os.Stat(a.Dir)
 	assert.True(t, os.IsNotExist(statErr))
+}
+
+// A target that holds exactly the files an install would write now is left
+// alone: no staging, no remove, no rename. The rename counter catches a
+// rewrite within one clock tick, which the snapshot's times miss.
+func TestInstallIfChangedLeavesCurrentTargetAlone(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	install(t, tg, "v1.0.0")
+	before := testfs.Snapshot(t, tg.Dir)
+	renames := countRenames(t)
+
+	changed, warnings, err := installIfChanged(t, tg, "v1.0.0", false)
+	require.NoError(t, err)
+	assert.False(t, changed)
+	assert.Empty(t, warnings)
+	assert.Equal(t, before, testfs.Snapshot(t, tg.Dir))
+	assert.Zero(t, *renames)
+}
+
+func TestInstallIfChangedRewritesWhatDiffers(t *testing.T) {
+	// crlfAfter rewrites the line endings of the file to CRLF after the
+	// first occurrence of marker; an empty marker rewrites the whole file.
+	crlfAfter := func(t *testing.T, path, marker string) {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		require.NoError(t, err)
+		head, body, found := strings.Cut(string(b), marker)
+		require.True(t, found)
+		body = strings.ReplaceAll(body, "\n", "\r\n")
+		require.NoError(t, os.WriteFile(path, []byte(head+marker+body), 0o644))
+	}
+	tests := []struct {
+		name    string
+		version string
+		mutate  func(t *testing.T, dir string)
+	}{
+		{name: "another version", version: "v2.0.0", mutate: func(*testing.T, string) {}},
+		{name: "edited body", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			p := filepath.Join(dir, "SKILL.md")
+			b, err := os.ReadFile(p)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(p, append(b, "edit\n"...), 0o644))
+		}},
+		{name: "missing file", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			require.NoError(t, os.Remove(filepath.Join(dir, "ref.md")))
+		}},
+		{name: "extra file", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.md"), []byte("x\n"), 0o644))
+		}},
+		{name: "changed owner marker", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, OwnerMarkerFile), []byte(OwnerValue+"X\n"), 0o644))
+		}},
+		{name: "deleted owner marker", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			require.NoError(t, os.Remove(filepath.Join(dir, OwnerMarkerFile)))
+		}},
+		{name: "symlink entry", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			outside := filepath.Join(t.TempDir(), "outside.md")
+			require.NoError(t, os.WriteFile(outside, []byte("outside\n"), 0o644))
+			testfs.Symlink(t, outside, filepath.Join(dir, "sneaky.md"))
+		}},
+		{name: "absent target", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			require.NoError(t, os.RemoveAll(dir))
+		}},
+		{name: "CRLF in SKILL.md body", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			crlfAfter(t, filepath.Join(dir, "SKILL.md"), "\n---\n")
+		}},
+		{name: "CRLF in ref.md", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			crlfAfter(t, filepath.Join(dir, "ref.md"), "")
+		}},
+		{name: "unreadable file", version: "v1.0.0", mutate: func(t *testing.T, dir string) {
+			t.Helper()
+			testfs.RestrictAccess(t, filepath.Join(dir, "ref.md"), 0o000)
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			SetSource(testSource(t))
+			tg := targetIn(t)
+			install(t, tg, "v1.0.0")
+			tc.mutate(t, tg.Dir)
+			renames := countRenames(t)
+
+			changed, _, err := installIfChanged(t, tg, tc.version, false)
+			require.NoError(t, err)
+			assert.True(t, changed)
+			assert.Equal(t, 1, *renames)
+			v, installed, err := StatusTarget(tg, tc.version)
+			require.NoError(t, err)
+			assert.Equal(t, VerdictInSync, v)
+			assert.Equal(t, tc.version, installed)
+		})
+	}
+}
+
+// Two builds can carry one version string and different skill text; the
+// second install must write the new text.
+func TestInstallIfChangedRewritesWhenEmbeddedTextDiffers(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	install(t, tg, "v1.0.0")
+
+	src := testSource(t)
+	src["ref.md"].Data = []byte("reference, newer text\n")
+	SetSource(src)
+	changed, _, err := installIfChanged(t, tg, "v1.0.0", false)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	v, _, err := StatusTarget(tg, "v1.0.0")
+	require.NoError(t, err)
+	assert.Equal(t, VerdictInSync, v)
+	got, err := os.ReadFile(filepath.Join(tg.Dir, "ref.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "reference, newer text\n", string(got))
+}
+
+// ReadTree skips directories, so an empty directory in the tree does not make
+// the target differ; skill status treats it the same way.
+func TestInstallIfChangedIgnoresExtraEmptyDirectory(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	install(t, tg, "v1.0.0")
+	require.NoError(t, os.Mkdir(filepath.Join(tg.Dir, "empty"), 0o755))
+	v, _, err := StatusTarget(tg, "v1.0.0")
+	require.NoError(t, err)
+	require.Equal(t, VerdictInSync, v)
+	renames := countRenames(t)
+
+	changed, _, err := installIfChanged(t, tg, "v1.0.0", false)
+	require.NoError(t, err)
+	assert.False(t, changed)
+	assert.Zero(t, *renames)
+	assert.Contains(t, testfs.Tree(t, tg.Dir), "empty")
+}
+
+func TestInstallIfChangedForceRewritesCurrentTarget(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	install(t, tg, "v1.0.0")
+	renames := countRenames(t)
+
+	changed, _, err := installIfChanged(t, tg, "v1.0.0", true)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.Equal(t, 1, *renames)
+}
+
+// Acquire refuses a directory that rancher-cli did not install unless force is
+// set; with force, InstallIfChanged replaces it.
+func TestInstallIfChangedReplacesForeignDirectoryWithForce(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	require.NoError(t, os.MkdirAll(tg.Dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tg.Dir, "SKILL.md"), []byte("---\nname: other\n---\nnot ours"), 0o644))
+
+	_, err := Acquire(testLockDir(tg), []Target{tg}, "install", false)
+	require.ErrorContains(t, err, "did not install")
+
+	changed, _, err := installIfChanged(t, tg, "v1.0.0", true)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	v, _, err := StatusTarget(tg, "v1.0.0")
+	require.NoError(t, err)
+	assert.Equal(t, VerdictInSync, v)
+}
+
+// Leftovers are cleaned whether or not the target is current, and each
+// warning is reported once.
+func TestInstallIfChangedCleansLeftoversNextToCurrentTarget(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	install(t, tg, "v1.0.0")
+	parent := filepath.Dir(tg.Dir)
+
+	marked := filepath.Join(parent, stagingPrefix+"deadbeef")
+	require.NoError(t, os.MkdirAll(marked, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(marked, OwnerMarkerFile), []byte(OwnerValue+"\n"), 0o644))
+	strayTmp := filepath.Join(parent, markerTmpPrefix+"beef.tmp")
+	require.NoError(t, os.WriteFile(strayTmp, []byte("skill-inst"), 0o644))
+	unknown := filepath.Join(parent, stagingPrefix+"cafe")
+	require.NoError(t, os.MkdirAll(unknown, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(unknown, "junk.md"), []byte("junk\n"), 0o644))
+	renames := countRenames(t)
+
+	changed, warnings, err := installIfChanged(t, tg, "v1.0.0", false)
+	require.NoError(t, err)
+	assert.False(t, changed)
+	assert.Zero(t, *renames)
+	assert.NoDirExists(t, marked)
+	assert.NoFileExists(t, strayTmp)
+	assert.DirExists(t, unknown)
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], stagingPrefix+"cafe")
+
+	changed, warnings, err = installIfChanged(t, tg, "v2.0.0", false)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	require.Len(t, warnings, 1)
 }

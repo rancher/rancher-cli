@@ -57,7 +57,7 @@ func leaksMarker(t *testing.T, document string) bool {
 }
 
 // TestRecordOfAPartialInstallReportInStructuredOutput is a record, not a
-// guard: the details payload of a skill install that changed only part of
+// guard: the details payload of a skill install that failed for part of
 // its targets has no mapping of its own and no field that holds a command, so
 // no change to the code that builds it makes this test fail. It records that
 // the decoded json and yaml hold the outcomes and no character of the remedy
@@ -69,7 +69,7 @@ func TestRecordOfAPartialInstallReportInStructuredOutput(t *testing.T) {
 		{Target: skillinstall.Target{Harness: "claude", Dir: "/home/u/.claude/skills/rancher"}, Action: "changed", CLIVersion: "v1.0.0"},
 		{Target: skillinstall.Target{Harness: "codex", Dir: "/home/u/.codex/skills/rancher"}, Action: "failed", Reason: "permission denied"},
 	}}
-	ce := clierr.New(clierr.CodeGeneric, "skill install changed only part of the selected targets").
+	ce := clierr.New(clierr.CodeGeneric, "skill install failed for part of the selected targets").
 		WithDetails(report).WithWarnings("see rancher skill status")
 	io := runtime.IO{RemedyDir: t.TempDir()}
 	for _, format := range []string{"json", "yaml"} {
