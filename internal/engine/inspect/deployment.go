@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -123,7 +124,7 @@ func renderDeploymentText(name, ns, cluster string, dep map[string]any, pods []m
 		for _, p := range pods {
 			podName, _, _ := unstructured.NestedString(p, "metadata", "name")
 			phase, _, _ := unstructured.NestedString(p, "status", "phase")
-			lines = append(lines, fmt.Sprintf("pod %s: %s", podName, phase))
+			lines = append(lines, fmt.Sprintf("pod %s: %s", podName, output.Printable(phase)))
 		}
 	}
 	for _, f := range degraded {

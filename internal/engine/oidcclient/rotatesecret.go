@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -150,7 +151,7 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", newValue, "client secret")
 	res := runtime.MutationText("oidcclient", clientName, "patched",
-		"secret "+secretName+" regenerated",
+		"secret "+output.Printable(secretName)+" regenerated",
 		secretLine,
 	)
 	res.Kind = "OIDCClientSecretRotated"

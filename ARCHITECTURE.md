@@ -289,6 +289,7 @@ graph TD
     projects --> runtime
     projects --> safety
     projects --> clierr
+    projects --> output
     projects --> config
 
     projectscomplete --> completion
@@ -314,6 +315,7 @@ graph TD
     extres --> runtime
     extres --> safety
     extres --> clierr
+    extres --> output
     extres --> config
 
     oidcclient --> engine
@@ -322,6 +324,7 @@ graph TD
     oidcclient --> runtime
     oidcclient --> safety
     oidcclient --> clierr
+    oidcclient --> output
     oidcclient --> oidcclientcomplete
     oidcclient --> completion
 
@@ -397,6 +400,7 @@ graph TD
     auth --> completion
     auth --> tokencomplete
     configcmd --> clierr
+    configcmd --> output
     configcmd --> register
     configcmd --> config
     configcmd --> outputstyle

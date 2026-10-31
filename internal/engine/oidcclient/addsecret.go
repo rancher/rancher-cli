@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -138,7 +139,7 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", plaintext, "client secret")
 	res := runtime.MutationText("oidcclient", clientName, "patched",
-		"secret "+secretName+" added",
+		"secret "+output.Printable(secretName)+" added",
 		secretLine,
 	)
 	res.Kind = "OIDCClientSecretAdded"

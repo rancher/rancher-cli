@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -160,7 +161,7 @@ func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 	ClearMembership(after)
 
 	return planMembershipUpdate(ctx, client, before, after, cluster, func(res runtime.Result) runtime.Result {
-		return withContextLine(res, fmt.Sprintf("removed from project %s", current))
+		return withContextLine(res, fmt.Sprintf("removed from project %s", output.Printable(current)))
 	})
 }
 

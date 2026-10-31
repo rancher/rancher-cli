@@ -554,7 +554,7 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 	// silent. The wire keeps the raw presence/absence tri-state.
 	fmt.Fprintf(b, "  enabled: %t\n", u.Enabled == nil || *u.Enabled)
 	fmt.Fprintf(b, "  principals: %s\n  created: %s\n",
-		output.Printable(strings.Join(u.Principals, ", ")), u.Created)
+		output.Printable(strings.Join(u.Principals, ", ")), output.Printable(u.Created))
 	switch {
 	case u.Groups == nil:
 		// The UserAttribute read degraded: lastLogin is unknown, never
@@ -563,7 +563,7 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 		// so no unavailable marker distinguishes anything for them.
 		b.WriteString("  lastLogin: unavailable\n")
 	case u.LastLogin != "":
-		fmt.Fprintf(b, "  lastLogin: %s\n", u.LastLogin)
+		fmt.Fprintf(b, "  lastLogin: %s\n", output.Printable(u.LastLogin))
 	}
 	if u.DisableAfter != "" {
 		fmt.Fprintf(b, "  disableAfter: %s\n", output.Printable(u.DisableAfter))

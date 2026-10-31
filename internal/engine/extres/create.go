@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -107,9 +108,9 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 		bearerLine, shownOnce := runtime.OnceOnlyLine("bearer token", bearer, "bearer token")
 		lines := []string{bearerLine}
 		if expiresAt != "" {
-			lines = append(lines, "expires: "+expiresAt)
+			lines = append(lines, "expires: "+output.Printable(expiresAt))
 		}
-		res := runtime.MutationText("token", name, "created", lines...)
+		res := runtime.MutationText("token", output.Printable(name), "created", lines...)
 		res.Kind = "TokenCreated"
 		res.Data = map[string]string{
 			"name":        name,

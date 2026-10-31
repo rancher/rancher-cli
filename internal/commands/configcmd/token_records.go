@@ -6,6 +6,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output"
 )
 
 // tokenRecovery is the commands that revoke a token: the administrator's
@@ -120,16 +121,19 @@ func recordLines(entry string, s config.Server, indent string) []string {
 		if owner == "" {
 			owner = "unknown owner"
 		}
-		lines = append(lines, fmt.Sprintf("%ssuperseded token %s (%s, superseded %s)", indent, r.Ref.String(), owner, r.SupersededAt))
+		lines = append(lines, fmt.Sprintf("%ssuperseded token %s (%s, superseded %s)", indent, output.Printable(r.Ref.String()), output.Printable(owner), r.SupersededAt))
 		lines = append(lines, indent+"  state: "+recordState(s, r))
 		if r.LastAttempt != nil {
-			lines = append(lines, indent+"  last attempt: "+string(r.LastAttempt.Result)+" ("+r.LastAttempt.Error+")")
+			lines = append(lines, indent+"  last attempt: "+string(r.LastAttempt.Result)+" ("+output.Printable(r.LastAttempt.Error)+")")
 		}
+		ref := r.Ref
+		ref.Name = output.Printable(ref.Name)
+		userID := output.Printable(r.UserID)
 		if r.Ref.Kind == clierr.TokenKindV3 {
-			lines = append(lines, indent+"  "+administratorLine(cmp.Or(r.Server, s.URL), r.Ref))
+			lines = append(lines, indent+"  "+administratorLine(cmp.Or(r.Server, s.URL), ref))
 			continue
 		}
-		advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: s.URL}, cmp.Or(r.Server, s.URL), r.UserID, r.Ref)
+		advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: s.URL}, cmp.Or(r.Server, s.URL), userID, ref)
 		if advice.Text != "" {
 			lines = append(lines, indent+"  "+advice.Text)
 			continue

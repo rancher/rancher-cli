@@ -757,7 +757,7 @@ func regLabel(label string, notApplicable bool) string {
 func renderClusterText(r clusterResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "CLUSTER\n  id: %s\n  name: %s\n  kubernetesVersion: %s\n  state: %s\n",
-		r.Cluster.ID, r.Cluster.Name, r.Cluster.KubernetesVersion, r.Cluster.State)
+		r.Cluster.ID, output.Printable(r.Cluster.Name), output.Printable(r.Cluster.KubernetesVersion), output.Printable(r.Cluster.State))
 	renderAgentLine(&b, r.Agent)
 	renderConditionsSection(&b, r)
 	renderMachinePoolsSection(&b, r)
@@ -830,12 +830,12 @@ func renderConditionsSection(b *strings.Builder, r clusterResult) {
 	default:
 		fmt.Fprintf(b, "  ready: %t\n", r.Status.Ready)
 		for _, c := range orderedConditions(r.Status.Conditions) {
-			line := fmt.Sprintf("  %s=%s", c.Type, c.Status)
+			line := fmt.Sprintf("  %s=%s", output.Printable(c.Type), output.Printable(c.Status))
 			if c.Reason != "" {
-				line += " reason=" + c.Reason
+				line += " reason=" + output.Printable(c.Reason)
 			}
 			if c.Message != "" {
-				line += " " + truncateRunes(c.Message, conditionMessageLimit)
+				line += " " + truncateRunes(output.Printable(c.Message), conditionMessageLimit)
 			}
 			b.WriteString(line + "\n")
 		}
@@ -854,7 +854,7 @@ func renderMachinePoolsSection(b *strings.Builder, r clusterResult) {
 	default:
 		for _, p := range *r.MachinePools {
 			line := fmt.Sprintf("  %s: %s/%s quantity=%d roles=%s",
-				p.Name, p.MachineConfigKind, p.MachineConfigName, p.Quantity, strings.Join(p.Roles, ","))
+				output.Printable(p.Name), output.Printable(p.MachineConfigKind), output.Printable(p.MachineConfigName), p.Quantity, strings.Join(p.Roles, ","))
 			if p.AutoscalingMinSize != nil && p.AutoscalingMaxSize != nil {
 				line += fmt.Sprintf(" autoscaling=%d-%d (quantity is the autoscaler's current count)",
 					*p.AutoscalingMinSize, *p.AutoscalingMaxSize)
@@ -916,7 +916,7 @@ func writeRegistrationField(b *strings.Builder, label, value string) {
 	if value == "" {
 		return // dropped or server-empty: absent in place; detail is in Warnings
 	}
-	fmt.Fprintf(b, "  %s:\n    %s\n", label, value)
+	fmt.Fprintf(b, "  %s:\n    %s\n", label, output.Printable(value))
 }
 
 // orderedConditions is the one place inspect cluster derives a trouble

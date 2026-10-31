@@ -311,7 +311,7 @@ type projectResult struct {
 // availability marker; detailed causes live in Result.Warnings (stderr).
 func renderProjectText(r projectResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "PROJECT\n  id: %s\n  displayName: %s\n  cluster: %s\n", r.ID, r.DisplayName, r.Cluster)
+	fmt.Fprintf(&b, "PROJECT\n  id: %s\n  displayName: %s\n  cluster: %s\n", r.ID, output.Printable(r.DisplayName), r.Cluster)
 
 	b.WriteString("\nNAMESPACES\n")
 	switch {
@@ -355,14 +355,14 @@ func renderProjectText(r projectResult) string {
 	b.WriteString("\nUSAGE\n")
 	switch {
 	case r.Usage != nil:
-		cpu := fmt.Sprintf("  cpu: request=%s limit=%s", cpuCell(r.Usage.CPURequest), cpuCell(r.Usage.CPULimit))
+		cpu := fmt.Sprintf("  cpu: request=%s limit=%s", output.Printable(cpuCell(r.Usage.CPURequest)), output.Printable(cpuCell(r.Usage.CPULimit)))
 		if r.Usage.CPUUsage != "" {
-			cpu += " usage=" + cpuCell(r.Usage.CPUUsage)
+			cpu += " usage=" + output.Printable(cpuCell(r.Usage.CPUUsage))
 		}
 		b.WriteString(cpu + "\n")
-		mem := fmt.Sprintf("  memory: request=%s limit=%s", memoryCell(r.Usage.MemoryRequest), memoryCell(r.Usage.MemoryLimit))
+		mem := fmt.Sprintf("  memory: request=%s limit=%s", output.Printable(memoryCell(r.Usage.MemoryRequest)), output.Printable(memoryCell(r.Usage.MemoryLimit)))
 		if r.Usage.MemoryUsage != "" {
-			mem += " usage=" + memoryCell(r.Usage.MemoryUsage)
+			mem += " usage=" + output.Printable(memoryCell(r.Usage.MemoryUsage))
 		}
 		b.WriteString(mem + "\n")
 	case r.Namespaces != nil && len(r.Namespaces) == 0:
@@ -401,10 +401,10 @@ func writeSortedMap(b *strings.Builder, m map[string]any, depth int) {
 	indent := strings.Repeat("  ", depth)
 	for _, k := range keys {
 		if child, ok := m[k].(map[string]any); ok {
-			fmt.Fprintf(b, "%s%s:\n", indent, k)
+			fmt.Fprintf(b, "%s%s:\n", indent, output.Printable(k))
 			writeSortedMap(b, child, depth+1)
 			continue
 		}
-		fmt.Fprintf(b, "%s%s: %v\n", indent, k, m[k])
+		fmt.Fprintf(b, "%s%s: %s\n", indent, output.Printable(k), output.Printable(fmt.Sprint(m[k])))
 	}
 }

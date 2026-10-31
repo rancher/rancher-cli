@@ -9,6 +9,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -254,13 +255,13 @@ func entrySection(name string, s config.Server) []field {
 		out = append(out, field{"provenance", string(s.Provenance)})
 	}
 	if s.TokenUserID != "" {
-		out = append(out, field{"tokenUserId", s.TokenUserID})
+		out = append(out, field{"tokenUserId", output.Printable(s.TokenUserID)})
 	}
 	if s.TokenAuthConfig != "" {
-		out = append(out, field{"tokenAuthConfig", s.TokenAuthConfig})
+		out = append(out, field{"tokenAuthConfig", output.Printable(s.TokenAuthConfig)})
 	}
 	if s.CredentialExpiresAt != "" {
-		out = append(out, field{"credentialExpiresAt", s.CredentialExpiresAt})
+		out = append(out, field{"credentialExpiresAt", output.Printable(s.CredentialExpiresAt)})
 	}
 	if s.LoggedOutAt != "" {
 		out = append(out, field{"loggedOutAt", s.LoggedOutAt}, field{"credential", "no stored credential"})
@@ -281,20 +282,20 @@ func entrySection(name string, s config.Server) []field {
 			// do not repeat the ref.
 			var sec []field
 			if r.UserID != "" {
-				sec = append(sec, field{"userId", r.UserID})
+				sec = append(sec, field{"userId", output.Printable(r.UserID)})
 			}
 			if r.Server != "" {
 				sec = append(sec, field{"server", config.DisplayServerURL(r.Server)})
 			}
 			if r.ExpiresAt != "" {
-				sec = append(sec, field{"expiresAt", r.ExpiresAt})
+				sec = append(sec, field{"expiresAt", output.Printable(r.ExpiresAt)})
 			}
 			sec = append(sec, field{"supersededAt", r.SupersededAt}, field{"state", recordState(s, r)})
 			if r.LastAttempt != nil {
-				sec = append(sec, field{"lastAttempt", string(r.LastAttempt.Result) + " (" + r.LastAttempt.Error + ")"})
+				sec = append(sec, field{"lastAttempt", string(r.LastAttempt.Result) + " (" + output.Printable(r.LastAttempt.Error) + ")"})
 			}
 			sec = append(sec, recoveryField(name, s.URL, cmp.Or(r.Server, s.URL), r.UserID, r.Ref))
-			recs = append(recs, field{r.Ref.String(), sec})
+			recs = append(recs, field{output.Printable(r.Ref.String()), sec})
 		}
 		out = append(out, field{"supersededTokens", recs})
 	}
@@ -304,12 +305,12 @@ func entrySection(name string, s config.Server) []field {
 // tokenSection renders an entry's current token: ref, owner, expiry, then
 // the recovery sequence that revokes it.
 func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresAt string) []field {
-	sec := []field{{"ref", ref.String()}}
+	sec := []field{{"ref", output.Printable(ref.String())}}
 	if userID != "" {
-		sec = append(sec, field{"userId", userID})
+		sec = append(sec, field{"userId", output.Printable(userID)})
 	}
 	if expiresAt != "" {
-		sec = append(sec, field{"expiresAt", expiresAt})
+		sec = append(sec, field{"expiresAt", output.Printable(expiresAt)})
 	}
 	return append(sec, recoveryField(entry, serverURL, serverURL, userID, ref))
 }
@@ -320,6 +321,8 @@ func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresA
 // alone. Text only: the JSON side is entryReport, whose recovery value
 // stays the commands alone.
 func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) field {
+	ref.Name = output.Printable(ref.Name)
+	userID = output.Printable(userID)
 	if ref.Kind == clierr.TokenKindV3 {
 		return field{"recovery", []string{administratorLine(serverURL, ref)}}
 	}
