@@ -45,7 +45,7 @@ func signInLines(authConfig, user string) []string {
 func (x *ownerFixture) acquireThrough(authConfig, user string) string {
 	x.t.Helper()
 	cred, err := AcquireLoginCredential(x.t.Context(), x.srv.Client(),
-		LoginRequest{Server: x.srv.URL, AuthProvider: authConfig, ResponseType: "json"}, 0,
+		LoginRequest{CAFlag: "--cacert", Server: x.srv.URL, AuthProvider: authConfig, ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader(signInLines(authConfig, user)...), false, true))
 	require.NoError(x.t, err)
 	return cred.Token

@@ -29,7 +29,7 @@ func acquireAgainst(t *testing.T, opts testrancher.Options) (*testrancher.Facade
 	t.Cleanup(srv.Close)
 	var notices bytes.Buffer
 	p := ui.New(&notices, newLineReader("e2e-user", "e2e-pass"), false, true)
-	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0, p)
+	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0, p)
 	return f, srv, cred, err
 }
 
@@ -138,7 +138,7 @@ func TestAcquireCancellationDuringDerivedCreateStillRevokesSession(t *testing.T)
 	t.Cleanup(srv.Close)
 	var notices bytes.Buffer
 	p := ui.New(&notices, newLineReader("e2e-user", "e2e-pass"), false, true)
-	_, err := AcquireLoginCredential(ctx, srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0, p)
+	_, err := AcquireLoginCredential(ctx, srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0, p)
 	ae, ok := errors.AsType[*AcquireError](err)
 	require.True(t, ok)
 	require.ErrorIs(t, ae.Err, context.Canceled)
@@ -208,7 +208,7 @@ func TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
 		start := time.Now()
-		_, err := AcquireLoginCredential(t.Context(), client, LoginRequest{Server: rancherOrigin, AuthProvider: "oktaProvider", ResponseType: "json"}, 0, newHandoffPrompter(nil))
+		_, err := AcquireLoginCredential(t.Context(), client, LoginRequest{CAFlag: "--cacert", Server: rancherOrigin, AuthProvider: "oktaProvider", ResponseType: "json"}, 0, newHandoffPrompter(nil))
 		ae, ok := errors.AsType[*AcquireError](err)
 		require.True(t, ok, "got %v", err)
 		assert.Equal(t, samlAuthTimeout, time.Since(start), "the whole SAML timeout elapsed on the fake clock")
@@ -359,7 +359,7 @@ func newHandoffPrompter(onHandoff func(requestID, publicKey string)) *handoffPro
 }
 
 func samlInput(server string) *loginInput {
-	return &loginInput{server: server, authProvider: "oktaProvider", responseType: "json"}
+	return &loginInput{caFlag: "--cacert", server: server, authProvider: "oktaProvider", responseType: "json"}
 }
 
 // assertAuthTokensOnly asserts the SAML wire protocol: the CLI never posts a login
@@ -486,7 +486,7 @@ func TestAcquireLoginCredentialCapturesTheOwner(t *testing.T) {
 	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader("alice", "pw"), false, true))
 	require.NoError(t, err)
 	assert.Equal(t, ProvenanceDerived, cred.Provenance)
@@ -495,7 +495,7 @@ func TestAcquireLoginCredentialCapturesTheOwner(t *testing.T) {
 	legacy := testrancher.New(testrancher.Options{Legacy: true, LegacyLoginBodyUserID: true, Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
 	lsrv := httptest.NewServer(legacy)
 	t.Cleanup(lsrv.Close)
-	cred, err = AcquireLoginCredential(t.Context(), lsrv.Client(), LoginRequest{Server: lsrv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+	cred, err = AcquireLoginCredential(t.Context(), lsrv.Client(), LoginRequest{CAFlag: "--cacert", Server: lsrv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader("alice", "pw"), false, true))
 	require.NoError(t, err)
 	assert.Equal(t, ProvenanceLegacySession, cred.Provenance)
@@ -504,7 +504,7 @@ func TestAcquireLoginCredentialCapturesTheOwner(t *testing.T) {
 	silent := testrancher.New(testrancher.Options{Legacy: true, Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
 	ssrv := httptest.NewServer(silent)
 	t.Cleanup(ssrv.Close)
-	cred, err = AcquireLoginCredential(t.Context(), ssrv.Client(), LoginRequest{Server: ssrv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+	cred, err = AcquireLoginCredential(t.Context(), ssrv.Client(), LoginRequest{CAFlag: "--cacert", Server: ssrv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader("alice", "pw"), false, true))
 	require.NoError(t, err)
 	assert.Empty(t, cred.UserID, "the 2.14+ login body carries no owner; nothing is inferred")

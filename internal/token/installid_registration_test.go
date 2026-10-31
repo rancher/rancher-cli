@@ -301,7 +301,7 @@ func TestACallThatFailsAfterItsRowRegistersNothing(t *testing.T) {
 			t.Setenv(execInfoEnv, "")
 			x := newInMemoryPluginFixture(t, false, testrancher.Options{})
 			x.route(d)
-			parent, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
+			parent, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{CAFlag: "--cacert", Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
 			require.NoError(t, err)
 			seedEntry(t, x.dir, x.store, "stored", config.Server{URL: x.url, TokenRef: parent.Ref, TokenUserID: parent.UserID}, parent.Token, false)
 			t.Setenv(execInfoEnv, d.execInfo(t))

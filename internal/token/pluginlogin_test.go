@@ -821,7 +821,7 @@ func (s outcomeStore) SetTokenWithOutcome(ref config.ServerRef, tok string, _ co
 // authenticates but cannot create tokens surfaces RBAC with no login.
 func TestPluginLogin403NeverPrompts(t *testing.T) {
 	x := newPluginFixture(t, true, testrancher.Options{ScopedCreateStatus: http.StatusForbidden})
-	cred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
+	cred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{CAFlag: "--cacert", Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
 	require.NoError(t, err)
 	base := x.f.LoginCount()
 	seedEntry(t, x.dir, x.store, x.entryName(), config.Server{URL: x.url, Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: cred.UserID}, cred.Token, true)
@@ -852,7 +852,7 @@ func TestPluginLoginSettingOffSkipsTheDormantEntry(t *testing.T) {
 	assert.NotEmpty(t, stored, "turning the setting off never deletes the credential")
 
 	// A user entry at the same URL is used with the setting off.
-	userCred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
+	userCred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{CAFlag: "--cacert", Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
 	require.NoError(t, err)
 	seedEntry(t, x.dir, x.store, "prod", config.Server{URL: x.url, Provenance: clierr.ProvenanceDerived, TokenRef: userCred.Ref}, userCred.Token, false)
 	logins := x.f.LoginCount()

@@ -23,6 +23,8 @@ type pluginLoginInput struct {
 	newIdPClient                       func() *http.Client
 	wantName                           string
 	ignoreCurrentContext               bool
+	// shim is set for the legacy token command, which takes --cacerts.
+	shim bool
 	// refreshEntry is the plugin entry a 401 named; "" on first use. The
 	// re-login replaces that entry's credential as an update.
 	refreshEntry string
@@ -32,7 +34,7 @@ func (t tokenCmd) pluginInput(server, serverID, caPEM, clusterID string, client 
 	return pluginLoginInput{server: server, serverID: serverID, caPEM: caPEM, clusterID: clusterID, client: client,
 		authProvider: params.AuthProvider, authFlow: params.AuthFlow, exactAuthConfig: params.exactAuthConfig(),
 		newIdPClient: func() *http.Client { return httpx.NewExternal(httpx.DefaultTimeout) },
-		wantName:     params.Name, ignoreCurrentContext: params.legacyShim}
+		wantName:     params.Name, ignoreCurrentContext: params.legacyShim, shim: params.legacyShim}
 }
 
 // storeOpener opens the store the way a reader of the directory does,
@@ -140,7 +142,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			return derr
 		}
 		req := LoginRequest{Server: in.server, AuthProvider: in.authProvider, ExactAuthConfig: in.exactAuthConfig,
-			AuthFlow: in.authFlow, IdPClient: in.newIdPClient(), ResponseType: "json"}
+			AuthFlow: in.authFlow, CAFlag: caFlagName(in.shim), IdPClient: in.newIdPClient(), ResponseType: "json"}
 		if disclosure.text != "" {
 			// Said when the sign-in is about to ask someone to act, never
 			// for one refused before that. A sign-in that reaches the commit

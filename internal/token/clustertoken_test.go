@@ -18,7 +18,7 @@ func facadeAndBearer(t *testing.T, opts testrancher.Options) (*testrancher.Facad
 	f := testrancher.New(opts)
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 	require.NoError(t, err)
 	return f, srv, cred.Token

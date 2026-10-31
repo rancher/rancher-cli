@@ -188,7 +188,7 @@ func TestEverySignInCauseSendsItsInstallIDRequestBetweenTheCreateAndTheLogout(t 
 			srv := httptest.NewTestServer(t, f)
 			rt := hostTransport{hostOf(rancherOrigin): srv.Client().Transport}
 			p := &urlRecorder{handoffPrompter: newHandoffPrompter(func(id, key string) { f.DepositAuthToken(id, key) })}
-			input := &loginInput{server: rancherOrigin, authProvider: "oktaProvider"}
+			input := &loginInput{caFlag: "--cacert", server: rancherOrigin, authProvider: "oktaProvider"}
 			si, err := signInForClusterToken(t.Context(), rt.client(), input, "local", p)
 			require.NoError(t, err)
 			c.assertSignInRequestAtItsPlace(t, rancherOrigin, si.Cluster.Bearer)

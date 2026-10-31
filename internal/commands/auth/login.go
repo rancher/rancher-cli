@@ -225,7 +225,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "token-stdin", Type: "bool", Desc: "read the API token (id:secret) from stdin"},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM, saved with the entry (requires --url); when absent, RANCHER_CLI_CACERT connects the login with or without --url, and is never saved", Env: []string{config.EnvCACert}},
 			{Name: "auth-provider", Type: "string", Desc: "auth config `name` to sign in with (for example corp-ldap); a provider name or type such as openldap also works; with several matches the CLI asks, or lists them in the error"},
-			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
+			{Name: "auth-flow", Type: "string", Enum: token.AuthFlowValues(), Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "ttl", Type: "string", Desc: "session-token lifetime `duration`, e.g. 90d"},
 			{Name: "no-verify", Type: "bool", Desc: "store the token without an authenticated round-trip against the server"},
 			{Name: "credential-store", Type: "string", Desc: "credential `store` this directory keeps its credentials in: auto, keychain, file or exec:<name>; a change of store takes only this entry's credential and needs the other entries logged out of the store being left first"},

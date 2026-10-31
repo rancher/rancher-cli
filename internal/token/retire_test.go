@@ -77,7 +77,7 @@ func (x *retireFixture) client() *http.Client {
 // credAs acquires a derived credential for the named user.
 func (x *retireFixture) credAs(t *testing.T, user string) LoginCredential {
 	t.Helper()
-	cred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+	cred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{CAFlag: "--cacert", Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader(user, "pw"), false, true))
 	require.NoError(t, err)
 	return cred

@@ -267,6 +267,7 @@ func TestDeviceCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 		so := splitOriginFacadeInMemory(t)
 		start := time.Now()
 		cred, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+			CAFlag: "--cacert",
 			Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient,
 		}, 0, interactivePrompter())
 		require.NoError(t, err)
@@ -302,7 +303,7 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 	require.NoError(t, err)
 	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", false, ui.Discard())
 	require.NoError(t, err)
-	input := &loginInput{server: so.rancherURL, authProvider: "azureADProvider", idpClient: so.idpClient}
+	input := &loginInput{caFlag: "--cacert", server: so.rancherURL, authProvider: "azureADProvider", idpClient: so.idpClient}
 	tok, err := oauthAuthCodeAuth(t.Context(), so.rancherClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.NoError(t, err)
 	assert.NotEmpty(t, tok.Bearer)
@@ -316,6 +317,7 @@ func TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority(t *test
 	t.Parallel()
 	so := splitOriginFacade(t)
 	_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+		CAFlag: "--cacert",
 		Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.rancherClient,
 	}, 0, interactivePrompter())
 	ce, ok := errors.AsType[*clierr.Error](err)
@@ -331,6 +333,7 @@ func TestDeviceCodeFlowNilIdPClientIsError(t *testing.T) {
 	t.Parallel()
 	so := splitOriginFacade(t)
 	_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+		CAFlag: "--cacert",
 		Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow,
 	}, 0, interactivePrompter())
 	require.ErrorContains(t, err, "identity provider client is not configured")
@@ -427,7 +430,7 @@ func TestEndpointGateStopsBothFlowsBeforeSideEffects(t *testing.T) {
 				}
 				provider := &AzureADProvider{ClientID: "c", Scopes: []string{"openid"}, OAuthEndpoint: ep}
 				rt := &countingTransport{}
-				input := &loginInput{server: "https://rancher.example", authProvider: "azureADProvider", idpClient: &http.Client{Transport: rt}}
+				input := &loginInput{caFlag: "--cacert", server: "https://rancher.example", authProvider: "azureADProvider", idpClient: &http.Client{Transport: rt}}
 				var opened atomic.Int32
 				_, err := oauthAuthCodeAuth(t.Context(), &http.Client{Transport: rt}, input, provider, time.Second, func(string) error { opened.Add(1); return nil }, ui.Discard())
 				require.ErrorContains(t, err, "identity provider endpoint "+field+" must be an https URL")
@@ -517,7 +520,7 @@ func TestIdPCertificateErrorPerKind(t *testing.T) {
 			require.NoError(t, err)
 			_, dialErr := client.Do(req)
 			require.Error(t, dialErr)
-			got := idpCertificateError(dialErr, srv.URL+"/token")
+			got := idpCertificateError(dialErr, srv.URL+"/token", "--cacert")
 			ce, ok := errors.AsType[*clierr.Error](got)
 			require.True(t, ok, "got %v", got)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
@@ -534,13 +537,13 @@ func TestIdPCertificateErrorPerKind(t *testing.T) {
 func TestIdPCertificateErrorPassesThroughOtherErrors(t *testing.T) {
 	t.Parallel()
 	plain := errors.New("dial tcp: connection refused")
-	assert.Same(t, plain, idpCertificateError(plain, "https://idp.example/token"))
+	assert.Same(t, plain, idpCertificateError(plain, "https://idp.example/token", "--cacert"))
 	srv, client := idpFixture(t, "idp.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), false, false)
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/token", nil)
 	require.NoError(t, err)
 	_, dialErr := client.Do(req)
 	require.Error(t, dialErr)
-	assert.Same(t, dialErr, idpCertificateError(dialErr, "https://other.example/token"))
+	assert.Same(t, dialErr, idpCertificateError(dialErr, "https://other.example/token", "--cacert"))
 }
 
 // TestDeviceCodeFlowRancherRejectionIsAnAuthError asserts that an OAuth login
@@ -553,6 +556,7 @@ func TestDeviceCodeFlowRancherRejectionIsAnAuthError(t *testing.T) {
 		so := splitOriginFacadeInMemory(t)
 		so.rejectLogin = true
 		_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+			CAFlag: "--cacert",
 			Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient,
 		}, 0, interactivePrompter())
 		require.Error(t, err)

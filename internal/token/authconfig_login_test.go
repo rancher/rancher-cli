@@ -44,7 +44,7 @@ var signInEntryPoints = []signInEntryPoint{
 	{"auth login", func(t *testing.T, opts testrancher.Options, authProvider string, p runtime.Prompter) (*testrancher.Facade, error) {
 		t.Helper()
 		f, srv := newTokenFacade(t, opts)
-		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: authProvider, ResponseType: "json"}, 0, p)
+		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: authProvider, ResponseType: "json"}, 0, p)
 		return f, err
 	}},
 	{"get-token sign-in", func(t *testing.T, opts testrancher.Options, authProvider string, p runtime.Prompter) (*testrancher.Facade, error) {
@@ -100,7 +100,7 @@ func TestASignInThroughAnotherConfigIsAnotherUser(t *testing.T) {
 	isolateSignIn(t)
 	for authProvider, want := range map[string]string{"corp-ldap": "user-corp", "openldap": "user-default"} {
 		f, srv := newTokenFacade(t, twoLDAPConfigs())
-		cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: authProvider, ResponseType: "json"}, 0, terminalLines("alice", "pw"))
+		cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: authProvider, ResponseType: "json"}, 0, terminalLines("alice", "pw"))
 		require.NoError(t, err, authProvider)
 		assert.Equal(t, want, cred.UserID, authProvider)
 		assert.Len(t, f.LoginRecords(), 1)
@@ -115,7 +115,7 @@ func TestTheConfigNamedLikeTheProviderIsPickedByItsName(t *testing.T) {
 	isolateSignIn(t)
 	f, srv := newTokenFacade(t, twoLDAPConfigs())
 	p := terminalLines("alice", "pw")
-	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "openldap", ResponseType: "json"}, 0, p)
+	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "openldap", ResponseType: "json"}, 0, p)
 	require.NoError(t, err)
 	assert.Equal(t, []testrancher.LoginRecord{{Type: "openLdapProvider", ConfigName: "openldap", HasConfigName: true}}, f.LoginRecords())
 	require.GreaterOrEqual(t, p.at("Signing in through auth config openldap."), 0, "events %q", p.events)
@@ -131,7 +131,7 @@ func TestAProviderNameOfOneConfigSignsInThroughItWithoutANotice(t *testing.T) {
 	opts := testrancher.Options{AuthConfigs: twoLDAPConfigs().AuthConfigs[1:]}
 	f, srv := newTokenFacade(t, opts)
 	p := terminalLines("alice", "pw")
-	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "openldap", ResponseType: "json"}, 0, p)
+	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "openldap", ResponseType: "json"}, 0, p)
 	require.NoError(t, err)
 	assert.Equal(t, []testrancher.LoginRecord{{Type: "openLdapProvider", ConfigName: "corp-ldap", HasConfigName: true}}, f.LoginRecords())
 	assert.Zero(t, p.count("Signing in through"), "events %q", p.events)
@@ -144,7 +144,7 @@ func TestATypeOfSeveralConfigsAsksAndSignsInThroughTheChoice(t *testing.T) {
 	isolateSignIn(t)
 	f, srv := newTokenFacade(t, twoLDAPConfigs())
 	p := terminalLines("1", "alice", "pw")
-	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "openLdapProvider", ResponseType: "json"}, 0, p)
+	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "openLdapProvider", ResponseType: "json"}, 0, p)
 	require.NoError(t, err)
 	assert.Equal(t, "notice: Auth configs:\n0 - openldap\n1 - corp-ldap (openldap)\n", p.events[p.at("notice: Auth configs:")])
 	assert.Equal(t, []testrancher.LoginRecord{{Type: "openLdapProvider", ConfigName: "corp-ldap", HasConfigName: true}}, f.LoginRecords())
@@ -166,7 +166,7 @@ func TestTheSignInNoticeIsSaidOnlyWhenASignInFollows(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, srv := newTokenFacade(t, twoLDAPConfigs())
 			p := newEventPrompter(tc.p)
-			_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "corp-ldap", ResponseType: "json"}, 0, p)
+			_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "corp-ldap", ResponseType: "json"}, 0, p)
 			require.ErrorContains(t, err, tc.want)
 			assert.Zero(t, p.count("Signing in through"), "events %q", p.events)
 		})
@@ -175,7 +175,7 @@ func TestTheSignInNoticeIsSaidOnlyWhenASignInFollows(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			so := twoAzureConfigs(t)
 			p := newEventPrompter(noInputWithTerminal())
-			_, err := AcquireLoginCredential(t.Context(), so.client, LoginRequest{Server: so.url, AuthProvider: "corp-azure", AuthFlow: deviceAuthFlow, IdPClient: so.client, ResponseType: "json"}, 0, p)
+			_, err := AcquireLoginCredential(t.Context(), so.client, LoginRequest{CAFlag: "--cacert", Server: so.url, AuthProvider: "corp-azure", AuthFlow: deviceAuthFlow, IdPClient: so.client, ResponseType: "json"}, 0, p)
 			require.ErrorContains(t, err, "interactive login required for auth config corp-azure; run without --no-input, or use a cached --name")
 			assert.Zero(t, p.count("Signing in through"), "events %q", p.events)
 		})
@@ -190,7 +190,7 @@ func TestEveryRefusalNamesTheAuthConfig(t *testing.T) {
 	t.Parallel()
 	const terminalRemedy = "interactive login required for auth config corp-ldap; run in a terminal, or use a cached --name"
 	basic := func() *loginInput {
-		return &loginInput{server: "https://r.invalid", authProvider: "openLdapProvider", authConfig: "corp-ldap"}
+		return &loginInput{caFlag: "--cacert", server: "https://r.invalid", authProvider: "openLdapProvider", authConfig: "corp-ldap"}
 	}
 	for _, tc := range []struct {
 		name string
@@ -215,12 +215,12 @@ func TestEveryRefusalNamesTheAuthConfig(t *testing.T) {
 		{"SAML under --no-input", func(t *testing.T) error {
 			t.Helper()
 			srv := configsServer(t, [2]string{"okta", "oktaProvider"})
-			_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{server: srv.URL}, ui.Discard())
+			_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{caFlag: "--cacert", server: srv.URL}, ui.Discard())
 			return err
 		}, "interactive login required for auth config okta; run without --no-input, or use a cached --name"},
 		{"OAuth under --no-input", func(t *testing.T) error {
 			t.Helper()
-			_, err := oauthAuth(t.Context(), failingTransportClient(t), &loginInput{server: "https://r.invalid", authProvider: "azureADProvider", authConfig: "corp-azure"},
+			_, err := oauthAuth(t.Context(), failingTransportClient(t), &loginInput{caFlag: "--cacert", server: "https://r.invalid", authProvider: "azureADProvider", authConfig: "corp-azure"},
 				&AzureADProvider{}, ui.Discard())
 			return err
 		}, "interactive login required for auth config corp-azure; run without --no-input, or use a cached --name"},
@@ -280,7 +280,7 @@ func TestASAMLConfigOfSeveralSaysTheBrowserPageChoosesItself(t *testing.T) {
 
 	srv := configsServer(t, [2]string{"okta", "oktaProvider"}, [2]string{"okta-eu", "oktaProvider"}, [2]string{"local", "localProvider"})
 	p := newEventPrompter(noTerminal())
-	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "okta-eu", ResponseType: "json"}, 0, p)
+	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "okta-eu", ResponseType: "json"}, 0, p)
 	require.ErrorContains(t, err, "timed out")
 	require.GreaterOrEqual(t, p.at(notice), 0, "events %q", p.events)
 	assert.Less(t, p.at(notice), p.at("Login Request Id"), "events %q", p.events)
@@ -288,12 +288,12 @@ func TestASAMLConfigOfSeveralSaysTheBrowserPageChoosesItself(t *testing.T) {
 
 	one := configsServer(t, [2]string{"okta", "oktaProvider"}, [2]string{"local", "localProvider"})
 	p = newEventPrompter(noTerminal())
-	_, err = AcquireLoginCredential(t.Context(), one.Client(), LoginRequest{Server: one.URL, AuthProvider: "okta", ResponseType: "json"}, 0, p)
+	_, err = AcquireLoginCredential(t.Context(), one.Client(), LoginRequest{CAFlag: "--cacert", Server: one.URL, AuthProvider: "okta", ResponseType: "json"}, 0, p)
 	require.ErrorContains(t, err, "timed out")
 	assert.Zero(t, p.count(notice), "one SAML config: nothing to say; events %q", p.events)
 
 	under := newEventPrompter(ui.Discard())
-	_, err = AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "okta-eu", ResponseType: "json"}, 0, under)
+	_, err = AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "okta-eu", ResponseType: "json"}, 0, under)
 	require.ErrorContains(t, err, "interactive login required for auth config okta-eu; run without --no-input, or use a cached --name")
 	assert.Zero(t, under.count(notice), "no notice before a --no-input refusal; events %q", under.events)
 }
@@ -344,7 +344,7 @@ func TestAnEntryWithNoIDSendsNoConfigName(t *testing.T) {
 		t.Helper()
 		switch name {
 		case "auth login":
-			_, err := AcquireLoginCredential(t.Context(), lb.srv.Client(), LoginRequest{Server: lb.srv.URL, ResponseType: "json"}, 0, p)
+			_, err := AcquireLoginCredential(t.Context(), lb.srv.Client(), LoginRequest{CAFlag: "--cacert", Server: lb.srv.URL, ResponseType: "json"}, 0, p)
 			require.Error(t, err)
 		case "legacy token":
 			dir := t.TempDir()
@@ -400,6 +400,7 @@ func TestTwoAzureConfigsUseTheChosenOnesClientEndpointsAndName(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			so := twoAzureConfigs(t)
 			cred, err := AcquireLoginCredential(t.Context(), so.client, LoginRequest{
+				CAFlag: "--cacert",
 				Server: so.url, AuthProvider: chosen.name, AuthFlow: deviceAuthFlow, IdPClient: so.client, ResponseType: "json",
 			}, 0, interactivePrompter())
 			require.NoError(t, err)
@@ -417,7 +418,7 @@ func TestTwoAzureConfigsUseTheChosenOnesClientEndpointsAndName(t *testing.T) {
 func TestAnAzureSignInOfTheGetTokenLoginsSendsTheConfigName(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		so := twoAzureConfigs(t)
-		input := &loginInput{server: so.url, authProvider: "eu-azure", authFlow: deviceAuthFlow, idpClient: so.client, responseType: "json"}
+		input := &loginInput{caFlag: "--cacert", server: so.url, authProvider: "eu-azure", authFlow: deviceAuthFlow, idpClient: so.client, responseType: "json"}
 		res, err := loginAndGenerateCred(t.Context(), so.client, input, interactivePrompter())
 		require.NoError(t, err)
 		assert.Equal(t, CreateKnown, res.Create.Outcome)
@@ -453,7 +454,7 @@ func TestAnUnusableTokenAfterALoginPointsAtTheAuthConfig(t *testing.T) {
 	isolateSignIn(t)
 	t.Run("auth login", func(t *testing.T) {
 		srv := loginAnswering(t, http.StatusCreated, `{}`)
-		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, ResponseType: "json"}, 0, terminalLines("alice", "pw"))
+		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, ResponseType: "json"}, 0, terminalLines("alice", "pw"))
 		require.EqualError(t, err, "authentication returned no usable token; check the auth config and credentials")
 	})
 	t.Run("legacy token", func(t *testing.T) {

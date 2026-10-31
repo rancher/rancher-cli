@@ -87,7 +87,7 @@ func entryTableUsers() []testrancher.User {
 func acquireFor(t *testing.T, srv *httptest.Server, user string) string {
 	t.Helper()
 	cred, err := AcquireLoginCredential(t.Context(), srv.Client(),
-		LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+		LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader(user, "pw-"+user), false, true))
 	require.NoError(t, err)
 	return cred.Token

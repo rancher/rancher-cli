@@ -85,7 +85,7 @@ func TestSAMLPollRefusalEndsAuth(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	t.Cleanup(srv.Close)
-	_, err := samlAuth(t.Context(), srv.Client(), &loginInput{server: srv.URL}, ui.Discard())
+	_, err := samlAuth(t.Context(), srv.Client(), &loginInput{caFlag: "--cacert", server: srv.URL}, ui.Discard())
 	require.Error(t, err)
 	ce, pf := primaryOf(err)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
@@ -162,7 +162,7 @@ func TestSAMLDeleteRefusalNoticeIsWorded(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	res, err := samlAuth(t.Context(), srv.Client(), &loginInput{server: srv.URL}, ui.New(&notices, nil, true, false))
+	res, err := samlAuth(t.Context(), srv.Client(), &loginInput{caFlag: "--cacert", server: srv.URL}, ui.New(&notices, nil, true, false))
 	require.NoError(t, err)
 	assert.Equal(t, bearer, res.Create.Bearer)
 	assert.Contains(t, notices.String(), "error deleting auth token: the server refused the request (403) and gave no reason")

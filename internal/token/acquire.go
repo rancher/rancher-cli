@@ -146,8 +146,11 @@ func acquireLogin(ctx context.Context, client *http.Client, input *loginInput, p
 // the transient session token S exists, this function revokes it on every
 // path that does not hand it outward.
 func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginRequest, ttlMs int64, p runtime.Prompter) (LoginCredential, error) {
+	if req.CAFlag == "" {
+		return LoginCredential{}, callerCAFlagMissing("LoginRequest.CAFlag")
+	}
 	input := &loginInput{server: req.Server, authProvider: req.AuthProvider, authFlow: req.AuthFlow, exactAuthConfig: req.ExactAuthConfig,
-		idpClient: req.IdPClient, responseType: req.ResponseType, beforeSignIn: req.BeforeSignIn}
+		caFlag: req.CAFlag, idpClient: req.IdPClient, responseType: req.ResponseType, beforeSignIn: req.BeforeSignIn}
 	st, err := acquireLogin(ctx, client, input, p)
 	if err != nil {
 		return LoginCredential{}, err

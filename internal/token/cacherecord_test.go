@@ -181,7 +181,7 @@ func TestCacheHitFollowsTheEntryTheNameIdentifies(t *testing.T) {
 // failing the test.
 func (r *recordFixture) loginAside(entry, user string) error {
 	cred, err := AcquireLoginCredential(r.t.Context(), r.srv.Client(),
-		LoginRequest{Server: r.srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+		LoginRequest{CAFlag: "--cacert", Server: r.srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader(user, "pw-"+user), false, true))
 	if err != nil {
 		return err

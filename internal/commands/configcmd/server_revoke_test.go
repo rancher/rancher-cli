@@ -72,7 +72,7 @@ func newServerRevokeDir(t *testing.T) *serverRevokeDir {
 	r.url = srv.URL
 	create := func() token.LoginCredential {
 		cred, err := token.AcquireLoginCredential(t.Context(), srv.Client(),
-			token.LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+			token.LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 			ui.New(&bytes.Buffer{}, &linesReader{lines: []string{"e2e-user", "e2e-pass"}}, false, true))
 		require.NoError(t, err)
 		return cred

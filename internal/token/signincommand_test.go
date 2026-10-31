@@ -309,7 +309,7 @@ func TestOtherProducersKeepTheirCancelledWaitDetails(t *testing.T) {
 				x := newInMemoryPluginFixture(t, tc.reuse, testrancher.Options{ClusterDeleteMode: "fail"})
 				x.route(d)
 				if tc.stored {
-					parent, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+					parent, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{CAFlag: "--cacert", Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 						ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 					require.NoError(t, err)
 					seedEntry(t, x.dir, x.store, "stored", config.Server{URL: x.url, TokenRef: parent.Ref, TokenUserID: parent.UserID}, parent.Token, false)

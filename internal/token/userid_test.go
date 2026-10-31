@@ -15,6 +15,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
@@ -117,8 +118,8 @@ func TestGetTokenClusterIsRequiredUnlessUserIDIsGiven(t *testing.T) {
 		flags map[string]string
 		want  string
 	}{
-		{"no --cluster, no --user-id", map[string]string{"name": "prod"}, "--cluster is required"},
-		{"no --cluster, no --user-id, no --name", map[string]string{}, "--cluster is required"},
+		{"no --cluster, no --user-id", map[string]string{"name": "prod"}, clusterRequiredMessageWithUserID},
+		{"no --cluster, no --user-id, no --name", map[string]string{}, clusterRequiredMessageWithUserID},
 		{"--cluster=, no --user-id", map[string]string{"name": "prod", "cluster": ""}, "--cluster is empty; pass a value or omit --cluster"},
 		{"--cluster= with --user-id", map[string]string{"name": "prod", "cluster": "", "user-id": "u-a"}, "--cluster is empty; pass a value or omit --cluster"},
 		{"--cluster= with --user-id, no --name", map[string]string{"cluster": "", "user-id": "u-a"}, "--cluster is empty; pass a value or omit --cluster"},
@@ -136,10 +137,22 @@ func TestGetTokenClusterIsRequiredUnlessUserIDIsGiven(t *testing.T) {
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Equal(t, tc.want, ce.Message)
+			if tc.want == clusterRequiredMessageWithUserID {
+				assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+			}
 			assert.Len(t, store.cacheReads(), before, "no cache slot is read")
 			assert.Empty(t, ops, "and nothing else is read: no stamp, no config")
 		})
 	}
+
+	t.Run("--user-id alone is served from its slot", func(t *testing.T) {
+		cmd := NewTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
+		res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": srv.URL, "user-id": "u-a"}}, ui.Discard())
+		require.NoError(t, err)
+		cred, ok := res.Data.(*execCredential)
+		require.True(t, ok)
+		assert.Equal(t, "warm-user-tok", cred.Status.Token)
+	})
 }
 
 // TestGetTokenRefusesUserIDPrefixedName asserts a --name in the namespace

@@ -121,29 +121,41 @@ func TestLegacyTokenEmitsV1Beta1(t *testing.T) {
 }
 
 // TestLegacyTokenAuthFlowEnvPrecedence verifies the three-level resolution:
-// flag > RANCHER_CLI_OAUTH_AUTH_FLOW > CATTLE_OAUTH_AUTH_FLOW. The logic
-// lives in resolveAuthFlow (oauth.go), the single source of truth
-// for both the native get-token path and the legacy token shim.
+// flag > RANCHER_CLI_OAUTH_AUTH_FLOW > CATTLE_OAUTH_AUTH_FLOW, and that the
+// source names what supplied the value. The logic lives in resolveAuthFlow
+// (oauth.go), the single source of truth for both the native get-token path
+// and the legacy token shim.
 func TestLegacyTokenAuthFlowEnvPrecedence(t *testing.T) {
 	t.Run("flag wins over both env vars", func(t *testing.T) {
 		t.Setenv(config.EnvOAuthAuthFlow, "authcode")
 		t.Setenv(config.EnvLegacyOAuthAuthFlow, "authcode")
-		assert.Equal(t, "devicecode", resolveAuthFlow("devicecode"))
+		value, source := resolveAuthFlow("devicecode")
+		assert.Equal(t, "devicecode", value)
+		assert.Equal(t, "--auth-flow", source)
 	})
 
 	t.Run("RANCHER_CLI_OAUTH_AUTH_FLOW wins over CATTLE_OAUTH_AUTH_FLOW", func(t *testing.T) {
 		t.Setenv(config.EnvOAuthAuthFlow, "authcode")
 		t.Setenv(config.EnvLegacyOAuthAuthFlow, "devicecode")
-		assert.Equal(t, "authcode", resolveAuthFlow(""))
+		value, source := resolveAuthFlow("")
+		assert.Equal(t, "authcode", value)
+		assert.Equal(t, config.EnvOAuthAuthFlow, source)
 	})
 
 	t.Run("CATTLE_OAUTH_AUTH_FLOW used when modern env unset", func(t *testing.T) {
+		t.Setenv(config.EnvOAuthAuthFlow, "")
 		t.Setenv(config.EnvLegacyOAuthAuthFlow, "devicecode")
-		assert.Equal(t, "devicecode", resolveAuthFlow(""))
+		value, source := resolveAuthFlow("")
+		assert.Equal(t, "devicecode", value)
+		assert.Equal(t, config.EnvLegacyOAuthAuthFlow, source)
 	})
 
 	t.Run("empty when nothing set", func(t *testing.T) {
-		assert.Equal(t, "", resolveAuthFlow(""))
+		t.Setenv(config.EnvOAuthAuthFlow, "")
+		t.Setenv(config.EnvLegacyOAuthAuthFlow, "")
+		value, source := resolveAuthFlow("")
+		assert.Equal(t, "", value)
+		assert.Equal(t, "", source)
 	})
 }
 

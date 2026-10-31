@@ -79,7 +79,8 @@ stderr: (empty)
 $ rancher auth get-token
 exit: 2
 stderr:
-> error (VALIDATION): --cluster is required
+> error (VALIDATION): --cluster is required; pass a cluster id or name, or --user-id for a token for Rancher itself
+>   hint: rancher --config '<TMP>/cfg' access clusters
 
 $ rancher auth get-token --server https://127.0.0.1:1 --cluster c-1
 exit: 1

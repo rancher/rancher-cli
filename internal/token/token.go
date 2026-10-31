@@ -47,6 +47,13 @@ const (
 	authCodeFlow   = "authcode"
 )
 
+// AuthFlowValues is the list of values --auth-flow and its environment
+// variables take, in the order every command declares them. It returns a new
+// slice.
+func AuthFlowValues() []string {
+	return []string{deviceAuthFlow, authCodeFlow}
+}
+
 var samlProviders = map[string]bool{
 	"pingProvider":       true,
 	"adfsProvider":       true,
@@ -93,6 +100,11 @@ type loginInput struct {
 	skipVerify      bool
 	authFlow        string
 	usernameDefault string
+	// caFlag is the CA flag of the command that runs the sign-in, with its
+	// dashes, for example --cacert. The caller sets it on every path and a
+	// sign-in with none is refused; messages about the identity provider's
+	// certificate name it to say the flag does not reach the provider.
+	caFlag string
 	// responseType is the shape the login request asks Rancher for. Empty
 	// is the kubeconfig form the legacy shim without --cluster asks for; the
 	// sign-ins that create their own tokens ask for json.
@@ -255,14 +267,44 @@ func (t tokenCmd) clientFor(opts httpx.Options) (*http.Client, error) {
 	return &wrapped, nil
 }
 
+// clusterFlag is the shared --cluster declaration with this command's own
+// description. The flag is optional: --user-id alone asks for a token for
+// Rancher itself, and clusterRequiredError refuses the call with neither.
+func clusterFlag() runtime.ArgSpec {
+	f := engine.ClusterFlag(false, false)
+	f.Desc = "cluster `id|name` to create the exec-credential token for; required unless --user-id is given"
+	return f
+}
+
+// clusterRequiredError is the refusal for a call with neither --cluster nor
+// --user-id.
+func clusterRequiredError() error {
+	return clierr.New(clierr.CodeValidation,
+		engine.ClusterRequiredPlainMessage+", or --user-id for a token for Rancher itself").
+		WithHint(engine.ClusterRequiredHint)
+}
+
+// callerCAFlagMissing is the refusal for a sign-in whose caller left out
+// its CA flag name (field), which only a mistake in the code can do: the
+// text of a certificate refusal would name no flag.
+func callerCAFlagMissing(field string) error {
+	return clierr.New(clierr.CodeGeneric, "internal error: "+field+" is empty; the caller must set it to its CA flag, such as --cacert")
+}
+
+// caFlagName is the CA flag the command takes, with its dashes: --cacerts for
+// the legacy token command (shim), --cacert for every other one.
+func caFlagName(shim bool) string {
+	if shim {
+		return "--cacerts"
+	}
+	return "--cacert"
+}
+
 // tlsRemedyFor words a certificate failure for auth get-token and the
 // legacy rancher token: neither names a command, because kubectl runs them
 // from a kubeconfig. shim selects the legacy command's --cacerts.
 func tlsRemedyFor(from config.CASource, shim bool) tlstrust.Remedy {
-	flag := "--cacert"
-	if shim {
-		flag = "--cacerts"
-	}
+	flag := caFlagName(shim)
 	r := tlstrust.Remedy{URL: "--server", Fix: flag}
 	switch {
 	case from.Kind == config.CASourceVariable:
@@ -311,10 +353,10 @@ func (tokenCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string", Desc: "Rancher server `url`", Env: []string{"RANCHER_CLI_URL"}},
-			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to create the exec-credential token for; required unless --user-id is given"},
+			clusterFlag(),
 			{Name: "name", Type: "string", Desc: "stored server `name` to use"},
 			{Name: "auth-provider", Type: "string", Desc: "auth config `name` to sign in with (for example corp-ldap); with --user-id it must be the auth config's exact name, and only tokens made through it are used; without --user-id a provider name or type such as openldap also works, and with several matches the CLI asks, or lists them in the error"},
-			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
+			{Name: "auth-flow", Type: "string", Enum: AuthFlowValues(), Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM", Env: []string{"RANCHER_CLI_CACERT"}},
 			{Name: userIDFlag, Type: "string", Desc: "Rancher user `id` the token must belong to; with it, --cluster may be omitted for a token for Rancher itself"},
 		},
@@ -387,7 +429,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	case in.String("cluster") == "" && in.IsSet("cluster"):
 		return runtime.Result{}, runtime.EmptyValueError("cluster")
 	case in.String("cluster") == "" && userID == "":
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required")
+		return runtime.Result{}, clusterRequiredError()
 	}
 
 	flagServer := in.String("server")
@@ -505,6 +547,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		skipVerify:      params.SkipVerify,
 		authFlow:        params.AuthFlow,
 		usernameDefault: params.UsernameDefault,
+		caFlag:          caFlagName(params.legacyShim),
 	}
 
 	client, err := t.clientFor(httpx.Options{
@@ -992,6 +1035,11 @@ type LoginRequest struct {
 	// name only (see loginInput.exactAuthConfig).
 	ExactAuthConfig bool
 	AuthFlow        string
+	// CAFlag is the CA flag of the calling command, with its dashes, for
+	// example --cacert. It is required: a request with none is refused. A
+	// message about the identity provider's certificate names it to say the
+	// flag does not reach the provider.
+	CAFlag string
 	// IdPClient dials the identity provider's OAuth endpoints (see
 	// loginInput.idpClient). Required for OAuth providers.
 	IdPClient *http.Client
@@ -1024,6 +1072,9 @@ func loginResponseType(input *loginInput) string {
 // authoritative even when the error is non-nil: the outcome says whether S
 // may exist, and the SAML handoff says where to look for it.
 func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (SessionAcquireResult, error) {
+	if input.caFlag == "" {
+		return SessionAcquireResult{}, callerCAFlagMissing("loginInput.caFlag")
+	}
 	authProviders, unsupported, unsupportedIDs, err := getAuthProviders(ctx, client, input.server)
 	if err != nil {
 		return SessionAcquireResult{}, err
@@ -1582,7 +1633,7 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName, use
 	// --cluster is a deliberate unscoped create - still purely flag-driven,
 	// never filled from stored state.
 	if cluster == "" && userID == "" && !ignoreCurrentContext {
-		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "--cluster is required")
+		return "", "", "", "", config.CASource{}, entryChoice{}, clusterRequiredError()
 	}
 
 	var cfg *config.Config
@@ -1733,10 +1784,7 @@ func caReadSource(from config.CASource, shim bool) string {
 	case config.CASourceEntry:
 		return "the CA of server entry " + clierr.ShellQuote(from.Entry)
 	}
-	if shim {
-		return "--cacerts"
-	}
-	return "--cacert"
+	return caFlagName(shim)
 }
 
 // schemeRE matches an explicit URI scheme followed by "://", independent of

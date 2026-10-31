@@ -118,7 +118,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 		t.Parallel()
 		srv := providersServer(t, "localProvider")
 		p := terminalLines("alice", "secret")
-		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
+		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
 		require.Error(t, err, "the server has no login endpoint")
 		p.requireHookBefore(t, "prompt: Enter username")
 	})
@@ -126,7 +126,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 		t.Parallel()
 		srv := providersServer(t, "localProvider", "openLdapProvider")
 		p := terminalLines("0", "alice", "secret")
-		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
+		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
 		require.Error(t, err, "the server has no login endpoint")
 		p.requireHookBefore(t, "prompt: Enter username")
 		assert.Less(t, p.at("notice: Auth configs:"), p.at("hook"), "the menu comes first: the choice is made before the hook")
@@ -135,7 +135,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 	t.Run("a prompt refused after the username", func(t *testing.T) {
 		t.Parallel()
 		p := newEventPrompter(usernameOnly{})
-		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
+		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{caFlag: "--cacert", server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
 		_, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
 		p.requireHookBefore(t, "prompt: Enter username")
@@ -144,7 +144,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 		t.Parallel()
 		srv := providersServer(t, "localProvider")
 		p := newEventPrompter(noTerminal())
-		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
+		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
 		_, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
 		assert.Empty(t, p.events, "no hook and no prompt")
@@ -152,7 +152,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 	t.Run("a prompter that cannot prompt refuses before any prompt", func(t *testing.T) {
 		t.Parallel()
 		p := newEventPrompter(cannotPrompt{})
-		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
+		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{caFlag: "--cacert", server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
 		nt, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
 		assert.Equal(t, "local", nt.authConfig)
@@ -181,12 +181,12 @@ func TestTheSAMLSignInGivesTheHookBeforeItsRequestID(t *testing.T) {
 	srv := providersServer(t, "oktaProvider")
 
 	p := newEventPrompter(noTerminal())
-	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
+	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
 	require.ErrorContains(t, err, "timed out")
 	p.requireHookBefore(t, "Login Request Id")
 
 	p = newEventPrompter(ui.Discard())
-	_, err = AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
+	_, err = AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
 	_, ok := errors.AsType[*needsTerminal](err)
 	require.True(t, ok, "got %v", err)
 	assert.Empty(t, p.events)
@@ -204,6 +204,7 @@ func TestTheOAuthDeviceCodeSignInGivesTheHookBeforeItsCode(t *testing.T) {
 			so := splitOriginFacadeInMemory(t)
 			p := newEventPrompter(interactivePrompter())
 			_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+				CAFlag: "--cacert",
 				Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient, BeforeSignIn: p.hook,
 			}, 0, p)
 			require.NoError(t, err)
@@ -215,6 +216,7 @@ func TestTheOAuthDeviceCodeSignInGivesTheHookBeforeItsCode(t *testing.T) {
 		so := splitOriginFacade(t)
 		p := newEventPrompter(interactivePrompter())
 		_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+			CAFlag: "--cacert",
 			Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.rancherClient, BeforeSignIn: p.hook,
 		}, 0, p)
 		require.ErrorContains(t, err, "certificate not trusted")
@@ -225,6 +227,7 @@ func TestTheOAuthDeviceCodeSignInGivesTheHookBeforeItsCode(t *testing.T) {
 		so := splitOriginFacade(t)
 		p := newEventPrompter(ui.Discard())
 		_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+			CAFlag: "--cacert",
 			Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient, BeforeSignIn: p.hook,
 		}, 0, p)
 		_, ok := errors.AsType[*needsTerminal](err)
@@ -236,6 +239,7 @@ func TestTheOAuthDeviceCodeSignInGivesTheHookBeforeItsCode(t *testing.T) {
 		so := splitOriginFacade(t)
 		p := newEventPrompter(interactivePrompter())
 		_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+			CAFlag: "--cacert",
 			Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, BeforeSignIn: p.hook,
 		}, 0, p)
 		require.ErrorContains(t, err, "identity provider client is not configured")
@@ -254,7 +258,7 @@ func TestTheOAuthAuthCodeSignInGivesTheHookBeforeTheBrowser(t *testing.T) {
 	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", false, ui.Discard())
 	require.NoError(t, err)
 	newInput := func(p *eventPrompter) *loginInput {
-		return &loginInput{server: so.rancherURL, authProvider: "azureADProvider", idpClient: so.idpClient, beforeSignIn: p.hook}
+		return &loginInput{caFlag: "--cacert", server: so.rancherURL, authProvider: "azureADProvider", idpClient: so.idpClient, beforeSignIn: p.hook}
 	}
 
 	t.Run("the browser opens", func(t *testing.T) {

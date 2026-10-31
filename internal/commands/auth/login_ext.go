@@ -59,6 +59,7 @@ func resolveProviderLoginToken(ctx context.Context, server, caPEM string, idpCli
 		Server:       server,
 		AuthProvider: in.String("auth-provider"),
 		AuthFlow:     in.String("auth-flow"),
+		CAFlag:       "--cacert",
 		IdPClient:    idpClient,
 		ResponseType: "json",
 	}, ttlMs, p)

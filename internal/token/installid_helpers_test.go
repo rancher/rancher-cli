@@ -127,7 +127,7 @@ func (c collectedNotices) notices() []string {
 // auth login does, and returns the token.
 func seedStoredLogin(t *testing.T, x *pluginFixture, name string) string {
 	t.Helper()
-	parent, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
+	parent, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{CAFlag: "--cacert", Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
 	require.NoError(t, err)
 	seedEntry(t, x.dir, x.store, name, config.Server{URL: x.url, TokenRef: parent.Ref, TokenUserID: parent.UserID}, parent.Token, false)
 	return parent.Token

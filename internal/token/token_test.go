@@ -29,6 +29,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
@@ -159,7 +160,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 
 func TestBasicAuthNonInteractiveIsAuthError(t *testing.T) {
 	t.Parallel()
-	input := &loginInput{server: "https://test.example.com", authProvider: "localProvider"}
+	input := &loginInput{caFlag: "--cacert", server: "https://test.example.com", authProvider: "localProvider"}
 	_, err := basicAuth(t.Context(), nil, input, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -204,8 +205,13 @@ func TestGetTokenNoClusterRejectsBeforeCacheProbe(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, "--cluster is required", ce.Message)
+	assert.Equal(t, clusterRequiredMessageWithUserID, ce.Message)
+	assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
 }
+
+// clusterRequiredMessageWithUserID is the refusal of a call with neither
+// --cluster nor --user-id.
+const clusterRequiredMessageWithUserID = "--cluster is required; pass a cluster id or name, or --user-id for a token for Rancher itself"
 
 // TestGetTokenBrokenConfigMakesEveryCacheHitAMiss asserts the rule that
 // replaced the fast path's old promise. A warm record used to be served
@@ -1594,7 +1600,15 @@ func TestResolveConnConfigFallback(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.ErrorContains(t, ce, "--cluster is required")
+		require.ErrorContains(t, ce, clusterRequiredMessageWithUserID)
+		assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+	})
+
+	t.Run("empty cluster with a user id is no error on the native path", func(t *testing.T) {
+		server, _, cluster, _, _, _, err := cmd.resolveConnWithCA("https://config.example", "", "", "", "u-a", false, false)
+		require.NoError(t, err)
+		assert.Equal(t, "https://config.example", server)
+		assert.Empty(t, cluster)
 	})
 
 	t.Run("empty cluster on shim path does not error", func(t *testing.T) {
@@ -1858,7 +1872,7 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 		DeviceAuthURL: "https://idp.example/devicecode",
 		TokenURL:      "https://idp.example/token",
 	}
-	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
+	input := &loginInput{caFlag: "--cacert", server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
 
 	_, err := oauthAuthCodeAuth(ctx, rancherSrv.Client(), input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
@@ -1900,7 +1914,7 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 		DeviceAuthURL: "https://idp.example/devicecode", // never reached
 		TokenURL:      "https://idp.example/token",
 	}
-	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
+	input := &loginInput{caFlag: "--cacert", server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
 
 	_, err := oauthAuthCodeAuth(ctx, rancherSrv.Client(), input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
@@ -1940,7 +1954,7 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 		DeviceAuthURL: "https://idp.example/devicecode", // never reached
 		TokenURL:      "https://idp.example/token",
 	}
-	input := &loginInput{server: "http://ignored", authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
+	input := &loginInput{caFlag: "--cacert", server: "http://ignored", authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
 
 	_, err := oauthAuthCodeAuth(t.Context(), failingTransportClient(t), input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
@@ -2001,7 +2015,7 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 		DeviceAuthURL: idp.URL + "/devicecode",
 		TokenURL:      idp.URL + "/token",
 	}
-	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: idp.Client()}
+	input := &loginInput{caFlag: "--cacert", server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: idp.Client()}
 
 	var noticeBuf strings.Builder
 	p := ui.New(&noticeBuf, strings.NewReader(""), true, false)
@@ -2034,7 +2048,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
-		input := &loginInput{server: srv.URL}
+		input := &loginInput{caFlag: "--cacert", server: srv.URL}
 
 		go func() {
 			time.Sleep(50 * time.Millisecond) // fake clock - before the first 500ms tick
@@ -2448,7 +2462,7 @@ func TestBasicAuthTrimsPaddedUsername(t *testing.T) {
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader("  bob  ", "secret"), false, true)
 
-	input := &loginInput{server: srv.URL, authProvider: "localProvider"}
+	input := &loginInput{caFlag: "--cacert", server: srv.URL, authProvider: "localProvider"}
 	_, err := basicAuth(t.Context(), srv.Client(), input, p)
 	require.NoError(t, err)
 	assert.Equal(t, "bob", loginUsername(t, gotBody), "padding must be trimmed from the sent username")
@@ -2931,7 +2945,7 @@ func TestStoredCredTokenClassifiesRejections(t *testing.T) {
 			store := config.NewFileStore(dir)
 			bearer := "ext/stale:s"
 			if !tc.stale {
-				cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+				cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 					ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 				require.NoError(t, err)
 				bearer = cred.Token
@@ -2985,7 +2999,7 @@ func TestStoredCredTokenPluginLaneFailsClosed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, srv := newTokenFacade(t, tc.opts)
-			cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+			cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 				ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 			require.NoError(t, err)
 			dir := t.TempDir()
@@ -3015,7 +3029,7 @@ func TestStoredCredTokenPluginLaneFailsClosed(t *testing.T) {
 func TestStoredCredTokenMetadataNeverDrivesServing(t *testing.T) {
 	t.Parallel()
 	_, srv := newTokenFacade(t, testrancher.Options{})
-	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+	cred, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 	require.NoError(t, err)
 

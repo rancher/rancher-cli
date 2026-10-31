@@ -45,8 +45,7 @@ type callbackResult struct {
 
 // firstNonEmptyEnv returns the value of the primary env var when non-empty,
 // otherwise the value of the legacy env var. Used for the "modern spelling,
-// then legacy CATTLE_* fallback" pattern that both resolveAuthFlow and
-// getCallbackPort share.
+// then legacy CATTLE_* fallback" pattern that getCallbackPort uses.
 func firstNonEmptyEnv(primary, legacy string) string {
 	if v := os.Getenv(primary); v != "" {
 		return v
@@ -58,17 +57,24 @@ func firstNonEmptyEnv(primary, legacy string) string {
 // when non-empty; otherwise RANCHER_CLI_OAUTH_AUTH_FLOW; otherwise
 // CATTLE_OAUTH_AUTH_FLOW (legacy spelling). This is the single source of truth
 // for both the native get-token path and the legacy token shim - both funnel
-// through oauthAuth, so the env resolution lives here once.
-func resolveAuthFlow(flag string) string {
+// through oauthAuth, so the env resolution lives here once. source names what
+// supplied the value: --auth-flow, the variable, or "" when nothing did.
+func resolveAuthFlow(flag string) (value, source string) {
 	if flag != "" {
-		return flag
+		return flag, "--auth-flow"
 	}
-	return firstNonEmptyEnv(config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow)
+	for _, name := range []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow} {
+		if v := os.Getenv(name); v != "" {
+			return v, name
+		}
+	}
+	return "", ""
 }
 
 func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, provider typedProvider, p iruntime.Prompter) (CreateResult, error) {
 	notAttempted := loginNotAttempted(input)
-	input.authFlow = strings.ToLower(resolveAuthFlow(input.authFlow))
+	flow, flowSource := resolveAuthFlow(input.authFlow)
+	input.authFlow = strings.ToLower(flow)
 
 	if p.NoInput() {
 		return notAttempted, interactiveLoginRequired(input.authConfigName(), "run without --no-input, or use a cached --name")
@@ -84,7 +90,10 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 	case deviceAuthFlow, "":
 		return oauthDeviceCodeAuth(ctx, client, input, provider, p)
 	default:
-		return notAttempted, fmt.Errorf("invalid auth-flow value: %s", input.authFlow)
+		// The value is never printed: a variable set by mistake can hold a
+		// secret.
+		return notAttempted, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("%s value is not one of %s", flowSource, iruntime.OneOf(AuthFlowValues())))
 	}
 }
 
@@ -180,7 +189,7 @@ func oauthAuthCodeAuth(
 
 		oauthToken, err := oauthConfig.Exchange(exchangeCtx, result.code, oauth2.VerifierOption(verifier))
 		if err != nil {
-			return notAttempted, idpError(err, oauthConfig.Endpoint.TokenURL, "failed to exchange authorization code for token")
+			return notAttempted, idpError(err, oauthConfig.Endpoint.TokenURL, "failed to exchange authorization code for token", input.caFlag)
 		}
 
 		return rancherLogin(ctx, client, input, oauthToken)
@@ -301,7 +310,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 
 	deviceAuthResp, err := oauthConfig.DeviceAuth(ctxWithClient)
 	if err != nil {
-		return notAttempted, idpError(err, oauthConfig.Endpoint.DeviceAuthURL, "failed to initiate device authorization")
+		return notAttempted, idpError(err, oauthConfig.Endpoint.DeviceAuthURL, "failed to initiate device authorization", input.caFlag)
 	}
 
 	input.signInStarts(p)
@@ -313,7 +322,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 
 	oauthToken, err := oauthConfig.DeviceAccessToken(ctxWithClient, deviceAuthResp)
 	if err != nil {
-		return notAttempted, idpError(err, oauthConfig.Endpoint.TokenURL, "failed to retrieve access token")
+		return notAttempted, idpError(err, oauthConfig.Endpoint.TokenURL, "failed to retrieve access token", input.caFlag)
 	}
 
 	r, err := rancherLogin(ctx, client, input, oauthToken)

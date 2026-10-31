@@ -20,8 +20,9 @@ import (
 // guided trust: the provider is verified against the operating system
 // store, and only the unknown-authority kind can be repaired there. Any
 // other error, and a certificate failure at a different origin, is
-// returned unchanged.
-func idpCertificateError(err error, endpoint string) error {
+// returned unchanged. caFlag is the CA flag of the command that ran, named
+// in the unknown-authority text to say it does not reach the provider.
+func idpCertificateError(err error, endpoint, caFlag string) error {
 	u, perr := url.Parse(endpoint)
 	if perr != nil {
 		return err
@@ -37,7 +38,7 @@ func idpCertificateError(err error, endpoint string) error {
 	host := origin.Hostname()
 	switch kind {
 	case tlstrust.KindUnknownAuthority:
-		return clierr.New(clierr.CodeAuth, "identity provider "+host+": certificate not trusted by the operating system trust store; --cacert applies only to the Rancher server, add the identity provider's CA to the operating system trust store")
+		return clierr.New(clierr.CodeAuth, "identity provider "+host+": certificate not trusted by the operating system trust store; "+caFlag+" applies only to the Rancher server, add the identity provider's CA to the operating system trust store")
 	case tlstrust.KindHostnameMismatch:
 		return clierr.New(clierr.CodeAuth, "identity provider "+host+": certificate is not valid for this host name")
 	case tlstrust.KindExpired:
@@ -54,11 +55,12 @@ func idpCertificateError(err error, endpoint string) error {
 // provider refused the sign-in, and the status table would read a 400 as
 // VALIDATION. A 408 or 429 is retryable GENERIC: the provider asks to try
 // again. A 5xx goes through the status table, so it is retryable. Any
-// other error keeps its text, a certificate failure reworded.
-func idpError(err error, endpoint, prefix string) error {
+// other error keeps its text, a certificate failure reworded (caFlag as in
+// idpCertificateError).
+func idpError(err error, endpoint, prefix, caFlag string) error {
 	re, ok := errors.AsType[*oauth2.RetrieveError](err)
 	if !ok || re.Response == nil {
-		return fmt.Errorf("%s: %w", prefix, idpCertificateError(err, endpoint))
+		return fmt.Errorf("%s: %w", prefix, idpCertificateError(err, endpoint, caFlag))
 	}
 	status := re.Response.StatusCode
 	switch {
@@ -75,5 +77,5 @@ func idpError(err error, endpoint, prefix string) error {
 	case status >= 500:
 		return clierr.FromResponse(prefix, http.MethodPost, status, re.Body, nil)
 	}
-	return fmt.Errorf("%s: %w", prefix, idpCertificateError(err, endpoint))
+	return fmt.Errorf("%s: %w", prefix, idpCertificateError(err, endpoint, caFlag))
 }

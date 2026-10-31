@@ -49,7 +49,7 @@ func newRevokeDir(t *testing.T, opts testrancher.Options) revokeDir {
 	t.Cleanup(srv.Close)
 	create := func() token.LoginCredential {
 		cred, err := token.AcquireLoginCredential(t.Context(), srv.Client(),
-			token.LoginRequest{Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+			token.LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 			ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 		require.NoError(t, err)
 		return cred
@@ -505,7 +505,7 @@ func TestALogoutWhoseFileCopyCannotBeDeletedFails(t *testing.T) {
 	r := newRevokeDir(t, testrancher.Options{})
 	useKeychainLogin(t, r)
 	plain, err := token.AcquireLoginCredential(t.Context(), r.client,
-		token.LoginRequest{Server: r.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+		token.LoginRequest{CAFlag: "--cacert", Server: r.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 	require.NoError(t, err)
 	creds := config.CredentialsFilePath(r.dir)

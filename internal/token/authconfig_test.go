@@ -232,7 +232,7 @@ func TestAnExactNameOfAnUnsupportedConfigIsRefused(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"type":"githubProvider","id":"openldap"},{"type":"openLdapProvider","id":"corp-ldap"}]}`))
 	}))
 	t.Cleanup(srv.Close)
-	_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{server: srv.URL, authProvider: "openldap"}, noTerminal())
+	_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{caFlag: "--cacert", server: srv.URL, authProvider: "openldap"}, noTerminal())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -277,7 +277,7 @@ func TestAnExactNameOnAServerWithOnlyUnsupportedConfigsIsRefused(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"type":"githubProvider","id":"github"}]}`))
 	}))
 	t.Cleanup(srv.Close)
-	_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{server: srv.URL, authProvider: "github"}, noTerminal())
+	_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{caFlag: "--cacert", server: srv.URL, authProvider: "github"}, noTerminal())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)

@@ -102,7 +102,7 @@ func signInWith(t *testing.T, ctx context.Context, opts testrancher.Options, clu
 	log := &requestLog{}
 	opts.RequestHook = log.hook(opts.RequestHook)
 	f, srv := newTokenFacade(t, opts)
-	input := &loginInput{server: srv.URL, authProvider: "localProvider"}
+	input := &loginInput{caFlag: "--cacert", server: srv.URL, authProvider: "localProvider"}
 	si, err := signInForClusterToken(ctx, srv.Client(), input, cluster, p)
 	return f, log, si, err
 }
@@ -631,7 +631,7 @@ func TestSignInSharesOneCleanupBoundBetweenTheTwoDeletes(t *testing.T) {
 			}
 		}})
 		start := time.Now()
-		input := &loginInput{server: rancherOrigin, authProvider: "localProvider"}
+		input := &loginInput{caFlag: "--cacert", server: rancherOrigin, authProvider: "localProvider"}
 		_, err := signInForClusterToken(t.Context(), rt.client(), input, "c-test", localPrompter())
 		_, d := failureOf(t, err)
 		assert.Equal(t, ResultRevoked, clusterCleanup(t, d))
@@ -675,7 +675,7 @@ func TestSignInOverSAMLUsesTheKubeconfigTokenAsTheLoginToken(t *testing.T) {
 		srv := httptest.NewTestServer(t, f)
 		rt := hostTransport{hostOf(rancherOrigin): srv.Client().Transport}
 		p := &urlRecorder{handoffPrompter: newHandoffPrompter(func(id, key string) { f.DepositAuthToken(id, key) })}
-		input := &loginInput{server: rancherOrigin, authProvider: "oktaProvider"}
+		input := &loginInput{caFlag: "--cacert", server: rancherOrigin, authProvider: "oktaProvider"}
 		si, err := signInForClusterToken(t.Context(), rt.client(), input, cluster, p)
 		return f, log, si, p.loginURL(), err
 	}
