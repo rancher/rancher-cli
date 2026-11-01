@@ -93,7 +93,7 @@ func TestTheBothStoresErrorNamesTheWayOut(t *testing.T) {
 	withChange := Unpinned{Row: UnpinnedBoth, KeychainEntries: []string{"prod"}, FileEntries: []string{"staging"}, dir: dir, cfg: pending}
 	wce, ok := errorsAsClierr(withChange.Err())
 	require.True(t, ok)
-	require.ErrorContains(t, withChange.Err(), "a credential store change is unfinished; run "+clierr.Rancher+" config status to see it")
+	require.ErrorContains(t, withChange.Err(), "a credential store change is unfinished; see it with: "+clierr.Rancher+" config status")
 	assert.Equal(t, clierr.Rancher+" auth logout 'staging'", wce.Hint, "the logout is still what fixes it")
 
 	// While the record it names cannot be read, the logout would be

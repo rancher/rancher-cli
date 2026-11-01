@@ -359,7 +359,7 @@ func TestLoginCacertWithoutURLKnownNameIsValidationWithInterpolatedHint(t *testi
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, "rancher config update-server 'prod' --cacert '/etc/ca.pem'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config update-server 'prod' --cacert '/etc/ca.pem'", ce.Hint)
 }
 
 // TestLoginCacertWithoutURLUnknownNameIsNotFound asserts that the NOT_FOUND row
@@ -412,7 +412,7 @@ func TestLoginNoNameNoURLOneEntryNoPointerNeverSelectsImplicitly(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
-	assert.Equal(t, "rancher config use-server 'prod'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config use-server 'prod'", ce.Hint)
 
 	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
 	assert.Error(t, tokErr, "no auth flow ran")
@@ -758,7 +758,7 @@ func TestLoginDelegatedDifferentURLIsValidationBeforeAnyProbe(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, "server prod is registered at https://old.ex", ce.Message)
-	assert.Equal(t, "rancher config update-server 'prod' --url 'https://new.ex'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config update-server 'prod' --url 'https://new.ex'", ce.Hint)
 
 	cfg, cerr := config.Load(config.FilePath(dir))
 	require.NoError(t, cerr)
@@ -1784,7 +1784,7 @@ func TestLoginConflictAfterDerivedTokenRevokesAndReports(t *testing.T) {
 	ce, d := decodeLoginFailure(t, err)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Equal(t, clierr.CodeConflict, d.Primary.Code)
-	assert.Equal(t, "rancher auth login "+clierr.ShellQuote("prod"), ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth login 'prod'", ce.Hint)
 	assert.Equal(t, clierr.StageCommit, d.Stage)
 	assert.Equal(t, clierr.ConfigNotWritten, d.ConfigState)
 	assert.Equal(t, clierr.CredentialNotWritten, d.CredentialState)

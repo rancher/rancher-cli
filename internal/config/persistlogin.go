@@ -660,7 +660,7 @@ func revalidate(cfg *Config, in PersistLoginInput) string {
 	}
 	d := *in.Decision
 	if d.RequireSetting && !cfg.TokenReuse {
-		return "token reuse was turned off during the login (" + TokenReuseOffCommand + ")"
+		return "token reuse was turned off during the login"
 	}
 	return ""
 }

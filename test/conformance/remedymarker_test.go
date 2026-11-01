@@ -994,36 +994,14 @@ func applyExceptions(hits []remedyHit, check string, exceptions []remedyExceptio
 }
 
 const (
-	whyLoginPackage = "the details payloads of this package (LogoutAllPartialFailure) print the same commands and expand them through no MapText; marking the texts alone would print one command two ways"
 	whyRecoveryData = "also fills result data of other commands; the exec plugin marks it where it prints it (clierr.MarkRemedy)"
 	whyKubeconfig   = "written into the kubeconfig file, read later from any shell"
-	whyProviderMsg  = "the errors of this package are printed by the exec plugin too, whose remedy texts are checked in internal/token/remedyparse_test.go"
 )
 
 // remedyExceptions are the texts the checks report that stay as they are.
-// The login and token code, and the two clierr files its payloads print,
-// are recorded text by text; an added, a removed or a swapped text fails.
+// The token code, and the two clierr files its payloads print, are recorded
+// text by text; an added, a removed or a swapped text fails.
 var remedyExceptions = []remedyException{
-	{"internal/commands/auth/login.go", remedyCheckMarker, "rancher config update-server ", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "save it for this entry with: rancher config update-server ", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "to save the CA, run: rancher config update-server ", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "to replace it, run: rancher config update-server ", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "rancher config update-server %s --url %s", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "rancher config use-server ", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "; %s is already registered - sign in to it directly: rancher auth login %s", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "reading stored CA for server entry %q: %s; restore the file, or run: rancher config delete-server %s", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "rancher auth login %s", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "the current server is not set - switch to it with: rancher config use-server %s", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "the current server remains %s - switch to %s with: rancher config use-server %s", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, " (server entry %q may have changed since registration; check it with: rancher config list-servers)", false, whyLoginPackage, ""},
-	{"internal/commands/auth/login.go", remedyCheckMarker, "; undo the registration with: rancher config delete-server %s", false, whyLoginPackage, ""},
-	{"internal/commands/auth/logintarget.go", remedyCheckMarker, "rancher config update-server %s %s", false, whyLoginPackage, ""},
-	{"internal/commands/auth/logintarget.go", remedyCheckMarker, "--cacert without --url and without a name has no entry to attach trust to; pass a name to change an existing entry's trust with rancher config update-server", false, whyLoginPackage, ""},
-	{"internal/commands/auth/logintarget.go", remedyCheckMarker, "no servers configured; add one with: rancher auth login --url <url>", false, whyLoginPackage, ""},
-	{"internal/commands/auth/logintarget.go", remedyCheckMarker, "a server name cannot be derived from an IPv6 address; pass an explicit name: rancher auth login <name> --url <url>", false, whyLoginPackage, ""},
-	{"internal/commands/auth/logout.go", remedyCheckMarker, "specify a server name or --all, not both (e.g. rancher auth logout prod, or rancher auth logout --all)", false, whyLoginPackage, ""},
-	{"internal/commands/auth/logout.go", remedyCheckMarker, "no current server; specify a server name or --all (e.g. rancher auth logout prod, or rancher auth logout --all)", false, whyLoginPackage, ""},
-	{"internal/commands/auth/authcheck.go", remedyCheckMarker, "token metadata unavailable: stored token not found on the server (revoked or rotated) - re-authenticate with rancher auth login", false, whyLoginPackage, ""},
 	{"internal/token/deletetoken.go", remedyCheckMarker, "specify either a credential name or --all, not both (e.g. rancher auth delete-token prod, or rancher auth delete-token --all)", false, "auth delete-token's own usage error; its two examples show the forms of the command that is running", ""},
 	{"internal/token/entry.go", remedyCheckMarker, "more than one server entry for %s has a stored login (%s) and the legacy rancher token command cannot name one; regenerate the kubeconfig from the entry you want with %s, and replace this kubeconfig with the one it prints", false, "names the command whose kubeconfig this is; it runs nothing", ""},
 	{"internal/clierr/recovery.go", remedyCheckMarker, "rancher auth login ", false, "RecoverySequence " + whyRecoveryData, ""},
@@ -1035,7 +1013,6 @@ var remedyExceptions = []remedyException{
 	{"internal/clierr/loginfailure.go", remedyCheckMarker, "rancher delete token ", false, "RecoveryCommands " + whyRecoveryData, ""},
 	{"internal/engine/kubeconfig/records.go", remedyCheckMarker, " set: rancher", false, whyKubeconfig, ""},
 	{"internal/engine/kubeconfig/records.go", remedyCheckMarker, "rancher", false, whyKubeconfig, ""},
-	{"internal/client/provider/client.go", remedyCheckWord, "token management: auth list-tokens; kubeconfig: the default exec-credential mode", false, whyProviderMsg, "auth list-tokens"},
 	{"internal/testrancher/fidelity/probes.go", remedyCheckWord, "delete user ", false, "a fidelity probe's step name, naming the request the step sends; never printed to a user", "delete user"},
 
 	{"internal/engine/extres/kubeconfig.go", remedyCheckMarker, "# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n", false, "a header written into the kubeconfig file, read later from any shell", ""},

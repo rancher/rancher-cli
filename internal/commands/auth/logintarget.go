@@ -52,7 +52,7 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 			if _, ok := cfg.Servers[name]; ok {
 				return loginTarget{}, clierr.New(clierr.CodeValidation,
 					fmt.Sprintf("--cacert without --url changes trust for %q, which belongs to registration", name)).
-					WithHint(fmt.Sprintf("rancher config update-server %s %s", clierr.ShellQuote(name), register.CAUpdateArg(cacert)))
+					WithHint(clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert "+clierr.ShellQuote(cacert), name))
 			}
 			return loginTarget{}, loginUnknownNameError(cfg, name)
 		}
@@ -67,7 +67,7 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 		// Matches the --cacert-without-url matrix's absent-name row: body
 		// guidance only, no machine hint (neither value is known here).
 		return loginTarget{}, clierr.New(clierr.CodeValidation,
-			"--cacert without --url and without a name has no entry to attach trust to; pass a name to change an existing entry's trust with rancher config update-server")
+			"--cacert without --url and without a name has no entry to attach trust to; pass a name to change an existing entry's trust with: "+clierr.Rancher+" config update-server <name> --cacert <file>")
 	}
 
 	cur, srv, cerr := cfg.CurrentServerEntry()
@@ -79,7 +79,7 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 	switch len(names) {
 	case 0:
 		return loginTarget{}, clierr.New(clierr.CodeNotLoggedIn,
-			"no servers configured; add one with: rancher auth login --url <url>")
+			"no servers configured; add one with: "+clierr.Rancher+" auth login --url <url>")
 	case 1:
 		// Login never selects implicitly: a success here would authenticate
 		// an entry the pointer still doesn't name, so the next command
@@ -136,7 +136,7 @@ func urlLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarget, 
 		// derivation refuses it instead of coining one.
 		if strings.Contains(name, ":") {
 			return loginTarget{}, clierr.New(clierr.CodeValidation,
-				"a server name cannot be derived from an IPv6 address; pass an explicit name: rancher auth login <name> --url <url>")
+				"a server name cannot be derived from an IPv6 address; pass an explicit name: "+clierr.Rancher+" auth login <name> --url <url>")
 		}
 		// With colons refused above, a derived name cannot land in the
 		// legacy: or user-id: namespace, but a host can begin with

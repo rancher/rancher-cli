@@ -315,8 +315,8 @@ func ClearFinishedTransition(dir string, cfg *Config) {
 // sits beside a remedy that still works; the second replaces it as the
 // hint, since that remedy is a credential command the record refuses.
 var (
-	unfinishedChangeNote = "a credential store change is unfinished; run " + StatusCommand + " to see it"
-	unreadableChangeNote = "the credential store change record cannot be read; every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + StatusCommand + " to see it"
+	unfinishedChangeNote = "a credential store change is unfinished; see it with: " + StatusCommand
+	unreadableChangeNote = "the credential store change record cannot be read; every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; see it with: " + StatusCommand
 )
 
 // UnfinishedChange is what an error with a remedy of its own - "not

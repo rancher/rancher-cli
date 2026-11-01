@@ -173,7 +173,7 @@ func TestAStoreChangeFromAHelperCountsEveryOtherEntry(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorContains(t, err, "the credential helper fake may answer for qa, staging")
 	require.ErrorContains(t, err, "use a different --config for the new store")
-	require.ErrorContains(t, err, clierr.Rancher+" config delete-server <name>")
+	require.ErrorContains(t, err, "or remove them with: "+DeleteServerCommand+" 'qa'; "+DeleteServerCommand+" 'staging'; then run this command again")
 	assert.Empty(t, ce.Hint, "two ways out, neither of them a logout")
 
 	alone := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
@@ -243,7 +243,7 @@ func TestAStoreChangeIntoAHelperCountsEveryOtherEntry(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorContains(t, err, "the credential helper fake may answer for qa, staging: after the change each of them would be served a credential it never logged in with")
 	require.ErrorContains(t, err, "use a different --config for the helper")
-	require.ErrorContains(t, err, clierr.Rancher+" config delete-server <name>")
+	require.ErrorContains(t, err, "or remove them with: "+DeleteServerCommand+" 'qa'; "+DeleteServerCommand+" 'staging'; then run this command again")
 	assert.Empty(t, ce.Hint, "two ways out, neither of them a logout")
 
 	alone := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}

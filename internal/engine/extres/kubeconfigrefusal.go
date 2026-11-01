@@ -36,9 +36,13 @@ const kubeconfigTokenLookupText = "kubeconfigs.ext.cattle.io is forbidden: error
 // cannot be read or parsed (a dev build or a bare "head"; a release branch
 // head such as v2.14-head parses), and a factory that cannot report it.
 // v2.15.0 alpha builds before the fix report as 2.15.0 and keep the RBAC
-// error. The refusal carries the login command as its hint only when a stored
-// login that auth login accepts is in use. The server's text stays in the
-// cause and is not printed, as RefuseUnsupportedWorkflow does.
+// error. The refusal carries no hint: its message ends with the login command
+// that reads an API token from standard input, written only when a stored
+// login that auth login accepts is in use, and otherwise names
+// RANCHER_CLI_TOKEN. The sentence that holds the command is its own clause,
+// so that a message cut for an unprintable config directory keeps the version
+// the feature needs. The server's text stays in the cause and is not printed,
+// as RefuseUnsupportedWorkflow does.
 //
 // The call after the real create is reachable only when the token vanishes
 // between the dry-run and the create; the dry-run reaches the same lookup
@@ -60,23 +64,16 @@ func refuseUnsupportedTokenLookup(ctx context.Context, clients engine.ClusterCli
 		return err
 	}
 	server = strings.TrimSpace(server)
-	var hint string
+	remedy := ", or set RANCHER_CLI_TOKEN to an API token"
 	if namer, ok := clients.(engine.StoredLoginNamer); ok {
-		if entry, nerr := namer.StoredLoginName(); nerr == nil && entry != "" {
-			// "" for a plugin login entry, which auth login refuses.
-			if hint = config.LoginHintFor(entry); hint != "" {
-				hint += " --token-stdin"
-			}
+		// A plugin login entry is left out: auth login refuses its name.
+		if entry, nerr := namer.StoredLoginName(); nerr == nil && entry != "" && !config.IsExecLoginEntryName(entry) {
+			remedy = "; or give an API token: pipe id:secret to " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --token-stdin", entry)
 		}
 	}
-	remedy := "set RANCHER_CLI_TOKEN to an API token"
-	if hint != "" {
-		remedy = "an API token (pipe id:secret to " + hint + ")"
-	}
 	return clierr.New(clierr.CodeCapabilityUnsupported,
-		fmt.Sprintf("Rancher %s cannot create a kubeconfig with the token this command used; use Rancher v%s or later, or %s",
+		fmt.Sprintf("Rancher %s cannot create a kubeconfig with the token this command used; use Rancher v%s or later%s",
 			server, kubeconfigTokenFloor, remedy)).
-		WithHint(hint).
 		WithDetails(clierr.CapabilityUnsupportedDetails{Feature: "create kubeconfig", Server: server}).
 		WithCause(err)
 }

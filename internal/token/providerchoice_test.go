@@ -177,7 +177,7 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			candidates: []string{"okta"},
 			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to ",
 			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
-			tail:       "; a credential store change is unfinished; run " + clierr.Rancher + " config status to see it",
+			tail:       "; a credential store change is unfinished; see it with: " + clierr.Rancher + " config status",
 		},
 	} {
 		for _, lane := range choiceLanes {

@@ -419,7 +419,9 @@ var errV3TokenNotFound = errors.New("v3 token not found on the server")
 // record is absent - shared by the v3 and ext NotFound branches of
 // tokenWarning so the two messages cannot drift independently as the probe
 // grows.
-const rotatedTokenAdvisory = "token metadata unavailable: stored token not found on the server (revoked or rotated) - re-authenticate with rancher auth login"
+func rotatedTokenAdvisory() string {
+	return "token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate with: " + config.LoginCommand
+}
 
 // probeToken runs the token probe for the EFFECTIVE token (eff.Token -
 // never the stored credential directly, so a RANCHER_CLI_TOKEN override is
@@ -507,10 +509,10 @@ func tokenWarning(err error, supported *bool) string {
 		return ""
 	}
 	if errors.Is(err, errV3TokenNotFound) {
-		return rotatedTokenAdvisory
+		return rotatedTokenAdvisory()
 	}
 	if clierr.IsNotFound(err) && supported != nil && *supported {
-		return rotatedTokenAdvisory
+		return rotatedTokenAdvisory()
 	}
 	return degradeWarning("token", err)
 }

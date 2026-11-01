@@ -945,7 +945,8 @@ rancher oidc-client rotate-secret my-app --apply --yes
   `CAPABILITY_UNSUPPORTED` (exit `11`) when the token it sends is one the CLI
   created for a login or an ext token in `RANCHER_CLI_TOKEN`; use an API
   token (`rancher auth login <name> --token-stdin`, or `RANCHER_CLI_TOKEN`);
-  the error has a `hint` (the login command) only when the stored login's
-  entry accepts `auth login` (a plugin login entry does not).
+  the error has no `hint`, and its message names the login command only when
+  the stored login's entry accepts `auth login` (a plugin login entry does
+  not).
 - Migrating from the legacy `rancher` CLI? `MIGRATING.md` in the release maps
   every old command to its replacement.

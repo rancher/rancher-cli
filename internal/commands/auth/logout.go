@@ -66,7 +66,7 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	}
 	if all && name != "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"specify a server name or --all, not both (e.g. rancher auth logout prod, or rancher auth logout --all)")
+			"specify a server name or --all, not both; log out of one server with: "+clierr.Rancher+" auth logout <name>; or of all with: "+clierr.Rancher+" auth logout --all")
 	}
 
 	var (
@@ -333,7 +333,7 @@ func logoutTargets(dir string, cfg *config.Config, all bool, name string) ([]str
 		cur, _, cerr := cfg.CurrentServerEntry()
 		if cerr != nil {
 			return nil, clierr.New(clierr.CodeNotLoggedIn,
-				"no current server; specify a server name or --all (e.g. rancher auth logout prod, or rancher auth logout --all)")
+				"no current server; specify a server name or --all; log out of one server with: "+clierr.Rancher+" auth logout <name>; or of all with: "+clierr.Rancher+" auth logout --all")
 		}
 		return []string{cur}, nil
 	}

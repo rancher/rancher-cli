@@ -112,21 +112,20 @@ func loginVariableRemedy(urlPath bool, name string) string {
 			config.EnvCACert + ", or set it to the server's CA"
 	}
 	return "the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; to save a CA for this entry, run: " +
-		"rancher config update-server " + clierr.ShellQuote(name) + " --cacert <file>"
+		clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", name)
 }
 
 // loginSaveCARemedy is the remedy of an unknown-authority failure of a
 // plain login's verify step: the CA is the one the entry saves, so the
 // entry is where to change it.
 func loginSaveCARemedy(name string) string {
-	return "save it for this entry with: rancher config update-server " + clierr.ShellQuote(name) + " --cacert <file>"
+	return "save it for this entry with: " + clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", name)
 }
 
 // verifyTLSRemedy words a certificate failure of the verify step. The
 // --url path takes its CA from a flag, a prompt or the variable and may be
 // creating the entry; the plain path signs in to an existing entry, whose
-// saved URL and CA are what to change. Login is not a remedy-scan command,
-// so every clause is plain text.
+// saved URL and CA are what to change.
 func verifyTLSRemedy(delegated, viaVariable bool, name string) tlstrust.Remedy {
 	if delegated {
 		if viaVariable {
@@ -179,14 +178,15 @@ type connectionCA struct {
 // the saved CA, or with none.
 func variableNotice(name, savedSelector string) string {
 	q := clierr.ShellQuote(name)
+	save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", name)
 	if savedSelector == "" {
 		return "server entry " + q + " has no saved CA and this login used " + config.EnvCACert +
 			"; commands run without that variable will not trust the server (logout uses the variable for this entry); " +
-			"to save the CA, run: rancher config update-server " + q + " --cacert <file>"
+			"to save the CA, run: " + save
 	}
 	return "server entry " + q + " keeps its saved CA, which differs from " + config.EnvCACert +
 		" that this login used; commands run without that variable, and logout, use the saved CA, and fail if it does not fit the server; " +
-		"to replace it, run: rancher config update-server " + q + " --cacert <file>"
+		"to replace it, run: " + save
 }
 
 // replacedUserWarning is the warning of a login that leaves a server entry
@@ -305,7 +305,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 // the message body instead. existingURL is the entry's stored URL; a URL that
 // cannot be used is never shown, and the refusal says so instead.
 func nameCollisionError(name, existingURL, canonical string, derived bool) *clierr.Error {
-	update := fmt.Sprintf("rancher config update-server %s --url %s", clierr.ShellQuote(name), clierr.ShellQuote(canonical))
+	update := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(canonical), name)
 	if problem := config.CheckServerURL(existingURL); problem != nil {
 		if derived {
 			return clierr.New(clierr.CodeValidation, fmt.Sprintf(
@@ -328,7 +328,7 @@ func nameCollisionError(name, existingURL, canonical string, derived bool) *clie
 // use-server <name>` command - the pointer-switch hint every no-pointer
 // login outcome below emits for a concrete name.
 func configUseServerHint(name string) string {
-	return "rancher config use-server " + clierr.ShellQuote(name)
+	return clierr.Rancher + " config use-server" + clierr.ShellQuoteArgs("", name)
 }
 
 // loginUnknownNameError builds NOT_FOUND for an explicit name absent from
@@ -352,7 +352,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 	probe, err := register.PrepareConnecting(ctx, l.tlsPreflight, canonical, caSelector, variableCA)
 	switch {
 	case err != nil && viaVariable:
-		// The "is already registered - sign in to it directly" pointer is
+		// The "is already registered; sign in to it directly" pointer is
 		// dropped for every kind of failure here, a known entry included:
 		// it points at the plain login, which connects with the same
 		// variable and fails the same way.
@@ -398,7 +398,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		// existing entry.
 		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeTLSTrust {
 			err = ce.WithMessage(ce.Message +
-				fmt.Sprintf("; %s is already registered - sign in to it directly: rancher auth login %s", clierr.ShellQuote(name), clierr.ShellQuote(name))).
+				fmt.Sprintf("; %s is already registered; sign in to it directly: %s", clierr.ShellQuote(name), config.LoginCommand+clierr.ShellQuoteArgs("", name))).
 				WithHint(config.LoginHintFor(name))
 		}
 	}
@@ -496,8 +496,8 @@ func (l loginCmd) authenticateAndStore(
 		if raerr != nil {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf(
-					"reading stored CA for server entry %q: %s; restore the file, or run: rancher config delete-server %s",
-					name, config.CAFileProblem(raerr), clierr.ShellQuote(name)))
+					"reading stored CA for server entry %q: %s; restore the file, or run: %s",
+					name, config.CAFileProblem(raerr), config.DeleteServerCommand+clierr.ShellQuoteArgs("", name)))
 		}
 		caBytes, connBytes = b, b
 		if conn.variable != "" {
@@ -647,7 +647,7 @@ func (l loginCmd) authenticateAndStore(
 			if !register.SnapshotMatchesCurrent(cfg, snap) {
 				return clierr.New(clierr.CodeConflict,
 					fmt.Sprintf("server entry %q changed during login", name)).
-					WithHint(fmt.Sprintf("rancher auth login %s", clierr.ShellQuote(name)))
+					WithHint(config.LoginHintFor(name))
 			}
 			return nil
 		},
@@ -741,10 +741,10 @@ func (l loginCmd) authenticateAndStore(
 	// next command still operates against a different server.
 	switch {
 	case !currentValid:
-		lines = append(lines, fmt.Sprintf("the current server is not set - switch to it with: rancher config use-server %s", clierr.ShellQuote(name)))
+		lines = append(lines, "the current server is not set; switch to it with: "+configUseServerHint(name))
 	case currentServer != name:
-		lines = append(lines, fmt.Sprintf("the current server remains %s - switch to %s with: rancher config use-server %s",
-			clierr.ShellQuote(currentServer), clierr.ShellQuote(name), clierr.ShellQuote(name)))
+		lines = append(lines, fmt.Sprintf("the current server remains %s; switch to %s with: %s",
+			clierr.ShellQuote(currentServer), clierr.ShellQuote(name), configUseServerHint(name)))
 	}
 	shownURL := config.DisplayServerURL(serverURL)
 	headline := fmt.Sprintf("logged in to %s (%s)", name, shownURL)
@@ -772,15 +772,15 @@ func decorateDelegatedAuthFailure(ctx context.Context, dir string, authErr error
 
 // decorateDelegatedVerifyFailure is decorateDelegatedAuthFailure for the
 // verify round-trip specifically: an orphaned registration is the bigger
-// problem, so the undo-the-registration guidance still owns the message
-// body and the hint, but --no-verify is a real way out of a verify failure
-// (unlike a plain auth failure, where it would just fail again the same
-// way), so it is folded into the body as a secondary option instead of
-// fighting the undo guidance for the one hint slot. A TLS_TRUST failure gets
-// no --no-verify option: a token stored for a server whose certificate fails
-// helps no later command.
+// problem, so the undo-the-registration guidance still owns the hint, but
+// --no-verify is a real way out of a verify failure (unlike a plain auth
+// failure, where it would just fail again the same way), so the message names
+// it as the first alternative to the undo instead of fighting the undo
+// guidance for the one hint slot. A TLS_TRUST failure gets no --no-verify
+// option: a token stored for a server whose certificate fails helps no later
+// command.
 func decorateDelegatedVerifyFailure(ctx context.Context, dir string, verifyErr error, snap register.AuthSnapshot) error {
-	extra := ", or bypass verification with --no-verify"
+	extra := "bypass verification with --no-verify"
 	if ce, ok := errors.AsType[*clierr.Error](verifyErr); ok && ce.Code == clierr.CodeTLSTrust {
 		extra = ""
 	}
@@ -791,10 +791,11 @@ func decorateDelegatedVerifyFailure(ctx context.Context, dir string, verifyErr e
 // and decorateDelegatedVerifyFailure: it rechecks CURRENT state before
 // deciding whether the retry hint is still the undo-the-registration command
 // (entry unchanged) or has to fall back to a plain "check it" pointer (entry
-// changed or vanished since registration), then appends extra - a caller's
-// own secondary-option sentence, or "" when there is none - to the message
-// body either way. A failure that is not a structured error, or a context
-// already cancelled, skips the recheck and returns failure unchanged.
+// changed or vanished since registration). The message is the failure's own
+// text, then extra - a caller's own alternative to the closing remedy, or ""
+// when there is none - and the closing remedy last, so that the command ends
+// the message. A failure that is not a structured error, or a context already
+// cancelled, skips the recheck and returns failure unchanged.
 func decorateDelegatedFailure(ctx context.Context, dir string, failure error, snap register.AuthSnapshot, extra string) error {
 	ce, ok := errors.AsType[*clierr.Error](failure)
 	if !ok || ctx.Err() != nil {
@@ -813,12 +814,18 @@ func decorateDelegatedFailure(ctx context.Context, dir string, failure error, sn
 		return nil
 	})
 	if lockErr != nil || !current {
-		return ce.WithMessage(ce.Message +
-			fmt.Sprintf(" (server entry %q may have changed since registration; check it with: rancher config list-servers)", snap.Name) + extra).
+		if extra != "" {
+			extra = "; " + extra
+		}
+		return ce.WithMessage(ce.Message + extra +
+			fmt.Sprintf("; server entry %q may have changed since registration; check it with: ", snap.Name) + clierr.Rancher + " config list-servers").
 			WithHint("")
 	}
-	return ce.WithMessage(ce.Message +
-		fmt.Sprintf("; undo the registration with: rancher config delete-server %s", clierr.ShellQuote(snap.Name)) + extra).
+	undo := "; undo the registration with: "
+	if extra != "" {
+		undo = "; " + extra + "; or undo the registration with: "
+	}
+	return ce.WithMessage(ce.Message + undo + config.DeleteServerCommand + clierr.ShellQuoteArgs("", snap.Name)).
 		WithHint(config.LoginHintFor(snap.Name))
 }
 

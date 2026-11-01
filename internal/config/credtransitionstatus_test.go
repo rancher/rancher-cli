@@ -148,7 +148,7 @@ func TestEffectiveCarriesTheUnfinishedChangeNote(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, eff.Token)
 	assert.Zero(t, ops["manifeststat"], "no change record is read to find a missing credential")
-	assert.Equal(t, UnfinishedChange{Note: "a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"}, eff.UnfinishedChange())
+	assert.Equal(t, UnfinishedChange{Note: "a credential store change is unfinished; see it with: " + clierr.Rancher + " config status"}, eff.UnfinishedChange())
 
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-tok"))
 	eff, err = loaded.Effective(NewFileStore(dir))

@@ -526,7 +526,7 @@ func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 	require.NoError(t, err, "a token-probe failure must never fail the check")
 	data := res.Data.(map[string]any)
 	assert.Nil(t, data["token"])
-	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated) - re-authenticate with rancher auth login")
+	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate with: "+clierr.Rancher+" auth login")
 }
 
 // TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes asserts the
@@ -645,7 +645,7 @@ func TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning(t *testing.T) {
 	res, err := cmd.Execute(t.Context(), cmdtest.Input{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Nil(t, res.Data.(map[string]any)["token"])
-	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated) - re-authenticate with rancher auth login")
+	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate with: "+clierr.Rancher+" auth login")
 }
 
 // TestAuthCheckExtTokenProbeUnchanged asserts that an ext/ effective token still
@@ -784,7 +784,7 @@ func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
 	stdout, stderr := out.String(), errBuf.String()
 	assert.Contains(t, stdout, "AUTH STATUS")
 	assert.NotContains(t, stdout, "# warning:", "warnings must never appear on stdout")
-	assert.Contains(t, stderr, "# warning: token metadata unavailable: stored token not found on the server (revoked or rotated) - re-authenticate with rancher auth login")
+	assert.Contains(t, stderr, "# warning: token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate with: rancher auth login")
 	assert.NotContains(t, stderr, "AUTH STATUS", "text view must never appear on stderr")
 }
 

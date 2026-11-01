@@ -170,7 +170,7 @@ func (r *dynamicClient) resolveVersion(ctx context.Context, gvr schema.GroupVers
 		// it unset so a later call retries once the group reports a version.
 		if g.PreferredVersion.Version == "" {
 			return gvr, clierr.New(clierr.CodeNotFound,
-				fmt.Sprintf("API group %q has no preferred version; the server may be mid-upgrade; retry, or run rancher schema <kind> to check API requirements", gvr.Group))
+				fmt.Sprintf("API group %q has no preferred version; the server may be mid-upgrade; retry, or check API requirements with: rancher schema <kind>", gvr.Group))
 		}
 		r.mu.Lock()
 		r.versions[gvr.Group] = g.PreferredVersion.Version
@@ -181,10 +181,10 @@ func (r *dynamicClient) resolveVersion(ctx context.Context, gvr schema.GroupVers
 	if gvr.Group == "ext.cattle.io" {
 		return gvr, clierr.New(clierr.CodeNotFound,
 			fmt.Sprintf("this Rancher does not serve ext.cattle.io (requires Rancher >= %s, the supported minimum); "+
-				"token management: auth list-tokens; kubeconfig: the default exec-credential mode", config.MinRancherVersion))
+				"token management: %s; kubeconfig: the default exec-credential mode", config.MinRancherVersion, clierr.Rancher+" auth list-tokens"))
 	}
 	return gvr, clierr.New(clierr.CodeNotFound,
-		fmt.Sprintf("API group %q not served by the cluster; the kind may need a newer server version or an optional feature; run rancher schema <kind> for requirements", gvr.Group))
+		fmt.Sprintf("API group %q not served by the cluster; the kind may need a newer server version or an optional feature; check the requirements with: rancher schema <kind>", gvr.Group))
 }
 
 // curateNotFound enriches a hint-less NOT_FOUND error with the curated

@@ -25,10 +25,8 @@ import (
 // connection's TLSRemedy zero (each path, each variant); add the --no-verify
 // option to either path's TLS_TRUST error.
 func TestLoginVerifyWordsACertificateFailureForItsPath(t *testing.T) {
-	const (
-		noVerify         = "--no-verify"
-		registrationUndo = "; undo the registration with: rancher config delete-server 'prod'"
-	)
+	const noVerify = "--no-verify"
+	registrationUndo := "; undo the registration with: " + clierr.Rancher + " config delete-server 'prod'"
 	for _, tc := range []struct {
 		name     string
 		urlPath  bool
@@ -39,9 +37,9 @@ func TestLoginVerifyWordsACertificateFailureForItsPath(t *testing.T) {
 		{name: "--url with the variable", urlPath: true, variable: true,
 			remedy: "; the CA came from RANCHER_CLI_CACERT - pass --cacert <file> to this login, or unset RANCHER_CLI_CACERT, or set it to the server's CA"},
 		{name: "plain login of an entry",
-			remedy: "; save it for this entry with: rancher config update-server 'prod' --cacert <file>"},
+			remedy: "; save it for this entry with: " + clierr.Rancher + " config update-server 'prod' --cacert <file>"},
 		{name: "plain login of an entry with the variable", variable: true,
-			remedy: "; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for this entry, run: rancher config update-server 'prod' --cacert <file>"},
+			remedy: "; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for this entry, run: " + clierr.Rancher + " config update-server 'prod' --cacert <file>"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(config.EnvURL, "")
@@ -112,9 +110,9 @@ func TestVerifyTLSRemedyWordsEachLoginRow(t *testing.T) {
 		{"--url with the variable", true, true,
 			tlstrust.Remedy{CA: "; the CA came from RANCHER_CLI_CACERT - pass --cacert <file> to this login, or unset RANCHER_CLI_CACERT, or set it to the server's CA"}},
 		{"plain login of an entry", false, false,
-			plain("; save it for this entry with: rancher config update-server 'prod' --cacert <file>")},
+			plain("; save it for this entry with: " + clierr.Rancher + " config update-server 'prod' --cacert <file>")},
 		{"plain login of an entry with the variable", false, true,
-			plain("; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for this entry, run: rancher config update-server 'prod' --cacert <file>")},
+			plain("; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for this entry, run: " + clierr.Rancher + " config update-server 'prod' --cacert <file>")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, verifyTLSRemedy(tc.delegated, tc.viaVariable, "prod"))

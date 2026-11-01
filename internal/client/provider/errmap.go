@@ -34,7 +34,7 @@ func mapRequestErr(err error, q *clierr.Request) error {
 		// message names both; which cluster to inspect is unknown here, so
 		// no hint names one.
 		return clierr.Retryable(clierr.CodeGeneric,
-			err.Error()+" - the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected (check with: "+InspectClusterRemedy+")")
+			err.Error()+" - the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected; check the cluster with: "+InspectClusterRemedy)
 	}
 	return clierr.From(err)
 }

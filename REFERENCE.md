@@ -1372,10 +1372,13 @@ header of a created kubeconfig file and the text that says how to create a
 token or kubeconfig again name the delete that way. A remedy command ends
 its sentence: no comma, period, parenthesis or word follows its last
 argument. A name that starts with `-` follows the command's flags and `--`,
-and is read as a name. These rules hold for every text outside the login,
-token and exec plugin code. Those texts keep their own forms: some have words
-after a command, name a dashed entry without `--`, or create a kubeconfig with
-`--apply --yes`.
+and is read as a name. These rules hold for every text outside the token code
+and the exec plugin, the details of a failed `auth logout` and the `recovery`
+commands of `config delete-server`, `config update-server`, `auth logout` and
+`auth delete-token`, the `kubeconfig` records, and the advice to pass a CA file
+for an entry whose CA certificate is stored inline. Those texts keep their own
+forms: some have words after a command, name a dashed entry without `--`, or
+create a kubeconfig with `--apply --yes`.
 
 A remedy command in an error's message, hint, warnings or details, in the
 warnings of a successful run and in the prompter's notices names `--config`
@@ -1389,8 +1392,8 @@ directory is the default and nothing else says otherwise prints no
 `--config`. Result text, the summary line, the dry-run preview and the json and
 yaml output, result data included, name the directory like the other channels;
 the text of `rancher logs`, table, wide, name and template output, the
-messages, hints and warnings of `auth login`, `auth logout`, `auth status` and
-`auth delete-token`, and the `recovery` commands in `notRevoked` of `config
+messages, hints and warnings of `auth delete-token`, the details of a failed
+`auth logout`, and the `recovery` commands in `notRevoked` of `config
 delete-server`, `config update-server`, `auth logout` and `auth delete-token`
 print remedy commands without it. Errors rendered before the directory is
 resolved (an unknown command or flag, a flag value that is another flag)
@@ -1464,9 +1467,9 @@ One command refuses on a server below a named version. On Rancher before
 token in `RANCHER_CLI_TOKEN`) ends in `CAPABILITY_UNSUPPORTED` (exit `11`),
 names Rancher 2.15 and the remedy: log in with an API token
 (`rancher auth login <name> --token-stdin`) or set `RANCHER_CLI_TOKEN` to one.
-The error carries the login command as its hint only when the stored login's
-server entry accepts `rancher auth login` (a plugin login entry does not);
-otherwise the message names `RANCHER_CLI_TOKEN`. A server whose version
+The error has no hint. Its message ends with the login command only when the
+stored login's server entry accepts `rancher auth login` (a plugin login entry
+does not); otherwise the message names `RANCHER_CLI_TOKEN`. A server whose version
 cannot be read, or that reports no version number, keeps the server's own
 error.
 

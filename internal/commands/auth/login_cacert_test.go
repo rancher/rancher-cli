@@ -45,13 +45,13 @@ func plainLoginInput(name string) cmdtest.Input {
 func noCANotice(name string) string {
 	return "server entry '" + name + "' has no saved CA and this login used RANCHER_CLI_CACERT; " +
 		"commands run without that variable will not trust the server (logout uses the variable for this entry); " +
-		"to save the CA, run: rancher config update-server '" + name + "' --cacert <file>"
+		"to save the CA, run: " + clierr.Rancher + " config update-server '" + name + "' --cacert <file>"
 }
 
 func differentCANotice(name string) string {
 	return "server entry '" + name + "' keeps its saved CA, which differs from RANCHER_CLI_CACERT that this login used; " +
 		"commands run without that variable, and logout, use the saved CA, and fail if it does not fit the server; " +
-		"to replace it, run: rancher config update-server '" + name + "' --cacert <file>"
+		"to replace it, run: " + clierr.Rancher + " config update-server '" + name + "' --cacert <file>"
 }
 
 func hasNotice(res runtime.Result, text string) bool {
@@ -353,7 +353,7 @@ func TestLoginUnknownAuthorityUnderTheVariableNamesTheVariable(t *testing.T) {
 		{"--url, known entry", true, func() cmdtest.Input { return urlLoginInput("prod", url) },
 			"the CA came from RANCHER_CLI_CACERT - pass --cacert <file> to this login, or unset RANCHER_CLI_CACERT, or set it to the server's CA"},
 		{"plain", true, func() cmdtest.Input { return plainLoginInput("prod") },
-			"the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for this entry, run: rancher config update-server 'prod' --cacert <file>"},
+			"the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for this entry, run: " + clierr.Rancher + " config update-server 'prod' --cacert <file>"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, store := cmdtest.FilePolicyDir(t)

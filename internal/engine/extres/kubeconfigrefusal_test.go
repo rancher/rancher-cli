@@ -121,8 +121,8 @@ func TestRefuseUnsupportedTokenLookupRows(t *testing.T) {
 			assert.Equal(t, 11, ce.ExitCode())
 			assert.Contains(t, ce.Message, "Rancher "+tt.version+" ")
 			assert.Contains(t, ce.Message, "use Rancher v2.15 or later")
-			assert.Equal(t, "rancher auth login 'prod' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
-			assert.True(t, clierr.HasRemedy(ce.Hint), "the login command is a remedy command")
+			assert.Empty(t, ce.Hint)
+			assert.True(t, clierr.HasRemedy(ce.Message), "the login command is a remedy command")
 			assert.Equal(t, clierr.CapabilityUnsupportedDetails{Feature: "create kubeconfig", Server: tt.version}, ce.Details)
 			status, ok := clierr.HTTPStatus(got)
 			assert.True(t, ok, "the 403 stays readable as the cause")
@@ -131,20 +131,28 @@ func TestRefuseUnsupportedTokenLookupRows(t *testing.T) {
 	}
 }
 
-// TestRefuseUnsupportedTokenLookupMessageAndHint asserts the exact texts for
-// a stored login: the hint is the one login command, and the message holds
-// the same command so it reads whole when the hint is dropped.
-func TestRefuseUnsupportedTokenLookupMessageAndHint(t *testing.T) {
+// TestRefuseUnsupportedTokenLookupMessageHoldsTheLoginCommand asserts the
+// exact message for a stored login: it ends with the one login command that
+// reads the token from standard input, the refusal has no hint, and the
+// command names the directory when the invocation has one. A name that starts
+// with a dash is written after "--".
+func TestRefuseUnsupportedTokenLookupMessageHoldsTheLoginCommand(t *testing.T) {
 	t.Parallel()
-	var asks int
-	clients := versionFactory{c: &fakeClient{}, version: "v2.14.5", login: "prod's", versionAsks: &asks}
-	ce := refuseUnsupportedTokenLookup(t.Context(), clients, lookupForbidden(t)).(*clierr.Error)
-	const command = `rancher auth login 'prod'\''s' --token-stdin`
-	assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or an API token (pipe id:secret to "+command+")",
-		clierr.ExpandRemedies(ce.Message, ""))
-	assert.Equal(t, command, clierr.ExpandRemedies(ce.Hint, ""))
-	assert.Contains(t, ce.Message, ce.Hint, "the message names the same command, marker included")
-	assert.Equal(t, strings.Replace(command, "rancher", "rancher --config '/d'", 1), clierr.ExpandRemedies(ce.Hint, " --config '/d'"))
+	const lead = "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later; or give an API token: pipe id:secret to "
+	for _, tc := range []struct {
+		login   string
+		command string
+	}{
+		{"prod's", `rancher auth login 'prod'\''s' --token-stdin`},
+		{"-x", `rancher auth login --token-stdin -- '-x'`},
+	} {
+		var asks int
+		clients := versionFactory{c: &fakeClient{}, version: "v2.14.5", login: tc.login, versionAsks: &asks}
+		ce := refuseUnsupportedTokenLookup(t.Context(), clients, lookupForbidden(t)).(*clierr.Error)
+		assert.Empty(t, ce.Hint)
+		assert.Equal(t, lead+tc.command, clierr.ExpandRemedies(ce.Message, ""))
+		assert.Equal(t, lead+strings.Replace(tc.command, "rancher", "rancher --config '/d'", 1), clierr.ExpandRemedies(ce.Message, " --config '/d'"))
+	}
 }
 
 // TestRefuseUnsupportedTokenLookupTrimsTheVersion asserts that spaces around
@@ -158,9 +166,9 @@ func TestRefuseUnsupportedTokenLookupTrimsTheVersion(t *testing.T) {
 	assert.Equal(t, clierr.CapabilityUnsupportedDetails{Feature: "create kubeconfig", Server: "v2.14.5"}, ce.Details)
 }
 
-// TestRefuseUnsupportedTokenLookupWithoutAStoredLogin asserts no hint, and a
-// message that names RANCHER_CLI_TOKEN, when no stored login in use can take
-// the login command.
+// TestRefuseUnsupportedTokenLookupWithoutAStoredLogin asserts a message that
+// names RANCHER_CLI_TOKEN and holds no command, when no stored login in use
+// can take the login command.
 func TestRefuseUnsupportedTokenLookupWithoutAStoredLogin(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -184,14 +192,16 @@ func TestRefuseUnsupportedTokenLookupWithoutAStoredLogin(t *testing.T) {
 			assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
 			assert.Empty(t, ce.Hint)
 			assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or set RANCHER_CLI_TOKEN to an API token", ce.Message)
+			assert.False(t, clierr.HasRemedy(ce.Message))
 		})
 	}
 }
 
 // TestRefuseUnsupportedTokenLookupWithAnUnprintableConfigDirectory asserts
 // that when the invocation's config directory cannot be printed, the login
-// command is dropped from the hint and the message, and the message keeps
-// the version fact and the first part of the remedy.
+// command is dropped from the message, and the message keeps the server's
+// version, the version the feature needs and the note about the directory;
+// the clause that holds the command goes.
 func TestRefuseUnsupportedTokenLookupWithAnUnprintableConfigDirectory(t *testing.T) {
 	t.Parallel()
 	var asks int
@@ -199,7 +209,7 @@ func TestRefuseUnsupportedTokenLookupWithAnUnprintableConfigDirectory(t *testing
 	ce := refuseUnsupportedTokenLookup(t.Context(), clients, lookupForbidden(t)).(*clierr.Error)
 	out := runtime.IO{RemedyDir: "/tmp/dir\x01"}.ExpandError(ce)
 	assert.Empty(t, out.Hint)
-	assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or an API token; "+runtime.UnprintableConfigDirNote, out.Message)
+	assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later; "+runtime.UnprintableConfigDirNote, out.Message)
 }
 
 func TestRefuseUnsupportedTokenLookupVersionUnavailable(t *testing.T) {

@@ -169,8 +169,9 @@ var errorHeader = regexp.MustCompile(`^error \(([A-Z_]+)\): (.*)$`)
 
 // TestCreateKubeconfigOnOldServerNamesTheVersionItNeeds asserts the command
 // end to end on a server that reports a version below 2.15: the request-token
-// 403 of the dry-run becomes CAPABILITY_UNSUPPORTED (exit 11) with the login
-// command as the hint, and a server at or above 2.15 keeps RBAC (exit 6).
+// 403 of the dry-run becomes CAPABILITY_UNSUPPORTED (exit 11) with no hint and
+// the login command at the end of the message, and a server at or above 2.15
+// keeps RBAC (exit 6).
 func TestCreateKubeconfigOnOldServerNamesTheVersionItNeeds(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -184,11 +185,11 @@ func TestCreateKubeconfigOnOldServerNamesTheVersionItNeeds(t *testing.T) {
 		wantMsg   string
 	}{
 		{"2.14.5 with a stored login", "v2.14.5", []string{"--apply", "--yes"}, "", clierr.CodeCapabilityUnsupported, 11,
-			"rancher auth login 'prod' --token-stdin", 1,
-			"Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or an API token (pipe id:secret to rancher auth login 'prod' --token-stdin)"},
+			"", 1,
+			"Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later; or give an API token: pipe id:secret to rancher auth login 'prod' --token-stdin"},
 		{"2.14.5 dry-run", "v2.14.5", []string{"--dry-run"}, "", clierr.CodeCapabilityUnsupported, 11,
-			"rancher auth login 'prod' --token-stdin", 1,
-			"Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or an API token (pipe id:secret to rancher auth login 'prod' --token-stdin)"},
+			"", 1,
+			"Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later; or give an API token: pipe id:secret to rancher auth login 'prod' --token-stdin"},
 		{"2.14.5 with RANCHER_CLI_TOKEN", "v2.14.5", []string{"--apply", "--yes"}, "ext/env-token:secret", clierr.CodeCapabilityUnsupported, 11,
 			"", 1, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or set RANCHER_CLI_TOKEN to an API token"},
 		{"2.15.2 keeps RBAC", "v2.15.2", []string{"--apply", "--yes"}, "", clierr.CodeRBAC, 6, "", 1, ""},

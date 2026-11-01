@@ -411,7 +411,7 @@ func TestDeleteServerClearsTheWayForAStoreChangeFromACreateOnlyHelper(t *testing
 			cfg, err := config.Load(config.FilePath(dir))
 			require.NoError(t, err)
 			_, err = config.LoginStoreChange(dir, cfg, "prod", "keychain", "keychain")
-			require.ErrorContains(t, err, "rancher config delete-server <name>")
+			require.ErrorContains(t, err, "remove it with: "+config.DeleteServerCommand+" 'staging'; then run this command again")
 
 			_, err = NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(),
 				cmdtest.Input{Pos: []string{"staging"}}, ui.Discard())

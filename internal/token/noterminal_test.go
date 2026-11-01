@@ -58,7 +58,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 	keyring.MockInit()
 	srv := localProviderServer(t)
 	url := config.CanonicalServerIdentity(srv.URL)
-	note := "a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"
+	note := "a credential store change is unfinished; see it with: " + clierr.Rancher + " config status"
 	caPEM := selfSignedCAPEM(t)
 	caPath := filepath.Join(t.TempDir(), "ca.pem")
 	require.NoError(t, os.WriteFile(caPath, []byte(caPEM), 0o600))
