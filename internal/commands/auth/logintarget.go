@@ -148,6 +148,13 @@ func urlLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarget, 
 	}
 
 	existing, known := cfg.Servers[name]
+	// An entry already stored under a name that prints as another name keeps
+	// working; a name that is not an entry yet is refused, before any request.
+	if !known {
+		if ce := config.CheckNewEntryName(name); ce != nil {
+			return loginTarget{}, ce
+		}
+	}
 	// A known name whose canonicalized URL disagrees is a different server
 	// hiding behind a trusted name - refuse before any network call, rather
 	// than let a hijacking or a typo silently re-point the entry (or dial

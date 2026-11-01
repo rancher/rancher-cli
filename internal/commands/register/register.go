@@ -266,6 +266,11 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 	created := false
 	switch {
 	case !exists:
+		// Before beforeCreate, which removes credentials left under the
+		// name: a refused name must not trigger that.
+		if ce := config.CheckNewEntryName(name); ce != nil {
+			return CreateOutcome{}, ce
+		}
 		if beforeCreate != nil {
 			if err := beforeCreate(); err != nil {
 				return CreateOutcome{}, err

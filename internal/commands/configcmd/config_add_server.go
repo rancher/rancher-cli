@@ -45,6 +45,16 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 	if ce := config.ValidateEntryName(name); ce != nil {
 		return runtime.Result{}, ce
 	}
+	// A name that is already an entry stays accepted, so add-server of it
+	// still answers "unchanged"; the commit step checks again under the lock.
+	// A config that cannot be read is reported by the commit step.
+	if cfg, lerr := config.Load(config.FilePath(c.dir)); lerr == nil {
+		if _, known := cfg.Servers[name]; !known {
+			if ce := config.CheckNewEntryName(name); ce != nil {
+				return runtime.Result{}, ce
+			}
+		}
+	}
 	url := in.String("url")
 	if url == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--url is required")

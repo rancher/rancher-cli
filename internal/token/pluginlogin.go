@@ -123,6 +123,14 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			}
 		}
 		target := config.CollisionFreeName(cfg, entry, in.serverID)
+		// A name the plugin would create comes from the server URL's host,
+		// and a host can hold a character a terminal removes when it prints
+		// a command. An entry already stored keeps refreshing its login.
+		if _, exists := cfg.Servers[target]; !exists {
+			if p, bad := config.EntryNameProblem(target); bad {
+				return t.user.entryNameCharacters(cfg, p)
+			}
+		}
 		// The credential store takes an entry name of a bounded length on
 		// every operating system, and the name is known before anything is
 		// signed in.
@@ -268,6 +276,34 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		warnings = append(warnings, rep.Warnings...)
 	}
 	return result, warnings, nil
+}
+
+// entryNameCharacters is the refusal of a plugin-created login whose entry
+// name, built from the server URL's host, would print as another name. The
+// remedy is a login under a name of the operator's own, which needs no
+// terminal. The refused URL never goes into the command: the printer removes
+// the characters, so a command that held the URL would name another host.
+// The operator fills in <url>.
+func (u userCheck) entryNameCharacters(cfg *config.Config, p config.NameProblem) *clierr.Error {
+	login := NoTerminalLogin(cfg, "", u.clusterID, "<url>", u.caSource, u.caFrom, false)
+	command := login.Command + ", with a name of your choice for <name> and the server's address for <url>"
+	if login.InlineCA {
+		command += config.InlineCAClause(login.CASource)
+	}
+	piped := "pipe an API token"
+	if u.userID != "" {
+		piped += " of " + clierr.ShellQuote(u.userID)
+	}
+	remedy := piped + " to " + command
+	if u.authConfig != "" {
+		piped += " made through auth config " + clierr.ShellQuote(u.authConfig)
+		remedy = "sign in with " + login.signIn(u.authConfig) + ", or " + piped + " to " + command
+	}
+	why := "the server URL's host is not valid UTF-8"
+	if !p.InvalidUTF8 {
+		why = fmt.Sprintf("the server URL's host holds U+%04X, which is removed when a name is printed", p.Rune)
+	}
+	return clierr.New(clierr.CodeValidation, why+"; the kubectl plugin cannot create its login entry for it; to log in under a name of your own, "+remedy)
 }
 
 // freshCredentialError names a rejection of the credential this login just

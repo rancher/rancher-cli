@@ -261,7 +261,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	// entries keep this login on the file store depends on which entry
 	// this login writes, and for a caller that suffixes a collision that
 	// is not the name it asked for.
-	name, existing, exists, err := resolveEntryName(cfg, in)
+	name, existing, exists, err := resolveNewEntryName(cfg, in)
 	if err != nil {
 		return err
 	}
@@ -722,6 +722,23 @@ func CollisionFreeName(cfg *Config, name, canonicalURL string) string {
 		return name
 	}
 	return resolved
+}
+
+// resolveNewEntryName is resolveEntryName for the step that writes the
+// entry: it also refuses a name that is not yet an entry when it prints as
+// another name. A check made before the sign-in uses CollisionFreeName, which
+// never refuses, so it sees the name the login will write.
+func resolveNewEntryName(cfg *Config, in PersistLoginInput) (name string, existing Server, exists bool, err error) {
+	name, existing, exists, err = resolveEntryName(cfg, in)
+	if err != nil {
+		return "", Server{}, false, err
+	}
+	if !exists {
+		if ce := CheckNewEntryName(name); ce != nil {
+			return "", Server{}, false, ce
+		}
+	}
+	return name, existing, exists, nil
 }
 
 // resolveEntryName applies the collision policy under the lock.

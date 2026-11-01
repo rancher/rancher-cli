@@ -1971,7 +1971,12 @@ changing leaves it valid. `--user-id` must be a Rancher user id (a lowercase
 object name such as `u-abc12`); typed empty, it is refused, as is a typed
 empty `--cluster`. `--name` values and server entry names starting with
 `user-id:` are reserved, as `legacy:` ones are; `rancher kubeconfig` refuses to
-write a `--name` that would start with either. A login that records no owner (a
+write a `--name` that would start with either. A new server entry name cannot
+hold a control character, an invisible or direction-control character (Unicode
+category Cf) or a line or paragraph separator, because a terminal removes them
+when it prints the name and a command that names the entry would name another;
+a name that is not valid UTF-8 is refused too. An entry already stored with such
+a name keeps working. A login that records no owner (a
 pasted token stored with `--no-verify`, or one made before owners were
 recorded) gets no `--user-id`, and answers a call with `--user-id` only through
 the `--name` that identifies it; `rancher kubeconfig` says how to log in so it
@@ -1995,7 +2000,8 @@ default off) changes the miss path: the first miss for a server runs one
 interactive login, stores the resulting unscoped login credential under a
 server entry named `exec-login-<host>` (with the port appended when the URL
 names one, for a call with `--user-id` the user id after it, and with
-`--auth-provider` the auth config after that) whose
+`--auth-provider` the auth config after that; the kubectl plugin refuses to
+create it for a host that holds a character of the kind above) whose
 `provenance` is `execLogin`, and creates a cluster-scoped
 token from that credential for every other cluster of the same server
 without prompting. Credentials you created with `rancher auth login` are
