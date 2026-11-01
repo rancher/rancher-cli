@@ -95,8 +95,9 @@ what drifted the previous revision of this doc).
 | `internal/telemetrysend` | The check of the `telemetryupload` experiment's value: an origin, https or http to a loopback host, built on `credhelper.CheckServerURL`; and the encoder that writes stored events as OTLP/HTTP JSON. It makes no request and imports no HTTP package; a conformance test limits its direct imports. |
 | `internal/fsacl` | Owner-only access lists where the operating system ignores Unix mode bits: `Harden` for one file, `HardenInheritable` for a directory whose new entries inherit the list. Windows only does anything; every other platform is a no-op. Standard library and `golang.org/x/sys/windows` only; `internal/config` and `internal/telemetry` both call it. |
 | `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, attributes it to a request by normalized origin (`ClassifyForOrigin`, `KindOf`), and picks the candidate trust anchor from the chain the failed handshake itself already observed - no separate probe dial. `WrapTransport` is the `http.RoundTripper` wrapper that turns a certificate failure of a request to the Rancher server's origin into that error, wording its remedy per command (`Remedy`): `config` builds the wording for a resolved connection, and `kube`, `internal/cli` and `internal/token` install the wrapper on their Rancher clients (`rest.Config.WrapTransport`, `httpx.Options.WrapTransport`); the version probe, the auth-provider sign-in, the install id request `auth login` and `auth status` register (the refresh drops the error of its request, and no wording of it is ever shown) and the completion client are not wrapped. A failure to verify an `https://` proxy is never classified as the server's. |
-| `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl parity). It is also the terminal-safety boundary: `Printable` removes control and Unicode format characters and the line and paragraph separators from one server-sourced value (table cells and headers, names, warning and error lines, dry-run preview fields, and the values text builders filter at insertion); `PrintableLines` does the same for a whole text, keeping its newlines and this process's remedy markers, and the runtime applies it to every text print and the dry-run preview before expansion, and `internal/ui` to every notice and prompt label. json, yaml and template stay verbatim, and so do `RawBytes`, the exec credential and the text of a command whose descriptor sets `PlainText`. The yaml format writes the characters the YAML library it converts through refuses (DEL, U+0080 to U+009F, U+FFFE and U+FFFF; it changes U+0085 into a space) as escapes that read back as the original text. A `RawBytes` payload that begins with a comment line shows each server value in Go's quoted form, and gives a command with the value shell-quoted only when the value prints as it is (`create kubeconfig`). |
+| `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl parity). It is also the terminal-safety boundary: `Printable` removes control and Unicode format characters and the line and paragraph separators from one server-sourced value (table cells and headers, names, warning and error lines, dry-run preview fields, and the values text builders filter at insertion); `PrintableLines` does the same for a whole text, keeping its newlines and this process's remedy markers, and the runtime applies it to every text print and the dry-run preview before expansion, and `internal/ui` to every notice and prompt label. json, yaml and template stay verbatim, and so do `RawBytes`, the exec credential and the text of a command whose descriptor sets `PlainText`. The yaml format converts through `internal/yamlwrite`, which writes the characters the YAML library refuses (DEL, U+0080 to U+009F, U+FFFE and U+FFFF; it changes U+0085 into a space) as escapes that read back as the original text. A `RawBytes` payload that begins with a comment line shows each server value in Go's quoted form, and gives a command with the value shell-quoted only when the value prints as it is (`create kubeconfig`). |
 | `internal/output/style` | Presentation-only ANSI wrap functions (bold/red/yellow/cyan/green) gated by an enable flag, plus a strip function that restores the exact unstyled bytes. `Unstyled` removes only the codes a wrap writes, so the pipeline can tell a styled text from one that adds anything else. |
+| `internal/yamlwrite` | Writes a value as YAML so every string in it reads back unchanged: `Marshal` and `JSONToYAML` write DEL, U+0080 to U+009F, U+FFFE and U+FFFF as escapes, where the YAML library refuses them and changes U+0085 into a space. It imports the standard library and `sigs.k8s.io/yaml`. A conformance test refuses a YAML write outside it except in reviewed rows. |
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment; the one status table every server answer goes through (`FromStatus`), with the request wording it uses, and the constructor for answers read without client-go (`ResponseError`). |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`; every notice and prompt label passes `output.PrintableLines`. |
 | `internal/skillinstall` | Installs the embedded rancher agents skill into coding-agent harness skill directories (claude, codex, copilot, agents) with env-override support, user/project scope resolution, presence detection, and provenance/digest stamping. |
@@ -170,6 +171,7 @@ graph TD
     tlstrust["internal/client/tlstrust"]
     output["internal/output"]
     outputstyle["internal/output/style"]
+    yamlwrite["internal/yamlwrite"]
     clierr["internal/clierr"]
     ui["internal/ui"]
     skillinstall["internal/skillinstall"]
@@ -468,6 +470,7 @@ graph TD
     config --> tlstrust
     config --> credhelper
     config --> fsacl
+    config --> yamlwrite
     telemetry --> invocation
     telemetry --> fsacl
     telemetrysend --> credhelper
@@ -475,6 +478,7 @@ graph TD
 
     output --> clierr
     output --> outputstyle
+    output --> yamlwrite
 
     ui --> output
 

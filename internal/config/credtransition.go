@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/yamlwrite"
 	"sigs.k8s.io/yaml"
 )
 
@@ -313,7 +314,7 @@ func writeTransition(dir string, m transitionManifest) error {
 	if present != nil && present.ID != m.ID {
 		return transitionAlreadyRecorded(dir, present.Steps[0])
 	}
-	data, err := yaml.Marshal(m)
+	data, err := yamlwrite.Marshal(m)
 	if err != nil {
 		return err
 	}

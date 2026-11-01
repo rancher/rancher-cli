@@ -11,6 +11,7 @@ import (
 
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/yamlwrite"
 	"sigs.k8s.io/yaml"
 )
 
@@ -505,7 +506,7 @@ func (c *Config) Write() error {
 		}
 		c.BindingStamp = stamp
 	}
-	b, err := yaml.Marshal(c)
+	b, err := yamlwrite.Marshal(c)
 	if err != nil {
 		return err
 	}

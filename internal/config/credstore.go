@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/credhelper"
+	"github.com/rancher/rancher-cli/internal/yamlwrite"
 	"github.com/zalando/go-keyring"
 	"sigs.k8s.io/yaml"
 )
@@ -432,7 +433,7 @@ func (f *fileStore) read() (map[string]string, error) {
 }
 
 func (f *fileStore) write(m map[string]string) error {
-	b, err := yaml.Marshal(m)
+	b, err := yamlwrite.Marshal(m)
 	if err != nil {
 		return err
 	}
@@ -529,7 +530,7 @@ func (f *fileStore) readCache() (map[string]cachedCred, error) {
 }
 
 func (f *fileStore) writeCache(m map[string]cachedCred) error {
-	b, err := yaml.Marshal(m)
+	b, err := yamlwrite.Marshal(m)
 	if err != nil {
 		return err
 	}

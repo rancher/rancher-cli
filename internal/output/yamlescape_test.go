@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -187,46 +186,6 @@ func TestRenderJSONWritesTheRefusedCharactersRaw(t *testing.T) {
 	}
 }
 
-// TestEscapeRefusedRunes asserts the set of escaped characters is exactly the
-// 35 code points: every valid code point from U+0000 to U+10FFFF inside a JSON
-// string is returned unchanged unless it is one of the 35, and each of the 35
-// is written as a six-character JSON escape with four lowercase hex digits. It
-// asserts also that a text with nothing to escape is returned as the same
-// slice, and that a byte that is not valid UTF-8 is copied as it is.
-func TestEscapeRefusedRunes(t *testing.T) {
-	t.Parallel()
-	require.Len(t, refusedRunes, 35)
-	in := make([]byte, 0, 16)
-	for r := rune(0); r <= utf8.MaxRune; r++ {
-		if r >= 0xd800 && r <= 0xdfff {
-			continue
-		}
-		in = append(append(append(in[:0], `"a`...), string(r)...), `b"`...)
-		want := string(in)
-		if slices.Contains(refusedRunes, r) {
-			want = fmt.Sprintf(`"a\u%04xb"`, r)
-		}
-		if got := string(escapeRefusedRunes(in)); got != want {
-			require.Failf(t, "wrong escape", "%U: want %q, got %q", r, want, got)
-		}
-	}
-
-	plain := []byte(`{"k":"plain \\u007f text"}`)
-	got := escapeRefusedRunes(plain)
-	require.Len(t, got, len(plain))
-	assert.Same(t, &plain[0], &got[0], "a text with nothing to escape is returned without a copy")
-
-	for name, in := range map[string][]byte{
-		"a lone lead byte of a two-byte character": []byte("\"a\xc2b\""),
-		"a truncated three-byte character":         []byte("\"a\xef\xbfb\""),
-		"a lone continuation byte":                 []byte("\"a\x85b\""),
-	} {
-		assert.Equal(t, in, escapeRefusedRunes(in), name)
-	}
-	assert.Equal(t, []byte("\"\xc2\\u0085\""), escapeRefusedRunes([]byte("\"\xc2\xc2\x85\"")),
-		"an invalid byte before a character of the set is copied and the character is escaped")
-}
-
 // firstDifference names the first rune at which two texts differ.
 func firstDifference(want, got string) string {
 	w, g := []rune(want), []rune(got)
@@ -262,10 +221,11 @@ func assertReadsBackExactly(t *testing.T, library string, chunk int, want, got m
 // unchanged by two YAML libraries, as a value and as a key. The selection is
 // U+0000 to U+00FF, U+FFF0 to U+FFFF (the 35 refused code points and their
 // neighbours) and every seventh code point of the whole range; the direct test
-// of escapeRefusedRunes covers every code point. The code points go in strings
-// of 1024 runes as a value and 128 runes as a key (the YAML library limits an
-// implicit key to 1024 characters). Each string starts with a letter, which
-// keeps a string from being only characters the library changes or refuses.
+// of the escape in internal/yamlwrite covers every code point. The code points
+// go in strings of 1024 runes as a value and 128 runes as a key (the YAML
+// library limits an implicit key to 1024 characters). Each string starts with
+// a letter, which keeps a string from being only characters the library
+// changes or refuses.
 func TestRenderYAMLEveryCodePointReadsBack(t *testing.T) {
 	t.Parallel()
 	var all []rune

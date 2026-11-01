@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/yamlwrite"
 )
 
 const (
@@ -463,7 +464,7 @@ func writeIdentityRecord(dir string, rec identityRecord) error {
 			return err
 		}
 	}
-	data, err := yaml.Marshal(rec)
+	data, err := yamlwrite.Marshal(rec)
 	if err != nil {
 		return err
 	}

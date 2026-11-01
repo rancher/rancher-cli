@@ -13,6 +13,7 @@ import (
 
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/yamlwrite"
 )
 
 // The helper-records file remembers which exec helpers were asked to store
@@ -187,7 +188,7 @@ func setHelperRecordsPersistForTest(fn func(string, *helperRecords) error) (rest
 // write-ahead intent and the unsupported-removal, which must be durable
 // BEFORE the sentinel is returned).
 func persistHelperRecordsToDisk(dir string, st *helperRecords) error {
-	out, err := yaml.Marshal(st)
+	out, err := yamlwrite.Marshal(st)
 	if err != nil {
 		return err
 	}
