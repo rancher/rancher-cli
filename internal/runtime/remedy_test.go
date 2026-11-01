@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
 
@@ -243,6 +244,32 @@ func TestRenderErrorStyledPrintsPlainRemedies(t *testing.T) {
 		assert.Contains(t, got, "rancher auth login 'prod'", format)
 		assert.NotContains(t, got, "--config", format)
 	}
+}
+
+// TestRenderErrorStyledWritesCharactersTheYamlLibraryRefuses asserts an error
+// whose message, hint and warning hold DEL, U+009B and U+0085 is
+// written as yaml with no error, no raw character, and the original text in
+// each field.
+func TestRenderErrorStyledWritesCharactersTheYamlLibraryRefuses(t *testing.T) {
+	t.Parallel()
+	text := "text\x7f\u009b\u0085end"
+	ce := clierr.New(clierr.CodeNotLoggedIn, "message "+text).WithHint("hint " + text).WithWarnings("warning " + text)
+	var b bytes.Buffer
+	require.NoError(t, RenderErrorStyled(&b, "yaml", ce, style.Style{}))
+	var doc struct {
+		Data struct {
+			Error struct {
+				Message string `json:"message"`
+				Hint    string `json:"hint"`
+			} `json:"error"`
+		} `json:"data"`
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, yaml.Unmarshal(b.Bytes(), &doc))
+	assert.Equal(t, "message "+text, doc.Data.Error.Message)
+	assert.Equal(t, "hint "+text, doc.Data.Error.Hint)
+	assert.Equal(t, []string{"warning " + text}, doc.Warnings)
+	assert.False(t, strings.ContainsAny(b.String(), "\x7f\u009b\u0085"), "a raw character in %q", b.String())
 }
 
 // TestDrainedNoticesNameTheInvocationsDirectory asserts a notice the

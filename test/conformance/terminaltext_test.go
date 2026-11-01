@@ -563,16 +563,15 @@ var terminalRows = []terminalRow{
 	}},
 	{"yaml", func(e terminalEnv) {
 		t := e.t
-		// The yaml encoder refuses DEL and the one-byte sequence introducer
-		// (the command fails with "control characters are not allowed"), so
-		// the value for this row holds every other planted character.
-		planted := strings.NewReplacer("\x7f", "", "\u009b", "").Replace(terminalHostile("yaml"))
+		planted := terminalHostile("yaml")
 		out, _ := e.run(terminalRead{d: terminalDescriptor(runtime.ShapeTabular), res: runtime.Result{Kind: "Report", Data: terminalValue{Value: planted}}}, func(io *runtime.IO) { io.Format = "yaml" })
 		var doc struct {
 			Data terminalValue `json:"data"`
 		}
 		require.NoError(t, yaml.Unmarshal([]byte(out), &doc))
 		assert.Equal(t, planted, doc.Data.Value)
+		assert.NotContains(t, out, "\x7f", "DEL is written as an escape")
+		assert.NotContains(t, out, "\u009b", "the one-byte sequence introducer is written as an escape")
 	}},
 	{"template", func(e terminalEnv) {
 		t := e.t
@@ -596,9 +595,10 @@ var terminalRows = []terminalRow{
 // process planted in the same text still expands, and a label keeps it as
 // the prompter wrote it; that a styled text is written only when it adds
 // nothing but the CLI's own codes; and that json, yaml, template, logs text
-// and bytes keep the planted bytes. Each row runs through the exported
-// pipeline with its own config directory. The package runs without the race
-// detector, so a row starts no goroutine of its own.
+// and bytes keep the planted text, with yaml writing DEL, U+0080 to U+009F,
+// U+FFFE and U+FFFF as escapes. Each row runs through the exported pipeline with its
+// own config directory. The package runs without the race detector, so a row
+// starts no goroutine of its own.
 func TestServerTextCannotDriveTheTerminal(t *testing.T) {
 	t.Parallel()
 	for _, row := range terminalRows {

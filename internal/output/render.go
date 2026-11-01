@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 	"text/template"
+	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"sigs.k8s.io/yaml"
@@ -70,7 +71,10 @@ func RenderStyled(w io.Writer, format string, env *Envelope, s style.Style) erro
 // gets the whole encoded JSON document of the json format, and the JSON the
 // yaml format is converted from, before it is written, and returns the
 // document to write. A nil rewrite writes what RenderStyled writes. No other
-// format is rewritten. The json and yaml formats each make one Write.
+// format is rewritten. The yaml format writes the characters the YAML library
+// it converts through refuses (DEL, U+0080 to U+009F, U+FFFE and U+FFFF; it
+// changes U+0085 into a space) as escapes after the rewrite. The json and yaml
+// formats each make one Write.
 func RenderWith(w io.Writer, format string, env *Envelope, s style.Style, rewrite func([]byte) []byte) error {
 	switch format {
 	case "", "table":
@@ -104,6 +108,7 @@ func RenderWith(w io.Writer, format string, env *Envelope, s style.Style, rewrit
 		if rewrite != nil {
 			b = rewrite(b)
 		}
+		b = escapeRefusedRunes(b)
 		y, err := yaml.JSONToYAML(b)
 		if err != nil {
 			return err
@@ -125,6 +130,39 @@ func RenderWith(w io.Writer, format string, env *Envelope, s style.Style, rewrit
 		}
 		return renderTemplate(w, src, env)
 	}
+}
+
+// escapeRefusedRunes returns the JSON text b with DEL, U+0080 to U+009F,
+// U+FFFE and U+FFFF each written as a \uXXXX escape, and b itself when none
+// occurs. The YAML library that parses the text refuses these characters (it
+// changes U+0085 into a space). They occur only inside JSON strings; an escape
+// at any position of the text is valid, the library then decodes each one
+// exactly and its emitter writes it back as a YAML escape. Every other rune is
+// copied as its original bytes, an invalid byte included.
+func escapeRefusedRunes(b []byte) []byte {
+	var out []byte
+	copied := 0
+	for i := 0; i < len(b); {
+		switch b[i] {
+		case 0x7f, 0xc2, 0xef:
+		default:
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRune(b[i:])
+		if r != 0x7f && (r < 0x80 || r > 0x9f) && r != 0xfffe && r != 0xffff {
+			i += size
+			continue
+		}
+		out = append(out, b[copied:i]...)
+		out = fmt.Appendf(out, `\u%04x`, r)
+		i += size
+		copied = i
+	}
+	if out == nil {
+		return b
+	}
+	return append(out, b[copied:]...)
 }
 
 // renderTemplate executes a Go template over the JSON view of env.Data with
