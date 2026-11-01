@@ -207,7 +207,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		warnings = append(warnings, eventWarnings...)
 	}
 
-	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("README.txt"), Data: append([]byte(readmeText), readmeLeftOutText...)})
+	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("README.txt"), Data: append([]byte(readmeText), readmeEntriesText...)})
 
 	manifest := bundleManifest{
 		CLIVersion:    cliVer,
@@ -285,7 +285,8 @@ func itemStatus(err error) string {
 
 // parseTargetsFlag resolves --targets: "" or "all" means every target;
 // otherwise a comma-separated list, each name validated against the table.
-// "all" is accepted only as the whole value; inside a list it is refused.
+// "all" is accepted only as the whole value; inside a list it is refused. A
+// target named twice is used once, in the order of its first appearance.
 func parseTargetsFlag(raw string) ([]Target, error) {
 	if raw == "" || raw == "all" {
 		return Targets, nil
@@ -305,7 +306,9 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 			return nil, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("--%s=%q is not one of all|%s", flagTargets, tok, runtime.OneOf(Names())))
 		}
-		out = append(out, t)
+		if !slices.ContainsFunc(out, func(seen Target) bool { return seen.Name == t.Name }) {
+			out = append(out, t)
+		}
 	}
 	return out, nil
 }
@@ -313,7 +316,8 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 // resolveBundleClusters resolves --clusters: "" or "*" discovers local plus
 // every management Cluster the caller can read, as steve lists them; an
 // explicit comma-separated list is resolved token by token (the "local"
-// literal short-circuits).
+// literal short-circuits). A cluster named twice, by id or by name and id, is
+// used once, in the order of its first appearance.
 //
 // The two error returns are NOT interchangeable. discoveryErr is a
 // non-fatal signal on the default/"*" path: fleet-wide listing failed
@@ -346,15 +350,17 @@ func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFact
 		if tok == "" {
 			continue
 		}
-		if tok == "local" {
-			out = append(out, engine.LocalCluster)
-			continue
+		id := engine.LocalCluster
+		if tok != "local" {
+			resolved, rerr := engine.ResolveClusterArgument(ctx, clients, tok)
+			if rerr != nil {
+				return nil, nil, rerr
+			}
+			id = resolved
 		}
-		id, rerr := engine.ResolveClusterArgument(ctx, clients, tok)
-		if rerr != nil {
-			return nil, nil, rerr
+		if !slices.Contains(out, id) {
+			out = append(out, id)
 		}
-		out = append(out, id)
 	}
 	return out, nil, nil
 }
@@ -564,7 +570,10 @@ func (o logOutcome) warnings(clusterID, target string) []string {
 // best effort: a container that never restarted has none, which is the
 // common case and stays silent, but a refusal (RBAC, authentication) is
 // missing evidence and is reported. A container whose current log failed
-// is not asked for its previous log - the answer would be the same.
+// is not asked for its previous log - the answer would be the same. Each pod
+// has its own directory: two logs make one entry name only when the pod and
+// container values are equal (or differ in letter case). The archive keeps
+// the first and the second container is left out.
 func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *int64, since *int64, bw *ArchiveWriter) logOutcome {
 	var o logOutcome
 	for i := range resolved.Pods {
@@ -572,11 +581,7 @@ func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *i
 		for _, cname := range engine.ContainerNames(resolved.Pods[i].Object) {
 			o.containers++
 			where := podName + "/" + cname
-			logName, nerr := entryPath("logs", resolved.ClusterID, t.Name, podName+"-"+cname+".log")
-			previousName, perr := entryPath("logs", resolved.ClusterID, t.Name, podName+"-"+cname+"-previous.log")
-			if nerr == nil {
-				nerr = perr
-			}
+			logName, nerr := entryPath("logs", resolved.ClusterID, t.Name, podName, cname+".log")
 			if nerr != nil {
 				o.failed = append(o.failed, fmt.Sprintf("pod %s container %s: log entry left out: %v", quoteValue(podName), quoteValue(cname), nerr))
 				continue
@@ -588,14 +593,22 @@ func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *i
 				continue
 			}
 			if err := bw.Add(ArchiveEntry{Path: logName, Data: []byte(out)}); err != nil {
-				o.failed = append(o.failed, where+": archive write failed: "+err.Error())
+				if errors.Is(err, errEntryRepeated) {
+					o.failed = append(o.failed, fmt.Sprintf("pod %s container %s: log entry left out: %v", quoteValue(podName), quoteValue(cname), err))
+				} else {
+					o.failed = append(o.failed, where+": archive write failed: "+err.Error())
+				}
 				continue
 			}
 			prev, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
 				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since, Previous: true})
 			switch {
 			case err == nil:
-				if aerr := bw.Add(ArchiveEntry{Path: previousName, Data: []byte(prev)}); aerr != nil {
+				previousName, aerr := entryPath("logs", resolved.ClusterID, t.Name, podName, "previous", cname+".log")
+				if aerr == nil {
+					aerr = bw.Add(ArchiveEntry{Path: previousName, Data: []byte(prev)})
+				}
+				if aerr != nil {
 					o.failed = append(o.failed, where+": archive write failed: "+aerr.Error())
 				}
 			case isRefusal(err):
@@ -687,8 +700,13 @@ see rancherlabs/support-tools' node collector; the two bundles complement
 each other.
 `
 
-// readmeLeftOutText follows readmeText in the archive's README.txt.
-const readmeLeftOutText = `
+// readmeEntriesText follows readmeText in the archive's README.txt.
+const readmeEntriesText = `
+Each pod has its own directory under logs/<cluster>/<target>/. The current
+log of a container is <pod>/<container>.log and the log of its previous run
+is <pod>/previous/<container>.log. An entry whose name was already written
+is left out and shows in manifest.json as an error.
+
 An entry is left out of the bundle when its file name is not a plain file
 name: it has a character other than letters, digits, ".", "_" and "-" (a
 cluster id, namespace, pod or container name is part of it), it is over

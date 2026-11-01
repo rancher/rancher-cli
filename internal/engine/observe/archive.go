@@ -3,9 +3,11 @@ package observe
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
@@ -13,11 +15,15 @@ import (
 // ArchiveEntry is one file to write into the support-bundle tar.gz.
 type ArchiveEntry struct {
 	// Path is the entry's name within the archive, such as "manifest.json" or
-	// "logs/c-1/agent/pod-1-main.log". Only entryPath and staticEntryPath make
+	// "logs/c-1/agent/pod-1/main.log". Only entryPath and staticEntryPath make
 	// one, and both accept nothing but plain file names.
 	Path entryName
 	Data []byte
 }
+
+// errEntryRepeated is the error for an entry whose name the archive already
+// holds.
+var errEntryRepeated = errors.New("archive entry name appears twice")
 
 // ArchiveWriter streams entries into a gzip-compressed tar one at a time,
 // so a collector holds at most the one entry currently in flight rather
@@ -31,6 +37,10 @@ type ArchiveWriter struct {
 	total  int64
 	err    error
 	closed bool
+
+	// names maps each entry name written, with ASCII letters lowered, to the
+	// name as written.
+	names map[string]string
 }
 
 // CreateArchive opens path with O_CREATE|O_EXCL and 0600 and returns a
@@ -72,22 +82,34 @@ func createArchiveWith(path string, wrap func(io.Writer) io.Writer) (*ArchiveWri
 		return nil, err
 	}
 	gz := gzip.NewWriter(wrap(f))
-	return &ArchiveWriter{file: f, gz: gz, tw: tar.NewWriter(gz), path: path}, nil
+	return &ArchiveWriter{file: f, gz: gz, tw: tar.NewWriter(gz), path: path, names: map[string]string{}}, nil
 }
 
 // Add streams one entry into the archive immediately. Once a write has
 // failed, every later Add is a no-op returning that same error - a collector
 // can keep calling Add without checking every return and let Close report and
 // clean up the failure. A name that is not a sequence of plain file names
-// (the zero entryName is one) is returned as an error and does not become
-// that error: nothing is written for it, later entries are still written
-// and Close does not fail.
+// (the zero entryName is one) and a name the archive already holds, ignoring
+// letter case, are returned as errors and do not become that error: nothing
+// is written for them, later entries are still written and Close does not
+// fail. The first entry of a name stays.
 func (w *ArchiveWriter) Add(entry ArchiveEntry) error {
 	if w.err != nil {
 		return w.err
 	}
 	if err := entry.Path.check(); err != nil {
 		return err
+	}
+	name := entry.Path.entryText
+	// ToLower is exact here: a name holds ASCII only. An extractor on a file
+	// system that ignores letter case writes two names that differ only in
+	// case to one file.
+	key := strings.ToLower(name)
+	if first, ok := w.names[key]; ok {
+		if first == name {
+			return fmt.Errorf("%s: %w", quoteValue(name), errEntryRepeated)
+		}
+		return fmt.Errorf("%s: %w ignoring letter case; first written as %s", quoteValue(name), errEntryRepeated, quoteValue(first))
 	}
 	if err := w.tw.WriteHeader(&tar.Header{Name: entry.Path.entryText, Mode: 0600, Size: int64(len(entry.Data))}); err != nil {
 		w.err = err
@@ -97,6 +119,7 @@ func (w *ArchiveWriter) Add(entry ArchiveEntry) error {
 		w.err = err
 		return err
 	}
+	w.names[key] = name
 	w.total += int64(len(entry.Data))
 	return nil
 }

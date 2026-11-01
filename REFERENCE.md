@@ -1200,6 +1200,14 @@ over 255 bytes, or its part before the first `.` is a Windows device name
 such as `con` or `aux`. The `manifest.json` item is an `error:` status (a
 cluster whose id is left out is listed as the item `cluster`), the
 result's `errors` count includes it, and a warning names the value.
+Each pod has its own directory under `logs/<cluster>/<target>/`: the
+current log of a container is `<pod>/<container>.log` and the log of its
+previous run is `<pod>/previous/<container>.log`. An entry whose name was
+already written (ignoring letter case) is left out and shows like any other
+left-out entry. A cluster or target named twice in `--clusters` or
+`--targets` is used once. A long pod name can make a log path longer
+than 260 bytes, which some Windows extractors refuse unless long paths are
+turned on.
 `support-bundle` is deliberately the half of a two-bundle story that covers
 only what Rancher's Kubernetes API can reach: pair it with
 [rancherlabs/support-tools](https://github.com/rancherlabs/support-tools)'

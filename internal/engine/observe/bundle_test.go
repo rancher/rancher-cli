@@ -30,7 +30,11 @@ func execBundle(t *testing.T, clients *fakeFactory, in input, opts ...func(*supp
 	for _, opt := range opts {
 		opt(cmd)
 	}
-	return cmd.Execute(t.Context(), in, nil)
+	res, err := cmd.Execute(t.Context(), in, nil)
+	if path := in.s[flagOutputFile]; err == nil && path != "" {
+		requireLocalNames(t, tarEntryNames(t, path))
+	}
+	return res, err
 }
 
 func manifestFrom(t *testing.T, path string) bundleManifest {
@@ -388,7 +392,7 @@ func TestSupportBundleDeniedCurrentLogIsAnError(t *testing.T) {
 	assert.Equal(t, "support-bundle: c-1/agent: log not collected: agent-1/main: pods/log is forbidden", res.Warnings[0])
 
 	contents := readArchive(t, path)
-	_, hasLog := contents["logs/c-1/agent/agent-1-main.log"]
+	_, hasLog := contents["logs/c-1/agent/agent-1/main.log"]
 	assert.False(t, hasLog, "a refused log must not appear in the archive")
 	require.Len(t, downstream.logOptsCalls, 1, "the previous log is not requested after the current one failed")
 	assert.False(t, downstream.logOptsCalls[0].Previous)
@@ -407,8 +411,8 @@ func TestSupportBundlePreviousLogAbsenceStaysSilent(t *testing.T) {
 	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
 	assert.Empty(t, res.Warnings)
 	contents := readArchive(t, path)
-	assert.Equal(t, "hello\n", contents["logs/c-1/agent/agent-1-main.log"])
-	_, hasPrevious := contents["logs/c-1/agent/agent-1-main-previous.log"]
+	assert.Equal(t, "hello\n", contents["logs/c-1/agent/agent-1/main.log"])
+	_, hasPrevious := contents["logs/c-1/agent/agent-1/previous/main.log"]
 	assert.False(t, hasPrevious)
 }
 
@@ -501,6 +505,12 @@ func TestParseTargetsFlag(t *testing.T) {
 	got, err = parseTargetsFlag(",")
 	require.NoError(t, err)
 	assert.Empty(t, got)
+	got, err = parseTargetsFlag("agent,agent")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"agent"}, names(got), "a target named twice is used once")
+	got, err = parseTargetsFlag("server,agent,server, agent")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"server", "agent"}, names(got), "the order of first appearance is kept")
 
 	oneOf := "all|" + runtime.OneOf(Names())
 	for _, tc := range []struct {
@@ -741,7 +751,7 @@ func TestSupportBundleLeavesOutClusterWithUnsafeID(t *testing.T) {
 			assert.Equal(t, statusCollected, findItem(t, m, "cluster.json", "c-1").Status)
 			assert.Equal(t, statusCollected, findItem(t, m, "nodes.json", "c-1").Status)
 			assert.Equal(t, statusCollected, findItem(t, m, "agent", "c-1").Status)
-			assert.Contains(t, contents, "logs/c-1/agent/agent-1-main.log")
+			assert.Contains(t, contents, "logs/c-1/agent/agent-1/main.log")
 
 			assert.Equal(t, baseline.Data.(bundleResult).Errors+1, res.Data.(bundleResult).Errors)
 			var shown []string
@@ -880,12 +890,12 @@ func TestSupportBundleLeavesOutLogsOfUnsafePodOrContainerName(t *testing.T) {
 		shown   string
 		absent  string
 	}{
-		{"container parent directory", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "../x")}, "../x", `"agent-1-../x.log"`, ""},
-		{"container newline", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "a\nb")}, "a\nb", `"agent-1-a\nb.log"`, "\n"},
-		{"container word joiner", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "a\u2060b")}, "a\u2060b", `"agent-1-a\u2060b.log"`, "\u2060"},
-		{"pod parent directory", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("../x")}, "../x", `"../x-main.log"`, ""},
-		{"pod newline", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("a\nb")}, "a\nb", `"a\nb-main.log"`, "\n"},
-		{"pod right-to-left override", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("a\u202eb")}, "a\u202eb", `"a\u202eb-main.log"`, "\u202e"},
+		{"container parent directory", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "../x")}, "../x", `"../x.log"`, ""},
+		{"container newline", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "a\nb")}, "a\nb", `"a\nb.log"`, "\n"},
+		{"container word joiner", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "a\u2060b")}, "a\u2060b", `"a\u2060b.log"`, "\u2060"},
+		{"pod parent directory", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("../x")}, "../x", `"../x"`, ""},
+		{"pod newline", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("a\nb")}, "a\nb", `"a\nb"`, "\n"},
+		{"pod right-to-left override", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("a\u202eb")}, "a\u202eb", `"a\u202eb"`, "\u202e"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -897,8 +907,8 @@ func TestSupportBundleLeavesOutLogsOfUnsafePodOrContainerName(t *testing.T) {
 				assert.NotContains(t, name, tc.hostile)
 			}
 			requireLocalNames(t, archiveNames(contents))
-			assert.Equal(t, "hello\n", contents["logs/c-1/agent/agent-1-main.log"])
-			assert.Contains(t, contents, "logs/c-1/agent/agent-1-main-previous.log")
+			assert.Equal(t, "hello\n", contents["logs/c-1/agent/agent-1/main.log"])
+			assert.Contains(t, contents, "logs/c-1/agent/agent-1/previous/main.log")
 
 			require.Len(t, downstream.logOptsCalls, 2, "only the other container's current and previous log are requested")
 			for _, call := range downstream.logOptsCalls {
@@ -918,46 +928,6 @@ func TestSupportBundleLeavesOutLogsOfUnsafePodOrContainerName(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestSupportBundleLeavesOutContainerWhosePreviousLogNameIsTooLong asserts
-// the 255-byte limit on each name a container needs: with a pod name of 245
-// bytes the current log's file name is 254 bytes and the previous log's is
-// 263; the container gets neither log and no log request. A pod name of
-// 237 bytes gives a previous log name of exactly 255 bytes and is written.
-func TestSupportBundleLeavesOutContainerWhosePreviousLogNameIsTooLong(t *testing.T) {
-	t.Parallel()
-	t.Run("245 bytes", func(t *testing.T) {
-		t.Parallel()
-		pod := strings.Repeat("a", 245)
-		downstream := newFakeClient().withLog("main", "hello\n")
-		res, path := bundleWithAgentPods(t, downstream, unstructuredPod(pod))
-
-		contents := readArchive(t, path)
-		for _, name := range archiveNames(contents) {
-			assert.NotContains(t, name, pod)
-		}
-		assert.Empty(t, downstream.logOptsCalls, "no log request, current or previous")
-
-		item := findItem(t, manifestFrom(t, path), "agent", "c-1")
-		assert.True(t, strings.HasPrefix(item.Status, "error: 1 of 1 container logs not collected; "), item.Status)
-		assert.Contains(t, item.Status, "longer than 255 bytes")
-		assert.Contains(t, item.Status, `pod "`+strings.Repeat("a", 64)+`"... container "main": log entry left out`)
-		assert.Equal(t, 1, res.Data.(bundleResult).Errors)
-		require.Len(t, res.Warnings, 1)
-	})
-	t.Run("237 bytes", func(t *testing.T) {
-		t.Parallel()
-		pod := strings.Repeat("a", 237)
-		downstream := newFakeClient().withLog("main", "hello\n")
-		res, path := bundleWithAgentPods(t, downstream, unstructuredPod(pod))
-
-		contents := readArchive(t, path)
-		assert.Equal(t, "hello\n", contents["logs/c-1/agent/"+pod+"-main.log"])
-		assert.Contains(t, contents, "logs/c-1/agent/"+pod+"-main-previous.log")
-		assert.Equal(t, 0, res.Data.(bundleResult).Errors)
-		assert.Empty(t, res.Warnings)
-	})
 }
 
 // TestSupportBundleLeavesOutPodWithReservedWindowsName asserts that a pod
@@ -984,7 +954,7 @@ func TestSupportBundleNULInPodNameKeepsTheBundle(t *testing.T) {
 
 	contents := readArchive(t, path)
 	assert.Contains(t, contents, "manifest.json")
-	assert.Contains(t, contents, "logs/c-1/agent/agent-1-main.log")
+	assert.Contains(t, contents, "logs/c-1/agent/agent-1/main.log")
 	requireLocalNames(t, archiveNames(contents))
 	assert.Equal(t, 1, res.Data.(bundleResult).Errors)
 }
@@ -1000,6 +970,20 @@ func TestSupportBundleReadmeExplainsLeftOutEntries(t *testing.T) {
 	assert.Contains(t, readme, "is left out")
 	assert.Contains(t, readme, "listed as the item")
 	assert.Contains(t, readme, "manifest.json shows each as an error")
+}
+
+// TestSupportBundleReadmeExplainsTheLogLayout asserts that the archive's
+// README.txt names the file of a container's current log and of its previous
+// log, and says an entry whose name was already written is left out.
+func TestSupportBundleReadmeExplainsTheLogLayout(t *testing.T) {
+	t.Parallel()
+	_, _, path := bundleOfClusters(t, "c-1")
+
+	readme := strings.Join(strings.Fields(readArchive(t, path)["README.txt"]), " ")
+	assert.Contains(t, readme, "Each pod has its own directory under logs/<cluster>/<target>/.")
+	assert.Contains(t, readme, "The current log of a container is <pod>/<container>.log")
+	assert.Contains(t, readme, "the log of its previous run is <pod>/previous/<container>.log")
+	assert.Contains(t, readme, "An entry whose name was already written is left out")
 }
 
 // failingPreviousLogClient fails the archive write that follows a previous
@@ -1054,4 +1038,461 @@ func TestArchiveEventsRecordsFailedWrite(t *testing.T) {
 	assert.Equal(t, "events-cattle-system", items[0].Name)
 	assert.Equal(t, "error: disk full", items[0].Status)
 	assert.Equal(t, []string{`support-bundle: events of cluster "c-1" namespace "cattle-system" not written: disk full`}, warnings)
+}
+
+// downstreamWithPodLogs returns a downstream fake that serves, for every
+// container of every pod, the current log "log of <pod>/<container>" and the
+// previous log "previous log of <pod>/<container>".
+func downstreamWithPodLogs(pods ...unstructured.Unstructured) *fakeClient {
+	f := newFakeClient()
+	for i := range pods {
+		pod := pods[i].GetName()
+		for _, container := range engine.ContainerNames(pods[i].Object) {
+			f.withPodLog(pod, container, "log of "+pod+"/"+container).
+				withPreviousPodLog(pod, container, "previous log of "+pod+"/"+container)
+		}
+	}
+	return f
+}
+
+// logEntryNames returns the names under logs/ in the order the archive holds
+// them, a repeated name included.
+func logEntryNames(t *testing.T, path string) []string {
+	t.Helper()
+	var out []string
+	for _, name := range tarEntryNames(t, path) {
+		if strings.HasPrefix(name, "logs/") {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// requireNoRepeat asserts that no name appears twice in names.
+func requireNoRepeat(t *testing.T, names []string) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, name := range names {
+		assert.False(t, seen[strings.ToLower(name)], "the archive holds %q twice (ignoring letter case)", name)
+		seen[strings.ToLower(name)] = true
+	}
+}
+
+// wantLog is one log entry an archive must hold: its name and its text.
+type wantLog struct{ name, text string }
+
+// wantLogs lists, for one pod and its containers, the entries
+// downstreamWithPodLogs serves: per container the current log, then the
+// previous log.
+func wantLogs(pod string, containers ...string) []wantLog {
+	var out []wantLog
+	for _, c := range containers {
+		out = append(out,
+			wantLog{"logs/c-1/agent/" + pod + "/" + c + ".log", "log of " + pod + "/" + c},
+			wantLog{"logs/c-1/agent/" + pod + "/previous/" + c + ".log", "previous log of " + pod + "/" + c})
+	}
+	return out
+}
+
+// TestSupportBundleNamesLogsByPodDirectory asserts the entry names of the
+// logs of the pods "a" and "a-b": each pod has a directory, the current log
+// is <container>.log in it and the previous log is previous/<container>.log.
+func TestSupportBundleNamesLogsByPodDirectory(t *testing.T) {
+	t.Parallel()
+	pods := []unstructured.Unstructured{unstructuredPodWithContainers("a", "b-c"), unstructuredPodWithContainers("a-b", "c")}
+	res, path := bundleWithAgentPods(t, downstreamWithPodLogs(pods...), pods...)
+
+	assert.Equal(t, []string{
+		"logs/c-1/agent/a/b-c.log",
+		"logs/c-1/agent/a/previous/b-c.log",
+		"logs/c-1/agent/a-b/c.log",
+		"logs/c-1/agent/a-b/previous/c.log",
+	}, logEntryNames(t, path))
+	contents := readArchive(t, path)
+	assert.Equal(t, "log of a/b-c", contents["logs/c-1/agent/a/b-c.log"])
+	assert.Equal(t, "previous log of a/b-c", contents["logs/c-1/agent/a/previous/b-c.log"])
+	assert.Equal(t, "log of a-b/c", contents["logs/c-1/agent/a-b/c.log"])
+	assert.Equal(t, "previous log of a-b/c", contents["logs/c-1/agent/a-b/previous/c.log"])
+	assert.Equal(t, statusCollected, findItem(t, manifestFrom(t, path), "agent", "c-1").Status)
+	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+	assert.Empty(t, res.Warnings)
+	t.Logf("entry names: %q", logEntryNames(t, path))
+}
+
+// TestSupportBundleGivesEveryPairOfNamesItsOwnEntry asserts that pods and
+// containers whose names, joined with a "-", would make one file name get one
+// entry each, with their own text, in pod and container order.
+func TestSupportBundleGivesEveryPairOfNamesItsOwnEntry(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		pods []unstructured.Unstructured
+		want []wantLog
+	}{
+		{
+			"pod a with container b-c and pod a-b with container c",
+			[]unstructured.Unstructured{unstructuredPodWithContainers("a", "b-c"), unstructuredPodWithContainers("a-b", "c")},
+			slices.Concat(wantLogs("a", "b-c"), wantLogs("a-b", "c")),
+		},
+		{
+			"containers x and x-previous of one pod",
+			[]unstructured.Unstructured{unstructuredPodWithContainers("p", "x", "x-previous")},
+			wantLogs("p", "x", "x-previous"),
+		},
+		{
+			"containers b and b-previous of pod a and container previous of pod a-b",
+			[]unstructured.Unstructured{unstructuredPodWithContainers("a", "b", "b-previous"), unstructuredPodWithContainers("a-b", "previous")},
+			slices.Concat(wantLogs("a", "b", "b-previous"), wantLogs("a-b", "previous")),
+		},
+		{
+			"pod a.b next to pod a with container b-c",
+			[]unstructured.Unstructured{unstructuredPodWithContainers("a", "b-c"), unstructuredPodWithContainers("a.b", "c")},
+			slices.Concat(wantLogs("a", "b-c"), wantLogs("a.b", "c")),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			res, path := bundleWithAgentPods(t, downstreamWithPodLogs(tc.pods...), tc.pods...)
+
+			var wantNames []string
+			for _, w := range tc.want {
+				wantNames = append(wantNames, w.name)
+			}
+			assert.Equal(t, wantNames, logEntryNames(t, path), "one entry per log, in order, none twice")
+			contents := readArchive(t, path)
+			for _, w := range tc.want {
+				assert.Equal(t, w.text, contents[w.name], w.name)
+			}
+			assert.Equal(t, statusCollected, findItem(t, manifestFrom(t, path), "agent", "c-1").Status)
+			assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+			assert.Empty(t, res.Warnings)
+		})
+	}
+}
+
+// TestSupportBundleEveryPodAndContainerPairHasOneEntryName asserts that the
+// entry names of the logs are a one-to-one map of the pairs of pod and
+// container: for pods and containers whose names join in many ways, the logs
+// have as many names as there are current and previous logs, none repeats,
+// and every name reads back as exactly one pair.
+func TestSupportBundleEveryPodAndContainerPairHasOneEntryName(t *testing.T) {
+	t.Parallel()
+	podNames := []string{"a", "a-b", "a.b", "b"}
+	containers := []string{"b", "c", "b-c", "previous", "b-previous", "x", "x-previous"}
+	var pods []unstructured.Unstructured
+	for _, name := range podNames {
+		pods = append(pods, unstructuredPodWithContainers(name, containers...))
+	}
+	res, path := bundleWithAgentPods(t, downstreamWithPodLogs(pods...), pods...)
+
+	names := logEntryNames(t, path)
+	requireNoRepeat(t, names)
+	require.Len(t, names, 2*len(podNames)*len(containers))
+
+	got := map[string]bool{}
+	for _, name := range names {
+		rest, ok := strings.CutPrefix(name, "logs/c-1/agent/")
+		require.True(t, ok, name)
+		parts := strings.Split(rest, "/")
+		var pod, file string
+		previous := false
+		switch {
+		case len(parts) == 2:
+			pod, file = parts[0], parts[1]
+		case len(parts) == 3 && parts[1] == "previous":
+			pod, file, previous = parts[0], parts[2], true
+		default:
+			require.Fail(t, "an entry name with an unexpected shape", name)
+		}
+		container, ok := strings.CutSuffix(file, ".log")
+		require.True(t, ok, name)
+		got[fmt.Sprintf("%s|%s|%t", pod, container, previous)] = true
+	}
+	want := map[string]bool{}
+	for _, pod := range podNames {
+		for _, container := range containers {
+			want[fmt.Sprintf("%s|%s|false", pod, container)] = true
+			want[fmt.Sprintf("%s|%s|true", pod, container)] = true
+		}
+	}
+	assert.Equal(t, want, got)
+	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+}
+
+// TestSupportBundleLeavesOutLogWhoseEntryNameRepeats asserts what happens when
+// the server sends two pods or containers that make one entry name (an
+// altered reply: Kubernetes refuses both): the first entry stays, the second
+// is left out and shown, and no previous log is requested for it.
+func TestSupportBundleLeavesOutLogWhoseEntryNameRepeats(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		pods      []unstructured.Unstructured
+		setup     func(*fakeClient)
+		wantNames []string
+		wantText  string
+		container string
+		pod       string
+		reason    string
+	}{
+		{
+			name:  "two pods of one name",
+			pods:  []unstructured.Unstructured{unstructuredPod("p"), unstructuredPod("p")},
+			setup: func(f *fakeClient) { f.withLogSequence("p", "main", "first", "second") },
+			wantNames: []string{
+				"logs/c-1/agent/p/main.log",
+				"logs/c-1/agent/p/previous/main.log",
+			},
+			wantText: "first",
+			pod:      "p", container: "main",
+			reason: `"logs/c-1/agent/p/main.log": archive entry name appears twice`,
+		},
+		{
+			name:  "one container name twice in one pod",
+			pods:  []unstructured.Unstructured{unstructuredPodWithContainers("p", "main", "main")},
+			setup: func(f *fakeClient) { f.withLogSequence("p", "main", "first", "second") },
+			wantNames: []string{
+				"logs/c-1/agent/p/main.log",
+				"logs/c-1/agent/p/previous/main.log",
+			},
+			wantText: "first",
+			pod:      "p", container: "main",
+			reason: `"logs/c-1/agent/p/main.log": archive entry name appears twice`,
+		},
+		{
+			name:  "pods that differ in letter case",
+			pods:  []unstructured.Unstructured{unstructuredPod("Pod-1"), unstructuredPod("pod-1")},
+			setup: func(*fakeClient) {},
+			wantNames: []string{
+				"logs/c-1/agent/Pod-1/main.log",
+				"logs/c-1/agent/Pod-1/previous/main.log",
+			},
+			wantText: "log of Pod-1/main",
+			pod:      "pod-1", container: "main",
+			reason: `"logs/c-1/agent/pod-1/main.log": archive entry name appears twice ignoring letter case; first written as "logs/c-1/agent/Pod-1/main.log"`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			downstream := downstreamWithPodLogs(tc.pods...)
+			tc.setup(downstream)
+			res, path := bundleWithAgentPods(t, downstream, tc.pods...)
+
+			assert.Equal(t, tc.wantNames, logEntryNames(t, path), "the first entry stays and the second is left out")
+			assert.Equal(t, tc.wantText, readArchive(t, path)[tc.wantNames[0]], "the first entry keeps its text")
+
+			left := fmt.Sprintf("pod %q container %q: log entry left out: %s", tc.pod, tc.container, tc.reason)
+			item := findItem(t, manifestFrom(t, path), "agent", "c-1")
+			assert.Equal(t, "error: 1 of 2 container logs not collected; "+left, item.Status)
+			assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+			assert.Equal(t, []string{"support-bundle: c-1/agent: log not collected: " + left}, res.Warnings)
+
+			var previous int
+			for _, call := range downstream.logOptsCalls {
+				if call.Previous {
+					previous++
+				}
+			}
+			assert.Equal(t, 1, previous, "a previous log is requested for the container that was kept, not the one left out")
+			assert.Len(t, downstream.logOptsCalls, 3, "the repeated log is requested once and refused")
+			t.Logf("target status: %q; warning: %q", item.Status, res.Warnings)
+		})
+	}
+}
+
+// TestSupportBundleWritesPodNameOf253Bytes asserts that a pod name of the
+// longest length Kubernetes allows is a whole directory name: the current and
+// the previous log are written with no error.
+func TestSupportBundleWritesPodNameOf253Bytes(t *testing.T) {
+	t.Parallel()
+	pod := strings.Repeat("a", 253)
+	res, path := bundleWithAgentPods(t, downstreamWithPodLogs(unstructuredPod(pod)), unstructuredPod(pod))
+
+	assert.Equal(t, []string{
+		"logs/c-1/agent/" + pod + "/main.log",
+		"logs/c-1/agent/" + pod + "/previous/main.log",
+	}, logEntryNames(t, path))
+	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+	assert.Empty(t, res.Warnings)
+}
+
+// TestSupportBundleLeavesOutPodNameOf256Bytes asserts that a pod name over
+// 255 bytes is left out with the reason, before any log request.
+func TestSupportBundleLeavesOutPodNameOf256Bytes(t *testing.T) {
+	t.Parallel()
+	pod := strings.Repeat("a", 256)
+	downstream := downstreamWithPodLogs(unstructuredPod(pod))
+	res, path := bundleWithAgentPods(t, downstream, unstructuredPod(pod))
+
+	assert.Empty(t, logEntryNames(t, path))
+	assert.Empty(t, downstream.logOptsCalls, "no log request, current or previous")
+	item := findItem(t, manifestFrom(t, path), "agent", "c-1")
+	assert.True(t, strings.HasPrefix(item.Status, "error: 1 of 1 container logs not collected; "), item.Status)
+	assert.Contains(t, item.Status, "longer than 255 bytes")
+	assert.Contains(t, item.Status, `pod "`+strings.Repeat("a", 64)+`"... container "main": log entry left out`)
+	assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+	require.Len(t, res.Warnings, 1)
+}
+
+// TestSupportBundleLeavesOutPodOrContainerNamedLikeAWindowsDevice asserts
+// that a pod is a whole directory name and a container a whole file name
+// stem: a pod named nul and a container named aux are left out with the
+// reason and no log request, on every operating system.
+func TestSupportBundleLeavesOutPodOrContainerNamedLikeAWindowsDevice(t *testing.T) {
+	t.Parallel()
+	t.Run("pod nul", func(t *testing.T) {
+		t.Parallel()
+		pods := []unstructured.Unstructured{unstructuredPod("nul")}
+		downstream := downstreamWithPodLogs(pods...)
+		res, path := bundleWithAgentPods(t, downstream, pods...)
+
+		assert.Empty(t, logEntryNames(t, path))
+		assert.Empty(t, downstream.logOptsCalls, "no log request for the pod")
+		item := findItem(t, manifestFrom(t, path), "agent", "c-1")
+		assert.Contains(t, item.Status, `pod "nul" container "main": log entry left out: "nul" is not a plain file name: it starts with a name reserved on Windows`)
+		assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+	})
+	t.Run("container aux", func(t *testing.T) {
+		t.Parallel()
+		pods := []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "aux")}
+		downstream := downstreamWithPodLogs(pods...)
+		res, path := bundleWithAgentPods(t, downstream, pods...)
+
+		assert.Equal(t, []string{"logs/c-1/agent/agent-1/main.log", "logs/c-1/agent/agent-1/previous/main.log"}, logEntryNames(t, path))
+		require.Len(t, downstream.logOptsCalls, 2, "only the other container's current and previous log are requested")
+		for _, call := range downstream.logOptsCalls {
+			assert.Equal(t, "main", call.Container)
+		}
+		item := findItem(t, manifestFrom(t, path), "agent", "c-1")
+		assert.Contains(t, item.Status, `pod "agent-1" container "aux": log entry left out: "aux.log" is not a plain file name: it starts with a name reserved on Windows`)
+		assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+	})
+}
+
+// bundleWithFlags runs support-bundle with the given --clusters and
+// --targets over steve clusters ids. Cluster c-1 has the pod agent-1 with its
+// logs; resolve maps a cluster name to an id.
+func bundleWithFlags(t *testing.T, ids []string, resolve map[string]string, clusters, targets string) (runtime.Result, string) {
+	t.Helper()
+	root := &fakeRoot{}
+	for _, id := range ids {
+		root.withCluster(&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": id}}})
+	}
+	pod := unstructuredPod("agent-1")
+	downstream := downstreamWithPodLogs(pod).withListNS(podKind.GVR, "cattle-system", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{pod}})
+	factory := &fakeFactory{local: newFakeClient(), root: root, resolve: resolve, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	res, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: targets, flagClusters: clusters}})
+	require.NoError(t, err)
+	return res, path
+}
+
+// requireEachItemOnce asserts that no manifest item name and cluster pair
+// appears twice.
+func requireEachItemOnce(t *testing.T, m bundleManifest) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, it := range m.Items {
+		key := it.Name + " on " + it.Cluster
+		assert.False(t, seen[key], "the manifest lists %q twice", key)
+		seen[key] = true
+	}
+}
+
+// TestSupportBundleUsesAClusterNamedTwiceOnce asserts that a cluster named
+// twice in --clusters, by id or by name and id, is collected once: each entry
+// and each manifest item appears once and nothing is an error.
+func TestSupportBundleUsesAClusterNamedTwiceOnce(t *testing.T) {
+	t.Parallel()
+	for _, clusters := range []string{"c-1,c-1", "prod,c-1", "c-1,prod,c-1"} {
+		t.Run(clusters, func(t *testing.T) {
+			t.Parallel()
+			res, path := bundleWithFlags(t, []string{"c-1"}, map[string]string{"prod": "c-1"}, clusters, "agent")
+
+			names := tarEntryNames(t, path)
+			requireNoRepeat(t, names)
+			assert.Contains(t, names, "logs/c-1/agent/agent-1/main.log")
+			assert.Contains(t, names, "clusters/c-1/cluster.json")
+			m := manifestFrom(t, path)
+			requireEachItemOnce(t, m)
+			assert.Equal(t, statusCollected, findItem(t, m, "agent", "c-1").Status)
+			assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+			assert.Empty(t, res.Warnings)
+			t.Logf("--clusters %s: entries %q; manifest items %+v", clusters, names, m.Items)
+		})
+	}
+}
+
+// TestSupportBundleUsesATargetNamedTwiceOnce asserts that a target named twice
+// in --targets is collected once.
+func TestSupportBundleUsesATargetNamedTwiceOnce(t *testing.T) {
+	t.Parallel()
+	res, path := bundleWithFlags(t, []string{"c-1"}, nil, "c-1", "agent,agent")
+
+	names := tarEntryNames(t, path)
+	requireNoRepeat(t, names)
+	assert.Equal(t, []string{"logs/c-1/agent/agent-1/main.log", "logs/c-1/agent/agent-1/previous/main.log"}, logEntryNames(t, path))
+	m := manifestFrom(t, path)
+	requireEachItemOnce(t, m)
+	assert.Equal(t, statusCollected, findItem(t, m, "agent", "c-1").Status)
+	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+	assert.Empty(t, res.Warnings)
+}
+
+// TestSupportBundleKeepsTheOrderOfFirstAppearance asserts that a cluster
+// named twice keeps the place of its first appearance.
+func TestSupportBundleKeepsTheOrderOfFirstAppearance(t *testing.T) {
+	t.Parallel()
+	_, path := bundleWithFlags(t, []string{"c-1", "c-2"}, nil, "c-2,c-1,c-2", "agent")
+
+	var order []string
+	for _, it := range manifestFrom(t, path).Items {
+		if it.Cluster != "" && (len(order) == 0 || order[len(order)-1] != it.Cluster) {
+			order = append(order, it.Cluster)
+		}
+	}
+	assert.Equal(t, []string{"c-2", "c-1"}, order)
+}
+
+// TestSupportBundleUsesTheLocalClusterNamedTwiceOnce asserts that the local
+// literal named twice in --clusters is collected once.
+func TestSupportBundleUsesTheLocalClusterNamedTwiceOnce(t *testing.T) {
+	t.Parallel()
+	_, path := bundleWithFlags(t, []string{"c-1"}, nil, "local,local", "agent")
+
+	requireNoRepeat(t, tarEntryNames(t, path))
+	m := manifestFrom(t, path)
+	requireEachItemOnce(t, m)
+	var nodes int
+	for _, it := range m.Items {
+		if it.Name == "nodes.json" && it.Cluster == engine.LocalCluster {
+			nodes++
+		}
+	}
+	assert.Equal(t, 1, nodes)
+}
+
+// TestResolveBundleClustersUsesEachClusterOnce asserts that --clusters lists
+// each cluster once, in the order of first appearance, whether it is named
+// twice by id, by name and id, or as the local literal.
+func TestResolveBundleClustersUsesEachClusterOnce(t *testing.T) {
+	t.Parallel()
+	factory := &fakeFactory{local: newFakeClient(), resolve: map[string]string{"prod": "c-1"}}
+	for _, tc := range []struct {
+		raw  string
+		want []string
+	}{
+		{"c-1,c-1", []string{"c-1"}},
+		{"prod,c-1", []string{"c-1"}},
+		{"c-1,prod", []string{"c-1"}},
+		{"c-2,c-1,c-2", []string{"c-2", "c-1"}},
+		{"local,local", []string{engine.LocalCluster}},
+		{"local,c-1,local", []string{engine.LocalCluster, "c-1"}},
+		{" c-1 , c-1 ,", []string{"c-1"}},
+	} {
+		got, discoveryErr, err := resolveBundleClusters(t.Context(), factory, factory.getter(), tc.raw)
+		require.NoError(t, err, tc.raw)
+		require.NoError(t, discoveryErr, tc.raw)
+		assert.Equal(t, tc.want, got, tc.raw)
+	}
 }

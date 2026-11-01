@@ -41,6 +41,30 @@ func readArchive(t *testing.T, path string) map[string]string {
 	return out
 }
 
+// tarEntryNames returns the entry names of the archive in the order it holds
+// them, a repeated name included.
+func tarEntryNames(t *testing.T, path string) []string {
+	t.Helper()
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	gz, err := gzip.NewReader(f)
+	require.NoError(t, err)
+	tr := tar.NewReader(gz)
+
+	var names []string
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		names = append(names, hdr.Name)
+	}
+	return names
+}
+
 func addAll(t *testing.T, w *ArchiveWriter, entries []ArchiveEntry) {
 	t.Helper()
 	for _, e := range entries {
@@ -265,4 +289,79 @@ func TestArchiveWriterNULNameNeverReachesTarWriter(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]string{"README.txt": "hello"}, readArchive(t, path))
+}
+
+// TestArchiveWriterRefusesRepeatedName asserts that Add refuses a name it
+// already wrote: it returns an error that names the entry, nothing is written
+// for it, the first entry keeps its text, and the writer goes on with later
+// entries and Close does not fail.
+func TestArchiveWriterRefusesRepeatedName(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	w, err := CreateArchive(path)
+	require.NoError(t, err)
+
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("logs/c/t/p/main.log"), Data: []byte("first")}))
+	err = w.Add(ArchiveEntry{Path: staticEntryPath("logs/c/t/p/main.log"), Data: []byte("second")})
+	require.ErrorContains(t, err, "appears twice")
+	require.ErrorIs(t, err, errEntryRepeated)
+	assert.Equal(t, `"logs/c/t/p/main.log": archive entry name appears twice`, err.Error())
+
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("manifest.json"), Data: []byte("{}")}))
+	total, err := w.Close()
+	require.NoError(t, err)
+	assert.Equal(t, int64(len("first")+len("{}")), total)
+
+	assert.Equal(t, []string{"logs/c/t/p/main.log", "manifest.json"}, tarEntryNames(t, path), "the name is held once, and the later entry is held")
+	assert.Equal(t, "first", readArchive(t, path)["logs/c/t/p/main.log"])
+}
+
+// TestArchiveWriterRepeatedNameIsNotTheStickyError asserts that refusing a
+// repeated name does not stop the writer: a later write succeeds, a repeated
+// Close reports no error, and the archive file stays.
+func TestArchiveWriterRepeatedNameIsNotTheStickyError(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	w, err := CreateArchive(path)
+	require.NoError(t, err)
+
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("a.txt"), Data: []byte("a")}))
+	for range 3 {
+		require.ErrorIs(t, w.Add(ArchiveEntry{Path: staticEntryPath("a.txt"), Data: []byte("again")}), errEntryRepeated)
+	}
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("b.txt"), Data: []byte("b")}))
+
+	_, err = w.Close()
+	require.NoError(t, err)
+	_, err = w.Close()
+	require.NoError(t, err)
+	assert.FileExists(t, path)
+	assert.Equal(t, []string{"a.txt", "b.txt"}, tarEntryNames(t, path))
+}
+
+// TestArchiveWriterRefusesRepeatedNameIgnoringLetterCase asserts that two
+// names that differ only in letter case are one name: an extractor on a file
+// system that ignores case writes both to one file. The error shows the
+// spelling written first, and two different names are both written.
+func TestArchiveWriterRefusesRepeatedNameIgnoringLetterCase(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	w, err := CreateArchive(path)
+	require.NoError(t, err)
+
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("logs/c/t/pod-1/main.log"), Data: []byte("lower")}))
+	err = w.Add(ArchiveEntry{Path: staticEntryPath("logs/c/t/Pod-1/main.log"), Data: []byte("upper")})
+	require.ErrorIs(t, err, errEntryRepeated)
+	assert.Equal(t, `"logs/c/t/Pod-1/main.log": archive entry name appears twice ignoring letter case; first written as "logs/c/t/pod-1/main.log"`, err.Error())
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("logs/c/t/pod-2/main.log"), Data: []byte("other")}))
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("logs/c/t/pod-1/previous/main.log"), Data: []byte("previous")}))
+	_, err = w.Close()
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{
+		"logs/c/t/pod-1/main.log",
+		"logs/c/t/pod-2/main.log",
+		"logs/c/t/pod-1/previous/main.log",
+	}, tarEntryNames(t, path))
+	assert.Equal(t, "lower", readArchive(t, path)["logs/c/t/pod-1/main.log"])
 }

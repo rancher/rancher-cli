@@ -67,6 +67,14 @@ type fakeClient struct {
 	logErrs      map[string]error
 	prevLogErrs  map[string]error
 	logOptsCalls []engine.LogOptions
+
+	// podLogs and prevPodLogs serve the current and the previous log of one
+	// container of one pod, keyed "<pod>/<container>"; logs serves a container
+	// of any pod. logSeq serves the current log of a pod and container one text
+	// per request, in order, for requests that send the same arguments.
+	podLogs     map[string]string
+	prevPodLogs map[string]string
+	logSeq      map[string][]string
 }
 
 func newFakeClient() *fakeClient {
@@ -80,6 +88,9 @@ func newFakeClient() *fakeClient {
 		logs:            map[string]string{},
 		logErrs:         map[string]error{},
 		prevLogErrs:     map[string]error{},
+		podLogs:         map[string]string{},
+		prevPodLogs:     map[string]string{},
+		logSeq:          map[string][]string{},
 	}
 }
 
@@ -115,6 +126,26 @@ func (f *fakeClient) withDeniedKind(gvr schema.GroupVersionResource, err error) 
 
 func (f *fakeClient) withLog(container, out string) *fakeClient {
 	f.logs[container] = out
+	return f
+}
+
+// withPodLog serves out as the current log of container in pod.
+func (f *fakeClient) withPodLog(pod, container, out string) *fakeClient {
+	f.podLogs[pod+"/"+container] = out
+	return f
+}
+
+// withPreviousPodLog serves out as the previous log of container in pod.
+func (f *fakeClient) withPreviousPodLog(pod, container, out string) *fakeClient {
+	f.prevPodLogs[pod+"/"+container] = out
+	return f
+}
+
+// withLogSequence serves outs, one per request, as the current log of
+// container in pod; once they are used the log is the one withPodLog or
+// withLog serves.
+func (f *fakeClient) withLogSequence(pod, container string, outs ...string) *fakeClient {
+	f.logSeq[pod+"/"+container] = outs
 	return f
 }
 
@@ -187,7 +218,7 @@ func (f *fakeClient) Delete(context.Context, schema.GroupVersionResource, string
 	return nil
 }
 
-func (f *fakeClient) Logs(_ context.Context, _ string, _ string, opts engine.LogOptions) (string, error) {
+func (f *fakeClient) Logs(_ context.Context, _ string, pod string, opts engine.LogOptions) (string, error) {
 	f.logOptsCalls = append(f.logOptsCalls, opts)
 	if opts.Previous {
 		if err, ok := f.prevLogErrs[opts.Container]; ok {
@@ -196,6 +227,18 @@ func (f *fakeClient) Logs(_ context.Context, _ string, _ string, opts engine.Log
 	}
 	if err, ok := f.logErrs[opts.Container]; ok {
 		return "", err
+	}
+	key := pod + "/" + opts.Container
+	if opts.Previous {
+		if out, ok := f.prevPodLogs[key]; ok {
+			return out, nil
+		}
+	} else if seq := f.logSeq[key]; len(seq) > 0 {
+		f.logSeq[key] = seq[1:]
+		return seq[0], nil
+	}
+	if out, ok := f.podLogs[key]; ok {
+		return out, nil
 	}
 	return f.logs[opts.Container], nil
 }
