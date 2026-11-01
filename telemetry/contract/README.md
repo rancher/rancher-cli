@@ -14,9 +14,16 @@ anywhere. Other Rancher components can write the same events.
   attribute, its values, its stability, why it is recorded and what absent
   means.
 - `<version>/otlp-mapping.md`: where each flat key sits in an OTLP logs
-  export. Documentation only; nothing encodes OTLP yet.
+  export, and how the CLI encodes it as OTLP/HTTP JSON.
+  The CLI encodes this form; nothing sends it yet.
 - `<version>/examples/valid/` and `<version>/examples/invalid/`: events the
   schema accepts, and events it refuses, one rule each.
+- `<version>/examples/otlp/valid/` and `<version>/examples/otlp/invalid/`:
+  the OTLP/HTTP JSON form of each flat example, under the same file name,
+  written by the CLI's encoder and pretty-printed (the CLI's request body is
+  compact). The examples carry no expected refusal reason: a receiver that
+  reads the scope version before the contract step refuses
+  `wrong-schema-version` there. Regenerate them with the command below.
 - `<version>/DRAFT`: an empty file. A version directory that has it is a
   draft and may still change.
 - `published.json`: the versions that are published, each with the SHA-256
@@ -30,6 +37,8 @@ the attribute metadata in `internal/telemetry` by a test; edit the
 metadata, never these files, then run:
 
     go test ./internal/cli/ -run TestTelemetryContract -update
+
+The same command also rewrites the files under `examples/otlp/`.
 
 ## Check an event against the schema
 

@@ -58,10 +58,12 @@ func isNetworkPath(path string) bool {
 }
 
 var directRules = map[string]directRule{
-	// The check of the experiment endpoint makes no request and starts no
-	// process: the standard library without the network packages and os/exec,
-	// except net/url and net/netip, which parse the value, and credhelper's URL
-	// check.
+	// The check of the experiment endpoint and the encoder of stored events
+	// make no request and start no process: the standard library without the
+	// network packages and os/exec, except net/url and net/netip, which parse
+	// the value, credhelper's URL check, and internal/telemetry, whose stored
+	// events and attribute metadata the encoder reads. internal/telemetry
+	// never imports internal/telemetrysend.
 	telemetrysendDir: {
 		standard: func(p string) bool {
 			if p == "net/url" || p == "net/netip" {
@@ -69,7 +71,7 @@ var directRules = map[string]directRule{
 			}
 			return !isNetworkPath(p) && p != "os/exec"
 		},
-		others: []string{modulePrefix + "credhelper"},
+		others: []string{modulePrefix + "credhelper", modulePrefix + "internal/telemetry"},
 	},
 	telemetryDir: {
 		standard: func(p string) bool { return !isNetworkPath(p) },
@@ -209,6 +211,13 @@ func TestDirectImportCheckCatchesFixtures(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.True(t, strings.HasSuffix(got[0], "netdirect.go imports net"), got)
 	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/clean", sendRule))
+	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/telemetry", sendRule))
+	got = directImportFindings(t, "test/conformance/testdata/importguard/token", sendRule)
+	require.Len(t, got, 1)
+	assert.True(t, strings.HasSuffix(got[0], "imports "+modulePrefix+"internal/token"), got)
+	got = directImportFindings(t, "test/conformance/testdata/importguard/httpx", sendRule)
+	require.Len(t, got, 1)
+	assert.True(t, strings.HasSuffix(got[0], "imports "+modulePrefix+"internal/client/httpx"), got)
 	for _, p := range []string{"net/url", "net/netip", "errors", "strings", "strconv"} {
 		assert.True(t, sendRule.standard(p), p)
 	}

@@ -83,11 +83,15 @@ const (
 	PlaceRecord   = "log record"
 )
 
-// ContractInputs holds the closed value lists that live outside this
-// package; the package imports no error code package.
+// ContractInputs holds the closed value lists and the text that live outside
+// this package; the package imports no error code package and no package that
+// encodes events.
 type ContractInputs struct {
 	// ErrorCodes is every CLI error code, in a stable order.
 	ErrorCodes []string
+	// OTLPEncoding is the text of the JSON encoding section of the OTLP
+	// mapping, written by the package that encodes OTLP; empty adds nothing.
+	OTLPEncoding string
 }
 
 // Attribute is the metadata of one attribute: the one place the encoder's

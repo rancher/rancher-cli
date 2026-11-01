@@ -60,7 +60,7 @@ func ContractFiles(in ContractInputs) (map[string][]byte, error) {
 	return map[string][]byte{
 		SchemaFile:      schema,
 		FieldsFile:      []byte(fieldsMarkdown(in)),
-		OTLPMappingFile: []byte(otlpMarkdown()),
+		OTLPMappingFile: []byte(otlpMarkdown(in)),
 	}, nil
 }
 
@@ -270,12 +270,12 @@ func fieldsMarkdown(in ContractInputs) string {
 	return b.String()
 }
 
-func otlpMarkdown() string {
+func otlpMarkdown(in ContractInputs) string {
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
 	w("# Mapping the flat event to OTLP (contract %s)\n\n", ContractVersion)
-	w("Documentation only: nothing in the CLI encodes OTLP. The wire format is decided when uploading is added. This table lists where each flat key goes in an OTLP logs export; a relay or an OpenTelemetry Collector can be built from it without a change to the contract.\n\n")
-	w("An event is one OTLP log record with an event name. Who produced a batch is stated once, as resource attributes. The scope name is the value of `service.name`; the scope version holds the contract version, a use this contract chooses for that field. `schemaUrl` is `https://opentelemetry.io/schemas/1.44.0` on the resource and on the scope.\n\n")
+	w("The CLI encodes this form; nothing sends it yet. This table lists where each flat key goes in an OTLP logs export; a relay or an OpenTelemetry Collector can be built from it without a change to the contract.\n\n")
+	w("An event is one OTLP log record with an event name. Who produced an event is stated as resource attributes. The scope name is the value of `service.name`; the scope version holds the contract version, a use this contract chooses for that field.\n\n")
 	w("| Flat key | OTLP location | Notes |\n|---|---|---|\n")
 	w("| `%s` | log record `eventName` | |\n", keyEventName)
 	w("| `%s` | log record `timeUnixNano` | A whole UTC hour. `observedTimeUnixNano` is never written. |\n", keyTime)
@@ -301,7 +301,10 @@ func otlpMarkdown() string {
 		}
 		w("| `%s` | %s | %s |\n", a.Name, loc, note)
 	}
-	w("\nA resource attribute is the same for every event of a batch; a producer that writes events from several processes groups them by their resource attributes.\n")
+	w("\nResource attributes state who produced an event. How many events a producer puts under one resource is that producer's rule; the rule of the CLI is in the section below.\n")
+	if in.OTLPEncoding != "" {
+		b.WriteString("\n" + in.OTLPEncoding)
+	}
 	return b.String()
 }
 

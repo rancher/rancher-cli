@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,19 +18,56 @@ import (
 	"github.com/rancher/rancher-cli/internal/invocation"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
+	"github.com/rancher/rancher-cli/internal/telemetrysend"
 )
 
 // contractDir is the committed directory of the current contract version.
 var contractDir = filepath.Join("..", "..", "telemetry", "contract", telemetry.ContractVersion)
 
 func contractInputs() telemetry.ContractInputs {
-	return telemetry.ContractInputs{ErrorCodes: clierr.AllCodes()}
+	return telemetry.ContractInputs{ErrorCodes: clierr.AllCodes(), OTLPEncoding: telemetrysend.JSONEncodingSection()}
+}
+
+// writeOTLPExamples writes the OTLP form of every flat example under
+// examples/otlp, with the same kind directory and file name, and removes a
+// file there that has no flat counterpart. A flat example is never touched.
+func writeOTLPExamples(t *testing.T) {
+	t.Helper()
+	want := map[string]bool{}
+	for _, kind := range []string{"valid", "invalid"} {
+		flat, err := filepath.Glob(filepath.Join(contractDir, "examples", kind, "*.json"))
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(filepath.Join(contractDir, "examples", "otlp", kind), 0o755))
+		for _, f := range flat {
+			data, err := os.ReadFile(f)
+			require.NoError(t, err)
+			var fields map[string]any
+			require.NoError(t, json.Unmarshal(data, &fields))
+			req, err := telemetrysend.NewOTLPEncoder().Encode([]telemetry.StoredEvent{{Fields: fields}})
+			require.NoError(t, err)
+			var out bytes.Buffer
+			require.NoError(t, json.Indent(&out, req.Body, "", "  "))
+			out.WriteByte('\n')
+			target := filepath.Join(contractDir, "examples", "otlp", kind, filepath.Base(f))
+			require.NoError(t, os.WriteFile(target, out.Bytes(), 0o644))
+			want[target] = true
+		}
+	}
+	root := filepath.Join(contractDir, "examples", "otlp")
+	require.NoError(t, filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		require.NoError(t, err)
+		if !d.IsDir() && !want[p] {
+			require.NoError(t, os.Remove(p))
+		}
+		return nil
+	}))
 }
 
 // TestTelemetryContract asserts the committed schema, field table and OTLP
 // mapping are what the attribute metadata, the error codes and the agent ids
-// generate. With -update it rewrites them; an attribute added to the
-// metadata without regenerating fails here.
+// generate. With -update it rewrites them and the OTLP form of every example
+// (the telemetrysend tests compare those); an attribute added to the metadata
+// without regenerating fails here.
 func TestTelemetryContract(t *testing.T) {
 	files, err := telemetry.ContractFiles(contractInputs())
 	require.NoError(t, err)
@@ -38,6 +77,7 @@ func TestTelemetryContract(t *testing.T) {
 		for name, data := range files {
 			require.NoError(t, os.WriteFile(filepath.Join(contractDir, name), data, 0o644))
 		}
+		writeOTLPExamples(t)
 	}
 	for name, want := range files {
 		got, err := os.ReadFile(filepath.Join(contractDir, name))

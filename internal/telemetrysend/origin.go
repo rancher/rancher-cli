@@ -1,5 +1,6 @@
-// Package telemetrysend checks the value of the telemetryupload experiment.
-// It makes no request and imports no HTTP package.
+// Package telemetrysend checks the value of the telemetryupload experiment
+// and encodes stored events as OTLP/HTTP JSON. It makes no request and
+// imports no HTTP package.
 package telemetrysend
 
 import (

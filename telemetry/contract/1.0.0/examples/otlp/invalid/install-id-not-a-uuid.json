@@ -1,0 +1,163 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "io.rancher"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "io.rancher.cli"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "0.1.0-alpha.8"
+            }
+          },
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "3f2a6c1e-8b7d-4e5a-9c10-2d4f6a8b0c1e"
+            }
+          },
+          {
+            "key": "io.rancher.cli.config_directory.id",
+            "value": {
+              "stringValue": "7b1d9e04-5a3c-4f68-8e21-c0d4a6b8e2f1"
+            }
+          },
+          {
+            "key": "os.type",
+            "value": {
+              "stringValue": "linux"
+            }
+          },
+          {
+            "key": "host.arch",
+            "value": {
+              "stringValue": "amd64"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "io.rancher.cli",
+            "version": "1.0.0"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "1792764000000000000",
+              "eventName": "io.rancher.cli.command.run",
+              "attributes": [
+                {
+                  "key": "io.rancher.client.type",
+                  "value": {
+                    "stringValue": "agent"
+                  }
+                },
+                {
+                  "key": "io.rancher.client.agent",
+                  "value": {
+                    "stringValue": "claude-code"
+                  }
+                },
+                {
+                  "key": "io.rancher.client.ci",
+                  "value": {
+                    "boolValue": false
+                  }
+                },
+                {
+                  "key": "io.rancher.cli.exec_plugin",
+                  "value": {
+                    "boolValue": false
+                  }
+                },
+                {
+                  "key": "log.record.uid",
+                  "value": {
+                    "stringValue": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+                  }
+                },
+                {
+                  "key": "io.rancher.cli.command",
+                  "value": {
+                    "stringValue": "get project"
+                  }
+                },
+                {
+                  "key": "io.rancher.cli.command.flags",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "cluster"
+                        },
+                        {
+                          "stringValue": "output"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "io.rancher.cli.command.outcome",
+                  "value": {
+                    "stringValue": "error"
+                  }
+                },
+                {
+                  "key": "error.type",
+                  "value": {
+                    "stringValue": "RBAC"
+                  }
+                },
+                {
+                  "key": "process.exit.code",
+                  "value": {
+                    "intValue": "6"
+                  }
+                },
+                {
+                  "key": "io.rancher.cli.command.duration.bucket",
+                  "value": {
+                    "stringValue": "lt1s"
+                  }
+                },
+                {
+                  "key": "io.rancher.manager.version",
+                  "value": {
+                    "stringValue": "2.15.2"
+                  }
+                },
+                {
+                  "key": "io.rancher.manager.edition",
+                  "value": {
+                    "stringValue": "prime"
+                  }
+                },
+                {
+                  "key": "io.rancher.manager.install.id",
+                  "value": {
+                    "stringValue": "cluster-prod-1"
+                  }
+                }
+              ]
+            }
+          ],
+          "schemaUrl": "https://opentelemetry.io/schemas/1.44.0"
+        }
+      ],
+      "schemaUrl": "https://opentelemetry.io/schemas/1.44.0"
+    }
+  ]
+}

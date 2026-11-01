@@ -232,3 +232,30 @@ func TestContractFilesUseLineFeeds(t *testing.T) {
 		return nil
 	}))
 }
+
+// TestMappingAppendsTheEncodingSection asserts the OTLP mapping holds no
+// encoding section when the input has none, and otherwise ends with its last
+// paragraph, exactly one blank line and the section text, with no line feed
+// added after the section: the text is written as given.
+func TestMappingAppendsTheEncodingSection(t *testing.T) {
+	codes := []string{"RBAC"}
+	without, err := ContractFiles(ContractInputs{ErrorCodes: codes})
+	require.NoError(t, err)
+	base := string(without[OTLPMappingFile])
+	committed, err := os.ReadFile(filepath.Join(versionDir, OTLPMappingFile))
+	require.NoError(t, err)
+	before, _, found := strings.Cut(string(committed), "\n## JSON encoding\n")
+	require.True(t, found, "the committed mapping holds the section")
+	assert.Equal(t, base, before, "without a section the mapping is the committed one up to the blank line before the section")
+	assert.NotContains(t, base, "JSON encoding")
+	require.True(t, strings.HasSuffix(base, ".\n"), "the mapping ends with its last paragraph and one line feed")
+
+	const section = "## JSON encoding\n\nText of the section.\n"
+	with, err := ContractFiles(ContractInputs{ErrorCodes: codes, OTLPEncoding: section})
+	require.NoError(t, err)
+	got := string(with[OTLPMappingFile])
+	assert.Equal(t, base+"\n"+section, got)
+	assert.True(t, strings.HasSuffix(got, ".\n\n"+section), "one blank line between the last paragraph and the section")
+	assert.False(t, strings.HasSuffix(got, "\n\n\n"+section), "no second blank line")
+	assert.Equal(t, 1, strings.Count(got, "## JSON encoding"))
+}
