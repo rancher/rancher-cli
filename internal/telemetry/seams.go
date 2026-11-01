@@ -64,7 +64,14 @@ var (
 	removeHook func(path string) bool
 	readHook   func(path string) error
 	pauseHook  func(stage string)
-	retryDelay = 10 * time.Millisecond
+	// linkHook, removeFileHook, removeAllHook and renameHook run before the
+	// file operation they are named for; an error they return is the
+	// result and the operation does not run.
+	linkHook       func(oldname, newname string) error
+	removeFileHook func(name string) error
+	removeAllHook  func(name string) error
+	renameHook     func(oldname, newname string) error
+	retryDelay     = 10 * time.Millisecond
 	// markerCap is maxMarkersPerFile as a variable, for tests.
 	markerCap = maxMarkersPerFile
 )

@@ -79,17 +79,44 @@ func (r *root) MkdirAll(name string, perm fs.FileMode) error {
 
 func (r *root) Remove(name string) error {
 	observeOp("remove", name)
+	if removeFileHook != nil {
+		if err := removeFileHook(name); err != nil {
+			return err
+		}
+	}
 	return r.inner.Remove(name)
 }
 
 func (r *root) RemoveAll(name string) error {
 	observeOp("removeall", name)
+	if removeAllHook != nil {
+		if err := removeAllHook(name); err != nil {
+			return err
+		}
+	}
 	return r.inner.RemoveAll(name)
 }
 
 func (r *root) Rename(oldname, newname string) error {
 	observeOp("rename", oldname)
+	if renameHook != nil {
+		if err := renameHook(oldname, newname); err != nil {
+			return err
+		}
+	}
 	return r.inner.Rename(oldname, newname)
+}
+
+// Link creates newname as a hard link to the file oldname. It never replaces
+// an existing newname: the error then matches fs.ErrExist.
+func (r *root) Link(oldname, newname string) error {
+	observeOp("link", newname)
+	if linkHook != nil {
+		if err := linkHook(oldname, newname); err != nil {
+			return err
+		}
+	}
+	return r.inner.Link(oldname, newname)
 }
 
 func (r *root) Chtimes(name string, atime, mtime time.Time) error {

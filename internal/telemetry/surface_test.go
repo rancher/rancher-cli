@@ -48,6 +48,11 @@ var realSurface = surfaceRules{
 		// IsDevelopmentVersion answers a question about a version text and
 		// returns a bool; it puts nothing into an event.
 		"IsDevelopmentVersion",
+		// The upload store reads stored events and files and writes no
+		// event: Ready takes the paths of compacted files, Cover takes record
+		// ids, DeleteCovered takes the files Cover chose, and WriteState
+		// writes the upload state file.
+		"Store.Ready", "ReadyList.Cover", "Store.DeleteCovered", "UploadLock.WriteState",
 	},
 	types: []string{
 		"Attribute", "ContractInputs", "EventSpec", "Options", "RunInput", "ControlInput",
@@ -59,6 +64,9 @@ var realSurface = surfaceRules{
 		// ExperimentView is the text `telemetry status` prints about the
 		// experiment variable; no event holds one.
 		"ExperimentView",
+		// The upload store's values hold paths, record ids and the text of
+		// the upload state file; none is written into an event.
+		"ReadyOptions", "ReadyList", "DeleteResult", "UploadState",
 	},
 }
 

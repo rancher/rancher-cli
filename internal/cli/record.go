@@ -177,7 +177,7 @@ func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (
 		Getenv:     os.Getenv,
 		Config:     st.setting,
 	}
-	_, read := telemetry.Record(newRunEvent(run), opts)
+	_, read, _ := telemetry.Record(newRunEvent(run), opts)
 	return refreshInput{server: server, opts: opts, start: read}
 }
 

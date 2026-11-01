@@ -90,7 +90,7 @@ what drifted the previous revision of this doc).
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery + typed clients) aimed at the Rancher k8s proxy endpoint, every one over `HTTPClient`, the single client-go `http.Client` carrying the same-origin redirect policy; `TableClient` is the REST client of the table reads, over that same `HTTPClient`. Holds `FieldManager` and `NewWriteRequest`: every Kubernetes write the CLI builds by hand goes through it. `RESTConfig` adds a wrapper that records the host of every request that gets a response. |
 | `internal/client/httpx` | Constructs the hardened `*http.Client`s: `New` (TLS floor / CA / insecure, proxy, timeouts) for Rancher-origin callers (`internal/token`'s auth flows, `internal/client/provider`'s `/rancherversion` probe and `InstallIDFetchFor`, `internal/cli`'s GET-only `engine.RootClient`), `NewExternal` (operating-system roots only) for identity-provider endpoints, the shared `RejectCrossOriginRedirect` policy every client carries, and the closed `Origin` tuple those decisions compare. `New` also sends the process's User-Agent (`SetUserAgent`, set once by `cmd/rancher`) on every request, replacing any the caller set. Three process-wide records, cleared at the start of each run: the hosts that answered (scheme, host and the transport below the one that recorded it), the install id request the root client, an auth command or the exec plugin registered with whether it skips a stored failure's wait, and the function a plugin sign-in calls with its login token's install id request before it deletes that token. It also sends the unauthenticated `GET /rancherversion` through a recorded transport, and reads a body through a limit. |
 | `internal/invocation` | Describes how the process was started (version, platform, agent harness session, exec plugin, CI) from the environment, in one place, and builds the User-Agent from it. Standard library only; `cmd/rancher` builds it and hands the string to `httpx` and the whole context to `cli.SetInvocation`; `internal/cli` passes the context to `internal/telemetry`, which reads its agent, CI and exec plugin facts to describe the producer of a usage event. |
-| `internal/telemetry` | The usage event contract and the local recording package: the event types and normalizers (every value a closed list, a pattern, a count, a bucket or a random id), the flat JSON encoder, the generator of the published contract files (`telemetry/contract`), the on and off controls, and the store under `<config dir>/telemetry` (exclusive create of a random slot per event, an hourly compaction and age pass, one facts file per server), and the rules for the server facts: when each record is due, with the install id's rule that skips a stored failure's wait, what each answer stores, and the read of a server's facts file under the recording controls. It imports the standard library without network packages, `internal/invocation` and `internal/fsacl` only; a conformance test checks the direct imports and the import closure on every release platform. It takes no lock and never creates the config directory. |
+| `internal/telemetry` | The usage event contract and the local recording package: the event types and normalizers (every value a closed list, a pattern, a count, a bucket or a random id), the flat JSON encoder, the generator of the published contract files (`telemetry/contract`), the on and off controls, and the store under `<config dir>/telemetry` (exclusive create of a random slot per event, an hourly compaction and age pass, one facts file per server), and the rules for the server facts: when each record is due, with the install id's rule that skips a stored failure's wait, what each answer stores, and the read of a server's facts file under the recording controls. It imports the standard library without network packages, `internal/invocation` and `internal/fsacl` only; a conformance test checks the direct imports and the import closure on every release platform. Its one lock is `telemetry/upload/lock`, placed by an exclusive link of a fully written file, with a stale rule on the time written in it; it never creates the config directory. |
 | `internal/experiment` | The table of experimental settings the `RANCHER_CLI_EXPERIMENT` variable turns on (development builds only) and the parser of the variable. Standard library only; it reads no environment and no file. |
 | `internal/telemetrysend` | The check of the `telemetryupload` experiment's value: an origin, https or http to a loopback host, built on `credhelper.CheckServerURL`; and the encoder that writes stored events as OTLP/HTTP JSON. It makes no request and imports no HTTP package; a conformance test limits its direct imports. |
 | `internal/fsacl` | Owner-only access lists where the operating system ignores Unix mode bits: `Harden` for one file, `HardenInheritable` for a directory whose new entries inherit the list. Windows only does anything; every other platform is a no-op. Standard library and `golang.org/x/sys/windows` only; `internal/config` and `internal/telemetry` both call it. |
@@ -984,21 +984,26 @@ respective files via `flock` (released by the OS on process exit):
   commands take it only while a change record is active or abandoned. A
   cold path only; no reader ever touches it.
 
-The files under `<dir>/telemetry` take no lock. `telemetry on` and `telemetry off` write
+The files under `<dir>/telemetry` take no lock, except `telemetry/upload/lock` (one
+holder per directory): an exclusively linked file, not a `flock`, which
+`RANCHER_CLI_CONFIG_NO_LOCK` does not skip. `telemetry on` and `telemetry off` write
 the `telemetry` key of `config.yaml` under the config lock, as every other config
 writer does; `telemetry off` deletes the recorded files after that lock is
 released, and `telemetry reset` takes no lock.
 
-One ordering rule holds across all five: the config lock is always outermost, then
+One ordering rule holds across all six: the config lock is always outermost, then
 the transition lock, then exactly one of `credstore-id.lock` or the helper-records
-lock - never both at once. Code holding any of the inner locks must never acquire an
+lock - never both at once. The telemetry upload lock is never held together with
+another lock: no code takes it while holding one, and code holding it takes no other.
+Code holding any of the inner locks must never acquire an
 outer one. `RANCHER_CLI_CONFIG_NO_LOCK`
 (any non-empty value) skips the `flock`; use it only on a filesystem with broken
 advisory locking. The process-level semaphore still serializes in-process callers.
 Without the flock a concurrent command can replace or remove the one record of a store
 change, the same lost-update class the variable already accepts for `config.yaml`.
 
-Telemetry files take no lock. A recording process creates its event file exclusively at a random
+Telemetry files take no lock, except the upload lock above. A recording process
+creates its event file exclusively at a random
 free slot and writes it once, the directory id is created exclusively, a facts file is replaced
 by rename, and the hourly pass creates each compacted file exclusively; a concurrent process
 either wins an exclusive create or sees the file already there.

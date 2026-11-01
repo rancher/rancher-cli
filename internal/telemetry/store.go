@@ -76,25 +76,29 @@ type Options struct {
 // standard error.
 //
 // It also returns what the event read of the server's facts file, so the
-// caller does not read the file a second time.
-func Record(ev Event, opts Options) (st Status, read FactsRead) {
+// caller does not read the file a second time, and the compacted files the
+// hourly pass of this run finished writing: slash-separated paths relative to
+// the telemetry directory, such as events/2026111214/2026111214.jsonl. The
+// list is nil when no pass ran, the pass wrote nothing or its write failed,
+// and when recording panicked.
+func Record(ev Event, opts Options) (st Status, read FactsRead, written []string) {
 	if !Resolve(ControlInput{Getenv: opts.Getenv, Config: opts.Config}).On {
-		return StatusOff, FactsRead{}
+		return StatusOff, FactsRead{}, nil
 	}
 	if !opts.DirExisted {
-		return StatusNoDirectory, FactsRead{}
+		return StatusNoDirectory, FactsRead{}, nil
 	}
 	if ev.failed() {
-		return StatusFailed, FactsRead{}
+		return StatusFailed, FactsRead{}, nil
 	}
 	defer func() {
 		if recover() != nil {
-			st, read = StatusFailed, FactsRead{}
+			st, read, written = StatusFailed, FactsRead{}, nil
 		}
 	}()
 	s, err := OpenStore(opts.ConfigDir)
 	if err != nil {
-		return StatusFailed, FactsRead{}
+		return StatusFailed, FactsRead{}, nil
 	}
 	defer func() { _ = s.Close() }()
 	return s.record(ev)
@@ -109,6 +113,9 @@ type Store struct {
 	tel       *root
 	configDir string
 	deadline  time.Time
+	// compacted holds the compacted files the hourly pass of the current
+	// Record finished writing, in memory only.
+	compacted []string
 }
 
 // OpenStore opens the configuration directory and, when it holds a
@@ -203,9 +210,10 @@ func (s *Store) readLimited(name string, limit int64) ([]byte, bool, error) {
 
 func hourName(t time.Time) string { return t.UTC().Format(hourLayout) }
 
-func (s *Store) record(ev Event) (Status, FactsRead) {
+func (s *Store) record(ev Event) (Status, FactsRead, []string) {
+	s.compacted = nil
 	if err := s.ensureDir(); err != nil {
-		return StatusFailed, FactsRead{}
+		return StatusFailed, FactsRead{}, nil
 	}
 	now := nowFunc().UTC()
 	id := s.directoryID(now)
@@ -224,7 +232,7 @@ func (s *Store) record(ev Event) (Status, FactsRead) {
 		s.touchMarker(now)
 		s.pass(now, ev.producerInfo(), id)
 	}
-	return st, facts
+	return st, facts, s.compacted
 }
 
 // writeSlot creates a random free slot of the event's hour directory
@@ -473,11 +481,11 @@ func (s *Store) DeleteDirectoryID() error {
 	return nil
 }
 
-// Reset removes the events, the server facts and the configuration
-// directory id, and nothing else; it keeps trying after a failure and
-// returns every failure. With no telemetry directory it does nothing.
+// Reset removes the events, the server facts, the configuration directory id
+// and the upload directory, and nothing else; it keeps trying after a failure
+// and returns every failure. With no telemetry directory it does nothing.
 func (s *Store) Reset() error {
-	return errors.Join(s.DeleteEvents(), s.DeleteFacts(), s.DeleteDirectoryID())
+	return errors.Join(s.DeleteEvents(), s.DeleteFacts(), s.DeleteDirectoryID(), s.DeleteUploadState())
 }
 
 // StoredEvent is one event read back from disk.
@@ -599,21 +607,107 @@ func (s *Store) listHour(h hourDir) (hourFiles, error) {
 	return files, nil
 }
 
+// readFileLines returns the parsed events of a compacted file in order. It
+// skips any line that does not parse; clean is false when such a line is
+// anywhere but at the end of a file that lacks its final newline, which is
+// what a write cut short by a crash leaves. ok is false when the file could
+// not be read whole.
+func (s *Store) readFileLines(name string) (events []StoredEvent, clean, ok bool) {
+	data, big, err := s.readLimited(name, maxHourFileSize)
+	if err != nil || big {
+		return nil, false, false
+	}
+	terminated := bytes.HasSuffix(data, []byte{'\n'})
+	data = bytes.TrimSuffix(data, []byte{'\n'})
+	clean = true
+	unparsed := false
+	for line := range bytes.SplitSeq(data, []byte{'\n'}) {
+		if unparsed {
+			clean = false
+		}
+		ev, parsed := parseEvent(line)
+		unparsed = !parsed
+		if parsed {
+			events = append(events, ev)
+		}
+	}
+	if unparsed && terminated {
+		clean = false
+	}
+	return events, clean, true
+}
+
 // readLines returns the parsed events of a compacted file, skipping any
 // line that does not parse (a file cut short by a crash ends in one). The
 // bool is false when the file could not be read whole.
 func (s *Store) readLines(name string) ([]StoredEvent, bool) {
-	data, big, err := s.readLimited(name, maxHourFileSize)
-	if err != nil || big {
-		return nil, false
+	events, _, ok := s.readFileLines(name)
+	return events, ok
+}
+
+// fileRead is one stored file that holds at least one event, read whole.
+type fileRead struct {
+	// name is the slash-separated path below the telemetry directory.
+	name string
+	slot bool
+	// events are the parsed events in file order.
+	events []StoredEvent
+	// clean is false when a compacted file has a line that does not parse
+	// other than an unterminated last line.
+	clean bool
+}
+
+// walkOptions are checks a caller adds to the walk; the zero value reads
+// every hour and every file.
+type walkOptions struct {
+	// skipHour leaves an hour out before any of its files is listed.
+	skipHour func(hourDir) bool
+	// skipFile leaves a compacted file out before it is read; name is its
+	// path below the telemetry directory.
+	skipFile func(name string) bool
+}
+
+// walkFiles calls visit with each stored file that holds an event, oldest
+// hour first, compacted files before slots. An unreadable file, a compacted
+// file over maxHourFileSize and a slot that does not parse are not visited.
+// It stops when visit returns false. With no telemetry directory it visits
+// nothing.
+func (s *Store) walkFiles(o walkOptions, visit func(fileRead) bool) error {
+	hours, err := s.hours()
+	if err != nil {
+		return err
 	}
-	var out []StoredEvent
-	for line := range bytes.SplitSeq(data, []byte{'\n'}) {
-		if ev, ok := parseEvent(line); ok {
-			out = append(out, ev)
+	for _, h := range hours {
+		if o.skipHour != nil && o.skipHour(h) {
+			continue
+		}
+		files, err := s.listHour(h)
+		if err != nil {
+			continue
+		}
+		dir := path.Join(dirEvents, h.name)
+		for _, j := range files.jsonls {
+			name := path.Join(dir, j)
+			if o.skipFile != nil && o.skipFile(name) {
+				continue
+			}
+			events, clean, ok := s.readFileLines(name)
+			if ok && len(events) > 0 && !visit(fileRead{name: name, events: events, clean: clean}) {
+				return nil
+			}
+		}
+		for _, n := range files.slots {
+			name := path.Join(dir, n)
+			data, big, err := s.readLimited(name, maxEventSize)
+			if err != nil || big {
+				continue
+			}
+			if ev, ok := parseEvent(data); ok && !visit(fileRead{name: name, slot: true, events: []StoredEvent{ev}, clean: true}) {
+				return nil
+			}
 		}
 	}
-	return out, true
+	return nil
 }
 
 // walk calls visit with each stored event, oldest hour first, compacted files
@@ -621,43 +715,19 @@ func (s *Store) readLines(name string) ([]StoredEvent, bool) {
 // by record id. It stops when visit returns false. With no telemetry
 // directory it visits nothing.
 func (s *Store) walk(visit func(StoredEvent) bool) error {
-	hours, err := s.hours()
-	if err != nil {
-		return err
-	}
 	seen := map[string]bool{}
-	emit := func(ev StoredEvent) bool {
-		if seen[ev.UID] {
-			return true
-		}
-		seen[ev.UID] = true
-		return visit(ev)
-	}
-	for _, h := range hours {
-		files, err := s.listHour(h)
-		if err != nil {
-			continue
-		}
-		dir := path.Join(dirEvents, h.name)
-		for _, j := range files.jsonls {
-			lines, _ := s.readLines(path.Join(dir, j))
-			for _, ev := range lines {
-				if !emit(ev) {
-					return nil
-				}
-			}
-		}
-		for _, n := range files.slots {
-			data, big, err := s.readLimited(path.Join(dir, n), maxEventSize)
-			if err != nil || big {
+	return s.walkFiles(walkOptions{}, func(f fileRead) bool {
+		for _, ev := range f.events {
+			if seen[ev.UID] {
 				continue
 			}
-			if ev, ok := parseEvent(data); ok && !emit(ev) {
-				return nil
+			seen[ev.UID] = true
+			if !visit(ev) {
+				return false
 			}
 		}
-	}
-	return nil
+		return true
+	})
 }
 
 // List returns every stored event, oldest first, skipping what does not

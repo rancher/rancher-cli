@@ -8,9 +8,9 @@ import (
 )
 
 // changes is everything the commands change: the telemetry key of
-// config.yaml and the three kinds of recorded data. The commands hold one,
-// set by their constructor to the production implementation, so a test can
-// replace any step with a failing one.
+// config.yaml, the three kinds of recorded data and the upload directory. The
+// commands hold one, set by their constructor to the production
+// implementation, so a test can replace any step with a failing one.
 type changes interface {
 	// writeKey stores text as the telemetry key under the config lock. It
 	// returns the text the key held before when that text was neither
@@ -19,6 +19,7 @@ type changes interface {
 	deleteEvents(dir string) error
 	deleteFacts(dir string) error
 	deleteDirectoryID(dir string) error
+	deleteUploadState(dir string) error
 }
 
 type fileChanges struct{}
@@ -53,6 +54,10 @@ func (fileChanges) deleteFacts(dir string) error {
 
 func (fileChanges) deleteDirectoryID(dir string) error {
 	return withStore(dir, (*telemetry.Store).DeleteDirectoryID)
+}
+
+func (fileChanges) deleteUploadState(dir string) error {
+	return withStore(dir, (*telemetry.Store).DeleteUploadState)
 }
 
 // openError is a store that could not be opened, as opposed to a delete that

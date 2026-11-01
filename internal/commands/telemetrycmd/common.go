@@ -127,13 +127,13 @@ func storeWarning(dir string, err error) string {
 	return fmt.Sprintf("cannot read %s: %v", telemetryPath(dir), err)
 }
 
-// deleteStep is one of the three deletes.
+// deleteStep is one of the four deletes.
 type deleteStep struct {
 	name string
 	run  func(dir string) error
 }
 
-// deleteRecorded runs the three deletes, each one whatever the others did.
+// deleteRecorded runs the four deletes, each one whatever the others did.
 // A delete of a path another process already removed is not a failure. It
 // returns the names of what could not be deleted and their errors.
 func deleteRecorded(c changes, dir string) (left []string, errs []error) {
@@ -141,6 +141,7 @@ func deleteRecorded(c changes, dir string) (left []string, errs []error) {
 		{"events", c.deleteEvents},
 		{"server facts", c.deleteFacts},
 		{"config directory id", c.deleteDirectoryID},
+		{"upload state", c.deleteUploadState},
 	}
 	for _, st := range steps {
 		if err := st.run(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {

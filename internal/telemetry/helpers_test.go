@@ -115,7 +115,7 @@ func runEvent(at time.Time) CommandRun {
 
 func record(t *testing.T, dir string, ev Event) Status {
 	t.Helper()
-	st, _ := Record(ev, Options{ConfigDir: dir, DirExisted: true})
+	st, _, _ := Record(ev, Options{ConfigDir: dir, DirExisted: true})
 	return st
 }
 

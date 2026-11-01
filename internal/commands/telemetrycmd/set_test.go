@@ -133,8 +133,8 @@ func TestOnReportsAHigherControl(t *testing.T) {
 }
 
 // TestOffDeletesWhatIsRecordedAfterWritingTheKey asserts off writes the key
-// first, then deletes events, facts and the id (each separately), and
-// reports what is now empty.
+// first, then deletes events, facts, the id and the upload state (each
+// separately), and reports what is now empty.
 func TestOffDeletesWhatIsRecordedAfterWritingTheKey(t *testing.T) {
 	controlsEnv(t)
 	dir := newDir(t)
@@ -142,7 +142,7 @@ func TestOffDeletesWhatIsRecordedAfterWritingTheKey(t *testing.T) {
 	f := &fakeChanges{}
 	res, err := execute(t, commandWith("off", dir, f))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"writeKey", "deleteEvents", "deleteFacts", "deleteDirectoryID"}, f.taken())
+	assert.Equal(t, []string{"writeKey", "deleteEvents", "deleteFacts", "deleteDirectoryID", "deleteUploadState"}, f.taken())
 	assert.Equal(t, "false", configMap(t, dir)["telemetry"])
 	assert.Equal(t, []string{"pruned"}, names(t, filepath.Join(dir, "telemetry")), "only the prune marker is left")
 	d := dataMap(t, res)
@@ -180,13 +180,15 @@ func TestOffAfterAFailedDeleteReportsWhatIsLeft(t *testing.T) {
 		gone       []string
 		stillThere []string
 	}{
-		{"events", &fakeChanges{eventsErr: boom}, "events", []string{"telemetry/servers", "telemetry/config-directory-id"}, []string{"telemetry/events"}},
-		{"facts", &fakeChanges{factsErr: boom}, "server facts", []string{"telemetry/events", "telemetry/config-directory-id"}, []string{"telemetry/servers"}},
-		{"id", &fakeChanges{idErr: boom}, "config directory id", []string{"telemetry/events", "telemetry/servers"}, []string{"telemetry/config-directory-id"}},
+		{"events", &fakeChanges{eventsErr: boom}, "events", []string{"telemetry/servers", "telemetry/config-directory-id", "telemetry/upload"}, []string{"telemetry/events"}},
+		{"facts", &fakeChanges{factsErr: boom}, "server facts", []string{"telemetry/events", "telemetry/config-directory-id", "telemetry/upload"}, []string{"telemetry/servers"}},
+		{"id", &fakeChanges{idErr: boom}, "config directory id", []string{"telemetry/events", "telemetry/servers", "telemetry/upload"}, []string{"telemetry/config-directory-id"}},
+		{"upload state", &fakeChanges{uploadErr: boom}, "upload state", []string{"telemetry/events", "telemetry/servers", "telemetry/config-directory-id"}, []string{"telemetry/upload"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := newDir(t)
 			seedStore(t, dir)
+			putFile(t, dir, "telemetry/upload/state.json", "{}")
 			_, err := execute(t, commandWith("off", dir, tc.fake))
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
@@ -197,7 +199,7 @@ func TestOffAfterAFailedDeleteReportsWhatIsLeft(t *testing.T) {
 			assert.Contains(t, ce.Message, tc.left)
 			assert.Contains(t, ce.Message, "access denied")
 			assert.Equal(t, "false", configMap(t, dir)["telemetry"])
-			assert.Equal(t, []string{"writeKey", "deleteEvents", "deleteFacts", "deleteDirectoryID"}, tc.fake.taken(), "every delete ran")
+			assert.Equal(t, []string{"writeKey", "deleteEvents", "deleteFacts", "deleteDirectoryID", "deleteUploadState"}, tc.fake.taken(), "every delete ran")
 			for _, p := range tc.gone {
 				assert.NoFileExists(t, filepath.Join(dir, filepath.FromSlash(p)))
 				assert.NoDirExists(t, filepath.Join(dir, filepath.FromSlash(p)))
@@ -213,7 +215,7 @@ func TestOffAfterAFailedDeleteReportsWhatIsLeft(t *testing.T) {
 // The failure message when the telemetry path cannot be opened names every
 // item, then the path, then the one reason, once.
 const (
-	unsafeItems  = "events, server facts, config directory id"
+	unsafeItems  = "events, server facts, config directory id, upload state"
 	unsafeReason = "telemetry path is a symlink or not a directory"
 )
 
@@ -268,16 +270,16 @@ func TestFailedDeletesEachNameTheirOwnError(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := newDir(t)
 			seedStore(t, dir)
-			f := &fakeChanges{eventsErr: errors.New("busy"), idErr: errors.New("access denied")}
+			f := &fakeChanges{eventsErr: errors.New("busy"), idErr: errors.New("access denied"), uploadErr: errors.New("in use")}
 			_, err := execute(t, commandWith(name, dir, f))
-			require.ErrorContains(t, err, ": events (busy); config directory id (access denied)")
+			require.ErrorContains(t, err, ": events (busy); config directory id (access denied); upload state (in use)")
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			head := `the telemetry key is "false"`
 			if name == "reset" {
 				head = "telemetry reset is incomplete"
 			}
-			assert.Equal(t, head+": could not delete from "+filepath.Join(dir, "telemetry")+": events (busy); config directory id (access denied)", ce.Message)
+			assert.Equal(t, head+": could not delete from "+filepath.Join(dir, "telemetry")+": events (busy); config directory id (access denied); upload state (in use)", ce.Message)
 			f = &fakeChanges{eventsErr: errors.New("busy"), factsErr: errors.New("busy"), idErr: errors.New("access denied")}
 			_, err = execute(t, commandWith(name, dir, f))
 			require.ErrorContains(t, err, ": events (busy); server facts (busy); config directory id (access denied)")
@@ -298,7 +300,7 @@ func TestADeleteOfAPathAlreadyRemovedIsNotAFailure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := newDir(t)
 			seedStore(t, dir)
-			f := &fakeChanges{eventsErr: gone, factsErr: gone, idErr: gone}
+			f := &fakeChanges{eventsErr: gone, factsErr: gone, idErr: gone, uploadErr: gone}
 			res, err := execute(t, commandWith(name, dir, f))
 			require.NoError(t, err)
 			assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId"}, dataMap(t, res)["cleared"])
@@ -373,7 +375,7 @@ func TestResetDeletesExactlyTheRecordedData(t *testing.T) {
 	f := &fakeChanges{}
 	res, err := execute(t, commandWith("reset", dir, f))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"deleteEvents", "deleteFacts", "deleteDirectoryID"}, f.taken(), "reset never calls the key writer")
+	assert.Equal(t, []string{"deleteEvents", "deleteFacts", "deleteDirectoryID", "deleteUploadState"}, f.taken(), "reset never calls the key writer")
 	assert.Equal(t, []string{"pruned"}, names(t, filepath.Join(dir, "telemetry")))
 	assert.Equal(t, cfgBefore, snapshotOne(t, filepath.Join(dir, "config.yaml")))
 	assert.Equal(t, markerBefore, snapshotOne(t, filepath.Join(dir, "telemetry", "pruned")))
@@ -381,6 +383,40 @@ func TestResetDeletesExactlyTheRecordedData(t *testing.T) {
 	assert.Equal(t, "false", configMap(t, dir)["telemetry"])
 	assert.Equal(t, "TelemetryReset", res.Kind)
 	assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId"}, dataMap(t, res)["cleared"])
+}
+
+// TestOffAndResetRemoveTheUploadState asserts off and reset each remove
+// telemetry/upload with the lock, the state file and the temporary files in
+// it, reset still leaves only the prune marker, and a failure of that step is
+// named as the upload state after the other items while every other step
+// still runs.
+func TestOffAndResetRemoveTheUploadState(t *testing.T) {
+	controlsEnv(t)
+	for _, name := range []string{"off", "reset"} {
+		t.Run(name, func(t *testing.T) {
+			dir := newDir(t)
+			seedStore(t, dir)
+			for _, file := range []string{"state.json", "lock", ".lock-abc", ".state.json.tmp"} {
+				putFile(t, dir, "telemetry/upload/"+file, "x")
+			}
+			res, err := execute(t, commandWith(name, dir, &fakeChanges{}))
+			require.NoError(t, err)
+			assert.Equal(t, []string{"pruned"}, names(t, filepath.Join(dir, "telemetry")))
+			assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId"}, dataMap(t, res)["cleared"])
+		})
+		t.Run(name+" with a failed step", func(t *testing.T) {
+			dir := newDir(t)
+			seedStore(t, dir)
+			putFile(t, dir, "telemetry/upload/state.json", "x")
+			f := &fakeChanges{eventsErr: errors.New("busy"), uploadErr: errors.New("in use")}
+			_, err := execute(t, commandWith(name, dir, f))
+			require.ErrorContains(t, err, ": events (busy); upload state (in use)")
+			assert.Contains(t, f.taken(), "deleteDirectoryID", "the steps after the failed one still ran")
+			assert.Equal(t, "deleteUploadState", f.taken()[len(f.taken())-1])
+			assert.NoFileExists(t, filepath.Join(dir, "telemetry", "config-directory-id"))
+			assert.FileExists(t, filepath.Join(dir, "telemetry", "upload", "state.json"))
+		})
+	}
 }
 
 func snapshotOne(t *testing.T, path string) string {

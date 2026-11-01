@@ -179,6 +179,7 @@ func (s *Store) compactHour(h hourDir, now time.Time, p producer, dirID string) 
 		if !s.writeJSONL(path.Join(dir, target), lines) {
 			return hourStopped
 		}
+		s.compacted = append(s.compacted, path.Join(dir, target))
 		pause("file-closed")
 	}
 	removed := false

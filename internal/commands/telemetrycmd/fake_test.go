@@ -12,7 +12,7 @@ type fakeChanges struct {
 	mu    sync.Mutex
 	calls []string
 
-	keyErr, eventsErr, factsErr, idErr error
+	keyErr, eventsErr, factsErr, idErr, uploadErr error
 }
 
 func (f *fakeChanges) record(name string) {
@@ -57,6 +57,14 @@ func (f *fakeChanges) deleteDirectoryID(dir string) error {
 		return f.idErr
 	}
 	return fileChanges{}.deleteDirectoryID(dir)
+}
+
+func (f *fakeChanges) deleteUploadState(dir string) error {
+	f.record("deleteUploadState")
+	if f.uploadErr != nil {
+		return f.uploadErr
+	}
+	return fileChanges{}.deleteUploadState(dir)
 }
 
 var _ changes = (*fakeChanges)(nil)
