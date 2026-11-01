@@ -1,13 +1,16 @@
 package observe
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -661,4 +664,394 @@ func TestSupportBundleClusterJSONStateIsWhatRancherServed(t *testing.T) {
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal([]byte(readArchive(t, path)["clusters/c-abc/cluster.json"]), &doc))
 	assert.Equal(t, "active", doc["state"])
+}
+
+// requireLocalNames asserts that every entry name of an archive stays inside
+// the directory it is extracted to on the machine the test runs on: it is not
+// empty, has no backslash, does not start with a slash and is a local path.
+func requireLocalNames(t *testing.T, names []string) {
+	t.Helper()
+	for _, name := range names {
+		assert.NotEmpty(t, name)
+		assert.NotContains(t, name, `\`, "%q", name)
+		assert.False(t, strings.HasPrefix(name, "/"), "%q starts with a slash", name)
+		assert.True(t, filepath.IsLocal(filepath.FromSlash(name)), "%q is not a local path", name)
+	}
+}
+
+func archiveNames(contents map[string]string) []string {
+	return slices.Sorted(maps.Keys(contents))
+}
+
+func isErrorStatus(status string) bool { return strings.HasPrefix(status, "error:") }
+
+// bundleOfClusters runs support-bundle for the agent target over every
+// cluster in ids (all served by the steve root), with downstream pods only
+// for c-1, and returns the factory, the result and the archive path.
+func bundleOfClusters(t *testing.T, ids ...string) (*fakeFactory, runtime.Result, string) {
+	t.Helper()
+	root := &fakeRoot{}
+	for _, id := range ids {
+		root.withCluster(&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": id}}})
+	}
+	downstream := newFakeClient().withLog("main", "hello\n").withListNS(podKind.GVR, "cattle-system", podList("agent-1"))
+	factory := &fakeFactory{local: newFakeClient(), root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	res, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "agent"}})
+	require.NoError(t, err)
+	return factory, res, path
+}
+
+// TestSupportBundleLeavesOutClusterWithUnsafeID asserts that a cluster id
+// that is not a plain file name is left out whole: no request for it, no
+// entry named after it, an error item named cluster, one warning that quotes
+// the id and one more error in the count. The other cluster is collected.
+func TestSupportBundleLeavesOutClusterWithUnsafeID(t *testing.T) {
+	t.Parallel()
+	_, baseline, _ := bundleOfClusters(t, "c-1")
+
+	for _, tc := range []struct{ name, id, shown, absent string }{
+		{"parent directory", "../x", `"../x"`, ""},
+		{"slash", "a/b", `"a/b"`, ""},
+		{"NUL", "a\x00b", `"a\x00b"`, "\x00"},
+		{"dot dot", "..", `".."`, ""},
+		{"newline", "a\nb", `"a\nb"`, "\n"},
+		{"right-to-left override", "a\u202eb", `"a\u202eb"`, "\u202e"},
+		{"word joiner", "a\u2060b", `"a\u2060b"`, "\u2060"},
+		{"over 64 bytes", strings.Repeat("a", 99) + "/b", `"` + strings.Repeat("a", 64) + `"...`, strings.Repeat("a", 65)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			factory, res, path := bundleOfClusters(t, "c-1", tc.id)
+
+			contents := readArchive(t, path)
+			for _, name := range archiveNames(contents) {
+				assert.NotContains(t, name, tc.id, "an entry is named after the left-out cluster id")
+			}
+			requireLocalNames(t, archiveNames(contents))
+
+			m := manifestFrom(t, path)
+			item := findItem(t, m, "cluster", tc.id)
+			assert.True(t, isErrorStatus(item.Status), item.Status)
+			for _, it := range m.Items {
+				if it.Cluster == tc.id {
+					assert.Equal(t, "cluster", it.Name, "the left-out cluster has no other item")
+				}
+			}
+			assert.Equal(t, statusCollected, findItem(t, m, "cluster.json", "c-1").Status)
+			assert.Equal(t, statusCollected, findItem(t, m, "nodes.json", "c-1").Status)
+			assert.Equal(t, statusCollected, findItem(t, m, "agent", "c-1").Status)
+			assert.Contains(t, contents, "logs/c-1/agent/agent-1-main.log")
+
+			assert.Equal(t, baseline.Data.(bundleResult).Errors+1, res.Data.(bundleResult).Errors)
+			var shown []string
+			for _, w := range res.Warnings {
+				if strings.Contains(w, tc.shown) {
+					shown = append(shown, w)
+				}
+			}
+			require.Len(t, shown, 1, "one warning shows the cluster id escaped and cut at 64 bytes: %q", res.Warnings)
+			if tc.absent != "" {
+				assert.NotContains(t, shown[0], tc.absent, "the warning holds the escaped or cut text, not the raw value")
+			}
+			assert.NotContains(t, factory.clusterCalls, tc.id, "no request is made for a left-out cluster")
+		})
+	}
+}
+
+// fleetAgentBundleFactory serves one downstream cluster c-1 whose fleet
+// Cluster p-1 names agentNamespace, with a pod and an event list in that
+// namespace and an empty event list in cattle-system.
+func fleetAgentBundleFactory(agentNamespace string) (*fakeFactory, *fakeClient) {
+	mgmtCluster := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "c-1"}, "spec": map[string]any{}}}
+	provList := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}, "status": map[string]any{"clusterName": "c-1"}}},
+	}}
+	fleetCluster := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "p-1"},
+		"spec":     map[string]any{"agentNamespace": agentNamespace},
+	}}
+	local := newFakeClient().
+		withListNS(provKind.GVR, "fleet-default", provList).
+		withObject(fleetKind.GVR, "fleet-default", "p-1", fleetCluster)
+	downstream := newFakeClient().
+		withListNS(podKind.GVR, agentNamespace, podList("fleet-agent-1")).
+		withListNS(eventKind.GVR, "cattle-system", &unstructured.UnstructuredList{}).
+		withListNS(eventKind.GVR, agentNamespace, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			{Object: map[string]any{"metadata": map[string]any{"name": "ev-1"}, "message": "crashlooping"}},
+		}})
+	factory := &fakeFactory{local: local, root: (&fakeRoot{}).withCluster(mgmtCluster), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	return factory, downstream
+}
+
+// TestSupportBundleLeavesOutEventsOfUnsafeNamespace asserts that a namespace
+// the fleet-agent target resolved to, which is not a plain file name inside
+// the events file name, gets no entry and no events request, shows as an
+// error item and one warning, and leaves the other namespaces collected.
+func TestSupportBundleLeavesOutEventsOfUnsafeNamespace(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, ns, shown, absent string }{
+		{"slash", "a/b", `"events-a/b.json"`, ""},
+		{"NUL", "a\x00b", `"events-a\x00b.json"`, "\x00"},
+		{"newline", "a\nb", `"events-a\nb.json"`, "\n"},
+		{"right-to-left override", "a\u202eb", `"events-a\u202eb.json"`, "\u202e"},
+		{"word joiner", "a\u2060b", `"events-a\u2060b.json"`, "\u2060"},
+		{"over 64 bytes", strings.Repeat("a", 99) + "/b", `"events-` + strings.Repeat("a", 57) + `"...`, strings.Repeat("a", 58)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			factory, downstream := fleetAgentBundleFactory(tc.ns)
+			path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+			res, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "fleet-agent", flagClusters: "c-1"}})
+			require.NoError(t, err)
+
+			contents := readArchive(t, path)
+			for _, name := range archiveNames(contents) {
+				assert.NotContains(t, name, tc.ns, "an entry is named after the left-out namespace")
+			}
+			requireLocalNames(t, archiveNames(contents))
+			assert.Contains(t, contents, "clusters/c-1/events-cattle-system.json")
+
+			m := manifestFrom(t, path)
+			assert.True(t, isErrorStatus(findItem(t, m, "events-"+tc.ns, "c-1").Status))
+			assert.Equal(t, statusCollected, findItem(t, m, "events-cattle-system", "c-1").Status)
+			assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+
+			require.Len(t, res.Warnings, 1)
+			assert.Contains(t, res.Warnings[0], tc.shown)
+			if tc.absent != "" {
+				assert.NotContains(t, res.Warnings[0], tc.absent, "the warning holds the escaped or cut text, not the raw value")
+			}
+
+			assert.NotContains(t, downstream.listedNamespaces(eventKind.GVR), tc.ns, "no events request for a left-out namespace")
+		})
+	}
+}
+
+// TestSupportBundleWritesEventsOfDotDotNamespace asserts that the rule
+// applies to the whole file name: a namespace of two dots inside
+// events-<namespace>.json is a plain name and is written.
+func TestSupportBundleWritesEventsOfDotDotNamespace(t *testing.T) {
+	t.Parallel()
+	factory, _ := fleetAgentBundleFactory("..")
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	res, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "fleet-agent", flagClusters: "c-1"}})
+	require.NoError(t, err)
+
+	contents := readArchive(t, path)
+	assert.Contains(t, contents["clusters/c-1/events-...json"], "crashlooping")
+	requireLocalNames(t, archiveNames(contents))
+	assert.Equal(t, statusCollected, findItem(t, manifestFrom(t, path), "events-..", "c-1").Status)
+	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+	assert.Empty(t, res.Warnings)
+}
+
+// bundleWithAgentPods runs support-bundle for the agent target on one
+// downstream cluster c-1 whose cattle-system lists pods, and returns the
+// result and the archive path.
+func bundleWithAgentPods(t *testing.T, downstream *fakeClient, pods ...unstructured.Unstructured) (runtime.Result, string) {
+	t.Helper()
+	root := (&fakeRoot{}).withCluster(&unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "c-1"},
+	}})
+	downstream.withListNS(podKind.GVR, "cattle-system", &unstructured.UnstructuredList{Items: pods})
+	factory := &fakeFactory{local: newFakeClient(), root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	res, err := execBundle(t, factory, input{s: map[string]string{
+		flagOutputFile: path,
+		flagTargets:    "agent",
+		flagClusters:   "c-1",
+	}})
+	require.NoError(t, err)
+	return res, path
+}
+
+// TestSupportBundleLeavesOutLogsOfUnsafePodOrContainerName asserts that a
+// container whose pod or container name makes an entry name that is not a
+// plain file name gets neither its current nor its previous log, and no log
+// request. It counts once as a failed container and one warning names it;
+// the other container is collected.
+func TestSupportBundleLeavesOutLogsOfUnsafePodOrContainerName(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		pods    []unstructured.Unstructured
+		hostile string
+		shown   string
+		absent  string
+	}{
+		{"container parent directory", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "../x")}, "../x", `"agent-1-../x.log"`, ""},
+		{"container newline", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "a\nb")}, "a\nb", `"agent-1-a\nb.log"`, "\n"},
+		{"container word joiner", []unstructured.Unstructured{unstructuredPodWithContainers("agent-1", "main", "a\u2060b")}, "a\u2060b", `"agent-1-a\u2060b.log"`, "\u2060"},
+		{"pod parent directory", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("../x")}, "../x", `"../x-main.log"`, ""},
+		{"pod newline", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("a\nb")}, "a\nb", `"a\nb-main.log"`, "\n"},
+		{"pod right-to-left override", []unstructured.Unstructured{unstructuredPod("agent-1"), unstructuredPod("a\u202eb")}, "a\u202eb", `"a\u202eb-main.log"`, "\u202e"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			downstream := newFakeClient().withLog("main", "hello\n")
+			res, path := bundleWithAgentPods(t, downstream, tc.pods...)
+
+			contents := readArchive(t, path)
+			for _, name := range archiveNames(contents) {
+				assert.NotContains(t, name, tc.hostile)
+			}
+			requireLocalNames(t, archiveNames(contents))
+			assert.Equal(t, "hello\n", contents["logs/c-1/agent/agent-1-main.log"])
+			assert.Contains(t, contents, "logs/c-1/agent/agent-1-main-previous.log")
+
+			require.Len(t, downstream.logOptsCalls, 2, "only the other container's current and previous log are requested")
+			for _, call := range downstream.logOptsCalls {
+				assert.Equal(t, "main", call.Container)
+			}
+
+			item := findItem(t, manifestFrom(t, path), "agent", "c-1")
+			assert.True(t, strings.HasPrefix(item.Status, "error: 1 of 2 container logs not collected; "), item.Status)
+			assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+			require.Len(t, res.Warnings, 1)
+			assert.Contains(t, res.Warnings[0], "left out")
+			assert.Contains(t, res.Warnings[0], tc.shown)
+			assert.Contains(t, item.Status, tc.shown)
+			if tc.absent != "" {
+				assert.NotContains(t, res.Warnings[0], tc.absent, "the warning holds the escaped text, not the raw value")
+				assert.NotContains(t, item.Status, tc.absent)
+			}
+		})
+	}
+}
+
+// TestSupportBundleLeavesOutContainerWhosePreviousLogNameIsTooLong asserts
+// the 255-byte limit on each name a container needs: with a pod name of 245
+// bytes the current log's file name is 254 bytes and the previous log's is
+// 263; the container gets neither log and no log request. A pod name of
+// 237 bytes gives a previous log name of exactly 255 bytes and is written.
+func TestSupportBundleLeavesOutContainerWhosePreviousLogNameIsTooLong(t *testing.T) {
+	t.Parallel()
+	t.Run("245 bytes", func(t *testing.T) {
+		t.Parallel()
+		pod := strings.Repeat("a", 245)
+		downstream := newFakeClient().withLog("main", "hello\n")
+		res, path := bundleWithAgentPods(t, downstream, unstructuredPod(pod))
+
+		contents := readArchive(t, path)
+		for _, name := range archiveNames(contents) {
+			assert.NotContains(t, name, pod)
+		}
+		assert.Empty(t, downstream.logOptsCalls, "no log request, current or previous")
+
+		item := findItem(t, manifestFrom(t, path), "agent", "c-1")
+		assert.True(t, strings.HasPrefix(item.Status, "error: 1 of 1 container logs not collected; "), item.Status)
+		assert.Contains(t, item.Status, "longer than 255 bytes")
+		assert.Contains(t, item.Status, `pod "`+strings.Repeat("a", 64)+`"... container "main": log entry left out`)
+		assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+		require.Len(t, res.Warnings, 1)
+	})
+	t.Run("237 bytes", func(t *testing.T) {
+		t.Parallel()
+		pod := strings.Repeat("a", 237)
+		downstream := newFakeClient().withLog("main", "hello\n")
+		res, path := bundleWithAgentPods(t, downstream, unstructuredPod(pod))
+
+		contents := readArchive(t, path)
+		assert.Equal(t, "hello\n", contents["logs/c-1/agent/"+pod+"-main.log"])
+		assert.Contains(t, contents, "logs/c-1/agent/"+pod+"-main-previous.log")
+		assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+		assert.Empty(t, res.Warnings)
+	})
+}
+
+// TestSupportBundleLeavesOutPodWithReservedWindowsName asserts that a pod
+// name that starts with a device name Windows reserves is left out, with the
+// reason in the item.
+func TestSupportBundleLeavesOutPodWithReservedWindowsName(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().withLog("main", "hello\n")
+	res, path := bundleWithAgentPods(t, downstream, unstructuredPod("aux.example"))
+
+	assert.Empty(t, downstream.logOptsCalls)
+	item := findItem(t, manifestFrom(t, path), "agent", "c-1")
+	assert.Contains(t, item.Status, "reserved on Windows")
+	assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+}
+
+// TestSupportBundleNULInPodNameKeepsTheBundle asserts that a NUL byte in a
+// pod name leaves the bundle written: the command succeeds and the archive
+// has its manifest.
+func TestSupportBundleNULInPodNameKeepsTheBundle(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().withLog("main", "hello\n")
+	res, path := bundleWithAgentPods(t, downstream, unstructuredPod("agent-1"), unstructuredPod("a\x00b"))
+
+	contents := readArchive(t, path)
+	assert.Contains(t, contents, "manifest.json")
+	assert.Contains(t, contents, "logs/c-1/agent/agent-1-main.log")
+	requireLocalNames(t, archiveNames(contents))
+	assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+}
+
+// TestSupportBundleReadmeExplainsLeftOutEntries asserts that the archive's
+// README.txt says an entry with an unsafe name is left out and where that
+// shows.
+func TestSupportBundleReadmeExplainsLeftOutEntries(t *testing.T) {
+	t.Parallel()
+	_, _, path := bundleOfClusters(t, "c-1")
+
+	readme := readArchive(t, path)["README.txt"]
+	assert.Contains(t, readme, "is left out")
+	assert.Contains(t, readme, "listed as the item")
+	assert.Contains(t, readme, "manifest.json shows each as an error")
+}
+
+// failingPreviousLogClient fails the archive write that follows a previous
+// log read by breaking the writer when that log is requested.
+type failingPreviousLogClient struct {
+	*fakeClient
+	bw *ArchiveWriter
+}
+
+func (c *failingPreviousLogClient) Logs(ctx context.Context, ns, pod string, opts engine.LogOptions) (string, error) {
+	if opts.Previous {
+		c.bw.err = errors.New("disk full")
+	}
+	return c.fakeClient.Logs(ctx, ns, pod, opts)
+}
+
+// TestCollectTargetLogsRecordsFailedPreviousLogWrite asserts that a previous
+// log the archive could not take is a failed container: the target status is
+// an error item and a warning names the write failure.
+func TestCollectTargetLogsRecordsFailedPreviousLogWrite(t *testing.T) {
+	t.Parallel()
+	bw, err := CreateArchive(filepath.Join(t.TempDir(), "bundle.tar.gz"))
+	require.NoError(t, err)
+	t.Cleanup(bw.Discard)
+	client := &failingPreviousLogClient{fakeClient: newFakeClient().withLog("main", "hello\n"), bw: bw}
+	pod := unstructuredPod("agent-1")
+	resolved := Resolved{Client: client, ClusterID: "c-1", Namespace: "cattle-system", Pods: []unstructured.Unstructured{pod}}
+
+	outcome := collectTargetLogs(t.Context(), Target{Name: "agent"}, resolved, nil, nil, bw)
+
+	assert.True(t, strings.HasPrefix(outcome.status(), "error: 1 of 1 container logs not collected; agent-1/main: archive write failed: disk full"), outcome.status())
+	warnings := outcome.warnings("c-1", "agent")
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "support-bundle: c-1/agent: log not collected: agent-1/main: archive write failed: disk full", warnings[0])
+}
+
+// TestArchiveEventsRecordsFailedWrite asserts that an events file the archive
+// could not take is an error item with a warning, and that a namespace whose
+// events were read but not written is not reported as collected.
+func TestArchiveEventsRecordsFailedWrite(t *testing.T) {
+	t.Parallel()
+	bw, err := CreateArchive(filepath.Join(t.TempDir(), "bundle.tar.gz"))
+	require.NoError(t, err)
+	t.Cleanup(bw.Discard)
+	bw.err = errors.New("disk full")
+	downstream := newFakeClient().withListNS(eventKind.GVR, "cattle-system", &unstructured.UnstructuredList{})
+	factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+
+	items, warnings := archiveEvents(t.Context(), factory, "c-1", []string{"cattle-system"}, bw)
+
+	require.Len(t, items, 1)
+	assert.Equal(t, "events-cattle-system", items[0].Name)
+	assert.Equal(t, "error: disk full", items[0].Status)
+	assert.Equal(t, []string{`support-bundle: events of cluster "c-1" namespace "cattle-system" not written: disk full`}, warnings)
 }

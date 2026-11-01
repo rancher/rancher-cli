@@ -56,9 +56,9 @@ func TestArchiveWriterRoundTrip(t *testing.T) {
 	w, err := CreateArchive(path)
 	require.NoError(t, err)
 	entries := []ArchiveEntry{
-		{Path: "logs/c-1/agent/pod-1.log", Data: []byte("agent log")},
-		{Path: "manifest.json", Data: []byte(`{"ok":true}`)},
-		{Path: "clusters/c-1/cluster.json", Data: []byte(`{"state":"active"}`)},
+		{Path: staticEntryPath("logs/c-1/agent/pod-1.log"), Data: []byte("agent log")},
+		{Path: staticEntryPath("manifest.json"), Data: []byte(`{"ok":true}`)},
+		{Path: staticEntryPath("clusters/c-1/cluster.json"), Data: []byte(`{"state":"active"}`)},
 	}
 	addAll(t, w, entries)
 	total, err := w.Close()
@@ -135,7 +135,7 @@ func TestArchiveWriterRemovesFileOnWriteFailure(t *testing.T) {
 	w, err := createArchiveWith(path, func(io.Writer) io.Writer { return failingWriter{err: injected} })
 	require.NoError(t, err)
 
-	addErr := w.Add(ArchiveEntry{Path: "manifest.json", Data: []byte("{}")})
+	addErr := w.Add(ArchiveEntry{Path: staticEntryPath("manifest.json"), Data: []byte("{}")})
 	_, closeErr := w.Close()
 	if addErr == nil {
 		addErr = closeErr
@@ -147,7 +147,7 @@ func TestArchiveWriterRemovesFileOnWriteFailure(t *testing.T) {
 
 	w2, err := CreateArchive(path)
 	require.NoError(t, err, "the same path must be writable again once the failed attempt's file is gone")
-	require.NoError(t, w2.Add(ArchiveEntry{Path: "manifest.json", Data: []byte("{}")}))
+	require.NoError(t, w2.Add(ArchiveEntry{Path: staticEntryPath("manifest.json"), Data: []byte("{}")}))
 	total, err := w2.Close()
 	require.NoError(t, err)
 	assert.Positive(t, total)
@@ -184,8 +184,10 @@ func TestArchiveWriterStreamsBeforeClose(t *testing.T) {
 	)
 	var sizeAfterFirst int64
 	for i := range entryCount {
+		name, err := entryPath(fmt.Sprintf("entry-%03d", i))
+		require.NoError(t, err)
 		require.NoError(t, w.Add(ArchiveEntry{
-			Path: fmt.Sprintf("entry-%03d", i),
+			Path: name,
 			Data: bytes.Repeat([]byte{byte(i)}, entrySize),
 		}))
 		require.NoError(t, w.gz.Flush())
@@ -213,7 +215,7 @@ func TestArchiveWriterCloseTwiceKeepsArchive(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
 	w, err := CreateArchive(path)
 	require.NoError(t, err)
-	require.NoError(t, w.Add(ArchiveEntry{Path: "a.txt", Data: []byte("payload")}))
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("a.txt"), Data: []byte("payload")}))
 
 	total, err := w.Close()
 	require.NoError(t, err)
@@ -222,4 +224,45 @@ func TestArchiveWriterCloseTwiceKeepsArchive(t *testing.T) {
 	require.NoError(t, againErr, "a repeated Close must report the first outcome")
 	assert.Equal(t, total, againTotal)
 	assert.FileExists(t, path, "a repeated Close must never remove the finished archive")
+}
+
+// TestArchiveWriterRefusesUnsafeEntryNames asserts that Add refuses a name
+// that did not come from the name builders, returns the reason, and does not
+// become the sticky error: the next valid entry is written, Close succeeds
+// and the archive holds only the valid entries.
+func TestArchiveWriterRefusesUnsafeEntryNames(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	w, err := CreateArchive(path)
+	require.NoError(t, err)
+
+	for _, text := range []string{"../x", "/a", "a//b", "a\x00b", "", "a/./b"} {
+		err := w.Add(ArchiveEntry{Path: entryName{entryText: text}, Data: []byte("x")})
+		require.ErrorContains(t, err, "is not a plain file name", "%q", text)
+	}
+	require.Error(t, w.Add(ArchiveEntry{Data: []byte("x")}), "the zero name is refused")
+
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("manifest.json"), Data: []byte("{}")}))
+	total, err := w.Close()
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+
+	assert.Equal(t, map[string]string{"manifest.json": "{}"}, readArchive(t, path))
+}
+
+// TestArchiveWriterNULNameNeverReachesTarWriter asserts that a NUL in an
+// entry name is refused before the tar writer sees it: the tar writer fails
+// on it for good and would stop the whole archive.
+func TestArchiveWriterNULNameNeverReachesTarWriter(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	w, err := CreateArchive(path)
+	require.NoError(t, err)
+
+	require.Error(t, w.Add(ArchiveEntry{Path: entryName{entryText: "logs/a\x00b/x.log"}, Data: []byte("x")}))
+	require.NoError(t, w.Add(ArchiveEntry{Path: staticEntryPath("README.txt"), Data: []byte("hello")}))
+	_, err = w.Close()
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{"README.txt": "hello"}, readArchive(t, path))
 }

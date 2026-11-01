@@ -1193,6 +1193,13 @@ container, the result's `errors` count includes it, and a warning names
 it, so `errors: 0` means every requested log is in the archive. A
 previous-container log that does not exist stays silent (the container
 never restarted); a refused one is a warning.
+An entry is left out of the archive when its file name is not a plain
+file name: it has a character other than letters, digits, `.`, `_` and
+`-` (a cluster id, namespace, pod or container name is part of it), it is
+over 255 bytes, or its part before the first `.` is a Windows device name
+such as `con` or `aux`. The `manifest.json` item is an `error:` status (a
+cluster whose id is left out is listed as the item `cluster`), the
+result's `errors` count includes it, and a warning names the value.
 `support-bundle` is deliberately the half of a two-bundle story that covers
 only what Rancher's Kubernetes API can reach: pair it with
 [rancherlabs/support-tools](https://github.com/rancherlabs/support-tools)'

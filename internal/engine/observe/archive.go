@@ -12,7 +12,10 @@ import (
 
 // ArchiveEntry is one file to write into the support-bundle tar.gz.
 type ArchiveEntry struct {
-	Path string // path within the archive, e.g. "manifest.json", "logs/c-1/agent/pod-1-main.log"
+	// Path is the entry's name within the archive, such as "manifest.json" or
+	// "logs/c-1/agent/pod-1-main.log". Only entryPath and staticEntryPath make
+	// one, and both accept nothing but plain file names.
+	Path entryName
 	Data []byte
 }
 
@@ -72,15 +75,21 @@ func createArchiveWith(path string, wrap func(io.Writer) io.Writer) (*ArchiveWri
 	return &ArchiveWriter{file: f, gz: gz, tw: tar.NewWriter(gz), path: path}, nil
 }
 
-// Add streams one entry into the archive immediately. Once Add has failed,
-// every later Add is a no-op returning that same error - a collector can
-// keep calling Add without checking every return and let Close report and
-// clean up the failure.
+// Add streams one entry into the archive immediately. Once a write has
+// failed, every later Add is a no-op returning that same error - a collector
+// can keep calling Add without checking every return and let Close report and
+// clean up the failure. A name that is not a sequence of plain file names
+// (the zero entryName is one) is returned as an error and does not become
+// that error: nothing is written for it, later entries are still written
+// and Close does not fail.
 func (w *ArchiveWriter) Add(entry ArchiveEntry) error {
 	if w.err != nil {
 		return w.err
 	}
-	if err := w.tw.WriteHeader(&tar.Header{Name: entry.Path, Mode: 0600, Size: int64(len(entry.Data))}); err != nil {
+	if err := entry.Path.check(); err != nil {
+		return err
+	}
+	if err := w.tw.WriteHeader(&tar.Header{Name: entry.Path.entryText, Mode: 0600, Size: int64(len(entry.Data))}); err != nil {
 		w.err = err
 		return err
 	}

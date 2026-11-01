@@ -164,19 +164,19 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	}
 
 	settingsValues, settingsData := collectSettings(ctx, local)
-	_ = bw.Add(ArchiveEntry{Path: "rancher/settings.json", Data: settingsData})
+	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/settings.json"), Data: settingsData})
 	items = append(items, manifestItem{Name: "rancher/settings.json", Status: statusCollected})
 
 	featuresData, ferr := collectFeatures(ctx, local)
 	items = append(items, manifestItem{Name: "rancher/features.json", Status: itemStatus(ferr)})
 	if ferr == nil {
-		_ = bw.Add(ArchiveEntry{Path: "rancher/features.json", Data: featuresData})
+		_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/features.json"), Data: featuresData})
 	}
 
 	schemaData, serr := json.Marshal(c.schema())
 	items = append(items, manifestItem{Name: "rancher/schema.json", Status: itemStatus(serr)})
 	if serr == nil {
-		_ = bw.Add(ArchiveEntry{Path: "rancher/schema.json", Data: schemaData})
+		_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/schema.json"), Data: schemaData})
 	}
 
 	// Partial re-decode of the already-marshaled manifest, on purpose: it
@@ -193,7 +193,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		"cliVersion":    cliVer,
 		"serverVersion": settingsValues["server-version"],
 	})
-	_ = bw.Add(ArchiveEntry{Path: "rancher/version.json", Data: versionData})
+	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/version.json"), Data: versionData})
 	items = append(items, manifestItem{Name: "rancher/version.json", Status: statusCollected})
 
 	var warnings []string
@@ -202,20 +202,12 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		items = append(items, clusterItems...)
 		warnings = append(warnings, clusterWarnings...)
 
-		for _, ns := range namespaces {
-			data, total, included, eerr := collectEvents(ctx, c.clients, clusterID, ns)
-			status := itemStatus(eerr)
-			if eerr == nil && included < total {
-				status = fmt.Sprintf("collected (truncated to %d of %d, newest first)", included, total)
-			}
-			items = append(items, manifestItem{Name: "events-" + ns, Cluster: clusterID, Status: status})
-			if eerr == nil {
-				_ = bw.Add(ArchiveEntry{Path: fmt.Sprintf("clusters/%s/events-%s.json", clusterID, ns), Data: data})
-			}
-		}
+		eventItems, eventWarnings := archiveEvents(ctx, c.clients, clusterID, namespaces, bw)
+		items = append(items, eventItems...)
+		warnings = append(warnings, eventWarnings...)
 	}
 
-	_ = bw.Add(ArchiveEntry{Path: "README.txt", Data: []byte(readmeText)})
+	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("README.txt"), Data: append([]byte(readmeText), readmeLeftOutText...)})
 
 	manifest := bundleManifest{
 		CLIVersion:    cliVer,
@@ -228,7 +220,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		bw.Discard()
 		return runtime.Result{}, err
 	}
-	_ = bw.Add(ArchiveEntry{Path: "manifest.json", Data: manifestData})
+	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("manifest.json"), Data: manifestData})
 
 	bytesWritten, err := bw.Close()
 	if err != nil {
@@ -418,12 +410,50 @@ func collectFeatures(ctx context.Context, local engine.ClusterClient) ([]byte, e
 	return json.Marshal(rows)
 }
 
+// archiveEvents writes each namespace's events into bw and returns one
+// manifest item per namespace. A namespace whose events file name is not a
+// plain file name is left out before any request; a failed write is an error
+// item with a warning.
+func archiveEvents(ctx context.Context, clients engine.ClusterClientFactory, clusterID string, namespaces []string, bw *ArchiveWriter) ([]manifestItem, []string) {
+	var items []manifestItem
+	var warnings []string
+	for _, ns := range namespaces {
+		eventsName, nerr := entryPath("clusters", clusterID, "events-"+ns+".json")
+		if nerr != nil {
+			items = append(items, manifestItem{Name: "events-" + ns, Cluster: clusterID, Status: errorStatus(nerr)})
+			warnings = append(warnings, fmt.Sprintf("support-bundle: events of cluster %s left out: %v", quoteValue(clusterID), nerr))
+			continue
+		}
+		data, total, included, eerr := collectEvents(ctx, clients, clusterID, ns)
+		status := itemStatus(eerr)
+		if eerr == nil && included < total {
+			status = fmt.Sprintf("collected (truncated to %d of %d, newest first)", included, total)
+		}
+		if eerr == nil {
+			if aerr := bw.Add(ArchiveEntry{Path: eventsName, Data: data}); aerr != nil {
+				status = errorStatus(aerr)
+				warnings = append(warnings, fmt.Sprintf("support-bundle: events of cluster %s namespace %s not written: %v", quoteValue(clusterID), quoteValue(ns), aerr))
+			}
+		}
+		items = append(items, manifestItem{Name: "events-" + ns, Cluster: clusterID, Status: status})
+	}
+	return items, warnings
+}
+
 // collectCluster gathers one cluster's cluster.json/nodes.json plus every
 // applicable target's logs, streaming each into bw as it is collected, and
 // returns the manifest items and the set of namespaces any attempted
 // target resolved to (for the caller's per-namespace events collection) -
-// cattle-system is always included.
+// cattle-system is always included. A cluster id that is not a plain file
+// name is a whole path segment of every entry of the cluster: the cluster is
+// left out before any request, with one error item named cluster, one
+// warning and no namespaces.
 func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, get steve.Getter, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string, []string) {
+	if err := checkComponent(clusterID); err != nil {
+		return []manifestItem{{Name: "cluster", Cluster: clusterID, Status: errorStatus(err)}},
+			nil,
+			[]string{fmt.Sprintf("support-bundle: cluster left out: %v", err)}
+	}
 	var items []manifestItem
 	var warnings []string
 	namespaces := map[string]bool{"cattle-system": true}
@@ -437,8 +467,11 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, ge
 			"state":      clusterState,
 			"conditions": clusterConds,
 		})
-		_ = bw.Add(ArchiveEntry{Path: fmt.Sprintf("clusters/%s/cluster.json", clusterID), Data: data})
-		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: statusCollected})
+		clusterName, nerr := entryPath("clusters", clusterID, "cluster.json")
+		if nerr == nil {
+			nerr = bw.Add(ArchiveEntry{Path: clusterName, Data: data})
+		}
+		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: itemStatus(nerr)})
 	}
 
 	if client, err := clients.Cluster(ctx, clusterID); err != nil {
@@ -456,8 +489,11 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, ge
 				})
 			}
 			data, _ := json.Marshal(rows)
-			_ = bw.Add(ArchiveEntry{Path: fmt.Sprintf("clusters/%s/nodes.json", clusterID), Data: data})
-			items = append(items, manifestItem{Name: "nodes.json", Cluster: clusterID, Status: statusCollected})
+			nodesName, nerr := entryPath("clusters", clusterID, "nodes.json")
+			if nerr == nil {
+				nerr = bw.Add(ArchiveEntry{Path: nodesName, Data: data})
+			}
+			items = append(items, manifestItem{Name: "nodes.json", Cluster: clusterID, Status: itemStatus(nerr)})
 		}
 	}
 
@@ -536,14 +572,22 @@ func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *i
 		for _, cname := range engine.ContainerNames(resolved.Pods[i].Object) {
 			o.containers++
 			where := podName + "/" + cname
-			base := fmt.Sprintf("logs/%s/%s/%s-%s", resolved.ClusterID, t.Name, podName, cname)
+			logName, nerr := entryPath("logs", resolved.ClusterID, t.Name, podName+"-"+cname+".log")
+			previousName, perr := entryPath("logs", resolved.ClusterID, t.Name, podName+"-"+cname+"-previous.log")
+			if nerr == nil {
+				nerr = perr
+			}
+			if nerr != nil {
+				o.failed = append(o.failed, fmt.Sprintf("pod %s container %s: log entry left out: %v", quoteValue(podName), quoteValue(cname), nerr))
+				continue
+			}
 			out, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
 				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since})
 			if err != nil {
 				o.failed = append(o.failed, where+": "+err.Error())
 				continue
 			}
-			if err := bw.Add(ArchiveEntry{Path: base + ".log", Data: []byte(out)}); err != nil {
+			if err := bw.Add(ArchiveEntry{Path: logName, Data: []byte(out)}); err != nil {
 				o.failed = append(o.failed, where+": archive write failed: "+err.Error())
 				continue
 			}
@@ -551,7 +595,9 @@ func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *i
 				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since, Previous: true})
 			switch {
 			case err == nil:
-				_ = bw.Add(ArchiveEntry{Path: base + "-previous.log", Data: []byte(prev)})
+				if aerr := bw.Add(ArchiveEntry{Path: previousName, Data: []byte(prev)}); aerr != nil {
+					o.failed = append(o.failed, where+": archive write failed: "+aerr.Error())
+				}
 			case isRefusal(err):
 				o.previousDenied = append(o.previousDenied, where+": "+err.Error())
 			}
@@ -639,4 +685,14 @@ This bundle covers only what Rancher's Kubernetes API can reach. For
 node-level diagnostics (journald, the rancher-system-agent unit, OS state)
 see rancherlabs/support-tools' node collector; the two bundles complement
 each other.
+`
+
+// readmeLeftOutText follows readmeText in the archive's README.txt.
+const readmeLeftOutText = `
+An entry is left out of the bundle when its file name is not a plain file
+name: it has a character other than letters, digits, ".", "_" and "-" (a
+cluster id, namespace, pod or container name is part of it), it is over
+255 bytes, or its part before the first "." is a Windows device name such
+as con or aux. A cluster whose id is left out is listed as the item
+"cluster". manifest.json shows each as an error.
 `

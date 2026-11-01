@@ -56,6 +56,7 @@ type fakeClient struct {
 	listErrs        map[objKey]error
 	listSelectors   []string
 	listNamespaces  []string
+	listCalls       []objKey // every List, as {gvr, namespace, ""}
 
 	// denied fails every Get and List of a kind with its error;
 	// kindReads is the kind of every Get and List, in order.
@@ -149,6 +150,7 @@ func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns
 	}
 	f.listSelectors = append(f.listSelectors, selector)
 	f.listNamespaces = append(f.listNamespaces, ns)
+	f.listCalls = append(f.listCalls, objKey{gvr, ns, ""})
 	k := objKey{gvr, ns, ""}
 	if err, ok := f.listErrs[k]; ok {
 		return nil, err
@@ -160,6 +162,17 @@ func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns
 		return l, nil
 	}
 	return &unstructured.UnstructuredList{}, nil
+}
+
+// listedNamespaces is the namespace of every List of gvr, in order.
+func (f *fakeClient) listedNamespaces(gvr schema.GroupVersionResource) []string {
+	var out []string
+	for _, c := range f.listCalls {
+		if c.gvr == gvr {
+			out = append(out, c.ns)
+		}
+	}
+	return out
 }
 
 func (f *fakeClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
