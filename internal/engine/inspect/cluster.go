@@ -683,7 +683,7 @@ func withheldMessage() string {
 // fails loudly. The hint is a remedy command, so the json and yaml output name
 // the invocation's config directory in it.
 func withheldHint(clusterID string) string {
-	return clierr.Rancher + " get clusterregistrationtoken default-token --namespace " + clusterID
+	return clierr.Rancher + " get clusterregistrationtoken default-token --namespace " + clierr.ShellQuote(clusterID)
 }
 
 // registration carries BOTH workflow pairs explicitly - the node pair

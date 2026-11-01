@@ -342,7 +342,11 @@ func pauseReasonText(dir, entry, reason string) string {
 	case config.PauseReasonChangeRecordUnreadable:
 		return "changeRecordUnreadable - the credential store change record " + config.TransitionPath(dir) + " cannot be read; inspect it, then restore a valid copy or move it aside; credentialStoreChange says why it cannot be read"
 	case config.PauseReasonNoLock:
-		return "noLock - the change ran with " + config.EnvConfigNoLock + "; a login or logout of the entry clears it: " + clierr.Rancher + " auth login " + clierr.ShellQuote(entry)
+		text := "noLock - the change ran with " + config.EnvConfigNoLock + "; a login or logout of the entry clears it"
+		if hint := config.LoginHintFor(entry); hint != "" {
+			text += ": " + hint
+		}
+		return text
 	}
 	return "none - the next exec-credential cache miss or credential change resumes it"
 }

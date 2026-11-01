@@ -201,7 +201,8 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 			if e.key != canonical {
 				msg = fmt.Sprintf("%q is the credential field %q and cannot be set on a machine config", e.key, canonical)
 			}
-			msg += "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential to " + clierr.Rancher + " create cluster with --cloud-credential"
+			msg += "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential (<credential-name>) to the cluster you create (<cluster-name>); add --apply after reading the preview: " +
+				clierr.Rancher + " create cluster <cluster-name> --cloud-credential <credential-name> --dry-run"
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, msg)
 		}
 		fields[e.key] = parseSetValue(e.raw)

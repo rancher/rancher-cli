@@ -132,7 +132,7 @@ func TestAddNamespaceToDifferentProjectIsValidation(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "p-2")
-	assert.Equal(t, clierr.Rancher+" project remove-namespace 'team-a' --cluster 'c-x'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" project remove-namespace 'team-a' --cluster 'c-x' --dry-run", ce.Hint)
 }
 
 // TestAddNamespaceWithoutProjectOnTheContextIsACommandBug asserts that
@@ -381,7 +381,7 @@ func TestLoadMembershipTargetNotFoundCurated(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "namespace not found: no-ns", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get namespaces --cluster 'c-x'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get namespaces --cluster 'c-x'", ce.Hint)
 
 	// hint-bearing 404 passes through unchanged
 	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")

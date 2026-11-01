@@ -1345,6 +1345,19 @@ execute a present hint after the same inspection any other emitted text
 gets before being treated as argv. Windows agents adapt a runnable hint
 themselves - the same posture as the rest of the machine contract.
 
+A hint or remedy that changes something carries `--dry-run`, and the
+message says to add the gates of the command (`--apply`, and `--yes` for a
+destructive change) after reading the preview. A command that deletes a
+token or kubeconfig the CLI created or recorded keeps `--apply --yes`: the
+header of a created kubeconfig file and the text that says how to create a
+token or kubeconfig again name the delete that way. A remedy command ends
+its sentence: no comma, period, parenthesis or word follows its last
+argument. A name that starts with `-` follows the command's flags and `--`,
+and is read as a name. These rules hold for every text outside the login,
+token and exec plugin code. Those texts keep their own forms: some have words
+after a command, name a dashed entry without `--`, or create a kubeconfig with
+`--apply --yes`.
+
 A remedy command in an error's message, hint, warnings or details, in the
 warnings of a successful run and in the prompter's notices names `--config`
 and the config directory (absolute, shell-quoted) after `rancher` unless a

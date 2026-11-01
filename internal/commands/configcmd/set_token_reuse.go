@@ -90,9 +90,9 @@ func dormantPluginLogins(cfg *config.Config) ([]map[string]any, []string) {
 		out = append(out, entry)
 		lines = append(lines, fmt.Sprintf("plugin-created login %s (%s) is dormant, not deleted", n, config.DisplayServerURL(s.URL)))
 		if s.CLIOwned() && s.LoggedOutAt == "" {
-			lines = append(lines, "  remove its credential with: "+clierr.Rancher+" auth logout "+clierr.ShellQuote(n))
+			lines = append(lines, "  remove its credential with: "+clierr.Rancher+" auth logout"+clierr.ShellQuoteArgs("", n))
 		}
-		lines = append(lines, "  remove the entry and its records with: "+clierr.Rancher+" config delete-server "+clierr.ShellQuote(n))
+		lines = append(lines, "  remove the entry and its records with: "+deleteServerCommand(n))
 		lines = append(lines, recordLines(n, s, "  ")...)
 	}
 	return out, lines

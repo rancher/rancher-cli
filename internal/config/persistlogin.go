@@ -887,7 +887,7 @@ func rollbackFailed(out *PersistLoginOutcome, name string, snap *Server, werr, p
 		Prior: priorEntry(snap),
 		// The entry name is operator-chosen and only prefix-checked, so it is
 		// shell-quoted like every value a machine hint carries.
-		Command: DeleteServerCommand + " " + clierr.ShellQuote(name),
+		Command: DeleteServerCommand + clierr.ShellQuoteArgs("", name),
 	}
 	return fmt.Errorf("%w (restoring the config entry also failed: %v)", primary, werr)
 }

@@ -446,7 +446,7 @@ func TestRotateSecretExecTimeoutIsRetryable(t *testing.T) {
 	details, ok := ce.Details.(clierr.CommittedContextDetails)
 	require.True(t, ok)
 	assert.True(t, details.Committed)
-	assert.Equal(t, "once the controller is healthy, rotate the same secret again with: "+clierr.Rancher+" oidc-client rotate-secret 'my-app' 'client-secret-1'", details.Recovery)
+	assert.Equal(t, "once the controller is healthy, rotate the same secret again (the command previews it; add --apply --yes after reading the preview): "+clierr.Rancher+" oidc-client rotate-secret 'my-app' 'client-secret-1' --dry-run", details.Recovery)
 	// The header already carries "(GENERIC, retryable)" for this error; the
 	// projection's own recover line must echo the SAME recovery verbatim,
 	// never a generic "do not retry" that would contradict it.

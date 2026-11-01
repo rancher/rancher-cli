@@ -51,7 +51,7 @@ func TestAdviseJudgesWhereATokenIsReported(t *testing.T) {
 		d := &Deletion{cfg: cfg, view: cfg, removed: map[string]bool{}}
 		got := d.advise(item(reasonForbidden))
 		assert.Equal(t, "the server recorded for token 'token-abc12' cannot be used: it holds a user name or password; "+
-			"the token stays on the server that issued it; delete it there with "+clierr.Rancher+" delete token 'token-abc12' --apply --yes while signed in to that server", got.Text)
+			"the token stays on the server that issued it; delete it there while signed in to that server: "+clierr.Rancher+" delete token 'token-abc12' --apply --yes", got.Text)
 		assert.Empty(t, got.Sequence)
 	})
 }

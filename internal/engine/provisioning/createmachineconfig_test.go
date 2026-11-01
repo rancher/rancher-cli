@@ -362,7 +362,7 @@ func TestCreateMachineConfigCredentialRejectedCaseInsensitive(t *testing.T) {
 }
 
 // credentialGuidance is the tail of every refusal of a credential key.
-var credentialGuidance = "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential to " + clierr.Rancher + " create cluster with --cloud-credential"
+var credentialGuidance = "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential (<credential-name>) to the cluster you create (<cluster-name>); add --apply after reading the preview: " + clierr.Rancher + " create cluster <cluster-name> --cloud-credential <credential-name> --dry-run"
 
 // TestCreateMachineConfigArgValidation asserts the pipeline's refusal of a
 // missing kind or name (with the allowed kinds listed), and that build

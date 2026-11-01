@@ -274,7 +274,7 @@ func secretURLRows() []secretRow {
 	// update-server (it refuses to change that URL): the repair is to remove
 	// the entry.
 	pluginEntry := "server entry 'exec-login-abc'"
-	pluginRepair := "; run rancher auth logout 'exec-login-abc' if it holds a login, then remove the entry with rancher config delete-server 'exec-login-abc'"
+	pluginRepair := "; if the entry holds a login, run: rancher auth logout 'exec-login-abc'; then remove the entry with: rancher config delete-server 'exec-login-abc'"
 	add(
 		secretRow{env: env, name: "get cluster, the only entry is the plugin's own and holds a bad port", argv: []string{"get", "cluster"},
 			setEnv: map[string]string{env: ""}, stored: &secretStored{name: "exec-login-abc", url: canaryURLBadPort, noCurrent: true}, canary: urlCanary,
@@ -517,7 +517,7 @@ func secretOKRows() []secretOKRow {
 					if form.badPort {
 						noAuthLoginCommand(t, stdout+stderr)
 						assert.Contains(t, stderr, "the server recorded for token 'token-abc12' cannot be used: "+form.reason+
-							"; the token stays on the server that issued it; delete it there with rancher delete token 'token-abc12' --apply --yes while signed in to that server")
+							"; the token stays on the server that issued it; delete it there while signed in to that server: rancher delete token 'token-abc12' --apply --yes")
 					}
 				}},
 			secretOKRow{name: "config update-server x --url, the repair, " + form.name, argv: []string{"config", "update-server", "x", "--url", "{url}", "--cacert", "{pem}"}, stored: st},
@@ -537,7 +537,7 @@ var oldRecord = config.SupersededToken{
 
 // recordStays is the text for oldRecord, whatever the entry holds.
 const recordStays = "the server recorded for token 'token-old99' cannot be used: it is not a valid URL; " +
-	"the token stays on the server that issued it; delete it there with rancher delete token 'token-old99' --apply --yes while signed in to that server"
+	"the token stays on the server that issued it; delete it there while signed in to that server: rancher delete token 'token-old99' --apply --yes"
 
 // assertRecordStays asserts text holds the text for oldRecord, no repair of
 // the entry, and no command built from the record's server.
@@ -585,7 +585,7 @@ func secretRecordRows() []secretOKRow {
 				records: []config.SupersededToken{{Ref: oldRecord.Ref, UserID: oldRecord.UserID, SupersededAt: oldRecord.SupersededAt}}},
 			check: func(t *testing.T, stdout, stderr string, _ []string) {
 				t.Helper()
-				assert.Contains(t, stdout+stderr, "the server URL in server entry 'exec-login-abc' cannot be used: it is not a valid URL; run rancher auth logout 'exec-login-abc' if it holds a login, then remove the entry with rancher config delete-server 'exec-login-abc'")
+				assert.Contains(t, stdout+stderr, "the server URL in server entry 'exec-login-abc' cannot be used: it is not a valid URL; if the entry holds a login, run: rancher auth logout 'exec-login-abc'; then remove the entry with: rancher config delete-server 'exec-login-abc'")
 				assert.NotContains(t, stdout+stderr, "config update-server")
 			}},
 		{name: "auth logout x, a usable entry and a record with an unusable server", argv: []string{"auth", "logout", "x"}, stored: usable, check: text},
@@ -1032,8 +1032,8 @@ func secretRemovedEntryRows() []secretOKRow {
 			t.Helper()
 			assertRecoveryIs(t, stdout, "token-nosrv1", "", config.SupersededToken{})
 			assert.Contains(t, strings.Join(envelopeWarnings(t, stdout), "\n"),
-				"no server is recorded for token 'token-nosrv1'; delete it with rancher delete token 'token-nosrv1' --apply --yes "+
-					"while signed in to the server that issued it")
+				"no server is recorded for token 'token-nosrv1'; delete it while signed in to the server that issued it: "+
+					"rancher delete token 'token-nosrv1' --apply --yes")
 			assert.NotContains(t, strings.Join(envelopeWarnings(t, stdout), "\n"), "--url ''")
 		}},
 		secretOKRow{name: "auth logout --all, json, a cached token at an ftp server with user information", argv: []string{"-o", "json", "auth", "logout", "--all"},
@@ -1056,7 +1056,7 @@ func secretRemovedEntryRows() []secretOKRow {
 		SupersededAt: "2026-10-01T00:00:00Z", Server: ftpHost,
 	}
 	const schemeStays = "the server recorded for token 'token-ftp33' cannot be used: its scheme is not http or https; the token stays on the server that issued it; " +
-		"delete it there with rancher delete token 'token-ftp33' --apply --yes while signed in to that server"
+		"delete it there while signed in to that server: rancher delete token 'token-ftp33' --apply --yes"
 	withFTPUserinfo := secretStored{url: "{url}", token: true, stubCA: true, records: []config.SupersededToken{ftpUserinfo}}
 	noFTPCommand := func(t *testing.T, text string) {
 		t.Helper()

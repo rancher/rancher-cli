@@ -28,7 +28,7 @@ jsonquery stdout data.metadata.name u-handle-1
 ! exec rancher delete user handle-nobody --dry-run -o json
 jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.message 'user not found: handle-nobody'
-jsonquery stderr data.error.hint 'list with: rancher --config '''$WORK${/}rancher-config''' get users'
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' get users'
 
 exec rancher delete user u-handle-1 --apply --yes
 

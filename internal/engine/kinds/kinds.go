@@ -308,7 +308,7 @@ func hintToken(k Kind) string {
 // through untouched. Only hint-less NOT_FOUNDs (the raw apiserver passthrough)
 // get the "<kind> not found: <name>" treatment.
 func NotFoundCurated(k Kind, name, clusterID string) error {
-	hint := "list with: " + clierr.Rancher + " get " + hintToken(k)
+	hint := clierr.Rancher + " get " + hintToken(k)
 	if k.Scope == Downstream {
 		hint += " --cluster " + clierr.ShellQuote(clusterID)
 	}
@@ -327,7 +327,7 @@ func ForbiddenHint(k Kind, verb, namespace, name string) string {
 	case k.Key == "managementcluster" && verb == "list":
 		return clierr.Rancher + " access clusters"
 	case k.Key == "managementcluster" && verb == "get" && name != "":
-		return clierr.Rancher + " inspect cluster " + clierr.ShellQuote(name)
+		return clierr.Rancher + " inspect cluster" + clierr.ShellQuoteArgs("", name)
 	case k.Key == "project" && verb == "list" && namespace != "":
 		return clierr.Rancher + " access projects --cluster " + clierr.ShellQuote(namespace)
 	case k.Key == "project" && verb == "list":
@@ -392,7 +392,7 @@ var table = []Kind{
 
 		ArgDesc: "cluster id or display name",
 
-		NoDeleteReason: "to delete a cluster, use `rancher delete provisioning-cluster`",
+		NoDeleteReason: "to delete a provisioning cluster (<name> is its name), run `rancher delete provisioning-cluster <name> --dry-run` and add --apply --yes after reading the preview",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns:        []Column{{Header: "DISPLAY NAME", Path: []string{"spec", "displayName"}}, {Header: "READY", Condition: "Ready"}},
@@ -422,7 +422,7 @@ var table = []Kind{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"},
 		Policy: NSNone, K8sKind: "Node", Scope: Downstream, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's number of nodes with `rancher cluster scale`), or outside Rancher for an imported, custom or local cluster",
+		NoDeleteReason: "nodes are created and deleted by the machine pools of a cluster that has them (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes; change a machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview), or outside Rancher for an imported, custom or local cluster",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable:    true,
@@ -806,21 +806,21 @@ var table = []Kind{
 		Key: "capimachine", Name: "machine", Aliases: []string{"machines"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Machine", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's number of nodes with `rancher cluster scale`",
+		NoDeleteReason: "a controller creates and manages it; to delete a machine of a machine pool (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes), change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachineset", Name: "machineset", Aliases: []string{"machinesets"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinesets"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineSet", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with `rancher cluster scale`",
+		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes); change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachinedeployment", Name: "machinedeployment", Aliases: []string{"machinedeployments"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinedeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineDeployment", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with `rancher cluster scale`",
+		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes); change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
@@ -852,7 +852,7 @@ var table = []Kind{
 		RedactPaths: [][]string{{"status", "bearerToken"}, {"status", "value"}},
 		// A manifest cannot create a token: `create token` shows the value
 		// once under the once-only output rules.
-		NoCreateViaManifest: "create tokens with '" + clierr.Rancher + " create token' (it prints the token's value once)",
+		NoCreateViaManifest: "create tokens with '" + clierr.Rancher + " create token --dry-run' and add --apply --yes after reading the preview (the token's value is printed once)",
 	},
 	{
 		// Not on the Rancher Kubernetes Public API list; deprecated in favor of
@@ -879,7 +879,7 @@ var table = []Kind{
 		// A manifest cannot create a token: `create token` (the ext.cattle.io
 		// kind) applies the key generation, TTL clamp and identity derivation
 		// a new token needs.
-		NoCreateViaManifest: "create tokens with '" + clierr.Rancher + " create token' (it creates an ext.cattle.io Token)",
+		NoCreateViaManifest: "create tokens with '" + clierr.Rancher + " create token --dry-run' and add --apply --yes after reading the preview (it creates an ext.cattle.io Token)",
 	},
 	{
 		Key: "kubeconfig", Name: "kubeconfig", Aliases: []string{"kubeconfigs"},
@@ -900,7 +900,7 @@ var table = []Kind{
 		RedactPaths: [][]string{{"status", "value"}},
 		// A manifest cannot create a kubeconfig: `create kubeconfig` prints it
 		// once under the once-only output rules.
-		NoCreateViaManifest: "create kubeconfigs with '" + clierr.Rancher + " create kubeconfig' (it prints the kubeconfig once)",
+		NoCreateViaManifest: "create kubeconfigs with '" + clierr.Rancher + " create kubeconfig --dry-run' and add --apply --yes after reading the preview (the kubeconfig is printed once)",
 	},
 
 	{

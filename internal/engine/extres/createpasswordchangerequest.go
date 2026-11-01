@@ -124,7 +124,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 				fmt.Sprintf("the server did not confirm the password change for user %s", userID)).
 				WithDetails(clierr.CommittedContextDetails{
 					Committed: true, ResourceKind: "User", ResourceName: userID,
-					Recovery: clierr.Rancher + fmt.Sprintf(" get user %s -o json", clierr.ShellQuote(userID)),
+					Recovery: clierr.Rancher + " get user" + clierr.ShellQuoteArgs(" -o json", userID),
 				})
 		}
 		res := runtime.MutationText("password-change-request", userID, "completed")

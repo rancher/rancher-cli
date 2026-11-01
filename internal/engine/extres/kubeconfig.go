@@ -162,7 +162,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 			return runtime.Result{}, refuseUnsupportedTokenLookup(ctx, c.clients, err)
 		}
 		name := created.GetName()
-		recovery := clierr.Rancher + fmt.Sprintf(" delete kubeconfig %s, then create again", clierr.ShellQuote(name))
+		recovery := kubeconfigRecovery(name)
 		value, found, _ := unstructured.NestedString(created.Object, "status", "value")
 		if !found || value == "" {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
@@ -189,11 +189,13 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 // object.
 func kubeconfigHeader(name string) string {
 	if name != "" && output.Printable(name) == name {
-		argument := clierr.ShellQuote(name)
-		if strings.HasPrefix(name, "-") {
-			argument = "-- " + argument
-		}
-		return fmt.Sprintf("# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig %s\n", name, argument)
+		return fmt.Sprintf("# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n", name, clierr.ShellQuoteArgs(" --apply --yes", name))
 	}
 	return fmt.Sprintf("# Kubeconfig %q - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show\n", name)
+}
+
+// kubeconfigRecovery is the text that says how to create the kubeconfig
+// again: delete the one the server created, which this run recorded.
+func kubeconfigRecovery(name string) string {
+	return "to create it again, delete this one first: " + clierr.Rancher + " delete kubeconfig" + clierr.ShellQuoteArgs(" --apply --yes", name)
 }

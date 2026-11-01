@@ -96,7 +96,7 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 		if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeRBAC || len(validation.IsDNS1123Subdomain(name)) > 0 {
 			return nil, "", err
 		}
-		obj, gerr := getCredential(ctx, client, name, clierr.New(clierr.CodeNotFound, t.NotFound).WithHint(t.NotFoundHint))
+		obj, gerr := getCredential(ctx, client, name, clierr.New(clierr.CodeNotFound, t.NotFound))
 		return obj, "", gerr
 	}
 	candidates := credentialObjects(list)

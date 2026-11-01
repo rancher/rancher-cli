@@ -67,9 +67,8 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	current, inProject := projectOn(before, cluster)
 	if inProject && current != projectID {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("namespace %q belongs to project %q; remove it from that project first", nsName, current)).
-			WithHint(clierr.Rancher + fmt.Sprintf(" project remove-namespace %s --cluster %s",
-				clierr.ShellQuote(nsName), clierr.ShellQuote(cluster)))
+			fmt.Sprintf("namespace %q belongs to project %q; remove it from that project first; the hint previews the removal: add --apply after reading the preview", nsName, current)).
+			WithHint(removeNamespaceHint(nsName, cluster))
 	}
 
 	after := before.DeepCopy()
@@ -119,8 +118,12 @@ func (removeNamespaceCmd) ProjectRefusalHint(in runtime.Input) string {
 	if len(args) == 0 || args[0] == "" || cluster == "" {
 		return ""
 	}
-	return clierr.Rancher + " project remove-namespace " + clierr.ShellQuote(args[0]) +
-		" --cluster " + clierr.ShellQuote(cluster) + " --dry-run"
+	return removeNamespaceHint(args[0], cluster)
+}
+
+// removeNamespaceHint is the preview of removing the namespace from its project.
+func removeNamespaceHint(nsName, cluster string) string {
+	return clierr.Rancher + " project remove-namespace" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(cluster)+" --dry-run", nsName)
 }
 
 func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {

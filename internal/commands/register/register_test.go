@@ -485,3 +485,22 @@ func TestServerNotFoundCarriesSortedServers(t *testing.T) {
 	require.ErrorContains(t, e, "server not found: ghost")
 	assert.Equal(t, []clierr.Candidate{{ID: "a", Name: "a"}, {ID: "b", Name: "b"}}, e.Candidates)
 }
+
+// TestCommitCreateConflictHintsPutDoubleDashBeforeADashedName asserts the
+// hints of both conflicts for an entry whose name starts with a dash: the
+// flags come first and the name follows "--".
+func TestCommitCreateConflictHintsPutDoubleDashBeforeADashedName(t *testing.T) {
+	servers := map[string]config.Server{"-x": {URL: "https://old.example.com"}}
+	cfg := writableCfg(t, servers, "")
+	_, err := commitCreate(cfg, "-x", Probe{CanonicalURL: "https://new.example.com"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.Rancher+" config update-server --url 'https://new.example.com' -- '-x'", ce.Hint)
+
+	servers = map[string]config.Server{"-x": {URL: "https://qa1.example.com", CA: cmdtest.CAPem1}}
+	cfg = writableCfg(t, servers, "")
+	_, err = commitCreate(cfg, "-x", Probe{CanonicalURL: "https://qa1.example.com", CASelector: cmdtest.CAPem2, CABytes: cmdtest.CAPem2})
+	ce, ok = errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.Rancher+" config update-server --cacert "+clierr.ShellQuote(cmdtest.CAPem2)+" -- '-x'", ce.Hint)
+}

@@ -93,5 +93,5 @@ func readClientSecret(ctx context.Context, clients engine.ClusterClientFactory, 
 // never a second hand-authored copy - so a future wording change (e.g.
 // adding --cluster local) only has to be made here.
 func recoveryHint(name string) string {
-	return clierr.Rancher + " get oidcclient " + clierr.ShellQuote(name) + " -o json"
+	return clierr.Rancher + " get oidcclient" + clierr.ShellQuoteArgs(" -o json", name)
 }

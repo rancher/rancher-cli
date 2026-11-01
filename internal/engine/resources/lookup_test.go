@@ -201,7 +201,7 @@ func TestLookupSeveralMatchesStayNotFoundWithCandidates(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, 4, ce.ExitCode())
 	assert.Equal(t, "user not found: Bob; 2 users have that username or display name", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get users", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get users", ce.Hint)
 	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "Bob"}, {ID: "u-2", Name: "Bob"}}, ce.Candidates)
 
 	rt := mustKind(t, "roletemplate")
@@ -211,7 +211,7 @@ func TestLookupSeveralMatchesStayNotFoundWithCandidates(t *testing.T) {
 	err = lookupVerbs["patch"](t, rt, &recFactory{client: rtClient}, input{args: []string{"Owner"}})
 	ce = asClierr(t, err)
 	assert.Equal(t, "roletemplate not found: Owner; 2 roletemplates have that display name", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get roletemplates", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get roletemplates", ce.Hint)
 	assert.Equal(t, []clierr.Candidate{{ID: "rt-a", Name: "Owner"}, {ID: "rt-b", Name: "Owner"}}, ce.Candidates)
 }
 
@@ -245,7 +245,7 @@ func TestLookupDegradesToTheOriginalError(t *testing.T) {
 			err := lookupVerbs["get"](t, k, &recFactory{client: client}, input{args: []string{"alice"}})
 			assert.Same(t, miss, err)
 			assert.Equal(t, "user not found: alice", asClierr(t, err).Message)
-			assert.Equal(t, "list with: "+clierr.Rancher+" get users", asClierr(t, err).Hint)
+			assert.Equal(t, clierr.Rancher+" get users", asClierr(t, err).Hint)
 			assert.Empty(t, asClierr(t, err).Candidates)
 		})
 	}
@@ -345,7 +345,7 @@ func TestLookupProjectSeveralNotFoundKeepsTheListHint(t *testing.T) {
 	ce := asClierr(t, err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: Web; 2 projects have that display name", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get projects", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get projects", ce.Hint)
 	assert.Equal(t, []clierr.Candidate{{ID: "p-1", Name: "Web"}, {ID: "p-2", Name: "Web"}}, ce.Candidates)
 }
 

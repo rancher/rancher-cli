@@ -64,9 +64,9 @@ func TestRootClientClassifiesACertificateFailure(t *testing.T) {
 		wantCause string
 	}{
 		{name: "a named entry", entry: true,
-			remedy: "; save it for this entry with: rancher config update-server 'acme' --cacert <file>"},
+			remedy: "; <file> is a file that holds the server's CA certificate; save it for this entry with: rancher config update-server 'acme' --cacert <file>"},
 		{name: "a named entry and the variable", entry: true, variable: true,
-			remedy: "; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for this entry, run: rancher config update-server 'acme' --cacert <file>"},
+			remedy: "; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; <file> is a file that holds the server's CA certificate; to save a CA for this entry, run: rancher config update-server 'acme' --cacert <file>"},
 		{name: "RANCHER_CLI_URL alone", remedy: "; set RANCHER_CLI_CACERT to it"},
 		{name: "RANCHER_CLI_URL alone and the variable", variable: true,
 			remedy: "; the CA came from RANCHER_CLI_CACERT - set it to the server's CA"},
@@ -122,7 +122,7 @@ func TestClusterClientClassifiesACertificateFailure(t *testing.T) {
 	f := newClientFactory(dir, config.NewFileStore(dir))
 	cc, err := f.Cluster(t.Context(), "c-1")
 	require.NoError(t, err)
-	remedy := "; save it for this entry with: rancher config update-server 'acme' --cacert <file>"
+	remedy := "; <file> is a file that holds the server's CA certificate; save it for this entry with: rancher config update-server 'acme' --cacert <file>"
 	_, err = cc.ServerResources(t.Context())
 	requireTrustError(t, err, remedy)
 
@@ -169,7 +169,7 @@ func TestKindCommandFailsWithTLSTrustThroughTheRealCLI(t *testing.T) {
 	assert.Equal(t, clierr.CodeTLSTrust, got.Code)
 	assert.False(t, got.Retryable)
 	assert.Contains(t, got.Message, "obtain the certificate from a source you trust")
-	assert.Contains(t, got.Message, withDirectory(dir, "; save it for this entry with: rancher config update-server 'acme' --cacert <file>"))
+	assert.Contains(t, got.Message, withDirectory(dir, "; <file> is a file that holds the server's CA certificate; save it for this entry with: rancher config update-server 'acme' --cacert <file>"))
 }
 
 // TestCertificateRemedyNamesTheConfigDirectoryUnderKubeconfig asserts the

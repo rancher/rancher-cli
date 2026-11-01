@@ -464,7 +464,7 @@ func TestInspectPodNotFoundCurated(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "pod not found: web", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get pods --cluster 'c-abc'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get pods --cluster 'c-abc'", ce.Hint)
 
 	// hint-bearing 404 passes through unchanged
 	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")

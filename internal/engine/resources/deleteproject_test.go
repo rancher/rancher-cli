@@ -647,8 +647,8 @@ func TestDeleteProjectFlagRefusesAnUnknownNamespaceBeforeAnyWrite(t *testing.T) 
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, "cannot read namespace hidden in full; --delete-namespaces needs to read each namespace it deletes in full", ce.Message)
-	assert.Equal(t, clierr.Rancher+" delete project 'p-1' --cluster 'c-abc'", ce.Hint)
+	assert.Equal(t, "cannot read namespace hidden in full; --delete-namespaces needs to read each namespace it deletes in full; the hint previews deleting the project without its namespaces: add --apply --yes after reading the preview", ce.Message)
+	assert.Equal(t, clierr.Rancher+" delete project 'p-1' --cluster 'c-abc' --dry-run", ce.Hint)
 	for _, call := range f.log {
 		assert.False(t, strings.HasPrefix(call, "dry-run delete hidden") || strings.HasPrefix(call, "dry-run delete tools"), call)
 	}
@@ -665,8 +665,8 @@ func TestDeleteProjectFlagRefusesAFailedRead(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.Equal(t, "could not read the project's namespaces: the token expired; --delete-namespaces needs the full list before it deletes anything", ce.Message)
-	assert.Equal(t, clierr.Rancher+" delete project 'p-1' --cluster 'c-abc'", ce.Hint)
+	assert.Equal(t, "could not read the project's namespaces: the token expired; --delete-namespaces needs the full list before it deletes anything; the hint previews deleting the project without its namespaces: add --apply --yes after reading the preview", ce.Message)
+	assert.Equal(t, clierr.Rancher+" delete project 'p-1' --cluster 'c-abc' --dry-run", ce.Hint)
 	assert.Equal(t, []string{"get c-abc/p-1", "dry-run delete c-abc/p-1 rv=5", "list namespaces"}, f.log)
 }
 

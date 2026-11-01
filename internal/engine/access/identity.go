@@ -122,7 +122,7 @@ func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, call
 	if clusterID == engine.LocalCluster {
 		if forList {
 			return identityPlan{}, clierr.New(clierr.CodeRBAC,
-				"the management cluster cannot impersonate; ask a point question with "+clierr.Rancher+" access can <verb> <resource>, or list on a downstream cluster")
+				"the management cluster cannot impersonate; list on a downstream cluster, or ask a point question (<verb> and <resource> are what to ask) with: "+clierr.Rancher+" access can <verb> <resource> --cluster local")
 		}
 		return sarPlan, nil
 	}
@@ -189,11 +189,26 @@ func enrichCaller(ctx context.Context, local engine.ClusterClient, username stri
 
 // anonymousListMessage is the one wording for the anonymous refusal in
 // list: the anonymous identity cannot be impersonated.
-var anonymousListMessage = "no server operation lists the anonymous identity's rules; ask a point question with " + clierr.Rancher + " access can --as system:anonymous"
+var anonymousListMessage = "no server operation lists the anonymous identity's rules; " + pointQuestionPlaceholders + "; ask a point question with: " + clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as system:anonymous"
 
 // groupListMessage is the one wording for the group refusal in list.
 func groupListMessage(raw string) string {
-	return "no server operation lists a group's rules; ask a point question with: " + clierr.Rancher + " access can <verb> <resource> --as " + clierr.ShellQuote(raw)
+	return "no server operation lists a group's rules; " + pointQuestionPlaceholders + "; ask a point question with: " + groupAccessCan(raw)
+}
+
+// pointQuestionPlaceholders names the placeholders of the point question a
+// refusal suggests.
+const pointQuestionPlaceholders = "<verb> and <resource> are what to ask and <cluster> is the cluster"
+
+// groupAccessCan is the point question about the group raw: a bare name is a
+// user unless --type says group.
+func groupAccessCan(raw string) string {
+	return clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as " + clierr.ShellQuote(raw) + " --type group"
+}
+
+// anonymousAccessCan is the point question about the anonymous identity.
+func anonymousAccessCan() string {
+	return clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as system:anonymous"
 }
 
 // sarFallback is the fallback when impersonation is refused or the route

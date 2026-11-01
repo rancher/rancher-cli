@@ -14,7 +14,7 @@ import (
 
 const (
 	headerStart       = "# Kubeconfig "
-	headerRevokeText  = " - shown once; revoke with: rancher delete kubeconfig "
+	headerRevokeText  = " - shown once; revoke with: rancher delete kubeconfig"
 	headerNoRevokeEnd = " - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show"
 )
 
@@ -174,8 +174,11 @@ func TestCreateKubeconfigHeaderStaysOneCommentLine(t *testing.T) {
 				command, found := strings.CutPrefix(rest, headerRevokeText)
 				require.True(t, found, "the text after the name is %q", rest)
 				if strings.HasPrefix(tc.name, "-") {
-					command, found = strings.CutPrefix(command, "-- ")
-					require.True(t, found, "a name that starts with a dash follows -- in the command, not %q", command)
+					command, found = strings.CutPrefix(command, " --apply --yes -- ")
+					require.True(t, found, "a name that starts with a dash follows the flags and -- in the command, not %q", command)
+				} else {
+					command, found = strings.CutSuffix(strings.TrimPrefix(command, " "), " --apply --yes")
+					require.True(t, found, "the flags follow the name in the command, not %q", command)
 				}
 				word, err := readShellWord(command)
 				require.NoError(t, err, "the revoke command %q", command)
@@ -200,13 +203,13 @@ func TestCreateKubeconfigHeaderForARancherName(t *testing.T) {
 	require.NoError(t, err)
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	want := `# Kubeconfig "kubeconfig-abc12" - shown once; revoke with: rancher delete kubeconfig 'kubeconfig-abc12'` + "\n" + rawKC
+	want := `# Kubeconfig "kubeconfig-abc12" - shown once; revoke with: rancher delete kubeconfig 'kubeconfig-abc12' --apply --yes` + "\n" + rawKC
 	assert.Equal(t, want, string(res.RawBytes))
 }
 
 // TestCreateKubeconfigHeaderForANameWithALeadingDash records the first line
-// of the output for a name that starts with a dash: the command puts -- before
-// the quoted name.
+// of the output for a name that starts with a dash: the command puts the flags
+// first and -- before the quoted name.
 func TestCreateKubeconfigHeaderForANameWithALeadingDash(t *testing.T) {
 	t.Parallel()
 	rawKC := "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\ncurrent-context: \"\"\n"
@@ -215,6 +218,6 @@ func TestCreateKubeconfigHeaderForANameWithALeadingDash(t *testing.T) {
 	require.NoError(t, err)
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	want := `# Kubeconfig "-h" - shown once; revoke with: rancher delete kubeconfig -- '-h'` + "\n" + rawKC
+	want := `# Kubeconfig "-h" - shown once; revoke with: rancher delete kubeconfig --apply --yes -- '-h'` + "\n" + rawKC
 	assert.Equal(t, want, string(res.RawBytes))
 }

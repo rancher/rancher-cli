@@ -423,7 +423,9 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   carrying only concrete, already-known values. When the CLI has no
   concrete value to offer, there is no `hint` field at all - the guidance
   lives in `message` instead. Inspect a present hint before running it,
-  the same as any other emitted text - do not execute it blindly.
+  the same as any other emitted text - do not execute it blindly. A hint
+  for a command that changes something previews it (`--dry-run`); the
+  message says how to apply it.
 - `retryable: true` (timeouts, conflicts except a create that found the name
   taken, a 429, a 502/503/504, or another 5xx whose body is not a Kubernetes
   Status) → retry is reasonable; otherwise do not repeat the identical call.

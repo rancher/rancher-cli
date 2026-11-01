@@ -25,10 +25,10 @@ func TestEffectiveWordsACertificateFailureForTheConnection(t *testing.T) {
 	}
 	odd := &Config{CurrentServer: "odd'", Servers: c.Servers}
 	save := func(name string) string {
-		return "; save it for this entry with: " + clierr.Rancher + " config update-server " + name + " --cacert <file>"
+		return "; <file> is a file that holds the server's CA certificate; save it for this entry with: " + clierr.Rancher + " config update-server " + name + " --cacert <file>"
 	}
 	variableOnEntry := func(name string) string {
-		return "; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for this entry, run: " +
+		return "; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; <file> is a file that holds the server's CA certificate; to save a CA for this entry, run: " +
 			clierr.Rancher + " config update-server " + name + " --cacert <file>"
 	}
 	for _, tc := range []struct {

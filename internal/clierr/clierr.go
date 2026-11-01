@@ -165,6 +165,35 @@ func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// ShellQuoteArgs writes the arguments of a command for a POSIX sh command
+// line: the positional values, each quoted by ShellQuote, and the flags that
+// follow them, which are complete text starting with a space ("" when there
+// are none). When one value, as ShellQuote writes it and with the whitespace
+// around it cut off, starts with "-", the flags come first and "--" ends them;
+// every value is then read as an argument, because the command parser reads no
+// flag after "--".
+func ShellQuoteArgs(flags string, values ...string) string {
+	var sb strings.Builder
+	dashed := false
+	for _, v := range values {
+		if strings.HasPrefix(strings.TrimSpace(withoutSeparator(v)), "-") {
+			dashed = true
+		}
+	}
+	if dashed {
+		sb.WriteString(flags)
+		sb.WriteString(" --")
+	}
+	for _, v := range values {
+		sb.WriteString(" ")
+		sb.WriteString(ShellQuote(v))
+	}
+	if !dashed {
+		sb.WriteString(flags)
+	}
+	return sb.String()
+}
+
 // RedactURLUserinfo returns text with the user and password of a URL in it
 // replaced by "<redacted>", so a message can name the URL the user typed
 // without the password. It fails closed, whether or not the text is a

@@ -451,7 +451,7 @@ var commentLineLiterals = []commentLineEntry{
 	},
 	{
 		file: "internal/engine/extres/kubeconfig.go", class: classHeader,
-		text:   "# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig %s\n",
+		text:   "# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n",
 		reason: "header: the name in the server's reply, in Go's quoted form, and in the command only when it prints as it is",
 		test:   "TestCreateKubeconfigHeaderStaysOneCommentLine", covers: "NewCreateKubeconfig",
 	},

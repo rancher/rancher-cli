@@ -190,8 +190,8 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	name := createdUser.GetName()
 	recovery := fmt.Sprintf("the user %s was created without a password; the CLI prints no command for an id it cannot quote", clierr.ShellQuote(name))
 	if len(validation.IsDNS1123Subdomain(name)) == 0 {
-		recovery = fmt.Sprintf(`the user %s was created without a password - set one without putting it on the command line or in shell history: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | `, name, name) +
-			clierr.Rancher + " create resource -f - --cluster local --apply --yes (a password containing a double quote or backslash must be JSON-escaped in the manifest)"
+		recovery = fmt.Sprintf(`the user %s was created without a password; to set one without putting it on the command line or in shell history, set PASSWORD in your shell (a password containing a double quote or backslash must be JSON-escaped in the manifest) and add --apply after reading the preview of: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | `, name, name) +
+			clierr.Rancher + " create resource -f - --cluster local --dry-run"
 	}
 
 	secretObj := &unstructured.Unstructured{Object: map[string]any{

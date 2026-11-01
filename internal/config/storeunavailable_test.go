@@ -347,7 +347,7 @@ func probeAnswer(usable bool) error {
 func TestAutoFirstLoginProbe(t *testing.T) {
 	locked, other := securityExit(t, 128), securityExit(t, 36)
 	const remedy = "; unlock the keychain with security unlock-keychain, or approve the macOS prompt, then run this command again"
-	const alt = ", or run rancher auth login 'prod' --credential-store file to keep its credential in a plaintext file on purpose"
+	const alt = ", or keep its credential in a plaintext file on purpose with: rancher auth login 'prod' --credential-store file"
 	registered := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
 	for _, tc := range []struct {
 		name  string
@@ -468,7 +468,7 @@ func TestUnpinnedDirectoryWithCredentialsOnALockedKeychain(t *testing.T) {
 			assert.Contains(t, msg, "the keychain cannot be used right now (the keychain is locked or its prompt was cancelled (security exited with status 128))")
 			assert.Contains(t, msg, "unlock the keychain with security unlock-keychain, or approve the macOS prompt, then run this command again")
 			if tc.withAlt {
-				assert.Contains(t, msg, ", or run rancher auth login 'prod' --credential-store file")
+				assert.Contains(t, msg, ", or keep its credential in a plaintext file on purpose with: rancher auth login 'prod' --credential-store file")
 			} else {
 				assert.NotContains(t, msg, "--credential-store file")
 			}
@@ -521,7 +521,7 @@ func TestHelperDirectoryRefusalOffersTheFileStoreOnlyAlone(t *testing.T) {
 			msg := clierr.ExpandRemedies(assertStoreUnavailable(t, err), "")
 			assert.Contains(t, msg, "never moves this directory's credentials out of exec:vault")
 			if tc.withAlt {
-				assert.Contains(t, msg, ", or run rancher auth login 'prod' --credential-store file")
+				assert.Contains(t, msg, ", or keep its credential in a plaintext file on purpose with: rancher auth login 'prod' --credential-store file")
 			} else {
 				assert.NotContains(t, msg, "--credential-store file")
 			}

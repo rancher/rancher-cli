@@ -43,7 +43,7 @@ func TestRegistrationHintNamesTheConfigDirectoryInJSON(t *testing.T) {
 	}
 	jsonOut := run("json")
 	require.NoError(t, json.Unmarshal([]byte(jsonOut), &doc))
-	assert.Equal(t, "rancher"+prefix+" get clusterregistrationtoken default-token --namespace c-abc", doc.Data.Registration.Hint)
+	assert.Equal(t, "rancher"+prefix+" get clusterregistrationtoken default-token --namespace 'c-abc'", doc.Data.Registration.Hint)
 
 	text := run("")
 	assert.Contains(t, text, "registration: left out (contains the cluster registration token)")

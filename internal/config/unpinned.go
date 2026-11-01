@@ -131,9 +131,9 @@ func (u Unpinned) Err() error {
 		logouts = append(logouts, LogoutHintFor(e))
 	}
 	msg := fmt.Sprintf(
-		"this config directory has credentials in the keychain (%s) and in the plaintext file %s (%s), and nothing records which of the two is current; neither is read; log out the entries in the store you do not want to keep, then run this command again - to keep the keychain, which holds no plaintext, run %s; a keychain entry's logout needs the keychain reachable; or use a different --config",
+		"this config directory has credentials in the keychain (%s) and in the plaintext file %s (%s), and nothing records which of the two is current; neither is read; log out the entries in the store you do not want to keep, then run this command again; a keychain entry's logout needs the keychain reachable; or use a different --config; to keep the keychain, which holds no plaintext, run: %s",
 		strings.Join(u.KeychainEntries, ", "), CredentialsFilePath(u.dir), strings.Join(u.FileEntries, ", "),
-		strings.Join(logouts, ", then "))
+		strings.Join(logouts, "; "))
 	err := clierr.New(clierr.CodeValidation, msg).WithCause(errCredentialsInBothStores)
 	if len(logouts) == 1 {
 		err = err.WithHint(logouts[0])

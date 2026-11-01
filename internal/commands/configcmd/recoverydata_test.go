@@ -148,7 +148,7 @@ func TestCredentialStoreRemedyInJSONNamesTheConfigDirectory(t *testing.T) {
 	remedyDir := t.TempDir()
 	prefix, printable := runtime.RemedyPrefix(remedyDir)
 	require.True(t, printable)
-	want := "run rancher" + prefix + " auth logout 'staging'"
+	want := "run: rancher" + prefix + " auth logout 'staging'"
 
 	for _, tc := range []struct {
 		name string

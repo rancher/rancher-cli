@@ -174,7 +174,7 @@ func TestCreateSecretProjectScopedEmptyBackingNamespaceWarns(t *testing.T) {
 func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {
 	t.Parallel()
 	const canary = "s3cretcanary9"
-	message := "malformed --from-literal value; pass key=value pairs separated by commas (a value containing a comma needs `" + clierr.Rancher + " create resource -f <file>`)"
+	message := "malformed --from-literal value; pass key=value pairs separated by commas; a value containing a comma goes in a manifest file, <file> is that file; add --apply after reading the preview: " + clierr.Rancher + " create resource -f <file> --dry-run"
 	for _, tc := range []struct{ name, value string }{
 		{"no equals", canary},
 		{"empty key", "=" + canary},

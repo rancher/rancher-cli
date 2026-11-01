@@ -132,7 +132,8 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		if !bindingMatchesSubject(b, rs, sub, false) {
 			if upn, _, _ := unstructured.NestedString(b.Object, "userPrincipalName"); upn != "" {
 				msg += fmt.Sprintf("; that binding uses another principal of the same user, %q", upn)
-				hint = clierr.Rancher + fmt.Sprintf(" revoke %s --role %s%s", clierr.ShellQuote(upn), clierr.ShellQuote(role), scope.Flags())
+				msg += "; the hint previews the revoke that removes it: add --apply --yes after reading the preview"
+				hint = aliasRevokeHint(upn, role, scope.Flags())
 			}
 		}
 		if hint == "" {
@@ -354,4 +355,10 @@ func bindingMatchesSubject(b *unstructured.Unstructured, rs ResolvedSubject, sub
 		}
 	}
 	return false
+}
+
+// aliasRevokeHint is the preview of the revoke of the binding that holds the
+// principal upn; scopeFlags are the flags that name the scope.
+func aliasRevokeHint(upn, role, scopeFlags string) string {
+	return clierr.Rancher + " revoke" + clierr.ShellQuoteArgs(" --role "+clierr.ShellQuote(role)+scopeFlags+" --dry-run", upn)
 }

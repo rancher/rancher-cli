@@ -119,7 +119,7 @@ func TestRetireKeepsARecordOfAServerThatCannotBeUsed(t *testing.T) {
 	name := clierr.ShellQuote(other.Ref.Name)
 	assert.Equal(t, "the superseded token "+other.Ref.String()+" was not retired: it is a token of <unusable URL>, which this entry no longer names; "+
 		"the server recorded for token "+name+" cannot be used: it is not a valid URL; the token stays on the server that issued it; "+
-		"delete it there with "+clierr.Rancher+" delete token "+name+" --apply --yes while signed in to that server", rep.Warnings[0])
+		"delete it there while signed in to that server: "+clierr.Rancher+" delete token "+name+" --apply --yes", rep.Warnings[0])
 	assert.NotContains(t, rep.Warnings[0], "auth login")
 	assert.NotContains(t, rep.Warnings[0], "pwzq7")
 }
@@ -138,8 +138,8 @@ func TestRetirePastedCredentialKeepsARecordOfAServerThatCannotBeUsed(t *testing.
 	require.Len(t, rep.Warnings, 1)
 	name := clierr.ShellQuote(other.Ref.Name)
 	assert.Equal(t, "the superseded token "+other.Ref.String()+" was not retired: the server recorded for token "+name+
-		" cannot be used: it is not a valid URL; the token stays on the server that issued it; delete it there with "+
-		clierr.Rancher+" delete token "+name+" --apply --yes while signed in to that server", rep.Warnings[0])
+		" cannot be used: it is not a valid URL; the token stays on the server that issued it; delete it there while signed in to that server: "+
+		clierr.Rancher+" delete token "+name+" --apply --yes", rep.Warnings[0])
 }
 
 // TestRetireJudgesARecordByTheIdentityOfItsServer asserts that a record whose

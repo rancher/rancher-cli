@@ -65,7 +65,7 @@ stderr 'serviceaccounts "ghost" not found'
 ! exec rancher access can get pods --cluster testcluster -n ghost -o json
 jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.message 'namespace not found: ghost'
-jsonquery stderr data.error.hint 'list with: rancher --config '''$WORK${/}rancher-config''' get namespaces --cluster ''c-test'''
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' get namespaces --cluster ''c-test'''
 
 # a caller without cluster access is refused, not answered: the cluster is
 # not among the clusters it can read

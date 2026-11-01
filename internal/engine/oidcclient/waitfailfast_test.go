@@ -96,7 +96,7 @@ func waitVerbs() []waitVerb {
 		},
 		{
 			name: "add-secret", skip: 1, planObj: base(), unfinished: annotated(annotationSecretCreate),
-			abortRecovery: "check " + recoveryHint("my-app") + "; if a new key landed its value was never shown - rotate that key by name",
+			abortRecovery: "check " + recoveryHint("my-app") + "; if a new key landed its value was never shown - rotate that key by name (<client> is the oidc-client and <secret> the new key's name) and add --apply --yes after reading the preview: " + clierr.Rancher + " oidc-client rotate-secret <client> <secret> --dry-run",
 			plan: func(t *testing.T, c *scriptedPollClient) runtime.ExecuteFunc {
 				t.Helper()
 				_, exec, err := planAddSecret(t, NewAddSecret(stubClusterClientFactory{c: c}),
@@ -108,7 +108,7 @@ func waitVerbs() []waitVerb {
 		{
 			name: "remove-secret", skip: 1, planObj: base(), unfinished: annotated(annotationSecretRemove),
 			abortSecretName: "client-secret-1",
-			abortRecovery:   recoveryHint("my-app") + " first; the removal landed iff the key is gone; re-run only while the key remains",
+			abortRecovery:   "read the client first: " + recoveryHint("my-app") + "; the removal landed iff the key is gone; re-run only while the key remains",
 			plan: func(t *testing.T, c *scriptedPollClient) runtime.ExecuteFunc {
 				t.Helper()
 				_, exec, err := planRemoveSecret(t, NewRemoveSecret(stubClusterClientFactory{c: c}),

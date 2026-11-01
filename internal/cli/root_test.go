@@ -1223,7 +1223,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-	assert.Equal(t, "unknown command \"cluster\"; to delete a cluster, use rancher delete provisioning-cluster <name>; management clusters cannot be deleted directly", env.Data.Error.Message)
+	assert.Equal(t, "unknown command \"cluster\"; management clusters cannot be deleted directly; to delete a provisioning cluster (<name> is its name), run this and add --apply --yes after reading the preview: rancher delete provisioning-cluster <name> --dry-run", env.Data.Error.Message)
 	assert.Equal(t, "rancher schema", env.Data.Error.Hint,
 		"no single concrete command names both provisioning-cluster and the missing name - the hint stays generic")
 
@@ -1234,7 +1234,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
-	assert.Equal(t, "unknown command \"clusters\"; to delete a cluster, use rancher delete provisioning-cluster <name>; management clusters cannot be deleted directly", env2.Data.Error.Message)
+	assert.Equal(t, "unknown command \"clusters\"; management clusters cannot be deleted directly; to delete a provisioning cluster (<name> is its name), run this and add --apply --yes after reading the preview: rancher delete provisioning-cluster <name> --dry-run", env2.Data.Error.Message)
 
 	// unknown token under delete → generic message, not the cluster-specific one.
 	errOut.Reset()

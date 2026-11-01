@@ -64,7 +64,7 @@ func parseWaitCondition(forExpr string) (waitCond, error) {
 func invalidForErr(forExpr string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("--for %q is not a supported wait condition; use state=<value> or condition=<Type>[=<Status>]; "+
-			"JSONPath is not supported - for that, use kubectl wait with a kubeconfig from ", forExpr)+clierr.Rancher+" kubeconfig")
+			"JSONPath is not supported - for that, use kubectl wait with a kubeconfig from this command, where <cluster> is the cluster: ", forExpr)+clierr.Rancher+" kubeconfig --cluster <cluster>")
 }
 
 // waitFor polls client.Get every pollInterval until cond is satisfied, the
@@ -308,12 +308,12 @@ func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns stri
 	} else {
 		when = waitElapsed(elapsed) + " after creation"
 	}
-	recheck := clierr.Rancher + fmt.Sprintf(" get %s %s", kindName, clierr.ShellQuote(name))
+	recheck := clierr.Rancher + " get " + kindName + clierr.ShellQuoteArgs("", name)
 	if ns != "" {
 		// The re-check must target the same namespace the wait resolved -
 		// a copy-pasted command falling back to the kind's default
 		// workspace could 404 or, worse, report a same-named stranger.
-		recheck += " --namespace " + clierr.ShellQuote(ns)
+		recheck = clierr.Rancher + " get " + kindName + clierr.ShellQuoteArgs(" --namespace "+clierr.ShellQuote(ns), name)
 	}
 	return fmt.Sprintf("wait satisfied %s - the status of a new %s may be set before its controller has reconciled it; re-check shortly with: %s",
 		when, kindName, recheck)

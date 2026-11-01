@@ -377,7 +377,7 @@ func TestDeleteServerInterruptedDuringTheRevokesKeepsTheEntry(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeInterrupted, ce.Code)
-	require.ErrorContains(t, err, "config delete-server 'prod' again")
+	require.ErrorContains(t, err, "run it again to remove it: "+clierr.Rancher+" config delete-server 'prod'")
 	details := decodeRevocationDetails(t, ce.Details)
 	assert.Len(t, details.Revoked, 1)
 	require.Len(t, details.NotRevoked, 1)

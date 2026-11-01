@@ -42,6 +42,6 @@ func TestAuthStatusClassifiesACertificateFailure(t *testing.T) {
 	d, ok := ce.Details.(tlstrust.Details)
 	require.True(t, ok)
 	want := tlstrust.UnknownAuthorityMessage(d.IsLeafCertificate(),
-		"; save it for this entry with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>")
+		"; <file> is a file that holds the server's CA certificate; save it for this entry with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>")
 	assert.Equal(t, want, ce.Message)
 }

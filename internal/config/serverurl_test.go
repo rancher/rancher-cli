@@ -144,8 +144,8 @@ func TestServerURLOriginTexts(t *testing.T) {
 			form + "server entry 'prod' cannot be used: its scheme is not http or https; change the entry's URL with " +
 				rancher + " config update-server 'prod' --url <url>"},
 		{"an exec plugin entry", EntryOrigin(ExecLoginPrefix + "abc"), userinfo,
-			form + "server entry '" + ExecLoginPrefix + "abc' cannot be used: it holds a user name or password; run " +
-				rancher + " auth logout '" + ExecLoginPrefix + "abc' if it holds a login, then remove the entry with " + rancher + " config delete-server '" + ExecLoginPrefix + "abc'"},
+			form + "server entry '" + ExecLoginPrefix + "abc' cannot be used: it holds a user name or password; " +
+				"if the entry holds a login, run: " + rancher + " auth logout '" + ExecLoginPrefix + "abc'; then remove the entry with: " + rancher + " config delete-server '" + ExecLoginPrefix + "abc'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -174,7 +174,7 @@ func TestAdviseRecord(t *testing.T) {
 	execName := ExecLoginPrefix + "abc"
 	stays := func(reason string) string {
 		return "the server recorded for token 'token-abc12' cannot be used: " + reason + "; the token stays on the server that issued it; " +
-			"delete it there with " + clierr.Rancher + " delete token 'token-abc12' --apply --yes while signed in to that server"
+			"delete it there while signed in to that server: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes"
 	}
 	sequence := func(server string) []string { return clierr.RecoverySequence(server, "u-abc12", ref) }
 	const userinfo = "it holds a user name or password"
@@ -211,7 +211,7 @@ func TestAdviseRecord(t *testing.T) {
 		{"an entry whose own URL has userinfo on another scheme", RecordSite{Entry: "prod", EntryURL: "ftp://u:pwzq7@hostzq7:21"}, "ftp://u:pwzq7@hostzq7:21",
 			EntryOrigin("prod").Text(mustProblem(t, "ftp://u:pwzq7@hostzq7:21")), ""},
 		{"a record that names no server", RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}, "",
-			"no server is recorded for token 'token-abc12'; delete it with " + clierr.Rancher + " delete token 'token-abc12' --apply --yes while signed in to the server that issued it", ""},
+			"no server is recorded for token 'token-abc12'; delete it while signed in to the server that issued it: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -265,7 +265,7 @@ func TestErrNotLoggedInForLeavesAnUnusableURLOut(t *testing.T) {
 		assert.Empty(t, err.Hint, raw)
 		assert.NotContains(t, err.Message, "config update-server", "the entry's URL cannot change")
 		assert.Contains(t, err.Message, "the server URL in server entry '"+name+"' cannot be used: ", raw)
-		assert.Contains(t, err.Message, "run "+clierr.Rancher+" auth logout '"+name+"' if it holds a login, then remove the entry with "+
+		assert.Contains(t, err.Message, "if the entry holds a login, run: "+clierr.Rancher+" auth logout '"+name+"'; then remove the entry with: "+
 			clierr.Rancher+" config delete-server '"+name+"'", raw)
 	}
 }

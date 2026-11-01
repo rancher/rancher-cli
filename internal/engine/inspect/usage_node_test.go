@@ -188,7 +188,7 @@ func TestUsageByNodeGetNotFoundCurated(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "node not found: n1", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get nodes --cluster 'c-abc'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get nodes --cluster 'c-abc'", ce.Hint)
 
 	// hint-bearing 404 passes through unchanged
 	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")

@@ -79,7 +79,7 @@ func TestTheBothStoresErrorNamesTheWayOut(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "VALIDATION", string(ce.Code))
 	require.ErrorContains(t, err, "the keychain (prod) and in the plaintext file "+filepath.Join("/d", "credentials.yaml")+" (staging)")
-	require.ErrorContains(t, err, "to keep the keychain, which holds no plaintext, run "+clierr.Rancher+" auth logout 'staging'")
+	require.ErrorContains(t, err, "to keep the keychain, which holds no plaintext, run: "+clierr.Rancher+" auth logout 'staging'")
 	require.ErrorContains(t, err, "a keychain entry's logout needs the keychain reachable")
 	require.ErrorContains(t, err, "or use a different --config")
 	assert.Equal(t, clierr.Rancher+" auth logout 'staging'", ce.Hint)
@@ -103,14 +103,14 @@ func TestTheBothStoresErrorNamesTheWayOut(t *testing.T) {
 	dce, ok := errorsAsClierr(withChange.Err())
 	require.True(t, ok)
 	require.ErrorContains(t, withChange.Err(), "the credential store change record cannot be read")
-	require.ErrorContains(t, withChange.Err(), "run "+clierr.Rancher+" auth logout 'staging'")
+	require.ErrorContains(t, withChange.Err(), "run: "+clierr.Rancher+" auth logout 'staging'")
 	assert.Equal(t, 1, strings.Count(withChange.Err().Error(), clierr.Rancher+" auth logout 'staging'"), "a remedy the message already names is not added again")
 	assert.Equal(t, clierr.Rancher+" config status", dce.Hint)
 
 	two := Unpinned{Row: UnpinnedBoth, KeychainEntries: []string{"prod"}, FileEntries: []string{"qa", "staging"}, dir: "/d"}
 	tce, ok := errorsAsClierr(two.Err())
 	require.True(t, ok)
-	require.ErrorContains(t, two.Err(), "run "+clierr.Rancher+" auth logout 'qa', then "+clierr.Rancher+" auth logout 'staging'")
+	require.ErrorContains(t, two.Err(), "run: "+clierr.Rancher+" auth logout 'qa'; "+clierr.Rancher+" auth logout 'staging'")
 	assert.Empty(t, tce.Hint, "no single command covers two entries")
 }
 

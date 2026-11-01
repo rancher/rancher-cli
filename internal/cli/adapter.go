@@ -504,7 +504,7 @@ var notFoundHints = []hintEntry[notFoundInput]{
 		match: func(in notFoundInput) bool {
 			return in.c.Name == "delete" && (in.name == "cluster" || in.name == "clusters")
 		},
-		detail: constText[notFoundInput]("to delete a cluster, use " + clierr.Rancher + " delete provisioning-cluster <name>; management clusters cannot be deleted directly"),
+		detail: constText[notFoundInput]("management clusters cannot be deleted directly; to delete a provisioning cluster (<name> is its name), run this and add --apply --yes after reading the preview: " + clierr.Rancher + " delete provisioning-cluster <name> --dry-run"),
 	},
 	{
 		// There is no help command; help is the --help flag. The hint is the

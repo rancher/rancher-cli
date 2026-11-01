@@ -2,7 +2,6 @@ package extres
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -95,7 +94,7 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 			return runtime.Result{}, err
 		}
 		name := created.GetName()
-		recovery := clierr.Rancher + fmt.Sprintf(" delete token %s, then create again", clierr.ShellQuote(name))
+		recovery := tokenRecovery(name)
 		bearer, _, _ := unstructured.NestedString(created.Object, "status", "bearerToken")
 		if bearer == "" {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
@@ -122,4 +121,10 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 		return res, nil
 	}
 	return eff, exec, nil
+}
+
+// tokenRecovery is the text that says how to create the token again: delete
+// the one the server created, which this run recorded.
+func tokenRecovery(name string) string {
+	return "to create it again, delete this one first: " + clierr.Rancher + " delete token" + clierr.ShellQuoteArgs(" --apply --yes", name)
 }

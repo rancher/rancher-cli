@@ -356,15 +356,15 @@ func TestCreateResourceRejectsNoCreateViaManifestKind(t *testing.T) {
 	}{
 		"management token": {
 			"apiVersion: management.cattle.io/v3\nkind: Token\nmetadata:\n  name: t\n",
-			"cannot create a management-token from a manifest; create tokens with '" + clierr.Rancher + " create token' (it creates an ext.cattle.io Token)",
+			"cannot create a management-token from a manifest; create tokens with '" + clierr.Rancher + " create token --dry-run' and add --apply --yes after reading the preview (it creates an ext.cattle.io Token)",
 		},
 		"token": {
 			"apiVersion: ext.cattle.io/v1\nkind: Token\nmetadata:\n  name: t\nspec:\n  userID: u-1\n",
-			"cannot create a token from a manifest; create tokens with '" + clierr.Rancher + " create token' (it prints the token's value once)",
+			"cannot create a token from a manifest; create tokens with '" + clierr.Rancher + " create token --dry-run' and add --apply --yes after reading the preview (the token's value is printed once)",
 		},
 		"kubeconfig": {
 			"apiVersion: ext.cattle.io/v1\nkind: Kubeconfig\nmetadata:\n  name: k\n",
-			"cannot create a kubeconfig from a manifest; create kubeconfigs with '" + clierr.Rancher + " create kubeconfig' (it prints the kubeconfig once)",
+			"cannot create a kubeconfig from a manifest; create kubeconfigs with '" + clierr.Rancher + " create kubeconfig --dry-run' and add --apply --yes after reading the preview (the kubeconfig is printed once)",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -443,7 +443,7 @@ func TestCreateResourceNamespaceWithProjectPointsAtCreateNamespace(t *testing.T)
 	_, _, err = cmd.Plan(unreadProjectContext(t), in)
 	requireValidation(t, err)
 	ce, _ = errors.AsType[*clierr.Error](err)
-	assert.Equal(t, "--project does not place a namespace created from a manifest in a project; create it with "+clierr.Rancher+" create namespace --project", ce.Message)
+	assert.Equal(t, "--project does not place a namespace created from a manifest in a project; <name> is the namespace, <cluster> its cluster and <project> the project; add --apply after reading the preview: "+clierr.Rancher+" create namespace <name> --cluster <cluster> --project <project> --dry-run", ce.Message)
 	assert.Equal(t, wantHint, ce.Hint)
 
 	assert.Empty(t, fac.clusterCalls)
@@ -512,7 +512,7 @@ func TestCreateResourceProjectRefusalPrecedesEveryRequest(t *testing.T) {
 		{name: "NSPlain kind that is not project scopable", manifest: prtbManifest, cluster: "prod",
 			wantMsg: "--project does not apply to projectroletemplatebinding"},
 		{name: "Namespace", manifest: namespaceManifest, cluster: "prod",
-			wantMsg:  "--project does not place a namespace created from a manifest in a project; create it with rancher create namespace --project",
+			wantMsg:  "--project does not place a namespace created from a manifest in a project; <name> is the namespace, <cluster> its cluster and <project> the project; add --apply after reading the preview: rancher create namespace <name> --cluster <cluster> --project <project> --dry-run",
 			wantHint: "rancher create namespace 'ns1' --cluster 'prod' --project 'web' --dry-run"},
 		{name: "NSCluster with --cluster and metadata.namespace", manifest: projectManifest, cluster: "prod",
 			wantMsg: "--project does not apply to project"},

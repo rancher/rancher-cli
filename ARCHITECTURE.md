@@ -946,6 +946,10 @@ a details payload's command fields are emptied. Text output does this line by li
 line that holds a command changes, and every other line is printed as it is. A source scan in
 test/conformance fails the build on a remedy command written without `clierr.Rancher` or without
 the word rancher; the commands still written plain are listed there with their reasons.
+`clierr.ShellQuoteArgs` writes the values after a command, and puts the flags first and `--` before the values
+when one starts with a dash; source scans in test/conformance fail the build on a remedy command that does not
+parse against the schema, has text glued after it, changes something without `--dry-run`, or quotes a positional
+value anywhere but in that function.
 
 **Exec-credential cache stays on disk.** Even under the keychain backend, the exec-credential cache
 - live short-lived bearer tokens - still lives in `token-cache.yaml` on disk (0600). The

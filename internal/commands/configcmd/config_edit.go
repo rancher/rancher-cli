@@ -278,11 +278,11 @@ func credentialStoreOffense(before, after string) string {
 	case after == "":
 		return "credentialStore removed (no command removes a declaration; a different --config starts a fresh directory)"
 	case before == "":
-		return "credentialStore set (use: " + clierr.Rancher + fmt.Sprintf(" auth login <name> --credential-store %s, after logging out the other entries when there are any)",
-			clierr.ShellQuote(after))
+		return "credentialStore set; <name> is the entry to log in; log out the other entries first when there are any; use: " +
+			clierr.Rancher + " auth login <name> --credential-store " + clierr.ShellQuote(after)
 	default:
-		return "credentialStore changed (use: " + clierr.Rancher + fmt.Sprintf(" auth login <name> --credential-store %s, after logging out the other entries when there are any)",
-			clierr.ShellQuote(after))
+		return "credentialStore changed; <name> is the entry to log in; log out the other entries first when there are any; use: " +
+			clierr.Rancher + " auth login <name> --credential-store " + clierr.ShellQuote(after)
 	}
 }
 
@@ -323,15 +323,17 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 		e, eOK := edited.Servers[n]
 		switch {
 		case !bOK && eOK:
-			offenses = append(offenses, fmt.Sprintf("servers.%s added (use: ", n)+clierr.Rancher+" config add-server)")
+			offenses = append(offenses, fmt.Sprintf("servers.%s added; <url> is the server's address; add it with: ", n)+
+				clierr.Rancher+" config add-server"+clierr.ShellQuoteArgs(" --url <url>", n))
 		case bOK && !eOK:
-			offenses = append(offenses, fmt.Sprintf("servers.%s removed (use: ", n)+clierr.Rancher+" config delete-server)")
+			offenses = append(offenses, fmt.Sprintf("servers.%s removed; use: ", n)+deleteServerCommand(n))
 		case bOK && eOK && !reflect.DeepEqual(b, e):
-			offenses = append(offenses, fmt.Sprintf("servers.%s changed (use: ", n)+clierr.Rancher+" config update-server)")
+			offenses = append(offenses, fmt.Sprintf("servers.%s changed; <url> is the server's address; --cacert <file> or --clear-cacert changes the CA instead; use: ", n)+
+				clierr.Rancher+" config update-server"+clierr.ShellQuoteArgs(" --url <url>", n))
 		}
 	}
 	if before.CurrentServer != edited.CurrentServer {
-		offenses = append(offenses, "currentServer changed (use: "+clierr.Rancher+" config use-server)")
+		offenses = append(offenses, "currentServer changed; <name> is the entry to make current; use: "+clierr.Rancher+" config use-server <name>")
 	}
 	// The setting decides whether the exec plugin reads its own login
 	// entries, so a cached kubectl credential is judged against it, and
@@ -343,7 +345,7 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 		if edited.TokenReuse {
 			state = "on"
 		}
-		offenses = append(offenses, "tokenReuse changed (use: "+clierr.Rancher+" config set-token-reuse "+state+")")
+		offenses = append(offenses, "tokenReuse changed; use: "+clierr.Rancher+" config set-token-reuse "+state)
 	}
 	// Whether recording is on is judged by the effective value: only the
 	// exact text "false" turns it off, and an absent or invalid key leaves it
@@ -354,7 +356,7 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 		if nowOff {
 			state = "off"
 		}
-		offenses = append(offenses, "telemetry changed (use: "+clierr.Rancher+" telemetry "+state+")")
+		offenses = append(offenses, "telemetry changed; use: "+clierr.Rancher+" telemetry "+state)
 	}
 	// The binding stamp is how a cache reader tells a load that was
 	// overtaken from one that was not. Editing it by hand makes records

@@ -293,6 +293,42 @@ func TestShellQuoteRoundTripsThroughSh(t *testing.T) {
 	}
 }
 
+var shellQuoteArgsHostile = []string{
+	"x", "-h", "--", "--x", "-1", "-", " -h", "\u2063-h", "a b", "a'b", "multi\nline", "",
+}
+
+// TestShellQuoteArgs asserts the exact text of the helper for each hostile
+// value, with and without flags, and for two values with one starting with a
+// dash.
+func TestShellQuoteArgs(t *testing.T) {
+	for _, v := range shellQuoteArgsHostile {
+		dashed := strings.HasPrefix(strings.TrimSpace(strings.ReplaceAll(v, "\u2063", "")), "-")
+		t.Run(fmt.Sprintf("%q", v), func(t *testing.T) {
+			if !dashed {
+				assert.Equal(t, " "+ShellQuote(v), ShellQuoteArgs("", v))
+				assert.Equal(t, " "+ShellQuote(v)+" --apply --yes", ShellQuoteArgs(" --apply --yes", v))
+				return
+			}
+			assert.Equal(t, " -- "+ShellQuote(v), ShellQuoteArgs("", v))
+			assert.Equal(t, " --apply --yes -- "+ShellQuote(v), ShellQuoteArgs(" --apply --yes", v))
+		})
+	}
+	assert.Equal(t, " -- '-h'", ShellQuoteArgs("", "-h"))
+	assert.Equal(t, " -- '-h' 'x'", ShellQuoteArgs("", "-h", "x"))
+	assert.Equal(t, " -- 'x' '-h'", ShellQuoteArgs("", "x", "-h"))
+	assert.Equal(t, " --dry-run -- 'x' '-h'", ShellQuoteArgs(" --dry-run", "x", "-h"))
+	assert.Equal(t, " 'x' 'y' --dry-run", ShellQuoteArgs(" --dry-run", "x", "y"))
+	assert.Equal(t, " ''", ShellQuoteArgs("", ""))
+}
+
+// TestShellQuoteArgsTestsTheValueAsShellQuoteWritesIt asserts that a value
+// that is U+2063 followed by "-h" prints as '-h' and gets the "--" form, and
+// that a value with the separator in the middle of an ordinary word does not.
+func TestShellQuoteArgsTestsTheValueAsShellQuoteWritesIt(t *testing.T) {
+	assert.Equal(t, " -- '-h'", ShellQuoteArgs("", "\u2063-h"))
+	assert.Equal(t, " 'ab' --x", ShellQuoteArgs(" --x", "a\u2063b"))
+}
+
 // TestInterruptedShape asserts the interrupt error's contract: its own
 // code, exit 130, not retryable, no hint.
 func TestInterruptedShape(t *testing.T) {

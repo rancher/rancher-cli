@@ -75,10 +75,6 @@ func lookupHandle(ctx context.Context, clients engine.ClusterClientFactory, clie
 	slices.SortFunc(matches, func(a, b handleMatch) int { return strings.Compare(a.id, b.id) })
 
 	quoted := clierr.ShellQuote(typed)
-	var clusterFlag string
-	if k.Key == "project" {
-		clusterFlag = " --cluster " + clierr.ShellQuote(ns)
-	}
 	candidates := make([]clierr.Candidate, 0, len(matches))
 	for _, m := range matches {
 		candidates = append(candidates, clierr.Candidate{ID: m.id, Name: m.name})
@@ -86,8 +82,11 @@ func lookupHandle(ctx context.Context, clients engine.ClusterClientFactory, clie
 	if len(matches) == 1 {
 		m := matches[0]
 		msg := base.Message + "; " + quoted + " is the " + strings.Join(m.labels, " and ") + " of " + k.Name + " " + m.id
-		return base.WithMessage(msg).WithCandidates(candidates).
-			WithHint(clierr.Rancher + " get " + k.Name + " " + clierr.ShellQuote(m.id) + clusterFlag)
+		getHint := clierr.Rancher + " get " + k.Name + clierr.ShellQuoteArgs("", m.id)
+		if k.Key == "project" {
+			getHint = clierr.Rancher + " get " + k.Name + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(ns), m.id)
+		}
+		return base.WithMessage(msg).WithCandidates(candidates).WithHint(getHint)
 	}
 	labels := make([]string, 0, len(k.Handle.Lookup))
 	for _, f := range k.Handle.Lookup {
@@ -97,9 +96,13 @@ func lookupHandle(ctx context.Context, clients engine.ClusterClientFactory, clie
 	out := base.WithMessage(msg).WithCandidates(candidates)
 	switch {
 	case refused:
-		out = out.WithHint(clierr.Rancher + " access projects" + clusterFlag)
+		accessHint := clierr.Rancher + " access projects"
+		if k.Key == "project" {
+			accessHint = clierr.Rancher + " access projects --cluster " + clierr.ShellQuote(ns)
+		}
+		out = out.WithHint(accessHint)
 	case out.Hint == "":
-		out = out.WithHint("list with: " + clierr.Rancher + " get " + k.Aliases[0])
+		out = out.WithHint(clierr.Rancher + " get " + k.Aliases[0])
 	}
 	return out
 }

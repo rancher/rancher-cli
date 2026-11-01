@@ -152,8 +152,8 @@ func TestScaleAutoscaledUnpausedPoolRefuses(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, `machine pool "pool1" on cluster "c1" is managed by the cluster autoscaler; the server accepts a change to the number of nodes, but the cluster autoscaler sets it back to its own value minutes later - pause autoscaling first to scale it yourself`, ce.Message)
-	assert.Contains(t, ce.Hint, "cluster pause-autoscaling")
+	assert.Equal(t, `machine pool "pool1" on cluster "c1" is managed by the cluster autoscaler; the server accepts a change to the number of nodes, but the cluster autoscaler sets it back to its own value minutes later - pause autoscaling first to scale it yourself; the hint previews it: add --apply --yes after reading the preview`, ce.Message)
+	assert.Equal(t, clierr.Rancher+" cluster pause-autoscaling 'c1' --dry-run", ce.Hint)
 	assert.Nil(t, client.updated, "the guard must refuse pre-Plan, before any Update dry-run")
 }
 

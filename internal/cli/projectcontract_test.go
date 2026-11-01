@@ -616,7 +616,7 @@ func TestNotLoggedInIsTheSameWhicheverClientReadsFirst(t *testing.T) {
 		hint    string
 	}{
 		{"blank machine", nil, "NOT_LOGGED_IN",
-			"not logged in and no RANCHER_CLI_URL set; add a server with: rancher auth login --url <url>", ""},
+			"not logged in and no RANCHER_CLI_URL set; <url> is the address of your Rancher server; add a server with: rancher auth login --url <url>", ""},
 		{"server without a credential", map[string]config.Server{"x": {URL: h.base}}, "NOT_LOGGED_IN",
 			`not logged in to "x"`, "rancher auth login 'x'"},
 	} {

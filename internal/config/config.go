@@ -27,7 +27,7 @@ func LoginHintFor(name string) string {
 	if IsExecLoginEntryName(name) {
 		return ""
 	}
-	return LoginCommand + " " + clierr.ShellQuote(name)
+	return LoginCommand + clierr.ShellQuoteArgs("", name)
 }
 
 // The remedy commands the shared credential and store-change code names,
@@ -49,7 +49,7 @@ var (
 
 // LogoutHintFor is the command that logs out entry name.
 func LogoutHintFor(name string) string {
-	return clierr.Rancher + " auth logout " + clierr.ShellQuote(name)
+	return clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", name)
 }
 
 // ErrNotLoggedIn builds the standard not-logged-in error for callers that
@@ -100,7 +100,7 @@ func InlineCAClause(src CASource) string {
 func ErrNotLoggedInFor(servers map[string]string, withCA map[string]bool) *clierr.Error {
 	if len(servers) == 0 {
 		return clierr.New(clierr.CodeNotLoggedIn,
-			"not logged in and no "+EnvURL+" set; add a server with: "+clierr.Rancher+" auth login --url <url>")
+			"not logged in and no "+EnvURL+" set; <url> is the address of your Rancher server; add a server with: "+clierr.Rancher+" auth login --url <url>")
 	}
 	names := make([]string, 0, len(servers))
 	for n := range servers {
@@ -123,7 +123,7 @@ func ErrNotLoggedInFor(servers map[string]string, withCA map[string]bool) *clier
 				// repair the entry instead.
 				return clierr.New(clierr.CodeNotLoggedIn, msg+EntryOrigin(names[0]).Text(err))
 			}
-			login := LoginCommand + " " + clierr.ShellQuote(name) + " --url " + clierr.ShellQuote(url)
+			login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url), name)
 			msg += "log in under a server entry of your own with: "
 			if withCA[names[0]] {
 				return clierr.New(clierr.CodeNotLoggedIn, msg+login+InlineCAClause(CASource{Kind: CASourceEntry, Entry: names[0]}))

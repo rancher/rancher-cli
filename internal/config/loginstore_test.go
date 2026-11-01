@@ -365,7 +365,7 @@ func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
 				assertStoreUnavailable(t, err)
 				require.ErrorContains(t, err, "the keychain cannot be used right now (no keychain session)")
 				require.ErrorContains(t, err, "never moves this directory's credentials out of "+tc.from+" into the plaintext file")
-				assert.Contains(t, clierr.ExpandRemedies(err.Error(), ""), keychainRemedy()+", then run this command again, or run rancher auth login 'prod' --credential-store file")
+				assert.Contains(t, clierr.ExpandRemedies(err.Error(), ""), keychainRemedy()+", then run this command again, or keep its credential in a plaintext file on purpose with: rancher auth login 'prod' --credential-store file")
 			}
 			assert.Equal(t, tc.pin, ReadPin(dir), "the refusal writes nothing")
 		})

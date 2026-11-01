@@ -39,7 +39,7 @@ const (
 	notApplicable = "notApplicable"
 )
 
-var localCannotImpersonateNote = "the management cluster cannot impersonate; ask " + clierr.Rancher + " access can <verb> <resource> --cluster local"
+var localCannotImpersonateNote = "the management cluster cannot impersonate; <verb> and <resource> are what to ask; ask with: " + clierr.Rancher + " access can <verb> <resource> --cluster local"
 
 // reachabilitySentence is printed once under the table: what the answer
 // proves and what it does not.
@@ -172,12 +172,12 @@ func (c *clustersCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 	}
 	switch as.Kind {
 	case KindGroup:
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "no server operation lists a group's clusters; ask a point question with "+clierr.Rancher+" access can --as "+clierr.ShellQuote(as.Raw))
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "no server operation lists a group's clusters; "+pointQuestionPlaceholders+"; ask a point question with: "+groupAccessCan(as.Raw))
 	case KindServiceAccount:
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "a service account belongs to one cluster; use "+clierr.Rancher+" access list --cluster <cluster> --as "+clierr.ShellQuote(as.Raw))
 	}
 	if as.Raw == anonymousUser {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; ask a point question with "+clierr.Rancher+" access can --as system:anonymous")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; "+pointQuestionPlaceholders+"; ask a point question with: "+anonymousAccessCan())
 	}
 	budget, err := parseTimeout(in)
 	if err != nil {

@@ -10557,7 +10557,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "to delete a cluster, use `rancher delete provisioning-cluster`",
+          "note": "to delete a provisioning cluster (<name> is its name), run `rancher delete provisioning-cluster <name> --dry-run` and add --apply --yes after reading the preview",
           "state": "absent"
         },
         "get": {
@@ -10616,7 +10616,7 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
-          "note": "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's number of nodes with `rancher cluster scale`), or outside Rancher for an imported, custom or local cluster",
+          "note": "nodes are created and deleted by the machine pools of a cluster that has them (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes; change a machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview), or outside Rancher for an imported, custom or local cluster",
           "state": "absent"
         },
         "get": {
@@ -11607,7 +11607,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's number of nodes with `rancher cluster scale`",
+          "note": "a controller creates and manages it; to delete a machine of a machine pool (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes), change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
           "state": "absent"
         },
         "get": {
@@ -11636,7 +11636,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with `rancher cluster scale`",
+          "note": "a controller creates and manages it from a machine pool of a provisioning cluster (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes); change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
           "state": "absent"
         },
         "get": {
@@ -11665,7 +11665,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with `rancher cluster scale`",
+          "note": "a controller creates and manages it from a machine pool of a provisioning cluster (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes); change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
           "state": "absent"
         },
         "get": {
@@ -11726,7 +11726,7 @@
       "verbs": {
         "create": {
           "contract": "public",
-          "note": "create tokens with 'rancher create token' (it prints the token's value once)",
+          "note": "create tokens with 'rancher create token --dry-run' and add --apply --yes after reading the preview (the token's value is printed once)",
           "stability": "stable",
           "state": "refused"
         },
@@ -11764,7 +11764,7 @@
       "verbs": {
         "create": {
           "contract": "internal",
-          "note": "create tokens with 'rancher create token' (it creates an ext.cattle.io Token)",
+          "note": "create tokens with 'rancher create token --dry-run' and add --apply --yes after reading the preview (it creates an ext.cattle.io Token)",
           "stability": "deprecated",
           "state": "refused"
         },
@@ -11801,7 +11801,7 @@
       "verbs": {
         "create": {
           "contract": "public",
-          "note": "create kubeconfigs with 'rancher create kubeconfig' (it prints the kubeconfig once)",
+          "note": "create kubeconfigs with 'rancher create kubeconfig --dry-run' and add --apply --yes after reading the preview (the kubeconfig is printed once)",
           "stability": "stable",
           "state": "refused"
         },

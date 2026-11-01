@@ -1038,7 +1038,7 @@ var remedyExceptions = []remedyException{
 	{"internal/client/provider/client.go", remedyCheckWord, "token management: auth list-tokens; kubeconfig: the default exec-credential mode", false, whyProviderMsg, "auth list-tokens"},
 	{"internal/testrancher/fidelity/probes.go", remedyCheckWord, "delete user ", false, "a fidelity probe's step name, naming the request the step sends; never printed to a user", "delete user"},
 
-	{"internal/engine/extres/kubeconfig.go", remedyCheckMarker, "# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig %s\n", false, "a header written into the kubeconfig file, read later from any shell", ""},
+	{"internal/engine/extres/kubeconfig.go", remedyCheckMarker, "# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n", false, "a header written into the kubeconfig file, read later from any shell", ""},
 	{"internal/engine/observe/bundle.go", remedyCheckMarker, "This is a rancher-cli support bundle.", true, "README text inside the support bundle, read later from any shell", ""},
 	{"internal/commands/configcmd/config_edit.go", remedyCheckMarker, "# No rancher CLI config file exists yet at this path.", true, "the comment of the file the editor opens", ""},
 	{"internal/runtime/schema_render.go", remedyCheckMarker, "rancher ", false, "a schema card's heading names the command it describes; schema output reads no directory", ""},

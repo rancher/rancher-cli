@@ -591,9 +591,9 @@ func TestConfigEditRejectsAnyCredentialStoreChange(t *testing.T) {
 		want                string
 	}{
 		{name: "set on an undeclared directory", after: "credentialStore: file\n",
-			want: "credentialStore set (use: " + clierr.Rancher + " auth login <name> --credential-store 'file', after logging out the other entries when there are any)"},
+			want: "credentialStore set; <name> is the entry to log in; log out the other entries first when there are any; use: " + clierr.Rancher + " auth login <name> --credential-store 'file'"},
 		{name: "changed", before: "credentialStore: keychain\n", after: "credentialStore: exec:vault\n",
-			want: "credentialStore changed (use: " + clierr.Rancher + " auth login <name> --credential-store 'exec:vault', after logging out the other entries when there are any)"},
+			want: "credentialStore changed; <name> is the entry to log in; log out the other entries first when there are any; use: " + clierr.Rancher + " auth login <name> --credential-store 'exec:vault'"},
 		{name: "removed", before: "credentialStore: keychain\n",
 			want: "credentialStore removed (no command removes a declaration; a different --config starts a fresh directory)"},
 		{name: "left as it was, spelled another way", before: "credentialStore: file\n", after: "credentialStore: \"file\"\n"},
@@ -645,7 +645,7 @@ func TestConfigEditRejectsChangingTokenReuse(t *testing.T) {
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Contains(t, ce.Message, "tokenReuse changed (use: "+tc.remedy+")")
+			assert.Contains(t, ce.Message, "tokenReuse changed; use: "+tc.remedy)
 
 			got, readErr := os.ReadFile(config.FilePath(dir))
 			require.NoError(t, readErr)
@@ -692,7 +692,7 @@ func TestConfigEditJudgesTheTelemetryKeyByItsEffectiveValue(t *testing.T) {
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Contains(t, ce.Message, "telemetry changed (use: "+tc.remedy+")")
+			assert.Contains(t, ce.Message, "telemetry changed; use: "+tc.remedy)
 			assert.YAMLEq(t, seeded, string(got), "the real config file must be untouched")
 		})
 	}

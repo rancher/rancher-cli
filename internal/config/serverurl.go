@@ -76,12 +76,11 @@ func (o ServerURLOrigin) Text(reason error) string {
 		}
 		return head + repair
 	case IsExecLoginEntryName(o.Entry):
-		q := clierr.ShellQuote(o.Entry)
-		return head + "run " + clierr.Rancher + " auth logout " + q +
-			" if it holds a login, then remove the entry with " + clierr.Rancher + " config delete-server " + q
+		return head + "if the entry holds a login, run: " + clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", o.Entry) +
+			"; then remove the entry with: " + clierr.Rancher + " config delete-server" + clierr.ShellQuoteArgs("", o.Entry)
 	}
-	return head + "change the entry's URL with " + clierr.Rancher + " config update-server " +
-		clierr.ShellQuote(o.Entry) + " --url <url>"
+	return head + "change the entry's URL with " + clierr.Rancher + " config update-server" +
+		clierr.ShellQuoteArgs(" --url <url>", o.Entry)
 }
 
 // RemovedText is the refusal text for the current URL of an entry that the
@@ -99,10 +98,9 @@ func (o ServerURLOrigin) Refusal(reason error) *clierr.Error {
 // that server cannot be used and is not an entry's current URL: the token
 // stays on the server that issued it, and the delete runs there.
 func recordServerText(ref clierr.TokenRef, reason error) string {
-	q := clierr.ShellQuote(ref.Name)
-	return "the server recorded for token " + q + " cannot be used: " + reason.Error() +
-		"; the token stays on the server that issued it; delete it there with " +
-		clierr.Rancher + " delete token " + q + " --apply --yes while signed in to that server"
+	return "the server recorded for token " + clierr.ShellQuote(ref.Name) + " cannot be used: " + reason.Error() +
+		"; the token stays on the server that issued it; delete it there while signed in to that server: " +
+		clierr.Rancher + " delete token" + clierr.ShellQuoteArgs(" --apply --yes", ref.Name)
 }
 
 // identityProblem is why the identity of a server cannot go into a command:
@@ -130,9 +128,9 @@ type RecordAdvice struct {
 // noServerText is the text for a token record that names no server: no
 // command can reach the server, and the token stays on it.
 func noServerText(ref clierr.TokenRef) string {
-	q := clierr.ShellQuote(ref.Name)
-	return "no server is recorded for token " + q + "; delete it with " + clierr.Rancher + " delete token " + q +
-		" --apply --yes while signed in to the server that issued it"
+	return "no server is recorded for token " + clierr.ShellQuote(ref.Name) +
+		"; delete it while signed in to the server that issued it: " +
+		clierr.Rancher + " delete token" + clierr.ShellQuoteArgs(" --apply --yes", ref.Name)
 }
 
 // RecordSite says where a token record is reported: on which entry, and

@@ -561,7 +561,7 @@ func TestResolveCloudCredentialListRefusedFallsBackToOneGet(t *testing.T) {
 	require.True(t, ok, "%v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "cloud credential not found: cc-gone1", ce.Message)
-	assert.Equal(t, clierr.Rancher+" get cloud-credential", ce.Hint)
+	assert.Empty(t, ce.Hint, "the list was refused: a hint that lists again is refused again")
 	assert.Empty(t, ce.Candidates)
 	assert.Equal(t, []string{"cc-gone1"}, client.gets)
 

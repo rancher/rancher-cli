@@ -285,7 +285,7 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 	case existing.URL == probe.CanonicalURL && existing.CA == probe.CASelector:
 		// Entry no-op: identical existing entry, nothing to rewrite.
 	case existing.URL != probe.CanonicalURL:
-		hint := clierr.Rancher + fmt.Sprintf(" config update-server %s --url %s", clierr.ShellQuote(name), clierr.ShellQuote(probe.CanonicalURL))
+		hint := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(probe.CanonicalURL), name)
 		if _, problem := credhelper.CheckServerURL(existing.URL); problem != nil {
 			// The entry's URL cannot be shown or compared: the entry is
 			// what needs the repair.
@@ -298,7 +298,7 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 			WithHint(hint)
 	default:
 		// URL matches; only the CA selector differs.
-		hint := clierr.Rancher + fmt.Sprintf(" config update-server %s %s", clierr.ShellQuote(name), CAUpdateArg(probe.CASelector))
+		hint := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+CAUpdateArg(probe.CASelector), name)
 		return CreateOutcome{}, clierr.New(clierr.CodeConflict,
 			fmt.Sprintf(
 				"server entry %q already exists with a different CA; to add a new server choose a different name, or to change this entry's trust run: ",

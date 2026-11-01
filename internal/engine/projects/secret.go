@@ -26,7 +26,7 @@ const projectScopedSecretLabel = "management.cattle.io/project-scoped-secret"
 func parseLiteralPairs(s string) (map[string]any, error) {
 	return parsePairs(s, "from-literal", true, func(string) error {
 		return clierr.New(clierr.CodeValidation,
-			"malformed --from-literal value; pass key=value pairs separated by commas (a value containing a comma needs `"+clierr.Rancher+" create resource -f <file>`)")
+			"malformed --from-literal value; pass key=value pairs separated by commas; a value containing a comma goes in a manifest file, <file> is that file; add --apply after reading the preview: "+clierr.Rancher+" create resource -f <file> --dry-run")
 	})
 }
 

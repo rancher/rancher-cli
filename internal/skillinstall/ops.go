@@ -63,8 +63,29 @@ func (r Report) TextDetails() []string {
 	if n := len(r.Outcomes) - shown; n > 0 {
 		lines = append(lines, fmt.Sprintf("… and %d more", n))
 	}
-	lines = append(lines, "to see each target's state, run rancher skill status; to see every reason, run the command again with -o json")
+	lines = append(lines, "to see each target's state, run: "+r.statusCommand()+"; to see every reason, run the command again with -o json")
 	return lines
+}
+
+// statusCommand is the skill status command for the targets of the report:
+// --agent names the harness when the targets have one, --scope the scope
+// when they have one.
+func (r Report) statusCommand() string {
+	var harness, scope string
+	harnesses, scopes := map[string]bool{}, map[Scope]bool{}
+	for _, o := range r.Outcomes {
+		harnesses[o.Target.Harness] = true
+		scopes[o.Target.Scope] = true
+		harness, scope = o.Target.Harness, string(o.Target.Scope)
+	}
+	cmd := "rancher skill status"
+	if len(harnesses) == 1 {
+		cmd += " --agent " + harness
+	}
+	if len(scopes) == 1 {
+		cmd += " --scope " + scope
+	}
+	return cmd
 }
 
 const (

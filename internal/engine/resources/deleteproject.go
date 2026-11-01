@@ -252,14 +252,17 @@ func protectedReason(name, cluster string) string {
 func readFailure(err error, project, cluster string) error {
 	ce := clierr.From(err)
 	return clierr.New(ce.Code, fmt.Sprintf(
-		"could not read the project's namespaces: %s; --delete-namespaces needs the full list before it deletes anything", ce.Message)).
+		"could not read the project's namespaces: %s; --delete-namespaces needs the full list before it deletes anything"+deleteProjectHintNote, ce.Message)).
 		WithRetryable(ce.Retryable).
 		WithHint(deleteProjectHint(project, cluster)).
 		WithCause(err)
 }
 
+// deleteProjectHintNote says what the hint of a refusal does.
+const deleteProjectHintNote = "; the hint previews deleting the project without its namespaces: add --apply --yes after reading the preview"
+
 func deleteProjectHint(project, cluster string) string {
-	return clierr.Rancher + " delete project " + clierr.ShellQuote(project) + " --cluster " + clierr.ShellQuote(cluster)
+	return clierr.Rancher + " delete project" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(cluster)+" --dry-run", project)
 }
 
 // planDeleteNamespaces is the run with --delete-namespaces: every member
@@ -284,7 +287,7 @@ func (c *deleteProjectCmd) planDeleteNamespaces(ctx context.Context, eff safety.
 			o.Outcome, o.Message = safety.OutcomeNotDeleted, reason
 		case rd.unknown(ns):
 			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-				"cannot read namespace %s in full; --delete-namespaces needs to read each namespace it deletes in full", nsName)).
+				"cannot read namespace %s in full; --delete-namespaces needs to read each namespace it deletes in full"+deleteProjectHintNote, nsName)).
 				WithHint(deleteProjectHint(name, cluster))
 		default:
 			o.Outcome = safety.OutcomeWillBeDeleted

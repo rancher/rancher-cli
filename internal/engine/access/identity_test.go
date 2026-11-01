@@ -253,9 +253,11 @@ func TestRefusalMessagesNameTheMissingRight(t *testing.T) {
 	assert.Equal(t, "cannot ask about eng on cluster c-phmj7: you lack create subjectaccessreviews on cluster c-phmj7", sarRefusal(group, "c-phmj7").Message)
 	assert.Equal(t, "cannot ask about u-abc12 on cluster local: you lack create subjectaccessreviews on cluster local", sarRefusal(user, engine.LocalCluster).Message)
 
-	assert.Equal(t, "no server operation lists a group's rules; ask a point question with: "+clierr.Rancher+" access can <verb> <resource> --as 'github_org://eng'",
+	assert.Equal(t, "no server operation lists a group's rules; <verb> and <resource> are what to ask and <cluster> is the cluster; ask a point question with: "+
+		clierr.Rancher+" access can <verb> <resource> --cluster <cluster> --as 'github_org://eng' --type group",
 		groupListMessage("github_org://eng"))
-	assert.Contains(t, anonymousListMessage, "access can --as system:anonymous")
+	assert.Equal(t, "no server operation lists the anonymous identity's rules; <verb> and <resource> are what to ask and <cluster> is the cluster; ask a point question with: "+
+		clierr.Rancher+" access can <verb> <resource> --cluster <cluster> --as system:anonymous", anonymousListMessage)
 }
 
 // TestPlanIdentityLocalAndGroupSkipImpersonation asserts groups and the

@@ -337,7 +337,7 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	assert.Contains(t, text, ".rancher-skill-staging-cafe")
 	assert.Contains(t, text, "error (GENERIC): skill install failed for part of the selected targets")
 	assert.Contains(t, text, filepath.Join(home, ".codex", "skills", "rancher")+": unchanged")
-	assert.Contains(t, text, "to see each target's state, run rancher skill status; to see every reason, run the command again with -o json")
+	assert.Contains(t, text, "to see each target's state, run: rancher skill status --scope user; to see every reason, run the command again with -o json")
 }
 
 // TestSkillOutcomesImplementsTabular asserts that skillOutcomes implements

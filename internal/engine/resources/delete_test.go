@@ -164,7 +164,7 @@ func TestDeleteNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get pods --cluster 'c-abc'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get pods --cluster 'c-abc'", ce.Hint)
 }
 
 // TestDeleteNonNotFoundPassesThrough asserts that a non-NOT_FOUND error from the
@@ -198,7 +198,7 @@ func TestDeleteDryRunNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get pods --cluster 'c-abc'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get pods --cluster 'c-abc'", ce.Hint)
 }
 
 // TestDeleteDryRunNotFoundWithHintPassesThrough asserts that an already-curated
@@ -297,7 +297,7 @@ func TestDeleteExecPhaseNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "pod not found: web", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get pods --cluster 'c-abc'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get pods --cluster 'c-abc'", ce.Hint)
 }
 
 // TestDeleteExecPhaseNotFoundWithHintPassesThrough asserts that an already-curated

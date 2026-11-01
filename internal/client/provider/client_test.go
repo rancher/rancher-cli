@@ -378,7 +378,7 @@ func TestClientGetCuratesKnownGVRNotFound(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: p-missing", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get projects", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get projects", ce.Hint)
 }
 
 // TestClientGetHintedNotFoundPassesThrough asserts that Get does not overwrite a
@@ -434,7 +434,7 @@ func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: p-missing", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get projects", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get projects", ce.Hint)
 }
 
 // TestClientUpdateCuratesKnownGVRNotFound asserts that Update curates a hint-less
@@ -449,7 +449,7 @@ func TestClientUpdateCuratesKnownGVRNotFound(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found: p-missing", ce.Message)
-	assert.Equal(t, "list with: "+clierr.Rancher+" get projects", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get projects", ce.Hint)
 }
 
 // TestClusterClientDeleteRefusesCrossOriginRedirect asserts that a mutation

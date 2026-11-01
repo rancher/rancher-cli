@@ -112,7 +112,8 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 	}
 	// A new key may have landed before the wait ended, so the timeout and
 	// an aborted wait share the recovery that says how to find and rotate it.
-	recovery := "check " + getRecovery + "; if a new key landed its value was never shown - rotate that key by name"
+	recovery := "check " + getRecovery + "; if a new key landed its value was never shown - rotate that key by name (<client> is the oidc-client and <secret> the new key's name) and add --apply --yes after reading the preview: " +
+		clierr.Rancher + " oidc-client rotate-secret <client> <secret> --dry-run"
 	secretName, err := waitForOIDCClient(ctx, client, k.GVR, clientName, timeout, check,
 		func(last *unstructured.Unstructured) *clierr.Error {
 			msg := fmt.Sprintf("timed out waiting for oidc-client %s to add a secret", clientName)
