@@ -2,12 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -160,6 +164,17 @@ func TestCompletionDebugTrace(t *testing.T) {
 		assert.Contains(t, trace, runtime.UnprintableConfigDirNote)
 		assert.NotContains(t, trace, clierr.RemedyMarker, "no marker is left")
 		assert.NotContains(t, trace, "config set-completion", "no command is offered")
+		assert.NotContains(t, trace, "\u0001")
+		var loaded string
+		for l := range strings.SplitSeq(trace, "\n") {
+			if strings.Contains(l, "config loaded:") {
+				loaded = l
+			}
+		}
+		assert.Contains(t, loaded, "ab currentServer=", "the config loaded line holds the path without the control character")
+		for _, r := range strings.ReplaceAll(trace, "\n", "") {
+			assert.False(t, unicode.IsControl(r) || unicode.Is(unicode.Cf, r), "U+%04X reaches the terminal", r)
+		}
 	})
 }
 
@@ -251,5 +266,139 @@ func TestCompletionTraceAndRefusalForAServerURLWithUserinfo(t *testing.T) {
 		assert.False(t, ok)
 		assert.Contains(t, trace.String(), "scheme unsupported: ftp://hostzq7\n")
 		assert.NotContains(t, trace.String(), "pathzq7")
+	})
+}
+
+// traceHostile holds what a path, a typed word or an error text can carry to
+// drive a terminal or to look like another line: a clear-screen and a conceal
+// sequence, the one-byte sequence introducer, bell, backspace, carriage
+// return, a newline, NUL, DEL, tab, a bidi override, a byte order mark, a
+// bare U+2063 and the line and paragraph separators.
+const traceHostile = "\x1b[2J\x1b[8m\u009b2J\a\b\r\n\x00\x7f\t\u202e\ufeff\u2063\u2028\u2029"
+
+// traceFiltered is traceHostile with every character a terminal line cannot
+// show removed.
+const traceFiltered = "[2J[8m2J"
+
+// tracedLine calls completionDebugf with the trace on and returns the text
+// after the elapsed-time prefix. It asserts that the write is one line with
+// one "\n" at its end and no character a terminal line cannot show, and no
+// invalid UTF-8 byte, before it.
+func tracedLine(t *testing.T, format string, args ...any) string {
+	t.Helper()
+	origProto, origOut := rawCompleting, completionDebugOut
+	var buf bytes.Buffer
+	completionDebugOut, rawCompleting = &buf, true
+	defer func() { rawCompleting, completionDebugOut = origProto, origOut }()
+	completionDebugf(format, args...)
+	written := buf.String()
+	require.True(t, strings.HasPrefix(written, "completion +"), "the line carries the elapsed-time prefix: %q", written)
+	assert.Equal(t, 1, strings.Count(written, "\n"), "one newline: %q", written)
+	require.True(t, strings.HasSuffix(written, "\n"), "the newline ends the line: %q", written)
+	body := strings.TrimSuffix(written, "\n")
+	assert.True(t, utf8.ValidString(body), "no invalid byte reaches the terminal: %q", body)
+	for _, r := range body {
+		assert.False(t, unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029',
+			"U+%04X reaches the terminal: %q", r, body)
+	}
+	_, rest, ok := strings.Cut(strings.TrimPrefix(body, "completion +"), " ")
+	require.True(t, ok, "the prefix ends with a space: %q", body)
+	return rest
+}
+
+// TestCompletionTraceRemovesWhatATerminalCannotShow asserts that each trace
+// line is written with every control and Unicode format character, line and
+// paragraph separator and newline of its values removed, for the value shapes
+// the call sites insert: a path, an error text that holds a path, a typed
+// word as %s and as %q, a server URL, a byte that is not valid UTF-8, and a
+// remedy command in an error text.
+// A remedy command of this process is expanded and every other remedy marker
+// is removed; a backslash and a colon of a Windows path stay.
+// NOT parallel: it mutates the completion state, the stored config and the
+// environment.
+func TestCompletionTraceRemovesWhatATerminalCannotShow(t *testing.T) {
+	t.Setenv(config.EnvCompletionDebug, "1")
+	dir := t.TempDir()
+	cfg := &config.Config{CurrentServer: "srv", Servers: map[string]config.Server{"srv": {URL: "https://rancher.example"}}}
+	cfg.SetPath(config.FilePath(dir))
+	setStoredConfigForTest(t, cfg, dir)
+	expandedCommand := "rancher --config " + clierr.ShellQuote(remedyDirFor(dir)) + " config set-completion --network=true"
+
+	t.Run("a path as %s and a server name as %q", func(t *testing.T) {
+		got := tracedLine(t, "config loaded: dir=%s currentServer=%q servers=%d", "/p/"+traceHostile+"/q", "srv"+traceHostile, 3)
+		assert.Equal(t, "config loaded: dir=/p/"+traceFiltered+"/q currentServer="+strconv.Quote("srv"+traceHostile)+" servers=3", got)
+	})
+
+	t.Run("an error text that holds a path", func(t *testing.T) {
+		got := tracedLine(t, "config load failed: %v", fmt.Errorf("parsing %s: bad", "/p/"+traceHostile+"/config.yaml"))
+		assert.Equal(t, "config load failed: parsing /p/"+traceFiltered+"/config.yaml: bad", got)
+	})
+
+	t.Run("a typed word as %s", func(t *testing.T) {
+		got := tracedLine(t, "stop: no usable exec-credential cache record for cluster %s", "c-"+traceHostile)
+		assert.Equal(t, "stop: no usable exec-credential cache record for cluster c-"+traceFiltered, got)
+	})
+
+	t.Run("a typed word as %q", func(t *testing.T) {
+		got := tracedLine(t, "stop: --cluster %q is not an id and an exec-credential-only token cannot resolve a display name", traceHostile)
+		assert.Equal(t, "stop: --cluster "+strconv.Quote(traceHostile)+" is not an id and an exec-credential-only token cannot resolve a display name", got)
+	})
+
+	t.Run("a server URL", func(t *testing.T) {
+		got := tracedLine(t, "connection: url=%s ca=%t", "https://host\u202e.example", false)
+		assert.Equal(t, "connection: url=https://host.example ca=false", got)
+	})
+
+	t.Run("a server URL host that DisplayServerURL shows as it is", func(t *testing.T) {
+		host := "https://host\u009b\u202e\u2063.example"
+		shown := config.DisplayServerURL(host)
+		for _, r := range []string{"\u009b", "\u202e", "\u2063"} {
+			require.Contains(t, shown, r, "DisplayServerURL keeps U+%04X", []rune(r)[0])
+		}
+		got := tracedLine(t, "connection: url=%s ca=%t", shown, true)
+		assert.Equal(t, "connection: url=https://host.example ca=true", got)
+	})
+
+	t.Run("a remedy command alone is expanded", func(t *testing.T) {
+		got := tracedLine(t, "live completion off; enable with: %s config set-completion --network=true", clierr.Rancher)
+		assert.Equal(t, "live completion off; enable with: "+expandedCommand, got)
+		assert.NotContains(t, got, clierr.RemedyMarker)
+	})
+
+	t.Run("a remedy command and hostile text in one error text", func(t *testing.T) {
+		err := fmt.Errorf("%s config set-completion --network=true: %s", clierr.Rancher, traceHostile)
+		got := tracedLine(t, "config load failed: %v", err)
+		assert.Equal(t, "config load failed: "+expandedCommand+": "+traceFiltered, got)
+		assert.NotContains(t, got, clierr.RemedyMarker)
+	})
+
+	t.Run("a marker from another process is removed", func(t *testing.T) {
+		foreign := "\u2063" + strings.Repeat("\u2060\u2061\u2062\u2064", 8)
+		require.NotEqual(t, clierr.RemedyMarker, foreign)
+		got := tracedLine(t, "stop: %s", foreign+"rancher delete x")
+		assert.Equal(t, "stop: rancher delete x", got)
+		assert.NotContains(t, got, "--config")
+	})
+
+	t.Run("Windows paths and escape-looking text stay as they are", func(t *testing.T) {
+		for _, v := range []string{
+			`C:\Users\a b\AppData\Roaming\rancher`,
+			`\\server\share\rancher`,
+			`C:\new\run\tab`,
+		} {
+			assert.Equal(t, "config loaded: dir="+v+" servers=0", tracedLine(t, "config loaded: dir=%s servers=%d", v, 0))
+		}
+		assert.Equal(t, "dir=ab", tracedLine(t, "dir=%s", "a\r\nb"))
+	})
+
+	t.Run("a raw 0x9b byte becomes U+FFFD", func(t *testing.T) {
+		got := tracedLine(t, "dir=%s", "/p/a\x9b2Jb")
+		assert.Equal(t, "dir=/p/a\ufffd2Jb", got)
+	})
+
+	t.Run("a printable path stays as it is", func(t *testing.T) {
+		for _, v := range []string{"/var/lib/rancher", "/home/\u00fcser/\u4e2d\u6587"} {
+			assert.Equal(t, "dir="+v, tracedLine(t, "dir=%s", v))
+		}
 	})
 }

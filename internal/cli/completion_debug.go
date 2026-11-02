@@ -35,11 +35,15 @@ func completionDebugEnabled() bool {
 
 // completionDebugf writes one trace line when tracing is on and is a no-op
 // otherwise; callers pass the phase and its outcome, never a trailing newline.
+// The formatted text has every character a terminal line cannot show removed
+// (control and Unicode format characters, line and paragraph separators,
+// newlines), the remedy commands of this process excepted; they are expanded
+// next.
 func completionDebugf(format string, args ...any) {
 	if !completionDebugEnabled() {
 		return
 	}
-	line := fmt.Sprintf(format, args...)
+	line := runtime.PrintableRemedies(fmt.Sprintf(format, args...))
 	if clierr.HasRemedy(line) {
 		line = completionTraceIO().ExpandText(line)
 	}
