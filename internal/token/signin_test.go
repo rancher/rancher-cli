@@ -300,8 +300,8 @@ func TestSignInLostLoginResponseNamesTheMarker(t *testing.T) {
 	assert.Nil(t, d.SessionToken.Ref)
 	require.NotEmpty(t, d.OperationMarker)
 	recovery := clierr.ExpandRemedies(d.Recovery, "")
-	assert.Contains(t, recovery, `the session token: the user who signed in can list tokens with: rancher get tokens, from a directory signed in as that user, and delete the one whose description carries "[op:`+d.OperationMarker+`]"`)
-	assert.Contains(t, recovery, `an administrator can list tokens with: rancher get management-tokens and delete the one whose description carries "[op:`+d.OperationMarker+`]"`)
+	assert.Contains(t, recovery, `the session token: the user who signed in can list tokens from a directory signed in as that user; list them with: rancher get tokens; then delete the one whose description carries "[op:`+d.OperationMarker+`]"`)
+	assert.Contains(t, recovery, `an administrator can list tokens with: rancher get management-tokens; then delete the one whose description carries "[op:`+d.OperationMarker+`]"`)
 	assert.True(t, strings.HasSuffix(recovery, "; run the kubectl command again"), recovery)
 	assert.Empty(t, f.DeleteRequests(), "nothing can be named, so nothing is deleted")
 }
@@ -537,7 +537,8 @@ func TestSignInNormanClusterTokenThatCannotBeDeletedIsReported(t *testing.T) {
 	assert.Equal(t, ResultFailed, clusterCleanup(t, d))
 	assert.Equal(t, ResultRevoked, sessionCleanup(t, d))
 	recovery := clierr.ExpandRemedies(d.Recovery, "")
-	assert.Contains(t, recovery, "the cluster token "+d.ClusterToken.Ref.String()+": an administrator can delete "+d.ClusterToken.Ref.String()+" with: rancher delete management-token "+d.ClusterToken.Ref.Name+" --apply --yes --allow-deprecated, or it expires")
+	assert.Contains(t, recovery, "the cluster token "+d.ClusterToken.Ref.String()+": "+d.ClusterToken.Ref.String()+" expires at ")
+	assert.Contains(t, recovery, "; an administrator can delete it sooner with: rancher delete management-token '"+d.ClusterToken.Ref.Name+"' --apply --yes --allow-deprecated")
 	assert.True(t, strings.HasSuffix(recovery, "; run the kubectl command again"), recovery)
 }
 
@@ -555,7 +556,7 @@ func TestSignInLostClusterCreateResponseReportsTheMarkedToken(t *testing.T) {
 	assert.Equal(t, ResultRevoked, sessionCleanup(t, d))
 	assert.Len(t, f.DeleteRequests(), 1, "the login token only: the cluster token has no name")
 	recovery := clierr.ExpandRemedies(d.Recovery, "")
-	assert.Contains(t, recovery, "the cluster token: the user who signed in can list tokens with: rancher get tokens, from a directory signed in as that user, and delete the one whose description carries")
+	assert.Contains(t, recovery, "the cluster token: the user who signed in can list tokens from a directory signed in as that user; list them with: rancher get tokens; then delete the one whose description carries")
 	assert.NotContains(t, recovery, "management-tokens", "an ext token needs no administrator")
 }
 
@@ -655,7 +656,7 @@ func TestSignInFailedLoginTokenDeleteIsAWarningNotAFailure(t *testing.T) {
 	assert.Equal(t, "logout 500; delete 403 Forbidden", si.Login.Cleanup.Error)
 	w := clierr.ExpandRemedies(si.warning(), "")
 	want := "the transient session token " + si.Login.Ref.String() + " created by this login could not be revoked (logout 500; delete 403 Forbidden); " +
-		"an administrator can delete " + si.Login.Ref.String() + " with: rancher delete management-token " + si.Login.Ref.Name + " --apply --yes --allow-deprecated, or it expires at " + si.Login.ExpiresAt
+		si.Login.Ref.String() + " expires at " + si.Login.ExpiresAt + "; an administrator can delete it sooner with: rancher delete management-token '" + si.Login.Ref.Name + "' --apply --yes --allow-deprecated"
 	assert.Equal(t, want, w)
 }
 
@@ -742,20 +743,20 @@ func TestSignInLeftoverNamesWhoRunsEachCommand(t *testing.T) {
 		want   string
 	}{
 		{"v3 with a name", v3, "u-1",
-			"an administrator can delete v3/token-v3 with: rancher delete management-token token-v3 --apply --yes --allow-deprecated, or it expires at 2026-10-12T12:00:00Z"},
+			"v3/token-v3 expires at 2026-10-12T12:00:00Z; an administrator can delete it sooner with: rancher delete management-token 'token-v3' --apply --yes --allow-deprecated"},
 		{"ext with a known user", ext, "u-1",
-			"user 'u-1' can delete it with: rancher delete token token-abc --apply --yes, from a directory signed in as user 'u-1' (rancher auth login signs one in); or it expires at 2026-10-12T12:00:00Z"},
+			"user 'u-1' can delete it from a directory signed in as user 'u-1'; run: rancher delete token 'token-abc' --apply --yes; or it expires at 2026-10-12T12:00:00Z"},
 		{"ext with an unknown user", ext, "",
-			"the user who signed in can delete it with: rancher delete token token-abc --apply --yes, from a directory signed in as that user (rancher auth login signs one in); or it expires at 2026-10-12T12:00:00Z"},
+			"the user who signed in can delete it from a directory signed in as that user; run: rancher delete token 'token-abc' --apply --yes; or it expires at 2026-10-12T12:00:00Z"},
 		{"ext with no expiry", clierr.TokenFate{Ref: ext.Ref}, "u-1",
-			"user 'u-1' can delete it with: rancher delete token token-abc --apply --yes, from a directory signed in as user 'u-1' (rancher auth login signs one in)"},
+			"user 'u-1' can delete it from a directory signed in as user 'u-1'; run: rancher delete token 'token-abc' --apply --yes"},
 		{"marked ext with no name", clierr.TokenFate{Marked: true, Kind: clierr.TokenKindExt}, "u-1",
-			`user 'u-1' can list tokens with: rancher get tokens, from a directory signed in as user 'u-1', and delete the one whose description carries "[op:m]"`},
+			`user 'u-1' can list tokens from a directory signed in as user 'u-1'; list them with: rancher get tokens; then delete the one whose description carries "[op:m]"`},
 		{"marked v3 with no name", clierr.TokenFate{Marked: true, Kind: clierr.TokenKindV3}, "u-1",
-			`an administrator can list tokens with: rancher get management-tokens and delete the one whose description carries "[op:m]"`},
+			`an administrator can list tokens with: rancher get management-tokens; then delete the one whose description carries "[op:m]"`},
 		{"marked, kind unknown", clierr.TokenFate{Marked: true}, "",
-			`the user who signed in can list tokens with: rancher get tokens, from a directory signed in as that user, and delete the one whose description carries "[op:m]"; ` +
-				`an administrator can list tokens with: rancher get management-tokens and delete the one whose description carries "[op:m]"`},
+			`the user who signed in can list tokens from a directory signed in as that user; list them with: rancher get tokens; then delete the one whose description carries "[op:m]"; ` +
+				`an administrator can list tokens with: rancher get management-tokens; then delete the one whose description carries "[op:m]"`},
 		{"the SAML handoff with no token", clierr.TokenFate{Search: &search}, "",
 			"a kubeconfig token may have been created through keycloakSAML at or after 2026-10-12T10:00:00Z; the CLI stopped waiting at 2026-10-12T10:15:00Z, " +
 				"but the browser sign-in can still complete after that, and the token may be newer; these facts narrow the candidates but cannot identify one token; " +
@@ -846,6 +847,6 @@ func TestSignInErrorFateCarriesTheClusterTokensExpiry(t *testing.T) {
 	_, d := failureOf(t, si.withSignInFate(wait, nil))
 	require.NotNil(t, d.ClusterToken)
 	assert.Equal(t, "2026-10-12T12:00:00Z", d.ClusterToken.ExpiresAt)
-	assert.Contains(t, clierr.ExpandRemedies(d.Recovery, ""), "user 'u-1' can delete it with: rancher delete token token-abc --apply --yes, from a directory signed in as user 'u-1' (rancher auth login signs one in); or it expires at 2026-10-12T12:00:00Z")
+	assert.Contains(t, clierr.ExpandRemedies(d.Recovery, ""), "user 'u-1' can delete it from a directory signed in as user 'u-1'; run: rancher delete token 'token-abc' --apply --yes; or it expires at 2026-10-12T12:00:00Z")
 	assert.Empty(t, fresh.ExpiresAt, "the fate the wait carried is copied, not changed")
 }

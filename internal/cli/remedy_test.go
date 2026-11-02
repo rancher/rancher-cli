@@ -82,9 +82,8 @@ func assertEveryCommandNames(t *testing.T, s, want string) {
 // TestTheExecPluginAndKubeconfigRemediesNameTheirDirectory asserts the
 // real error paths of auth get-token and kubeconfig, run with a relative
 // --config, name that directory, absolute and shell-quoted, in every
-// command they print - message, hint and JSON alike - while the legacy
-// rancher token command prints its plain and another command names its
-// own directory.
+// command they print - message, hint and JSON alike - and another command
+// names its own directory.
 func TestTheExecPluginAndKubeconfigRemediesNameTheirDirectory(t *testing.T) {
 	t.Setenv(config.EnvURL, "")
 	t.Setenv(config.EnvToken, "")
@@ -160,18 +159,6 @@ func TestTheExecPluginAndKubeconfigRemediesNameTheirDirectory(t *testing.T) {
 		assertEveryCommandNames(t, got, named)
 	})
 
-	t.Run("the legacy token command's tie is plain", func(t *testing.T) {
-		require.NoError(t, os.RemoveAll("acct"))
-		writeRemedyConfig(t, "acct", &config.Config{Servers: map[string]config.Server{
-			"prod": {URL: "https://r.example.com"}, "staging": {URL: "https://r.example.com"}}})
-		store := config.NewFileStore("acct")
-		require.NoError(t, store.SetToken(config.ServerRef{Name: "prod", URL: "https://r.example.com"}, "tok-a"))
-		require.NoError(t, store.SetToken(config.ServerRef{Name: "staging", URL: "https://r.example.com"}, "tok-b"))
-		got := runRemedyCLI(t, "--config", "acct", "token", "--server", "https://r.example.com", "--user", "alice")
-		assert.Contains(t, got, "error (AMBIGUOUS_SELECTION)")
-		assertEveryCommandNames(t, got, "")
-	})
-
 	// The command tree keeps process-wide state of its own (the read-only
 	// override, the loaded config completion reads), so two trees cannot
 	// run at once; runtime asserts the concurrent case per invocation.
@@ -191,6 +178,28 @@ func TestTheExecPluginAndKubeconfigRemediesNameTheirDirectory(t *testing.T) {
 			assertEveryCommandNames(t, strings.Join(jsonStrings(doc), "\n"), blank)
 		}
 	})
+}
+
+// TestTheLegacyTokenCommandNamesItsDirectory asserts the error of the legacy
+// token command, run with a relative --config, names that directory,
+// absolute and shell-quoted, in every command it prints: kubectl runs it
+// from an exec entry the shell that pastes a remedy does not carry.
+func TestTheLegacyTokenCommandNamesItsDirectory(t *testing.T) {
+	t.Setenv(config.EnvURL, "")
+	t.Setenv(config.EnvToken, "")
+	t.Setenv(config.EnvCredentialStore, "")
+	t.Setenv(config.EnvConfigDir, "")
+	t.Chdir(t.TempDir())
+	realWD, err := os.Getwd()
+	require.NoError(t, err)
+	writeRemedyConfig(t, "acct", &config.Config{Servers: map[string]config.Server{
+		"prod": {URL: "https://r.example.com"}, "staging": {URL: "https://r.example.com"}}})
+	store := config.NewFileStore("acct")
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod", URL: "https://r.example.com"}, "tok-a"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "staging", URL: "https://r.example.com"}, "tok-b"))
+	got := runRemedyCLI(t, "--config", "acct", "token", "--server", "https://r.example.com", "--user", "alice")
+	assert.Contains(t, got, "error (AMBIGUOUS_SELECTION)")
+	assertEveryCommandNames(t, got, " --config '"+filepath.Join(realWD, "acct")+"'")
 }
 
 // TestADirectoryFailureNamesTheDirectory asserts the failure to open the

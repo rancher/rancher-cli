@@ -150,7 +150,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 		{name: "a --cacert path", flags: map[string]string{"name": "prod-c-1", "cacert": caPath},
 			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --cacert " + clierr.ShellQuote(caPath) + " --token-stdin", hint: true},
 		{name: "an inline --cacert", flags: map[string]string{"name": "prod-c-1", "cacert": caPEM}, inlineCA: true,
-			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin"},
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --cacert <file> --token-stdin"},
 		{name: "a --cacert path, the --name already registered here", flags: map[string]string{"name": "prod-c-1", "cacert": caPath},
 			login: clierr.Rancher + " auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
 			setup: registeredHere(url, "")},
@@ -199,14 +199,14 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
 			require.ErrorContains(t, err, "interactive login required for auth config local; this call has no terminal to answer it")
-			require.ErrorContains(t, err, "pipe an API token to "+tc.login)
+			require.ErrorContains(t, err, "pipe an API token to: "+tc.login)
 			switch {
 			case tc.reuse:
 				require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in")
 				assert.NotContains(t, err.Error(), "until the cached token expires", "the plugin's own login keeps a login credential, --name or not")
 			case tc.flags["name"] == "":
 				assert.NotContains(t, err.Error(), "run kubectl once in a terminal", "with no --name nothing a terminal sign-in makes is kept")
-				require.ErrorContains(t, err, "this exec entry sets no --name, and a sign-in in a terminal would not be kept; give it one, for example by regenerating the kubeconfig with "+clierr.Rancher+" kubeconfig --cluster 'c-1'")
+				require.ErrorContains(t, err, "this exec entry sets no --name, and a sign-in in a terminal would not be kept; give it one, for example by regenerating the kubeconfig with: "+clierr.Rancher+" kubeconfig --cluster 'c-1'")
 			default:
 				require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 			}
@@ -219,12 +219,12 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.ErrorContains(t, err, "the credential store change record cannot be read")
 				assert.Equal(t, 1, strings.Count(err.Error(), tc.login), "a remedy the message already names is not added again")
 			case tc.inlineCA:
-				require.ErrorContains(t, err, "adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline")
+				require.ErrorContains(t, err, "this exec entry carries the CA inline and --cacert needs a file")
 				assert.Empty(t, ce.Hint, "the login needs a file only the operator can name")
 			case tc.hint:
 				assert.Equal(t, tc.login, ce.Hint, "the login runs as written")
 			default:
-				require.ErrorContains(t, err, "with a name of your choice for <name>")
+				require.ErrorContains(t, err, "<name> stands for a name of your choice")
 				assert.Empty(t, ce.Hint, "a command with a placeholder is not a hint")
 			}
 			switch {
@@ -282,7 +282,7 @@ func TestTheLegacyShimNamesTheRemediesWithoutATerminal(t *testing.T) {
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
-			require.ErrorContains(t, err, "pipe an API token to "+clierr.Rancher+" auth login <name> --url "+clierr.ShellQuote(config.CanonicalServerIdentity(srv.URL))+" --token-stdin, with a name of your choice for <name>")
+			require.ErrorContains(t, err, "<name> stands for a name of your choice; to log in without one, pipe an API token to: "+clierr.Rancher+" auth login <name> --url "+clierr.ShellQuote(config.CanonicalServerIdentity(srv.URL))+" --token-stdin")
 			require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 			assert.Empty(t, ce.Hint, "the shim's slot is no name auth login accepts")
 		})

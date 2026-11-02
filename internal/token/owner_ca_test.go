@@ -46,11 +46,11 @@ func TestUserIDNewEntryLoginsCarryTheCallsCA(t *testing.T) {
 		wantCA := func(t *testing.T, x *ownerFixture, msg string) {
 			t.Helper()
 			if tc.ca == caPath {
-				assert.Contains(t, msg, "rancher auth login <name> --url '"+x.serverID()+"' --cacert '"+caPath+"' --token-stdin, with a name of your choice for <name>")
+				assert.Contains(t, msg, "rancher auth login <name> --url '"+x.serverID()+"' --cacert '"+caPath+"' --token-stdin")
 				return
 			}
-			assert.Contains(t, msg, "rancher auth login <name> --url '"+x.serverID()+"' --token-stdin, with a name of your choice for <name>, "+
-				"adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline")
+			assert.Contains(t, msg, "this exec entry carries the CA inline and --cacert needs a file; ")
+			assert.Contains(t, msg, "rancher auth login <name> --url '"+x.serverID()+"' --cacert <file> --token-stdin")
 		}
 		t.Run("another owner's plugin login entry, "+tc.name, func(t *testing.T) {
 			x := newOwnerFixture(t, true, testrancher.Options{})
@@ -109,7 +109,7 @@ func TestUserIDPluginLaneWithoutATerminalNamesTheUser(t *testing.T) {
 	_, err := x.call("prod-c-test", "user-carol", "", nil)
 	ce, msg := refusal(t, err)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-carol' to "+
+	assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-carol' to: "+
 		"rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin; or run kubectl once in a terminal and sign in as 'user-carol'", msg)
 	_, plugin := x.stored(x.pluginEntry())
 	assert.Empty(t, plugin.URL, "nothing is written")
@@ -154,7 +154,7 @@ func TestCreateKubeconfigIsOfferedOnlyWhenTheCurrentLoginServes(t *testing.T) {
 			err := tokenCmd{dir: dir, store: store}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
 				noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url, userID: tc.userID})
 			_, msg := refusal(t, err)
-			const remedy = "; or use rancher create kubeconfig --clusters 'c-1' --apply --yes for a kubeconfig that carries its own token"
+			const remedy = "; for a kubeconfig that carries its own token, run: rancher create kubeconfig --clusters 'c-1' --apply --yes"
 			if tc.offered {
 				assert.Contains(t, msg, remedy)
 				return
@@ -241,7 +241,7 @@ func TestUserIDOwnerRefusalsCarryTheTokensFate(t *testing.T) {
 		assert.Equal(t, ResultFailed, f.Cleanup.Result)
 		assert.Equal(t, "500 Internal Server Error", f.Cleanup.Error)
 		_, msg := refusal(t, err)
-		assert.Contains(t, msg, "the token created from it could not be revoked (500 Internal Server Error); revoke it with: rancher delete token "+f.Ref.Name+" --apply --yes")
+		assert.Contains(t, msg, "the token created from it could not be revoked (500 Internal Server Error); revoke it with: rancher delete token '"+f.Ref.Name+"' --apply --yes")
 	})
 	t.Run("the sign-in of another user", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{})
@@ -263,7 +263,8 @@ func TestUserIDOwnerRefusalsCarryTheTokensFate(t *testing.T) {
 		assert.Equal(t, ResultFailed, f.Cleanup.Result, "Rancher refuses a cluster-scoped token on both requests")
 		assert.Equal(t, "logout 401; delete 403 Forbidden", f.Cleanup.Error)
 		_, msg := refusal(t, err)
-		assert.Contains(t, msg, "could not be revoked (logout 401; delete 403 Forbidden); an administrator can delete v3/"+f.Ref.Name+" with: rancher delete management-token "+f.Ref.Name+" --apply --yes --allow-deprecated")
+		assert.Contains(t, msg, "could not be revoked (logout 401; delete 403 Forbidden); v3/"+f.Ref.Name+" expires at ")
+		assert.Contains(t, msg, "; an administrator can delete it sooner with: rancher delete management-token '"+f.Ref.Name+"' --apply --yes --allow-deprecated")
 	})
 	t.Run("no ext tokens", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{Legacy: true})
@@ -290,13 +291,14 @@ func TestNoTerminalLoginForAPluginLoginEntryNameGoesOn(t *testing.T) {
 		"prod":            {URL: url},
 		"exec-login-r.ex": {URL: url, Provenance: clierr.ProvenanceExecLogin},
 	}}
+	const switchBack = "; selecting an entry switches the directory's current server; to switch back, run: rancher config use-server 'prod'"
 	for _, tc := range []struct {
 		name, cluster, want string
 	}{
-		{"a cluster", "c-1", "rancher auth login <name> --url '" + url + "' --token-stdin, with a name of your choice for <name>, " +
-			"then rancher config use-server <name> (this switches the directory's current server; switch back with rancher config use-server 'prod'), then rancher kubeconfig --cluster 'c-1'"},
-		{"no cluster", "", "rancher auth login <name> --url '" + url + "' --token-stdin, with a name of your choice for <name>, " +
-			"then rancher config use-server <name> (this switches the directory's current server; switch back with rancher config use-server 'prod'), then rancher kubeconfig --cluster <id>"},
+		{"a cluster", "c-1", "rancher auth login <name> --url '" + url + "' --token-stdin; " +
+			"then rancher config use-server <name>; then rancher kubeconfig --cluster 'c-1'" + switchBack},
+		{"no cluster", "", "rancher auth login <name> --url '" + url + "' --token-stdin; " +
+			"then rancher config use-server <name>; then rancher kubeconfig --cluster <id>" + switchBack},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

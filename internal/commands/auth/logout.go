@@ -190,7 +190,7 @@ func logoutRerun(targets []string, all bool) string {
 	if all {
 		return clierr.Rancher + " auth logout --all"
 	}
-	return clierr.Rancher + " auth logout " + clierr.ShellQuote(strings.Join(targets, " "))
+	return clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", targets...)
 }
 
 // sweepFailure is a logout --all whose orphaned-helper sweep failed, with
@@ -211,7 +211,7 @@ func (e *sweepFailure) Unwrap() []error { return []error{e.cache, e.sweep} }
 // therefore never see a cancellation.
 func (l logoutCmd) localFailure(err error, d *token.Deletion, rep token.RevocationReport, rerun string, notices []string) error {
 	details := LogoutAllPartialFailure{LoggedOut: d.DeletedTargets(), DeletedFrom: d.DeletedFrom, DeletedCache: d.DeletedCache,
-		Revoked: rep.Revoked, NotRevoked: rep.NotRevoked, rerun: rerun}
+		Revoked: rep.Revoked, NotRevoked: rep.NotRevoked, Rerun: rerun}
 	sweep, swept := errors.AsType[*sweepFailure](err)
 	if errors.Is(err, context.Canceled) {
 		return clierr.New(clierr.CodeInterrupted,
@@ -365,9 +365,13 @@ type LogoutAllPartialFailure struct {
 	DeletedCache []string                `json:"deletedCache,omitempty"`
 	Revoked      []token.RevokedToken    `json:"revoked"`
 	NotRevoked   []token.NotRevokedToken `json:"notRevoked"`
-	// rerun is the logout to run again when the local delete did not
-	// complete, empty when it did.
-	rerun string
+	// Rerun is the logout to run again when the local delete did not
+	// complete, empty when it did. It is a remedy command, printed in the
+	// text details and not part of the structured output.
+	Rerun string `json:"-"`
+	// rerunOmitted is set when a renderer that can offer no command emptied
+	// Rerun: the closing line then keeps its fact without the command.
+	rerunOmitted bool
 }
 
 // TextDetails projects which servers were already logged out, which
@@ -394,10 +398,35 @@ func (p LogoutAllPartialFailure) TextDetails() []string {
 	for _, n := range p.NotRevoked {
 		lines = append(lines, n.DetailLines()...)
 	}
-	if p.rerun != "" {
-		lines = append(lines, "those credentials are gone regardless of this failure - run "+p.rerun+" to finish")
+	switch {
+	case p.Rerun != "":
+		lines = append(lines, "those credentials are gone regardless of this failure; to finish, run: "+p.Rerun)
+	case p.rerunOmitted:
+		lines = append(lines, "those credentials are gone regardless of this failure")
 	}
 	return lines
+}
+
+// MapText maps the logout to run again and the text of each token that may
+// still be live: its error message and its recovery commands.
+func (p LogoutAllPartialFailure) MapText(f func(string) string) clierr.TextDetails {
+	p.Rerun = f(p.Rerun)
+	p.NotRevoked = token.MapLiveTokens(p.NotRevoked, f, f)
+	return p
+}
+
+// MapCommands maps the logout to run again and the recovery commands of each
+// token that may still be live, which a renderer that can offer no command
+// empties.
+func (p LogoutAllPartialFailure) MapCommands(f func(string) string) clierr.TextDetails {
+	if rerun := f(p.Rerun); rerun == "" && p.Rerun != "" {
+		p.rerunOmitted = true
+		p.Rerun = ""
+	} else {
+		p.Rerun = rerun
+	}
+	p.NotRevoked = token.MapLiveTokens(p.NotRevoked, nil, f)
+	return p
 }
 
 // deleteFailure shapes a delete-step failure other than a cancellation,

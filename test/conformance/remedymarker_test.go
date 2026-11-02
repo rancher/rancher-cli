@@ -994,23 +994,12 @@ func applyExceptions(hits []remedyHit, check string, exceptions []remedyExceptio
 }
 
 const (
-	whyRecoveryData = "also fills result data of other commands; the exec plugin marks it where it prints it (clierr.MarkRemedy)"
-	whyKubeconfig   = "written into the kubeconfig file, read later from any shell"
+	whyKubeconfig = "written into the kubeconfig file, read later from any shell"
 )
 
-// remedyExceptions are the texts the checks report that stay as they are.
-// The token code, and the two clierr files its payloads print, are recorded
-// text by text; an added, a removed or a swapped text fails.
+// remedyExceptions are the texts the checks report that stay as they are,
+// recorded text by text; an added, a removed or a swapped text fails.
 var remedyExceptions = []remedyException{
-	{"internal/token/deletetoken.go", remedyCheckMarker, "specify either a credential name or --all, not both (e.g. rancher auth delete-token prod, or rancher auth delete-token --all)", false, "auth delete-token's own usage error; its two examples show the forms of the command that is running", ""},
-	{"internal/token/entry.go", remedyCheckMarker, "more than one server entry for %s has a stored login (%s) and the legacy rancher token command cannot name one; regenerate the kubeconfig from the entry you want with %s, and replace this kubeconfig with the one it prints", false, "names the command whose kubeconfig this is; it runs nothing", ""},
-	{"internal/clierr/recovery.go", remedyCheckMarker, "rancher auth login ", false, "RecoverySequence " + whyRecoveryData, ""},
-	{"internal/clierr/recovery.go", remedyCheckMarker, "rancher config use-server ", false, "RecoverySequence " + whyRecoveryData, ""},
-	{"internal/clierr/recovery.go", remedyCheckMarker, "rancher auth logout ", false, "RecoverySequence " + whyRecoveryData, ""},
-	{"internal/clierr/loginfailure.go", remedyCheckMarker, "rancher get management-tokens", false, "RecoveryCommands " + whyRecoveryData, ""},
-	{"internal/clierr/loginfailure.go", remedyCheckMarker, "rancher delete management-token ", false, "RecoveryCommands " + whyRecoveryData, ""},
-	{"internal/clierr/loginfailure.go", remedyCheckMarker, "rancher get tokens", false, "RecoveryCommands " + whyRecoveryData, ""},
-	{"internal/clierr/loginfailure.go", remedyCheckMarker, "rancher delete token ", false, "RecoveryCommands " + whyRecoveryData, ""},
 	{"internal/engine/kubeconfig/records.go", remedyCheckMarker, " set: rancher", false, whyKubeconfig, ""},
 	{"internal/engine/kubeconfig/records.go", remedyCheckMarker, "rancher", false, whyKubeconfig, ""},
 	{"internal/testrancher/fidelity/probes.go", remedyCheckWord, "delete user ", false, "a fidelity probe's step name, naming the request the step sends; never printed to a user", "delete user"},

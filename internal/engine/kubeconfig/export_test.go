@@ -14,3 +14,19 @@ func NoOwnerNoticeForTest(cfg *config.Config, identified, entry, clusterID strin
 	})
 	return notice
 }
+
+// NoStoredLoginNoticeForTest is the notice the kubeconfig for clusterID prints
+// when no stored login answers for it.
+func NoStoredLoginNoticeForTest(cfg *config.Config, dir, name, clusterID, serverID string) string {
+	return lookupNotice(lookupCall{cfg: cfg, dir: dir, name: name, clusterID: clusterID, serverID: serverID}, token.StoredLogin{Outcome: token.LookupNone})
+}
+
+// ReservedNameRefusalForTest is the message that refuses a --name auth
+// get-token refuses.
+func ReservedNameRefusalForTest(name, clusterID, serverURL string) string {
+	err := reservedName(name, clusterID, serverURL, "", config.CASource{})
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}

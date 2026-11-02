@@ -154,7 +154,7 @@ func TestDeleteServerKeepsTheNextLoginWordingWhenALocalStepFails(t *testing.T) {
 	assert.Equal(t, clierr.CodeTLSTrust, n.Code)
 	assert.Equal(t, "nextLogin", n.Retry)
 	assert.Equal(t, "prod", n.Entry)
-	assert.Contains(t, n.Error, nextLoginSaveClause)
+	assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), nextLoginSaveClause)
 }
 
 // TestDeleteServerCancelledDuringARevokeReportsTheCertificateFailure asserts a
@@ -219,5 +219,5 @@ func TestDeleteServerRefusedByAConflictReportsTheCertificateFailureOfAKeptEntry(
 	n := certificateFailures(t, decodeRevocationDetails(t, ce.Details))[r.cache.Ref.Name]
 	assert.Equal(t, clierr.CodeTLSTrust, n.Code)
 	assert.Equal(t, "nextLogin", n.Retry)
-	assert.Contains(t, n.Error, nextLoginSaveClause)
+	assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), nextLoginSaveClause)
 }

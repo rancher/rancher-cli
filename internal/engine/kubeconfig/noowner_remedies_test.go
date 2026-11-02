@@ -52,7 +52,7 @@ func TestNoOwnerNoticeRemediesRunInTheCommandTree(t *testing.T) {
 			notice := rt.IO{RemedyDir: dir}.ExpandText(kubeconfig.NoOwnerNoticeForTest(cfg, tc.identified, tc.entry, "c-1", tc.plugin))
 			var ran []string
 			for _, line := range noOwnerCommandRE.FindAllString(notice, -1) {
-				words := noOwnerShellWords(t, strings.TrimSuffix(line, " again"))
+				words := noOwnerShellWords(t, line)
 				name, configDir := runInTree(t, words)
 				assert.Equal(t, dir, configDir, line)
 				ran = append(ran, name)

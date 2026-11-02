@@ -386,7 +386,7 @@ func TestDeleteServerInterruptedDuringTheRevokesKeepsTheEntry(t *testing.T) {
 	assert.Equal(t, "manual", left.Retry)
 	assert.Empty(t, left.Entry)
 	require.NotEmpty(t, left.Recovery)
-	assert.Contains(t, strings.Join(ce.Warnings(), "\n"), "(cancelled); revoke it with:")
+	assert.Contains(t, strings.Join(ce.Warnings(), "\n"), "(cancelled); the sequence assumes RANCHER_CLI_URL")
 	_, present := r.entry(t)
 	assert.True(t, present, "the entry is left in place")
 

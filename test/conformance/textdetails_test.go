@@ -39,14 +39,11 @@ const (
 // reason, keyed by "<package directory> <type>". An entry whose type gains a
 // MapText, or that matches no type with TextDetails, fails.
 var textDetailsAllowed = map[string]string{
-	"internal/clierr PrimeRequiredDetails":           holdsNoCommand,
-	"internal/clierr CapabilityUnsupportedDetails":   holdsNoCommand,
-	"internal/skillinstall Report":                   holdsNoCommand,
-	"internal/token directWaitDetails":               holdsNoCommand,
-	"internal/client/tlstrust Details":               holdsNoCommand,
-	"internal/commands/auth LogoutAllPartialFailure": mappedWithPackage,
-	"internal/token deleteTokenFailure":              mappedWithPackage,
-	"internal/token RevocationReport":                mappedWithPackage,
+	"internal/clierr PrimeRequiredDetails":         holdsNoCommand,
+	"internal/clierr CapabilityUnsupportedDetails": holdsNoCommand,
+	"internal/skillinstall Report":                 holdsNoCommand,
+	"internal/token directWaitDetails":             holdsNoCommand,
+	"internal/client/tlstrust Details":             holdsNoCommand,
 }
 
 // textDetailsType is which of the methods the rule reads a type declares.

@@ -2650,7 +2650,7 @@ func TestDeleteTokenNamedPreservesLockTimeout(t *testing.T) {
 	assert.True(t, ce.Retryable)
 	assert.Equal(t, 8, ce.ExitCode())
 	assert.Contains(t, ce.Message, `failed to delete "acme/u/c"`)
-	assert.Contains(t, ce.Message, "; run "+clierr.Rancher+" auth delete-token 'acme/u/c' again")
+	assert.Contains(t, ce.Message, "; to finish, run: "+clierr.Rancher+" auth delete-token 'acme/u/c'")
 }
 
 // TestCreateDerivedTokenSplits401And403 asserts the two rejections are

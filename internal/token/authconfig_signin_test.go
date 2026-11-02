@@ -260,8 +260,8 @@ func TestAPluginLoginEntryNameThatIsTooLongNamesTheAuthConfigAndASignIn(t *testi
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	url := clierr.ShellQuote(x.serverID())
 	assert.Equal(t, "the exec plugin's login entry for this server, for Rancher user '"+user+"' through auth config '"+authConfig+"', would have a name of "+strconv.Itoa(len(name))+
-		" characters, and the credential store accepts at most 467; to log in under a shorter name, sign in with rancher auth login <name> --url "+url+" --auth-provider '"+authConfig+
-		"', or pipe an API token of '"+user+"' made through auth config '"+authConfig+"' to rancher auth login <name> --url "+url+" --token-stdin, with a name of your choice for <name>", msg)
+		" characters, and the credential store accepts at most 467; <name> stands for a name of your choice; to log in under a shorter name, sign in with: rancher auth login <name> --url "+url+" --auth-provider '"+authConfig+
+		"'; or pipe an API token of '"+user+"' made through auth config '"+authConfig+"' to: rancher auth login <name> --url "+url+" --token-stdin", msg)
 	assert.NotContains(t, notices.String(), "Enter username", "no sign-in was started")
 	for _, r := range x.seen() {
 		assert.NotEqual(t, "/v1-public/login", r.path)

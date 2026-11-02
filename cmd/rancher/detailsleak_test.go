@@ -72,15 +72,13 @@ func notRevokedFixture() token.NotRevokedToken {
 	}
 }
 
-// TestRecordOfRevokeReportsInStructuredOutput is a record, not a guard: the
-// two details payloads that carry what a revoke did with each token have no
-// mapping of their own, and the literals here hold plain commands from
-// clierr.RecoveryCommands, so no change to the code that builds these reports
-// makes it fail. It records that the recovery commands are written as plain
-// commands, with no character of the remedy marker (U+2060 to U+2064) in the
-// decoded json and yaml, when the pipeline expands the error for an
-// invocation against a config directory. The guard for real reports is
-// internal/token's TestAFailedAuthDeleteTokenLeavesNoMarkerInStructuredOutput.
+// TestRecordOfRevokeReportsInStructuredOutput records what the pipeline
+// writes for the two details payloads that carry what a revoke did with each
+// token: the recovery commands name the invocation's config directory, and no
+// character of the remedy marker (U+2060 to U+2064) is left in the decoded json
+// and yaml. The literals hold commands from clierr.RecoveryCommands. The
+// guard for real reports is internal/token's
+// TestAFailedAuthDeleteTokenLeavesNoMarkerInStructuredOutput.
 func TestRecordOfRevokeReportsInStructuredOutput(t *testing.T) {
 	t.Parallel()
 	notRevoked := notRevokedFixture()
@@ -98,7 +96,7 @@ func TestRecordOfRevokeReportsInStructuredOutput(t *testing.T) {
 				var out bytes.Buffer
 				require.NoError(t, runtime.RenderErrorStyled(&out, format, io.ExpandError(ce), style.Style{}))
 				decoded := decodedStrings(out.String())
-				assert.Contains(t, decoded, "rancher get tokens", "the recovery commands reach the output")
+				assert.Contains(t, decoded, "rancher --config "+clierr.ShellQuote(io.RemedyDir)+" get tokens", "the recovery commands reach the output")
 				assert.False(t, holdsMarkerRuneDecoded(out.String()), "the output holds a character of the remedy marker: %q", out.String())
 			})
 		}

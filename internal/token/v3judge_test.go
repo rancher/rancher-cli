@@ -149,7 +149,7 @@ func assertText(t *testing.T, want, got string, prefix bool) {
 
 // v3AdminDeleteCommand is the administrator's delete of the v3 token name.
 func v3AdminDeleteCommand(name string) string {
-	return "rancher delete management-token " + name + " --apply --yes --allow-deprecated"
+	return clierr.Rancher + " delete management-token '" + name + "' --apply --yes --allow-deprecated"
 }
 
 // TestJudgeAV3TokenWithItsOwnBearer asserts the verdict for every pair of

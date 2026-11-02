@@ -25,7 +25,7 @@
           "command": "rancher auth logout 'prod'",
           "dataLossRisk": "removes the credential for prod from every backend (keychain, file, credential helper), including a credential from an earlier login"
         },
-        "operationMarker": "843c11ae5c14",
+        "operationMarker": "8ae6c6982195",
         "sessionToken": {
           "outcome": "known",
           "kind": "v3",
@@ -34,7 +34,7 @@
             "name": "fac-token-1"
           },
           "marked": true,
-          "createdAt": "2026-10-09T02:17:45Z",
+          "createdAt": "2026-11-02T02:21:16Z",
           "cleanup": {
             "ref": {
               "kind": "v3",
@@ -52,7 +52,7 @@
             "name": "fac-token-2"
           },
           "marked": true,
-          "createdAt": "2026-10-09T02:17:45Z",
+          "createdAt": "2026-11-02T02:21:16Z",
           "cleanup": {
             "ref": {
               "kind": "ext",
@@ -62,7 +62,7 @@
             "error": "500 Internal Server Error"
           }
         },
-        "recovery": "no credential was stored; log in again with: rancher auth login 'prod'. An administrator can delete v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated, or it expires at 2026-10-09T02:32:45Z; no credential was stored; log in again with: rancher auth login 'prod', then revoke ext/fac-token-2 with: rancher delete token fac-token-2 --apply --yes; the file entry for prod may still hold this login's token; restoring the earlier value failed (keychain locked)"
+        "recovery": "no credential was stored; log in again with: rancher auth login 'prod'; v3/fac-token-1 expires at 2026-11-02T18:21:16Z; an administrator can delete it sooner with: rancher delete management-token 'fac-token-1' --apply --yes --allow-deprecated; no credential was stored; log in again with: rancher auth login 'prod'; then revoke ext/fac-token-2 with: rancher delete token 'fac-token-2' --apply --yes; the file entry for prod may still hold this login's token; restoring the earlier value failed (keychain locked)"
       }
     }
   }

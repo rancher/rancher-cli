@@ -55,19 +55,23 @@ func (u userCheck) relogin(cfg *config.Config, entry string, plugin bool) (text,
 	}
 	if plugin || config.IsExecLoginEntryName(entry) {
 		login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, u.caFrom, false)
-		piped := "a login piped to "
+		piped := "a login piped to: "
 		if u.authConfig != "" {
-			piped = "a login made" + through + " and piped to "
+			piped = "a login made" + through + " and piped to: "
 		}
-		return "remove " + quoted + " with " + clierr.Rancher + " auth logout " + quoted + ", then " + clierr.Rancher + " config delete-server " + quoted +
-			"; the next call signs in as " + clierr.ShellQuote(u.userID) + through + " in a terminal, or uses " + piped + login.Text(), ""
+		next := "the next call signs in as " + clierr.ShellQuote(u.userID) + through + " in a terminal; or it uses " + piped + login.Text()
+		if facts := login.Facts(); facts != "" {
+			next = facts + "; " + next
+		}
+		return "remove " + quoted + " with: " + clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", entry) + "; then " +
+			clierr.Rancher + " config delete-server" + clierr.ShellQuoteArgs("", entry) + "; " + next, ""
 	}
 	of := ""
 	if u.authConfig != "" {
 		of = " made" + through
 	}
-	hint = clierr.Rancher + " auth login " + quoted + " --token-stdin"
-	return "pipe an API token of " + clierr.ShellQuote(u.userID) + of + " to " + hint, hint
+	hint = clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --token-stdin", entry)
+	return "pipe an API token of " + clierr.ShellQuote(u.userID) + of + " to: " + hint, hint
 }
 
 // authConfigRemedy is the way to a login of entry made through the call's
@@ -79,8 +83,8 @@ func (u userCheck) authConfigRemedy(cfg *config.Config, entry string, plugin boo
 	if plugin || config.IsExecLoginEntryName(entry) {
 		return text, ""
 	}
-	signIn := clierr.Rancher + " auth login " + clierr.ShellQuote(entry) + " --auth-provider " + clierr.ShellQuote(u.authConfig)
-	return "sign in through auth config " + clierr.ShellQuote(u.authConfig) + " with " + signIn + ", or " + text, signIn
+	signIn := clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --auth-provider "+clierr.ShellQuote(u.authConfig), entry)
+	return "sign in through auth config " + clierr.ShellQuote(u.authConfig) + " with: " + signIn + "; or " + text, signIn
 }
 
 // entryAuthConfigRefused is the refusal of a call with an auth config whose
@@ -104,15 +108,11 @@ func (u userCheck) entryAuthConfigRefused(cfg *config.Config, entry, recorded st
 // loginOfNewEntry is the way to a login when no user entry is the call's to
 // log in: a new entry for the server, with the CA the call resolved, made
 // current, then the kubeconfig regenerated from it. It is three commands,
-// so it has no hint.
+// so it has no hint. The caller adds the note about the entry it selects.
 func (u userCheck) loginOfNewEntry(cfg *config.Config) string {
 	login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, u.caFrom, false)
-	current := ""
-	if cfg != nil {
-		current = cfg.CurrentServer
-	}
-	return "pipe an API token to " + login.Text() + ", then " + useServerRemedy("<name>", current) +
-		", then " + clierr.Rancher + " kubeconfig --cluster " + clierr.ShellQuote(u.clusterID)
+	return login.Instruction("pipe an API token to: ") + "; then " + clierr.Rancher + " config use-server <name>; then " +
+		kubeconfigRemedy(u.clusterID)
 }
 
 // entryOwnerRefused is the refusal of a call whose entry holds a login
@@ -136,14 +136,8 @@ func (u userCheck) entryOwnerRefused(cfg *config.Config, entry, owner string, pl
 		if cfg != nil {
 			current = cfg.CurrentServer
 		}
-		// The plugin login entry's text ends with what the next call
-		// does, so the regenerate choice starts a clause of its own.
-		join := ", or"
-		if plugin || config.IsExecLoginEntryName(entry) {
-			join = "; or"
-		}
-		msg += join + " regenerate the kubeconfig from an entry that holds the login of " + clierr.ShellQuote(u.userID) + " with " +
-			useServerRemedy("<entry>", current) + ", then " + clierr.Rancher + " kubeconfig --cluster " + clierr.ShellQuote(u.clusterID)
+		msg += "; or regenerate the kubeconfig from an entry that holds the login of " + clierr.ShellQuote(u.userID) + " with: " +
+			useServerCommand("") + "; then " + kubeconfigRemedy(u.clusterID) + useServerNote(current)
 	}
 	return clierr.New(clierr.CodeAuth, msg).WithHint(hint)
 }
@@ -159,14 +153,14 @@ func (u userCheck) entryNameTooLong(cfg *config.Config, length int) *clierr.Erro
 		piped += " of " + clierr.ShellQuote(u.userID)
 	}
 	subject := "the exec plugin's login entry for this server"
-	remedy := piped + " to " + login.Text()
+	remedy := login.Instruction("to log in under a shorter name, " + piped + " to: ")
 	if u.authConfig != "" {
 		subject += ", for Rancher user " + clierr.ShellQuote(u.userID) + " through auth config " + clierr.ShellQuote(u.authConfig) + ","
 		piped += " made through auth config " + clierr.ShellQuote(u.authConfig)
-		remedy = "sign in with " + login.signIn(u.authConfig) + ", or " + piped + " to " + login.Text()
+		remedy = login.Instruction("to log in under a shorter name, sign in with: " + login.signIn(u.authConfig) + "; or " + piped + " to: ")
 	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"%s would have a name of %d characters, and the credential store accepts at most %d; to log in under a shorter name, %s",
+		"%s would have a name of %d characters, and the credential store accepts at most %d; %s",
 		subject, length, config.MaxEntryNameLength, remedy))
 }
 

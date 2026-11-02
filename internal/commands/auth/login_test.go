@@ -1919,8 +1919,7 @@ func TestLoginSuccessWithFailedSessionCleanupWarns(t *testing.T) {
 			require.NotEmpty(t, residual[0].ExpiresAt)
 			require.Len(t, res.Warnings, 1)
 			assert.Contains(t, res.Warnings[0], "the transient session token "+residual[0].Ref.String()+" created by this login could not be revoked ("+tc.wantError+"); ")
-			assert.Contains(t, res.Warnings[0], "an administrator can delete "+residual[0].Ref.String()+" with: "+clierr.MarkRemedy("rancher delete management-token "+residual[0].Ref.Name+" --apply --yes --allow-deprecated"))
-			assert.Contains(t, res.Warnings[0], ", or it expires at "+residual[0].ExpiresAt)
+			assert.Contains(t, res.Warnings[0], residual[0].Ref.String()+" expires at "+residual[0].ExpiresAt+"; an administrator can delete it sooner with: "+clierr.MarkRemedy("rancher delete management-token '"+residual[0].Ref.Name+"' --apply --yes --allow-deprecated"))
 			assert.NotContains(t, res.Warnings[0], "revoke "+residual[0].Ref.String()+" with:")
 		})
 	}
@@ -2009,7 +2008,7 @@ func TestLoginReadOnlyHelperRecoveryMatrix(t *testing.T) {
 				assert.Less(t, login, at, "re-login is ordered before the delete")
 				if r.Ref.Kind == clierr.TokenKindV3 {
 					assert.Contains(t, revoke, "--allow-deprecated")
-					assert.Contains(t, joined, "An administrator can delete "+r.Ref.String()+" with: ", "a v3 token is the administrator's to delete")
+					assert.Contains(t, joined, "an administrator can delete it sooner with: ", "a v3 token is the administrator's to delete")
 					assert.NotContains(t, joined, "revoke "+r.Ref.String()+" with:")
 				}
 			}
@@ -2771,8 +2770,8 @@ func TestRecoveryCommandsNameKindsFromTheTable(t *testing.T) {
 		listWords, revokeWords := strings.Fields(list), strings.Fields(revoke)
 		require.GreaterOrEqual(t, len(listWords), 3, list)
 		require.GreaterOrEqual(t, len(revokeWords), 3, revoke)
-		assert.Equal(t, []string{"rancher", "get"}, listWords[:2], list)
-		assert.Equal(t, []string{"rancher", "delete"}, revokeWords[:2], revoke)
+		assert.Equal(t, []string{clierr.Rancher, "get"}, listWords[:2], list)
+		assert.Equal(t, []string{clierr.Rancher, "delete"}, revokeWords[:2], revoke)
 		// The kind each command must name is fixed by the input, not read
 		// back from the output: a v3 token is the management-token kind, an
 		// ext token the token kind.
@@ -2785,7 +2784,7 @@ func TestRecoveryCommandsNameKindsFromTheTable(t *testing.T) {
 		assert.Equal(t, wantKey, lk.Key, "list names the same kind")
 		assert.Equal(t, k.Binding.Stability == safety.Deprecated, slices.Contains(revokeWords, "--allow-deprecated"),
 			"the deprecated gate follows the table for %s", k.Name)
-		assert.Contains(t, revokeWords, "tok-1")
+		assert.Contains(t, revokeWords, "'tok-1'")
 	}
 }
 

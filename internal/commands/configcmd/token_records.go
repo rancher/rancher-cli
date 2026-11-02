@@ -13,21 +13,17 @@ import (
 // delete for a v3 token, which no login of the entry's user can delete,
 // else the sequence that logs in as the token's owner and deletes it. A
 // server that cannot go into a command gives an empty list. Each command is
-// a remedy command (clierr.MarkRemedy), so the json and yaml output name the
-// invocation's config directory in it. entry is the stored entry the token
+// a remedy command: the json and yaml output name the invocation's config
+// directory in it. entry is the stored entry the token
 // belongs to and entryURL its current URL; serverURL is the server the token
 // is recorded on.
 func tokenRecovery(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) []string {
 	if ref.Kind == clierr.TokenKindV3 {
 		_, revoke := clierr.RecoveryCommands(ref)
-		return []string{clierr.MarkRemedy(revoke)}
+		return []string{revoke}
 	}
 	if advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: entryURL}, serverURL, userID, ref); advice.Text == "" {
-		commands := make([]string, len(advice.Sequence))
-		for i, command := range advice.Sequence {
-			commands[i] = clierr.MarkRemedy(command)
-		}
-		return commands
+		return advice.Sequence
 	}
 	return []string{}
 }
@@ -36,7 +32,7 @@ func tokenRecovery(entry, entryURL, serverURL, userID string, ref clierr.TokenRe
 // its assumption for a v3 token.
 func administratorLine(serverURL string, ref clierr.TokenRef) string {
 	_, revoke := clierr.RecoveryCommands(ref)
-	return "an administrator logged in to " + config.DisplayServerURL(serverURL) + " can delete it with: " + revoke
+	return "an administrator logged in to " + config.DisplayServerURL(serverURL) + " can delete it; run: " + revoke
 }
 
 // tokenReport projects one named token (the entry's current token or a
@@ -138,7 +134,7 @@ func recordLines(entry string, s config.Server, indent string) []string {
 			lines = append(lines, indent+"  "+advice.Text)
 			continue
 		}
-		lines = append(lines, sequenceLines(indent+"  ", advice.Sequence)...)
+		lines = append(lines, sequenceLines(indent+"  ", advice.LoginAs, advice.Sequence)...)
 	}
 	return lines
 }
@@ -154,9 +150,13 @@ func recordState(s config.Server, rec config.SupersededToken) string {
 }
 
 // sequenceLines renders the recovery sequence, one command per line, then
-// its assumption.
-func sequenceLines(indent string, seq []string) []string {
+// its assumption. loginAs is the user the first command logs in as, empty when
+// the owner is unknown.
+func sequenceLines(indent, loginAs string, seq []string) []string {
 	lines := []string{indent + "revoke it with:"}
+	if loginAs != "" {
+		lines = []string{indent + "log in as user " + clierr.ShellQuote(loginAs) + " (the token's owner), then revoke it with:"}
+	}
 	for _, c := range seq {
 		lines = append(lines, indent+"  "+c)
 	}

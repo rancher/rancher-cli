@@ -72,15 +72,14 @@ func TestEffectiveSaysWhereItsCAComesFrom(t *testing.T) {
 	}
 }
 
-// TestInlineCAClauseNamesWhereTheInlineCAIsCarried asserts the clause that
-// follows an auth login command whose CA is a PEM: the variable, a server
-// entry in config.yaml, or the exec entry.
-func TestInlineCAClauseNamesWhereTheInlineCAIsCarried(t *testing.T) {
-	const lead = ", adding --cacert with the path of a file that holds the server's CA certificate, which "
-	assert.Equal(t, lead+"RANCHER_CLI_CACERT carries inline", InlineCAClause(CASource{Kind: CASourceVariable}))
-	assert.Equal(t, lead+"server entry 'x' carries inline in config.yaml", InlineCAClause(CASource{Kind: CASourceEntry, Entry: "x"}))
-	assert.Equal(t, lead+"this exec entry carries inline", InlineCAClause(CASource{Kind: CASourceFlag}))
-	assert.Equal(t, lead+"this exec entry carries inline", InlineCAClause(CASource{}))
+// TestInlineCAHolderNamesWhereTheInlineCAIsCarried asserts the phrase that
+// says where a CA that is a PEM is carried: the variable, a server entry in
+// config.yaml, or the exec entry.
+func TestInlineCAHolderNamesWhereTheInlineCAIsCarried(t *testing.T) {
+	assert.Equal(t, "RANCHER_CLI_CACERT carries the CA inline", InlineCAHolder(CASource{Kind: CASourceVariable}))
+	assert.Equal(t, "server entry 'x' carries the CA inline in config.yaml", InlineCAHolder(CASource{Kind: CASourceEntry, Entry: "x"}))
+	assert.Equal(t, "this exec entry carries the CA inline", InlineCAHolder(CASource{Kind: CASourceFlag}))
+	assert.Equal(t, "this exec entry carries the CA inline", InlineCAHolder(CASource{}))
 }
 
 // TestNotLoggedInForAPluginLoginEntryWithASavedCAAddsTheCA asserts the
@@ -97,17 +96,17 @@ func TestNotLoggedInForAPluginLoginEntryWithASavedCAAddsTheCA(t *testing.T) {
 	withCA := ErrNotLoggedInFor(servers, map[string]bool{entry: true})
 	assert.Equal(t, clierr.CodeNotLoggedIn, withCA.Code)
 	assert.Equal(t, "not logged in - no current server; the only server entry, '"+entry+"', is the exec plugin's own login entry, which auth login refuses; "+
-		"log in under a server entry of your own with: "+login+
-		", adding --cacert with the path of a file that holds the server's CA certificate, which server entry '"+entry+"' carries inline in config.yaml",
+		"server entry '"+entry+"' carries the CA inline in config.yaml and --cacert needs a file; "+
+		"log in under a server entry of your own with: rancher auth login 'r.ex' --url 'https://r.ex' --cacert <file>",
 		clierr.ExpandRemedies(withCA.Message, ""))
 	assert.Empty(t, withCA.Hint, "the login needs a file, so it is no hint")
 
 	without := ErrNotLoggedInFor(servers, map[string]bool{entry: false})
-	assert.NotContains(t, without.Message, "adding --cacert")
+	assert.NotContains(t, without.Message, "--cacert")
 	assert.Equal(t, login, clierr.ExpandRemedies(without.Hint, ""))
 
 	other := ErrNotLoggedInFor(servers, map[string]bool{"prod": true})
-	assert.NotContains(t, other.Message, "adding --cacert", "a saved CA of another entry is not this entry's")
+	assert.NotContains(t, other.Message, "--cacert", "a saved CA of another entry is not this entry's")
 }
 
 // TestNotLoggedInNamesTheSavedCAOfThePluginLoginEntry asserts ErrNotLoggedIn
@@ -116,6 +115,6 @@ func TestNotLoggedInNamesTheSavedCAOfThePluginLoginEntry(t *testing.T) {
 	t.Parallel()
 	c := &Config{Servers: map[string]Server{"exec-login-r.ex": {URL: "https://r.ex", CA: "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"}}}
 	ce := c.ErrNotLoggedIn()
-	require.Contains(t, ce.Message, "adding --cacert")
+	require.Contains(t, ce.Message, "--cacert needs a file")
 	assert.Empty(t, ce.Hint)
 }

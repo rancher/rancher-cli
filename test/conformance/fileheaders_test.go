@@ -445,11 +445,6 @@ var commentLineLiterals = []commentLineEntry{
 		reason: "generated: the heading of a section of the published OTLP mapping, built from the encoder's constants",
 	},
 	{
-		file: "internal/clierr/recovery.go", class: classTerminal,
-		text:   "   # log in as user ",
-		reason: "terminal: a comment after a command in recovery text (config info, token records, warnings, errors); the user id has control characters removed and is shell-quoted",
-	},
-	{
 		file: "internal/telemetry/contract.go", class: classGenerated,
 		text:   "#/$defs/",
 		reason: "generated: a JSON Schema reference built from package constants",

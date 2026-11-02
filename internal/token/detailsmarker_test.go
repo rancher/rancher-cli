@@ -96,9 +96,9 @@ func TestADirectWaitFailureLeavesNoMarkerInStructuredOutput(t *testing.T) {
 
 // TestAFailedAuthDeleteTokenLeavesNoMarkerInStructuredOutput asserts the
 // failure payload of auth delete-token, built from the report of a revoke
-// whose request failed on the server's certificate, writes the plain remedy
-// commands and no character of the remedy marker to its json and yaml
-// output.
+// whose request failed on the server's certificate, writes the remedy
+// commands with the invocation's config directory and no character of the
+// remedy marker to its json and yaml output.
 func TestAFailedAuthDeleteTokenLeavesNoMarkerInStructuredOutput(t *testing.T) {
 	x := newRevFixture(t, testrancher.Options{})
 	login := x.login("prod", "alice")
@@ -106,10 +106,11 @@ func TestAFailedAuthDeleteTokenLeavesNoMarkerInStructuredOutput(t *testing.T) {
 	_, rep := x.runSeeded(x.req(DeleteForLogout, "prod"), "prod", false, tlsFailure(unknownAuthorityFailure(cert)), tlsFailure(unknownAuthorityFailure(cert)), nil)
 	notRevoked(t, rep, login.Ref.Name)
 	err := clierr.New(clierr.CodeGeneric, "the token was not revoked").
-		WithDetails(deleteTokenFailure{Deleted: []string{"k"}, Revoked: rep.Revoked, NotRevoked: rep.NotRevoked})
+		WithDetails(DeleteTokenFailure{Deleted: []string{"k"}, Revoked: rep.Revoked, NotRevoked: rep.NotRevoked})
 	for _, format := range []string{"json", "yaml"} {
 		got := renderedAsTheErrorPath(t, err, format)
-		assert.True(t, decodedHolds(t, got, "rancher config update-server 'prod' --cacert <file>"), "%s output holds the plain command: %q", format, got)
+		assert.True(t, decodedHolds(t, got, "rancher --config '"), "%s output names the directory: %q", format, got)
+		assert.True(t, decodedHolds(t, got, "config update-server 'prod' --cacert <file>"), "%s output holds the command: %q", format, got)
 		assert.False(t, leaksMarker(t, got), "%s output holds a character of the remedy marker: %q", format, got)
 	}
 }

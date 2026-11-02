@@ -93,7 +93,7 @@ func TestExecPluginWarnsOfALoginTokenItCouldNotDelete(t *testing.T) {
 		require.Len(t, res.Warnings, 1)
 		login := x.loginTokenName(t)
 		assert.Regexp(t, "^"+regexp.QuoteMeta("the transient session token v3/"+login+" created by this login could not be revoked (logout 500; delete 403 Forbidden); "+
-			"an administrator can delete v3/"+login+" with: rancher delete management-token "+login+" --apply --yes --allow-deprecated, or it expires at ")+`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$`,
+			"v3/"+login+" expires at ")+`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ`+regexp.QuoteMeta("; an administrator can delete it sooner with: rancher delete management-token '"+login+"' --apply --yes --allow-deprecated")+"$",
 			clierr.ExpandRemedies(res.Warnings[0], ""))
 	})
 	t.Run("token reuse on", func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestExecPluginWarnsOfALoginTokenItCouldNotDelete(t *testing.T) {
 		require.Len(t, res.Warnings, 1)
 		login := x.loginTokenName(t)
 		assert.Regexp(t, "^"+regexp.QuoteMeta("the transient session token v3/"+login+" created by this login could not be revoked (logout 500; delete 403 Forbidden); "+
-			"an administrator can delete v3/"+login+" with: rancher delete management-token "+login+" --apply --yes --allow-deprecated, or it expires at ")+`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$`,
+			"v3/"+login+" expires at ")+`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ`+regexp.QuoteMeta("; an administrator can delete it sooner with: rancher delete management-token '"+login+"' --apply --yes --allow-deprecated")+"$",
 			clierr.ExpandRemedies(res.Warnings[0], ""))
 		_, present := x.entry(t)
 		assert.True(t, present, "the login is kept")
@@ -116,8 +116,8 @@ func TestExecPluginWarnsOfALoginTokenItCouldNotDelete(t *testing.T) {
 			require.Len(t, res.Warnings, 1, "reuse %v", reuse)
 			w := clierr.ExpandRemedies(res.Warnings[0], "")
 			assert.Contains(t, w, "the transient session token ext/")
-			assert.Contains(t, w, " could not be revoked (500 Internal Server Error); user 'user-e2e' can delete it with: rancher delete token ")
-			assert.Contains(t, w, " --apply --yes, from a directory signed in as user 'user-e2e' (rancher auth login signs one in); or it expires at ", "reuse %v", reuse)
+			assert.Contains(t, w, " could not be revoked (500 Internal Server Error); user 'user-e2e' can delete it from a directory signed in as user 'user-e2e'; run: rancher delete token ")
+			assert.Contains(t, w, " --apply --yes; or it expires at ", "reuse %v", reuse)
 		}
 	})
 	t.Run("SAML names a kubeconfig token on both", func(t *testing.T) {
@@ -170,7 +170,8 @@ func TestSignInErrorsAfterTheLoginTokenCarryItsFate(t *testing.T) {
 		assert.Equal(t, ResultRevoked, clusterCleanup(t, d))
 		assert.Nil(t, d.Primary.Details, "the cluster token's fate is not repeated under the primary")
 		recovery := clierr.ExpandRemedies(d.Recovery, "")
-		assert.Contains(t, recovery, "the session token v3/"+d.SessionToken.Ref.Name+": an administrator can delete v3/"+d.SessionToken.Ref.Name+" with: rancher delete management-token ")
+		assert.Contains(t, recovery, "the session token v3/"+d.SessionToken.Ref.Name+": v3/"+d.SessionToken.Ref.Name+" expires at ")
+		assert.Contains(t, recovery, "; an administrator can delete it sooner with: rancher delete management-token ")
 		assert.True(t, strings.HasSuffix(recovery, "; run the kubectl command again"), recovery)
 		require.NotEmpty(t, ce.Warnings(), "the warnings the call had collected are kept")
 		assert.Contains(t, ce.Warnings()[0], execInfoEnv+" could not be read")
@@ -181,8 +182,8 @@ func TestSignInErrorsAfterTheLoginTokenCarryItsFate(t *testing.T) {
 		_, d := failureOf(t, err)
 		recovery := clierr.ExpandRemedies(d.Recovery, "")
 		require.NotNil(t, d.ClusterToken.Ref)
-		assert.Contains(t, recovery, "the cluster token "+d.ClusterToken.Ref.String()+": user 'user-carol' can delete it with: rancher delete token "+d.ClusterToken.Ref.Name+
-			" --apply --yes, from a directory signed in as user 'user-carol' (rancher auth login signs one in)")
+		assert.Contains(t, recovery, "the cluster token "+d.ClusterToken.Ref.String()+": user 'user-carol' can delete it from a directory signed in as user 'user-carol'; run: rancher delete token '"+d.ClusterToken.Ref.Name+
+			"' --apply --yes")
 	})
 	t.Run("an owner request that fails on a Rancher without ext tokens", func(t *testing.T) {
 		x := newOwnerFixture(t, false, forcedSingleLogout(testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateOmitOwner: true, SelfSubjectReviewStatus: http.StatusInternalServerError}))
@@ -275,7 +276,7 @@ func TestSignInCancelledDuringTheDirectWait(t *testing.T) {
 			ce, d := failureOf(t, err)
 			assert.Equal(t, ResultFailed, clusterCleanup(t, d))
 			msg := clierr.ExpandRemedies(ce.Message, "")
-			assert.Contains(t, msg, "the token it created could not be revoked; user 'user-e2e' can delete it with: rancher delete token "+d.ClusterToken.Ref.Name+" --apply --yes, from a directory signed in as user 'user-e2e' (rancher auth login signs one in); or it expires at ")
+			assert.Contains(t, msg, "the token it created could not be revoked; user 'user-e2e' can delete it from a directory signed in as user 'user-e2e'; run: rancher delete token '"+d.ClusterToken.Ref.Name+"' --apply --yes; or it expires at ")
 		})
 	})
 	t.Run("Ctrl-C as the login token is being deleted", func(t *testing.T) {
@@ -409,7 +410,7 @@ func TestExecPluginSignInWithoutATerminalRefusesBeforeAnyToken(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.True(t, strings.HasPrefix(ce.Message, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token to "), ce.Message)
+	assert.True(t, strings.HasPrefix(ce.Message, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token to: "), ce.Message)
 	assert.Contains(t, ce.Message, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 	assert.Nil(t, ce.Details)
 	assert.Zero(t, x.f.LoginCount())

@@ -55,23 +55,24 @@ func TestNoTerminalRemediesNameTheUserForACallWithUserID(t *testing.T) {
 			login      string
 			clause     string
 			kubeconfig bool
+			facts      string
 		}{
 			{"a --name and a cluster, token reuse off", noTerminalCall{name: "prod-c-1", clusterID: "c-1"},
-				"rancher auth login 'prod' --url '" + serverURL + "' --token-stdin", "; or run kubectl once in a terminal and sign in as '" + user + "', which lasts until the cached token expires", true},
+				"rancher auth login 'prod' --url '" + serverURL + "' --token-stdin", "; or run kubectl once in a terminal and sign in as '" + user + "', which lasts until the cached token expires", true, ""},
 			{"a --name and a cluster, token reuse on", noTerminalCall{name: "prod-c-1", clusterID: "c-1", keepsLogin: true},
-				"rancher auth login 'prod' --url '" + serverURL + "' --token-stdin", "; or run kubectl once in a terminal and sign in as '" + user + "'", true},
+				"rancher auth login 'prod' --url '" + serverURL + "' --token-stdin", "; or run kubectl once in a terminal and sign in as '" + user + "'", true, ""},
 			{"no --name, token reuse off", noTerminalCall{clusterID: "c-1"},
-				"rancher auth login <name> --url '" + serverURL + "' --token-stdin, with a name of your choice for <name>",
-				"; or run kubectl once in a terminal and sign in as '" + user + "', which lasts until the cached token expires", true},
+				"rancher auth login <name> --url '" + serverURL + "' --token-stdin",
+				"; or run kubectl once in a terminal and sign in as '" + user + "', which lasts until the cached token expires", true, "<name> stands for a name of your choice; "},
 			{"no --name, token reuse on", noTerminalCall{clusterID: "c-1", keepsLogin: true},
-				"rancher auth login <name> --url '" + serverURL + "' --token-stdin, with a name of your choice for <name>",
-				"; or run kubectl once in a terminal and sign in as '" + user + "'", true},
+				"rancher auth login <name> --url '" + serverURL + "' --token-stdin",
+				"; or run kubectl once in a terminal and sign in as '" + user + "'", true, "<name> stands for a name of your choice; "},
 			{"no cluster, token reuse off", noTerminalCall{},
-				"rancher auth login <name> --url '" + serverURL + "' --token-stdin, with a name of your choice for <name>",
-				"; or run kubectl once in a terminal and sign in as '" + user + "', which lasts until the cached token expires", false},
+				"rancher auth login <name> --url '" + serverURL + "' --token-stdin",
+				"; or run kubectl once in a terminal and sign in as '" + user + "', which lasts until the cached token expires", false, "<name> stands for a name of your choice; "},
 			{"no cluster, token reuse on", noTerminalCall{keepsLogin: true},
-				"rancher auth login <name> --url '" + serverURL + "' --token-stdin, with a name of your choice for <name>",
-				"; or run kubectl once in a terminal and sign in as '" + user + "'", false},
+				"rancher auth login <name> --url '" + serverURL + "' --token-stdin",
+				"; or run kubectl once in a terminal and sign in as '" + user + "'", false, "<name> stands for a name of your choice; "},
 		} {
 			t.Run(h.name+", "+tc.name, func(t *testing.T) {
 				call := tc.call
@@ -80,9 +81,9 @@ func TestNoTerminalRemediesNameTheUserForACallWithUserID(t *testing.T) {
 				ce, ok := clierrOf(err)
 				require.True(t, ok, "%v", err)
 				assert.Equal(t, h.code, ce.Code)
-				want := h.head + "; to log in without one, pipe an API token of Rancher user '" + user + "' to " + tc.login + h.choice + tc.clause
+				want := h.head + "; " + tc.facts + "to log in without one, pipe an API token of Rancher user '" + user + "' to: " + tc.login + h.choice + tc.clause
 				if tc.kubeconfig {
-					want += "; or use rancher create kubeconfig --clusters 'c-1' --apply --yes for a kubeconfig that carries its own token"
+					want += "; for a kubeconfig that carries its own token, run: rancher create kubeconfig --clusters 'c-1' --apply --yes"
 				}
 				assert.Equal(t, want, clierr.ExpandRemedies(ce.Message, ""))
 				assert.NotContains(t, ce.Message, "sets no --name")

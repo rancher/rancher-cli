@@ -261,8 +261,8 @@ func TestUserIDEntryOwnerRefusesBeforeAnyRequest(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.Equal(t, "server entry 'prod' holds the login of Rancher user 'user-bob', and this exec entry names user 'user-alice' with --user-id; "+
-			"pipe an API token of 'user-alice' to rancher auth login 'prod' --token-stdin, or regenerate the kubeconfig from an entry that holds the login of 'user-alice' with "+
-			"rancher config use-server <entry> (this sets the directory's current server, which is unset now), then rancher kubeconfig --cluster 'c-test'", msg)
+			"pipe an API token of 'user-alice' to: rancher auth login 'prod' --token-stdin; or regenerate the kubeconfig from an entry that holds the login of 'user-alice' with: "+
+			"rancher config use-server <entry>; then rancher kubeconfig --cluster 'c-test'; selecting an entry sets the directory's current server, which is unset now", msg)
 		assert.Equal(t, "rancher auth login 'prod' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
 		assert.Empty(t, x.seen(), "no request is made with the other user's login")
 	})
@@ -275,8 +275,8 @@ func TestUserIDEntryOwnerRefusesBeforeAnyRequest(t *testing.T) {
 		require.NoError(t, cfg.Write())
 		_, err = x.call("prod-c-test", "user-alice", "", nil)
 		_, msg := refusal(t, err)
-		assert.True(t, strings.HasSuffix(msg, "with rancher config use-server <entry> (this switches the directory's current server; switch back with rancher config use-server 'prod'), "+
-			"then rancher kubeconfig --cluster 'c-test'"), "the second route says how to go back to the current server: %s", msg)
+		assert.True(t, strings.HasSuffix(msg, "with: rancher config use-server <entry>; then rancher kubeconfig --cluster 'c-test'; "+
+			"selecting an entry switches the directory's current server; to switch back, run: rancher config use-server 'prod'"), "the second route says how to go back to the current server: %s", msg)
 	})
 	t.Run("a user entry of another user is no candidate of a call that names none", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{})
@@ -307,10 +307,10 @@ func TestUserIDEntryOwnerRefusesBeforeAnyRequest(t *testing.T) {
 				state = "was last logged in as Rancher user 'user-bob'"
 			}
 			assert.Equal(t, "server entry '"+x.pluginEntry()+"', the exec plugin's own login entry, "+state+", and this exec entry names user 'user-alice' with --user-id; "+
-				"remove '"+x.pluginEntry()+"' with rancher auth logout '"+x.pluginEntry()+"', then rancher config delete-server '"+x.pluginEntry()+"'; "+
-				"the next call signs in as 'user-alice' in a terminal, or uses a login piped to rancher auth login <name> --url '"+x.serverID()+"' --token-stdin, with a name of your choice for <name>; "+
-				"or regenerate the kubeconfig from an entry that holds the login of 'user-alice' with rancher config use-server <entry> (this sets the directory's current server, which is unset now), "+
-				"then rancher kubeconfig --cluster 'c-test'", msg)
+				"remove '"+x.pluginEntry()+"' with: rancher auth logout '"+x.pluginEntry()+"'; then rancher config delete-server '"+x.pluginEntry()+"'; "+
+				"<name> stands for a name of your choice; the next call signs in as 'user-alice' in a terminal; or it uses a login piped to: rancher auth login <name> --url '"+x.serverID()+"' --token-stdin; "+
+				"or regenerate the kubeconfig from an entry that holds the login of 'user-alice' with: rancher config use-server <entry>; "+
+				"then rancher kubeconfig --cluster 'c-test'; selecting an entry sets the directory's current server, which is unset now", msg)
 			assert.Empty(t, ce.Hint, "removing an entry is no hint")
 			assert.Empty(t, x.seen(), "no request, and no sign-in")
 			after, afterEntry := x.stored(x.pluginEntry())
@@ -356,7 +356,7 @@ func TestUserIDCreatedTokenOwnerIsChecked(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.Equal(t, "the stored login of server entry 'prod' belongs to Rancher user 'user-bob', not to 'user-alice', which this exec entry names with --user-id; "+
-			"the token created from it was revoked; pipe an API token of 'user-alice' to rancher auth login 'prod' --token-stdin", msg)
+			"the token created from it was revoked; pipe an API token of 'user-alice' to: rancher auth login 'prod' --token-stdin", msg)
 		assert.Equal(t, "rancher auth login 'prod' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
 		assert.Equal(t, 1, x.revoked(), "the created token is revoked")
 		assert.False(t, x.cached("prod-c-test", "user-alice"), "nothing is cached")
@@ -372,9 +372,9 @@ func TestUserIDCreatedTokenOwnerIsChecked(t *testing.T) {
 		assert.False(t, x.cached("prod-c-test", "user-alice"))
 	})
 	removal := func(x *ownerFixture, entry string) string {
-		return "remove '" + entry + "' with rancher auth logout '" + entry + "', then rancher config delete-server '" + entry + "'; " +
-			"the next call signs in as 'user-alice' in a terminal, or uses a login piped to rancher auth login <name> --url '" + x.serverID() +
-			"' --token-stdin, with a name of your choice for <name>"
+		return "remove '" + entry + "' with: rancher auth logout '" + entry + "'; then rancher config delete-server '" + entry + "'; " +
+			"<name> stands for a name of your choice; the next call signs in as 'user-alice' in a terminal; or it uses a login piped to: rancher auth login <name> --url '" + x.serverID() +
+			"' --token-stdin"
 	}
 	t.Run("the fallback's login of another user", func(t *testing.T) {
 		x := newOwnerFixture(t, true, testrancher.Options{})
@@ -490,7 +490,7 @@ func TestUserIDNeverReadsOrWritesAnotherUsersPluginLoginEntry(t *testing.T) {
 		_, err := x.call("prod-c-test", "user-carol", "", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-carol' to "+
+		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-carol' to: "+
 			"rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin; or run kubectl once in a terminal and sign in as 'user-carol'", msg)
 		assert.Equal(t, "rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
 	})
@@ -525,8 +525,8 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{ClusterDeleteMode: "fail"})
 		_, err := x.call("prod-c-test", "user-alice", "carol", nil)
 		_, msg := refusal(t, err)
-		assert.Contains(t, msg, "the token it created could not be revoked (500 Internal Server Error); user 'user-carol' can delete it with: rancher delete token ")
-		assert.Contains(t, msg, " --apply --yes, from a directory signed in as user 'user-carol' (rancher auth login signs one in)")
+		assert.Contains(t, msg, "the token it created could not be revoked (500 Internal Server Error); user 'user-carol' can delete it from a directory signed in as user 'user-carol'; run: rancher delete token ")
+		assert.Contains(t, msg, " --apply --yes")
 		assert.False(t, x.cached("prod-c-test", "user-alice"))
 	})
 	t.Run("the create response names no owner and the request fails", func(t *testing.T) {
@@ -536,8 +536,8 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		assert.True(t, ce.Retryable)
 		assert.True(t, strings.HasPrefix(msg, "checking the signed-in user against --user-id 'user-carol': posting a SelfSubjectReview: an error on the server (\"Internal Server Error\") has prevented the request from succeeding"), msg)
-		assert.Contains(t, msg, "the token the sign-in created could not be revoked (logout 401; delete 403 Forbidden); an administrator can delete v3/")
-		assert.Contains(t, msg, " --apply --yes --allow-deprecated, or it expires")
+		assert.Contains(t, msg, "the token the sign-in created could not be revoked (logout 401; delete 403 Forbidden); v3/")
+		assert.Contains(t, msg, "; an administrator can delete it sooner with: rancher delete management-token ")
 		assert.Len(t, x.ownerReviews(), 1)
 		assert.Equal(t, 3, x.revoked(), "the login token's logout, then the cluster token's logout and delete, both refused")
 		assert.False(t, x.cached("prod-c-test", "user-carol"))
@@ -567,7 +567,7 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{})
 		_, err := x.call("prod-c-test", "user-carol", "", nil)
 		_, msg := refusal(t, err)
-		assert.Contains(t, msg, "pipe an API token of Rancher user 'user-carol' to rancher auth login 'prod' --url")
+		assert.Contains(t, msg, "pipe an API token of Rancher user 'user-carol' to: rancher auth login 'prod' --url")
 		assert.Contains(t, msg, "or run kubectl once in a terminal and sign in as 'user-carol', which lasts until the cached token expires")
 		assert.NotContains(t, msg, "does not use it")
 	})

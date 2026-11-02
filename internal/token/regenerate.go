@@ -15,15 +15,15 @@ import (
 // for text an invocation prints, or rancher and its --config for text kept
 // in a file. An empty entry or cluster names the placeholder.
 func RegenerateSteps(rancher, entry, cluster string) string {
-	e, c := "<entry>", "<id>"
+	e, c := " <entry>", " --cluster <id>"
 	if entry != "" {
-		e = clierr.ShellQuote(entry)
+		e = clierr.ShellQuoteArgs("", entry)
 	}
 	if cluster != "" {
-		c = clierr.ShellQuote(cluster)
+		c = clierr.ShellQuoteArgs(" --cluster " + clierr.ShellQuote(cluster))
 	}
-	return rancher + " config use-server " + e + " (this switches the directory's current server), then " +
-		rancher + " kubeconfig --cluster " + c
+	return rancher + " config use-server" + e + "; then " + rancher + " kubeconfig" + c +
+		"; selecting the entry switches the directory's current server"
 }
 
 // withStoreConflictSteps adds to the refusal of a directory whose declared

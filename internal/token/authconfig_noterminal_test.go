@@ -50,7 +50,7 @@ func TestTheCreateKubeconfigRemedyNeedsALoginThroughTheAuthConfig(t *testing.T) 
 			ce, msg := refusal(t, err)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
 			if tc.serves {
-				assert.Contains(t, msg, "or use rancher create kubeconfig --clusters 'c-1' --apply --yes for a kubeconfig that carries its own token")
+				assert.Contains(t, msg, "for a kubeconfig that carries its own token, run: rancher create kubeconfig --clusters 'c-1' --apply --yes")
 			} else {
 				assert.NotContains(t, msg, "create kubeconfig")
 			}
@@ -67,7 +67,7 @@ func TestACallWithAnAuthConfigWithoutATerminalNamesIt(t *testing.T) {
 	_, _, err := x.callWith(authCall{cluster: "c-test", name: "n", userID: "user-alice", authConfig: "corp-ldap"})
 	ce, msg := refusal(t, err)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.Contains(t, msg, "pipe an API token of Rancher user 'user-alice' made through auth config 'corp-ldap' to rancher auth login 'n' --url ")
+	assert.Contains(t, msg, "pipe an API token of Rancher user 'user-alice' made through auth config 'corp-ldap' to: rancher auth login 'n' --url ")
 	assert.Contains(t, msg, "; or run kubectl once in a terminal and sign in as 'user-alice' through auth config 'corp-ldap', which lasts until the cached token expires")
 }
 

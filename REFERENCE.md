@@ -1380,13 +1380,10 @@ header of a created kubeconfig file and the text that says how to create a
 token or kubeconfig again name the delete that way. A remedy command ends
 its sentence: no comma, period, parenthesis or word follows its last
 argument. A name that starts with `-` follows the command's flags and `--`,
-and is read as a name. These rules hold for every text outside the token code
-and the exec plugin, the details of a failed `auth logout` and the `recovery`
-commands of `config delete-server`, `config update-server`, `auth logout` and
-`auth delete-token`, the `kubeconfig` records, and the advice to pass a CA file
-for an entry whose CA certificate is stored inline. Those texts keep their own
-forms: some have words after a command, name a dashed entry without `--`, or
-create a kubeconfig with `--apply --yes`.
+and is read as a name. These rules hold for every text. The exceptions keep
+`--apply --yes`: a command that deletes a token or kubeconfig the CLI created
+or recorded, and the exec plugin's `create kubeconfig` remedy when no terminal
+can sign in.
 
 A remedy command in an error's message, hint, warnings or details, in the
 warnings of a successful run and in the prompter's notices names `--config`
@@ -1398,18 +1395,17 @@ names it (chosen with `--config`, `RANCHER_CLI_CONFIG_DIR` or a custom
 `RANCHER_CLI_CONFIG_DIR` or `XDG_CONFIG_HOME` points elsewhere; a run whose
 directory is the default and nothing else says otherwise prints no
 `--config`. Result text, the summary line, the dry-run preview and the json and
-yaml output, result data included, name the directory like the other channels;
-the text of `rancher logs`, table, wide, name and template output, the
-messages, hints and warnings of `auth delete-token`, the details of a failed
-`auth logout`, and the `recovery` commands in `notRevoked` of `config
-delete-server`, `config update-server`, `auth logout` and `auth delete-token`
-print remedy commands without it. Errors rendered before the directory is
+yaml output, result data included, name the directory like the other channels,
+and so do `notRevoked[].error` and `notRevoked[].recovery` of `config
+delete-server`, `config update-server`, `auth logout` and `auth delete-token`;
+the text of `rancher logs`, table, wide, name and template output print remedy
+commands without it. Errors rendered before the directory is
 resolved (an unknown command or flag, a flag value that is another flag)
 print them without it too, and so do commands that read no directory
 (`--help`, `--version`, `rancher schema`, `rancher completion`,
 `rancher skill`). `kubeconfig` names the directory in every remedy, the
 default included; `auth get-token` does too, except in a call with
-`--user-id` and no `--name`.
+`--user-id` and no `--name`, and so does the legacy `token` command.
 
 ## Read-only mode
 
@@ -1539,11 +1535,12 @@ does not answer 200 or 204. A standard user cannot delete a
 deleted (a provider set to forced single logout fails logout) stays valid
 until it expires. It is listed in `residualTokens` (on a failed login, in
 `sessionToken`) with its `cleanup.error` naming both answers, for example
-`logout 500; delete 403 Forbidden`. The text `an administrator can delete
-<ref> with: <command>, or it expires` (with ` at <time>` when the server
-reported the expiry) is in `warnings` on a successful login and in
-`details.recovery` on a failed one (there it starts `An administrator can
-delete`); it carries no command hint, because
+`logout 500; delete 403 Forbidden`. The text `<ref> expires at <time>; an
+administrator can delete it sooner with: <command>` (`<ref> expires; an
+administrator can delete it sooner with: <command>` when the server
+reported no expiry) is in
+`warnings` on a successful login and in `details.recovery` on a failed one;
+it carries no command hint, because
 only an administrator can run the command.
 
 A leftover derived token is always a `token`. A leftover session token is
@@ -1640,15 +1637,21 @@ The data of each command gains two lists, `[]` when empty, never null:
   deleted (200 or 204, or 404 to another token of the same owner).
   `source` is `cache`, `superseded` or `login`.
 - `notRevoked`: `{ref?, source, server, entry?, reason, code?, error?,
-  certificate?, retry, recovery?}` for each token that may still be live.
-  `entry` is the entry the token is recorded on, `error` the answer or
+  certificate?, retry, recovery?, loginAs?}` for each token that may still be
+  live. `entry` is the entry the token is recorded on, `error` the answer or
   transport error behind `failed`, `recovery` a command sequence; for a v3
-  token it is the administrator's delete alone. `code` is `TLS_TRUST` when
+  token it is the administrator's delete alone. `loginAs` is the user the
+  first command of `recovery` logs in as, the token's owner; it is omitted
+  when the recovery needs no login. `code` is `TLS_TRUST` when
   the delete failed because the server's certificate failed verification
   (it is absent for any other failure), `error` then says how to fix the
   certificate problem for what revokes the token, and `certificate` holds the
   certificate's facts: `kind`, `fingerprint`, `subject`, `issuer`,
-  `notBefore`, `notAfter`.
+  `notBefore`, `notAfter`. When the config directory's path has characters a
+  terminal cannot show, no command names it: each `recovery` item of
+  `config delete-server` and `config update-server` holds the sentence that
+  says so, and each `recovery` item of the details of a failed `auth logout`
+  or `auth delete-token` is an empty string, so the list keeps its length.
 
 The text output lists one line per token under `tokens on <server>:`, for
 example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
@@ -1814,8 +1817,8 @@ with it (with no cluster for a call with `--user-id` and none), and deletes the
 sign-in's token. The cluster token belongs to the user who signed
 in, who can delete it. On a server without `ext.cattle.io` tokens the cluster
 token is a cluster-scoped v3 token the CLI cannot delete; an administrator can
-run `rancher delete management-token <name> --apply --yes --allow-deprecated`,
-or it expires. When the sign-in's own token cannot be deleted (a provider set
+run `rancher delete management-token <name> --apply --yes --allow-deprecated`
+to delete it before it expires. When the sign-in's own token cannot be deleted (a provider set
 to forced single logout), the call still succeeds and a warning says who can
 delete it; the plugin-created login (token reuse on) warns the same way for
 the token its sign-in could not delete. On a cache miss the plugin first
@@ -2045,6 +2048,8 @@ tokens are still live on a server: its provenance, the token's owner and
 expiry, and, for the entry's current token and for each superseded record
 it still names, a four-command recovery sequence that logs in as a
 throwaway entry, selects it, revokes the token by name, and logs out again.
+When the token's owner is known, a line before the commands says which user to
+log in as.
 A superseded record whose server the entry no longer names has the state
 `otherServer`, and its sequence runs against that server.
 Every text rendering of the sequence ends with what it assumes:
@@ -2052,7 +2057,7 @@ Every text rendering of the sequence ends with what it assumes:
 override the current server the sequence selects. For a v3 token the
 recovery is the administrator's delete alone, `rancher delete
 management-token <name> --apply --yes --allow-deprecated`, and the text is
-one line: `an administrator logged in to <server> can delete it with:
+one line: `an administrator logged in to <server> can delete it; run:
 <command>`, naming the record's server, else the entry's. `rancher config
 delete-server` reports a token it could not revoke under `notRevoked`, with
 the same recovery, in the invocation that removes the entry, so the last

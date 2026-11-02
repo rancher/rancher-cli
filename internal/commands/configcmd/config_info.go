@@ -330,7 +330,11 @@ func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRe
 	if advice.Text != "" {
 		return field{"recovery", []string{advice.Text}}
 	}
-	return field{"recovery", append(advice.Sequence, "("+clierr.RecoverySequenceAssumption+")")}
+	lines := append(advice.Sequence, "("+clierr.RecoverySequenceAssumption+")")
+	if advice.LoginAs != "" {
+		lines = append([]string{"log in as user " + clierr.ShellQuote(advice.LoginAs) + " (the token's owner), then run:"}, lines...)
+	}
+	return field{"recovery", lines}
 }
 
 // pauseReasonText is the reason entry's pause stays, as config status

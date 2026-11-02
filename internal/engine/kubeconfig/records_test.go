@@ -254,29 +254,29 @@ func TestKubeconfigNoticesFollowTheExecPluginsLookup(t *testing.T) {
 		{name: "an entry named <current>-<id> that nothing answers for", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod-c-1": {URL: recordsURL}}), loggedIn: []string{"prod"}},
 			want: func(dir string) string {
 				return "no stored login in " + dir + " answers for this kubeconfig: kubectl will sign in on first use when it has a terminal; " +
-					"for unattended use pipe an API token to rancher --config '" + dir + "' auth login 'prod-c-1' --url '" + recordsURL + "' --token-stdin first, " +
-					"or use rancher --config '" + dir + "' create kubeconfig --clusters 'c-1' --apply --yes for a kubeconfig that carries its own token"
+					"for unattended use, pipe an API token to: rancher --config '" + dir + "' auth login 'prod-c-1' --url '" + recordsURL + "' --token-stdin; " +
+					"or, for a kubeconfig that carries its own token, run: rancher --config '" + dir + "' create kubeconfig --clusters 'c-1' --apply --yes"
 			}},
 		{name: "an environment-only session with nothing stored", setup: recordsSetup{envURL: "https://env.example.com", envToken: true},
 			want: func(dir string) string {
 				return "no stored login in " + dir + " answers for this kubeconfig: kubectl will sign in on first use when it has a terminal; " +
-					"for unattended use pipe an API token to rancher --config '" + dir + "' auth login 'env.example.com' --url 'https://env.example.com' --token-stdin first, " +
-					"or use rancher --config '" + dir + "' create kubeconfig --clusters 'c-1' --apply --yes for a kubeconfig that carries its own token"
+					"for unattended use, pipe an API token to: rancher --config '" + dir + "' auth login 'env.example.com' --url 'https://env.example.com' --token-stdin; " +
+					"or, for a kubeconfig that carries its own token, run: rancher --config '" + dir + "' create kubeconfig --clusters 'c-1' --apply --yes"
 			}},
 		{name: "an entry named <current>-<id> at another URL", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod-c-1": {URL: "https://other.example.com"}}), loggedIn: []string{"prod"}},
 			want: func(dir string) string {
 				return "kubectl's exec plugin will refuse this kubeconfig: the exec entry names server entry 'prod-c-1', which is registered at https://other.example.com, but this call runs for " + recordsURL +
-					"; to use 'prod-c-1', regenerate the kubeconfig from it with rancher --config '" + dir + "' config use-server 'prod-c-1' (this switches the directory's current server; switch back with rancher --config '" + dir + "' config use-server 'prod'), " +
-					"then rancher --config '" + dir + "' auth login 'prod-c-1' (if it has no login), then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'; " +
-					"to use " + recordsURL + ", regenerate it from an entry registered there with rancher --config '" + dir + "' config use-server <entry> (this switches the directory's current server; switch back with rancher --config '" + dir + "' config use-server 'prod'), " +
-					"then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
+					"; to use 'prod-c-1', regenerate the kubeconfig from it: rancher --config '" + dir + "' config use-server 'prod-c-1'; " +
+					"then if it has no login, run: rancher --config '" + dir + "' auth login 'prod-c-1'; then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'; " +
+					"to use " + recordsURL + ", regenerate it from an entry registered there with: rancher --config '" + dir + "' config use-server <entry>; " +
+					"then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'; selecting an entry switches the directory's current server; to switch back, run: rancher --config '" + dir + "' config use-server 'prod'"
 			}},
 		{name: "a tie in an environment-only session", setup: recordsSetup{envURL: recordsURL, envToken: true,
 			cfg: config.Config{Servers: map[string]config.Server{"a": {URL: recordsURL}, "b": {URL: recordsURL}}}, loggedIn: []string{"a", "b"}},
 			want: func(dir string) string {
 				return "kubectl's exec plugin will refuse this kubeconfig: more than one server entry for " + recordsURL + " has a stored login ('a', 'b') and this exec entry names none of them; " +
-					"give the exec entry --name <entry>-c-1, or regenerate the kubeconfig from the entry you want with rancher --config '" + dir + "' config use-server <entry> (this sets the directory's current server, which is unset now), " +
-					"then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
+					"give the exec entry --name <entry>-c-1; or regenerate the kubeconfig from the entry you want with: rancher --config '" + dir + "' config use-server <entry>; " +
+					"then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'; selecting an entry sets the directory's current server, which is unset now"
 			}},
 		{name: "a store that cannot be read, under RANCHER_CLI_TOKEN", setup: recordsSetup{cfg: prodCurrent(nil), envToken: true, failRead: errors.New("keychain locked")},
 			want: func(string) string {
@@ -379,7 +379,7 @@ func TestKubeconfigInstallHintAndMachineNotice(t *testing.T) {
 		{name: "a bare name", exec: "rancher-dev",
 			hint: func(dir, _ string) string {
 				return "rancher-dev was not found; restore it, or regenerate this kubeconfig from entry 'prod': rancher --config '" + dir +
-					"' config use-server 'prod' (this switches the directory's current server), then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
+					"' config use-server 'prod'; then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'; selecting the entry switches the directory's current server"
 			},
 			notice: func(dir, _ string) string {
 				return "this kubeconfig records this machine's config directory " + dir + "; it works for this user on this machine only"
@@ -387,7 +387,7 @@ func TestKubeconfigInstallHintAndMachineNotice(t *testing.T) {
 		{name: "a path and a store value", exec: "/opt/bin/rancher", envStore: "file",
 			hint: func(dir, cmd string) string {
 				return cmd + " was not found; restore it, or regenerate this kubeconfig from entry 'prod': rancher --config '" + dir +
-					"' config use-server 'prod' (this switches the directory's current server), then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
+					"' config use-server 'prod'; then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'; selecting the entry switches the directory's current server"
 			},
 			notice: func(dir, cmd string) string {
 				return "this kubeconfig records this machine's config directory " + dir + ", credential store file and command " + cmd + "; it works for this user on this machine only"

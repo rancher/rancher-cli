@@ -931,10 +931,14 @@ directory is the platform default (`config.IsDefaultDir`) and `config.ResolveDir
 that directory too (a directory that cannot be compared is named, and so is the default
 when `RANCHER_CLI_CONFIG_DIR` or `XDG_CONFIG_HOME` points elsewhere); and always for a
 command whose descriptor sets `RemedyConfigDir` (`auth get-token` except in a call with
-`--user-id` and no `--name`, and `kubeconfig`), whose directory can come from an exec entry
-or a flag that shell does not carry. Error details name it too, through the payload's
-`MapText`. A bare command that sets `RemedyConfigDir` has its directory resolved in the bare
-branch only to name it. Table, wide, name and template output of result data print the
+`--user-id` and no `--name`, `kubeconfig`, and the legacy `token` command), whose directory can
+come from an exec entry or a flag that shell does not carry. Error details name it too, through
+the payload's `MapText`; the three payloads that report a token that may still be live
+(`RevocationReport`, `DeleteTokenFailure`, `LogoutAllPartialFailure`) map the `error` and the
+`recovery` commands of each `notRevoked` item and the logout or delete to run again, and a
+check in test/conformance fails the build on a payload with text and no `MapText`. A bare
+command that sets `RemedyConfigDir` has its directory resolved in the bare branch only to name
+it; the legacy `token` command pays that one `config.ResolveDir` and opens nothing there. Table, wide, name and template output of result data print the
 plain command and never carry the marker (`plainRemedyWriter` drops only this process's
 marker before the word rancher; a U+2063 or marker that came from server text, a file or
 another process is never expanded and stays an invisible character in json, yaml and
@@ -952,6 +956,8 @@ a details payload's command fields are emptied. Text output does this line by li
 line that holds a command changes, and every other line is printed as it is. A source scan in
 test/conformance fails the build on a remedy command written without `clierr.Rancher` or without
 the word rancher; the commands still written plain are listed there with their reasons.
+The text of every remedy builder in internal/token is cut at each command and must end its
+clause.
 `clierr.ShellQuoteArgs` writes the values after a command, and puts the flags first and `--` before the values
 when one starts with a dash; source scans in test/conformance fail the build on a remedy command that does not
 parse against the schema, has text glued after it, changes something without `--dry-run`, or quotes a positional

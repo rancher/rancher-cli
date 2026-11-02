@@ -82,6 +82,9 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table", "json"}},
 		Shape:        runtime.ShapeExecJSON,
 		SecretInput:  true,
+		// kubectl runs the shim from an exec entry the shell that pastes a
+		// remedy does not carry: the remedies name the directory.
+		RemedyConfigDir: true,
 	}
 }
 

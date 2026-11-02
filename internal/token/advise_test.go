@@ -20,7 +20,7 @@ func TestAdviseJudgesWhereATokenIsReported(t *testing.T) {
 	const stored = "https://u:pwzq7@hostzq7"
 	ref := TokenRef{Kind: TokenKindExt, Name: "token-abc12"}
 	cfg := &config.Config{Servers: map[string]config.Server{"x": {URL: stored}}}
-	sequence := clierr.RecoverySequence("https://hostzq7", "u-abc12", ref)
+	sequence := clierr.RecoverySequence("https://hostzq7", ref)
 	item := func(reason string) *revocationItem {
 		return &revocationItem{source: sourceLogin, ref: &ref, server: config.CanonicalServerIdentity(stored), recorded: stored, owner: "u-abc12", entry: "x", reason: reason}
 	}

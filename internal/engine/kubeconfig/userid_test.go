@@ -60,38 +60,38 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 		{name: "the session's own login records no owner", setup: recordsSetup{cfg: prodCurrent(nil), loggedIn: []string{"prod"}, unowned: true}, lines: 2,
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of 'prod' records no owner; the exec plugin does not check the user; " +
-					"pipe an API token to rancher --config '" + dir + "' auth login 'prod' --token-stdin, then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
+					"pipe an API token to: rancher --config '" + dir + "' auth login 'prod' --token-stdin; then write this kubeconfig again with: rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
 			}},
 		{name: "the plugin login entry an entry fell back to records no owner",
 			setup: recordsSetup{cfg: withReuse(prodCurrent(map[string]config.Server{"prod-c-1": {URL: recordsURL}, "exec-login-r": plugin})), loggedIn: []string{"prod", "exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner; the exec plugin does not check the user; " +
-					"pipe an API token to rancher --config '" + dir + "' auth login 'prod-c-1' --token-stdin, then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
+					"pipe an API token to: rancher --config '" + dir + "' auth login 'prod-c-1' --token-stdin; then write this kubeconfig again with: rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
 			}},
 		{name: "a plugin login entry no entry is named for records no owner",
 			setup: recordsSetup{envURL: recordsURL, envToken: true, cfg: withReuse(config.Config{Servers: map[string]config.Server{"exec-login-r": plugin}}), loggedIn: []string{"exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner; the exec plugin does not check the user; " +
-					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
-					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
+					"remove 'exec-login-r' with: rancher --config '" + dir + "' auth logout 'exec-login-r'; then rancher --config '" + dir + "' config delete-server 'exec-login-r'; " +
+					"then write this kubeconfig again with: rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
 			}},
 		{name: "a plugin login entry no entry is named for records no owner, the session's CA a path",
 			setup: recordsSetup{envURL: recordsURL, envToken: true, envCA: caPath, cfg: pluginOnly, loggedIn: []string{"exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner; the exec plugin does not check the user; " +
-					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
-					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
+					"remove 'exec-login-r' with: rancher --config '" + dir + "' auth logout 'exec-login-r'; then rancher --config '" + dir + "' config delete-server 'exec-login-r'; " +
+					"then write this kubeconfig again with: rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
 			}},
 		{name: "a plugin login entry no entry is named for records no owner, the session's CA inline",
 			setup: recordsSetup{envURL: recordsURL, envToken: true, envCA: pemCA, cfg: pluginOnly, loggedIn: []string{"exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner; the exec plugin does not check the user; " +
-					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
-					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
+					"remove 'exec-login-r' with: rancher --config '" + dir + "' auth logout 'exec-login-r'; then rancher --config '" + dir + "' config delete-server 'exec-login-r'; " +
+					"then write this kubeconfig again with: rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
 			}},
 		{name: "an owner --user-id would refuse", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod": {URL: recordsURL, TokenUserID: "U/1"}}), loggedIn: []string{"prod"}, unowned: true},
 			lines: 2,
@@ -150,7 +150,7 @@ func TestKubeconfigRefusesANameAuthGetTokenRefuses(t *testing.T) {
 		{"user-id:", "https://user-id:8443", "user-id:", "", "", ""},
 		{"legacy:", "https://legacy:8443", "legacy:", "", "", ""},
 		{"a CA path", "https://user-id:8443", "user-id:", caPath, " --cacert '" + caPath + "'", ""},
-		{"an inline CA", "https://user-id:8443", "user-id:", pemCA, "", ", adding --cacert with the path of a file that holds the server's CA certificate, which RANCHER_CLI_CACERT carries inline"},
+		{"an inline CA", "https://user-id:8443", "user-id:", pemCA, " --cacert <file>", "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file; "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, _, dir, err := runRecords(t, recordsSetup{envURL: tc.url, envToken: true, envCA: tc.ca})
@@ -160,8 +160,8 @@ func TestKubeconfigRefusesANameAuthGetTokenRefuses(t *testing.T) {
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			host := tc.url[len("https://"):]
 			assert.Equal(t, "the kubeconfig's --name '"+host+"-c-1' would start with '"+tc.prefix+"', which auth get-token refuses; "+
-				"log in with a server entry of another name: pipe an API token to rancher --config '"+dir+"' auth login <name> --url '"+tc.url+"'"+tc.caFlag+" --token-stdin, "+
-				"with a name of your choice for <name>"+tc.caClause+", then rancher --config '"+dir+"' config use-server <name>, then rancher --config '"+dir+"' kubeconfig --cluster 'c-1'",
+				"<name> stands for a name of your choice; "+tc.caClause+"to log in under a server entry of another name, pipe an API token to: rancher --config '"+dir+"' auth login <name> --url '"+tc.url+"'"+tc.caFlag+" --token-stdin; "+
+				"then rancher --config '"+dir+"' config use-server <name>; then write this kubeconfig again with: rancher --config '"+dir+"' kubeconfig --cluster 'c-1'",
 				runtime.IO{RemedyDir: dir}.ExpandText(ce.Message))
 		})
 	}
@@ -200,7 +200,7 @@ func TestKubeconfigNamesNoLoginOfAPluginLoginEntryName(t *testing.T) {
 			if len(tc.setup.loggedIn) == 1 {
 				entry = tc.setup.loggedIn[0]
 			}
-			assert.Contains(t, notice, "remove '"+entry+"' with rancher --config '"+dir+"' auth logout '"+entry+"', then rancher --config '"+dir+"' config delete-server '"+entry+"'")
+			assert.Contains(t, notice, "remove '"+entry+"' with: rancher --config '"+dir+"' auth logout '"+entry+"'; then rancher --config '"+dir+"' config delete-server '"+entry+"'")
 		})
 	}
 }

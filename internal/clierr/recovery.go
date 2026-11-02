@@ -3,7 +3,6 @@ package clierr
 import (
 	"net/url"
 	"strings"
-	"unicode"
 )
 
 // RecoverySequenceAssumption is the sentence every rendering of the
@@ -39,34 +38,20 @@ func HostEntryName(prefix, serverURL string) string {
 
 // RecoverySequence renders the four commands that revoke one token whose
 // entry is not the current server: log in to the recorded URL under the
-// recovery entry (as the token's owner, when known), select that entry,
-// run the kind-correct delete, and log the recovery entry out again since
-// its login created a CLI-owned token of its own. Rendered as text, in
-// warnings, and in result data; never as a hint, which holds one command.
-func RecoverySequence(serverURL, userID string, ref TokenRef) []string {
-	// Every value that came from persisted or server data is shell-quoted,
-	// the same contract every machine hint follows; the owner comment is
-	// stripped of control characters and quoted so a stray metacharacter or
-	// newline in an id cannot turn display text into a command. The token name inside the revoke line is
-	// a Kubernetes object name and comes from RecoveryCommands unchanged.
-	entry := ShellQuote(RecoveryEntryName(serverURL))
-	login := "rancher auth login " + entry + " --url " + ShellQuote(serverURL)
-	if userID != "" {
-		// Quotes are inert inside a shell comment and a newline ends it, so
-		// control characters are removed before quoting.
-		clean := strings.Map(func(r rune) rune {
-			if unicode.IsControl(r) {
-				return -1
-			}
-			return r
-		}, userID)
-		login += "   # log in as user " + ShellQuote(clean)
-	}
+// recovery entry, select that entry, run the kind-correct delete, and log the
+// recovery entry out again since its login created a CLI-owned token of its
+// own. Rendered as text, in warnings, and in result data; never as a hint,
+// which holds one command. Every value that came from persisted or server
+// data is shell-quoted; a stray metacharacter or newline in a name cannot
+// turn display text into a command. Each command is a remedy: it names the
+// config directory when the invocation was given one.
+func RecoverySequence(serverURL string, ref TokenRef) []string {
+	entry := RecoveryEntryName(serverURL)
 	_, revoke := RecoveryCommands(ref)
 	return []string{
-		login,
-		"rancher config use-server " + entry,
+		Rancher + " auth login" + ShellQuoteArgs(" --url "+ShellQuote(serverURL), entry),
+		Rancher + " config use-server" + ShellQuoteArgs("", entry),
 		revoke,
-		"rancher auth logout " + entry,
+		Rancher + " auth logout" + ShellQuoteArgs("", entry),
 	}
 }

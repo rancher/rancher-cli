@@ -82,7 +82,7 @@ func TestDeleteServerDeletesAnUnscopedV3TokenAndTheV3Login(t *testing.T) {
 	assert.Equal(t, scoped.Ref.Name, notRevoked[0].Ref.Name)
 	assert.Equal(t, "v3", notRevoked[0].Reason)
 	assert.Equal(t, "manual", notRevoked[0].Retry)
-	assert.Equal(t, []string{v3DeleteCommand(scoped.Ref.Name)}, notRevoked[0].Recovery)
+	assert.Equal(t, []string{clierr.MarkRemedy(v3DeleteCommand(scoped.Ref.Name))}, notRevoked[0].Recovery)
 	require.NotEmpty(t, res.Warnings)
 	assert.True(t, strings.HasPrefix(res.Warnings[0], "the cluster token "+scoped.Ref.String()+" was not revoked: the CLI cannot delete this v3 token; "), res.Warnings[0])
 	after, err := config.Load(config.FilePath(dir))

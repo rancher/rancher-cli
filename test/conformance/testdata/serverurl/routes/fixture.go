@@ -17,7 +17,7 @@ func Uses(cfg *config.Config, store config.CredStore) {
 	_, _ = credhelper.CanonicalServerURL("https://example.com")
 	_, _ = credhelper.CheckServerURL("https://example.com")
 	_ = config.CheckServerURL("https://example.com")
-	_ = clierr.RecoverySequence("https://example.com", "u-abc12", clierr.TokenRef{})
+	_ = clierr.RecoverySequence("https://example.com", clierr.TokenRef{})
 	f := clierr.RecoverySequence
 	_ = f
 	_ = os.Getenv(config.EnvURL)

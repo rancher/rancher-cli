@@ -21,11 +21,13 @@ func (probeTextDetails) TextDetails() []string { return []string{"  probe line"}
 func TestRecoveryCommandsByKind(t *testing.T) {
 	t.Parallel()
 	list, revoke := RecoveryCommands(TokenRef{Kind: TokenKindExt, Name: "ext-abc"})
-	assert.Equal(t, "rancher get tokens", list)
-	assert.Equal(t, "rancher delete token ext-abc --apply --yes", revoke)
+	assert.Equal(t, "rancher get tokens", ExpandRemedies(list, ""))
+	assert.Equal(t, "rancher delete token 'ext-abc' --apply --yes", ExpandRemedies(revoke, ""))
 	list, revoke = RecoveryCommands(TokenRef{Kind: TokenKindV3, Name: "token-xyz"})
-	assert.Equal(t, "rancher get management-tokens", list)
-	assert.Equal(t, "rancher delete management-token token-xyz --apply --yes --allow-deprecated", revoke)
+	assert.Equal(t, "rancher get management-tokens", ExpandRemedies(list, ""))
+	assert.Equal(t, "rancher delete management-token 'token-xyz' --apply --yes --allow-deprecated", ExpandRemedies(revoke, ""))
+	_, dashed := RecoveryCommands(TokenRef{Kind: TokenKindExt, Name: "-x"})
+	assert.Equal(t, "rancher delete token --apply --yes -- '-x'", ExpandRemedies(dashed, ""))
 }
 
 // TestLoginFailureDetailsJSONShape asserts the wire field names agents read.

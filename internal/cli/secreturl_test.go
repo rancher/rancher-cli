@@ -839,7 +839,8 @@ var (
 func assertSequence(t *testing.T, text, server string, rec config.SupersededToken) {
 	t.Helper()
 	pos := 0
-	for _, command := range clierr.RecoverySequence(server, rec.UserID, rec.Ref) {
+	for _, command := range clierr.RecoverySequence(server, rec.Ref) {
+		command = clierr.ExpandRemedies(command, "")
 		i := strings.Index(text[pos:], command)
 		require.GreaterOrEqual(t, i, 0, "command %q in order in: %s", command, text)
 		pos += i + len(command)
@@ -890,7 +891,7 @@ func secretCanonicalRecordRows() []secretOKRow {
 				t.Helper()
 				state, recovery := recordJSON(t, stdout, "x", "token-same77")
 				assert.NotEqual(t, "otherServer", state)
-				want := clierr.RecoverySequence(secretServerURL, sameServerRecord.UserID, sameServerRecord.Ref)
+				want := clierr.RecoverySequence(secretServerURL, sameServerRecord.Ref)
 				require.Len(t, recovery, len(want))
 				// Each entry, with the run's --config words removed, is the plain
 				// sequence. The words are removed from the decoded string, where a
@@ -901,7 +902,7 @@ func secretCanonicalRecordRows() []secretOKRow {
 				for i, c := range want {
 					entry, ok := recovery[i].(string)
 					require.True(t, ok, "recovery entry %d is a string: %v", i, recovery[i])
-					assert.Equal(t, c, strings.ReplaceAll(entry, runWords, ""))
+					assert.Equal(t, clierr.ExpandRemedies(c, ""), strings.ReplaceAll(entry, runWords, ""))
 				}
 			}},
 		{name: "auth logout x, a usable entry and a record at its URL with user information", argv: []string{"auth", "logout", "x"}, stored: same,
@@ -973,10 +974,13 @@ func assertRecoveryIs(t *testing.T, stdout, name, server string, rec config.Supe
 			assert.Empty(t, recovery, "no sequence is built for %s", name)
 			return
 		}
-		want := clierr.RecoverySequence(server, rec.UserID, rec.Ref)
+		want := clierr.RecoverySequence(server, rec.Ref)
 		require.Len(t, recovery, len(want))
+		runWords := "--config " + clierr.ShellQuote(remedyDirFor(os.Getenv(config.EnvConfigDir))) + " "
 		for i, c := range want {
-			assert.Equal(t, c, recovery[i])
+			entry, ok := recovery[i].(string)
+			require.True(t, ok, "recovery entry %d is a string: %v", i, recovery[i])
+			assert.Equal(t, clierr.ExpandRemedies(c, ""), strings.ReplaceAll(entry, runWords, ""))
 		}
 		return
 	}

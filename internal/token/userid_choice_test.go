@@ -174,8 +174,8 @@ func TestUserIDFallsBackOnlyToItsOwnPluginLoginEntries(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 		assert.Equal(t, "more than one login entry the exec plugin created answers for "+x.srv.URL+" ('exec-login-one', 'exec-login-two'); "+
-			"pipe an API token of 'user-alice' to rancher auth login 'prod' --token-stdin to log in to 'prod'; "+
-			"or keep one: for each other entry run rancher auth logout <entry>, then rancher config delete-server <entry>", msg)
+			"to log in to 'prod', pipe an API token of 'user-alice' to: rancher auth login 'prod' --token-stdin; "+
+			"or keep one: for each other entry run rancher auth logout <entry>; then rancher config delete-server <entry>", msg)
 		assert.Equal(t, "rancher auth login 'prod' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
 		require.Len(t, ce.Candidates, 2)
 		assert.Empty(t, x.store.reads()[1:], "nothing is read after the entry the --name identifies")
@@ -202,8 +202,8 @@ func TestSeveralPluginLoginEntriesRefuseACallWithoutUserID(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 		assert.Equal(t, "more than one login entry the exec plugin created answers for "+x.srv.URL+" ('exec-login-one', 'exec-login-two'), and this exec entry names no Rancher user; "+
-			"pipe an API token to rancher auth login <name> --url '"+x.serverID()+"' --token-stdin to log in an entry for '"+x.serverID()+"', with a name of your choice for <name>; "+
-			"or keep one: for each other entry run rancher auth logout <entry>, then rancher config delete-server <entry>", msg)
+			"<name> stands for a name of your choice; to log in an entry for '"+x.serverID()+"', pipe an API token to: rancher auth login <name> --url '"+x.serverID()+"' --token-stdin; "+
+			"or keep one: for each other entry run rancher auth logout <entry>; then rancher config delete-server <entry>", msg)
 		assert.Empty(t, ce.Hint, "a login with a name to choose is no hint")
 		assert.Empty(t, x.store.reads(), "no plugin login entry is read")
 		assert.Empty(t, x.seen())
@@ -230,7 +230,7 @@ func TestSeveralPluginLoginEntriesRefuseACallWithoutUserID(t *testing.T) {
 		_, err := x.call("prod-c-test", "", "", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
-		assert.Contains(t, msg, ", and this exec entry names no Rancher user; pipe an API token to rancher auth login 'prod' --token-stdin to log in to 'prod'; or keep one: ")
+		assert.Contains(t, msg, ", and this exec entry names no Rancher user; to log in to 'prod', pipe an API token to: rancher auth login 'prod' --token-stdin; or keep one: ")
 		assert.Equal(t, "rancher auth login 'prod' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
 	})
 	t.Run("two entries of one user", func(t *testing.T) {
@@ -322,7 +322,7 @@ func TestUserIDWithoutAClusterAsksForATokenForRancherItself(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.Equal(t, "server entry 'prod' holds the login of Rancher user 'user-bob', and this exec entry names user 'user-alice' with --user-id; "+
-			"pipe an API token of 'user-alice' to rancher auth login 'prod' --token-stdin", msg, "no kubeconfig is regenerated without a cluster")
+			"pipe an API token of 'user-alice' to: rancher auth login 'prod' --token-stdin", msg, "no kubeconfig is regenerated without a cluster")
 	})
 	t.Run("a created token of another user", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{})
@@ -337,8 +337,8 @@ func TestUserIDWithoutAClusterAsksForATokenForRancherItself(t *testing.T) {
 		_, err := x.callIn("", "", "user-carol", "", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-carol' to "+
-			"rancher auth login <name> --url '"+x.serverID()+"' --token-stdin, with a name of your choice for <name>; "+
+		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; <name> stands for a name of your choice; to log in without one, pipe an API token of Rancher user 'user-carol' to: "+
+			"rancher auth login <name> --url '"+x.serverID()+"' --token-stdin; "+
 			"or run kubectl once in a terminal and sign in as 'user-carol', which lasts until the cached token expires", msg)
 	})
 }

@@ -1167,11 +1167,11 @@ var pastePositionalsOfTree = sync.OnceValue(func() []pasteOperand {
 })
 
 func pasteTextExceptions() []pasteTextException {
-	return append(slices.Clone(pasteLocalTextExceptions), pasteMainTextExceptions...)
+	return slices.Clone(pasteLocalTextExceptions)
 }
 
 func pastePositionalExceptions() []pastePositionalException {
-	return append(slices.Clone(pasteLocalPositionalExceptions), pasteMainPositionalExceptions...)
+	return slices.Clone(pasteLocalPositionalExceptions)
 }
 
 // applyPasteExceptions matches each exception to one site of its file and
@@ -1493,6 +1493,10 @@ var pasteGatedList = []pasteGated{
 	{"internal/engine/extres/create.go", "tokenRecovery", "to create it again, delete this one first: rancher delete token '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
 	{"internal/engine/extres/kubeconfig.go", "kubeconfigHeader", "# Kubeconfig \"{v}\" - shown once; revoke with: rancher delete kubeconfig '{v}' --apply --yes\n", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
 	{"internal/engine/extres/kubeconfig.go", "kubeconfigRecovery", "to create it again, delete this one first: rancher delete kubeconfig '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
+	{"internal/clierr/loginfailure.go", "RecoveryCommands", "rancher delete management-token '{v}' --apply --yes --allow-deprecated", []string{"--apply", "--yes", "--allow-deprecated"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
+	{"internal/clierr/loginfailure.go", "RecoveryCommands", "rancher delete token '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
+	{"internal/token/noterminal.go", "CreateKubeconfigRemedy", "rancher create kubeconfig --clusters <id> --apply --yes", []string{"--apply", "--yes"}, "the exec plugin's no-terminal remedy: it creates a kubeconfig for kubectl to use at once; the command keeps the gates of its command"},
+	{"internal/token/noterminal.go", "CreateKubeconfigRemedy", "rancher create kubeconfig --clusters '{v}' --apply --yes", []string{"--apply", "--yes"}, "the exec plugin's no-terminal remedy: it creates a kubeconfig for kubectl to use at once; the command keeps the gates of its command"},
 }
 
 // pasteUnresolvedList is the sites whose flags a call supplies at run time.

@@ -239,7 +239,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 				primary = clierr.New(clierr.CodeConflict, out.Aborted).WithCause(perr)
 			case errors.Is(perr, config.ErrTokenStoreUnsupported):
 				primary = clierr.New(clierr.CodeGeneric,
-					fmt.Sprintf("the credential store (policy %s) cannot store a login credential, and one cannot be reused across clusters; fix the store, or turn the setting off with: %s (%v)", decision.Policy, config.TokenReuseOffCommand, perr)).
+					fmt.Sprintf("the credential store (policy %s) cannot store a login credential (%v), and one cannot be reused across clusters; fix the store, or turn the setting off with: %s", decision.Policy, perr, config.TokenReuseOffCommand)).
 					WithCause(perr)
 			}
 			if cerr := ctx.Err(); cerr != nil {
@@ -286,24 +286,20 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 // The operator fills in <url>.
 func (u userCheck) entryNameCharacters(cfg *config.Config, p config.NameProblem) *clierr.Error {
 	login := NoTerminalLogin(cfg, "", u.clusterID, "<url>", u.caSource, u.caFrom, false)
-	command := login.Command + ", with a name of your choice for <name> and the server's address for <url>"
-	if login.InlineCA {
-		command += config.InlineCAClause(login.CASource)
-	}
 	piped := "pipe an API token"
 	if u.userID != "" {
 		piped += " of " + clierr.ShellQuote(u.userID)
 	}
-	remedy := piped + " to " + command
+	remedy := login.Instruction("to log in under a name of your own, " + piped + " to: ")
 	if u.authConfig != "" {
 		piped += " made through auth config " + clierr.ShellQuote(u.authConfig)
-		remedy = "sign in with " + login.signIn(u.authConfig) + ", or " + piped + " to " + command
+		remedy = login.Instruction("to log in under a name of your own, sign in with: " + login.signIn(u.authConfig) + "; or " + piped + " to: ")
 	}
 	why := "the server URL's host is not valid UTF-8"
 	if !p.InvalidUTF8 {
 		why = fmt.Sprintf("the server URL's host holds U+%04X, which is removed when a name is printed", p.Rune)
 	}
-	return clierr.New(clierr.CodeValidation, why+"; the kubectl plugin cannot create its login entry for it; to log in under a name of your own, "+remedy)
+	return clierr.New(clierr.CodeValidation, why+"; the kubectl plugin cannot create its login entry for it; <url> stands for the server's address; "+remedy)
 }
 
 // freshCredentialError names a rejection of the credential this login just

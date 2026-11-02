@@ -185,7 +185,7 @@ func tlsRevokeRows() []tlsRevokeRow {
 				x := stubV3Fixture(t, newV3Stub(t, 0, 0))
 				return x, x.req(DeleteForLogout, "prod"), stubV3Name
 			},
-			caEntry:    "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server: rancher config update-server <entry> --cacert <file>" + unknownAuthorityTail,
+			caEntry:    "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server; run: rancher config update-server <entry> --cacert <file>" + unknownAuthorityTail,
 			caVariable: "; the CA came from RANCHER_CLI_CACERT in this command's environment - a Rancher administrator who deletes the token sets it to the server's CA in their own environment" + unknownAuthorityTail,
 		},
 	}
@@ -216,9 +216,9 @@ func TestEachRevokeRowWordsAnUnknownAuthorityForWhatRevokesTheToken(t *testing.T
 				assert.Equal(t, row.retry, n.Retry, "the fixture is the row's")
 				assert.Equal(t, "failed", n.Reason)
 				assert.Equal(t, clierr.CodeTLSTrust, n.Code)
-				assert.Contains(t, n.Error, want)
+				assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), want)
 				assert.Contains(t, n.Error, "the server presented a certificate signed by an unknown authority")
-				assert.NotContains(t, n.Error, clierr.RemedyMarker)
+				assert.Equal(t, strings.Contains(want, "rancher config update-server"), strings.Contains(n.Error, clierr.RemedyMarker), "the message opens a command with the marker exactly when it names one")
 				require.NotNil(t, n.Certificate)
 				assert.Equal(t, tlstrust.KindUnknownAuthority, n.Certificate.Kind)
 				assert.Equal(t, tlstrust.Fingerprint(cert), n.Certificate.Fingerprint)
@@ -286,7 +286,7 @@ func TestARemovedEntrysTokenGetsTheRecoveryWording(t *testing.T) {
 				})
 			n := notRevoked(t, rep, token)
 			assert.Equal(t, retry, n.Retry)
-			assert.Contains(t, n.Error, want)
+			assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), want)
 		})
 	}
 }
@@ -379,21 +379,20 @@ func TestTheStampKeepsTheTextOfTheRequestNotTheReportedMessage(t *testing.T) {
 	assert.NotContains(t, stamp.Error, "update-server")
 }
 
-// TestAReportedCertificateFailureCarriesNoRemedyMarker asserts the report and
+// TestACertificateFailureOfAKeptEntryOpensItsCommandsWithTheMarker asserts the report and
 // the text of a not-revoked token whose entry stays (the row that holds a
-// command) hold no copy of this process's marker. Mutation:
-// drop ExpandRemedies in tlsMessage.
-func TestAReportedCertificateFailureCarriesNoRemedyMarker(t *testing.T) {
+// command) open the command with this process's marker, which the
+// invocation that prints them expands.
+func TestACertificateFailureOfAKeptEntryOpensItsCommandsWithTheMarker(t *testing.T) {
 	x := newRevFixture(t, testrancher.Options{})
 	login := x.login("prod", "alice")
 	cert := tlsCert(t, "private-ca")
 	d, rep := x.runSeeded(x.req(DeleteForLogout, "prod"), "prod", false, tlsFailure(unknownAuthorityFailure(cert)), tlsFailure(unknownAuthorityFailure(cert)), nil)
 	n := notRevoked(t, rep, login.Ref.Name)
-	assert.Contains(t, n.Error, "rancher config update-server 'prod' --cacert <file>")
-	assert.NotContains(t, n.Error, clierr.RemedyMarker)
-	assert.False(t, holdsMarkerRune(n.Error), "the message holds a character of the remedy marker")
-	assert.NotContains(t, strings.Join(rep.TextDetails(), "\n"), clierr.RemedyMarker)
-	assert.NotContains(t, strings.Join(d.TextLines(), "\n"), clierr.RemedyMarker)
+	assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), "rancher config update-server 'prod' --cacert <file>")
+	assert.Contains(t, n.Error, clierr.Rancher)
+	assert.Contains(t, strings.Join(rep.TextDetails(), "\n"), clierr.Rancher)
+	assert.Contains(t, strings.Join(d.TextLines(), "\n"), clierr.Rancher)
 }
 
 // TestACertificateFailureShowsAfterTheTokenLineInTheSuccessText asserts the
@@ -408,7 +407,7 @@ func TestACertificateFailureShowsAfterTheTokenLineInTheSuccessText(t *testing.T)
 	cert := tlsCert(t, "private-ca")
 	d, rep := x.runSeeded(x.req(DeleteForLogout, "prod"), "prod", false, tlsFailure(unknownAuthorityFailure(cert)), tlsFailure(unknownAuthorityFailure(cert)), nil)
 	reported := notRevoked(t, rep, login.Ref.Name).Error
-	assert.Contains(t, reported, "; save it for entry 'prod' with: rancher config update-server 'prod' --cacert <file>")
+	assert.Contains(t, clierr.ExpandRemedies(reported, ""), "; save it for entry 'prod' with: rancher config update-server 'prod' --cacert <file>")
 	lines := d.TextLines()
 	var at int
 	for i, l := range lines {
@@ -469,13 +468,13 @@ func TestTheWarningNamesTheCodeAndAddsTheCATailForAnUnknownAuthorityOnly(t *test
 	}
 	t.Run("unknown authority", func(t *testing.T) {
 		w := warningOf(t, unknownAuthorityFailure(tlsCert(t, "private-ca")))
-		assert.Contains(t, w, "was not revoked (failed, TLS_TRUST); revoke it with: ")
+		assert.Contains(t, w, "was not revoked (failed, TLS_TRUST); the sequence assumes RANCHER_CLI_URL")
 		assert.NotContains(t, w, "the server presented")
 		assert.True(t, strings.HasSuffix(w, tail), w)
 	})
 	t.Run("hostname mismatch", func(t *testing.T) {
 		w := warningOf(t, hostnameFailure(tlsCert(t, "other", "other.example"), "r.example"))
-		assert.Contains(t, w, "was not revoked (failed, TLS_TRUST); revoke it with: ")
+		assert.Contains(t, w, "was not revoked (failed, TLS_TRUST); the sequence assumes RANCHER_CLI_URL")
 		assert.NotContains(t, w, "--cacert")
 	})
 	t.Run("no certificate details", func(t *testing.T) {
@@ -506,7 +505,7 @@ func TestARevokeThroughTheClientOfADeletionWrapsACertificateFailure(t *testing.T
 	assert.Equal(t, "failed", n.Reason)
 	assert.Equal(t, clierr.CodeTLSTrust, n.Code)
 	assert.True(t, strings.HasPrefix(n.Error, "the server presented a certificate signed by an unknown authority"), n.Error)
-	assert.Contains(t, n.Error, "; save it for entry 'prod' with: rancher config update-server 'prod' --cacert <file>")
+	assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), "; save it for entry 'prod' with: rancher config update-server 'prod' --cacert <file>")
 	require.NotNil(t, n.Certificate)
 	assert.NotEmpty(t, n.Certificate.Fingerprint)
 	assert.Equal(t, tlstrust.KindUnknownAuthority, n.Certificate.Kind)
@@ -677,10 +676,10 @@ func TestARevocationReportsDetailsPrintTheCertificateFailure(t *testing.T) {
 // TestAuthDeleteTokensFailureDetailsPrintTheCertificateFailure asserts the
 // text details of auth delete-token's failure print the message and the
 // fingerprint under the token. Mutation: keep TextLine in
-// deleteTokenFailure.TextDetails.
+// DeleteTokenFailure.TextDetails.
 func TestAuthDeleteTokensFailureDetailsPrintTheCertificateFailure(t *testing.T) {
 	n := certificateFailureToken(t)
-	text := strings.Join(deleteTokenFailure{Deleted: []string{"k"}, NotRevoked: []NotRevokedToken{n}}.TextDetails(), "\n")
+	text := strings.Join(DeleteTokenFailure{Deleted: []string{"k"}, NotRevoked: []NotRevokedToken{n}}.TextDetails(), "\n")
 	assert.Contains(t, text, "deleted: k")
 	assert.Contains(t, text, "the server presented a certificate signed by an unknown authority")
 	assert.Contains(t, text, "fingerprint: "+n.Certificate.Fingerprint)
@@ -824,7 +823,7 @@ func TestTheNextLoginWarningSaysToSaveTheCAFirstForAnUnknownAuthority(t *testing
 	}
 	t.Run("one token, an unknown authority", func(t *testing.T) {
 		w := oneToken(t, unknown, false)
-		assert.Contains(t, w, "1 token(s) recorded on prod are revoked by the next login of prod as user-alice ("+clierr.Rancher+" auth login 'prod')")
+		assert.Contains(t, w, "1 token(s) recorded on prod are revoked by the next login of prod as user-alice; run it with: "+clierr.Rancher+" auth login 'prod'")
 		assert.True(t, strings.HasSuffix(w, "; its revoke failed on the server's certificate; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), w)
 	})
 	t.Run("an expired certificate", func(t *testing.T) {

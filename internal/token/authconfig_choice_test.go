@@ -85,8 +85,8 @@ func TestATokenMadeThroughAnotherAuthConfigIsRefusedAndRecorded(t *testing.T) {
 	ce, msg := refusal(t, err)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
 	assert.Equal(t, "the token created from the stored login of server entry 'prod' was made through auth config 'openldap', not 'corp-ldap', which this exec entry names with --auth-provider; "+
-		"the token was revoked; sign in through auth config 'corp-ldap' with rancher auth login 'prod' --auth-provider 'corp-ldap', "+
-		"or pipe an API token of 'user-alice' made through auth config 'corp-ldap' to rancher auth login 'prod' --token-stdin", msg)
+		"the token was revoked; sign in through auth config 'corp-ldap' with: rancher auth login 'prod' --auth-provider 'corp-ldap'; "+
+		"or pipe an API token of 'user-alice' made through auth config 'corp-ldap' to: rancher auth login 'prod' --token-stdin", msg)
 	assert.Equal(t, clierr.Rancher+" auth login 'prod' --auth-provider 'corp-ldap'", ce.Hint)
 	assert.GreaterOrEqual(t, x.revoked(), 1, "the token is revoked")
 	assert.False(t, x.cachedWith("c-test", "prod-c-test", "user-alice", "corp-ldap"))
@@ -175,7 +175,7 @@ func TestTheFallbackCountsTheEntriesOfTheAnsweringGroup(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 		assert.Contains(t, msg, "more than one login entry the exec plugin created answers for "+x.serverID()+" ('exec-login-r.ex-1', 'exec-login-r.ex-4')", "the entries of the group, and no other")
-		assert.Contains(t, msg, "pipe an API token of 'user-alice' made through auth config 'corp-ldap' to rancher auth login 'prod' --token-stdin to log in to 'prod'")
+		assert.Contains(t, msg, "to log in to 'prod', pipe an API token of 'user-alice' made through auth config 'corp-ldap' to: rancher auth login 'prod' --token-stdin")
 		assert.Empty(t, x.seen(), "no request is made")
 	})
 	t.Run("with none that recorded it, one unrecorded entry answers and records the auth config", func(t *testing.T) {
@@ -242,8 +242,8 @@ func TestAnIdentifiedEntryOfAnotherAuthConfigRefusesBeforeAnyRequest(t *testing.
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.Equal(t, "server entry 'prod' holds a login made through auth config 'openldap', and this exec entry names --auth-provider 'corp-ldap'; "+
-			"sign in through auth config 'corp-ldap' with rancher auth login 'prod' --auth-provider 'corp-ldap', "+
-			"or pipe an API token of 'user-alice' made through auth config 'corp-ldap' to rancher auth login 'prod' --token-stdin", msg)
+			"sign in through auth config 'corp-ldap' with: rancher auth login 'prod' --auth-provider 'corp-ldap'; "+
+			"or pipe an API token of 'user-alice' made through auth config 'corp-ldap' to: rancher auth login 'prod' --token-stdin", msg)
 		assert.Equal(t, clierr.Rancher+" auth login 'prod' --auth-provider 'corp-ldap'", ce.Hint)
 		assert.Empty(t, x.seen(), "before any request")
 	})
@@ -256,8 +256,8 @@ func TestAnIdentifiedEntryOfAnotherAuthConfigRefusesBeforeAnyRequest(t *testing.
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.True(t, strings.HasPrefix(msg, "server entry 'exec-login-r.ex', the exec plugin's own login entry, holds a login made through auth config 'openldap', "+
-			"and this exec entry names --auth-provider 'corp-ldap'; remove 'exec-login-r.ex' with rancher auth logout 'exec-login-r.ex', then rancher config delete-server 'exec-login-r.ex'; "+
-			"the next call signs in as 'user-alice' through auth config 'corp-ldap' in a terminal, or uses a login made through auth config 'corp-ldap' and piped to rancher auth login <name> --url "), msg)
+			"and this exec entry names --auth-provider 'corp-ldap'; remove 'exec-login-r.ex' with: rancher auth logout 'exec-login-r.ex'; then rancher config delete-server 'exec-login-r.ex'; "+
+			"<name> stands for a name of your choice; the next call signs in as 'user-alice' through auth config 'corp-ldap' in a terminal; or it uses a login made through auth config 'corp-ldap' and piped to: rancher auth login <name> --url "), msg)
 		assert.Empty(t, ce.Hint)
 		assert.Empty(t, x.seen())
 	})
@@ -270,7 +270,7 @@ func TestAnIdentifiedEntryOfAnotherAuthConfigRefusesBeforeAnyRequest(t *testing.
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.True(t, strings.HasPrefix(msg, "server entry 'exec-login-r.ex', the exec plugin's own login entry, was last logged in through auth config 'openldap', "+
-			"and this exec entry names --auth-provider 'corp-ldap'; remove 'exec-login-r.ex' with rancher auth logout 'exec-login-r.ex'"), msg)
+			"and this exec entry names --auth-provider 'corp-ldap'; remove 'exec-login-r.ex' with: rancher auth logout 'exec-login-r.ex'"), msg)
 		assert.Empty(t, x.seen())
 	})
 	t.Run("a plugin login entry that holds none and recorded none is written over", func(t *testing.T) {

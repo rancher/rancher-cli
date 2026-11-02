@@ -136,6 +136,7 @@ func TestNotLoggedInWithOnlyAPluginLoginEntryThatSavesACAAsksForTheCA(t *testing
 	}
 	require.NoError(t, json.Unmarshal([]byte(stderr), &env), stderr)
 	require.Equal(t, clierr.CodeNotLoggedIn, env.Data.Error.Code)
-	assert.Contains(t, env.Data.Error.Message, ", adding --cacert with the path of a file that holds the server's CA certificate, which server entry '"+entry+"' carries inline in config.yaml")
+	assert.Contains(t, env.Data.Error.Message, "server entry '"+entry+"' carries the CA inline in config.yaml and --cacert needs a file; log in under a server entry of your own with: ")
+	assert.Contains(t, env.Data.Error.Message, " --cacert <file>")
 	assert.Empty(t, env.Data.Error.Hint)
 }

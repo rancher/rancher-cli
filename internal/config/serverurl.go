@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -122,7 +123,11 @@ func identityProblem(identity string) error {
 // server, the text that says what to do instead. Exactly one is set.
 type RecordAdvice struct {
 	Sequence []string
-	Text     string
+	// LoginAs is the user the sequence's first command logs in as: the
+	// token's owner with control characters removed, empty when the owner
+	// is unknown. Set only with Sequence.
+	LoginAs string
+	Text    string
 }
 
 // noServerText is the text for a token record that names no server: no
@@ -198,7 +203,18 @@ func AdviseRecord(site RecordSite, recordServer, userID string, ref clierr.Token
 		}
 		return RecordAdvice{Text: recordServerText(ref, reason)}
 	}
-	return RecordAdvice{Sequence: clierr.RecoverySequence(id, userID, ref)}
+	return RecordAdvice{Sequence: clierr.RecoverySequence(id, ref), LoginAs: withoutControl(userID)}
+}
+
+// withoutControl is s with every control character removed: an owner id
+// from persisted or server data cannot carry a newline into display text.
+func withoutControl(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // stripURLUserinfo is steps 1 to 3 of the identity of a URL that does not

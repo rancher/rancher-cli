@@ -12,11 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/commands/auth"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/token"
 )
 
 // plantedRemedy is the text a server could send to look like a remedy:
@@ -126,39 +128,73 @@ func reportResult() runtime.Result {
 var errorRows = []struct {
 	channel  string
 	jsonOnly bool
+	textOnly bool
 	build    func(text string) *clierr.Error
 }{
-	{"message", false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed: "+s) }},
-	{"hint", false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed").WithHint(s) }},
-	{"warning", false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed").WithWarnings(s) }},
-	{"LoginFailureDetails.Primary.Message", false, func(s string) *clierr.Error {
+	{"message", false, false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed: "+s) }},
+	{"hint", false, false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed").WithHint(s) }},
+	{"warning", false, false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed").WithWarnings(s) }},
+	{"LoginFailureDetails.Primary.Message", false, false, func(s string) *clierr.Error {
 		return withDetails(clierr.LoginFailureDetails{Primary: clierr.PrimaryFailure{Message: s}})
 	}},
 	// The text form (LoginFailureDetails.TextDetails) never prints Primary.Hint.
-	{"LoginFailureDetails.Primary.Hint", true, func(s string) *clierr.Error {
+	{"LoginFailureDetails.Primary.Hint", true, false, func(s string) *clierr.Error {
 		return withDetails(clierr.LoginFailureDetails{Primary: clierr.PrimaryFailure{Hint: s}})
 	}},
-	{"LoginFailureDetails.Primary.Details", false, func(s string) *clierr.Error {
+	{"LoginFailureDetails.Primary.Details", false, false, func(s string) *clierr.Error {
 		return withDetails(clierr.LoginFailureDetails{Primary: clierr.PrimaryFailure{Details: clierr.CommittedContextDetails{Recovery: s}}})
 	}},
-	{"LoginFailureDetails.CredentialRecovery.Command", false, func(s string) *clierr.Error {
+	{"LoginFailureDetails.CredentialRecovery.Command", false, false, func(s string) *clierr.Error {
 		return withDetails(clierr.LoginFailureDetails{CredentialRecovery: &clierr.CredentialRecovery{Command: s}})
 	}},
-	{"LoginFailureDetails.ConfigRecovery.Command", false, func(s string) *clierr.Error {
+	{"LoginFailureDetails.ConfigRecovery.Command", false, false, func(s string) *clierr.Error {
 		return withDetails(clierr.LoginFailureDetails{ConfigRecovery: &clierr.ConfigRecovery{Entry: "p", Command: s}})
 	}},
-	{"LoginFailureDetails.Recovery", false, func(s string) *clierr.Error {
+	{"LoginFailureDetails.Recovery", false, false, func(s string) *clierr.Error {
 		return withDetails(clierr.LoginFailureDetails{Recovery: s})
 	}},
-	{"CommittedContextDetails.Recovery", false, func(s string) *clierr.Error {
+	{"CommittedContextDetails.Recovery", false, false, func(s string) *clierr.Error {
 		return withDetails(clierr.CommittedContextDetails{Recovery: s})
 	}},
-	{"RevokePartialFailure.Failed.Message", false, func(s string) *clierr.Error {
+	{"RevokePartialFailure.Failed.Message", false, false, func(s string) *clierr.Error {
 		return withDetails(rbac.RevokePartialFailure{Failed: rbac.RevokeFailure{Name: "b-1", Code: clierr.CodeGeneric, Message: s}})
 	}},
-	{"DeleteProjectPartialFailure.Objects.Message", false, func(s string) *clierr.Error {
+	{"DeleteProjectPartialFailure.Objects.Message", false, false, func(s string) *clierr.Error {
 		return withDetails(resources.DeleteProjectPartialFailure{Objects: []safety.Object{{Kind: "namespace", Name: "ns", Outcome: safety.OutcomeFailed, Code: clierr.CodeGeneric, Message: s}}})
 	}},
+	{"RevocationReport.NotRevoked.Error", false, false, func(s string) *clierr.Error {
+		return withDetails(token.RevocationReport{NotRevoked: []token.NotRevokedToken{liveToken(func(n *token.NotRevokedToken) { n.Error = s })}})
+	}},
+	{"RevocationReport.NotRevoked.Recovery", true, false, func(s string) *clierr.Error {
+		return withDetails(token.RevocationReport{NotRevoked: []token.NotRevokedToken{liveToken(func(n *token.NotRevokedToken) { n.Recovery = []string{s} })}})
+	}},
+	{"DeleteTokenFailure.NotRevoked.Error", false, false, func(s string) *clierr.Error {
+		return withDetails(token.DeleteTokenFailure{NotRevoked: []token.NotRevokedToken{liveToken(func(n *token.NotRevokedToken) { n.Error = s })}})
+	}},
+	{"DeleteTokenFailure.NotRevoked.Recovery", true, false, func(s string) *clierr.Error {
+		return withDetails(token.DeleteTokenFailure{NotRevoked: []token.NotRevokedToken{liveToken(func(n *token.NotRevokedToken) { n.Recovery = []string{s} })}})
+	}},
+	// Rerun is not part of the structured output.
+	{"LogoutAllPartialFailure.Rerun", false, true, func(s string) *clierr.Error {
+		return withDetails(auth.LogoutAllPartialFailure{LoggedOut: []string{"a"}, Rerun: s})
+	}},
+	{"LogoutAllPartialFailure.NotRevoked.Error", false, false, func(s string) *clierr.Error {
+		return withDetails(auth.LogoutAllPartialFailure{LoggedOut: []string{"a"}, NotRevoked: []token.NotRevokedToken{liveToken(func(n *token.NotRevokedToken) { n.Error = s })}})
+	}},
+	{"LogoutAllPartialFailure.NotRevoked.Recovery", true, false, func(s string) *clierr.Error {
+		return withDetails(auth.LogoutAllPartialFailure{LoggedOut: []string{"a"}, NotRevoked: []token.NotRevokedToken{liveToken(func(n *token.NotRevokedToken) { n.Recovery = []string{s} })}})
+	}},
+}
+
+// liveToken is a token that may still be live, after a certificate failure
+// that prints its error message in the text output, with set applied.
+func liveToken(set func(*token.NotRevokedToken)) token.NotRevokedToken {
+	n := token.NotRevokedToken{
+		Ref:    &token.TokenRef{Kind: token.TokenKindExt, Name: "t-1"},
+		Source: "derived", Server: "https://r.invalid", Reason: "unreachable", Code: clierr.CodeTLSTrust, Retry: "yes",
+	}
+	set(&n)
+	return n
 }
 
 func withDetails(d clierr.TextDetails) *clierr.Error {
@@ -246,14 +282,14 @@ func siteRows() []siteRow {
 	)
 	for _, row := range errorRows {
 		rows = append(rows,
-			siteRow{site: "internal/runtime.renderErrDrained ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, drive: func(t *testing.T, r siteRun) (string, string) {
+			siteRow{site: "internal/runtime.renderErrDrained ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, textOnly: row.textOnly, drive: func(t *testing.T, r siteRun) (string, string) {
 				t.Helper()
 				return drivenResult(t, r, siteRead{err: withOtherCommand(row.build(r.text), row.channel, r.cli)}, nil)
 			}},
 			// renderDepsError is in package cli, which this package cannot
 			// import: the row drives IO.ExpandError with RenderErrorStyled,
 			// the two calls that function makes.
-			siteRow{site: "internal/cli.renderDepsError ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, drive: func(t *testing.T, r siteRun) (string, string) {
+			siteRow{site: "internal/cli.renderDepsError ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, textOnly: row.textOnly, drive: func(t *testing.T, r siteRun) (string, string) {
 				t.Helper()
 				var out, errBuf bytes.Buffer
 				require.NoError(t, runtime.RenderErrorStyled(&errBuf, r.format, r.io(&out, &errBuf).ExpandError(withOtherCommand(row.build(r.text), row.channel, r.cli)), style.Style{}))
@@ -334,9 +370,9 @@ var siteRowCounts = map[string]int{
 	"internal/runtime.renderEffect expandAll":       2,
 	"internal/runtime.renderEffect ExpandLines":     1,
 	"internal/runtime.renderEffect expandData":      1,
-	"internal/runtime.renderErrDrained ExpandError": 12,
+	"internal/runtime.renderErrDrained ExpandError": 19,
 	"internal/runtime.renderErrDrained expandAll":   1,
-	"internal/cli.renderDepsError ExpandError":      12,
+	"internal/cli.renderDepsError ExpandError":      19,
 	"internal/cli.completionDebugf ExpandText":      1,
 }
 

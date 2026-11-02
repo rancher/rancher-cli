@@ -131,28 +131,47 @@ func pluginEntriesError(server string, names []string, cfg *config.Config, ident
 	}
 	hint := ""
 	if identified != "" && config.ValidateEntryName(identified) == nil {
-		hint = clierr.Rancher + " auth login " + clierr.ShellQuote(identified) + " --token-stdin"
-		msg += "; " + piped + " to " + hint + " to log in to " + clierr.ShellQuote(identified)
+		hint = clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --token-stdin", identified)
+		msg += "; to log in to " + clierr.ShellQuote(identified) + ", " + piped + " to: " + hint
 	} else {
 		url := user.serverID
 		if url == "" {
 			url = server
 		}
 		login := NoTerminalLogin(cfg, "", user.clusterID, url, user.caSource, user.caFrom, false)
-		msg += "; " + piped + " to " + login.Command + " to log in an entry for " + clierr.ShellQuote(url) + strings.TrimPrefix(login.Text(), login.Command)
+		msg += "; " + login.Instruction("to log in an entry for "+clierr.ShellQuote(url)+", "+piped+" to: ")
 	}
-	msg += "; or keep one: for each other entry run " + clierr.Rancher + " auth logout <entry>, then " + clierr.Rancher + " config delete-server <entry>"
+	msg += "; or keep one: for each other entry run " + clierr.Rancher + " auth logout <entry>; then " + clierr.Rancher + " config delete-server <entry>"
 	return clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands).WithCause(errLookupRefused).WithHint(hint)
 }
 
-// useServerRemedy names the command that selects entry (a quoted name, or
-// the placeholder <entry>), with the side effect it has on the directory and
-// how to undo it.
-func useServerRemedy(entry, current string) string {
-	if current == "" {
-		return clierr.Rancher + " config use-server " + entry + " (this sets the directory's current server, which is unset now)"
+// useServerCommand is the command that selects the entry name; an empty name
+// gives the placeholder <entry>.
+func useServerCommand(name string) string {
+	if name == "" {
+		return clierr.Rancher + " config use-server <entry>"
 	}
-	return clierr.Rancher + " config use-server " + entry + " (this switches the directory's current server; switch back with " + clierr.Rancher + " config use-server " + clierr.ShellQuote(current) + ")"
+	return clierr.Rancher + " config use-server" + clierr.ShellQuoteArgs("", name)
+}
+
+// useServerNote is the side effect of selecting an entry on the directory
+// and how to undo it, for the end of a sentence that holds the command:
+// current is the directory's current server, empty when it has none.
+func useServerNote(current string) string {
+	if current == "" {
+		return "; selecting an entry sets the directory's current server, which is unset now"
+	}
+	return "; selecting an entry switches the directory's current server; to switch back, run: " +
+		clierr.Rancher + " config use-server" + clierr.ShellQuoteArgs("", current)
+}
+
+// kubeconfigRemedy is the command that writes the kubeconfig for a cluster;
+// an empty clusterID gives the placeholder <id>.
+func kubeconfigRemedy(clusterID string) string {
+	if clusterID == "" {
+		return clierr.Rancher + " kubeconfig --cluster <id>"
+	}
+	return clierr.Rancher + " kubeconfig" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(clusterID))
 }
 
 // entryNotNamedError is the refusal when a call names no entry and more than
@@ -169,20 +188,20 @@ func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID s
 		names[i] = h.name
 		cands[i] = clierr.Candidate{ID: h.name, Name: config.DisplayServerURL(h.entry.URL)}
 	}
-	clusterArg, clusterSuffix := "<cluster>", "<cluster>"
+	clusterSuffix, idNote := "<id>", "<id> stands for the id of the cluster; "
 	if clusterID != "" {
-		clusterArg, clusterSuffix = clierr.ShellQuote(clusterID), shellWordIfNeeded(clusterID)
+		clusterSuffix, idNote = shellWordIfNeeded(clusterID), ""
 	}
-	regenerate := useServerRemedy("<entry>", cfg.CurrentServer) + ", then " + clierr.Rancher + " kubeconfig --cluster " + clusterArg
+	regenerate := useServerCommand("") + "; then " + kubeconfigRemedy(clusterID) + useServerNote(cfg.CurrentServer)
 	var msg string
 	if ignoreCurrentContext {
 		msg = fmt.Sprintf(
-			"more than one server entry for %s has a stored login (%s) and the legacy rancher token command cannot name one; regenerate the kubeconfig from the entry you want with %s, and replace this kubeconfig with the one it prints",
-			config.DisplayServerURL(hits[0].entry.URL), quotedList(names), regenerate)
+			"more than one server entry for %s has a stored login (%s) and the legacy token command cannot name one; %sto replace this kubeconfig, regenerate it from the entry you want, and use the one it prints: %s",
+			config.DisplayServerURL(hits[0].entry.URL), quotedList(names), idNote, regenerate)
 	} else {
 		msg = fmt.Sprintf(
-			"more than one server entry for %s has a stored login (%s) and this exec entry names none of them; give the exec entry --name <entry>-%s, or regenerate the kubeconfig from the entry you want with %s",
-			config.DisplayServerURL(hits[0].entry.URL), quotedList(names), clusterSuffix, regenerate)
+			"more than one server entry for %s has a stored login (%s) and this exec entry names none of them; %sgive the exec entry --name <entry>-%s; or regenerate the kubeconfig from the entry you want with: %s",
+			config.DisplayServerURL(hits[0].entry.URL), quotedList(names), idNote, clusterSuffix, regenerate)
 	}
 	return clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands).WithCause(errLookupRefused)
 }
@@ -195,48 +214,58 @@ func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID s
 func entryOnOtherServerError(cfg *config.Config, name, server, clusterID string) *clierr.Error {
 	entry := clierr.ShellQuote(name)
 	entryURL, current := config.DisplayServerURL(cfg.Servers[name].URL), cfg.CurrentServer
-	cluster := clierr.ShellQuote(clusterID)
 	// auth login refuses a plugin login entry's name, so its route logs in
 	// a new entry at its URL, with its CA, and regenerates from that one.
 	plugin := config.IsExecLoginEntryName(name)
 	ownEntry := ""
 	if plugin {
 		s := cfg.Servers[name]
-		ownEntry = "log in there under a server entry of your own, since auth login refuses the exec plugin's own login entries: " +
+		ownEntry = "log in there under a server entry of your own, since auth login refuses the exec plugin's own login entries; " +
 			userCheck{clusterID: clusterID, serverID: config.DisplayServerURL(s.URL), caSource: s.CA, caFrom: config.CASource{Kind: config.CASourceEntry, Entry: name}}.loginOfNewEntry(cfg)
 	}
 	if len(cfg.MatchingServerNames(server)) == 0 {
-		route := "regenerate the kubeconfig from " + entry + " with " + namedEntryRoute(name, entry, cluster, current)
+		route := "regenerate the kubeconfig from " + entry + ": " + namedEntryRoute(name, clusterID, current) + namedEntryNote(name, current)
 		if plugin {
-			route = ownEntry
+			route = ownEntry + useServerNote(current)
 		}
 		return clierr.New(clierr.CodeConflict, fmt.Sprintf(
 			"the exec entry names server entry %s, which is registered at %s, but this call runs for %s and no entry is registered there; %s",
 			entry, entryURL, server, route))
 	}
-	route := "regenerate the kubeconfig from it with " + namedEntryRoute(name, entry, cluster, current)
+	route := "regenerate the kubeconfig from it: " + namedEntryRoute(name, clusterID, current)
 	if plugin {
 		route = ownEntry
 	}
 	return clierr.New(clierr.CodeConflict, fmt.Sprintf(
-		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, %s; to use %s, regenerate it from an entry registered there with %s, then %s kubeconfig --cluster %s",
-		entry, entryURL, server, entry, route, server, useServerRemedy("<entry>", current), clierr.Rancher, cluster))
+		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, %s; to use %s, regenerate it from an entry registered there with: ",
+		entry, entryURL, server, entry, route, server)+
+		useServerCommand("")+"; then "+kubeconfigRemedy(clusterID)+useServerNote(current))
 }
 
 // namedEntryRoute is the steps that regenerate the kubeconfig from the named
 // user entry where it is registered now: select it unless it is already the
 // current server, log in to it if a URL change cleared its login, then write
 // the kubeconfig. A plugin login entry's name gets none: auth login refuses
-// it, and the route for one is a login of a new entry.
-func namedEntryRoute(name, entry, cluster, current string) string {
+// it, and the route for one is a login of a new entry. A route that selects
+// an entry ends with namedEntryNote.
+func namedEntryRoute(name, clusterID, current string) string {
 	if config.IsExecLoginEntryName(name) {
 		return ""
 	}
-	steps := clierr.Rancher + " auth login " + entry + " (if it has no login), then " + clierr.Rancher + " kubeconfig --cluster " + cluster
+	steps := "if it has no login, run: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", name) + "; then " + kubeconfigRemedy(clusterID)
 	if name == current {
 		return steps
 	}
-	return useServerRemedy(entry, current) + ", then " + steps
+	return useServerCommand(name) + "; then " + steps
+}
+
+// namedEntryNote is the note that ends a route of namedEntryRoute that
+// selects an entry, empty for a route that does not.
+func namedEntryNote(name, current string) string {
+	if config.IsExecLoginEntryName(name) || name == current {
+		return ""
+	}
+	return useServerNote(current)
 }
 
 // shellWordIfNeeded quotes s for a shell only when it holds a character a

@@ -22,7 +22,9 @@ func (d deleteTokenCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	args := in.Args()
 	if all && len(args) > 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"specify either a credential name or --all, not both (e.g. rancher auth delete-token prod, or rancher auth delete-token --all)")
+			"specify either a credential name or --all, not both; to delete only "+clierr.ShellQuote(args[0])+", run: "+
+				clierr.Rancher+" auth delete-token"+clierr.ShellQuoteArgs("", args[0])+"; to delete every cached credential, run: "+
+				clierr.Rancher+" auth delete-token --all")
 	}
 	if !all && len(args) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -34,7 +36,7 @@ func (d deleteTokenCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 		name = args[0]
 		what = fmt.Sprintf("%q", name)
 		req.Select = func(r config.CachedRecord) bool { return r.Name == name || r.Key == name }
-		req.Rerun = clierr.Rancher + " auth delete-token " + clierr.ShellQuote(name)
+		req.Rerun = clierr.Rancher + " auth delete-token" + clierr.ShellQuoteArgs("", name)
 	}
 
 	var del *Deletion
@@ -74,8 +76,8 @@ func (d deleteTokenCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 
 	if localErr != nil {
 		return runtime.Result{}, clierr.WrapUnlessCanceled(localErr, func(err error) error {
-			return clierr.Wrap(err, fmt.Sprintf("failed to delete %s: %v; run %s again", what, err, req.Rerun)).
-				WithDetails(deleteTokenFailure{Deleted: deleted, Kept: kept, Revoked: rep.Revoked, NotRevoked: rep.NotRevoked}).
+			return clierr.Wrap(err, deleteFailureText(what, err, req.Rerun)).
+				WithDetails(DeleteTokenFailure{Deleted: deleted, Kept: kept, Revoked: rep.Revoked, NotRevoked: rep.NotRevoked}).
 				WithWarnings(warnings...)
 		})
 	}
@@ -83,7 +85,7 @@ func (d deleteTokenCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	if del.Cancelled() {
 		return runtime.Result{}, clierr.New(clierr.CodeInterrupted,
 			"stopped before every token was revoked; the cached credentials are deleted, and the details list each token").
-			WithDetails(deleteTokenFailure{Deleted: deleted, Kept: kept, Revoked: rep.Revoked, NotRevoked: rep.NotRevoked}).
+			WithDetails(DeleteTokenFailure{Deleted: deleted, Kept: kept, Revoked: rep.Revoked, NotRevoked: rep.NotRevoked}).
 			WithWarnings(warnings...)
 	}
 
@@ -110,10 +112,16 @@ func (d deleteTokenCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	}, Text: strings.Join(lines, "\n") + "\n", Warnings: warnings}, nil
 }
 
-// deleteTokenFailure is auth delete-token's structured payload for a
+// deleteFailureText is the message of a failed local delete: what it tried to
+// delete, why it failed, and the command that finishes the delete.
+func deleteFailureText(what string, err error, rerun string) string {
+	return fmt.Sprintf("failed to delete %s: %v; to finish, run: %s", what, err, rerun)
+}
+
+// DeleteTokenFailure is auth delete-token's structured payload for a
 // delete that did not complete: what was deleted and kept, and what the
 // server did with each token.
-type deleteTokenFailure struct {
+type DeleteTokenFailure struct {
 	Deleted    []string          `json:"deleted"`
 	Kept       []string          `json:"kept"`
 	Revoked    []RevokedToken    `json:"revoked"`
@@ -122,7 +130,7 @@ type deleteTokenFailure struct {
 
 // TextDetails lists what was deleted and each token that may still be
 // live.
-func (p deleteTokenFailure) TextDetails() []string {
+func (p DeleteTokenFailure) TextDetails() []string {
 	var lines []string
 	if len(p.Deleted) > 0 {
 		lines = append(lines, "deleted: "+strings.Join(p.Deleted, ", "))
@@ -131,4 +139,18 @@ func (p deleteTokenFailure) TextDetails() []string {
 		lines = append(lines, n.DetailLines()...)
 	}
 	return lines
+}
+
+// MapText maps the text of each token that may still be live: its error
+// message and its recovery commands.
+func (p DeleteTokenFailure) MapText(f func(string) string) clierr.TextDetails {
+	p.NotRevoked = MapLiveTokens(p.NotRevoked, f, f)
+	return p
+}
+
+// MapCommands maps the recovery commands of each token that may still be
+// live, which a renderer that can offer no command empties.
+func (p DeleteTokenFailure) MapCommands(f func(string) string) clierr.TextDetails {
+	p.NotRevoked = MapLiveTokens(p.NotRevoked, nil, f)
+	return p
 }

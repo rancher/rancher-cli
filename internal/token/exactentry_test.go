@@ -224,8 +224,8 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 	seed := rowEntry{name: "exec-login-seed", user: "svc", plugin: true}
 	seedTwo := rowEntry{name: "exec-login-seed-2", user: "svc", plugin: true}
 	var (
-		useServerUnset = clierr.Rancher + " config use-server <entry> (this sets the directory's current server, which is unset now), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"
-		useServerBack  = clierr.Rancher + " config use-server <entry> (this switches the directory's current server; switch back with " + clierr.Rancher + " config use-server 'staging'), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"
+		useServerUnset = clierr.Rancher + " config use-server <entry>; then " + clierr.Rancher + " kubeconfig --cluster 'c-test'; selecting an entry sets the directory's current server, which is unset now"
+		useServerBack  = clierr.Rancher + " config use-server <entry>; then " + clierr.Rancher + " kubeconfig --cluster 'c-test'; selecting an entry switches the directory's current server; to switch back, run: " + clierr.Rancher + " config use-server 'staging'"
 	)
 
 	rows := []entryRow{
@@ -425,7 +425,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries: []rowEntry{prod, prodEU},
 			shim:    true, flagName: "alice",
 			wantCode:  clierr.CodeAmbiguousSelection,
-			wantMsg:   []string{"'prod', 'prod-eu'", "legacy rancher token command", useServerUnset},
+			wantMsg:   []string{"'prod', 'prod-eu'", "legacy token command", useServerUnset},
 			noNetwork: true,
 			mutation:  "pick the first entry at the winning rank",
 		},
@@ -575,7 +575,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			shim:      true,
 			flagName:  "alice",
 			wantCode:  clierr.CodeAmbiguousSelection,
-			wantMsg:   []string{"'prod', 'prod-eu'", "legacy rancher token command"},
+			wantMsg:   []string{"'prod', 'prod-eu'", "legacy token command"},
 			noNetwork: true,
 			mutation:  "let the shim's ranking honour the directory's current server",
 		},
@@ -584,7 +584,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:    []rowEntry{{name: "prod-eu", url: otherServerURL, user: "bob", current: true}},
 			flagName:   "prod-eu-c-test",
 			wantCode:   clierr.CodeConflict,
-			wantMsg:    []string{"no entry is registered there", "regenerate the kubeconfig from 'prod-eu' with " + clierr.Rancher + " auth login 'prod-eu' (if it has no login), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"},
+			wantMsg:    []string{"no entry is registered there", "regenerate the kubeconfig from 'prod-eu': if it has no login, run: " + clierr.Rancher + " auth login 'prod-eu'; then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"},
 			wantNotMsg: []string{"use-server", "switch back"},
 			noNetwork:  true,
 			mutation:   "offer the switch to the entry that is already the current server; leave out the login step",
@@ -594,7 +594,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:   []rowEntry{{name: "prod-eu", url: otherServerURL, user: "bob"}, {name: "staging", url: "https://third.example", current: true}},
 			flagName:  "prod-eu-c-test",
 			wantCode:  clierr.CodeConflict,
-			wantMsg:   []string{"no entry is registered there", clierr.Rancher + " config use-server 'prod-eu' (this switches the directory's current server; switch back with " + clierr.Rancher + " config use-server 'staging'), then " + clierr.Rancher + " auth login 'prod-eu' (if it has no login), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"},
+			wantMsg:   []string{"no entry is registered there", clierr.Rancher + " config use-server 'prod-eu'; then if it has no login, run: " + clierr.Rancher + " auth login 'prod-eu'; then " + clierr.Rancher + " kubeconfig --cluster 'c-test'; selecting an entry switches the directory's current server; to switch back, run: " + clierr.Rancher + " config use-server 'staging'"},
 			noNetwork: true,
 			mutation:  "leave out the switch for an entry that is not the current server",
 		},
@@ -603,7 +603,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:   []rowEntry{prod, {name: "prod-eu", url: otherServerURL, user: "bob"}},
 			flagName:  "prod-eu-c-test",
 			wantCode:  clierr.CodeConflict,
-			wantMsg:   []string{"to use 'prod-eu', regenerate the kubeconfig from it with " + clierr.Rancher + " config use-server 'prod-eu'", "regenerate it from an entry registered there with " + clierr.Rancher + " config use-server <entry>"},
+			wantMsg:   []string{"to use 'prod-eu', regenerate the kubeconfig from it: " + clierr.Rancher + " config use-server 'prod-eu'", "regenerate it from an entry registered there with: " + clierr.Rancher + " config use-server <entry>"},
 			noNetwork: true,
 			mutation:  "offer only the route through an entry at the call's URL",
 		},

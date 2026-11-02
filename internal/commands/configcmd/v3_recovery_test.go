@@ -14,7 +14,7 @@ import (
 )
 
 func v3DeleteCommand(name string) string {
-	return "rancher delete management-token " + name + " --apply --yes --allow-deprecated"
+	return "rancher delete management-token '" + name + "' --apply --yes --allow-deprecated"
 }
 
 func v3Ref(name string) clierr.TokenRef { return clierr.TokenRef{Kind: clierr.TokenKindV3, Name: name} }
@@ -51,6 +51,7 @@ func v3RecoveryConfig(t *testing.T) string {
 func TestConfigStatusGivesAV3TokenTheAdministratorsDelete(t *testing.T) {
 	dir := v3RecoveryConfig(t)
 	res := execConfigInfoResult(t, dir)
+	text := clierr.ExpandRemedies(res.Text, "")
 	servers := res.Data.(map[string]any)["servers"].(map[string]any)
 	prod := servers["exec-login-r.ex"].(map[string]any)
 	recs := prod["supersededTokens"].([]map[string]any)
@@ -61,13 +62,13 @@ func TestConfigStatusGivesAV3TokenTheAdministratorsDelete(t *testing.T) {
 	out := servers["out"].(map[string]any)
 	assert.Equal(t, []string{clierr.MarkRemedy(v3DeleteCommand("kubeconfig-u-out"))}, out["currentToken"].(map[string]any)["recovery"], "a logged-out entry's token")
 
-	assert.Contains(t, res.Text, "        recovery:\n          an administrator logged in to https://old.ex can delete it with: "+v3DeleteCommand("kubeconfig-u-x")+"\n")
-	assert.Contains(t, res.Text, "        recovery:\n          an administrator logged in to https://r.ex can delete it with: "+v3DeleteCommand("kubeconfig-u-y")+"\n")
-	assert.Contains(t, res.Text, "      recovery:\n        an administrator logged in to https://r.ex can delete it with: "+v3DeleteCommand("kubeconfig-u-cur")+"\n")
-	assert.Contains(t, res.Text, "      recovery:\n        an administrator logged in to https://o.ex can delete it with: "+v3DeleteCommand("kubeconfig-u-out")+"\n")
-	assert.NotContains(t, res.Text, clierr.RecoverySequenceAssumption)
-	assert.NotContains(t, res.Text, "auth logout")
-	assert.NotContains(t, res.Text, "auth login")
+	assert.Contains(t, text, "        recovery:\n          an administrator logged in to https://old.ex can delete it; run: "+v3DeleteCommand("kubeconfig-u-x")+"\n")
+	assert.Contains(t, text, "        recovery:\n          an administrator logged in to https://r.ex can delete it; run: "+v3DeleteCommand("kubeconfig-u-y")+"\n")
+	assert.Contains(t, text, "      recovery:\n        an administrator logged in to https://r.ex can delete it; run: "+v3DeleteCommand("kubeconfig-u-cur")+"\n")
+	assert.Contains(t, text, "      recovery:\n        an administrator logged in to https://o.ex can delete it; run: "+v3DeleteCommand("kubeconfig-u-out")+"\n")
+	assert.NotContains(t, text, clierr.RecoverySequenceAssumption)
+	assert.NotContains(t, text, "auth logout")
+	assert.NotContains(t, text, "auth login")
 }
 
 // TestSetTokenReuseOffGivesAV3TokenTheAdministratorsDelete asserts the
@@ -78,13 +79,14 @@ func TestSetTokenReuseOffGivesAV3TokenTheAdministratorsDelete(t *testing.T) {
 	dir := v3RecoveryConfig(t)
 	res, err := NewSetTokenReuse(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Pos: []string{"off"}}, ui.Discard())
 	require.NoError(t, err)
+	text := clierr.ExpandRemedies(res.Text, "")
 	dormant := res.Data.(map[string]any)["dormantLogins"].([]map[string]any)
 	require.Len(t, dormant, 1)
 	recs := dormant[0]["supersededTokens"].([]map[string]any)
 	assert.Equal(t, []string{clierr.MarkRemedy(v3DeleteCommand("kubeconfig-u-x"))}, recs[0]["recovery"])
 	assert.Equal(t, []string{clierr.MarkRemedy(v3DeleteCommand("kubeconfig-u-cur"))}, dormant[0]["currentToken"].(map[string]any)["recovery"])
-	assert.Contains(t, res.Text, "    an administrator logged in to https://old.ex can delete it with: "+v3DeleteCommand("kubeconfig-u-x")+"\n")
-	assert.Contains(t, res.Text, "    an administrator logged in to https://r.ex can delete it with: "+v3DeleteCommand("kubeconfig-u-y"))
-	assert.NotContains(t, res.Text, "revoke it with:")
-	assert.NotContains(t, res.Text, clierr.RecoverySequenceAssumption)
+	assert.Contains(t, text, "    an administrator logged in to https://old.ex can delete it; run: "+v3DeleteCommand("kubeconfig-u-x")+"\n")
+	assert.Contains(t, text, "    an administrator logged in to https://r.ex can delete it; run: "+v3DeleteCommand("kubeconfig-u-y"))
+	assert.NotContains(t, text, "revoke it with:")
+	assert.NotContains(t, text, clierr.RecoverySequenceAssumption)
 }

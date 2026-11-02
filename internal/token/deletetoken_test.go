@@ -232,7 +232,7 @@ func TestDeleteTokenInterruptedDuringTheRevokesReportsBothLists(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeInterrupted, ce.Code)
-	details, ok := ce.Details.(deleteTokenFailure)
+	details, ok := ce.Details.(DeleteTokenFailure)
 	require.True(t, ok)
 	assert.Equal(t, []string{"one", "two"}, details.Deleted)
 	require.Len(t, details.Revoked, 1)

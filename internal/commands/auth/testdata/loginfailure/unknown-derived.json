@@ -14,7 +14,7 @@
           "retryable": false
         },
         "stage": "authentication",
-        "operationMarker": "1c84e5f1c5da",
+        "operationMarker": "efb0f7554384",
         "sessionToken": {
           "outcome": "known",
           "kind": "v3",
@@ -23,7 +23,7 @@
             "name": "fac-token-1"
           },
           "marked": true,
-          "createdAt": "2026-09-03T05:27:38Z",
+          "createdAt": "2026-11-02T02:21:16Z",
           "cleanup": {
             "ref": {
               "kind": "v3",
@@ -36,12 +36,12 @@
           "outcome": "unknown",
           "kind": "ext",
           "marked": true,
-          "createdAt": "2026-09-03T05:27:38Z",
+          "createdAt": "2026-11-02T02:21:16Z",
           "cleanup": {
             "result": "notAttempted"
           }
         },
-        "recovery": "no credential was stored; log in again with: rancher auth login 'prod', then list tokens with: rancher get tokens; a leftover token created by this login carries \"[op:1c84e5f1c5da]\" in its description; revoke it with the found name"
+        "recovery": "no credential was stored; log in again with: rancher auth login 'prod'; then list tokens with: rancher get tokens; a leftover token created by this login carries \"[op:efb0f7554384]\" in its description; revoke it with the found name"
       }
     }
   }

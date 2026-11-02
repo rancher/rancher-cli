@@ -176,7 +176,7 @@ func TestAdviseRecord(t *testing.T) {
 		return "the server recorded for token 'token-abc12' cannot be used: " + reason + "; the token stays on the server that issued it; " +
 			"delete it there while signed in to that server: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes"
 	}
-	sequence := func(server string) []string { return clierr.RecoverySequence(server, "u-abc12", ref) }
+	sequence := func(server string) []string { return clierr.RecoverySequence(server, ref) }
 	const userinfo = "it holds a user name or password"
 	for _, tc := range []struct {
 		name             string
@@ -219,13 +219,27 @@ func TestAdviseRecord(t *testing.T) {
 			assert.Equal(t, tc.wantText, got.Text)
 			if tc.wantText == "" {
 				assert.Equal(t, sequence(tc.wantSequenceFrom), got.Sequence)
+				assert.Equal(t, "u-abc12", got.LoginAs)
 				assert.NotContains(t, strings.Join(got.Sequence, " "), "pwzq7", "no command is built from the text as stored")
 			} else {
 				assert.Empty(t, got.Sequence)
+				assert.Empty(t, got.LoginAs)
 				assert.NotContains(t, got.Text, "pwzq7")
 			}
 		})
 	}
+}
+
+// TestAdviseRecordNamesTheOwnerWithoutControlCharacters asserts LoginAs is the
+// owner id with every control character removed: a newline in a stored id
+// cannot end a line of the text that names it, and is empty for an unknown
+// owner.
+func TestAdviseRecordNamesTheOwnerWithoutControlCharacters(t *testing.T) {
+	t.Parallel()
+	ref := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc12"}
+	site := RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}
+	assert.Equal(t, "u-a$(id)bc", AdviseRecord(site, "https://hostzq7", "u-a\n$(id)\x1bbc", ref).LoginAs)
+	assert.Empty(t, AdviseRecord(site, "https://hostzq7", "", ref).LoginAs)
 }
 
 // mustProblem is the reason the check gives for raw.

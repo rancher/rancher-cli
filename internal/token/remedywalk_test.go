@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -195,7 +196,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	texts["the regenerate steps"] = RegenerateSteps(clierr.Rancher, "prod", "c-1")
 	texts["a login with no entry named"] = config.LoginCommand
 	texts["a logout"] = config.LogoutHintFor("prod")
-	texts["a server entry's removal"] = config.DeleteServerCommand + " " + clierr.ShellQuote("prod")
+	texts["a server entry's removal"] = config.DeleteServerCommand + clierr.ShellQuoteArgs("", "prod")
 	texts["token reuse off"] = config.TokenReuseOffCommand
 	texts["the status report"] = config.StatusCommand
 	texts["a timed-out read"] = provider.InspectClusterRemedy
@@ -229,8 +230,7 @@ func TestEveryExecPluginRemedyIsWrittenForTheInvocation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			require.True(t, clierr.HasRemedy(s), "%q names no command", s)
-			// The shim's tie names its own command; it runs nothing.
-			left := strings.ReplaceAll(strings.ReplaceAll(s, clierr.Rancher, ""), "the legacy rancher token command", "")
+			left := strings.ReplaceAll(s, clierr.Rancher, "")
 			assert.NotRegexp(t, plainCommandRE, left, "a command written without the marker")
 			for _, dir := range []string{"/home/u/.config/rancher", "/tmp/acct dir", `C:\Users\u\AppData\Roaming\rancher`} {
 				got := runtime.IO{RemedyDir: dir}.ExpandText(s)
@@ -239,6 +239,50 @@ func TestEveryExecPluginRemedyIsWrittenForTheInvocation(t *testing.T) {
 				assert.NotContains(t, got, clierr.RemedyMarker)
 			}
 		})
+	}
+}
+
+// AssertCommandsEndTheirSentenceForTest hands assertCommandsEndTheirSentence
+// to the external test package, which gives it the text of a remedy as an
+// invocation with a config directory prints it.
+func AssertCommandsEndTheirSentenceForTest(t *testing.T, text string) {
+	t.Helper()
+	assertCommandsEndTheirSentence(t, text)
+}
+
+// DashedNameRemediesForTest is, for each text a builder writes about a name
+// that starts with a dash, the command paths its commands must reach in order,
+// for the external test package, which runs each command through the real
+// command tree. Every text comes from the production builder that writes it.
+func DashedNameRemediesForTest(t *testing.T) map[string][]string {
+	t.Helper()
+	const dashed, url = "-x", "https://r.example.com"
+	ext := TokenRef{Kind: TokenKindExt, Name: dashed}
+	v3 := TokenRef{Kind: TokenKindV3, Name: dashed}
+	_, deleteToken := clierr.RecoveryCommands(ext)
+	_, deleteManagementToken := clierr.RecoveryCommands(v3)
+
+	owned := &config.Config{Servers: map[string]config.Server{dashed: {URL: url, TokenUserID: "u-abc12"}}}
+	item := &revocationItem{source: sourceCache, ref: &ext, server: config.CanonicalServerIdentity(url), owner: "u-abc12", entry: dashed, trust: dashed,
+		reason: reasonFailed, tlsErr: clierr.New(clierr.CodeTLSTrust, "x"), cert: &tlstrust.Details{Kind: tlstrust.KindUnknownAuthority}}
+	d := &Deletion{cfg: owned, view: owned, removed: map[string]bool{}, clients: map[string]revokeClient{dashed: {}}, items: []*revocationItem{item}}
+	warnings := d.Warnings()
+	require.Len(t, warnings, 1)
+
+	u := userCheck{userID: "u-abc12", clusterID: "c-1", serverID: url}
+	relogin, _ := u.relogin(owned, dashed, true)
+
+	return map[string][]string{
+		config.LoginHintFor(dashed):  {"auth login"},
+		config.LogoutHintFor(dashed): {"auth logout"},
+		useServerCommand(dashed):     {"config use-server"},
+		d.revokeTLSRemedy(item).CA:   {"config update-server"},
+		warnings[0]:                  {"auth login", "config update-server"},
+		relogin:                      {"auth logout", "config delete-server", "auth login"},
+		signInLeftover(clierr.TokenFate{Ref: &ext}, "u-abc12", "m"): {"delete token"},
+		deleteToken:           {"delete token"},
+		deleteManagementToken: {"delete management-token"},
+		v3AdminRemedy(v3, ""): {"delete management-token"},
 	}
 }
 

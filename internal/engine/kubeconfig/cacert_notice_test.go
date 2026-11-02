@@ -37,7 +37,8 @@ func TestKubeconfigNoticeOfAMissingLoginNamesTheVariablesCA(t *testing.T) {
 
 	assert.Contains(t, noticeFor(t, caPath), " --cacert '"+caPath+"'")
 	inline := noticeFor(t, pemCA)
-	assert.Contains(t, inline, "adding --cacert with the path of a file that holds the server's CA certificate, which RANCHER_CLI_CACERT carries inline")
-	assert.NotContains(t, inline, "this exec entry carries inline")
+	assert.Contains(t, inline, "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file; ")
+	assert.Contains(t, inline, " --cacert <file> --token-stdin")
+	assert.NotContains(t, inline, "this exec entry carries the CA inline")
 	assert.NotContains(t, noticeFor(t, ""), "--cacert")
 }

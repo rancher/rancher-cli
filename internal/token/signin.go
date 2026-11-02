@@ -284,8 +284,7 @@ func signInLeftover(f clierr.TokenFate, userID, marker string) string {
 		return v3AdminRemedy(*f.Ref, f.ExpiresAt)
 	case f.Ref != nil:
 		_, revoke := clierr.RecoveryCommands(*f.Ref)
-		text := who + " can delete it with: " + clierr.MarkRemedy(revoke) + ", from a directory signed in as " + as +
-			" (" + clierr.Rancher + " auth login signs one in)"
+		text := who + " can delete it from a directory signed in as " + as + "; run: " + revoke
 		if f.ExpiresAt != "" {
 			text += "; or it expires at " + f.ExpiresAt
 		}
@@ -295,11 +294,11 @@ func signInLeftover(f clierr.TokenFate, userID, marker string) string {
 		var lists []string
 		if f.Kind != clierr.TokenKindV3 {
 			list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
-			lists = append(lists, who+" can list tokens with: "+clierr.MarkRemedy(list)+", from a directory signed in as "+as+", and "+find)
+			lists = append(lists, who+" can list tokens from a directory signed in as "+as+"; list them with: "+list+"; then "+find)
 		}
 		if f.Kind != clierr.TokenKindExt {
 			list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindV3})
-			lists = append(lists, "an administrator can list tokens with: "+clierr.MarkRemedy(list)+" and "+find)
+			lists = append(lists, "an administrator can list tokens with: "+list+"; then "+find)
 		}
 		return strings.Join(lists, "; ")
 	case f.Search != nil:

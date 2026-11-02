@@ -200,7 +200,7 @@ func TestALogoutThatFailsCarriesBothLists(t *testing.T) {
 	assert.Equal(t, "notDeleted", details.NotRevoked[0].Reason)
 	lines := details.TextDetails()
 	assert.Contains(t, lines, "not revoked: "+r.login.Ref.String()+" on "+config.CanonicalServerIdentity(r.url)+" (notDeleted, retry manual)")
-	assert.Equal(t, "those credentials are gone regardless of this failure - run "+clierr.Rancher+" auth logout 'prod' to finish",
+	assert.Equal(t, "those credentials are gone regardless of this failure; to finish, run: "+clierr.Rancher+" auth logout 'prod'",
 		lines[len(lines)-1], "a single-entry logout names that entry's rerun")
 	_, statErr := os.Stat(filepath.Join(r.dir, "config.yaml"))
 	require.NoError(t, statErr)
@@ -451,7 +451,7 @@ func TestALogoutWhoseLoginDeleteFailedAfterTheTokenWentCountsItDeleted(t *testin
 			report, ok := ce.Details.(LogoutAllPartialFailure)
 			require.True(t, ok)
 			assert.Empty(t, report.LoggedOut, "the logout did not complete")
-			assert.Contains(t, strings.Join(report.TextDetails(), "\n"), "run "+clierr.Rancher+" auth logout 'prod' to finish")
+			assert.Contains(t, strings.Join(report.TextDetails(), "\n"), "to finish, run: "+clierr.Rancher+" auth logout 'prod'")
 			assert.Contains(t, report.DeletedFrom["prod"], "keychain")
 			e, ok := mustLoad(t, r.dir).Servers["prod"]
 			require.True(t, ok)

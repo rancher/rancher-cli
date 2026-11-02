@@ -326,21 +326,21 @@ func TestThePluginSignInSavesTheCAItConnectedWith(t *testing.T) {
 func TestNoTerminalLoginNamesWhereAnInlineCAIsCarried(t *testing.T) {
 	const url = "https://r.ex"
 	inline := "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"
-	const lead = ", adding --cacert with the path of a file that holds the server's CA certificate, which "
 	for _, tc := range []struct {
 		name string
 		ca   string
 		from config.CASource
 		want string
 	}{
-		{"the variable", inline, config.CASource{Kind: config.CASourceVariable}, lead + "RANCHER_CLI_CACERT carries inline"},
-		{"a server entry", inline, entryFrom("other"), lead + "server entry 'other' carries inline in config.yaml"},
-		{"the flag", inline, config.CASource{Kind: config.CASourceFlag}, lead + "this exec entry carries inline"},
+		{"the variable", inline, config.CASource{Kind: config.CASourceVariable}, "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file"},
+		{"a server entry", inline, entryFrom("other"), "server entry 'other' carries the CA inline in config.yaml and --cacert needs a file"},
+		{"the flag", inline, config.CASource{Kind: config.CASourceFlag}, "this exec entry carries the CA inline and --cacert needs a file"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			l := NoTerminalLogin(nil, "", "c-1", url, tc.ca, tc.from, false)
 			assert.True(t, l.InlineCA)
-			assert.Contains(t, l.Text(), tc.want)
+			assert.Contains(t, l.Command, " --cacert <file> --token-stdin")
+			assert.Contains(t, l.Facts(), tc.want)
 			assert.Empty(t, l.Hint())
 		})
 	}
@@ -380,8 +380,8 @@ func TestNoTerminalErrorNamesTheVariableThatCarriesTheCA(t *testing.T) {
 		return err
 	}
 	err := call(t, ca)
-	require.ErrorContains(t, err, "which RANCHER_CLI_CACERT carries inline")
-	assert.NotContains(t, err.Error(), "this exec entry carries inline")
+	require.ErrorContains(t, err, "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file")
+	assert.NotContains(t, err.Error(), "this exec entry carries the CA inline")
 
 	err = call(t, caPath)
 	require.ErrorContains(t, err, " --cacert "+clierr.ShellQuote(caPath))

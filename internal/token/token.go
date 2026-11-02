@@ -2420,7 +2420,7 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
 		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):
-		refresh := "; refresh it with: " + clierr.Rancher + " auth login " + clierr.ShellQuote(sc.name)
+		refresh := "; refresh it with: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", sc.name)
 		if config.IsExecLoginEntryName(sc.name) {
 			// auth login refuses the name; the sign-in this falls back to
 			// is the one way to a login here.

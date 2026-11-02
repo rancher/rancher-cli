@@ -1,6 +1,7 @@
 package remedytest
 
 import (
+	"crypto/x509"
 	"reflect"
 	"slices"
 	"strings"
@@ -36,6 +37,11 @@ func (d MarkedDetails) MapCommands(f func(string) string) clierr.TextDetails {
 // owner: its message stands for the whole error, which is never mapped.
 var errorPointer = reflect.TypeFor[*clierr.Error]()
 
+// certificatePointer is the type of a certificate a server presented, which an
+// owner keeps unexported and never serializes: none of its fields holds
+// text the CLI writes; it has no text field.
+var certificatePointer = reflect.TypeFor[*x509.Certificate]()
+
 // TextPaths is the path of every field of typ that holds text: a string, an
 // interface that can hold anything, or a nested *clierr.Error, reaching
 // through struct fields, pointers, slices, arrays and maps (a map's key and
@@ -52,6 +58,9 @@ func TextPaths(typ reflect.Type) []string {
 		case reflect.Pointer:
 			if t == errorPointer {
 				out = append(out, path)
+				return
+			}
+			if t == certificatePointer {
 				return
 			}
 			walk(t.Elem(), path, stack)

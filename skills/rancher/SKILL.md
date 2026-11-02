@@ -607,8 +607,9 @@ still hold a copy, so fix the step the error names and run the command
 again. Each entry has a `reason` and a `retry`:
 `nextLogin` needs nothing beyond the next login of its `entry`
 (`rancher auth login <entry>`, or the kubectl sign-in); `manual` means run
-its `recovery` (or the reason's remedy, as `unproven` says: find the token
-with `rancher get tokens`); `none` is a pasted token, nothing to do. An
+its `recovery`, logging in as the user in `loginAs` when it is present (or the
+reason's remedy, as `unproven` says: find the token with `rancher get tokens`);
+`none` is a pasted token, nothing to do. An
 entry with `code` `TLS_TRUST` failed because the server's certificate did not
 verify: read its `error` for the fix - a CA to save, a server URL to correct,
 or a certificate only the server's administrator can fix (`certificate` holds

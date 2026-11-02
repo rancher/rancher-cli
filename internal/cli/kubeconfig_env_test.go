@@ -89,7 +89,7 @@ func TestKubeconfigRecordsTheDirectoryTheCommandOpened(t *testing.T) {
 			assert.Contains(t, errOut.String(), "this kubeconfig records this machine's config directory "+tc.want+",")
 			// Nothing is stored for the session, so the lookup notice names
 			// the login to run - in the directory the file records.
-			assert.Contains(t, errOut.String(), "pipe an API token to rancher --config "+clierr.ShellQuote(tc.want)+" auth login")
+			assert.Contains(t, errOut.String(), "pipe an API token to: rancher --config "+clierr.ShellQuote(tc.want)+" auth login")
 		})
 	}
 }

@@ -164,11 +164,11 @@ func v3AdminRemedy(ref TokenRef, expiresAt string) string {
 // subject, and the token's expiry when known.
 func v3AdminDelete(subject string, ref TokenRef, expiresAt string) string {
 	_, revoke := clierr.RecoveryCommands(ref)
-	expiry := "or it expires"
+	expiry := " expires"
 	if expiresAt != "" {
 		expiry += " at " + expiresAt
 	}
-	return "an administrator can delete " + subject + " with: " + clierr.MarkRemedy(revoke) + ", " + expiry
+	return subject + expiry + "; an administrator can delete it sooner with: " + revoke
 }
 
 // keptWarning names one unretired token, why, and what revokes it: the
@@ -183,12 +183,12 @@ func keptWarning(rec config.SupersededToken, serverURL, why string) string {
 	if advice.Text != "" {
 		return unusableServerKept(rec, advice.Text, why)
 	}
-	seq := advice.Sequence
-	for i := range seq {
-		seq[i] = clierr.MarkRemedy(seq[i])
+	revoke := "revoke it with: "
+	if advice.LoginAs != "" {
+		revoke = "revoke it as user " + clierr.ShellQuote(advice.LoginAs) + " with: "
 	}
-	return fmt.Sprintf("the superseded token %s was not retired: %s; revoke it with: %s (%s)",
-		rec.Ref.String(), why, strings.Join(seq, "; "), clierr.RecoverySequenceAssumption)
+	return fmt.Sprintf("the superseded token %s was not retired: %s; the sequence %s; %s%s",
+		rec.Ref.String(), why, clierr.RecoverySequenceAssumption, revoke, strings.Join(advice.Sequence, "; "))
 }
 
 // unusableServerKept is the warning for a superseded token whose server

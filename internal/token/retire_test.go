@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -190,8 +189,8 @@ func TestRetireKeepsAV3RecordUnattempted(t *testing.T) {
 	assert.Nil(t, recs[0].LastAttempt)
 	require.Len(t, rep.Warnings, 1)
 	assert.Contains(t, rep.Warnings[0], "the CLI cannot delete this v3 token")
-	assert.Contains(t, rep.Warnings[0], "an administrator can delete it with: "+clierr.MarkRemedy("rancher delete management-token "+old.Ref.Name+" --apply --yes --allow-deprecated"))
-	assert.Contains(t, rep.Warnings[0], "or it expires")
+	assert.Contains(t, rep.Warnings[0], "an administrator can delete it sooner with: "+clierr.MarkRemedy("rancher delete management-token '"+old.Ref.Name+"' --apply --yes --allow-deprecated"))
+	assert.Contains(t, rep.Warnings[0], " expires at ")
 	_, alive := x.f.TokenOwner(old.Ref.Name)
 	assert.True(t, alive)
 }
@@ -338,13 +337,13 @@ func TestRetireNoRequestUnderTheConfigLockAndReloadsBeforeWriting(t *testing.T) 
 func TestV3RemedyTexts(t *testing.T) {
 	t.Parallel()
 	ref := TokenRef{Kind: TokenKindV3, Name: "token-v3"}
-	cmd := clierr.MarkRemedy("rancher delete management-token token-v3 --apply --yes --allow-deprecated")
-	assert.Equal(t, "the CLI cannot delete this v3 token; an administrator can delete it with: "+cmd+", or it expires at 2026-10-06T00:00:00Z",
+	cmd := clierr.MarkRemedy("rancher delete management-token 'token-v3' --apply --yes --allow-deprecated")
+	assert.Equal(t, "the CLI cannot delete this v3 token; it expires at 2026-10-06T00:00:00Z; an administrator can delete it sooner with: "+cmd,
 		v3Remedy(ref, "2026-10-06T00:00:00Z"))
-	assert.Equal(t, "the CLI cannot delete this v3 token; an administrator can delete it with: "+cmd+", or it expires", v3Remedy(ref, ""))
-	assert.Equal(t, "an administrator can delete v3/token-v3 with: "+cmd+", or it expires at 2026-10-06T00:00:00Z",
+	assert.Equal(t, "the CLI cannot delete this v3 token; it expires; an administrator can delete it sooner with: "+cmd, v3Remedy(ref, ""))
+	assert.Equal(t, "v3/token-v3 expires at 2026-10-06T00:00:00Z; an administrator can delete it sooner with: "+cmd,
 		v3AdminRemedy(ref, "2026-10-06T00:00:00Z"))
-	assert.Equal(t, "an administrator can delete v3/token-v3 with: "+cmd+", or it expires", v3AdminRemedy(ref, ""))
+	assert.Equal(t, "v3/token-v3 expires; an administrator can delete it sooner with: "+cmd, v3AdminRemedy(ref, ""))
 
 	fate := clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "token-v3"}, ExpiresAt: "2026-10-06T00:00:00Z"}
 	text, hint := ResidualRecovery(fate, "prod", "m", true)
@@ -352,7 +351,7 @@ func TestV3RemedyTexts(t *testing.T) {
 	assert.Empty(t, hint, "the administrator's delete is not valid verbatim for every caller")
 	text, hint = ResidualRecovery(fate, "prod", "m", false)
 	login, _ := reLogin("prod")
-	assert.Equal(t, "no credential was stored; "+login+". A"+strings.TrimPrefix(v3AdminRemedy(ref, fate.ExpiresAt), "a"), text)
+	assert.Equal(t, "no credential was stored; "+login+"; "+v3AdminRemedy(ref, fate.ExpiresAt), text)
 	assert.Empty(t, hint)
 	text, hint = ResidualRecovery(clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "t"}}, "prod", "m", true)
 	assert.Contains(t, text, "revoke ext/t with: ", "an ext token keeps its revoke command")

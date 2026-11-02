@@ -338,6 +338,7 @@ func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	res := execConfigInfoResult(t, dir)
+	text := clierr.ExpandRemedies(res.Text, "")
 	data := res.Data.(map[string]any)
 	assert.Equal(t, true, data["tokenReuse"])
 	servers := data["servers"].(map[string]any)
@@ -358,7 +359,7 @@ func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
 	usRecs := us["supersededTokens"].([]map[string]any)
 	require.Len(t, usRecs, 1)
 	assert.Equal(t, "token-old", usRecs[0]["ref"].(map[string]any)["name"])
-	assert.Equal(t, 1, strings.Count(res.Text, "cannot revoke by name"), "only the noref entry carries the note")
+	assert.Equal(t, 1, strings.Count(text, "cannot revoke by name"), "only the noref entry carries the note")
 
 	e := servers["exec-login-r.ex"].(map[string]any)
 	assert.Equal(t, "execLogin", e["provenance"])
@@ -370,10 +371,10 @@ func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
 	assert.Equal(t, "sameOwner", recs[1]["state"])
 	assert.Equal(t, "failed", recs[1]["lastAttempt"].(map[string]any)["result"])
 	assert.Equal(t, "unknownOwner", recs[2]["state"])
-	assert.Equal(t, []string{clierr.MarkRemedy("rancher delete management-token kubeconfig-u-x --apply --yes --allow-deprecated")}, recs[1]["recovery"],
+	assert.Equal(t, []string{clierr.MarkRemedy("rancher delete management-token 'kubeconfig-u-x' --apply --yes --allow-deprecated")}, recs[1]["recovery"],
 		"a v3 token's recovery is the administrator's delete alone")
 	ext := recs[0]["recovery"].([]string)
-	assert.Equal(t, clierr.MarkRemedy("rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-b'"), ext[0])
+	assert.Equal(t, clierr.MarkRemedy("rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'"), ext[0])
 
 	p := servers["prod"].(map[string]any)
 	assert.Equal(t, "2026-09-04T12:00:00Z", p["loggedOutAt"])
@@ -385,16 +386,16 @@ func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
 	// Text: two spaces per level. servers → entry → supersededTokens →
 	// one section per record keyed by the token → its fields; recovery
 	// commands are list items one level under "recovery:".
-	assert.Contains(t, res.Text, "tokenReuse: true\n")
-	assert.Contains(t, res.Text, "servers:\n  exec-login-r.ex:\n    provenance: execLogin\n")
-	assert.Contains(t, res.Text, "    supersededTokens:\n      ext/token-b:\n        userId: user-b\n")
-	assert.Contains(t, res.Text, "        state: differentOwner\n")
-	assert.Contains(t, res.Text, "        recovery:\n          rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-b'\n          rancher config use-server 'recover-r.ex-8443'\n")
-	assert.Contains(t, res.Text, "      v3/kubeconfig-u-x:\n        userId: user-a\n")
-	assert.Contains(t, res.Text, "        recovery:\n          an administrator logged in to https://r.ex:8443 can delete it with: rancher delete management-token kubeconfig-u-x --apply --yes --allow-deprecated\n")
-	assert.Contains(t, res.Text, "  prod:\n")
-	assert.Contains(t, res.Text, "    credential: no stored credential\n")
-	assert.Contains(t, res.Text, "  noref:\n    provenance: derived\n    currentToken:\n      note: cannot revoke by name: no tokenRef recorded\n")
+	assert.Contains(t, text, "tokenReuse: true\n")
+	assert.Contains(t, text, "servers:\n  exec-login-r.ex:\n    provenance: execLogin\n")
+	assert.Contains(t, text, "    supersededTokens:\n      ext/token-b:\n        userId: user-b\n")
+	assert.Contains(t, text, "        state: differentOwner\n")
+	assert.Contains(t, text, "        recovery:\n          log in as user 'user-b' (the token's owner), then run:\n          rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'\n          rancher config use-server 'recover-r.ex-8443'\n")
+	assert.Contains(t, text, "      v3/kubeconfig-u-x:\n        userId: user-a\n")
+	assert.Contains(t, text, "        recovery:\n          an administrator logged in to https://r.ex:8443 can delete it; run: rancher delete management-token 'kubeconfig-u-x' --apply --yes --allow-deprecated\n")
+	assert.Contains(t, text, "  prod:\n")
+	assert.Contains(t, text, "    credential: no stored credential\n")
+	assert.Contains(t, text, "  noref:\n    provenance: derived\n    currentToken:\n      note: cannot revoke by name: no tokenRef recorded\n")
 }
 
 // TestConfigInfoReportsWhereAnUnpinnedDirectoryKeepsItsCredentials asserts

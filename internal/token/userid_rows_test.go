@@ -46,7 +46,7 @@ func TestUserIDPluginLoginEntryTheNameIdentifiesWithoutATerminal(t *testing.T) {
 			_, err := x.call(name+"-c-test", "user-alice", "", nil)
 			ce, msg := refusal(t, err)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
-			assert.Contains(t, msg, "this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-alice' to rancher auth login <name> --url '"+x.serverID()+"'")
+			assert.Contains(t, msg, "this call has no terminal to answer it; <name> stands for a name of your choice; to log in without one, pipe an API token of Rancher user 'user-alice' to: rancher auth login <name> --url '"+x.serverID()+"'")
 			assert.Contains(t, msg, "or run kubectl once in a terminal and sign in as 'user-alice'")
 			assert.NotContains(t, msg, "sets no --name")
 		})
@@ -76,7 +76,7 @@ func TestUserIDChoiceBeyondTheFirstEntry(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.Equal(t, "the stored login of server entry 'a-user' belongs to Rancher user 'user-bob', not to 'user-alice', which this exec entry names with --user-id; "+
-			"the token created from it was revoked; pipe an API token of 'user-alice' to rancher auth login 'a-user' --token-stdin", msg)
+			"the token created from it was revoked; pipe an API token of 'user-alice' to: rancher auth login 'a-user' --token-stdin", msg)
 		assert.Equal(t, "rancher auth login 'a-user' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
 		assert.Equal(t, 1, x.revoked(), "the created token is revoked")
 		assert.False(t, x.cachedIn("c-test", "", "user-alice"))

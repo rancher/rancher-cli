@@ -72,7 +72,7 @@ cmp stdout unscoped.json
 # environment that ran kubectl chose the directory.
 ! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id u-other --auth-provider local -o json
 jsonquery stderr data.error.code AUTH
-stderr 'pipe an API token of Rancher user ''u-other'' made through auth config ''local'' to rancher auth login <name> --url'
+stderr 'pipe an API token of Rancher user ''u-other'' made through auth config ''local'' to: rancher auth login <name> --url'
 stderr 'sign in as ''u-other'' through auth config ''local'''
 ! stderr 'rancher --config'
 ! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --user-id u-other --auth-provider local -o json

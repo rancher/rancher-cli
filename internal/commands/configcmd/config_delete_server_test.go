@@ -344,8 +344,10 @@ func TestConfigDeleteServerReportsTheTokensItLeavesThenRemoves(t *testing.T) {
 		assert.Empty(t, n.Entry, "the entry the tokens were recorded on is gone")
 		assert.Equal(t, "manual", n.Retry)
 	}
-	assert.Equal(t, "rancher delete token token-live --apply --yes", byName["token-live"].Recovery[2])
-	assert.Equal(t, "rancher auth login 'recover-r.ex' --url 'https://r.ex'   # log in as user 'user-b'", byName["token-old"].Recovery[0])
+	assert.Equal(t, "rancher delete token 'token-live' --apply --yes", clierr.ExpandRemedies(byName["token-live"].Recovery[2], ""))
+	assert.Equal(t, "rancher auth login 'recover-r.ex' --url 'https://r.ex'", clierr.ExpandRemedies(byName["token-old"].Recovery[0], ""))
+	assert.Equal(t, "user-b", byName["token-old"].LoginAs)
+	assert.Equal(t, "user-a", byName["token-live"].LoginAs)
 	assert.Contains(t, strings.Join(res.Warnings, "\n"), clierr.RecoverySequenceAssumption)
 	assert.NotContains(t, res.Text, "stays live")
 	cfg, _ = config.Load(config.FilePath(dir))

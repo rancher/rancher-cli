@@ -87,7 +87,7 @@ jsonquery logout.json data.notRevoked.0.retry manual
 jsonget logout.json data.notRevoked.0.ref.name leftover.txt
 setenvfrom LEFTOVER leftover.txt
 jsonget logout.json data.notRevoked.0.recovery.1 useserver.txt
-grep 'rancher config use-server ''recover-127\.0\.0\.1-' useserver.txt
+grep 'rancher --config '''$WORK${/}rancher-config''' config use-server ''recover-127\.0\.0\.1-' useserver.txt
 ttyin -stdin creds.txt
 exec rancher auth login recover-e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider
 exec rancher config use-server recover-e2e

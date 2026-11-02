@@ -349,10 +349,10 @@ type LoginFailureDetails struct {
 func RecoveryCommands(ref TokenRef) (list, revoke string) {
 	switch ref.Kind {
 	case TokenKindV3:
-		return "rancher get management-tokens",
-			"rancher delete management-token " + ref.Name + " --apply --yes --allow-deprecated"
+		return Rancher + " get management-tokens",
+			Rancher + " delete management-token" + ShellQuoteArgs(" --apply --yes --allow-deprecated", ref.Name)
 	default:
-		return "rancher get tokens", "rancher delete token " + ref.Name + " --apply --yes"
+		return Rancher + " get tokens", Rancher + " delete token" + ShellQuoteArgs(" --apply --yes", ref.Name)
 	}
 }
 
@@ -388,7 +388,7 @@ func (d LoginFailureDetails) TextDetails() []string {
 		lines = append(lines, line)
 	}
 	if d.CredentialRecovery != nil && d.CredentialRecovery.Command != "" {
-		lines = append(lines, "clear the local credential with: "+d.CredentialRecovery.Command+" ("+d.CredentialRecovery.DataLossRisk+")")
+		lines = append(lines, "clear the local credential with: "+d.CredentialRecovery.Command+"; that command "+d.CredentialRecovery.DataLossRisk)
 	}
 	if d.OperationMarker != "" {
 		lines = append(lines, "operation marker: [op:"+d.OperationMarker+"]")

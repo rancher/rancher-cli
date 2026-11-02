@@ -554,7 +554,7 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 	require.NotEmpty(t, lines)
 	assert.Equal(t, "already logged out: acme", lines[0])
 	assert.Contains(t, lines, "credentials removed: acme: file")
-	assert.Equal(t, "those credentials are gone regardless of this failure - run "+clierr.Rancher+" auth logout --all to finish",
+	assert.Equal(t, "those credentials are gone regardless of this failure; to finish, run: "+clierr.Rancher+" auth logout --all",
 		lines[len(lines)-1], "--all names --all to finish")
 
 	_, gerr := fileStore.GetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"})
@@ -676,14 +676,14 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 			LoggedOut:    []string{"prod", "staging"},
 			DeletedFrom:  map[string][]string{"staging": {"keychain"}, "prod": {"keychain", "file"}},
 			DeletedCache: []string{"k1", "k2"},
-			rerun:        "rancher auth logout --all",
+			Rerun:        "rancher auth logout --all",
 		}
 		assert.Equal(t, []string{
 			"already logged out: prod, staging",
 			"credentials removed: prod: keychain, file",
 			"credentials removed: staging: keychain",
 			"cached kubectl credentials removed: k1, k2",
-			"those credentials are gone regardless of this failure - run rancher auth logout --all to finish",
+			"those credentials are gone regardless of this failure; to finish, run: rancher auth logout --all",
 		}, pf.TextDetails())
 	})
 }

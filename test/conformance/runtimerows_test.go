@@ -141,6 +141,9 @@ var remedyFieldSources = map[string]remedyFieldSource{
 	"internal/clierr LoginFailureDetails":                   {"internal/clierr/remedymap_test.go", "loginFailureFields", "remedy"},
 	"internal/engine/rbac RevokePartialFailure":             {"internal/engine/rbac/revoke_maptext_test.go", "revokeFields", "Remedy"},
 	"internal/engine/resources DeleteProjectPartialFailure": {"internal/engine/resources/deleteproject_maptext_test.go", "deleteProjectFields", "Remedy"},
+	"internal/token RevocationReport":                       {"internal/token/revocationpayload_maptext_test.go", "revocationReportFields", "Remedy"},
+	"internal/token DeleteTokenFailure":                     {"internal/token/revocationpayload_maptext_test.go", "deleteTokenFailureFields", "Remedy"},
+	"internal/commands/auth LogoutAllPartialFailure":        {"internal/commands/auth/logout_maptext_test.go", "logoutPartialFields", "Remedy"},
 }
 
 // readRemedyFields reads the strings of the key of the composite literal

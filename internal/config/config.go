@@ -71,19 +71,18 @@ func (c *Config) ErrNotLoggedIn() *clierr.Error {
 	return ErrNotLoggedInFor(servers, withCA)
 }
 
-// InlineCAClause is the clause that follows an auth login command whose
-// CA is carried inline (a PEM, not a path): the login needs the CA from a
-// file, which the command cannot name, and says where the PEM is carried.
-// The login remedies of internal/token and ErrNotLoggedInFor share it.
-func InlineCAClause(src CASource) string {
-	const clause = ", adding --cacert with the path of a file that holds the server's CA certificate, which "
+// InlineCAHolder names where a CA carried inline (a PEM, not a path) comes
+// from: the login remedies of internal/token and ErrNotLoggedInFor say it
+// before the login command, which needs the CA from a file its --cacert flag
+// names.
+func InlineCAHolder(src CASource) string {
 	switch {
 	case src.Kind == CASourceVariable:
-		return clause + EnvCACert + " carries inline"
+		return EnvCACert + " carries the CA inline"
 	case src.Kind == CASourceEntry && src.Entry != "":
-		return clause + "server entry " + clierr.ShellQuote(src.Entry) + " carries inline in config.yaml"
+		return "server entry " + clierr.ShellQuote(src.Entry) + " carries the CA inline in config.yaml"
 	}
-	return clause + "this exec entry carries inline"
+	return "this exec entry carries the CA inline"
 }
 
 // ErrNotLoggedInFor is ErrNotLoggedIn's core over a name→URL map, usable by
@@ -124,12 +123,13 @@ func ErrNotLoggedInFor(servers map[string]string, withCA map[string]bool) *clier
 				// repair the entry instead.
 				return clierr.New(clierr.CodeNotLoggedIn, msg+EntryOrigin(names[0]).Text(err))
 			}
-			login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url), name)
-			msg += "log in under a server entry of your own with: "
 			if withCA[names[0]] {
-				return clierr.New(clierr.CodeNotLoggedIn, msg+login+InlineCAClause(CASource{Kind: CASourceEntry, Entry: names[0]}))
+				login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url)+" --cacert <file>", name)
+				return clierr.New(clierr.CodeNotLoggedIn, msg+InlineCAHolder(CASource{Kind: CASourceEntry, Entry: names[0]})+
+					" and --cacert needs a file; log in under a server entry of your own with: "+login)
 			}
-			return clierr.New(clierr.CodeNotLoggedIn, msg+login).WithHint(login)
+			login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url), name)
+			return clierr.New(clierr.CodeNotLoggedIn, msg+"log in under a server entry of your own with: "+login).WithHint(login)
 		}
 		return clierr.New(clierr.CodeNotLoggedIn, "not logged in - no current server").
 			WithHint(LoginHintFor(names[0]))

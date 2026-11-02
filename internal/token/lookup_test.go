@@ -144,7 +144,7 @@ func TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies(t *testing.T) {
 				assert.Equal(t, got.Command, got.Hint())
 			} else {
 				assert.Empty(t, got.Hint())
-				assert.Contains(t, got.Text(), "with a name of your choice for <name>")
+				assert.Equal(t, "<name> stands for a name of your choice", got.Facts())
 			}
 		})
 	}

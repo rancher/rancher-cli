@@ -24,12 +24,12 @@ import (
 )
 
 // loginCommandOf is the auth login a remedy text names, with <name> filled
-// as name, split into words as a shell would.
-func loginCommandOf(t *testing.T, text, dir, name string) []string {
+// as name and <file> as file, split into words as a shell would.
+func loginCommandOf(t *testing.T, text, dir, name, file string) []string {
 	t.Helper()
 	for _, c := range remedyCommands(rt.IO{RemedyDir: dir}.ExpandText(text)) {
 		if strings.Contains(c, " auth login ") {
-			return shellWords(t, strings.ReplaceAll(c, "<name>", name))
+			return shellWords(t, strings.ReplaceAll(strings.ReplaceAll(c, "<name>", name), "<file>", file))
 		}
 	}
 	t.Fatalf("no auth login in %q", text)
@@ -91,7 +91,7 @@ func TestNewEntryLoginRemediesRunAgainstAPrivateCA(t *testing.T) {
 				dir := t.TempDir()
 				text := build(caPath)
 				require.Contains(t, text, "--cacert '"+caPath+"'")
-				stderr, err := runPiped(t, loginCommandOf(t, text, dir, "fresh"), seed)
+				stderr, err := runPiped(t, loginCommandOf(t, text, dir, "fresh", ""), seed)
 				require.NoError(t, err, stderr)
 				cfg, err := config.Load(config.FilePath(dir))
 				require.NoError(t, err)
@@ -100,13 +100,10 @@ func TestNewEntryLoginRemediesRunAgainstAPrivateCA(t *testing.T) {
 			t.Run("the CA inline", func(t *testing.T) {
 				dir := t.TempDir()
 				text := build(caPEM)
-				require.Contains(t, text, "adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline")
-				words := loginCommandOf(t, text, dir, "fresh")
-				require.NotContains(t, words, "--cacert")
+				require.Contains(t, text, "--cacert <file>")
+				words := loginCommandOf(t, text, dir, "fresh", caPath)
+				require.Contains(t, words, "--cacert")
 				stderr, err := runPiped(t, words, seed)
-				require.Error(t, err)
-				assert.Contains(t, stderr, "(TLS_TRUST)", "without the CA the private Rancher is not trusted")
-				stderr, err = runPiped(t, append(words, "--cacert", caPath), seed)
 				require.NoError(t, err, stderr)
 				cfg, err := config.Load(config.FilePath(dir))
 				require.NoError(t, err)

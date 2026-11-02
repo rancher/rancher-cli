@@ -125,7 +125,7 @@ func TestPluginLoginEntryNameLengthIsBounded(t *testing.T) {
 			ce, msg := refusal(t, err)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Equal(t, "the exec plugin's login entry for this server would have a name of 468 characters, and the credential store accepts at most 467; "+
-				"to log in under a shorter name, pipe an API token of 'user-carol' to rancher auth login <name> --url '"+x.serverID()+"' --token-stdin, with a name of your choice for <name>", msg)
+				"<name> stands for a name of your choice; to log in under a shorter name, pipe an API token of 'user-carol' to: rancher auth login <name> --url '"+x.serverID()+"' --token-stdin", msg)
 			assert.NotContains(t, notices.String(), "Enter username", "nothing is signed in")
 			login, _ := x.stored(name)
 			assert.Empty(t, login, "nothing is stored")
@@ -178,7 +178,7 @@ func TestPluginLoginRefusesAHostThatPrintsAsAnotherNameBeforeAnySignIn(t *testin
 	ce, msg := refusal(t, err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, "the server URL's host holds U+200B, which is removed when a name is printed; the kubectl plugin cannot create its login entry for it; "+
-		"to log in under a name of your own, pipe an API token to rancher auth login <name> --url '<url>' --token-stdin, with a name of your choice for <name> and the server's address for <url>", msg)
+		"<url> stands for the server's address; <name> stands for a name of your choice; to log in under a name of your own, pipe an API token to: rancher auth login <name> --url '<url>' --token-stdin", msg)
 	assert.Equal(t, msg, output.Printable(msg), "the text holds nothing a printer removes")
 	assert.NotContains(t, msg, host)
 	assert.NotContains(t, msg, "ab.invalid")
@@ -200,7 +200,7 @@ func TestPluginLoginRefusesAHostThatIsNotValidUTF8(t *testing.T) {
 	ce, msg := refusal(t, err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, "the server URL's host is not valid UTF-8; the kubectl plugin cannot create its login entry for it; "+
-		"to log in under a name of your own, pipe an API token to rancher auth login <name> --url '<url>' --token-stdin, with a name of your choice for <name> and the server's address for <url>", msg)
+		"<url> stands for the server's address; <name> stands for a name of your choice; to log in under a name of your own, pipe an API token to: rancher auth login <name> --url '<url>' --token-stdin", msg)
 	assert.NotContains(t, msg, "\xff")
 	assert.Zero(t, tr.calls.Load(), "no request is made")
 }
@@ -291,15 +291,15 @@ func TestPluginLoginRefusesTheSuffixedNameWhenAnotherServerHoldsTheDerivedOne(t 
 func TestPluginLoginHostRefusalPutsTheInlineCAClauseAfterTheUrlClause(t *testing.T) {
 	const pem = "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"
 	const head = "the server URL's host holds U+200B, which is removed when a name is printed; the kubectl plugin cannot create its login entry for it; " +
-		"to log in under a name of your own, pipe an API token to rancher auth login <name> --url '<url>' --token-stdin, " +
-		"with a name of your choice for <name> and the server's address for <url>, adding --cacert with the path of a file that holds the server's CA certificate, which "
+		"<url> stands for the server's address; <name> stands for a name of your choice; "
+	const tail = " and --cacert needs a file; to log in under a name of your own, pipe an API token to: rancher auth login <name> --url '<url>' --cacert <file> --token-stdin"
 	for name, tc := range map[string]struct {
 		from config.CASource
 		want string
 	}{
-		"the exec entry":       {config.CASource{}, head + "this exec entry carries inline"},
-		"RANCHER_CLI_CACERT":   {config.CASource{Kind: config.CASourceVariable}, head + "RANCHER_CLI_CACERT carries inline"},
-		"another server entry": {config.CASource{Kind: config.CASourceEntry, Entry: "prod"}, head + "server entry 'prod' carries inline in config.yaml"},
+		"the exec entry":       {config.CASource{}, head + "this exec entry carries the CA inline" + tail},
+		"RANCHER_CLI_CACERT":   {config.CASource{Kind: config.CASourceVariable}, head + "RANCHER_CLI_CACERT carries the CA inline" + tail},
+		"another server entry": {config.CASource{Kind: config.CASourceEntry, Entry: "prod"}, head + "server entry 'prod' carries the CA inline in config.yaml" + tail},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ce := userCheck{clusterID: "c-test", serverID: "https://r.example.com", caSource: pem, caFrom: tc.from}.

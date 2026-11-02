@@ -174,7 +174,6 @@ var expansionSiteList = map[string]int{
 // the empty prefix, each with the reason: the text goes to a file or a
 // report, where the command is written plain.
 var emptyPrefixAllowlist = map[string]string{
-	"internal/token.Deletion.tlsMessage":        "the message is data in the revoke report, which no invocation expands; the command is written plain",
 	"internal/engine/observe.errorStatus":       "the status is written into the support bundle manifest, which no invocation expands; the command is written plain",
 	"internal/engine/observe.logOutcome.status": "the status is written into the support bundle manifest, which no invocation expands; the command is written plain",
 }

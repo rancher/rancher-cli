@@ -43,7 +43,7 @@ func TestFailLoginRendersThreeFatesInOrderAndRevokesTheCredentialLast(t *testing
 	require.NotNil(t, d.DerivedToken)
 	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result, "FailLogin revoked the credential")
 	assert.Equal(t, []string{ExtTokensPath + "/token-d"}, deletes, "the cluster token was the caller's revoke, not FailLogin's")
-	assert.Contains(t, d.Recovery, "rancher delete token token-c --apply --yes")
+	assert.Contains(t, d.Recovery, "rancher delete token 'token-c' --apply --yes")
 	assert.NotContains(t, d.Recovery, "auth login exec-login", "a plugin entry cannot be logged in to by hand")
 	assert.Contains(t, d.Recovery, "run the kubectl command again")
 	assert.Empty(t, ce.Hint, "no paste-invalid hint for a plugin entry")

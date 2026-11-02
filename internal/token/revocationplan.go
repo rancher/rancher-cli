@@ -73,6 +73,35 @@ type NotRevokedToken struct {
 	Certificate *tlstrust.Details `json:"certificate,omitempty"`
 	Retry       string            `json:"retry"`
 	Recovery    []string          `json:"recovery,omitempty"`
+	// LoginAs is the user the first command of Recovery logs in as, the
+	// token's owner; omitted when the recovery needs no login.
+	LoginAs string `json:"loginAs,omitempty"`
+}
+
+// MapLiveTokens returns a copy of list with errorFn applied to each Error and
+// recoveryFn to each Recovery item; a nil function leaves its field as it is.
+// The copy has new slices: a list shared with another value is never
+// written into. An item a function empties stays as an empty string, which
+// keeps the shape of the list.
+func MapLiveTokens(list []NotRevokedToken, errorFn, recoveryFn func(string) string) []NotRevokedToken {
+	if list == nil {
+		return nil
+	}
+	out := make([]NotRevokedToken, len(list))
+	for i, n := range list {
+		if errorFn != nil {
+			n.Error = errorFn(n.Error)
+		}
+		if recoveryFn != nil && n.Recovery != nil {
+			rec := make([]string, len(n.Recovery))
+			for j, c := range n.Recovery {
+				rec[j] = recoveryFn(c)
+			}
+			n.Recovery = rec
+		}
+		out[i] = n
+	}
+	return out
 }
 
 // TextLine is the line a failure's text details give a token that may
@@ -104,9 +133,10 @@ func (n NotRevokedToken) DetailLines() []string {
 // certificateFailureLines is the message of a certificate failure and the
 // facts about the certificate, one line each. The certificate comes from a
 // server that just failed verification, so every line passes through
-// output.Printable.
+// output.Printable; the message keeps the markers of the remedy commands it
+// holds, which the invocation expands when it prints the line.
 func certificateFailureLines(message string, cert *tlstrust.Details) []string {
-	lines := []string{output.Printable(message)}
+	lines := []string{runtime.PrintableRemedies(message)}
 	if cert != nil {
 		for _, l := range cert.TextDetails() {
 			lines = append(lines, output.Printable(l))
@@ -120,6 +150,20 @@ func certificateFailureLines(message string, cert *tlstrust.Details) []string {
 type RevocationReport struct {
 	Revoked    []RevokedToken    `json:"revoked"`
 	NotRevoked []NotRevokedToken `json:"notRevoked"`
+}
+
+// MapText maps the text of each token that may still be live: its error
+// message and its recovery commands.
+func (r RevocationReport) MapText(f func(string) string) clierr.TextDetails {
+	r.NotRevoked = MapLiveTokens(r.NotRevoked, f, f)
+	return r
+}
+
+// MapCommands maps the recovery commands of each token that may still be
+// live, which a renderer that can offer no command empties.
+func (r RevocationReport) MapCommands(f func(string) string) clierr.TextDetails {
+	r.NotRevoked = MapLiveTokens(r.NotRevoked, nil, f)
+	return r
 }
 
 // TextDetails lists each token that may still be live.
@@ -593,8 +637,9 @@ func (d *Deletion) Report() RevocationReport {
 			rep.Revoked = append(rep.Revoked, RevokedToken{Ref: *it.ref, Source: it.source, Server: config.DisplayServerIdentity(it.server)})
 			continue
 		}
+		recovery, loginAs := d.recovery(it)
 		n := NotRevokedToken{Ref: it.ref, Source: it.source, Server: config.DisplayServerIdentity(it.server),
-			Entry: d.reportedEntry(it), Reason: it.reason, Error: it.errText, Retry: d.retry(it), Recovery: d.recovery(it)}
+			Entry: d.reportedEntry(it), Reason: it.reason, Error: it.errText, Retry: d.retry(it), Recovery: recovery, LoginAs: loginAs}
 		if it.tlsErr != nil {
 			n.Code, n.Error, n.Certificate = clierr.CodeTLSTrust, d.tlsMessage(it), it.cert
 		}
@@ -604,15 +649,15 @@ func (d *Deletion) Report() RevocationReport {
 }
 
 // tlsMessage is the message of a certificate failure, worded for what
-// revokes the token now that the command's entries are final. The remedy
-// commands are written without a config directory, as everywhere in the
-// revoke data.
+// revokes the token now that the command's entries are final. Its remedy
+// commands carry the marker; the invocation that prints the message expands
+// them.
 func (d *Deletion) tlsMessage(it *revocationItem) string {
 	msg := it.tlsErr.Message
 	if ce := tlstrust.Classify(it.tlsErr.Unwrap(), d.clients[it.trust].hostPort, time.Now(), d.revokeTLSRemedy(it)); ce != nil {
 		msg = ce.Message
 	}
-	return clierr.ExpandRemedies(msg, "")
+	return msg
 }
 
 // revokeTLSRemedy words a certificate failure of the revoke request by what
@@ -626,7 +671,7 @@ func (d *Deletion) revokeTLSRemedy(it *revocationItem) tlstrust.Remedy {
 	fromVariable := d.clients[it.trust].fromVariable
 	if d.retry(it) == retryNextLogin {
 		entry := clierr.ShellQuote(it.entry)
-		save := clierr.Rancher + " config update-server " + entry + " --cacert <file>"
+		save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", it.entry)
 		if fromVariable {
 			r.CA = "; the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; to save a CA for entry " + entry + ", run: " + save
 		} else {
@@ -639,7 +684,7 @@ func (d *Deletion) revokeTLSRemedy(it *revocationItem) tlstrust.Remedy {
 		r.CA = "; the CA came from " + config.EnvCACert + " in this command's environment - " +
 			"a Rancher administrator who deletes the token sets it to the server's CA in their own environment"
 	case it.ref != nil && it.ref.Kind == TokenKindV3:
-		r.CA = "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server: " +
+		r.CA = "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server; run: " +
 			clierr.Rancher + " config update-server <entry> --cacert <file>"
 	case fromVariable:
 		r.CA = "; the CA came from " + config.EnvCACert + " - set it to the server's CA before the recovery steps"
@@ -702,22 +747,24 @@ func (d *Deletion) retry(it *revocationItem) string {
 
 // recovery is a manual token's way out: the reason's remedy, the
 // administrator's delete for a v3 token, or the sequence that logs in as
-// its owner and deletes it.
-func (d *Deletion) recovery(it *revocationItem) []string {
+// its owner and deletes it. loginAs is the user the sequence logs in as,
+// empty for every other way out.
+func (d *Deletion) recovery(it *revocationItem) (commands []string, loginAs string) {
 	if d.retry(it) != retryManual {
-		return nil
+		return nil, ""
 	}
 	switch {
 	case it.reason == reasonNotDeleted && d.req.Rerun != "":
-		return []string{strings.ReplaceAll(d.req.Rerun, clierr.RemedyMarker, "")}
+		return []string{d.req.Rerun}, ""
 	case it.reason == reasonUnproven || it.ref == nil:
 		list, _ := clierr.RecoveryCommands(TokenRef{Kind: TokenKindExt})
-		return []string{list}
+		return []string{list}, ""
 	case it.ref.Kind == TokenKindV3:
 		_, revoke := clierr.RecoveryCommands(*it.ref)
-		return []string{revoke}
+		return []string{revoke}, ""
 	}
-	return d.advise(it).Sequence
+	advice := d.advise(it)
+	return advice.Sequence, advice.LoginAs
 }
 
 // advise is what config.AdviseRecord says about the server of a manual
@@ -761,7 +808,7 @@ func (d *Deletion) Warnings() []string {
 		if k := needsCA[e]; k > 0 {
 			// Only a CA fixes an unknown authority, and the next login meets
 			// the same certificate until the entry saves it.
-			save := clierr.Rancher + " config update-server " + clierr.ShellQuote(e) + " --cacert <file>"
+			save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", e)
 			switch {
 			case next[e] == 1:
 				line += "; its revoke failed on the server's certificate; first save the server's CA with: " + save
@@ -782,7 +829,7 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	what := describe(it)
 	switch it.reason {
 	case reasonNotDeleted:
-		return fmt.Sprintf("the %s was not revoked: its local copy was not deleted and it stays in use; run %s again", what, d.req.Rerun)
+		return fmt.Sprintf("the %s was not revoked: its local copy was not deleted and it stays in use; to delete it, run: %s", what, d.req.Rerun)
 	case reasonUnproven:
 		return fmt.Sprintf("the %s was not revoked: nothing proves the CLI created it; find it with: %s", what, clierr.Rancher+" get tokens")
 	case reasonV3:
@@ -795,11 +842,11 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	if advice.Text != "" {
 		return fmt.Sprintf("the %s was not revoked (%s); %s", what, reasonText(it), advice.Text)
 	}
-	seq := advice.Sequence
-	for i := range seq {
-		seq[i] = clierr.MarkRemedy(seq[i])
+	revoke := "revoke it with: "
+	if advice.LoginAs != "" {
+		revoke = "revoke it as user " + clierr.ShellQuote(advice.LoginAs) + " with: "
 	}
-	text := fmt.Sprintf("the %s was not revoked (%s); revoke it with: %s (%s)", what, reasonText(it), strings.Join(seq, "; "), clierr.RecoverySequenceAssumption)
+	text := fmt.Sprintf("the %s was not revoked (%s); the sequence %s; %s%s", what, reasonText(it), clierr.RecoverySequenceAssumption, revoke, strings.Join(advice.Sequence, "; "))
 	switch {
 	case it.reason == reasonNoEntry:
 		// No entry names the server, so the login in the sequence has no CA
@@ -822,7 +869,7 @@ func (d *Deletion) nextLoginText(entry string, withCommand bool) string {
 	}
 	text := fmt.Sprintf("the next login of %s as %s", entry, e.TokenUserID)
 	if withCommand {
-		text += " (" + clierr.Rancher + " auth login " + clierr.ShellQuote(entry) + ")"
+		text += "; run it with: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", entry)
 	}
 	return text
 }

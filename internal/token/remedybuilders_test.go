@@ -88,12 +88,11 @@ func errText(err error) []string {
 	return []string{ce.Message, ce.Hint}
 }
 
-// TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry asserts no remedy
-// this package writes runs auth login on a plugin login entry, whose name
-// auth login refuses: every builder, found in the source, is run with a
-// plugin login entry's name wherever it takes an entry name, and its text
-// is searched. A builder added without a row here fails the test.
-func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
+// remedyBuilderRows is one row for each function that writes a remedy
+// command: it runs the function on the inputs that reach each of its texts
+// and returns them.
+func remedyBuilderRows(t *testing.T) map[string]func() []string {
+	t.Helper()
 	const name = "exec-login-r.example.com"
 	const url = "https://r.example.com"
 	plugin := config.Server{URL: url, CA: "/etc/rancher/ca.pem", Provenance: clierr.ProvenanceExecLogin}
@@ -115,9 +114,20 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 	rows := map[string]func() []string{
 		"CreateKubeconfigRemedy": func() []string { return []string{CreateKubeconfigRemedy("c-1")} },
 		"NoTerminalLogin": func() []string {
-			return []string{NoTerminalLogin(cfg, name, "c-1", url, "", config.CASource{}, false).Text(), NoTerminalLogin(cfg, name+"-c-1", "c-1", url, "", config.CASource{}, false).Text()}
+			var out []string
+			for _, login := range []LoginRemedy{
+				NoTerminalLogin(cfg, name, "c-1", url, "", config.CASource{}, false),
+				NoTerminalLogin(cfg, name+"-c-1", "c-1", url, "", config.CASource{}, false),
+				NoTerminalLogin(cfg, "prod", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false),
+				NoTerminalLogin(cfg, "", "c-1", url, "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n", config.CASource{}, false),
+			} {
+				out = append(out, login.Text(), login.Instruction("to log in, pipe an API token to: "), login.Hint(), login.signIn("corp-ldap"))
+			}
+			return out
 		},
-		"RegenerateSteps": func() []string { return []string{RegenerateSteps(clierr.Rancher, name, "c-1")} },
+		"RegenerateSteps": func() []string {
+			return []string{RegenerateSteps(clierr.Rancher, name, "c-1"), RegenerateSteps(clierr.Rancher, "", "")}
+		},
 		"ResidualRecovery": func() []string {
 			a, b := ResidualRecovery(clierr.TokenFate{Ref: ref}, name, "m", false)
 			c, d := ResidualRecovery(clierr.TokenFate{Marked: true}, name, "m", false)
@@ -145,10 +155,13 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		"keptWarning": func() []string {
 			return []string{
 				keptWarning(config.SupersededToken{Ref: *ref, UserID: "u-abc12"}, url, "the server refused"),
+				keptWarning(config.SupersededToken{Ref: *ref}, url, "the server refused"),
 				keptWarning(config.SupersededToken{Ref: TokenRef{Kind: TokenKindV3, Name: "t"}, UserID: "u-abc12"}, url, "the server refused"),
 			}
 		},
-		"namedEntryRoute": func() []string { return []string{namedEntryRoute(name, clierr.ShellQuote(name), "'c-1'", "prod")} },
+		"namedEntryRoute": func() []string {
+			return []string{namedEntryRoute(name, "c-1", "prod"), namedEntryRoute("prod", "c-1", "staging"), namedEntryRoute("prod", "", "prod"), namedEntryNote("prod", "staging")}
+		},
 		"Deletion.manualWarning": func() []string {
 			d := &Deletion{cfg: cfg, view: cfg, req: LocalDelete{Rerun: clierr.Rancher + " auth logout " + clierr.ShellQuote(name)}}
 			var out []string
@@ -186,7 +199,12 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 			d := &Deletion{cfg: owned, view: owned, removed: map[string]bool{}, clients: map[string]revokeClient{name: {}}}
 			d.items = []*revocationItem{{source: sourceCache, ref: ref, server: config.CanonicalServerIdentity(url), owner: "u-abc12", entry: name, trust: name,
 				reason: reasonFailed, tlsErr: clierr.New(clierr.CodeTLSTrust, "x"), cert: &tlstrust.Details{Kind: tlstrust.KindUnknownAuthority}}}
-			return d.Warnings()
+			out := d.Warnings()
+			userOwned := &config.Config{Servers: map[string]config.Server{"prod": {URL: url, TokenUserID: "u-abc12"}}}
+			d = &Deletion{cfg: userOwned, view: userOwned, removed: map[string]bool{}, clients: map[string]revokeClient{"prod": {}}}
+			d.items = []*revocationItem{{source: sourceCache, ref: ref, server: config.CanonicalServerIdentity(url), owner: "u-abc12", entry: "prod", trust: "prod",
+				reason: reasonFailed, tlsErr: clierr.New(clierr.CodeTLSTrust, "x"), cert: &tlstrust.Details{Kind: tlstrust.KindUnknownAuthority}}}
+			return append(out, d.Warnings()...)
 		},
 		"deleteTokenCmd.Execute": func() []string {
 			res, err := deleteTokenCmd{dir: dir, store: config.NewFileStore(dir)}.Execute(t.Context(), tin{a: []string{name}}, ui.Discard())
@@ -196,13 +214,17 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		"Deletion.nextLoginText": func() []string {
 			named := &config.Config{Servers: map[string]config.Server{name: userNamed}}
 			d := &Deletion{cfg: named, view: named}
-			return []string{d.nextLoginText(name, true), (&Deletion{cfg: cfg, view: cfg}).nextLoginText(name, true)}
+			userOwned := &config.Config{Servers: map[string]config.Server{"prod": {URL: url, TokenUserID: "u-abc12"}}}
+			return []string{d.nextLoginText(name, true), (&Deletion{cfg: cfg, view: cfg}).nextLoginText(name, true),
+				(&Deletion{cfg: userOwned, view: userOwned}).nextLoginText("prod", true)}
 		},
 		"v3Remedy": func() []string {
-			return []string{v3Remedy(TokenRef{Kind: TokenKindV3, Name: "token-v3"}, "2026-10-06T00:00:00Z")}
+			ref := TokenRef{Kind: TokenKindV3, Name: "token-v3"}
+			return []string{v3Remedy(ref, "2026-10-06T00:00:00Z"), v3Remedy(ref, "")}
 		},
 		"v3AdminRemedy": func() []string {
-			return []string{v3AdminRemedy(TokenRef{Kind: TokenKindV3, Name: "token-v3"}, "2026-10-06T00:00:00Z")}
+			ref := TokenRef{Kind: TokenKindV3, Name: "token-v3"}
+			return []string{v3AdminRemedy(ref, "2026-10-06T00:00:00Z"), v3AdminRemedy(ref, "")}
 		},
 		"v3AdminDelete": func() []string {
 			return []string{v3AdminDelete("it", TokenRef{Kind: TokenKindV3, Name: "token-v3"}, "")}
@@ -217,7 +239,52 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		"unmarkedSessionText": func() []string {
 			return []string{unmarkedSessionText(clierr.UnmarkedTokenSearch{AuthProvider: "saml"})}
 		},
-		"useServerRemedy": func() []string { return []string{useServerRemedy(clierr.ShellQuote(name), "prod")} },
+		"useServerCommand": func() []string { return []string{useServerCommand(name), useServerCommand("")} },
+		"useServerNote":    func() []string { return []string{useServerNote("prod"), useServerNote("")} },
+		"LoginRemedy.signIn": func() []string {
+			var out []string
+			for _, login := range []LoginRemedy{
+				NoTerminalLogin(nil, "team", "c-1", url, "", config.CASource{}, false),
+				NoTerminalLogin(nil, "team", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false),
+				NoTerminalLogin(nil, "team", "c-1", url, "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n", config.CASource{}, false),
+				NoTerminalLogin(nil, "", "c-1", url, "", config.CASource{}, false),
+				NoTerminalLogin(nil, "", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false),
+				NoTerminalLogin(nil, "", "c-1", url, "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n", config.CASource{}, false),
+			} {
+				out = append(out, login.signIn("corp-ldap"))
+			}
+			return out
+		},
+		"LoginRemedy.pipedLogin": func() []string {
+			var out []string
+			for _, login := range []LoginRemedy{
+				NoTerminalLogin(nil, "team", "c-1", url, "", config.CASource{}, false),
+				NoTerminalLogin(nil, "-x", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false),
+				NoTerminalLogin(nil, "", "c-1", url, "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n", config.CASource{}, false),
+			} {
+				out = append(out, login.pipedLogin())
+			}
+			return out
+		},
+		"kubeconfigRemedy": func() []string { return []string{kubeconfigRemedy("c-1"), kubeconfigRemedy("")} },
+		"deleteFailureText": func() []string {
+			return []string{deleteFailureText(`"prod"`, errors.New("the lock timed out"), clierr.Rancher+" auth delete-token 'prod'")}
+		},
+		"Deletion.recovery": func() []string {
+			d := &Deletion{cfg: cfg, view: cfg, req: LocalDelete{Rerun: clierr.Rancher + " auth logout " + clierr.ShellQuote(name)}}
+			var out []string
+			for _, it := range []*revocationItem{
+				{source: sourceCache, ref: ref, server: url, owner: "u-abc12", entry: name, reason: reasonFailed},
+				{source: sourceLogin, ref: ref, server: url, entry: name, reason: reasonNotDeleted},
+				{source: sourceCache, server: url, reason: reasonUnproven},
+				{source: sourceSuperseded, ref: &TokenRef{Kind: TokenKindV3, Name: "t"}, server: url, reason: reasonV3},
+			} {
+				commands, _ := d.recovery(it)
+				out = append(out, commands...)
+			}
+			return out
+		},
+		"CreateKubeconfigRemedyEmpty": func() []string { return []string{CreateKubeconfigRemedy("")} },
 		"userCheck.relogin": func() []string {
 			a, b := u.relogin(cfg, name, true)
 			c, d := u.relogin(cfg, "prod", false)
@@ -263,6 +330,16 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 			return errText(tokenCmd{dir: dir}.withStoreConflictSteps(conflict, url, name+"-c-1", "c-1"))
 		},
 	}
+	return rows
+}
+
+// TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry asserts no remedy
+// this package writes runs auth login on a plugin login entry, whose name
+// auth login refuses: every builder, found in the source, is run with a
+// plugin login entry's name wherever it takes an entry name, and its text
+// is searched. A builder added without a row here fails the test.
+func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
+	rows := remedyBuilderRows(t)
 
 	// Every function that opens a remedy command has a row. The rows beyond
 	// them run functions that only join such text (checkCreatedOwner), or
@@ -276,7 +353,52 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 	for builder, run := range rows {
 		for _, text := range run() {
 			assert.NotRegexp(t, loginOnPlugin, clierr.ExpandRemedies(text, ""), builder)
+			assertCommandsEndTheirSentence(t, clierr.ExpandRemedies(text, " --config '/d'"))
 		}
+	}
+}
+
+// endCommandRE finds the start of a remedy command in text an invocation
+// with a config directory printed: rancher and its --config.
+var endCommandRE = regexp.MustCompile(`rancher --config '[^']*'`)
+
+// endWordRE is the next word of a command, as the operator reads it: a
+// quoted value, a flag, a lowercase word, a placeholder or a URL. A word
+// that ends in a dot or a comma ends before it; the next character is the
+// one that follows the command.
+var endWordRE = regexp.MustCompile(`^(?:'(?:[^']|'\\'')*'|--?[a-z][a-z-]*|--|[a-z0-9]+(?:[.-][a-z0-9]+)*|<[a-z-]+>|https?://[^\s,;)'` + "`" + `]+)`)
+
+// endStopWords are the words of running text that may follow a command
+// glued to it, and that the command does not take as an argument.
+var endStopWords = []string{"again", "first", "once", "then", "and", "or", "to", "for", "with", "if", "which", "as", "until", "after", "before", "now", "instead"}
+
+// assertCommandsEndTheirSentence asserts every remedy command in text, which
+// an invocation with a config directory printed, ends its clause: the
+// character after the command is the end of the text, a semicolon, a line
+// break, or a closing quote or backtick. A command is cut at the first word
+// of endStopWords: a word of running text glued after it is seen; a
+// lowercase word that is not in the list is read as an argument of the
+// command and is not seen.
+func assertCommandsEndTheirSentence(t *testing.T, text string) {
+	t.Helper()
+	rest := text
+	for {
+		loc := endCommandRE.FindStringIndex(rest)
+		if loc == nil {
+			return
+		}
+		pos := loc[1]
+		for pos < len(rest) && rest[pos] == ' ' {
+			word := endWordRE.FindString(rest[pos+1:])
+			if word == "" || slices.Contains(endStopWords, word) {
+				break
+			}
+			pos += 1 + len(word)
+		}
+		if pos < len(rest) {
+			assert.Contains(t, ";\n'`", string(rest[pos]), "the command ends its clause: %q", rest[loc[0]:min(len(rest), pos+12)])
+		}
+		rest = rest[pos:]
 	}
 }
 
@@ -293,16 +415,17 @@ func TestAPluginLoginEntryAtAnotherURLGetsANewEntryLogin(t *testing.T) {
 	const other = "https://other.example.com"
 	const pemCA = "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"
 	newEntry := func(ca string) string {
-		login := "pipe an API token to rancher auth login <name> --url '" + other + "' --cacert '/etc/rancher/other-ca.pem' --token-stdin, with a name of your choice for <name>, "
+		login := "<name> stands for a name of your choice; pipe an API token to: rancher auth login <name> --url '" + other + "' --cacert '/etc/rancher/other-ca.pem' --token-stdin"
 		if ca == pemCA {
 			// The plugin-created login records the CA inline; the exec entry
 			// carries the call's server's CA, not this one.
-			login = "pipe an API token to rancher auth login <name> --url '" + other + "' --token-stdin, with a name of your choice for <name>, " +
-				"adding --cacert with the path of a file that holds the server's CA certificate, which server entry 'exec-login-o' carries inline in config.yaml, "
+			login = "<name> stands for a name of your choice; server entry 'exec-login-o' carries the CA inline in config.yaml and --cacert needs a file; " +
+				"pipe an API token to: rancher auth login <name> --url '" + other + "' --cacert <file> --token-stdin"
 		}
-		return "log in there under a server entry of your own, since auth login refuses the exec plugin's own login entries: " + login +
-			"then rancher config use-server <name> (this switches the directory's current server; switch back with rancher config use-server 'prod'), then rancher kubeconfig --cluster 'c-1'"
+		return "log in there under a server entry of your own, since auth login refuses the exec plugin's own login entries; " + login +
+			"; then rancher config use-server <name>; then rancher kubeconfig --cluster 'c-1'"
 	}
+	const switchNote = "; selecting an entry switches the directory's current server; to switch back, run: rancher config use-server 'prod'"
 	for _, tc := range []struct {
 		name string
 		here bool
@@ -310,12 +433,12 @@ func TestAPluginLoginEntryAtAnotherURLGetsANewEntryLogin(t *testing.T) {
 		want string
 	}{
 		{"no entry at the call's URL", false, "/etc/rancher/other-ca.pem", "the exec entry names server entry 'exec-login-o', which is registered at " + other +
-			", but this call runs for https://r.example.com and no entry is registered there; " + newEntry("/etc/rancher/other-ca.pem")},
+			", but this call runs for https://r.example.com and no entry is registered there; " + newEntry("/etc/rancher/other-ca.pem") + switchNote},
 		{"no entry at the call's URL, the CA inline", false, pemCA, "the exec entry names server entry 'exec-login-o', which is registered at " + other +
-			", but this call runs for https://r.example.com and no entry is registered there; " + newEntry(pemCA)},
+			", but this call runs for https://r.example.com and no entry is registered there; " + newEntry(pemCA) + switchNote},
 		{"an entry at the call's URL", true, "/etc/rancher/other-ca.pem", "the exec entry names server entry 'exec-login-o', which is registered at " + other +
 			", but this call runs for https://r.example.com; to use 'exec-login-o', " + newEntry("/etc/rancher/other-ca.pem") +
-			"; to use https://r.example.com, regenerate it from an entry registered there with rancher config use-server <entry> (this switches the directory's current server; switch back with rancher config use-server 'prod'), then rancher kubeconfig --cluster 'c-1'"},
+			"; to use https://r.example.com, regenerate it from an entry registered there with: rancher config use-server <entry>; then rancher kubeconfig --cluster 'c-1'" + switchNote},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -344,8 +467,8 @@ func TestUnmarkedSessionTextNamesTheListCommand(t *testing.T) {
 	const head = "a session token may have been created through saml at or after 2026-10-12T10:00:00Z"
 	const tail = "; the CLI stopped waiting at 2026-10-12T10:05:00Z, " +
 		"but the browser sign-in can still complete after that, and the token may be newer; " +
-		"these facts narrow the candidates but cannot identify one token; inspect them with: "
-	const command = " get management-tokens -o json, or in the UI under Account & API Keys"
+		"these facts narrow the candidates but cannot identify one token; look for them in the UI under Account & API Keys, or inspect them with: "
+	const command = " get management-tokens -o json"
 	search := clierr.UnmarkedTokenSearch{AuthProvider: "saml", HandoffAt: "2026-10-12T10:00:00Z", PollEndedAt: "2026-10-12T10:05:00Z"}
 	assert.Equal(t, head+tail+clierr.Rancher+command, unmarkedSessionText(search))
 	search.RequestExpiresAt = "2026-10-12T10:10:00Z"

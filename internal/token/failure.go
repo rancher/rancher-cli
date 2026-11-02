@@ -65,7 +65,7 @@ func credentialRecoveryFor(st LoginStates, server string) *clierr.CredentialReco
 	return &clierr.CredentialRecovery{
 		Backend: st.Commit.Backend, State: state, PriorSource: st.Commit.PriorSource,
 		HelperRecordRetained: st.Commit.HelperRecordRetained, CompensationError: st.CompensationError,
-		Command: clierr.Rancher + " auth logout " + clierr.ShellQuote(server), DataLossRisk: clierr.DataLossRiskText(server),
+		Command: config.LogoutHintFor(server), DataLossRisk: clierr.DataLossRiskText(server),
 	}
 }
 
@@ -208,7 +208,7 @@ func reLogin(server string) (text, hint string) {
 	if config.IsExecLoginEntryName(server) {
 		return "run the kubectl command again; the exec plugin logs in when token reuse is on", ""
 	}
-	cmd := clierr.Rancher + " auth login " + clierr.ShellQuote(server)
+	cmd := clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", server)
 	return "log in again with: " + cmd, cmd
 }
 
@@ -227,14 +227,13 @@ func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool)
 		if persisted {
 			return remedy, ""
 		}
-		return "no credential was stored; " + login + ". " + strings.ToUpper(remedy[:1]) + remedy[1:], ""
+		return "no credential was stored; " + login + "; " + remedy, ""
 	case f.Ref != nil:
 		_, revoke := clierr.RecoveryCommands(*f.Ref)
-		revoke = clierr.MarkRemedy(revoke)
 		if persisted {
 			return fmt.Sprintf("revoke %s with: %s", f.Ref.String(), revoke), revoke
 		}
-		return fmt.Sprintf("no credential was stored; %s, then revoke %s with: %s", login, f.Ref.String(), revoke), ""
+		return fmt.Sprintf("no credential was stored; %s; then revoke %s with: %s", login, f.Ref.String(), revoke), ""
 	case f.Marked:
 		// A nameless marked token of known kind is listed in its collection;
 		// of unknown kind (a lost or unrecognizable login response) it may be
@@ -246,14 +245,14 @@ func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool)
 		var lists []string
 		for _, k := range kinds {
 			list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: k})
-			lists = append(lists, clierr.MarkRemedy(list))
+			lists = append(lists, list)
 		}
 		prefix := ""
 		if !persisted {
-			prefix = "no credential was stored; " + login + ", then "
+			prefix = "no credential was stored; " + login + "; then "
 		}
 		return fmt.Sprintf("%slist tokens with: %s; a leftover token created by this login carries %q in its description; revoke it with the found name",
-			prefix, strings.Join(lists, " and: "), "[op:"+marker+"]"), ""
+			prefix, strings.Join(lists, "; and with: "), "[op:"+marker+"]"), ""
 	case f.Search != nil:
 		return unmarkedSessionText(*f.Search), ""
 	}
@@ -273,7 +272,7 @@ func unmarkedSessionText(s clierr.UnmarkedTokenSearch) string {
 	return fmt.Sprintf("a session token may have been created through %s %s; the CLI stopped waiting at %s, "+
 		"but the browser sign-in can still complete after that, and the token may be newer; "+
 		"these facts narrow the candidates but cannot identify one token; "+
-		"inspect them with: %s get management-tokens -o json, or in the UI under Account & API Keys",
+		"look for them in the UI under Account & API Keys, or inspect them with: %s get management-tokens -o json",
 		s.AuthProvider, window, s.PollEndedAt, clierr.Rancher)
 }
 

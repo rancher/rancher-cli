@@ -101,7 +101,7 @@ func TestCacheTokenRows(t *testing.T) {
 	assert.Equal(t, "cache", unproven.Source)
 	assert.Empty(t, unproven.Entry, "never recorded")
 	assert.Equal(t, "manual", unproven.Retry)
-	assert.Equal(t, []string{"rancher get tokens"}, unproven.Recovery)
+	assert.Equal(t, []string{clierr.Rancher + " get tokens"}, unproven.Recovery)
 
 	nb := notRevoked(t, rep, "someone-else")
 	assert.Equal(t, "noBearer", nb.Reason)
@@ -112,7 +112,7 @@ func TestCacheTokenRows(t *testing.T) {
 	assert.Equal(t, "v3", v.Reason)
 	assert.Equal(t, "prod", v.Entry)
 	assert.Equal(t, "manual", v.Retry)
-	assert.Equal(t, []string{"rancher delete management-token kubeconfig-u-1 --apply --yes --allow-deprecated"}, v.Recovery)
+	assert.Equal(t, []string{clierr.Rancher + " delete management-token 'kubeconfig-u-1' --apply --yes --allow-deprecated"}, v.Recovery)
 
 	for _, del := range x.f.DeleteRequests()[before:] {
 		assert.NotContains(t, []string{"kubeconfig-u-1", "someone-else", expired.Ref.Name, unnamed.Ref.Name}, del.Name, "nothing is sent for an unrevocable token")
@@ -159,7 +159,8 @@ func TestSupersededRecordRows(t *testing.T) {
 		assert.Equal(t, tc.entry, n.Entry, tc.name)
 		assert.NotEmpty(t, n.Recovery, tc.name)
 	}
-	assert.Equal(t, "rancher auth login 'recover-old.ex' --url 'https://old.ex'   # log in as user 'user-alice'", notRevoked(t, rep, other.Ref.Name).Recovery[0])
+	assert.Equal(t, clierr.Rancher+" auth login 'recover-old.ex' --url 'https://old.ex'", notRevoked(t, rep, other.Ref.Name).Recovery[0])
+	assert.Equal(t, "user-alice", notRevoked(t, rep, other.Ref.Name).LoginAs)
 	var noCli []NotRevokedToken
 	for _, n := range rep.NotRevoked {
 		if n.Reason == "noCliBearer" {
@@ -557,7 +558,7 @@ func TestAFailedLoginDeleteRestoresTheEntry(t *testing.T) {
 	assert.Equal(t, "notDeleted", n.Reason)
 	assert.Empty(t, n.Entry, "the restore removed its record")
 	assert.Equal(t, "manual", n.Retry)
-	assert.Equal(t, []string{"rancher auth logout"}, n.Recovery)
+	assert.Equal(t, []string{clierr.Rancher + " auth logout"}, n.Recovery)
 	assert.True(t, x.alive(login))
 	s := x.load().Servers["prod"]
 	assert.Equal(t, login.Ref, s.TokenRef)
