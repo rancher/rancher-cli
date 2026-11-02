@@ -210,7 +210,7 @@
           "usage": "List the recorded events"
         }
       ],
-      "desc": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. Recorded events stay on this machine.",
+      "desc": "Control and inspect usage recording: status, turn on, turn off, delete and list events.",
       "name": "telemetry"
     },
     {

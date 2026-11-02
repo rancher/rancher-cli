@@ -18,7 +18,7 @@ cp event-2.json $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102011/0002.json
 cp facts.json $RANCHER_CLI_CONFIG_DIR/telemetry/servers/0123456789abcdef0123456789abcdef.json
 cp id.txt $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id
 exec rancher telemetry reset -o json
-jsonquery stdout 'data.cleared.#' 3
+jsonquery stdout 'data.cleared.#' 4
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/events
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/servers
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id

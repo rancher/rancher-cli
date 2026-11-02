@@ -67,6 +67,7 @@ var statusAllowlist = map[string]string{
 	"internal/client/httpx/answered.go:RequestVersion":       "the status goes to the server facts rule, which stores an outcome per status, never an error",
 	"internal/client/provider/installid.go:InstallIDFetch":   "the status goes to the server facts rule, which stores an outcome per status, never an error",
 	"internal/cli/refresh.go:versionAnswer":                  "the status goes to the server facts rule, which stores an outcome per status, never an error",
+	"internal/telemetrysend/request.go:sendOne":              "the status selects whether the sent events are kept or deleted, never an error",
 }
 
 // scanServerStatus returns one message per violation in f, at path.

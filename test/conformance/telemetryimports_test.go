@@ -20,7 +20,9 @@ import (
 // platform the release builds, holds no HTTP, TLS, client, configuration,
 // token or keychain package. The standard library's net package, which
 // golang.org/x/sys/windows pulls in, is tolerated only when reached through
-// that package.
+// that package. The package that sends events makes requests through the CLI's
+// HTTP client and reads no credential: its direct imports are closed too, and
+// its closure holds no package that reads a credential or takes a lock.
 
 const (
 	telemetryDir     = "internal/telemetry"
@@ -58,20 +60,26 @@ func isNetworkPath(path string) bool {
 }
 
 var directRules = map[string]directRule{
-	// The check of the experiment endpoint and the encoder of stored events
-	// make no request and start no process: the standard library without the
-	// network packages and os/exec, except net/url and net/netip, which parse
-	// the value, credhelper's URL check, and internal/telemetry, whose stored
-	// events and attribute metadata the encoder reads. internal/telemetry
-	// never imports internal/telemetrysend.
+	// The check of the experiment endpoint, the encoder of stored events and
+	// the sender start no process and take no credential: the standard
+	// library without the network packages and os/exec, except net/url and
+	// net/netip, which parse the value, and net/http, which builds a request;
+	// credhelper's URL check; internal/telemetry, whose stored events,
+	// attribute metadata and upload files the sender uses; and
+	// internal/client/httpx, the CLI's HTTP client. Never internal/token,
+	// internal/config, crypto/tls, client-go or a keychain package.
+	// internal/telemetry never imports internal/telemetrysend.
 	telemetrysendDir: {
 		standard: func(p string) bool {
-			if p == "net/url" || p == "net/netip" {
+			if p == "net/url" || p == "net/netip" || p == "net/http" {
 				return true
 			}
 			return !isNetworkPath(p) && p != "os/exec"
 		},
-		others: []string{modulePrefix + "credhelper", modulePrefix + "internal/telemetry"},
+		others: []string{
+			modulePrefix + "credhelper", modulePrefix + "internal/telemetry",
+			modulePrefix + "internal/client/httpx",
+		},
 	},
 	telemetryDir: {
 		standard: func(p string) bool { return !isNetworkPath(p) },
@@ -212,18 +220,65 @@ func TestDirectImportCheckCatchesFixtures(t *testing.T) {
 	assert.True(t, strings.HasSuffix(got[0], "netdirect.go imports net"), got)
 	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/clean", sendRule))
 	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/telemetry", sendRule))
+	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/httpx", sendRule))
+	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/nethttp", sendRule))
 	got = directImportFindings(t, "test/conformance/testdata/importguard/token", sendRule)
 	require.Len(t, got, 1)
 	assert.True(t, strings.HasSuffix(got[0], "imports "+modulePrefix+"internal/token"), got)
-	got = directImportFindings(t, "test/conformance/testdata/importguard/httpx", sendRule)
+	got = directImportFindings(t, "test/conformance/testdata/importguard/config", sendRule)
 	require.Len(t, got, 1)
-	assert.True(t, strings.HasSuffix(got[0], "imports "+modulePrefix+"internal/client/httpx"), got)
-	for _, p := range []string{"net/url", "net/netip", "errors", "strings", "strconv"} {
+	assert.True(t, strings.HasSuffix(got[0], "imports "+modulePrefix+"internal/config"), got)
+	for _, p := range []string{"net/url", "net/netip", "net/http", "errors", "strings", "strconv", "compress/gzip", "math/rand/v2"} {
 		assert.True(t, sendRule.standard(p), p)
 	}
-	for _, p := range []string{"net", "net/http", "net/http/httptrace", "net/smtp", "crypto/tls", "os/exec"} {
+	for _, p := range []string{"net", "net/http/httptrace", "net/http/httputil", "net/smtp", "crypto/tls", "os/exec"} {
 		assert.False(t, sendRule.standard(p), p)
 	}
+}
+
+// lockHolders are the packages that take a lock or hold a credential: the
+// token, config and skill installer packages, which take the file locks, and
+// the keychain package.
+var lockHolders = []string{
+	modulePrefix + "internal/token",
+	modulePrefix + "internal/config",
+	modulePrefix + "internal/skillinstall",
+	"github.com/zalando/go-keyring",
+}
+
+// lockHolderFindings loads the packages at patterns for one platform and
+// returns one line per lock holder in their import closure.
+func lockHolderFindings(t *testing.T, goos, goarch string, patterns ...string) []string {
+	t.Helper()
+	cfg := &packages.Config{
+		Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps,
+		Env:  append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"),
+	}
+	roots, err := packages.Load(cfg, patterns...)
+	require.NoError(t, err)
+	var out []string
+	seen := map[string]bool{}
+	var walk func(p *packages.Package)
+	walk = func(p *packages.Package) {
+		if seen[p.PkgPath] {
+			return
+		}
+		seen[p.PkgPath] = true
+		for _, e := range p.Errors {
+			out = append(out, goos+"/"+goarch+": "+p.PkgPath+": "+e.Msg)
+		}
+		if slices.Contains(lockHolders, p.PkgPath) {
+			out = append(out, goos+"/"+goarch+": closure holds "+p.PkgPath)
+		}
+		for _, imp := range p.Imports {
+			walk(imp)
+		}
+	}
+	for _, r := range roots {
+		walk(r)
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // TestTelemetryImportClosureHasNoNetworkOrCredentialPackage asserts, for

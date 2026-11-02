@@ -11,8 +11,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/experiment"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 )
 
@@ -28,7 +30,12 @@ var slotPath = regexp.MustCompile(`events/\d{10}/\d{4}\.json`)
 // and the event file name masked.
 func runCounted(t *testing.T, dir string, argv ...string) (identity map[string]int, files []string) {
 	t.Helper()
-	root := newRoot(t)
+	return runCountedRoot(t, newRoot(t), dir, argv...)
+}
+
+// runCountedRoot is runCounted on the tree root.
+func runCountedRoot(t *testing.T, root *ucli.Command, dir string, argv ...string) (identity map[string]int, files []string) {
+	t.Helper()
 	identity = map[string]int{}
 	restore := config.SetIdentityObserverForTest(func(op string) { identity[op]++ })
 	defer restore()
@@ -82,6 +89,24 @@ func TestRecordingAddsTheListedOperationsToThePluginHit(t *testing.T) {
 	assert.NotContains(t, files, facts)
 	assert.Len(t, files, 9, "with no server the facts read is missing")
 	assert.Equal(t, "stat DIR", files[0])
+
+	t.Run("a development root with the experiment set", func(t *testing.T) {
+		develop := func() *ucli.Command {
+			root, err := BuildRoot("dev")
+			require.NoError(t, err)
+			return root
+		}
+		runCountedRoot(t, develop(), dir, hitLine...)
+		_, without := runCountedRoot(t, develop(), dir, hitLine...)
+		assert.Equal(t, []string{
+			"stat DIR", "openroot .", "lstat telemetry", "openroot telemetry", "readfile config-directory-id", "stat pruned",
+			facts, "openfile events/HOUR/SLOT.json", "write events/HOUR/SLOT.json", "close events/HOUR/SLOT.json",
+		}, without, "the plugin hit of a development root with no experiment")
+		t.Setenv(experiment.EnvVar, "telemetryupload=http://127.0.0.1:9")
+		identity, with := runCountedRoot(t, develop(), dir, hitLine...)
+		assert.Equal(t, without, with, "the exec plugin reads and writes nothing for the upload")
+		assert.Equal(t, baseline, identity)
+	})
 }
 
 // hitBench builds the plugin's hit once for a benchmark: a config directory

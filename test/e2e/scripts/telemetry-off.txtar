@@ -13,7 +13,7 @@ cp id.txt $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id
 exec rancher telemetry off -o json
 jsonquery stdout data.configKey false
 jsonquery stdout data.state off
-jsonquery stdout 'data.cleared.#' 3
+jsonquery stdout 'data.cleared.#' 4
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/events
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/servers
 ! exists $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id

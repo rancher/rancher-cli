@@ -50,9 +50,9 @@ var realSurface = surfaceRules{
 		"IsDevelopmentVersion",
 		// The upload store reads stored events and files and writes no
 		// event: Ready takes the paths of compacted files, Cover takes record
-		// ids, DeleteCovered takes the files Cover chose, and WriteState
-		// writes the upload state file.
-		"Store.Ready", "ReadyList.Cover", "Store.DeleteCovered", "UploadLock.WriteState",
+		// ids, DeleteCovered takes the files Cover chose, and WriteState and
+		// WriteStateWithoutLock write the upload state file.
+		"Store.Ready", "ReadyList.Cover", "Store.DeleteCovered", "UploadLock.WriteState", "Store.WriteStateWithoutLock",
 	},
 	types: []string{
 		"Attribute", "ContractInputs", "EventSpec", "Options", "RunInput", "ControlInput",

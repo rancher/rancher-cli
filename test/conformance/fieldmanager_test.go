@@ -101,6 +101,7 @@ var fieldManagerRequestAllowlist = map[string]requestAllowance{
 	"internal/token/clustertoken.go:createV3ClusterToken":  {1, "a reference: the Norman /v3/tokens create, where Rancher creates the Token object itself"},
 	"cmd/rancher-credential-vault/vault.go:do":             {1, "a variable method on HashiCorp Vault's API, not a Kubernetes API"},
 	"internal/client/kube/fieldmanager.go:NewWriteRequest": {1, "the one place a Kubernetes write request is built"},
+	"internal/telemetrysend/request.go:newRequest":         {1, "the telemetry upload endpoint, not a Kubernetes API"},
 }
 
 // requestMatch is one place the request rule matched.

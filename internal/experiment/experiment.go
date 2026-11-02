@@ -10,7 +10,9 @@ import "strings"
 const EnvVar = "RANCHER_CLI_EXPERIMENT"
 
 // TelemetryUpload is the name of the experiment that sets the upload
-// endpoint; nothing is sent in this version.
+// endpoint: a development build sends the stored events of finished hours to
+// it at most once an hour, after a recorded run, never from the kubectl exec
+// plugin.
 const TelemetryUpload = "telemetryupload"
 
 // Experiment describes one experimental setting.
@@ -31,8 +33,8 @@ func Table() []Experiment {
 	return []Experiment{
 		{
 			Name: TelemetryUpload,
-			Description: "the endpoint for uploading usage data; accepted and listed by telemetry status, " +
-				"and nothing is sent in this version",
+			Description: "the endpoint for uploading usage data: a development build sends the stored events of " +
+				"finished hours to it at most once an hour, after a recorded run, never from the kubectl exec plugin",
 			ValueForm: "scheme://host[:port] with path empty or /; https, or http to localhost, ::1 or 127.0.0.0/8; a host that is an IP address or a DNS name in ASCII (write an international name in its xn-- form); a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); no user name, password, query or fragment",
 			DevOnly:   true,
 		},

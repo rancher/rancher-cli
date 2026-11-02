@@ -142,11 +142,11 @@ for lifecycle; `get provisioning-cluster` for reads.
 
 | Command | Purpose |
 |---|---|
-| `telemetry status` | Show whether usage recording is on, what decided it (the `RANCHER_CLI_TELEMETRY` variable, the `telemetry` key of `config.yaml`, or the default), the counts of recorded and dropped events, the contract version and the config directory id; in a development build with `RANCHER_CLI_EXPERIMENT` set, also the active experiments and the upload endpoint, which is accepted and listed, and nothing is sent in this version; creates nothing and works while recording is off |
+| `telemetry status` | Show whether usage recording is on, what decided it (the `RANCHER_CLI_TELEMETRY` variable, the `telemetry` key of `config.yaml`, or the default), the counts of recorded and dropped events, the contract version and the config directory id; in a development build with `RANCHER_CLI_EXPERIMENT` set, also the active experiments and the upload endpoint; a development build sends the stored events of finished hours to that endpoint at most once an hour, after a recorded run, never from the kubectl exec plugin, and with an endpoint status shows the last attempt, the next attempt, the events waiting and the events of the current hour; creates nothing and works while recording is off |
 | `telemetry on` | Set the `telemetry` key to `true`; creates the config directory when it is missing and deletes nothing |
-| `telemetry off` | Set the `telemetry` key to `false`, then delete the recorded events, the server facts and the config directory id; creates the config directory when it is missing |
-| `telemetry reset` | Delete the recorded events, the server facts and the config directory id; keeps the `telemetry` key |
-| `telemetry show` | List the recorded events, oldest first; `-o json` carries every stored field of each event |
+| `telemetry off` | Set the `telemetry` key to `false`, then delete the recorded events, the server facts, the config directory id and the upload state (the upload lock and the state file in `telemetry/upload`); creates the config directory when it is missing |
+| `telemetry reset` | Delete the recorded events, the server facts, the config directory id and the upload state (the upload lock and the state file in `telemetry/upload`); keeps the `telemetry` key |
+| `telemetry show` | List the recorded events, oldest first; `-o json` carries every stored field of each event; in a development build with the `telemetryupload` experiment, a sent event is listed until the file that holds it is deleted |
 
 ## Discovery & tooling
 

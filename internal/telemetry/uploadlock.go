@@ -38,7 +38,8 @@ var (
 	// telemetry directory, so there is nothing to upload and no lock to take.
 	ErrNoTelemetryDirectory = errors.New("no telemetry directory")
 	// ErrUnsafeUploadDir is the error for a telemetry/upload path that is a
-	// symlink or not a directory.
+	// symlink or not a directory. UploadLockStatus also returns it, wrapped,
+	// for a path whose type cannot be read.
 	ErrUnsafeUploadDir = errors.New("telemetry upload path is a symlink or not a directory")
 )
 
@@ -282,7 +283,8 @@ type UploadState struct {
 	// HTTPStatus is the status of the last answer, 0 when there was none.
 	HTTPStatus int `json:"httpStatus"`
 	// NoAnswer says why there was no answer: empty, "timeout", "network
-	// error" or "refused redirect".
+	// error", "refused redirect" or "lock unavailable" (the attempt could not
+	// take the upload lock and sent nothing).
 	NoAnswer string `json:"noAnswer"`
 	Sent     int    `json:"sent"`
 	// Refused is the number of events the endpoint refused; nil when not
@@ -292,6 +294,29 @@ type UploadState struct {
 	NextAttempt time.Time `json:"nextAttempt,omitzero"`
 	// Failures counts consecutive attempts that kept files.
 	Failures int `json:"failures"`
+	// CoveredIDs are the record ids an answer covered whose files are still
+	// stored: a file split across requests whose last part was not sent, a file
+	// whose removal is waiting, and a deletion skipped for time. The next
+	// attempt leaves them out of its requests and counts them as sent when it
+	// decides which files are covered.
+	CoveredIDs []string `json:"coveredIds,omitempty"`
+}
+
+// MaxAttemptWait is the longest wait the upload writes between two attempts.
+const MaxAttemptWait = 24 * time.Hour
+
+// nextAttemptSlack is how far past MaxAttemptWait a stored next attempt may
+// lie before it counts as damaged, or as written before a clock was set back.
+const nextAttemptSlack = 10 * time.Minute
+
+// AttemptDue reports whether the state allows an upload attempt at now: no
+// next attempt is stored, it is not after now, or it lies further ahead than
+// any wait the upload writes.
+func (st UploadState) AttemptDue(now time.Time) bool {
+	if st.NextAttempt.IsZero() || !st.NextAttempt.After(now) {
+		return true
+	}
+	return st.NextAttempt.After(now.Add(MaxAttemptWait + nextAttemptSlack))
 }
 
 // ReadUploadState reads the state file. A missing file, one over 64 KiB, a
@@ -321,6 +346,23 @@ func (s *Store) ReadUploadState() (UploadState, bool) {
 // share the temporary name with the new holder; the worst result is a state
 // file that does not parse, which reads as the zero value.
 func (l *UploadLock) WriteState(st UploadState) error {
+	return l.s.writeState(st)
+}
+
+// WriteStateWithoutLock replaces the state file like WriteState, with no lock
+// held. It is only for an attempt whose TakeUploadLock failed with
+// ErrUploadLockUnreadable or a link error: no process can hold the lock then,
+// and two writers race only on an advisory file. It never creates
+// telemetry/upload.
+func (s *Store) WriteStateWithoutLock(st UploadState) error {
+	return s.writeState(st)
+}
+
+// writeState is the write both WriteState and WriteStateWithoutLock make.
+func (s *Store) writeState(st UploadState) error {
+	if s.tel == nil {
+		return ErrNoTelemetryDirectory
+	}
 	st.LastAttempt = st.LastAttempt.UTC()
 	st.NextAttempt = st.NextAttempt.UTC()
 	data, err := json.Marshal(st)
@@ -330,29 +372,63 @@ func (l *UploadLock) WriteState(st UploadState) error {
 	data = append(data, '\n')
 	tmp := path.Join(dirUpload, stateTempName)
 	final := path.Join(dirUpload, fileState)
-	if err := l.s.tel.Remove(tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := s.tel.Remove(tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	f, err := l.s.tel.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := s.tel.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
 	_, werr := f.Write(data)
 	cerr := f.Close()
 	if err := errors.Join(werr, cerr); err != nil {
-		_ = l.s.tel.Remove(tmp)
+		_ = s.tel.Remove(tmp)
 		return err
 	}
-	err = l.s.tel.Rename(tmp, final)
+	err = s.tel.Rename(tmp, final)
 	if err != nil && isBusy(err) {
 		time.Sleep(retryDelay)
-		err = l.s.tel.Rename(tmp, final)
+		err = s.tel.Rename(tmp, final)
 	}
 	if err != nil {
-		_ = l.s.tel.Remove(tmp)
+		_ = s.tel.Remove(tmp)
 		return err
 	}
 	return nil
+}
+
+// UploadLockStatus reports the state of the upload lock without taking or
+// removing anything, by the rules TakeUploadLock applies. dirExists is false
+// when there is no telemetry directory or no telemetry/upload. err is nil when
+// there is no lock or the lock is stale, ErrUploadLockHeld when another
+// process holds it, ErrUploadLockUnreadable when it cannot be read and
+// ErrUnsafeUploadDir when telemetry/upload is a symlink, not a directory, or a
+// path the process cannot look at.
+func (s *Store) UploadLockStatus() (dirExists bool, err error) {
+	if s.tel == nil {
+		return false, nil
+	}
+	info, err := s.tel.Lstat(dirUpload)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return true, fmt.Errorf("%w: %w", ErrUnsafeUploadDir, err)
+	case info.Mode()&fs.ModeSymlink != 0 || !info.IsDir():
+		return true, ErrUnsafeUploadDir
+	}
+	lock := path.Join(dirUpload, fileLock)
+	if _, err := s.tel.Lstat(lock); errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	content, err := s.readLockContent(lock)
+	if err != nil {
+		return true, s.lockReadFailure(lock, err)
+	}
+	if lockStale(content, nowFunc().UTC()) {
+		return true, nil
+	}
+	return true, ErrUploadLockHeld
 }
 
 // DeleteUploadState removes telemetry/upload with the lock, the state file and

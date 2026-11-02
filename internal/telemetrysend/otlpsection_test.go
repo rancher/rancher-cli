@@ -49,7 +49,7 @@ var sectionPhrases = []string{
 // holds each statement the section must make, a code span for every JSON key
 // the shape test allows, and the path, content type and schema URL the
 // encoder writes; that the schema URL appears once and equals the schemaUrl of
-// the encoded examples; that the phrase "nothing sends it yet" is in the
+// the encoded examples; that the phrase "The CLI sends this form." is in the
 // first paragraph of the mapping and on one line of the contract README only;
 // and that the section names no version of any receiver.
 func TestJSONEncodingSectionMatchesTheEncoder(t *testing.T) {
@@ -78,7 +78,7 @@ func TestJSONEncodingSectionMatchesTheEncoder(t *testing.T) {
 	assert.NotContains(t, mapping, "groups them by their resource attributes")
 	assert.NotContains(t, mapping, "the same for every event of a batch")
 
-	const phrase = "nothing sends it yet"
+	const phrase = "The CLI sends this form."
 	assert.Equal(t, 1, strings.Count(mapping, phrase))
 	paragraphs := strings.Split(mapping, "\n\n")
 	require.Greater(t, len(paragraphs), 1)
@@ -132,12 +132,13 @@ func TestReceiverVersionRule(t *testing.T) {
 }
 
 // TestPackageCommentNamesTheEncoder asserts the package comment says the
-// package encodes events and that it makes no request.
+// package encodes stored events and sends them, and that a conformance test
+// limits its direct imports.
 func TestPackageCommentNamesTheEncoder(t *testing.T) {
 	f, err := parser.ParseFile(token.NewFileSet(), "origin.go", nil, parser.ParseComments|parser.PackageClauseOnly)
 	require.NoError(t, err)
 	require.NotNil(t, f.Doc, "origin.go has the package comment")
 	doc := strings.Join(strings.Fields(f.Doc.Text()), " ")
-	assert.Contains(t, doc, "encodes stored events as OTLP/HTTP JSON")
-	assert.Contains(t, doc, "It makes no request and imports no HTTP package.")
+	assert.Contains(t, doc, "encodes stored events and sends them")
+	assert.Contains(t, doc, "limited by a conformance test")
 }

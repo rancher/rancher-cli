@@ -103,8 +103,15 @@ func flatValue(t *testing.T, v decAnyVal) any {
 // rebuildFlat rebuilds the flat event of each resourceLogs entry of body.
 func rebuildFlat(t *testing.T, body []byte) []map[string]any {
 	t.Helper()
+	return flatEvents(t, decodeExport(t, body))
+}
+
+// flatEvents rebuilds the flat event of each resourceLogs entry of a decoded
+// body.
+func flatEvents(t *testing.T, export decExport) []map[string]any {
+	t.Helper()
 	var out []map[string]any
-	for _, rl := range decodeExport(t, body).ResourceLogs {
+	for _, rl := range export.ResourceLogs {
 		require.Len(t, rl.ScopeLogs, 1)
 		sl := rl.ScopeLogs[0]
 		require.Len(t, sl.LogRecords, 1)

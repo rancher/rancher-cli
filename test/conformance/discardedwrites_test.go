@@ -61,6 +61,7 @@ var discardedWriteAllowlist = map[string]discardAllowance{
 	"internal/cli.wiredRegistry.root":           {1, "one completion candidate for the shell, which ends the request when the pipe closes and reads no exit code"},
 	"internal/runtime.WriteError":               {1, "the one line written when the error already failed to write in its format: nothing else carries it, and the exit code is the error's own"},
 	"internal/runtime.mirrorWarnings":           {1, "a warning line on standard error: the result and its exit code are decided before it, and nothing else carries a warning that failed to write"},
+	"internal/telemetrysend.attempt.debug":      {1, "one line of the opt-in --debug trace of an upload attempt on standard error: nothing else carries it and the upload does not depend on it"},
 	"internal/telemetrysend.otlpEncoder.Encode": {1, "encodes into a bytes.Buffer the function holds, of a request that holds only strings, booleans, slices and structs of them, which cannot fail to encode"},
 	"internal/token.startCallbackServer":        {2, "the page the local callback server answers to the browser, not standard output or standard error: the sign-in result does not depend on the browser receiving it"},
 	"internal/ui.Prompter.Notice":               {1, "a notice on standard error: nothing else carries it and the run does not depend on it"},

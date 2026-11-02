@@ -144,6 +144,9 @@ func recordingTarget(k keptLine, st recordingState) (d runtime.Descriptor, serve
 // what the event read of the server's facts file; for the first run of a
 // command in firstLoginCommands on a fresh install, which records no event,
 // what firstLoginRefresh gives; the zero value when the run records nothing.
+// It also says whether the run reached the store with recording on, which
+// command ran, the compacted files the hourly pass wrote and when the event
+// write and the hourly pass ended, for the upload that follows.
 func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (in refreshInput) {
 	defer func() {
 		if recover() != nil {
@@ -177,8 +180,12 @@ func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (
 		Getenv:     os.Getenv,
 		Config:     st.setting,
 	}
-	_, read, _ := telemetry.Record(newRunEvent(run), opts)
-	return refreshInput{server: server, opts: opts, start: read}
+	status, read, written := telemetry.Record(newRunEvent(run), opts)
+	in = refreshInput{server: server, opts: opts, start: read}
+	if status == telemetry.StatusRecorded || status == telemetry.StatusDropped {
+		in.recorded, in.command, in.written, in.wrote = true, d.Name, written, time.Now()
+	}
+	return in
 }
 
 // firstLoginCommands are the commands whose run may create the config

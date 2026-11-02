@@ -244,9 +244,9 @@ jobs:
           mkdir -p "$FAULT_LOG_DIR"
       - run: go test -count=1 -run TestWindows ./install/
       - run: go test -count=1 ./internal/config/
-      - run: go test -count=1 ./internal/telemetry/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      - run: go test -count=1 ./internal/telemetry/ ./internal/telemetrysend/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
       - run: go test -count=1 -v ./internal/testfs/
-      - run: go test -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed' ./internal/cli/
+      - run: go test -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed|TestTelemetryOffAlwaysWinsOverUpload|TestDevBuildsHonorExperiments|TestExecPluginRunsNeverUpload|TestReleaseBuildsIgnoreExperiments|TestNoUploadWithoutAnEndpoint|TestUploadURLRules|TestPassFileOfThisRunIsSent|TestUploadStaysInTheDeadline|TestUploadNeverChangesTheRun|TestUploadSendsNoCredential|TestDebugLinesShowOnlyCountsOriginAndAnswer|TestARecordedRunWithTheExperimentReadsTheStateOnce|TestUploadExcludedNamesRegisteredCommands|TestTheControlsFunctionTakesNoLock' ./internal/cli/
       - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
       - run: go test -count=1 -v -run 'TestRenameOverAnOpenTarget|TestRemoveOfAnOpenFile|TestReadsRetryASharingViolation|TestShareRetryLeavesOtherErrorsAlone|TestConcurrentWritersOfOneFile|TestReadsDuringReplace|TestRootReadsDuringRootReplace' ./internal/config/
       - run: go test -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
@@ -319,7 +319,7 @@ jobs:
       # NTFS applies to files other handles hold open, and the committed
       # contract files read from a Windows checkout. The telemetry commands
       # list and delete that store, so their tests run here too.
-      - run: go test -race -count=1 ./internal/telemetry/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      - run: go test -race -count=1 ./internal/telemetry/ ./internal/telemetrysend/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
       # The test helpers for the Windows differences: -v prints each test and
       # the log shows which Windows branches of the helpers ran and which
       # skipped.
@@ -339,7 +339,7 @@ jobs:
       # the plugin's first run, which creates the directory during the run,
       # reads the facts file once and writes the file that creates
       # telemetry, with no event.
-      - run: go test -race -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed' ./internal/cli/
+      - run: go test -race -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed|TestTelemetryOffAlwaysWinsOverUpload|TestDevBuildsHonorExperiments|TestExecPluginRunsNeverUpload|TestReleaseBuildsIgnoreExperiments|TestNoUploadWithoutAnEndpoint|TestUploadURLRules|TestPassFileOfThisRunIsSent|TestUploadStaysInTheDeadline|TestUploadNeverChangesTheRun|TestUploadSendsNoCredential|TestDebugLinesShowOnlyCountsOriginAndAnswer|TestARecordedRunWithTheExperimentReadsTheStateOnce|TestUploadExcludedNamesRegisteredCommands|TestTheControlsFunctionTakesNoLock' ./internal/cli/
       # The same hit timed with recording on and off, ten runs of each, for
       # the median. No -race: the detector would hide the difference.
       - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/

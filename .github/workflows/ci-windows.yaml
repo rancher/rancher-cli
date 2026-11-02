@@ -40,12 +40,12 @@ jobs:
           name: install-windows
       - run: go test -race -count=1 -run TestWindows ./install/
       - run: go test -race -count=1 ./internal/config/
-      - run: go test -race -count=1 ./internal/telemetry/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      - run: go test -race -count=1 ./internal/telemetry/ ./internal/telemetrysend/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
       # The test helpers for the Windows differences: -v prints each test and
       # the log shows which Windows branches of the helpers ran and which
       # skipped.
       - run: go test -race -count=1 -v ./internal/testfs/
-      - run: go test -race -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed' ./internal/cli/
+      - run: go test -race -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed|TestTelemetryOffAlwaysWinsOverUpload|TestDevBuildsHonorExperiments|TestExecPluginRunsNeverUpload|TestReleaseBuildsIgnoreExperiments|TestNoUploadWithoutAnEndpoint|TestUploadURLRules|TestPassFileOfThisRunIsSent|TestUploadStaysInTheDeadline|TestUploadNeverChangesTheRun|TestUploadSendsNoCredential|TestDebugLinesShowOnlyCountsOriginAndAnswer|TestARecordedRunWithTheExperimentReadsTheStateOnce|TestUploadExcludedNamesRegisteredCommands|TestTheControlsFunctionTakesNoLock' ./internal/cli/
       - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
       - run: go test -race -count=1 -v -run 'TestRenameOverAnOpenTarget|TestRemoveOfAnOpenFile|TestReadsRetryASharingViolation|TestShareRetryLeavesOtherErrorsAlone|TestConcurrentWritersOfOneFile|TestReadsDuringReplace|TestRootReadsDuringRootReplace' ./internal/config/
       - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/

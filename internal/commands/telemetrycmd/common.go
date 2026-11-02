@@ -13,14 +13,15 @@ import (
 	"github.com/rancher/rancher-cli/internal/telemetry"
 )
 
-// Names of the three kinds of recorded data, as the commands report them.
+// Names of the four kinds of recorded data, as the commands report them.
 const (
-	clearedEvents     = "events"
-	clearedFacts      = "serverFacts"
-	clearedDirectory  = "configDirectoryId"
-	telemetryDirName  = "telemetry"
-	valueRecordingOn  = "on"
-	valueRecordingOff = "off"
+	clearedEvents      = "events"
+	clearedFacts       = "serverFacts"
+	clearedDirectory   = "configDirectoryId"
+	clearedUploadState = "uploadState"
+	telemetryDirName   = "telemetry"
+	valueRecordingOn   = "on"
+	valueRecordingOff  = "off"
 )
 
 // state is what the controls say once the key is loaded.
@@ -153,7 +154,9 @@ func deleteRecorded(c changes, dir string) (left []string, errs []error) {
 }
 
 // clearedList is what an empty store holds, as Data reports it.
-func clearedList() []string { return []string{clearedEvents, clearedFacts, clearedDirectory} }
+func clearedList() []string {
+	return []string{clearedEvents, clearedFacts, clearedDirectory, clearedUploadState}
+}
 
 // deleteFailure is the typed error for deletes that left data behind. head
 // says what is true after the command ran; the message then names what could

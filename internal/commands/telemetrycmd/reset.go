@@ -12,15 +12,17 @@ type resetCmd struct {
 }
 
 // NewReset builds `telemetry reset` (local): deletes the recorded events,
-// the server facts and the config directory id, and keeps the telemetry key.
+// the server facts, the config directory id and the upload state, and keeps the
+// telemetry key.
 func NewReset(dir string) runtime.Command { return &resetCmd{dir: dir, changes: fileChanges{}} }
 
 func (resetCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "telemetry reset",
 		Usage: "Delete what is recorded and keep the telemetry key",
-		Desc: "Deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server) " +
-			"and the config directory id, and keeps the telemetry key and the rest of config.yaml. " +
+		Desc: "Deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server), " +
+			"the config directory id and the upload state (the upload lock and the state file in telemetry/upload), " +
+			"and keeps the telemetry key and the rest of config.yaml. " +
 			"Creates nothing; with no config directory there is nothing to delete.",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher telemetry reset"},
@@ -37,7 +39,7 @@ func (c resetCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter
 	exists, existsWarnings := configDirectoryExists(c.dir)
 	warnings = append(warnings, existsWarnings...)
 
-	headline := "deleted the recorded events, the server facts and the config directory id"
+	headline := "deleted the recorded events, the server facts, the config directory id and the upload state"
 	if exists {
 		if left, errs := deleteRecorded(c.changes, c.dir); len(left) > 0 {
 			return runtime.Result{}, deleteFailure("telemetry reset is incomplete", c.dir, left, errs, warnings)

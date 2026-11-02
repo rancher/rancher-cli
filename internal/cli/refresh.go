@@ -39,6 +39,18 @@ type refreshInput struct {
 	server string
 	opts   telemetry.Options
 	start  telemetry.FactsRead
+	// recorded is true when the run reached the store with recording on: its
+	// event was written, or dropped because every slot tried was taken. A run
+	// that records no event and refreshes the facts after the first sign-in has
+	// it false.
+	recorded bool
+	// command is the registered name of the command that ran, written is the
+	// list of compacted files the hourly pass of the run wrote, and wrote is
+	// when the event write and the hourly pass ended; all three are set only
+	// when recorded is.
+	command string
+	written []string
+	wrote   time.Time
 }
 
 // refreshAnswers are the answers gathered for the records, one per record; a
@@ -178,15 +190,21 @@ func sendRequest(ctx context.Context, send func(context.Context) telemetry.Answe
 // and stores nothing.
 // It does nothing when the run recorded no server, when the event could not
 // read the facts file, when the run's context is done, or when no host that
-// answered matches the server.
-func refreshServerFacts(ctx context.Context, in refreshInput) {
-	defer func() { _ = recover() }()
+// answered matches the server. It returns the deadline of its requests, and the
+// zero time when it reached no deadline: no request was due and the sign-in
+// sent none.
+func refreshServerFacts(ctx context.Context, in refreshInput) (deadline time.Time) {
+	defer func() {
+		if recover() != nil {
+			deadline = time.Time{}
+		}
+	}()
 	if in.server == "" || !in.start.Usable || ctx.Err() != nil {
-		return
+		return time.Time{}
 	}
 	target, ok := refreshTargetFor(in.server)
 	if !ok {
-		return
+		return time.Time{}
 	}
 	held, isHeld := heldFactsFor(in.server)
 	facts := in.start.Facts
@@ -199,9 +217,9 @@ func refreshServerFacts(ctx context.Context, in refreshInput) {
 		installIDReq = requestFor(ctx, installIDRecord, facts, at, target)
 	}
 	if versionReq == nil && installIDReq == nil && !isHeld {
-		return
+		return time.Time{}
 	}
-	deadline := factsDeadline(time.Now())
+	deadline = factsDeadline(time.Now())
 	if isHeld {
 		deadline = factsDeadline(held.start)
 	}
@@ -230,4 +248,5 @@ func refreshServerFacts(ctx context.Context, in refreshInput) {
 	if versionChanged || installIDChanged {
 		saveServerFacts(in.server, facts, in.opts)
 	}
+	return deadline
 }

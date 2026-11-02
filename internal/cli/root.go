@@ -870,12 +870,11 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	// groupDescs carries the operator-facing desc for each named group.
 	// Unnamed ("") sections are positional bookmarks - no desc.
 	groupDescs := map[string]string{
-		"auth":   "Authenticate with a Rancher server, manage API tokens, and inspect the session.",
-		"config": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
-		"skill":  "Install, remove, and check the agent skills that come with rancher-cli.",
-		"telemetry": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. " +
-			"Recorded events stay on this machine.",
-		"create": "Create Rancher resources. Most commands in this group have their own flags for one kind; `rancher create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
+		"auth":      "Authenticate with a Rancher server, manage API tokens, and inspect the session.",
+		"config":    "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
+		"skill":     "Install, remove, and check the agent skills that come with rancher-cli.",
+		"telemetry": "Control and inspect usage recording: status, turn on, turn off, delete and list events.",
+		"create":    "Create Rancher resources. Most commands in this group have their own flags for one kind; `rancher create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
 		// "project" is both a command group and a kind. Resolution order is
 		// command → group → kind, so rancher schema
 		// project returns THIS group's card carrying a kind-view hint, and
@@ -997,8 +996,9 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 		Usage:         "rancher-cli",
 		Version:       version,
 		Flags: append([]ucli.Flag{
-			// --debug is accepted and currently a no-op.
-			&ucli.BoolFlag{Name: "debug", Usage: "accepted; currently no effect"},
+			// --debug makes a telemetry upload print its lines on stderr; the
+			// upload reads it from the parsed line.
+			&ucli.BoolFlag{Name: "debug", Usage: "print telemetry upload details on stderr (development builds)"},
 			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "path to the config directory",
 				Sources: ucli.EnvVars(config.EnvConfigDir)},
 		}, GlobalFlags()...),

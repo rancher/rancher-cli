@@ -20,16 +20,16 @@ Every attribute has a stability level. All start as `development`; one becomes `
 - Each event is written to a slot: a numbered file the process creates for it in the directory of its UTC hour. An hour has 1024 slots (N = 1024). A process tries 8 random slots (k = 8) and drops the event when every one is taken; events can be dropped before the hour is full. A process that drops an event leaves a drop marker.
 - Once an hour, a process that records an event also runs a short pass. It copies the events of one finished hour into one file, and each file it writes after reading the whole hour contains at most one `io.rancher.cli.events.dropped` event with the number of drop markers that pass read (at most 1024 markers per file). A process that dies between writing a file and cleaning up can make a later file count the same drops again. Consumers report usage as lower bounds when such an event exists. The version, operating system and architecture of an `io.rancher.cli.events.dropped` event are those of the process that ran the pass, not of the processes that dropped events; its `service.instance.id` is a random id of its own and matches no run.
 - The pass stops reading slots after 150 milliseconds and writes what it read; a file written that way contains no `io.rancher.cli.events.dropped` event, and the next hourly pass reads the rest of the hour.
-- Events are deleted no earlier than 72 hours after their hour ends, and only while the CLI runs; an hour that gets a late event has a second file.
+- A sent event is deleted once the endpoint accepts it (a 2xx, or a 400, 413 or 415); any other event is deleted no earlier than 72 hours after its hour ends, and only while the CLI runs; turning recording off, and resetting the recorded data, delete every event; an hour that gets a late event has a second file.
 - An uploaded event is at most 30 days old; older events are not uploaded.
 
 ## Never recorded
 
 Resource, namespace, cluster and project names; host names and server URLs; user names; tokens; flag and argument values (the value of `-o` included); file paths; error messages. Every value is from a fixed list in this contract, matches a pattern in it, or is a count, a bucket or a random id.
 
-## Never uploaded
+## Upload
 
-Events recorded while nothing is uploaded stay on the machine. When uploading is added, events are recorded in a separate directory that starts empty; the events recorded before then are never uploaded.
+A development build with upload turned on sends every stored event of a finished hour that is at most 30 days old, including events stored before upload was turned on and events a release build stored in the same config directory. Release builds send nothing.
 
 ## Command and flag names
 

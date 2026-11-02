@@ -30,8 +30,11 @@ import (
 // token, and the answers are written after the event. The first auth login,
 // auth get-token or token run on a fresh install, which creates the config
 // directory, records no event; when it succeeds with recording on, it
-// writes the server's facts file the same way. A line with no chosen command
-// (an unknown command, a group or the root alone, help, the version,
+// writes the server's facts file the same way. After the refresh, a recorded
+// run of a development build whose telemetryupload experiment names an
+// endpoint may send the stored events of finished hours, at most once an hour,
+// inside the same deadline; the kubectl exec plugin never does. A line with no
+// chosen command (an unknown command, a group or the root alone, help, the version,
 // urfave's flag errors, the refusals above, a completion request) and the
 // completion and telemetry commands record nothing. Recording never changes
 // the output or the exit code.
@@ -58,7 +61,9 @@ func run(ctx context.Context, root *ucli.Command, args []string) runResult {
 		renderRawArgvError(root, ce)
 		res = runResult{code: ce.ExitCode(), err: ce}
 	}
-	refreshServerFacts(ctx, recordRun(root, k, res, start))
+	in := recordRun(root, k, res, start)
+	deadline := refreshServerFacts(ctx, in)
+	uploadStoredEvents(ctx, root, k, in, deadline)
 	return res
 }
 

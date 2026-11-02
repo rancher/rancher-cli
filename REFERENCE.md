@@ -254,6 +254,9 @@ take it; `-` means no flag. A variable and its flag relate in different ways:
 - `RANCHER_CLI_EXPERIMENT` lists experimental settings. Only a development
   build reads it; a release build ignores it. It has no flag. See
   [Experiments](#experiments).
+- `--debug` has no variable. In a development build, a run that attempts a
+  telemetry upload prints the lines about its requests on stderr; see
+  [Experiments](#experiments).
 
 | Var | Flag | Effect |
 |---|---|---|
@@ -268,7 +271,7 @@ take it; `-` means no flag. A variable and its flag relate in different ways:
 | `CATTLE_OAUTH_AUTH_FLOW` | `--auth-flow` | older name of `RANCHER_CLI_OAUTH_AUTH_FLOW`, read when that one is empty |
 | `CATTLE_OAUTH_CALLBACK_PORT` | - | older name of `RANCHER_CLI_OAUTH_CALLBACK_PORT`, read when that one is empty |
 | `RANCHER_CLI_TELEMETRY` | - | `true` or `false`; turns usage recording on or off and overrides the `telemetry` key of config.yaml, see [Usage recording](#usage-recording); empty counts as unset and any other value is ignored |
-| `RANCHER_CLI_EXPERIMENT` | - | experimental, development builds only: a comma-separated list of `name` or `name=value` items, see [Experiments](#experiments); `telemetryupload=<url>` is accepted and listed by `rancher telemetry status`, and nothing is sent in this version |
+| `RANCHER_CLI_EXPERIMENT` | - | experimental, development builds only: a comma-separated list of `name` or `name=value` items, see [Experiments](#experiments); `telemetryupload=<url>` makes the build send the stored events of finished hours to that endpoint at most once an hour, after a recorded run, never from the kubectl exec plugin |
 | `RANCHER_CLI_READONLY` | `--read-only` | when non-empty, every run refuses commands that make changes; local commands stay usable; see [Read-only mode](#read-only-mode) |
 | `NO_COLOR` | `--color` | when non-empty, turns off styling under `--color=auto`; see [Color](#color) |
 | `CLICOLOR_FORCE` | `--color` | when non-empty and not `0`, turns on styling under `--color=auto` unless `NO_COLOR` is set; see [Color](#color) |
@@ -2064,16 +2067,17 @@ server being logged in to; retry once that login completes.
 ## Usage recording
 
 `rancher telemetry` shows, turns on, turns off and deletes the usage data
-stored in `<config dir>/telemetry`. No recorded event leaves the machine, and
-the CLI has no upload code.
+stored in `<config dir>/telemetry`. Release builds send no recorded event. A
+development build with the `telemetryupload` experiment sends them; see
+[Experiments](#experiments).
 
 | Command | What it does |
 |---|---|
-| `rancher telemetry status` | Shows whether recording is on and what decided it, the counts of recorded and dropped events, the contract version and the config directory id. In a development build with `RANCHER_CLI_EXPERIMENT` set, it also lists the active experiments and the upload endpoint; the endpoint is accepted and listed, and nothing is sent in this version. Creates nothing and works while recording is off. |
+| `rancher telemetry status` | Shows whether recording is on and what decided it, the counts of recorded and dropped events, the contract version and the config directory id. In a development build with `RANCHER_CLI_EXPERIMENT` set, it also lists the active experiments and the upload endpoint; with an endpoint it shows the last upload attempt, the next attempt, the events waiting and the events of the current hour, and warns about an upload lock that cannot be read. Creates nothing and works while recording is off. |
 | `rancher telemetry on` | Writes `telemetry: "true"` to config.yaml. Creates the config directory when it is missing and deletes nothing. |
-| `rancher telemetry off` | Writes `telemetry: "false"`, then deletes the recorded events, the server facts and the config directory id. Creates the config directory when it is missing. |
-| `rancher telemetry reset` | Deletes the recorded events, the server facts and the config directory id, and keeps the `telemetry` key. |
-| `rancher telemetry show` | Lists the recorded events, oldest first; `-o json` carries every stored field of each event. |
+| `rancher telemetry off` | Writes `telemetry: "false"`, then deletes the recorded events, the server facts, the config directory id and the upload state (the upload lock and the state file in `telemetry/upload`). Creates the config directory when it is missing. |
+| `rancher telemetry reset` | Deletes the recorded events, the server facts, the config directory id and the upload state (the upload lock and the state file in `telemetry/upload`), and keeps the `telemetry` key. |
+| `rancher telemetry show` | Lists the recorded events, oldest first; `-o json` carries every stored field of each event. In a development build with the `telemetryupload` experiment, a sent event is listed until the file that holds it is deleted. |
 
 None of them makes a request to a server or reads a credential.
 
@@ -2196,11 +2200,55 @@ the warnings in every other run, and none in an exec plugin run.
 
 | Experiment | Value | Effect |
 |---|---|---|
-| `telemetryupload` | `scheme://host[:port]` with a path that is empty or `/`: `https`, or `http` for `localhost`, `::1` and `127.0.0.0/8`; a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); a host that is an IP address or a DNS name in ASCII (write an international name in its `xn--` form); no user name, password, query or fragment | the upload endpoint, shown by `rancher telemetry status` as its canonical origin; accepted and listed, and nothing is sent in this version |
+| `telemetryupload` | `scheme://host[:port]` with a path that is empty or `/`: `https`, or `http` for `localhost`, `::1` and `127.0.0.0/8`; a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); a host that is an IP address or a DNS name in ASCII (write an international name in its `xn--` form); no user name, password, query or fragment | the upload endpoint, shown by `rancher telemetry status` as its canonical origin; a development build sends the stored events of finished hours to it, see below |
 
 `telemetryupload` with no value warns that it has no endpoint, and
 `rancher telemetry status` shows `upload endpoint: not set`. There is no
 default endpoint.
+
+With an endpoint, a development build sends the stored events after a recorded
+run. Release builds never send. The kubectl exec plugin (the commands
+`auth get-token` and `token`, and any run with `KUBERNETES_EXEC_INFO` set)
+never sends, and nothing is sent while recording is off, including when
+`rancher telemetry off` runs during an upload.
+
+- When: at most once an hour for one config directory, after the run's event
+  and the server facts refresh, inside the same 2-second deadline (counted from
+  the end of the hourly pass over the stored files, which follows the event
+  write, when the refresh sent no request). Nothing is sent
+  when less than 1 second of the deadline is left. One process at a time sends
+  for a directory.
+- What: every stored event of an hour that has ended and is at most 30 days
+  old, including events stored before the experiment was set and events a
+  release build stored in the same config directory. The events of the current
+  hour wait. A request holds one contract version, at most 1000 events and at
+  most 1 MiB compressed, goes to the endpoint's origin as OTLP/HTTP JSON with
+  `Content-Encoding: gzip`, and is never redirected.
+- The request carries the CLI's User-Agent and no credential, and honors the
+  proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`).
+- Decisions: the HTTP status and `Retry-After` only, never the answer's body. A
+  2xx, a 400, a 413 or a 415 answer deletes the files whose events the request
+  held (events in 400, 413 and 415 answers are counted as deleted, not sent).
+  Every other answer, a redirect, a timeout and a network error keep the files
+  and end the attempt. The next attempt is about an hour later, with up to 10
+  more minutes after an attempt that kept nothing; after a kept answer it is
+  the larger of 1 hour and `Retry-After`, or 1 hour doubled for each earlier
+  attempt in a row that kept files, at most 24 hours.
+- A file whose events were all sent is deleted. A file that is open in another
+  program on Windows, and the files of an attempt that ran out of time, are
+  deleted by a later attempt without sending their events again, as long as
+  `state.json` still holds their record ids; it keeps the 1280 most recent, and
+  events with older ids are sent again.
+- `rancher telemetry status` shows the last attempt, the next attempt, the
+  events waiting and the events of the current hour.
+
+With `--debug` on a run that attempts an upload, stderr gets one line before
+each request, `debug: telemetry upload: sending <n> events (contract
+<version>) to <origin>`, and one after it, `debug: telemetry upload: answer
+HTTP <status>, <k> refused` (or `refused count unknown`) or `debug: telemetry
+upload: no answer: <timeout | network error | refused redirect>`. The lines
+never hold event contents, ids or the configured text of the endpoint. A run
+that attempts no upload prints nothing more.
 
 Set the variable for one shell, not in a shell profile, and check
 `rancher telemetry status`.

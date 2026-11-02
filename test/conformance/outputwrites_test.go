@@ -791,6 +791,9 @@ var urfaveErrWriterReferences = map[string][]string{
 	"internal/cli.errStyle": {
 		"no text: the terminal check that decides the error block's styling",
 	},
+	"internal/cli.uploadStoredEvents": {
+		"no text: the writer becomes the upload's debug output",
+	},
 	"internal/cli.runArgv": {
 		"no text: the nil check before the root's writer is set",
 		"no text: the assignment of the default error writer",

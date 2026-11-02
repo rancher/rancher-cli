@@ -9702,7 +9702,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Sets the telemetry key of config.yaml to false, then deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server) and the config directory id, which leaves nothing recorded. Keeps config.yaml. Creates the config directory when it is missing, to hold the key. The RANCHER_CLI_TELEMETRY variable overrides the key; the command warns when it does. Deletes even when RANCHER_CLI_TELEMETRY is set.",
+      "desc": "Sets the telemetry key of config.yaml to false, then deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server), the config directory id and the upload state (the upload lock and the state file in telemetry/upload), which leaves nothing recorded. Keeps config.yaml. Creates the config directory when it is missing, to hold the key. The RANCHER_CLI_TELEMETRY variable overrides the key; the command warns when it does. Deletes even when RANCHER_CLI_TELEMETRY is set.",
       "examples": [
         "rancher telemetry off"
       ],
@@ -9730,7 +9730,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server) and the config directory id, and keeps the telemetry key and the rest of config.yaml. Creates nothing; with no config directory there is nothing to delete.",
+      "desc": "Deletes the recorded events, the server facts (the version, edition and install id stored for each Rancher server), the config directory id and the upload state (the upload lock and the state file in telemetry/upload), and keeps the telemetry key and the rest of config.yaml. Creates nothing; with no config directory there is nothing to delete.",
       "examples": [
         "rancher telemetry reset"
       ],
@@ -9744,7 +9744,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Lists the recorded events, oldest first. The table shows the time, event name, command, outcome and exit code; -o json and -o yaml carry every stored field of each event. Events that cannot be read are skipped. Creates nothing and works while recording is off.",
+      "desc": "Lists the recorded events, oldest first. The table shows the time, event name, command, outcome and exit code; -o json and -o yaml carry every stored field of each event. Events that cannot be read are skipped. In a development build with the telemetryupload experiment, a sent event is listed until the file that holds it is deleted. Creates nothing and works while recording is off.",
       "examples": [
         "rancher telemetry show",
         "rancher telemetry show -o json"
@@ -9759,7 +9759,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). In a development build with RANCHER_CLI_EXPERIMENT set, it also lists the active experiments and the upload endpoint; the endpoint is accepted and listed, and nothing is sent in this version. Recorded events stay on this machine. Creates nothing and works while recording is off.",
+      "desc": "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). In a development build with RANCHER_CLI_EXPERIMENT set, it also lists the active experiments and the upload endpoint. A development build with the telemetryupload experiment sends the stored events of finished hours to that endpoint at most once an hour, after a recorded run, never from the kubectl exec plugin; with an endpoint, status shows the last upload attempt, the next attempt, the events waiting, the events of the current hour, and a warning for an upload lock that cannot be read. Creates nothing and works while recording is off.",
       "examples": [
         "rancher telemetry status",
         "rancher telemetry status -o json"
@@ -10023,7 +10023,7 @@
       "name": "RANCHER_CLI_TELEMETRY"
     },
     {
-      "desc": "experimental: a comma-separated list of name[=value] experiments, honored only in a development build; telemetryupload=<url> is accepted and listed by telemetry status, and nothing is sent in this version",
+      "desc": "experimental: a comma-separated list of name[=value] experiments, honored only in a development build; telemetryupload=<url> makes the build send the stored events of finished hours to that endpoint at most once an hour, after a recorded run, never from the kubectl exec plugin",
       "name": "RANCHER_CLI_EXPERIMENT"
     },
     {
@@ -10159,7 +10159,7 @@
   },
   "experiments": [
     {
-      "desc": "the endpoint for uploading usage data; accepted and listed by telemetry status, and nothing is sent in this version",
+      "desc": "the endpoint for uploading usage data: a development build sends the stored events of finished hours to it at most once an hour, after a recorded run, never from the kubectl exec plugin",
       "devOnly": true,
       "name": "telemetryupload",
       "valueForm": "scheme://host[:port] with path empty or /; https, or http to localhost, ::1 or 127.0.0.0/8; a host that is an IP address or a DNS name in ASCII (write an international name in its xn-- form); a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); no user name, password, query or fragment"
@@ -10236,7 +10236,7 @@
     },
     {
       "appliesTo": "all",
-      "desc": "accepted; currently no effect",
+      "desc": "In a development build whose run attempts a telemetry upload, prints on stderr one line before each request (event count, contract version, endpoint origin) and one after (HTTP status and refused count, or why there was no answer). Never prints event contents; prints nothing else.",
       "name": "--debug",
       "type": "bool"
     },
@@ -10309,7 +10309,7 @@
         "telemetry reset",
         "telemetry show"
       ],
-      "desc": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. Recorded events stay on this machine.",
+      "desc": "Control and inspect usage recording: status, turn on, turn off, delete and list events.",
       "name": "telemetry"
     },
     {

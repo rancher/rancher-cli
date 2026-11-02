@@ -3,8 +3,10 @@
 This directory holds the published contract for Rancher usage events: what
 an event is called, which attributes it carries, the values each attribute
 may take, and what a missing attribute means. The CLI is the first producer.
-It records events on the local machine only and sends no events
-anywhere. Other Rancher components can write the same events.
+It records events on the local machine. A development build with the
+`telemetryupload` experiment also sends them to the endpoint the experiment
+names; release builds send nothing. Other Rancher components can write the
+same events.
 
 ## Layout
 
@@ -15,7 +17,7 @@ anywhere. Other Rancher components can write the same events.
   means.
 - `<version>/otlp-mapping.md`: where each flat key sits in an OTLP logs
   export, and how the CLI encodes it as OTLP/HTTP JSON.
-  The CLI encodes this form; nothing sends it yet.
+  The CLI sends this form.
 - `<version>/examples/valid/` and `<version>/examples/invalid/`: events the
   schema accepts, and events it refuses, one rule each.
 - `<version>/examples/otlp/valid/` and `<version>/examples/otlp/invalid/`:
@@ -60,4 +62,5 @@ Every file in `examples/invalid/` must fail the same command.
 - Command and flag names are not listed here; they come from the
   `rancher schema` manifest of the event's `service.version`, which each
   release publishes as the asset `rancher-schema.json`.
-- Events recorded while nothing is sent are never uploaded.
+- Every stored event may be sent, including events stored before sending
+  was turned on, up to the maximum upload age in `fields.md`.

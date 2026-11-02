@@ -47,9 +47,9 @@ type offCmd struct {
 }
 
 // NewOff builds `telemetry off` (local): sets the telemetry key to false,
-// then deletes the recorded events, the server facts and the config
-// directory id. It creates the config directory when it is missing, to hold
-// the key.
+// then deletes the recorded events, the server facts, the config directory id
+// and the upload state. It creates the config directory when it is missing, to
+// hold the key.
 func NewOff(dir string) runtime.Command { return &offCmd{dir: dir, changes: fileChanges{}} }
 
 func (offCmd) Describe() runtime.Descriptor {
@@ -57,7 +57,8 @@ func (offCmd) Describe() runtime.Descriptor {
 		Name:  "telemetry off",
 		Usage: "Turn usage recording off and delete what is recorded",
 		Desc: "Sets the telemetry key of config.yaml to false, then deletes the recorded events, the server facts " +
-			"(the version, edition and install id stored for each Rancher server) and the config directory id, " +
+			"(the version, edition and install id stored for each Rancher server), the config directory id " +
+			"and the upload state (the upload lock and the state file in telemetry/upload), " +
 			"which leaves nothing recorded. Keeps config.yaml. " +
 			"Creates the config directory when it is missing, to hold the key. " +
 			"The RANCHER_CLI_TELEMETRY variable overrides the key; the command warns when it does. " +
@@ -80,7 +81,7 @@ func (c offCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Prompter
 	if left, errs := deleteRecorded(c.changes, c.dir); len(left) > 0 {
 		return runtime.Result{}, deleteFailure(`the telemetry key is "false"`, c.dir, left, errs, warnings)
 	}
-	res := settingResult(st, replaced, "deleted the recorded events, the server facts and the config directory id")
+	res := settingResult(st, replaced, "deleted the recorded events, the server facts, the config directory id and the upload state")
 	res.Data.(map[string]any)["cleared"] = clearedList()
 	res.Warnings = warnings
 	return res, nil

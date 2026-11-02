@@ -16,7 +16,7 @@ const (
 	SlotTries = 8
 	// AgeCap is how long a compacted hour stays on disk.
 	AgeCap = 72 * time.Hour
-	// MaxUploadAge is the oldest event a later upload stage sends.
+	// MaxUploadAge is the oldest event the upload sends.
 	MaxUploadAge = 30 * 24 * time.Hour
 	// CountLimit is the most events Count reports.
 	CountLimit = 10000

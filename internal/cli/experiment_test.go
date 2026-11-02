@@ -198,7 +198,9 @@ func TestExperimentParse(t *testing.T) {
 // off, that a bare name and an empty value warn once and leave the experiment
 // on with no endpoint, that a query with a comma gives two warnings, that no
 // output holds a user name or password, and that the accepted values list
-// their canonical origin.
+// their canonical origin; and that, with events waiting, a recorded run posts
+// to the canonical origin and the encoder's path for a loopback address with
+// and without a trailing slash, localhost, ::1 and 127.0.0.2.
 func TestUploadURLRules(t *testing.T) {
 	experimentEnv(t)
 	refused := func(reason string) []string { return []string{warningPrefix + "telemetryupload ignored: " + reason} }
@@ -252,6 +254,8 @@ func TestUploadURLRules(t *testing.T) {
 		})
 	}
 
+	urlRequestRows(t)
+
 	for value, want := range map[string]string{
 		"https://h.example":         "https://h.example",
 		"https://h.example/":        "https://h.example",
@@ -277,7 +281,11 @@ func TestUploadURLRules(t *testing.T) {
 // TestReleaseBuildsIgnoreExperiments asserts that for each release version,
 // with the variable set to a valid endpoint, a bare name and garbage, there is
 // no warning on stderr or in warnings, status shows no experiment line and no
-// experiments key, and the variable is not read.
+// experiments key, and the variable is not read; and that with events waiting
+// and a local server as the endpoint a recorded run sends no request, and that
+// the sender's entry sends nothing and creates nothing when called directly
+// with a release version, or with a development version and an origin the
+// check refuses or changes.
 func TestReleaseBuildsIgnoreExperiments(t *testing.T) {
 	reads := experimentEnv(t)
 	for _, version := range releaseVersions {
@@ -304,11 +312,14 @@ func TestReleaseBuildsIgnoreExperiments(t *testing.T) {
 			})
 		}
 	}
+	releaseRequestRows(t)
 }
 
 // TestDevBuildsHonorExperiments asserts that for dev, dev-<hex> and
 // dev-unknown the endpoint is listed by status, in text and in -o json, as
-// the canonical origin, and that the variable is read once per run.
+// the canonical origin, and that the variable is read once per run; and that
+// with events of a finished hour waiting and the attempt due, a recorded run
+// sends exactly one request.
 func TestDevBuildsHonorExperiments(t *testing.T) {
 	reads := experimentEnv(t)
 	for _, version := range developmentVersions {
@@ -327,11 +338,13 @@ func TestDevBuildsHonorExperiments(t *testing.T) {
 			assert.Contains(t, text.stdout, "  upload endpoint: https://h.example\n")
 		})
 	}
+	devRequestRows(t)
 }
 
 // TestNoUploadWithoutAnEndpoint asserts that on a development build status
 // lists no experiment and no endpoint when the variable is absent, and
-// lists the experiment with `upload endpoint: not set` for the bare name.
+// lists the experiment with `upload endpoint: not set` for the bare name; and
+// that in both cases a recorded run with events waiting never calls the sender.
 func TestNoUploadWithoutAnEndpoint(t *testing.T) {
 	experimentEnv(t)
 	setExperiment(t, "", false)
@@ -349,6 +362,7 @@ func TestNoUploadWithoutAnEndpoint(t *testing.T) {
 	assert.NotContains(t, data, "uploadEndpoint")
 	text = runBuilt(t, "dev", "telemetry", "status")
 	assert.Contains(t, text.stdout, "  upload endpoint: not set\n")
+	noEndpointRequestRows(t)
 }
 
 // TestExecPluginRunsNeverUpload asserts that an exec plugin run of an ordinary
@@ -356,7 +370,10 @@ func TestNoUploadWithoutAnEndpoint(t *testing.T) {
 // flags), and a shell completion request print no experiment warning, in
 // stderr or in the envelope, while the same ordinary command warns outside
 // the exec plugin; and that help, the version, a group alone and the
-// completion command print none on a development build.
+// completion command print none on a development build; and that, with events
+// waiting and the attempt due, a recorded run sends no request and creates no
+// telemetry/upload in an exec plugin run, for auth get-token and for token,
+// while an ordinary run sends one.
 func TestExecPluginRunsNeverUpload(t *testing.T) {
 	reads := experimentEnv(t)
 	setExperiment(t, "Bad item,telemetryupload=http://h.example", true)
@@ -403,6 +420,7 @@ func TestExecPluginRunsNeverUpload(t *testing.T) {
 		assert.NotContains(t, out.String()+errOut.String(), warningPrefix)
 		assert.Zero(t, *reads, "a completion request reads the variable")
 	})
+	execPluginRequestRows(t)
 }
 
 // TestExperimentNoticeExclusionsNameRegisteredCommands asserts every key of
@@ -467,7 +485,9 @@ func TestStatusListsExperimentsAndNoAttemptYet(t *testing.T) {
 	assert.Contains(t, text.stdout, "  experiments: telemetryupload\n"+
 		"  upload endpoint: https://h.example\n"+
 		"  last upload attempt: no attempt yet\n"+
-		"  upload: the endpoint is accepted and listed here; nothing is sent in this version\n")
+		"  next upload attempt: at the next recorded run\n"+
+		"  events waiting: 0\n"+
+		"  events of the current hour: 0 (sent after the hour ends)\n")
 	assert.Equal(t, 1, strings.Count(text.stderr, warningPrefix+"unknown experiment bogus ignored"), text.stderr)
 	assert.NotContains(t, text.stdout, warningPrefix)
 

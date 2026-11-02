@@ -1,6 +1,6 @@
 # Mapping the flat event to OTLP (contract 1.0.0)
 
-The CLI encodes this form; nothing sends it yet. This table lists where each flat key goes in an OTLP logs export; a relay or an OpenTelemetry Collector can be built from it without a change to the contract.
+The CLI sends this form. This table lists where each flat key goes in an OTLP logs export; a relay or an OpenTelemetry Collector can be built from it without a change to the contract.
 
 An event is one OTLP log record with an event name. Who produced an event is stated as resource attributes. The scope name is the value of `service.name`; the scope version holds the contract version, a use this contract chooses for that field.
 

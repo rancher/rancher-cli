@@ -447,7 +447,6 @@ func TestStatusTextLines(t *testing.T) {
 // zero view adds nothing to the text or the data, and that the view's warnings
 // are in the result once.
 func TestStatusListsExperimentsAndNoAttemptYet(t *testing.T) {
-	const interim = "upload: the endpoint is accepted and listed here; nothing is sent in this version"
 	experimentKeys := []string{"experiments", "uploadEndpoint", "uploadLastAttempt"}
 
 	t.Run("zero view", func(t *testing.T) {
@@ -477,7 +476,10 @@ func TestStatusListsExperimentsAndNoAttemptYet(t *testing.T) {
 		assert.True(t, strings.HasSuffix(res.Text, "  experiments: telemetryupload\n"+
 			"  upload endpoint: https://h.example\n"+
 			"  last upload attempt: no attempt yet\n"+
-			"  "+interim+"\n"), res.Text)
+			"  next upload attempt: at the next recorded run\n"+
+			"  events waiting: 0\n"+
+			"  events of the current hour: 0 (sent after the hour ends)\n"), res.Text)
+		assert.NotContains(t, res.Text, "nothing is sent")
 		data := dataMap(t, res)
 		assert.Equal(t, []string{"telemetryupload"}, data["experiments"])
 		assert.Equal(t, "https://h.example", data["uploadEndpoint"])

@@ -102,7 +102,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "-o/--output", Type: "enum", Enum: OutputFormats, AppliesTo: "all", Desc: "'name' prints only the NAME column, one per line; 'wide' adds extra columns to the same rows and never filters rows; template=<go-template> renders a Go template over the `data` of the JSON output"},
 		{Name: "--color", Type: "enum", Enum: ColorModes, AppliesTo: "all", Desc: "when table (the default) and wide output is styled: auto (default) styles only output sent to a terminal, always and never skip that check; under auto, NO_COLOR turns styling off and CLICOLOR_FORCE or FORCE_COLOR turn it on", Env: []string{"NO_COLOR", "CLICOLOR_FORCE", "FORCE_COLOR"}},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
-		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "accepted; currently no effect"},
+		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "In a development build whose run attempts a telemetry upload, prints on stderr one line before each request (event count, contract version, endpoint origin) and one after (HTTP status and refused count, or why there was no answer). Never prints event contents; prints nothing else."},
 		{Name: "--project", Type: "string", AppliesTo: "declared", Desc: "the project, by id or display name, on the cluster given by --cluster; only the commands that take --project accept it, and every other command refuses it before sending a request"},
 		{Name: "--read-only", Type: "bool", AppliesTo: "server", Desc: "refuse commands that make changes, for this run; once set it cannot be turned off; applies to commands that read or change server resources and is refused on local commands (the config setting readOnly and a non-empty RANCHER_CLI_READONLY apply to every run and leave local commands usable)", Env: []string{"RANCHER_CLI_READONLY"}},
 	}
@@ -142,7 +142,7 @@ func EnvVars() []EnvVar {
 		{Name: "CATTLE_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "older name of RANCHER_CLI_OAUTH_AUTH_FLOW; used only when that variable is not set or is empty"},
 		{Name: "CATTLE_OAUTH_CALLBACK_PORT", Desc: "older name of RANCHER_CLI_OAUTH_CALLBACK_PORT; used only when that variable is not set or is empty"},
 		{Name: "RANCHER_CLI_TELEMETRY", Desc: "true or false: turns usage recording on or off and overrides the telemetry key of config.yaml; empty counts as unset and any other value is ignored"},
-		{Name: "RANCHER_CLI_EXPERIMENT", Desc: "experimental: a comma-separated list of name[=value] experiments, honored only in a development build; telemetryupload=<url> is accepted and listed by telemetry status, and nothing is sent in this version"},
+		{Name: "RANCHER_CLI_EXPERIMENT", Desc: "experimental: a comma-separated list of name[=value] experiments, honored only in a development build; telemetryupload=<url> makes the build send the stored events of finished hours to that endpoint at most once an hour, after a recorded run, never from the kubectl exec plugin"},
 		{Name: "XDG_CONFIG_HOME", Desc: "base directory for the default config directory"},
 		{Name: "VISUAL", Desc: "preferred editor for config edit"},
 		{Name: "EDITOR", Desc: "fallback editor for config edit"},

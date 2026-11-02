@@ -163,7 +163,7 @@ func TestTelemetryEnvelopes(t *testing.T) {
 	require.Equal(t, 0, code, stderr)
 	env = decode(stdout)
 	assert.Equal(t, "a b\nc", env.Data["replacedValue"])
-	assert.Equal(t, []any{"events", "serverFacts", "configDirectoryId"}, env.Data["cleared"])
+	assert.Equal(t, []any{"events", "serverFacts", "configDirectoryId", "uploadState"}, env.Data["cleared"])
 
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("telemetry: [a]\n"), 0o600))
 	for _, verb := range telemetryVerbs {

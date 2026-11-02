@@ -146,7 +146,7 @@ func TestOffDeletesWhatIsRecordedAfterWritingTheKey(t *testing.T) {
 	assert.Equal(t, "false", configMap(t, dir)["telemetry"])
 	assert.Equal(t, []string{"pruned"}, names(t, filepath.Join(dir, "telemetry")), "only the prune marker is left")
 	d := dataMap(t, res)
-	assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId"}, d["cleared"])
+	assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId", "uploadState"}, d["cleared"])
 	assert.Equal(t, "false", d["configKey"])
 	assert.Equal(t, "off", d["state"])
 	assert.Equal(t, "config", d["decidedBy"])
@@ -303,7 +303,7 @@ func TestADeleteOfAPathAlreadyRemovedIsNotAFailure(t *testing.T) {
 			f := &fakeChanges{eventsErr: gone, factsErr: gone, idErr: gone, uploadErr: gone}
 			res, err := execute(t, commandWith(name, dir, f))
 			require.NoError(t, err)
-			assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId"}, dataMap(t, res)["cleared"])
+			assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId", "uploadState"}, dataMap(t, res)["cleared"])
 		})
 	}
 	t.Run("no id file", func(t *testing.T) {
@@ -382,7 +382,7 @@ func TestResetDeletesExactlyTheRecordedData(t *testing.T) {
 	assert.Equal(t, otherBefore, snapshotOne(t, filepath.Join(dir, "other-file")))
 	assert.Equal(t, "false", configMap(t, dir)["telemetry"])
 	assert.Equal(t, "TelemetryReset", res.Kind)
-	assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId"}, dataMap(t, res)["cleared"])
+	assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId", "uploadState"}, dataMap(t, res)["cleared"])
 }
 
 // TestOffAndResetRemoveTheUploadState asserts off and reset each remove
@@ -402,7 +402,7 @@ func TestOffAndResetRemoveTheUploadState(t *testing.T) {
 			res, err := execute(t, commandWith(name, dir, &fakeChanges{}))
 			require.NoError(t, err)
 			assert.Equal(t, []string{"pruned"}, names(t, filepath.Join(dir, "telemetry")))
-			assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId"}, dataMap(t, res)["cleared"])
+			assert.Equal(t, []string{"events", "serverFacts", "configDirectoryId", "uploadState"}, dataMap(t, res)["cleared"])
 		})
 		t.Run(name+" with a failed step", func(t *testing.T) {
 			dir := newDir(t)
@@ -612,7 +612,7 @@ func TestSettingResultsEncodeAsJSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal(b, &got))
 	assert.ElementsMatch(t, []string{"configKey", "state", "decidedBy", "cleared"}, keys(got))
 	assert.True(t, strings.HasPrefix(res.Text, `telemetry key set to "false"`), res.Text)
-	assert.Contains(t, res.Text, "deleted the recorded events, the server facts and the config directory id")
+	assert.Contains(t, res.Text, "deleted the recorded events, the server facts, the config directory id and the upload state")
 	require.NotNil(t, res.StyledText)
 	assert.Equal(t, res.Text, res.StyledText(style.Style{}), "the text a terminal shows is the text checked here")
 }

@@ -40,8 +40,9 @@ func SetDefaultTimeoutForTest(d time.Duration) (restore func()) {
 	return func() { DefaultTimeout = old }
 }
 
-// New builds the client for Rancher and downstream endpoints. Every request
-// it sends carries UserAgent(), whatever the caller set.
+// New builds the client for Rancher, downstream endpoints and the telemetry
+// upload endpoint. Every request it sends carries UserAgent(), whatever the
+// caller set.
 func New(o Options) (*http.Client, error) {
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,

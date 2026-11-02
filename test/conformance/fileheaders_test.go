@@ -411,7 +411,7 @@ var commentLineLiterals = []commentLineEntry{
 	},
 	{
 		file: "internal/telemetry/contract.go", class: classGenerated,
-		text:   "## Never uploaded\n\n",
+		text:   "## Upload\n\n",
 		reason: "generated: the published contract document, built from package constants",
 	},
 	{
