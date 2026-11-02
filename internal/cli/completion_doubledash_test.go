@@ -269,7 +269,7 @@ func TestCompletionAfterDoubleDashOffersTheArgumentSlot(t *testing.T) {
 		{"a config-local slot past the declared arguments", completionLine{typed: []string{"config", "use-server", "--", "qa"}}, nil},
 		{"too many words after the dashes", completionLine{typed: []string{"completion", "--", "bash", "zsh"}}, nil},
 		{"the dashes are a flag value before the command name", completionLine{typed: []string{"-c", "--", "completion"}}, nil},
-		{"the dashes are a flag value and a flag name follows", completionLine{typed: []string{"config", "add-server", "--url", "--", "name"}, current: "--ap"}, []string{"--apply"}},
+		{"the dashes are a flag value and a flag name follows", completionLine{typed: []string{"config", "add-server", "--url", "--", "name"}, current: "--no-i"}, []string{"--no-input"}},
 		{"a bool value before the dashes", completionLine{typed: []string{"completion", "--apply", "true", "--"}}, nil},
 		{"partial word", completionLine{typed: []string{"completion", "--"}, current: "z"}, []string{"zsh"}},
 		{"a flag before the dashes", completionLine{typed: []string{"completion", "--apply", "--"}}, shells},

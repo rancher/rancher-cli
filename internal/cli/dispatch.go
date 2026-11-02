@@ -73,10 +73,6 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 					}
 					cand = formatCandidate(candidateToken(cand), desc)
 				}
-				if candidateToken(cand) == "--"+runtime.FlagReadOnly && commandIsLocal(c) {
-					// A Local command refuses the global flag.
-					continue
-				}
 				_, _ = fmt.Fprintln(w, cand)
 			}
 			return
@@ -187,7 +183,14 @@ func flagNameCandidates(c *ucli.Command, currentWord string) []string {
 
 	seen := make(map[string]bool)
 	var out []string
+	root := c.Root()
 	for _, f := range allFlagsDeduped(c) {
+		// A global flag is offered only when the command accepts it or, for a
+		// command group, when a command under it does. A flag the command
+		// defines itself is always offered, whatever its name.
+		if slices.Contains(root.Flags, f) && !commandAcceptsGlobalFlag(c, f.Names()[0]) {
+			continue
+		}
 		// Skip hidden bool flags (matches urfave's printFlagSuggestions behavior;
 		// see doc comment above for the inherited limitation on other flag types).
 		if bf, ok := f.(*ucli.BoolFlag); ok && bf.Hidden {

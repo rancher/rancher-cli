@@ -121,6 +121,7 @@ func printStyledHelp(w io.Writer, templ string, data any) {
 		"sortedFlags":         sortedFlags,
 		"leafFlags":           leafFlags,
 		"leafGlobalFlags":     leafGlobalFlags,
+		"groupGlobalFlags":    groupGlobalFlags,
 		"primeMark":           primeMark,
 		"colorPrimeMark":      func(cmd *ucli.Command, wrapped string) string { return colorPrimeMark(s, cmd, wrapped) },
 		"colorPrimeDescription": func(cmd *ucli.Command, wrapped string) string {
@@ -281,14 +282,22 @@ func leafFlags(cmd *ucli.Command) []ucli.Flag {
 	return flags
 }
 
-// leafGlobalFlags is a leaf's GLOBAL OPTIONS without --project (a command
-// that takes it lists it under OPTIONS, and every other command refuses it)
-// and, for a Local command, without --read-only, which it refuses.
+// leafGlobalFlags is a command's GLOBAL OPTIONS: the global flags the command
+// accepts, without --project (a command that takes it lists it under
+// OPTIONS, and every other command refuses it).
 func leafGlobalFlags(cmd *ucli.Command) []ucli.Flag {
-	local := commandIsLocal(cmd)
 	return slices.DeleteFunc(slices.Clone(cmd.VisiblePersistentFlags()), func(f ucli.Flag) bool {
 		name := f.Names()[0]
-		return name == runtime.FlagProject || (local && name == runtime.FlagReadOnly)
+		return name == runtime.FlagProject || !commandAcceptsGlobalFlag(cmd, name)
+	})
+}
+
+// groupGlobalFlags is a command group's GLOBAL OPTIONS: the global flags a
+// command under the group accepts, --project included when one of them
+// takes it.
+func groupGlobalFlags(cmd *ucli.Command) []ucli.Flag {
+	return slices.DeleteFunc(slices.Clone(cmd.VisiblePersistentFlags()), func(f ucli.Flag) bool {
+		return !commandAcceptsGlobalFlag(cmd, f.Names()[0])
 	})
 }
 
@@ -300,20 +309,19 @@ func leafGlobalFlags(cmd *ucli.Command) []ucli.Flag {
 const commandsBlock = `{{ $cmds := sortedCommands .VisibleCommands }}{{ $cv := colonOffsetCommands $cmds 5 }}{{range $cmds}}
    {{$s := printf "%s:" (join .Names ", ")}}{{$s}}{{ $sp := subtract $cv (offset $s 3) }}{{ indent $sp ""}}{{colorPrimeMark . (wrap (print (primeMark .) .Usage) $cv)}}{{end}}`
 
-// flagsBlock and persistentFlagsBlock are urfave's visibleFlagTemplate and
-// visiblePersistentFlagTemplate over an alphabetical copy of the flags;
-// like the command templates, urfave's own are unexported and cannot be
-// overridden in place.
+// flagsBlock is urfave's visibleFlagTemplate over an alphabetical copy of
+// the flags; like the command templates, urfave's own is unexported and
+// cannot be overridden in place.
 const flagsBlock = `{{range $i, $e := sortedFlags .VisibleFlags}}
-   {{wrap $e.String 6}}{{end}}`
-
-const persistentFlagsBlock = `{{range $i, $e := sortedFlags .VisiblePersistentFlags}}
    {{wrap $e.String 6}}{{end}}`
 
 const leafFlagsBlock = `{{range $i, $e := sortedFlags (leafFlags .)}}
    {{wrap $e.String 6}}{{end}}`
 
 const leafGlobalFlagsBlock = `{{range $i, $e := sortedFlags (leafGlobalFlags .)}}
+   {{wrap $e.String 6}}{{end}}`
+
+const groupGlobalFlagsBlock = `{{range $i, $e := sortedFlags (groupGlobalFlags .)}}
    {{wrap $e.String 6}}{{end}}`
 
 // rootCommandHelpTemplate is urfave's RootCommandHelpTemplate with bold
@@ -387,7 +395,7 @@ var subcommandHelpTemplate = `{{bold "NAME:"}}
 
 {{bold "OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if .VisibleFlags}}
 
-{{bold "OPTIONS:"}}` + flagsBlock + `{{end}}{{if .VisiblePersistentFlags}}
+{{bold "OPTIONS:"}}` + flagsBlock + `{{end}}{{if groupGlobalFlags .}}
 
-{{bold "GLOBAL OPTIONS:"}}` + persistentFlagsBlock + `{{end}}
+{{bold "GLOBAL OPTIONS:"}}` + groupGlobalFlagsBlock + `{{end}}
 `

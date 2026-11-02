@@ -292,24 +292,16 @@ func primeMetadata(d runtime.Descriptor) map[string]any {
 // show it from here, with what it does for that command.
 const projectMetadataKey = "project"
 
-// localMetadataKey is the Metadata map key marking a Local command: the
-// help and flag-name completion of a command that refuses --read-only
-// leave it out.
-const localMetadataKey = "local"
-
 // descriptorMetadataKey is the Metadata map key holding the command's
 // runtime.Descriptor, which lineRefusal reads before urfave parses the line.
 const descriptorMetadataKey = "descriptor"
 
-// leafMetadata is the leaf's Metadata map: its Descriptor, primeMetadata's
-// marker for a Prime command, the command's --project description when it
-// takes --project and the Local marker for a Local command.
+// leafMetadata is the command's Metadata map: its Descriptor, primeMetadata's
+// marker for a Prime command and the command's --project description when it
+// takes --project.
 func leafMetadata(d runtime.Descriptor) map[string]any {
 	md := map[string]any{descriptorMetadataKey: d}
 	maps.Copy(md, primeMetadata(d))
-	if d.CommandType == runtime.Local {
-		md[localMetadataKey] = true
-	}
 	for _, f := range d.Flags {
 		if f.Name == runtime.FlagProject {
 			md[projectMetadataKey] = f.Desc
@@ -330,12 +322,6 @@ func commandDescriptor(cmd *ucli.Command) (runtime.Descriptor, bool) {
 func commandProject(cmd *ucli.Command) (string, bool) {
 	desc, ok := cmd.Metadata[projectMetadataKey].(string)
 	return desc, ok
-}
-
-// commandIsLocal reports whether cmd is a Local command.
-func commandIsLocal(cmd *ucli.Command) bool {
-	v, _ := cmd.Metadata[localMetadataKey].(bool)
-	return v
 }
 
 // commandIsPrime reports whether cmd carries the Prime metadata flag.

@@ -39,8 +39,8 @@ func TestGetGroupCompletionFlagBranchPreserved(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, "--dr"))
-	assert.Contains(t, out.String(), "--dry-run")
+	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, "--out"))
+	assert.Contains(t, out.String(), "--output")
 	assert.NotContains(t, out.String(), "pod:", "a flag-prefixed current word must not fall through to alias listing")
 }
 
