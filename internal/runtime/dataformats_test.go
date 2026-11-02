@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -320,4 +321,84 @@ func TestAnErrorThatHoldsACharacterTheYamlLibraryRefusesIsWrittenAsAnEscape(t *t
 	assert.Equal(t, "try "+refusedByYAMLLibrary+" again", doc.Data.Error.Hint)
 	assert.False(t, holdsRefusedCharacter(errBuf.String()), "a raw character in %q", errBuf.String())
 	assert.Empty(t, out.String())
+}
+
+var errScriptedWrite = errors.New("scripted write failure")
+
+// scriptedWriter fails every call from its failFrom-th on and the one call
+// named failOnly, 1-based, and keeps the bytes of the calls it accepted. A
+// zero value of each turns it off.
+type scriptedWriter struct {
+	buf      bytes.Buffer
+	calls    int
+	failFrom int
+	failOnly int
+}
+
+func (w *scriptedWriter) Write(p []byte) (int, error) {
+	w.calls++
+	if (w.failFrom > 0 && w.calls >= w.failFrom) || w.calls == w.failOnly {
+		return 0, errScriptedWrite
+	}
+	return w.buf.Write(p)
+}
+
+// everyErrorFormat is every format an error is written in, the empty one
+// included.
+var everyErrorFormat = []string{"", "table", "wide", "json", "yaml", "name", "template={{.}}"}
+
+// TestAnErrorThatCannotBeWrittenKeepsItsExitCode asserts that when every write
+// to standard error fails, in every format, Run still returns the error the
+// command failed with; the exit code is the code's own.
+func TestAnErrorThatCannotBeWrittenKeepsItsExitCode(t *testing.T) {
+	t.Parallel()
+	for _, row := range []struct {
+		code string
+		exit int
+	}{{clierr.CodeValidation, 2}, {clierr.CodeNotFound, 4}} {
+		for _, format := range everyErrorFormat {
+			failure := clierr.New(row.code, "message")
+			var out bytes.Buffer
+			errW := scriptedWriter{failFrom: 1}
+			streams := runtime.IO{Out: &out, Err: &errW, Format: format}
+			status, ce := runtime.Run(t.Context(), failingCommand{failure}, siteInput{}, streams, safety.Binding{})
+			require.Same(t, failure, ce, "%s %q", row.code, format)
+			assert.Zero(t, status, "%s %q", row.code, format)
+			assert.Equal(t, row.exit, ce.ExitCode(), "%s %q", row.code, format)
+			assert.Zero(t, errW.buf.Len(), "%s %q", row.code, format)
+			assert.Empty(t, out.String(), "%s %q", row.code, format)
+		}
+	}
+}
+
+// TestAnErrorWhoseFirstWriteFailsIsWrittenAsOneLine asserts that when the
+// first write to standard error fails, the one line is written, in every
+// format, and the exit code is the error's own.
+func TestAnErrorWhoseFirstWriteFailsIsWrittenAsOneLine(t *testing.T) {
+	t.Parallel()
+	for _, format := range everyErrorFormat {
+		failure := clierr.New(clierr.CodeValidation, "message")
+		var out bytes.Buffer
+		errW := scriptedWriter{failOnly: 1}
+		streams := runtime.IO{Out: &out, Err: &errW, Format: format}
+		_, ce := runtime.Run(t.Context(), failingCommand{failure}, siteInput{}, streams, safety.Binding{})
+		require.Same(t, failure, ce, "%q", format)
+		assert.Equal(t, 2, ce.ExitCode(), "%q", format)
+		assert.Equal(t, "error (VALIDATION): message\n", errW.buf.String(), "%q", format)
+	}
+}
+
+// TestNameOutputReturnsAFailedWriteToStandardOutput asserts -o name over a
+// standard output that cannot be written ends with a GENERIC error that names
+// the write error, and that error is written to standard error.
+func TestNameOutputReturnsAFailedWriteToStandardOutput(t *testing.T) {
+	t.Parallel()
+	var errBuf bytes.Buffer
+	outW := scriptedWriter{failFrom: 1}
+	streams := runtime.IO{Out: &outW, Err: &errBuf, Format: "name"}
+	_, ce := runtime.Run(t.Context(), dataCommand{runtime.Result{Kind: "Report", Data: newMarkedRow("a value")}}, siteInput{}, streams, safety.Binding{})
+	require.NotNil(t, ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Contains(t, ce.Message, errScriptedWrite.Error())
+	assert.Contains(t, errBuf.String(), "error (GENERIC):")
 }

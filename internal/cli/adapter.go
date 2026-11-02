@@ -232,7 +232,7 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 			// invocation's own --output value is trusted directly - no raw-argv
 			// scan needed here, unlike commandNotFound/onUsageError below.
 			if ce := checkFlagValues(d.Flags, rawArgv, completionActive(), d.SecretInput); ce != nil {
-				_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
+				runtime.WriteError(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
 				return ctx, exit(ce)
 			}
 			return ctx, nil
@@ -411,7 +411,7 @@ func remedyDirFor(dir string) string {
 // --output value is trusted, and its remedies name its directory.
 func renderDepsError(c *ucli.Command, io runtime.IO, err error) error {
 	ce := clierr.From(err)
-	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), io.ExpandError(ce), errStyle(c, c.String("color")))
+	runtime.WriteError(c.Root().ErrWriter, c.String("output"), io.ExpandError(ce), errStyle(c, c.String("color")))
 	return exit(ce)
 }
 
@@ -659,7 +659,7 @@ func reportUnknownCommand(c *ucli.Command, name string, after []string) {
 // flag has parsed successfully yet (an unknown command, a flag parse
 // failure) or that no command rendered (an error urfave returns itself).
 func renderRawArgvError(c *ucli.Command, ce *clierr.Error) {
-	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)))
+	runtime.WriteError(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)))
 }
 
 // onUsageError is urfave/cli's seam for a flag-parse failure (unknown flag,

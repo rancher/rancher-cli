@@ -501,7 +501,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 			// Flags have already parsed successfully at this point, so the
 			// invocation's own --output value is trusted directly.
 			if ce := checkFlagValues(d.Flags, rawArgv, completionActive(), d.SecretInput); ce != nil {
-				_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
+				runtime.WriteError(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
 				return ctx, exit(ce)
 			}
 			return ctx, nil
@@ -509,7 +509,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			io := buildIO(c)
 			if ce := emptyConfigFlag(c); ce != nil {
-				_ = runtime.RenderErrorStyled(c.Root().ErrWriter, io.Format, ce, errStyle(c, io.Color))
+				runtime.WriteError(c.Root().ErrWriter, io.Format, ce, errStyle(c, io.Color))
 				return exit(ce)
 			}
 			var cmd runtime.Command

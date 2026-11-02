@@ -269,21 +269,29 @@ func (h *headerBoldWriter) flush() error {
 // produced it.
 func writePlainTable(w io.Writer, cols []string, rows [][]string) error {
 	tw := tabwriter.NewWriter(w, 0, 8, 3, ' ', 0)
-	for i, c := range cols {
-		if i > 0 {
-			_, _ = fmt.Fprint(tw, "\t")
-		}
-		_, _ = fmt.Fprint(tw, Printable(c))
-	}
-	_, _ = fmt.Fprintln(tw)
-	for _, row := range rows {
-		for i, cell := range row {
+	// A tabwriter that failed to write is not written to again: its state
+	// after the failure is undefined.
+	writeLine := func(cells []string) error {
+		for i, cell := range cells {
 			if i > 0 {
-				_, _ = fmt.Fprint(tw, "\t")
+				if _, err := fmt.Fprint(tw, "\t"); err != nil {
+					return err
+				}
 			}
-			_, _ = fmt.Fprint(tw, Printable(cell))
+			if _, err := fmt.Fprint(tw, Printable(cell)); err != nil {
+				return err
+			}
 		}
-		_, _ = fmt.Fprintln(tw)
+		_, err := fmt.Fprintln(tw)
+		return err
+	}
+	if err := writeLine(cols); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := writeLine(row); err != nil {
+			return err
+		}
 	}
 	return tw.Flush()
 }
@@ -306,7 +314,9 @@ func renderName(w io.Writer, env *Envelope) error {
 	}
 	for _, row := range t.Rows() {
 		if nameIdx < len(row) {
-			_, _ = fmt.Fprintln(w, Printable(row[nameIdx]))
+			if _, err := fmt.Fprintln(w, Printable(row[nameIdx])); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

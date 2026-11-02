@@ -14,7 +14,8 @@ import (
 // feeds exactly one render and decides what an operator sees from there -
 // a stray os.Stderr write bypasses that decision entirely, e.g. printing
 // under -o json when the machine contract promises stderr is the error
-// envelope or empty.
+// envelope or empty (apart from the one line WriteError writes when it cannot
+// write the envelope).
 //
 // The four entries here are the reviewed exceptions, each for a reason
 // that holds regardless of the pipeline's own state:

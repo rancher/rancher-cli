@@ -1351,6 +1351,11 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 When a candidate list is cut to its first entries,
 `data.error.candidatesTotal` gives the size of the full list.
 
+When the error cannot be encoded in the chosen format, or its write to
+stderr fails once, stderr gets the one line `error (CODE): message`, the same
+line under `-o json` and `-o yaml`. When stderr cannot be written at all,
+nothing is written and the exit code is the error's own.
+
 ## Machine hints
 
 An error's `data.error.hint` field, when present, is exactly one

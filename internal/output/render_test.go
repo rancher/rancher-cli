@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -432,4 +433,78 @@ func TestWriteTableStyledStreamsMultiRowTable(t *testing.T) {
 	assert.Contains(t, lines[0], "\x1b[1m", "header line must carry the bold escape")
 	assert.NotContains(t, lines[1], "\x1b[", "row bytes must never carry an escape code")
 	assert.Greater(t, dst.writes, 1, "rows must stream through, not arrive as one buffered copy")
+}
+
+// errFailedWrite is what failingAtWriter returns.
+var errFailedWrite = errors.New("failed write")
+
+// failingAtWriter fails its failAt-th call, 1-based, and accepts every other
+// one. A test tells from the count of calls whether a writer was called again
+// after a failure.
+type failingAtWriter struct {
+	bytes.Buffer
+	failAt int
+	calls  int
+}
+
+func (f *failingAtWriter) Write(p []byte) (int, error) {
+	f.calls++
+	if f.calls == f.failAt {
+		return 0, errFailedWrite
+	}
+	return f.Buffer.Write(p)
+}
+
+// nameOnlyRows is a table of one column: every line of its output flushes.
+type nameOnlyRows struct{ rows [][]string }
+
+func (n nameOnlyRows) Columns() []string { return []string{"NAME"} }
+func (n nameOnlyRows) Rows() [][]string  { return n.rows }
+
+func nameOnlyRowsOfSix() nameOnlyRows {
+	return nameOnlyRows{rows: [][]string{{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}}}
+}
+
+// TestRenderNameReturnsTheFirstWriteError asserts -o name returns the error of
+// a failed write and writes nothing after it.
+func TestRenderNameReturnsTheFirstWriteError(t *testing.T) {
+	t.Parallel()
+	for _, failAt := range []int{1, 2, 4} {
+		w := &failingAtWriter{failAt: failAt}
+		env := NewEnvelope("ServerList", nameOnlyRowsOfSix())
+		err := Render(w, "name", env)
+		require.ErrorIs(t, err, errFailedWrite, "failAt=%d", failAt)
+		assert.Equal(t, failAt, w.calls, "failAt=%d: no write after the failed one", failAt)
+	}
+}
+
+// TestRenderTableOfOneColumnReturnsAWriteError asserts a table of one column,
+// whose every line flushes, returns an error whichever write fails first,
+// including a writer that works again after one failure (the final flush
+// alone would report nothing), and does not write again after the failure.
+func TestRenderTableOfOneColumnReturnsAWriteError(t *testing.T) {
+	t.Parallel()
+	for _, format := range []string{"table", "wide"} {
+		for _, failAt := range []int{1, 2, 3, 5} {
+			w := &failingAtWriter{failAt: failAt}
+			env := NewEnvelope("ServerList", nameOnlyRowsOfSix())
+			err := Render(w, format, env)
+			require.ErrorIs(t, err, errFailedWrite, "%s failAt=%d", format, failAt)
+			assert.Equal(t, failAt, w.calls, "%s failAt=%d: no write after the failed one", format, failAt)
+		}
+	}
+}
+
+// TestRenderTableOfTwoColumnsReturnsAWriteError asserts a table of two
+// columns, whose cells reach the writer in the final flush, returns the error
+// of a failed write whichever call fails, without a panic.
+func TestRenderTableOfTwoColumnsReturnsAWriteError(t *testing.T) {
+	t.Parallel()
+	rows := [][]string{{"a", "u1"}, {"b", "u2"}, {"c", "u3"}, {"d", "u4"}}
+	for _, failAt := range []int{1, 3} {
+		w := &failingAtWriter{failAt: failAt}
+		err := Render(w, "table", NewEnvelope("ServerList", namedRows{rows: rows}))
+		require.ErrorIs(t, err, errFailedWrite, "failAt=%d", failAt)
+		assert.Equal(t, failAt, w.calls, "failAt=%d: no write after the failed one", failAt)
+	}
 }

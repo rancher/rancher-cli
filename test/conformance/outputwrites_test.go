@@ -686,7 +686,7 @@ var ioErrReferences = map[string][]string{
 		"filtered: the warnings of a dry-run preview text (rows: warnings preview text)",
 		"filtered: the warnings of a dry-run preview envelope that is not json or yaml (rows: warnings preview envelope)",
 	},
-	"internal/runtime.renderErrDrained -> internal/runtime.RenderErrorStyled": {
+	"internal/runtime.renderErrDrained -> internal/runtime.WriteError": {
 		"filtered: the error block and the warnings of a failed run (rows: warnings failed run, error block)",
 	},
 	"internal/cli.buildIO -> literal runtime.IO.Err": {
@@ -738,6 +738,9 @@ var rootWriterReferences = map[string][]string{
 	"internal/cli.helpStyle": {
 		"no text: the terminal check that decides the help's styling",
 	},
+	"internal/cli.printVersion": {
+		"raw: the version line, which holds the command name and the version and no remedy command",
+	},
 	"internal/cli.recordRun": {
 		"no text: the terminal check of a recorded run",
 	},
@@ -773,17 +776,17 @@ var urfaveErrWriterReferences = map[string][]string{
 		"no text: the terminal check of the error output",
 	},
 	"internal/cli.Adapt": {
-		"filtered: the error block of a refused flag value, written by RenderErrorStyled (rows: error block)",
+		"filtered: the error block of a refused flag value, written by WriteError (rows: error block)",
 	},
 	"internal/cli.renderDepsError": {
-		"filtered: the error block of a failure to open the directory, written by RenderErrorStyled (rows: error block)",
+		"filtered: the error block of a failure to open the directory, written by WriteError (rows: error block)",
 	},
 	"internal/cli.renderRawArgvError": {
-		"filtered: the error block of a command line that did not parse, written by RenderErrorStyled (rows: error block)",
+		"filtered: the error block of a command line that did not parse, written by WriteError (rows: error block)",
 	},
 	"internal/cli.adaptEntry": {
-		"filtered: the error block of a refused flag value, written by RenderErrorStyled (rows: error block)",
-		"filtered: the error block of an empty --config value, written by RenderErrorStyled (rows: error block)",
+		"filtered: the error block of a refused flag value, written by WriteError (rows: error block)",
+		"filtered: the error block of an empty --config value, written by WriteError (rows: error block)",
 	},
 	"internal/cli.errStyle": {
 		"no text: the terminal check that decides the error block's styling",
@@ -791,7 +794,7 @@ var urfaveErrWriterReferences = map[string][]string{
 	"internal/cli.runArgv": {
 		"no text: the nil check before the root's writer is set",
 		"no text: the assignment of the default error writer",
-		"filtered: the error block of a refused command line, written by RenderErrorStyled (rows: error block)",
+		"filtered: the error block of a refused command line, written by WriteError (rows: error block)",
 	},
 }
 

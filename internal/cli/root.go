@@ -622,8 +622,7 @@ func groupCommandAction(ctx context.Context, c *ucli.Command) error {
 	case c.Args().Present():
 		return showCommandHelp(ctx, c, c.Args().First())
 	case c == c.Root():
-		_ = ucli.ShowRootCommandHelp(c)
-		return nil
+		return ucli.ShowRootCommandHelp(c)
 	default:
 		return ucli.ShowSubcommandHelp(c)
 	}

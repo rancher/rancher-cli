@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
 )
@@ -49,8 +50,14 @@ func run(ctx context.Context, root *ucli.Command, args []string) runResult {
 	resetExperimentState()
 	httpx.ClearRecords()
 	clearHeldFacts()
+	_ = takeHelpWriteError(root)
 	k, err := runArgv(ctx, root, args)
 	res := resolveExit(root, err, recordedUnknownCommand(root))
+	if helpErr := takeHelpWriteError(root); helpErr != nil && res.code == 0 && res.err == nil {
+		ce := clierr.From(helpErr)
+		renderRawArgvError(root, ce)
+		res = runResult{code: ce.ExitCode(), err: ce}
+	}
 	refreshServerFacts(ctx, recordRun(root, k, res, start))
 	return res
 }
@@ -75,7 +82,7 @@ func runArgv(ctx context.Context, root *ucli.Command, args []string) (k keptLine
 			if wholeLine || !p.readWholeLine() {
 				renderRawArgvError(root, ce)
 			} else {
-				_ = runtime.RenderErrorStyled(root.ErrWriter, p.valueOf("output"), ce, errStyle(root, p.valueOf("color")))
+				runtime.WriteError(root.ErrWriter, p.valueOf("output"), ce, errStyle(root, p.valueOf("color")))
 			}
 			return k, exit(ce)
 		}

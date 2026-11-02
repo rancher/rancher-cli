@@ -1119,9 +1119,10 @@ func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 // unchanged; the source is never touched again, and the styles are not
 // recomputed. finishResult and finishOnceOnlyResult use it after
 // renderResult has already drained; every other error path goes through
-// renderErr.
+// renderErr. A failed write of the error is not reported to the caller: the
+// returned error, and so the exit code, is ce either way.
 func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notices []string) *clierr.Error {
-	_ = RenderErrorStyled(streams.Err, streams.Format, streams.ExpandError(ce), errStyle, streams.expandAll(notices)...)
+	WriteError(streams.Err, streams.Format, streams.ExpandError(ce), errStyle, streams.expandAll(notices)...)
 	return ce
 }
 
@@ -1174,6 +1175,35 @@ func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Sty
 	b.WriteString(errorText(ce, s))
 	_, err := w.Write([]byte(b.String()))
 	return err
+}
+
+// WriteError renders ce to w as RenderErrorStyled does and reports no result:
+// the caller's exit code is ce's own whether or not the write worked; no
+// caller has an error to drop. When the render fails (the format cannot
+// encode ce, or the write fails) and no byte of this error reached w, it
+// writes the one line "error (CODE): message" instead, the same for every
+// format, with the message free of control characters and remedy markers; a
+// partial write is never followed by that line, which would tear the
+// document. When that write fails too, it stops.
+func WriteError(w io.Writer, format string, ce *clierr.Error, s style.Style, notices ...string) {
+	cw := &countingWriter{w: w}
+	if RenderErrorStyled(cw, format, ce, s, notices...) == nil || cw.n > 0 {
+		return
+	}
+	line := "error (" + ce.Code + "): " + output.Printable(ce.Message) + "\n"
+	_, _ = io.WriteString(w, line)
+}
+
+// countingWriter counts the bytes its writer accepted.
+type countingWriter struct {
+	w io.Writer
+	n int
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += n
+	return n, err
 }
 
 // errorText renders ce as the default-format stderr block: a header line
@@ -1272,8 +1302,8 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 // silent skip, since a later render failure would otherwise have nothing
 // to report. When the buffered render fails, or the final single write
 // fails, the failure is emitted as a structured, non-retryable error
-// envelope to stderr (best-effort - its own write failure is ignored, and
-// the caller still gets the correct exit code): it names the resource the
+// envelope to stderr (best-effort - its own write failure is not reported
+// and the caller still gets the correct exit code): it names the resource the
 // mutation already committed, whether the final write may have exposed a
 // partial value (n > 0 on the failing write), and the non-mutating
 // recovery - never inviting a blind retry of a mutation that already

@@ -409,7 +409,9 @@ Read `data.error.code` / `data.error.hint` (the full manifest's
 `errorCodes` says what each code means) - want the envelope, pass
 `-o json` (or `-o yaml`), including for errors; every other format renders
 a short text block instead (`error (CODE): message`, an optional `hint:`
-line). A warning or notice (e.g. a credential-store pin) rides inside that
+line). In the rare case that the envelope cannot be encoded or its write
+fails once, stderr holds only the `error (CODE): message` line, in any
+format. A warning or notice (e.g. a credential-store pin) rides inside that
 SAME envelope's top-level `warnings` field under `-o json`/`-o yaml` - never
 a separate line to skip past.
 

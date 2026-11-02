@@ -2,10 +2,12 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -17,6 +19,7 @@ import (
 // single HelpPrinter var, so overriding it here covers all three shapes.
 func init() {
 	ucli.HelpPrinter = printStyledHelp
+	ucli.VersionPrinter = printVersion
 	ucli.RootCommandHelpTemplate = rootCommandHelpTemplate
 	ucli.CommandHelpTemplate = commandHelpTemplate
 	ucli.SubcommandHelpTemplate = subcommandHelpTemplate
@@ -104,9 +107,12 @@ func showHelpCard(cmd *ucli.Command) {
 // possible on the FishCompletionTemplate path, which never calls this
 // printer) leaves styling disabled.
 func printStyledHelp(w io.Writer, templ string, data any) {
+	kept := &firstErrorWriter{w: w}
+	w = kept
 	var s style.Style
 	if cmd, ok := data.(*ucli.Command); ok {
 		s = helpStyle(cmd)
+		defer func() { noteHelpWriteError(cmd.Root(), kept.err) }()
 	}
 	ucli.HelpPrinterCustom(w, templ, data, map[string]any{
 		"bold":                s.Bold,
@@ -121,6 +127,50 @@ func printStyledHelp(w io.Writer, templ string, data any) {
 			return colorPrimeDescription(s, cmd, wrapped)
 		},
 	})
+}
+
+// firstErrorWriter passes every write to w and keeps the first error.
+type firstErrorWriter struct {
+	w   io.Writer
+	err error
+}
+
+func (f *firstErrorWriter) Write(p []byte) (int, error) {
+	n, err := f.w.Write(p)
+	if err != nil && f.err == nil {
+		f.err = err
+	}
+	return n, err
+}
+
+// helpWriteErrors holds, for each root command, the first error of a failed
+// write of a help card or the version in the run of that root. urfave's
+// printers return nil whether or not the text was written; the run reads
+// the error from here when it ends. A root has its own entry: runs of two
+// roots never share an error.
+var helpWriteErrors sync.Map
+
+// noteHelpWriteError keeps err as the first write error of root's run.
+func noteHelpWriteError(root *ucli.Command, err error) {
+	if err != nil {
+		helpWriteErrors.LoadOrStore(root, err)
+	}
+}
+
+// takeHelpWriteError returns the error kept for root, if any, and clears it.
+func takeHelpWriteError(root *ucli.Command) error {
+	if v, ok := helpWriteErrors.LoadAndDelete(root); ok {
+		return v.(error)
+	}
+	return nil
+}
+
+// printVersion writes the version line urfave's own printer writes, and keeps
+// the write error for the run of the root.
+func printVersion(cmd *ucli.Command) {
+	if _, err := fmt.Fprintf(cmd.Root().Writer, "%v version %v\n", cmd.Name, cmd.Version); err != nil {
+		noteHelpWriteError(cmd.Root(), err)
+	}
 }
 
 // primeMark returns the plain (uncolored) "[Prime] " prefix for a Prime

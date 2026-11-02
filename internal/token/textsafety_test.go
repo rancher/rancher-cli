@@ -33,17 +33,9 @@ import (
 // a line that reads as the CLI's own.
 const hostileTail = "\x1b[2J\u009b2J\t\u202e\u0085\u2028\r\nforged line"
 
-// dataTail is hostileTail without the characters -o yaml refuses or reads
-// back changed (DEL and the controls U+0080 to U+009F, which include U+0085),
-// for the rows that render the value through a structured format.
-const dataTail = "\x1b[2J\t\u202e\u2028\r\nforged line"
-
 // hostileValue is the value planted at the path p: the path in angle brackets,
 // then the hostile tail.
 func hostileValue(p string) string { return "<" + p + ">" + hostileTail }
-
-// dataValue is hostileValue with the tail a structured format carries.
-func dataValue(p string) string { return "<" + p + ">" + dataTail }
 
 // assertNoForgedLine asserts that no line of out starts with the forged line
 // after its leading spaces.
@@ -193,15 +185,15 @@ func entryNamed(t *testing.T, list any, name string) map[string]any {
 // revoke report carries the token names and the revoke error as they are in
 // json and yaml.
 func TestRevocationReportJSONAndYAMLKeepStoredValuesAsTheyAre(t *testing.T) {
-	rep := textSafetyDeletion(dataValue).Report()
+	rep := textSafetyDeletion(hostileValue).Report()
 	env := output.NewEnvelope("LogoutResult", map[string]any{"revoked": rep.Revoked, "notRevoked": rep.NotRevoked})
 	for _, format := range []string{"json", "yaml"} {
 		t.Run(format, func(t *testing.T) {
 			got := renderAndRead(t, format, env)
-			revoked := entryNamed(t, got.Data["revoked"], dataValue("cacheRef"))
-			assert.Equal(t, dataValue("cacheRef"), revoked["ref"].(map[string]any)["name"])
-			failed := entryNamed(t, got.Data["notRevoked"], dataValue("supersededRef"))
-			assert.Equal(t, dataValue("revokeError"), failed["error"], "the report keeps the revoke error as it is")
+			revoked := entryNamed(t, got.Data["revoked"], hostileValue("cacheRef"))
+			assert.Equal(t, hostileValue("cacheRef"), revoked["ref"].(map[string]any)["name"])
+			failed := entryNamed(t, got.Data["notRevoked"], hostileValue("supersededRef"))
+			assert.Equal(t, hostileValue("revokeError"), failed["error"], "the report keeps the revoke error as it is")
 		})
 	}
 }
@@ -210,7 +202,7 @@ func TestRevocationReportJSONAndYAMLKeepStoredValuesAsTheyAre(t *testing.T) {
 // of a delete carry the token name, the revoke error and the owner of an
 // entry as they are in json and yaml, for a user's entry and a plugin's.
 func TestRevocationWarningsKeepStoredValuesAsTheyAre(t *testing.T) {
-	d := textSafetyDeletion(dataValue)
+	d := textSafetyDeletion(hostileValue)
 	env := output.NewEnvelope("LogoutResult", map[string]any{})
 	env.Warnings = d.Warnings()
 	for _, format := range []string{"json", "yaml"} {
@@ -224,9 +216,9 @@ func TestRevocationWarningsKeepStoredValuesAsTheyAre(t *testing.T) {
 				}
 				return false
 			}
-			assert.True(t, holding(dataValue("supersededRef"), dataValue("revokeError")), "a warning holds the ref and the revoke error as they are: %q", got.Warnings)
-			assert.True(t, holding("recorded on prod", "the next login of prod as "+dataValue("TokenUserID")), "a warning holds the owner of the user's entry as it is: %q", got.Warnings)
-			assert.True(t, holding("recorded on plugin", "the next kubectl sign-in through plugin as "+dataValue("TokenUserID")), "a warning holds the owner of the plugin's entry as it is: %q", got.Warnings)
+			assert.True(t, holding(hostileValue("supersededRef"), hostileValue("revokeError")), "a warning holds the ref and the revoke error as they are: %q", got.Warnings)
+			assert.True(t, holding("recorded on prod", "the next login of prod as "+hostileValue("TokenUserID")), "a warning holds the owner of the user's entry as it is: %q", got.Warnings)
+			assert.True(t, holding("recorded on plugin", "the next kubectl sign-in through plugin as "+hostileValue("TokenUserID")), "a warning holds the owner of the plugin's entry as it is: %q", got.Warnings)
 		})
 	}
 }
@@ -245,7 +237,7 @@ func every(s string, parts ...string) bool {
 // refused --auth-provider value carry the auth config label as it is in json
 // and yaml.
 func TestAuthConfigCandidatesKeepTheLabelAsItIs(t *testing.T) {
-	entry := &AuthProvider{Type: "openLdapProvider", ID: dataValue("authConfig")}
+	entry := &AuthProvider{Type: "openLdapProvider", ID: hostileValue("authConfig")}
 	_, err := selectAuthProvider(t.Context(), []typedProvider{entry}, nil, "no-such-config", true, ui.Discard())
 	ce := clierr.From(err)
 	require.NotNil(t, ce)

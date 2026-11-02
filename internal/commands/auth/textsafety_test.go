@@ -39,17 +39,9 @@ import (
 // a line that reads as the CLI's own.
 const hostileTail = "\x1b[2J\u009b2J\t\u202e\u0085\u2028\r\nforged line"
 
-// dataTail is hostileTail without the characters -o yaml refuses or reads
-// back changed (DEL and the controls U+0080 to U+009F, which include U+0085),
-// for the rows that render the value through a structured format.
-const dataTail = "\x1b[2J\t\u202e\u2028\r\nforged line"
-
 // hostileValue is the value planted at the path p: the path in angle brackets,
 // then the hostile tail.
 func hostileValue(p string) string { return "<" + p + ">" + hostileTail }
-
-// dataValue is hostileValue with the tail a structured format carries.
-func dataValue(p string) string { return "<" + p + ">" + dataTail }
 
 // plainValue is the value planted at a path whose rule keeps a newline out of
 // it: the path in angle brackets alone.
@@ -419,9 +411,9 @@ func TestAuthStatusJSONAndYAMLKeepServerValuesAsTheyAre(t *testing.T) {
 	require.NoError(t, err)
 	s := cfg.Servers["default"]
 	s.Provenance = clierr.ProvenanceDerived
-	s.TokenUserID, s.TokenAuthConfig = dataValue("credential.userId"), dataValue("credential.authConfig")
-	s.TokenRef = &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: dataValue("credential.tokenRef.name")}
-	s.CredentialExpiresAt = dataValue("credential.expiresAt")
+	s.TokenUserID, s.TokenAuthConfig = hostileValue("credential.userId"), hostileValue("credential.authConfig")
+	s.TokenRef = &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: hostileValue("credential.tokenRef.name")}
+	s.CredentialExpiresAt = hostileValue("credential.expiresAt")
 	cfg.Servers["default"] = s
 	require.NoError(t, cfg.Write())
 	store := config.NewFileStore(dir)
@@ -429,13 +421,13 @@ func TestAuthStatusJSONAndYAMLKeepServerValuesAsTheyAre(t *testing.T) {
 
 	build := func() *authCheckCmd {
 		cmd := checkCmd(dir, store)
-		cmd.preflight = func(context.Context, config.Effective) (string, error) { return dataValue("serverVersion"), nil }
-		cmd.rancherVersion = func(context.Context, config.Effective) (string, error) { return dataValue("rancherVersion"), nil }
-		cmd.identity = func(context.Context, config.Effective) (string, error) { return dataValue("identity.userID"), nil }
+		cmd.preflight = func(context.Context, config.Effective) (string, error) { return hostileValue("serverVersion"), nil }
+		cmd.rancherVersion = func(context.Context, config.Effective) (string, error) { return hostileValue("rancherVersion"), nil }
+		cmd.identity = func(context.Context, config.Effective) (string, error) { return hostileValue("identity.userID"), nil }
 		cmd.token = func(context.Context, config.Effective, string) (provider.TokenMetadata, error) {
 			return provider.TokenMetadata{
-				Name: dataValue("token.name"), Kind: "session",
-				Provider: dataValue("token.provider"), ExpiresAt: dataValue("token.expiresAt"),
+				Name: hostileValue("token.name"), Kind: "session",
+				Provider: hostileValue("token.provider"), ExpiresAt: hostileValue("token.expiresAt"),
 			}, nil
 		}
 		return cmd
@@ -464,18 +456,18 @@ func TestAuthStatusJSONAndYAMLKeepServerValuesAsTheyAre(t *testing.T) {
 			} else {
 				require.NoError(t, yaml.Unmarshal(raw, &env))
 			}
-			assert.Equal(t, dataValue("serverVersion"), env.Data["serverVersion"])
-			assert.Equal(t, dataValue("rancherVersion"), env.Data["rancherVersion"])
-			assert.Equal(t, dataValue("identity.userID"), sub(t, env.Data, "identity")["userID"])
+			assert.Equal(t, hostileValue("serverVersion"), env.Data["serverVersion"])
+			assert.Equal(t, hostileValue("rancherVersion"), env.Data["rancherVersion"])
+			assert.Equal(t, hostileValue("identity.userID"), sub(t, env.Data, "identity")["userID"])
 			token := sub(t, env.Data, "token")
-			assert.Equal(t, dataValue("token.name"), token["name"])
-			assert.Equal(t, dataValue("token.provider"), token["provider"])
-			assert.Equal(t, dataValue("token.expiresAt"), token["expiresAt"])
+			assert.Equal(t, hostileValue("token.name"), token["name"])
+			assert.Equal(t, hostileValue("token.provider"), token["provider"])
+			assert.Equal(t, hostileValue("token.expiresAt"), token["expiresAt"])
 			credential := sub(t, env.Data, "credential")
-			assert.Equal(t, dataValue("credential.userId"), credential["userId"])
-			assert.Equal(t, dataValue("credential.authConfig"), credential["authConfig"])
-			assert.Equal(t, dataValue("credential.tokenRef.name"), sub(t, credential, "tokenRef")["name"])
-			assert.Equal(t, dataValue("credential.expiresAt"), credential["expiresAt"])
+			assert.Equal(t, hostileValue("credential.userId"), credential["userId"])
+			assert.Equal(t, hostileValue("credential.authConfig"), credential["authConfig"])
+			assert.Equal(t, hostileValue("credential.tokenRef.name"), sub(t, credential, "tokenRef")["name"])
+			assert.Equal(t, hostileValue("credential.expiresAt"), credential["expiresAt"])
 		})
 	}
 }
@@ -502,7 +494,7 @@ func subjectCertificate(t *testing.T, name string) *x509.Certificate {
 // a certificate failure carry the subject and issuer as they are in json and
 // yaml.
 func TestCertificateDetailsJSONKeepTheSubjectAsItIs(t *testing.T) {
-	cert := subjectCertificate(t, dataValue("subject"))
+	cert := subjectCertificate(t, hostileValue("subject"))
 	failure := &tls.CertificateVerificationError{
 		UnverifiedCertificates: []*x509.Certificate{cert},
 		Err:                    x509.UnknownAuthorityError{Cert: cert},
