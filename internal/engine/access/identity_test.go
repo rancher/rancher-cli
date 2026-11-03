@@ -37,7 +37,7 @@ func TestPlanIdentityCallerPaths(t *testing.T) {
 		require.NoError(t, err)
 		caller, err := callerPreflight(t.Context(), f.caller, "c-phmj7")
 		require.NoError(t, err)
-		plan, err := planIdentity(t.Context(), f, f.caller, localWith("user-vwq4j"), "c-phmj7", caller, p, false)
+		plan, err := planIdentityOver(t.Context(), f, f.caller, localWith("user-vwq4j"), "c-phmj7", caller, p, false)
 		require.NoError(t, err)
 		assert.Equal(t, IdentityCaller, plan.Identity)
 		assert.True(t, plan.AsCaller)
@@ -55,7 +55,7 @@ func TestPlanIdentityGroupNamedLikeCallerUsesSAR(t *testing.T) {
 	f := callerFactory("user-vwq4j", nil)
 	admin := callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}
 	g, _ := ParseSubject("user-vwq4j", "group")
-	plan, err := planIdentity(t.Context(), f, f.caller, localWith(), "c-phmj7", admin, g, false)
+	plan, err := planIdentityOver(t.Context(), f, f.caller, localWith(), "c-phmj7", admin, g, false)
 	require.NoError(t, err)
 	assert.Equal(t, IdentitySAR, plan.Identity)
 	assert.Equal(t, GroupsGroupOnly, plan.GroupsFrom)
@@ -65,7 +65,7 @@ func TestPlanIdentityGroupNamedLikeCallerUsesSAR(t *testing.T) {
 
 	sa := callerIdentity{Username: "system:serviceaccount:ci:runner", Groups: []string{"system:serviceaccounts"}}
 	p, _ := ParseSubject("system:serviceaccount:ci:runner", "")
-	plan, err = planIdentity(t.Context(), f, f.caller, localWith(), "c-phmj7", sa, p, false)
+	plan, err = planIdentityOver(t.Context(), f, f.caller, localWith(), "c-phmj7", sa, p, false)
 	require.NoError(t, err)
 	assert.Equal(t, IdentityCaller, plan.Identity)
 	assert.True(t, plan.AsCaller)
@@ -79,7 +79,7 @@ func TestPlanIdentityNonexistentServiceAccountIsNotFound(t *testing.T) {
 	ghost := &fakeClient{script: []scripted{{resp: saNotFound500("serviceaccounts \"ghost\" not found")}}}
 	f := callerFactory("user-vwq4j", map[string]*fakeClient{"system:serviceaccount:team-a:ghost": ghost})
 	p, _ := ParseSubject("system:serviceaccount:team-a:ghost", "")
-	_, err := planIdentity(t.Context(), f, f.caller, localWith(), "c-phmj7", callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}, p, false)
+	_, err := planIdentityOver(t.Context(), f, f.caller, localWith(), "c-phmj7", callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}, p, false)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -108,7 +108,7 @@ func TestPlanIdentityImpersonationSucceeds(t *testing.T) {
 	alice := &fakeClient{script: []scripted{{resp: whoamiResp("u-abc12", "system:authenticated")}}}
 	f := callerFactory("user-vwq4j", map[string]*fakeClient{"u-abc12": alice})
 	p, _ := ParseSubject("u-abc12", "")
-	plan, err := planIdentity(t.Context(), f, f.caller, localWith("u-abc12"), "c-phmj7", callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}, p, false)
+	plan, err := planIdentityOver(t.Context(), f, f.caller, localWith("u-abc12"), "c-phmj7", callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}, p, false)
 	require.NoError(t, err)
 	assert.Equal(t, IdentityImpersonated, plan.Identity)
 	assert.Equal(t, []string{"u-abc12"}, f.Impersonated)
@@ -123,7 +123,7 @@ func TestPlanIdentityHeaderDropFallsBackToSAR(t *testing.T) {
 	dropped := &fakeClient{script: []scripted{{resp: whoamiResp("user-vwq4j")}}}
 	f := callerFactory("user-vwq4j", map[string]*fakeClient{"u-abc12": dropped})
 	p, _ := ParseSubject("u-abc12", "")
-	plan, err := planIdentity(t.Context(), f, f.caller, localWith("u-abc12"), "c-phmj7", callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}, p, false)
+	plan, err := planIdentityOver(t.Context(), f, f.caller, localWith("u-abc12"), "c-phmj7", callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}, p, false)
 	require.NoError(t, err)
 	assert.Equal(t, IdentitySAR, plan.Identity)
 	assert.Equal(t, GroupsRancherUserAttribute, plan.GroupsFrom)
@@ -138,7 +138,7 @@ func TestPlanIdentityImpersonationRefusedFallsBackToSAR(t *testing.T) {
 	refused := &fakeClient{script: []scripted{{resp: http403(`{"message":"not allowed to impersonate user"}`)}}}
 	f := callerFactory("m-54pdw", map[string]*fakeClient{"u-abc12": refused})
 	p, _ := ParseSubject("u-abc12", "")
-	plan, err := planIdentity(t.Context(), f, f.caller, localWith("u-abc12"), "c-phmj7", callerIdentity{Username: "m-54pdw"}, p, false)
+	plan, err := planIdentityOver(t.Context(), f, f.caller, localWith("u-abc12"), "c-phmj7", callerIdentity{Username: "m-54pdw"}, p, false)
 	require.NoError(t, err)
 	assert.Equal(t, IdentitySAR, plan.Identity)
 }
@@ -200,7 +200,7 @@ func TestPlanIdentitySubjectWithoutClusterAccess(t *testing.T) {
 			noAccess := &fakeClient{script: []scripted{{resp: http403("")}}}
 			f := callerFactory("user-vwq4j", map[string]*fakeClient{"u-abc12": noAccess})
 			p, _ := ParseSubject("u-abc12", "")
-			plan, err := planIdentity(t.Context(), f, f.caller, tc.local(), "c-phmj7",
+			plan, err := planIdentityOver(t.Context(), f, f.caller, tc.local(), "c-phmj7",
 				callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}, p, false)
 			require.NoError(t, err)
 			require.NotNil(t, plan.Denied)
@@ -219,7 +219,7 @@ func TestPlanIdentityImpersonationRefusedRefusesList(t *testing.T) {
 	refused := &fakeClient{script: []scripted{{resp: http403(`{"message":"not allowed to impersonate user"}`)}}}
 	f := callerFactory("m-54pdw", map[string]*fakeClient{"u-abc12": refused})
 	p, _ := ParseSubject("u-abc12", "")
-	_, err := planIdentity(t.Context(), f, f.caller, localWith("u-abc12"), "c-phmj7", callerIdentity{Username: "m-54pdw"}, p, true)
+	_, err := planIdentityOver(t.Context(), f, f.caller, localWith("u-abc12"), "c-phmj7", callerIdentity{Username: "m-54pdw"}, p, true)
 	require.ErrorContains(t, err, "cannot act as u-abc12 on cluster c-phmj7: your GlobalRoles lack impersonate on users on the management cluster")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
@@ -268,14 +268,14 @@ func TestPlanIdentityLocalAndGroupSkipImpersonation(t *testing.T) {
 	f := callerFactory("user-vwq4j", nil)
 	admin := callerIdentity{Username: "user-vwq4j", Groups: []string{"system:authenticated"}}
 	g, _ := ParseSubject("github_org://eng", "")
-	plan, err := planIdentity(t.Context(), f, f.caller, localWith(), "c-phmj7", admin, g, false)
+	plan, err := planIdentityOver(t.Context(), f, f.caller, localWith(), "c-phmj7", admin, g, false)
 	require.NoError(t, err)
 	assert.Equal(t, IdentitySAR, plan.Identity)
 	assert.Equal(t, GroupsGroupOnly, plan.GroupsFrom)
 	assert.Empty(t, f.Impersonated)
 
 	anon, _ := ParseSubject("system:anonymous", "")
-	plan, err = planIdentity(t.Context(), f, f.caller, localWith(), "c-phmj7", admin, anon, false)
+	plan, err = planIdentityOver(t.Context(), f, f.caller, localWith(), "c-phmj7", admin, anon, false)
 	require.NoError(t, err)
 	assert.Equal(t, IdentitySAR, plan.Identity)
 	assert.Equal(t, GroupsAnonymousIdentity, plan.GroupsFrom)
@@ -283,11 +283,11 @@ func TestPlanIdentityLocalAndGroupSkipImpersonation(t *testing.T) {
 
 	f = callerFactory("user-vwq4j", nil)
 	u, _ := ParseSubject("u-abc12", "")
-	plan, err = planIdentity(t.Context(), f, f.caller, localWith("u-abc12"), engine.LocalCluster, admin, u, false)
+	plan, err = planIdentityOver(t.Context(), f, f.caller, localWith("u-abc12"), engine.LocalCluster, admin, u, false)
 	require.NoError(t, err)
 	assert.Equal(t, IdentitySAR, plan.Identity)
 	assert.Empty(t, f.Impersonated, "local never impersonates")
-	_, err = planIdentity(t.Context(), f, f.caller, localWith("u-abc12"), engine.LocalCluster, admin, u, true)
+	_, err = planIdentityOver(t.Context(), f, f.caller, localWith("u-abc12"), engine.LocalCluster, admin, u, true)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)

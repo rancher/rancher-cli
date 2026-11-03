@@ -74,7 +74,7 @@ func projectsFixture(t *testing.T, pages map[string]*stevePage) (*projectsCmd, *
 		},
 	}
 	srv := steveServer(t, pages)
-	cmd := &projectsCmd{clustersCmd{clients: f, roots: fakeRootFactory{fakeRootClient{srv}}, local: local}}
+	cmd := &projectsCmd{clustersCmd{clients: f, roots: rootsOver(fakeRootClient{srv}, local), local: local}}
 	return cmd, f
 }
 
@@ -463,7 +463,7 @@ func TestProjectsNamespaceRead401IsTerminal(t *testing.T) {
 		mux.Handle("/", srv.Config.Handler)
 		front := httptest.NewServer(mux)
 		t.Cleanup(front.Close)
-		cmd.roots = fakeRootFactory{fakeRootClient{front}}
+		cmd.roots = rootsOver(fakeRootClient{front}, cmd.local)
 		res, err := cmd.Execute(t.Context(), projectsInput("", "", ""), nil)
 		if tc.terminal {
 			require.Error(t, err, "status %d", tc.status)

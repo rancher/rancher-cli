@@ -43,12 +43,23 @@ type fakeRoot struct {
 	err  error
 	path string
 
+	// attrSource holds the UserAttributes the root serves through steve:
+	// objects keyed by user id under userAttrGVR, and the errors of a read
+	// (a NOT_FOUND is a 404, an RBAC refusal a 403). attrNoSchema makes
+	// steve's schema of the type a 404. A collection read is always empty.
+	attrSource   *fakeClient
+	attrNoSchema bool
+	attrPaths    []string
+
 	cluster      *unstructured.Unstructured
 	clusterErr   error
 	clusterPaths []string
 }
 
 func (f *fakeRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
+	if strings.HasPrefix(path, "/v1/management.cattle.io.userattributes") || strings.HasPrefix(path, "/v1/schemas/management.cattle.io.userattribute") {
+		return f.userAttributeAnswer(path)
+	}
 	if id, ok := strings.CutPrefix(path, steveClusterPath("")+"/"); ok && !strings.Contains(id, "/") {
 		f.clusterPaths = append(f.clusterPaths, path)
 		return f.clusterAnswer(path, id)
@@ -58,6 +69,43 @@ func (f *fakeRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
 		return nil, f.err
 	}
 	return f.body, nil
+}
+
+// userAttributeAnswer is steve's answer for a UserAttribute path: the schema
+// unless attrNoSchema, one object by id from attrSource, or an empty
+// collection.
+func (f *fakeRoot) userAttributeAnswer(path string) ([]byte, error) {
+	f.attrPaths = append(f.attrPaths, path)
+	switch {
+	case strings.HasPrefix(path, "/v1/schemas/"):
+		if f.attrNoSchema {
+			return nil, rootStatusErr(http.StatusNotFound, path)
+		}
+		return []byte(`{"id":"management.cattle.io.userattribute","type":"schema"}`), nil
+	case path == "/v1/management.cattle.io.userattributes":
+		return []byte(`{"type":"collection","revision":"1","data":[]}`), nil
+	}
+	id := strings.TrimPrefix(path, "/v1/management.cattle.io.userattributes/")
+	if f.attrSource != nil {
+		k := objKey{userAttrGVR, "", id}
+		if err, ok := f.attrSource.getErrs[k]; ok {
+			if ce, ok := errors.AsType[*clierr.Error](err); ok {
+				switch ce.Code {
+				case clierr.CodeRBAC:
+					return nil, rootStatusErr(http.StatusForbidden, path)
+				case clierr.CodeNotFound:
+					return nil, rootStatusErr(http.StatusNotFound, path)
+				}
+			}
+			return nil, err
+		}
+		if obj, ok := f.attrSource.objects[k]; ok {
+			body := maps.Clone(obj.Object)
+			body["id"], body["type"], body["links"] = id, "management.cattle.io.userattribute", map[string]any{}
+			return json.Marshal(body)
+		}
+	}
+	return nil, rootStatusErr(http.StatusNotFound, path)
 }
 
 // clusterAnswer is the steve answer for the management Cluster id: the
@@ -1000,7 +1048,7 @@ func TestClusterMembersLookupTriState(t *testing.T) {
 
 	failed := newFakeClient().withListErr(crtbKind.GVR, errors.New("forbidden"))
 	sec := newSections(t.Context(), sectionMembers)
-	members, warns, err := clusterMembers(t.Context(), failed, sec, "c-x")
+	members, warns, err := clusterMembers(t.Context(), failed, unusedAttrs(), sec, "c-x")
 	require.NoError(t, err)
 	assert.Nil(t, members, "failed LIST → nil pointer (JSON field omitted)")
 	assert.Empty(t, warns, "the failure is a degraded entry; the advisory channel stays empty")
@@ -1012,7 +1060,7 @@ func TestClusterMembersLookupTriState(t *testing.T) {
 
 	empty := newFakeClient().withListNS(crtbKind.GVR, "c-x", &unstructured.UnstructuredList{})
 	sec = newSections(t.Context(), sectionMembers)
-	members, warns, err = clusterMembers(t.Context(), empty, sec, "c-x")
+	members, warns, err = clusterMembers(t.Context(), empty, unusedAttrs(), sec, "c-x")
 	require.NoError(t, err)
 	require.NotNil(t, members, "verified empty LIST → non-nil pointer")
 	assert.Empty(t, *members)
@@ -1024,7 +1072,7 @@ func TestClusterMembersLookupTriState(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	canceled := newFakeClient().withListErr(crtbKind.GVR, context.Canceled)
-	_, _, err = clusterMembers(ctx, canceled, newSections(ctx, sectionMembers), "c-x")
+	_, _, err = clusterMembers(ctx, canceled, unusedAttrs(), newSections(ctx, sectionMembers), "c-x")
 	require.Error(t, err, "caller cancellation aborts the command")
 }
 
@@ -1042,7 +1090,7 @@ func TestClusterMembersBindingRoundTrips(t *testing.T) {
 		}}},
 	})
 	sec := newSections(t.Context(), sectionMembers)
-	members, _, err := clusterMembers(t.Context(), seeded, sec, "c-x")
+	members, _, err := clusterMembers(t.Context(), seeded, unusedAttrs(), sec, "c-x")
 	require.NoError(t, err)
 	require.NotNil(t, members)
 	require.Len(t, *members, 1)

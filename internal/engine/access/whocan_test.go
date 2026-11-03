@@ -139,7 +139,7 @@ func TestWhoCanSingleNamespaceRowsAndRollup(t *testing.T) {
 		sarAnswer(true, aliceReason),
 		sarAnswer(true, adminReason),
 	)
-	cmd := NewWhoCan(f, f.caller).(runtime.ReadCommand)
+	cmd := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
@@ -208,7 +208,7 @@ func TestWhoCanSingleNamespaceRowsAndRollup(t *testing.T) {
 	f = whoCanFactory(
 		sarAnswer(true, ""), mastersAnswer(), sarAnswer(false, ""), sarAnswer(true, aliceReason), sarAnswer(true, adminReason),
 	)
-	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(),
+	res, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(),
 		fakeInput{strs: map[string]string{"cluster": "prod", "namespace": "team-a"}, bools: map[string]bool{"show-denied": true}, args: []string{"get", "pods"}}, nil)
 	require.NoError(t, err)
 	assert.Contains(t, res.Text, "system:serviceaccount:team-a:ci")
@@ -224,7 +224,7 @@ func TestWhoCanUnknownGroupsNeverDriveTheExit(t *testing.T) {
 	// candidates in team-b, sorted: group github_org://eng, group
 	// system:masters, user oidc-external@corp, user u-abc12, user user-vwq4j
 	f := whoCanFactory(sarAnswer(false, ""), mastersAnswer(), sarAnswer(false, ""), sarAnswer(false, ""), sarAnswer(true, adminReason))
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-b"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-b"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	ext := rowByName(t, out, "oidc-external@corp")
@@ -245,7 +245,7 @@ func TestWhoCanUnknownGroupsNeverDriveTheExit(t *testing.T) {
 	f = whoCanFactory(sarAnswer(false, ""), mastersAnswer(),
 		sarAnswer(true, `RBAC: allowed by RoleBinding "team-b/rb-2" of ClusterRole "view" to User "oidc-external@corp"`),
 		sarAnswer(false, ""), sarAnswer(true, adminReason))
-	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-b"}, "get", "pods"), nil)
+	res, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-b"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out = decodeSubjects(t, res)
 	assert.Equal(t, DecisionAllowed, rowByName(t, out, "oidc-external@corp").Decision, "a positive answer needs no groups")
@@ -261,7 +261,7 @@ func TestWhoCanEvaluationErrorAndRequestIssueExitThirteen(t *testing.T) {
 	f := whoCanFactory(sarAnswer(false, ""), mastersAnswer(), sarAnswer(false, ""),
 		scripted{resp: review(engine.ReviewSubjectAccess, map[string]any{"allowed": false, "evaluationError": "webhook unreachable"})},
 		sarAnswer(true, adminReason))
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	alice := rowByName(t, out, "u-abc12")
@@ -275,7 +275,7 @@ func TestWhoCanEvaluationErrorAndRequestIssueExitThirteen(t *testing.T) {
 	f = whoCanFactory(sarAnswer(false, ""), mastersAnswer(),
 		scripted{err: clierr.Retryable(clierr.CodeGeneric, "POST subjectaccessreviews: 503 Service Unavailable")},
 		sarAnswer(true, aliceReason), sarAnswer(true, adminReason))
-	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out = decodeSubjects(t, res)
 	sa := rowByName(t, out, "system:serviceaccount:team-a:ci")
@@ -306,7 +306,7 @@ func TestWhoCanAllowedWithEvaluationErrorWarnsAndKeepsRows(t *testing.T) {
 		sarAnswer(false, ""), sarAnswer(false, ""),
 		sarAnswer(true, adminReason), withErr,
 	)
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	assert.Equal(t, 0, res.ExitStatus)
@@ -333,7 +333,7 @@ func TestWhoCanIdentityReadFailureIsTheRowsIssue(t *testing.T) {
 	serialFanOut(t)
 	f := whoCanFactory(sarAnswer(false, ""), mastersAnswer(), sarAnswer(false, ""))
 	local := &fakeClient{GetErr: clierr.Retryable(clierr.CodeGeneric, "GET users: 503 Service Unavailable")}
-	res, err := NewWhoCan(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	require.Len(t, f.caller.Reviews, 4, "whoami plus one review per candidate whose identity resolved")
@@ -354,19 +354,81 @@ func TestWhoCanIdentityReadFailureIsTheRowsIssue(t *testing.T) {
 	}
 }
 
+// TestWhoCanRefusedUserAttributeIsTheRowsIssue asserts a Rancher-user
+// candidate whose UserAttribute steve refuses keeps today's row: unknown,
+// source request, the refusal as its issue, no review posted for it, and
+// exit 13; the other candidates are answered.
+func TestWhoCanRefusedUserAttributeIsTheRowsIssue(t *testing.T) {
+	serialFanOut(t)
+	f := whoCanFactory(sarAnswer(false, ""), mastersAnswer(), sarAnswer(false, ""))
+	f.caller.AttrRefusal = attrNoRight
+	res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	require.NoError(t, err)
+	out := decodeSubjects(t, res)
+	for _, c := range []struct{ name, id string }{{"u-abc12", "u-abc12"}, {"user-vwq4j", "user-vwq4j"}} {
+		row := rowByName(t, out, c.name)
+		assert.Equal(t, MemberRequest, row.Source, c.name)
+		assert.Equal(t, DecisionUnknown, row.Decision, c.name)
+		require.NotNil(t, row.Issue, c.name)
+		assert.Equal(t, clierr.CodeRBAC, row.Issue.Code)
+		assert.Equal(t, "you cannot read userattributes (GET /v1/management.cattle.io.userattributes/"+c.id+" answered 404); Rancher's API shows you no userattributes type"+userAttributesRemedyText, row.Issue.Message)
+	}
+	assert.Equal(t, exitUnknown, res.ExitStatus)
+	assert.Len(t, f.caller.Reviews, 4, "whoami plus a review for each candidate whose identity resolved: the two Rancher users have none")
+}
+
 // TestWhoCanGroupMembersFailureIsAWarning asserts a failed UserAttribute
 // LIST leaves every row and the exit code alone and adds one warning.
 func TestWhoCanGroupMembersFailureIsAWarning(t *testing.T) {
 	serialFanOut(t)
 	f := whoCanFactory(sarAnswer(true, ""), mastersAnswer(), sarAnswer(false, ""), sarAnswer(true, aliceReason), sarAnswer(true, adminReason))
 	local := &fakeClient{Objects: f.caller.Objects, ListErr: clierr.New(clierr.CodeRBAC, "userattributes is forbidden")}
-	res, err := NewWhoCan(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	assert.Equal(t, 0, res.ExitStatus)
 	assert.Nil(t, rowByName(t, out, "github_org://eng").KnownMembers)
 	assert.Equal(t, []string{"direct"}, rowByName(t, out, "u-abc12").Via)
-	assert.Contains(t, res.Warnings, "group members not expanded: userattributes is forbidden")
+	assert.Contains(t, res.Warnings, "group members not expanded: you cannot list userattributes (GET /v1/management.cattle.io.userattributes answered 403)"+userAttributesRemedyText)
+}
+
+// TestWhoCanGroupMembersFollowWhatTheCallerMayList asserts the group rows'
+// knownMembers follow the caller's right on userattributes: a missing type is
+// a warning with its cause, get without list is a warning that the
+// collection may leave items out and claims no members, get and list expands
+// them. The rows and the exit code do not change.
+func TestWhoCanGroupMembersFollowWhatTheCallerMayList(t *testing.T) {
+	tests := []struct {
+		name    string
+		refusal userAttributeRefusal
+		warning string
+		members []string
+	}{
+		{name: "no right", refusal: attrNoRight,
+			warning: "group members not expanded: you cannot list userattributes (GET /v1/management.cattle.io.userattributes answered 404); Rancher's API shows you no userattributes type" + userAttributesRemedyText},
+		{name: "get only", refusal: attrGetOnly,
+			warning: "group members not expanded: you cannot list every userattribute (a SelfSubjectAccessReview for list on userattributes.management.cattle.io answered denied); GET /v1/management.cattle.io.userattributes may leave items out" + userAttributesRemedyText},
+		{name: "get and list", refusal: attrServed, members: []string{"u-abc12", "u-def34"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			serialFanOut(t)
+			f := whoCanFactory(sarAnswer(true, ""), mastersAnswer(), sarAnswer(false, ""), sarAnswer(true, aliceReason), sarAnswer(true, adminReason))
+			f.caller.AttrRefusal = tc.refusal
+			f.caller.Objects["u-abc12-attr"] = userAttrObj("u-abc12", "github_org://eng")
+			res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+			require.NoError(t, err)
+			out := decodeSubjects(t, res)
+			assert.Equal(t, tc.members, rowByName(t, out, "github_org://eng").KnownMembers)
+			if tc.warning == "" {
+				for _, w := range res.Warnings {
+					assert.False(t, strings.HasPrefix(w, "group members not expanded"), w)
+				}
+				return
+			}
+			assert.Contains(t, res.Warnings, tc.warning)
+		})
+	}
 }
 
 // TestWhoCanNoBoundGroupSkipsTheMembershipCache asserts that when no
@@ -381,9 +443,10 @@ func TestWhoCanNoBoundGroupSkipsTheMembershipCache(t *testing.T) {
 	}}
 	f.caller.Lists["rolebindings|team-a|"] = &unstructured.UnstructuredList{}
 	local := &fakeClient{ListErr: clierr.New(clierr.CodeRBAC, "userattributes is forbidden")}
-	res, err := NewWhoCan(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
+	assert.Empty(t, local.AttrPaths, "no group is bound: no UserAttribute request")
 	assert.Equal(t, 2, out.Rollup.Candidates, "system:masters and the scheduler")
 	assert.Empty(t, res.Warnings, "no bound group: no membership LIST, no cache warning")
 	assert.Equal(t, 0, res.ExitStatus)
@@ -402,7 +465,7 @@ func TestWhoCanKubernetesGroupSkipsTheMembershipCache(t *testing.T) {
 	}}
 	f.caller.Lists["rolebindings|team-a|"] = &unstructured.UnstructuredList{}
 	local := &fakeClient{ListErr: clierr.New(clierr.CodeRBAC, "userattributes is forbidden")}
-	res, err := NewWhoCan(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	assert.Equal(t, 2, out.Rollup.Candidates, "system:masters and the authenticated group")
@@ -433,7 +496,7 @@ func TestWhoCanProjectRowsAndClusterWideCollapse(t *testing.T) {
 		sarAnswer(true, aliceReason), sarAnswer(false, ""),
 		sarAnswer(true, adminReason), sarAnswer(true, adminReason),
 	)
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "Team"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "Team"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	assert.Equal(t, subjectsRollup{Candidates: 6, Rows: 12, Evaluated: 12, Allowed: 5, Denied: 5, Unknown: 2, GroupsUnknown: 2,
@@ -468,7 +531,7 @@ func TestWhoCanProjectRowsAndClusterWideCollapse(t *testing.T) {
 func TestWhoCanAllNamespacesAndEmptyProject(t *testing.T) {
 	serialFanOut(t)
 	f := whoCanFactory(sarAnswer(false, ""))
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(),
+	res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(),
 		fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}, args: []string{"get", "pods"}}, nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
@@ -477,7 +540,7 @@ func TestWhoCanAllNamespacesAndEmptyProject(t *testing.T) {
 	assert.Equal(t, "team-a", out.Subjects[0].Namespace)
 
 	f = whoCanFactory()
-	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "pods"), nil)
+	res, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out = decodeSubjects(t, res)
 	assert.Equal(t, 0, res.ExitStatus)
@@ -494,7 +557,7 @@ func TestWhoCanAllNamespacesAndEmptyProject(t *testing.T) {
 func TestWhoCanClusterScopeAndNonResource(t *testing.T) {
 	serialFanOut(t)
 	f := whoCanFactory(sarAnswer(false, ""))
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(),
+	res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(),
 		canInput(map[string]string{"non-resource-url": "/healthz"}, "post"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
@@ -509,7 +572,7 @@ func TestWhoCanClusterScopeAndNonResource(t *testing.T) {
 	assert.Equal(t, "/healthz", nra["path"])
 
 	f = whoCanFactory(sarAnswer(false, ""))
-	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil, "list", "pods"), nil)
+	res, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil, "list", "pods"), nil)
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(res.Text, "who can list pods in all namespaces on c-phmj7\n"), res.Text)
 	ra, _, _ := unstructured.NestedMap(f.caller.Reviews[1].Object.Object, "spec", "resourceAttributes")
@@ -524,11 +587,11 @@ func TestWhoCanRefusals(t *testing.T) {
 	serialFanOut(t)
 	f := whoCanFactory()
 	f.caller.ListErr = clierr.New(clierr.CodeRBAC, "clusterrolebindings.rbac.authorization.k8s.io is forbidden")
-	_, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	_, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "who-can needs list on rolebindings and clusterrolebindings on cluster c-phmj7")
 
 	f = whoCanFactory(scripted{resp: http403(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"subjectaccessreviews.authorization.k8s.io is forbidden","reason":"Forbidden","code":403}`)})
-	_, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	_, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "you lack create subjectaccessreviews")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
@@ -538,11 +601,11 @@ func TestWhoCanRefusals(t *testing.T) {
 
 	f = whoCanFactory()
 	f.caller.script = []scripted{{resp: http403("")}}
-	_, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	_, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "you have no access to cluster c-phmj7")
 
 	f = whoCanFactory()
-	_, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "alice"}, "get", "pods"), nil)
+	_, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "alice"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "who-can takes no --as")
 	assert.Empty(t, f.caller.Reviews, "validation fires before any request")
 }
@@ -566,7 +629,7 @@ func TestWhoCanValidation(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			f := whoCanFactory()
-			_, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), c.in, nil)
+			_, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), c.in, nil)
 			require.ErrorContains(t, err, c.want)
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
@@ -582,7 +645,7 @@ func TestWhoCanIncompleteDiscoveryWarns(t *testing.T) {
 	serialFanOut(t)
 	f := whoCanFactory(sarAnswer(true, ""), mastersAnswer(), sarAnswer(false, ""), sarAnswer(true, aliceReason), sarAnswer(true, adminReason))
 	f.caller.ResourcesErr = incompleteFor("dead.example")
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(),
+	res, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(),
 		canInput(map[string]string{"namespace": "team-a"}, "get", "deployments"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "apps", decodeSubjects(t, res).Question.Group)
@@ -592,7 +655,7 @@ func TestWhoCanIncompleteDiscoveryWarns(t *testing.T) {
 
 	f = whoCanFactory()
 	f.caller.ResourcesErr = incompleteFor("dead.example")
-	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"),
+	res, err = NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"),
 		canInput(map[string]string{"project": "p-empty"}, "get", "deployments"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, SourceScopeDiscovery, decodeSubjects(t, res).ResultSource)
@@ -606,7 +669,7 @@ func TestWhoCanIncompleteDiscoveryWarns(t *testing.T) {
 func TestWhoCanBudgetCoversProjectRead(t *testing.T) {
 	t.Parallel()
 	f := whoCanFactory()
-	_, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}, "get", "pods"), nil)
+	_, err := NewWhoCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during project resolution")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
@@ -619,7 +682,7 @@ func TestWhoCanBudgetCoversProjectRead(t *testing.T) {
 // boolean --show-denied.
 func TestWhoCanDescriptor(t *testing.T) {
 	t.Parallel()
-	d := NewWhoCan(nil, nil).Describe()
+	d := NewWhoCan(nil, nil, nil).Describe()
 	assert.Equal(t, "access who-can", d.Name)
 	assert.Equal(t, runtime.ReadOnly, d.CommandType)
 	assert.Equal(t, runtime.ServerAccessRead, d.EffectiveServerAccess())

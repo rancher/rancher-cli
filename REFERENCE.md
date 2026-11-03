@@ -1045,7 +1045,16 @@ lists a group's rules; a group is refused with a validation error that
 points at `access can`). A named user is impersonated when
 your GlobalRoles allow it; otherwise the CLI asks a SubjectAccessReview
 about the user with the group principals Rancher has cached for it. The
-management cluster never impersonates: `access can --cluster local --as`
+CLI reads those principals (the user's UserAttribute) through Rancher's
+`/v1` API, which applies your own roles; it needs `get` on
+`userattributes.management.cattle.io`. When Rancher refuses the read, the
+review carries only `system:authenticated` and `system:cattle:authenticated`,
+`groupAliases.status` is `unavailable` (the text line reads `groups from
+rancherUserAttribute (unavailable)`), a warning says why, and a denied
+answer is reported `unknown` (exit 13): an allowed answer still stands.
+`access explain` then marks the chain `partial` or `unknown` with a
+`managementRead` issue for the UserAttribute. An impersonated review does
+not send the groups, so its answer does not change. The management cluster never impersonates: `access can --cluster local --as`
 uses SubjectAccessReview and `access list --as` refuses there. Exit
 codes: `can` 0 allowed, 12 denied, 13 unknown; `list` 13 when any
 namespace answered incompletely or not at all. Every answer states its
@@ -1080,9 +1089,14 @@ cluster's RoleBindings and ClusterRoleBindings name (plus
 namespace with `--project` or `--all-namespaces`), and lists who is
 allowed; denied subjects are listed with `--show-denied`. A binding user
 that is a Rancher user is asked with the group principals Rancher has
-cached for it; a group is asked as itself and lists, under
+cached for it, read through Rancher's `/v1` API (when Rancher refuses the
+read, that user's rows are `unknown`, each with the refusal as its issue);
+a group is asked as itself and lists, under
 `knownMembers`, the users Rancher has cached in it (users who have logged
-in - groups are not expanded further); a username with no Rancher User is
+in - groups are not expanded further). The members come from listing every
+UserAttribute through `/v1`, which needs `list` on
+`userattributes.management.cattle.io`; without it a warning says so and no
+`knownMembers` are claimed; a username with no Rancher User is
 asked with `system:authenticated` only, so an allowed answer is definite
 and a denied one is reported as `unknown` ("groups unknown"), folded into
 one text line and counted in `rollup.groupsUnknown`. Every Kubernetes
@@ -1144,7 +1158,9 @@ their own completeness (`bindingsDiscovery`: `complete`, `partial`,
 code; a caller who cannot read the management plane, such as a member
 asking about themselves, gets the reachability rows and `unavailable`
 bindings. `groupAliases` says whether Rancher's cached groups could be
-read; a match through a group is limited to what Rancher has cached.
+read, through Rancher's `/v1` API with your own roles (`get` on
+`userattributes.management.cattle.io`); a match through a group is limited
+to what Rancher has cached.
 `reachable[]` is the compact answer for a program: every reachable
 cluster with its grants (RoleTemplates and GlobalRoles, `null` unless the
 binding reads were complete). Exit 0 when every cluster answered, 13 when
@@ -1174,7 +1190,7 @@ visible project with a ProjectRoleTemplateBinding naming the subject is in
 `memberOf.projects[]` with the RoleTemplates its bindings name. The set's
 own `complete` is true only when every read the match depends on
 succeeded: the ProjectRoleTemplateBinding LIST, the UserAttribute (the
-cached group principals) and, when you ask about yourself, your own User
+cached group principals, read through Rancher's `/v1` API) and, when you ask about yourself, your own User
 (its principal ids; a `--as` user arrives resolved with them). When one of
 those failed, proven memberships stay, `complete` is false and their
 `grants` are `null`. `memberOf` itself is `null` only when the

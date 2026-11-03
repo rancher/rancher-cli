@@ -67,7 +67,7 @@ func (f failingRootAt) GetJSON(ctx context.Context, path string) ([]byte, error)
 func TestProjectsNamespaceDiscoveryIssueCarriesTLSTrust(t *testing.T) {
 	cmd, _ := projectsFixture(t, projectsPages())
 	inner := cmd.roots.(fakeRootFactory).rc
-	cmd.roots = fakeRootFactory{failingRootAt{inner, steveNamespacesPath("c-1"), certificateFailure(t)}}
+	cmd.roots = rootsOver(failingRootAt{inner, steveNamespacesPath("c-1"), certificateFailure(t)}, cmd.local)
 
 	res, err := cmd.Execute(t.Context(), projectsInput("", "", ""), nil)
 	require.NoError(t, err)
@@ -100,7 +100,7 @@ func TestExplainProvenanceIssueCarriesTLSTrust(t *testing.T) {
 	t.Parallel()
 	fc := provenanceFixture()
 	fc.ListErrFor = map[string]error{"clusterroletemplatebindings||": certificateFailure(t)}
-	p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
 	require.Len(t, p.Discovery.Issues, 1)
 	assert.Equal(t, stageCRTB, p.Discovery.Issues[0].Stage)
@@ -138,7 +138,7 @@ func TestCanEndsWithTLSTrustOnTheCallerIdentityReview(t *testing.T) {
 
 	f := &fakeFactory{caller: &fakeClient{}, resolve: map[string]string{"prod": "c-phmj7"},
 		clusterClients: map[string]engine.ClusterClient{"c-phmj7": client}}
-	_, err = NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	_, err = NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)

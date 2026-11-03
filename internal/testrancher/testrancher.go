@@ -292,6 +292,16 @@ type Options struct {
 	// (localManagementAllowAll) is answered 403 with no body and no
 	// Content-Type unless the gate says the bearer may get cluster local.
 	LocalManagementGate func(bearer string) (canGetLocal bool)
+	// UserAttributeAccess, when set, serves the steve routes of UserAttributes
+	// (UserAttributesCollectionPath, by id and as a collection, and steve's
+	// schema of the type) and answers the SelfSubjectAccessReview for list on
+	// userattributes through the local-cluster proxy, per the bearer's level;
+	// a bearer it does not know (known=false) is answered 401. It does not
+	// depend on LocalManagementGate. Unset leaves those paths to Fallthrough.
+	UserAttributeAccess func(bearer string) (level UserAttributeLevel, known bool)
+	// UserAttributeObjects are the stored UserAttributes the steve routes
+	// serve, each as an object with metadata.name the user id.
+	UserAttributeObjects func() []map[string]any
 	// ClusterObject, when set, is the stored management Cluster the steve
 	// GET by id answers for a cluster ClusterVisibility shows the bearer;
 	// ok=false serves the fixture row's object.
@@ -780,6 +790,10 @@ func (f *Facade) dispatch(w http.ResponseWriter, r *http.Request) {
 		f.handlePasswordChangeRequestsPOST(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == CRTCollectionPath:
 		f.handleCRTCollection(w, r)
+	case f.opts.UserAttributeAccess != nil && r.Method == http.MethodGet && isUserAttributeRoute(r.URL.Path):
+		f.handleUserAttributes(w, r)
+	case f.opts.UserAttributeAccess != nil && r.Method == http.MethodPost && r.URL.Path == localSelfSubjectAccessReviewsPath:
+		f.handleUserAttributeReview(w, r)
 	case f.opts.ClusterVisibility != nil && r.Method == http.MethodGet && r.URL.Path == ClustersCollectionPath:
 		f.handleClustersCollection(w, r)
 	case f.opts.ClusterVisibility != nil && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, ClustersCollectionPath+"/"):

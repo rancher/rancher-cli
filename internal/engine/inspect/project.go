@@ -122,7 +122,7 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		}
 	}
 
-	memberRows, warnings, merr := projectMembers(ctx, mgmtClient, project, sec)
+	memberRows, warnings, merr := projectMembers(ctx, mgmtClient, steve.NewUserAttributes(get, mgmtClient), project, sec)
 	if merr != nil {
 		return runtime.Result{}, merr
 	}
@@ -259,7 +259,7 @@ func (c *projectCmd) downstreamSections(ctx context.Context, client engine.Clust
 // names via rbac.ResolveMembers, and degrades a listing failure (typically
 // RBAC) to a warning plus a nil member slice (serializes "members":null -
 // the pre-existing non-omitempty contract; [] means verified empty).
-func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, project *unstructured.Unstructured, sec *sections) ([]rbac.MemberRow, []string, error) {
+func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, attrs *steve.UserAttributes, project *unstructured.Unstructured, sec *sections) ([]rbac.MemberRow, []string, error) {
 	backingNS, found, _ := unstructured.NestedString(project.Object, "status", "backingNamespace")
 	if !found || backingNS == "" {
 		backingNS = project.GetName()
@@ -274,7 +274,7 @@ func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, projec
 		}
 		return nil, nil, nil
 	}
-	rows, warnings, err := rbac.ResolveMembers(ctx, mgmtClient, list.Items)
+	rows, warnings, err := rbac.ResolveMembers(ctx, mgmtClient, attrs, list.Items)
 	if err != nil {
 		return nil, nil, err
 	}

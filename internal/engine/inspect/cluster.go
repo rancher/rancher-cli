@@ -209,7 +209,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	})
 	g.Go(func() error {
 		var merr error
-		members, mwarn, merr = clusterMembers(gctx, mgmt, sec, clusterID)
+		members, mwarn, merr = clusterMembers(gctx, mgmt, steve.NewUserAttributes(steve.RootFactoryGetter(c.roots), mgmt), sec, clusterID)
 		return merr
 	})
 	if err := g.Wait(); err != nil {
@@ -483,13 +483,13 @@ func (c *clusterCmd) fetchRegistration(ctx context.Context, sec *sections, clust
 // omitted, text renders unavailable, one `members` degraded entry);
 // non-nil empty = verified no members. Display-name enrichment failures
 // stay advisory: the rows are there, only their names are missing.
-func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, sec *sections, clusterID string) (*[]rbac.MemberRow, []string, error) {
+func clusterMembers(ctx context.Context, mgmt engine.ClusterClient, attrs *steve.UserAttributes, sec *sections, clusterID string) (*[]rbac.MemberRow, []string, error) {
 	crtbKind, _ := kinds.Lookup("clusterroletemplatebinding")
 	list, err := mgmt.List(ctx, crtbKind.GVR, clusterID, "")
 	if err != nil {
 		return nil, nil, sec.Unavailable(sectionMembers, err)
 	}
-	rows, warnings, err := rbac.ResolveMembers(ctx, mgmt, list.Items)
+	rows, warnings, err := rbac.ResolveMembers(ctx, mgmt, attrs, list.Items)
 	if err != nil {
 		return nil, nil, err
 	}

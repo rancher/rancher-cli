@@ -111,7 +111,8 @@ func newAccessRunner(t *testing.T) *accessRunner {
 	})
 	router := newRecordingRouter(resolve, rec)
 	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken,
-		ClusterVisibility: clusterVisibility(resolve), LocalManagementGate: localManagementGate(resolve), ClusterObject: storedCluster})
+		ClusterVisibility: clusterVisibility(resolve), LocalManagementGate: localManagementGate(resolve), ClusterObject: storedCluster,
+		UserAttributeAccess: userAttributeAccess(resolve), UserAttributeObjects: storedUserAttributes})
 	srv := httptest.NewTLSServer(facade)
 	t.Cleanup(srv.Close)
 	caPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))

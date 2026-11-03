@@ -99,7 +99,7 @@ func TestResolveSubjectRancherUser(t *testing.T) {
 			t.Parallel()
 			p, err := ParseSubject(as, "")
 			require.NoError(t, err)
-			got, err := ResolveSubject(t.Context(), local, p)
+			got, err := ResolveSubject(t.Context(), local, attrsFor(local), p)
 			require.NoError(t, err)
 			assert.True(t, got.IsRancherUser)
 			assert.Equal(t, AccessSubject{Kind: KindUser, Name: "u-abc12", ID: "u-abc12", DisplayName: "Alice A"}, got.Subject)
@@ -131,7 +131,7 @@ func TestResolveSubjectSpecialIdentities(t *testing.T) {
 			t.Parallel()
 			p, err := ParseSubject(c.as, c.typ)
 			require.NoError(t, err)
-			got, err := ResolveSubject(t.Context(), local, p)
+			got, err := ResolveSubject(t.Context(), local, attrsFor(local), p)
 			require.NoError(t, err)
 			assert.False(t, got.IsRancherUser)
 			assert.Equal(t, c.kind, got.Subject.Kind)
@@ -151,7 +151,7 @@ func TestResolveSubjectUnknownUserIsNotFound(t *testing.T) {
 	for _, as := range []string{"nobody", "github_user://404"} {
 		p, err := ParseSubject(as, "")
 		require.NoError(t, err)
-		_, err = ResolveSubject(t.Context(), local, p)
+		_, err = ResolveSubject(t.Context(), local, attrsFor(local), p)
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok)
 		assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -260,7 +260,7 @@ func TestResolveSubjectBareNameMissListsCandidates(t *testing.T) {
 	local := usersClient(userObj("u-1", "alice", "Alice A", "local://u-1"))
 	p, err := ParseSubject("alic", "")
 	require.NoError(t, err)
-	_, err = ResolveSubject(t.Context(), local, p)
+	_, err = ResolveSubject(t.Context(), local, attrsFor(local), p)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -328,4 +328,66 @@ func TestFindRancherUserSystemValueMissHasNoCandidates(t *testing.T) {
 	ce := findUserError(t, local, "system:nobody")
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Empty(t, ce.Candidates)
+}
+
+// TestResolveSubjectUserAttributeOutcomes asserts the cached groups follow
+// what steve answers: groups read, no object (none cached), a refusal (the
+// two system groups, the refusal recorded, no error), and a 401 or a 500 as
+// the error.
+func TestResolveSubjectUserAttributeOutcomes(t *testing.T) {
+	t.Parallel()
+	user := userObj("u-abc12", "alice", "Alice A", "local://u-abc12")
+	system := []string{"system:authenticated", "system:cattle:authenticated"}
+	tests := []struct {
+		name        string
+		setup       func(*fakeClient)
+		groups      []string
+		count       int
+		unavailable bool
+		errCode     string
+	}{
+		{name: "groups read", setup: func(c *fakeClient) { c.Objects["u-abc12-attr"] = userAttrObj("u-abc12", "okta_group://eng") },
+			groups: []string{"okta_group://eng", system[0], system[1]}, count: 1},
+		{name: "no object", setup: func(*fakeClient) {}, groups: system},
+		{name: "refused", setup: func(c *fakeClient) { c.AttrRefusal = attrNoRight }, groups: system, unavailable: true},
+		{name: "403", setup: func(c *fakeClient) {
+			c.GetErrFor = map[string]error{"u-abc12-attr": clierr.New(clierr.CodeRBAC, "forbidden")}
+		}, groups: system, unavailable: true},
+		{name: "401", setup: func(c *fakeClient) {
+			c.GetErrFor = map[string]error{"u-abc12-attr": clierr.New(clierr.CodeAuth, "expired")}
+		}, errCode: clierr.CodeAuth},
+		{name: "500", setup: func(c *fakeClient) {
+			c.GetErrFor = map[string]error{"u-abc12-attr": clierr.Retryable(clierr.CodeGeneric, "boom")}
+		}, errCode: clierr.CodeGeneric},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			local := &fakeClient{Objects: map[string]*unstructured.Unstructured{"u-abc12": user}, Lists: map[string]*unstructured.UnstructuredList{"users||": {}}}
+			tc.setup(local)
+			p, err := ParseSubject("u-abc12", "")
+			require.NoError(t, err)
+			got, err := ResolveSubject(t.Context(), local, attrsFor(local), p)
+			if tc.errCode != "" {
+				ce, ok := errors.AsType[*clierr.Error](err)
+				require.True(t, ok, "%v", err)
+				assert.Equal(t, tc.errCode, ce.Code)
+				return
+			}
+			require.NoError(t, err)
+			assert.ElementsMatch(t, tc.groups, got.Groups)
+			require.NotNil(t, got.GroupAliases)
+			if tc.unavailable {
+				require.NotNil(t, got.GroupsUnavailable)
+				assert.Equal(t, clierr.CodeRBAC, got.GroupsUnavailable.Code)
+				assert.Equal(t, "unavailable", got.GroupAliases.Status)
+				assert.Nil(t, got.GroupAliases.Count)
+				return
+			}
+			assert.Nil(t, got.GroupsUnavailable)
+			assert.Equal(t, "available", got.GroupAliases.Status)
+			require.NotNil(t, got.GroupAliases.Count)
+			assert.Equal(t, tc.count, *got.GroupAliases.Count)
+		})
+	}
 }

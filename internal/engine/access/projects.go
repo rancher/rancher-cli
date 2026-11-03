@@ -324,7 +324,7 @@ func (c *projectsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 		}
 	}
 
-	prov, err := readProvenance(ctx, local, pin)
+	prov, err := readProvenance(ctx, local, steve.NewUserAttributes(steve.RootFactoryGetter(c.roots), local), pin)
 	if err != nil {
 		return runtime.Result{}, err
 	}

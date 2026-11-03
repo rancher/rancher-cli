@@ -76,7 +76,7 @@ func provenanceFixture() *fakeClient {
 
 func TestReadProvenanceMatchesEveryAliasAndFiltersGlobalRoles(t *testing.T) {
 	t.Parallel()
-	p, err := readProvenance(t.Context(), provenanceFixture(), provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	p, err := readProvenanceOver(t.Context(), provenanceFixture(), provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
 	assert.Equal(t, "u-alice", p.Subject.ID)
 	assert.Equal(t, "Alice", p.Subject.DisplayName)
@@ -124,7 +124,7 @@ func TestReadProvenanceResolvedSubjectSkipsTheUserRead(t *testing.T) {
 	t.Parallel()
 	fc := provenanceFixture()
 	delete(fc.Objects, "u-alice")
-	p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice", ID: "u-alice"},
+	p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice", ID: "u-alice"},
 		PrincipalIDs: []string{"github_user://1"}, Resolved: true})
 	require.NoError(t, err)
 	assert.Equal(t, "complete", p.Discovery.Status)
@@ -135,7 +135,7 @@ func TestReadProvenanceUserNotFoundIsAnObservedFact(t *testing.T) {
 	t.Parallel()
 	fc := provenanceFixture()
 	delete(fc.Objects, "u-alice")
-	p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
 	assert.Equal(t, "complete", p.Discovery.Status)
 	assert.Empty(t, p.PrincipalIDs)
@@ -172,7 +172,7 @@ func TestReadProvenanceEachReadFailureIsAStageIssue(t *testing.T) {
 			} else {
 				fc.GetErrFor = map[string]error{tc.key: denied}
 			}
-			p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+			p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 			require.NoError(t, err)
 			assert.Equal(t, tc.status, p.Discovery.Status)
 			require.Len(t, p.Discovery.Issues, 1)
@@ -199,7 +199,7 @@ func TestReadProvenanceAllBindingReadsFailingIsUnavailable(t *testing.T) {
 	fc := provenanceFixture()
 	denied := clierr.New(clierr.CodeRBAC, "forbidden")
 	fc.ListErrFor = map[string]error{"clusterroletemplatebindings||": denied, "projectroletemplatebindings||": denied, "globalrolebindings||": denied}
-	p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
 	assert.Equal(t, "unavailable", p.Discovery.Status)
 	assert.Len(t, p.Discovery.Issues, 3)
@@ -211,7 +211,7 @@ func TestReadProvenanceExpiredCredentialAndCancellationAreTerminal(t *testing.T)
 	t.Parallel()
 	fc := provenanceFixture()
 	fc.ListErrFor = map[string]error{"clusterroletemplatebindings||": clierr.New(clierr.CodeAuth, "401")}
-	_, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	_, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
@@ -219,7 +219,7 @@ func TestReadProvenanceExpiredCredentialAndCancellationAreTerminal(t *testing.T)
 	ctx, cancel := context.WithCancel(t.Context())
 	fc2 := provenanceFixture()
 	fc2.Before = func(context.Context) error { cancel(); return ctx.Err() }
-	_, err = readProvenance(ctx, fc2, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	_, err = readProvenanceOver(ctx, fc2, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.Error(t, err)
 	assert.ErrorIs(t, ctx.Err(), context.Canceled)
 }
@@ -228,7 +228,7 @@ func TestReadProvenanceGlobalRoleReadFailsKeepsTheBindingUnresolved(t *testing.T
 	t.Parallel()
 	fc := provenanceFixture()
 	fc.ListErrFor = map[string]error{"globalroles||": clierr.Retryable(clierr.CodeGeneric, "503")}
-	p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
 	var grbs []bindingRecord
 	for _, b := range p.Bindings {
@@ -248,7 +248,7 @@ func TestReadProvenanceGroupAliasesStates(t *testing.T) {
 		t.Parallel()
 		fc := provenanceFixture()
 		delete(fc.Objects, "u-alice-attr")
-		p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+		p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 		require.NoError(t, err)
 		assert.Equal(t, "available", p.GroupAliases.Status)
 		require.NotNil(t, p.GroupAliases.Count)
@@ -259,7 +259,7 @@ func TestReadProvenanceGroupAliasesStates(t *testing.T) {
 		t.Parallel()
 		fc := provenanceFixture()
 		fc.Objects["u-alice-attr"] = mgmtObj("UserAttribute", "", "u-alice", map[string]any{})
-		p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+		p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 		require.NoError(t, err)
 		assert.Equal(t, "available", p.GroupAliases.Status)
 		assert.Equal(t, 0, *p.GroupAliases.Count)
@@ -269,7 +269,7 @@ func TestReadProvenanceGroupAliasesStates(t *testing.T) {
 		t.Parallel()
 		fc := provenanceFixture()
 		fc.GetErrFor = map[string]error{"u-alice-attr": clierr.Retryable(clierr.CodeGeneric, "503")}
-		p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+		p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 		require.NoError(t, err)
 		assert.Equal(t, "unavailable", p.GroupAliases.Status)
 		assert.Nil(t, p.GroupAliases.Count)
@@ -285,9 +285,9 @@ func TestReadProvenanceOrderIsStableUnderShuffledInput(t *testing.T) {
 	for _, key := range []string{"clusterroletemplatebindings||", "globalrolebindings||", "globalroles||"} {
 		slices.Reverse(shuffled.Lists[key].Items)
 	}
-	a, err := readProvenance(t.Context(), forward, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	a, err := readProvenanceOver(t.Context(), forward, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
-	b, err := readProvenance(t.Context(), shuffled, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	b, err := readProvenanceOver(t.Context(), shuffled, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
 	assert.Equal(t, a.Bindings, b.Bindings)
 }
@@ -299,7 +299,7 @@ func TestReadProvenanceDeduplicatesRepeatedBindings(t *testing.T) {
 		fc := provenanceFixture()
 		l := fc.Lists["clusterroletemplatebindings||"]
 		l.Items = append(l.Items, l.Items[0])
-		p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+		p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 		require.NoError(t, err)
 		n := 0
 		for _, b := range p.Bindings {
@@ -316,7 +316,7 @@ func TestReadProvenanceDeduplicatesRepeatedBindings(t *testing.T) {
 		byUser := mgmtObj("ClusterRoleTemplateBinding", "c-1", "crtb-both", map[string]any{"userName": "u-alice", "roleTemplateName": "cluster-member", "clusterName": "c-1"})
 		byPrincipal := mgmtObj("ClusterRoleTemplateBinding", "c-1", "crtb-both", map[string]any{"userPrincipalName": "github_user://1", "roleTemplateName": "cluster-member", "clusterName": "c-1"})
 		l.Items = append(l.Items, *byUser, *byPrincipal)
-		p, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+		p, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 		require.NoError(t, err)
 		found := false
 		for _, b := range p.Bindings {
@@ -332,7 +332,7 @@ func TestReadProvenanceDeduplicatesRepeatedBindings(t *testing.T) {
 		fc := provenanceFixture()
 		l := fc.Lists["clusterroletemplatebindings||"]
 		l.Items = append(l.Items, *mgmtObj("ClusterRoleTemplateBinding", "c-1", "crtb-alice", map[string]any{"userName": "u-alice", "roleTemplateName": "cluster-owner", "clusterName": "c-1"}))
-		_, err := readProvenance(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+		_, err := readProvenanceOver(t.Context(), fc, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok)
 		assert.True(t, ce.Retryable)
@@ -350,7 +350,7 @@ func TestReadProvenanceInheritedRoleTemplatesNullVersusEmpty(t *testing.T) {
 		require.NoError(t, json.Unmarshal(raw, &decoded))
 		return decoded
 	}
-	p, err := readProvenance(t.Context(), provenanceFixture(), provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	p, err := readProvenanceOver(t.Context(), provenanceFixture(), provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
 	for _, d := range decode(t, p) {
 		if d["name"] == "grb-eng-admin" {
@@ -359,7 +359,7 @@ func TestReadProvenanceInheritedRoleTemplatesNullVersusEmpty(t *testing.T) {
 	}
 	fc2 := provenanceFixture()
 	fc2.ListErrFor = map[string]error{"globalroles||": clierr.Retryable(clierr.CodeGeneric, "503")}
-	p, err = readProvenance(t.Context(), fc2, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
+	p, err = readProvenanceOver(t.Context(), fc2, provenanceInput{Subject: AccessSubject{Kind: KindUser, Name: "u-alice"}})
 	require.NoError(t, err)
 	for _, d := range decode(t, p) {
 		if d["kind"] == bindingGRB {

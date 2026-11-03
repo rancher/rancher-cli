@@ -46,9 +46,22 @@ type fakeClient struct {
 	// ListErrFor fails the LIST of one key ("resource|ns|selector") while
 	// every other LIST answers; ListErr fails them all.
 	ListErrFor map[string]error
+	// AttrRefusal sets how steve answers UserAttribute reads.
+	AttrRefusal userAttributeRefusal
+	// AttrPaths records the steve paths read, AttrReviews the list checks.
+	AttrPaths   []string
+	AttrReviews int
 }
 
 func (f *fakeClient) PostReview(ctx context.Context, req engine.ReviewRequest) (engine.ReviewResponse, error) {
+	if isListUserAttributesReview(req) {
+		// The list check of the UserAttribute reader: answered by what the
+		// fake serves, outside the script that orders the other reviews.
+		f.mu.Lock()
+		f.AttrReviews++
+		f.mu.Unlock()
+		return review(engine.ReviewSelfSubjectAccess, map[string]any{"allowed": f.AttrRefusal == attrServed}), nil
+	}
 	if f.Before != nil {
 		if err := f.Before(ctx); err != nil {
 			return engine.ReviewResponse{}, err

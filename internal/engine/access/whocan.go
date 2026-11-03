@@ -10,6 +10,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -22,12 +23,13 @@ const fixedMastersNote = "fixed candidate: the apiserver allows system:masters b
 
 type whoCanCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 	local   engine.ClusterClient
 }
 
-// NewWhoCan builds `access who-can`; see NewCan for the local argument.
-func NewWhoCan(clients engine.ClusterClientFactory, local engine.ClusterClient) runtime.Command {
-	return &whoCanCmd{clients: clients, local: local}
+// NewWhoCan builds `access who-can`; see NewCan for the roots and local arguments.
+func NewWhoCan(clients engine.ClusterClientFactory, roots engine.RootClientFactory, local engine.ClusterClient) runtime.Command {
+	return &whoCanCmd{clients: clients, roots: roots, local: local}
 }
 
 func (c *whoCanCmd) Describe() runtime.Descriptor {
@@ -215,11 +217,12 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
+	attrs := steve.NewUserAttributes(steve.RootFactoryGetter(c.roots), local)
 	// One identity per distinct candidate, under the same limit and budget
 	// as the reviews. A read failure private to one candidate is that
 	// candidate's issue; the rows about it are unknown and post no review.
 	identities, failure := runFanOut(ctx, indexKeys(len(cands)), func(ctx context.Context, key string) (candidateIdentity, reviewResult) {
-		id, err := resolveCandidate(ctx, local, cands[atoi(key)])
+		id, err := resolveCandidate(ctx, local, attrs, cands[atoi(key)])
 		if err != nil {
 			return candidateIdentity{}, acquisitionIssue(ctx, err)
 		}
@@ -241,7 +244,7 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	members := map[string][]string{}
 	if len(groupCands) > 0 {
 		var memberWarning string
-		members, memberWarning = groupMembers(ctx, local)
+		members, memberWarning = groupMembers(ctx, attrs)
 		if memberWarning != "" {
 			warnings = append(warnings, memberWarning)
 		}

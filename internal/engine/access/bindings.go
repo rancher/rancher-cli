@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 // The GRANTED BY side of access clusters: what the management plane says
@@ -149,7 +150,7 @@ func terminalProvenanceError(ctx context.Context, err error) bool {
 // and matches the bindings to the subject. The returned error is only a
 // terminal one (see terminalProvenanceError); every other failure is an
 // issue inside the result.
-func readProvenance(ctx context.Context, local engine.ClusterClient, in provenanceInput) (provenance, error) {
+func readProvenance(ctx context.Context, local engine.ClusterClient, attrs *steve.UserAttributes, in provenanceInput) (provenance, error) {
 	out := provenance{Subject: in.Subject, PrincipalIDs: in.PrincipalIDs}
 	issues := map[string]Issue{}
 	fail := func(stage string, err error) error {
@@ -184,7 +185,13 @@ func readProvenance(ctx context.Context, local engine.ClusterClient, in provenan
 	}
 
 	out.GroupAliases = groupAliases{Source: GroupsRancherUserAttribute, Status: "unavailable"}
-	if attr, err := local.Get(ctx, rbac.UserAttrGVR, "", userID); err == nil {
+	attr, found, err := attrs.Get(ctx, userID)
+	switch {
+	case err != nil:
+		if terr := fail(stageUserAttribute, err); terr != nil {
+			return provenance{}, terr
+		}
+	case found:
 		for _, g := range rbac.GroupPrincipalEntries(attr) {
 			out.Groups = append(out.Groups, g.Principal)
 		}
@@ -192,11 +199,9 @@ func readProvenance(ctx context.Context, local engine.ClusterClient, in provenan
 		out.Groups = slices.Compact(out.Groups)
 		n := len(out.Groups)
 		out.GroupAliases = groupAliases{Source: GroupsRancherUserAttribute, Status: "available", Count: &n}
-	} else if clierr.IsNotFound(err) {
+	default:
 		zero := 0
 		out.GroupAliases = groupAliases{Source: GroupsRancherUserAttribute, Status: "available", Count: &zero}
-	} else if terr := fail(stageUserAttribute, err); terr != nil {
-		return provenance{}, terr
 	}
 
 	own := rbac.OwnIdentitySet(userID, out.PrincipalIDs)

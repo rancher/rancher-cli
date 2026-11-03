@@ -282,10 +282,17 @@ type callerHarness struct {
 
 func newCallerHarness(t *testing.T, collide bool) *callerHarness {
 	t.Helper()
+	return newCallerHarnessWith(t, collide, nil)
+}
+
+// newCallerHarnessWith is newCallerHarness with adjust applied to the
+// facade's options before the facade is built.
+func newCallerHarnessWith(t *testing.T, collide bool, adjust func(*testrancher.Options)) *callerHarness {
+	t.Helper()
 	keyring.MockInit()
 	s := &callerScopeServer{collide: collide}
 	known := func(b string) bool { return b == callerBearer }
-	f := testrancher.New(testrancher.Options{
+	opts := testrancher.Options{
 		SeedToken:           callerBearer,
 		LocalManagementGate: func(string) bool { return false },
 		ClusterVisibility: func(b string) ([]testrancher.ClusterFixture, bool) {
@@ -327,7 +334,11 @@ func newCallerHarness(t *testing.T, collide bool) *callerHarness {
 			}
 			callerFallthrough(w, r)
 		}),
-	})
+	}
+	if adjust != nil {
+		adjust(&opts)
+	}
+	f := testrancher.New(opts)
 	hs := httptest.NewTLSServer(f)
 	t.Cleanup(hs.Close)
 	s.base = hs.URL

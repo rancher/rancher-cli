@@ -10,7 +10,6 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
@@ -35,7 +34,7 @@ func TestInspectUserKeepsAServerValueThatLooksLikeACommand(t *testing.T) {
 	newCmd := func() runtime.Command {
 		c := newFakeClient().
 			withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", planted, "jane", "local://u-abc")).
-			withObject(rbac.UserAttrGVR, "", "u-abc", ua).
+			withObject(userAttrGVR, "", "u-abc", ua).
 			withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 			withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
 			withList(prtbKind.GVR, &unstructured.UnstructuredList{})

@@ -33,28 +33,63 @@ var (
 	mgmtClusterPath = regexp.MustCompile(`management\.cattle\.io/v3/clusters\b`)
 	mgmtProjectPath = regexp.MustCompile(`management\.cattle\.io/v3/(namespaces/[^/"]+/)?projects(\?|$)`)
 
-	mgmtClusterNames = []string{"cluster", "clusters", "managementcluster"}
-	mgmtProjectNames = []string{"project", "projects"}
+	// mgmtUserAttributePath is a UserAttribute read through the local proxy:
+	// the v3 collection, or steve's type behind the proxy.
+	mgmtUserAttributePath = regexp.MustCompile(`management\.cattle\.io/v3/userattributes\b|(^|/)k8s/clusters/local/v1/management\.cattle\.io\.userattribute`)
+
+	mgmtClusterNames       = []string{"cluster", "clusters", "managementcluster"}
+	mgmtProjectNames       = []string{"project", "projects"}
+	mgmtUserAttributeNames = []string{"userattribute", "userattributes"}
 )
+
+const (
+	steveRequestType      = modulePrefix + "internal/engine/steve"
+	userAttributeTypeBase = "management.cattle.io.userattribute"
+	userAttributeRule     = "management.cattle.io userattributes GroupVersionResource: read UserAttributes through steve"
+)
+
+// pathFinding is the finding for a constant path that reads a management
+// cluster or project collection, or UserAttributes, through the local proxy;
+// "" when the path reads none.
+func pathFinding(s string) string {
+	switch {
+	case mgmtClusterPath.MatchString(s) || mgmtProjectPath.MatchString(s):
+		return fmt.Sprintf("constant path %q reads a management cluster or project collection through the local proxy", s)
+	case mgmtUserAttributePath.MatchString(s):
+		return fmt.Sprintf("constant path %q reads UserAttributes through the local proxy: read them through steve", s)
+	}
+	return ""
+}
 
 const completionPackage = modulePrefix + "internal/runtime/completion"
 
 // TestNoManagementClusterReadThroughTheLocalProxy asserts no production code
-// lists or gets a management cluster, or lists projects, through the local
-// cluster proxy. Rancher answers those only to a user who may get cluster
-// local, so clusters are read through steve and a project is resolved by a
-// get. The scan type-checks every production package (test files and
-// internal/testrancher excluded) and fails on a constant path to either
-// collection (a literal, a named constant, the constant parts of a
-// concatenation run together, or a path.Join, url.JoinPath, strings.Join
-// or fmt.Sprintf of constants), a management.cattle.io clusters
-// GroupVersionResource (a literal, a management GroupVersion's
-// WithResource, or a ParseGroupResource's WithVersion), a projects one
-// reaching a List call, a kind looked
-// up by a constant name, alias or group/version and kind naming the
-// management cluster or project kind whose GVR reaches List, Get or a
-// completion Management*Path builder, directly or through a variable
-// assigned from that GVR, and a builder called with those literals.
+// lists or gets a management cluster, or lists projects, or reads a
+// UserAttribute, through the local cluster proxy. Rancher answers those only
+// to a user who may get cluster local, so clusters and UserAttributes are
+// read through steve and a project is resolved by a get. The scan
+// type-checks every production package (test files and internal/testrancher
+// excluded) and fails on:
+//
+//   - a constant path to the clusters or projects collection, to the v3
+//     userattributes collection, or to steve's UserAttribute type behind the
+//     local proxy (a literal, a named constant, the constant parts of a
+//     concatenation run together, a path.Join, url.JoinPath or strings.Join
+//     whose runs of constant arguments are each joined, or a fmt.Sprintf
+//     whose other arguments stand as a placeholder);
+//   - a management.cattle.io clusters GroupVersionResource (a literal, a
+//     management GroupVersion's WithResource, or a GroupResource literal's or
+//     ParseGroupResource's WithVersion), a projects one reaching a List call,
+//     and a userattributes one anywhere, a GroupResource literal or a
+//     ParseGroupResource of userattributes included wherever it is held;
+//   - a steve.Request for UserAttributes whose Cluster is the constant
+//     "local", or that is given a Cluster after it is built;
+//   - a kind looked up by a constant name, alias or group/version and kind
+//     naming the management cluster or project kind (or, by the name
+//     userattribute or userattributes, a UserAttribute kind) whose GVR
+//     reaches List, Get or a completion Management*Path builder, directly or
+//     through a variable assigned from that GVR, and a builder called with
+//     those literals.
 //
 // Known limits: a lookup whose kind name is a variable carries no
 // constant and is not seen, and neither is a management GroupVersion
@@ -137,6 +172,7 @@ func scanManagementReads(pkg *packages.Package, wd string, used map[int]bool) []
 	kindName := map[types.Object]string{}
 	gvrKind := map[types.Object]string{}
 	mgmtGV := map[types.Object]bool{}
+	userAttributeRequest := map[types.Object]bool{}
 	bind := func(file, fn string, n ast.Node) {
 		var lhs, rhs []ast.Expr
 		switch n := n.(type) {
@@ -167,6 +203,9 @@ func scanManagementReads(pkg *packages.Package, wd string, used map[int]bool) []
 				if mgmtGV[from] {
 					mgmtGV[obj] = true
 				}
+				if userAttributeRequest[from] {
+					userAttributeRequest[obj] = true
+				}
 				if name, ok := kindName[from]; ok {
 					kindName[obj] = name
 				}
@@ -180,6 +219,9 @@ func scanManagementReads(pkg *packages.Package, wd string, used map[int]bool) []
 			if isMgmtGroupVersion(info, r, mgmtGV) {
 				mgmtGV[obj] = true
 			}
+			if isUserAttributeRequest(info, r) {
+				userAttributeRequest[obj] = true
+			}
 			if call, ok := ast.Unparen(r).(*ast.CallExpr); ok {
 				if name, ok := constKindName(info, call); ok {
 					kindName[info.ObjectOf(id)] = name
@@ -190,8 +232,8 @@ func scanManagementReads(pkg *packages.Package, wd string, used map[int]bool) []
 			}
 		}
 	}
-	for size := -1; size != len(projectGVR)+len(kindName)+len(gvrKind)+len(mgmtGV); {
-		size = len(projectGVR) + len(kindName) + len(gvrKind) + len(mgmtGV)
+	for size := -1; size != len(projectGVR)+len(kindName)+len(gvrKind)+len(mgmtGV)+len(userAttributeRequest); {
+		size = len(projectGVR) + len(kindName) + len(gvrKind) + len(mgmtGV) + len(userAttributeRequest)
 		walk(bind)
 	}
 
@@ -201,23 +243,40 @@ func scanManagementReads(pkg *packages.Package, wd string, used map[int]bool) []
 	walk(func(file, fn string, n ast.Node) {
 		if e, ok := n.(ast.Expr); ok && !chained[e] {
 			for _, s := range constantStrings(info, e, chained) {
-				if mgmtClusterPath.MatchString(s) || mgmtProjectPath.MatchString(s) {
-					report(file, fn, e.Pos(), fmt.Sprintf("constant path %q reads a management cluster or project collection through the local proxy", s))
+				if f := pathFinding(s); f != "" {
+					report(file, fn, e.Pos(), f)
 				}
 			}
 		}
 		switch n := n.(type) {
+		case *ast.AssignStmt:
+			for _, l := range n.Lhs {
+				if sel, ok := l.(*ast.SelectorExpr); ok && sel.Sel.Name == "Cluster" {
+					if id, ok := ast.Unparen(sel.X).(*ast.Ident); ok && userAttributeRequest[info.Uses[id]] {
+						report(file, fn, n.Pos(), "steve.Request for UserAttributes is given a Cluster: they are read through steve on the server root, never through a cluster's proxy")
+					}
+				}
+			}
 		case *ast.CompositeLit:
 			if isGVRLiteral(info, n, "clusters", mgmtGV) {
 				report(file, fn, n.Pos(), "management.cattle.io clusters GroupVersionResource: read clusters through steve")
+			}
+			if isGVRLiteral(info, n, "userattributes", mgmtGV) || isUserAttributeGroupResource(info, n) {
+				report(file, fn, n.Pos(), userAttributeRule)
+			}
+			if isLocalUserAttributeRequest(info, n) {
+				report(file, fn, n.Pos(), "steve.Request for UserAttributes on cluster local reads them through the local proxy: leave Cluster empty")
 			}
 		case *ast.CallExpr:
 			if isGVRLiteral(info, n, "clusters", mgmtGV) {
 				report(file, fn, n.Pos(), "management.cattle.io clusters GroupVersionResource: read clusters through steve")
 			}
+			if isGVRLiteral(info, n, "userattributes", mgmtGV) || isUserAttributeGroupResource(info, n) {
+				report(file, fn, n.Pos(), userAttributeRule)
+			}
 			for _, s := range joinedConstants(info, n) {
-				if mgmtClusterPath.MatchString(s) || mgmtProjectPath.MatchString(s) {
-					report(file, fn, n.Pos(), fmt.Sprintf("constant path %q reads a management cluster or project collection through the local proxy", s))
+				if f := pathFinding(s); f != "" {
+					report(file, fn, n.Pos(), f)
 				}
 			}
 			scanReadCall(info, n, projectGVR, kindName, gvrKind, mgmtGV, func(rule string) { report(file, fn, n.Pos(), rule) })
@@ -264,12 +323,17 @@ func constantStrings(info *types.Info, e ast.Expr, chained map[ast.Expr]bool) []
 	return out
 }
 
+// sprintfPlaceholder stands for an argument of a fmt.Sprintf that is not a
+// constant string, so the constant parts around it are still scanned.
+const sprintfPlaceholder = "{v}"
+
 // joinedConstants returns the constant strings a call builds: for
 // path.Join, url.JoinPath or a URL's JoinPath, each run of adjacent
 // constant arguments joined the way the call joins them; for
 // strings.Join of a slice literal with a constant separator, each run of
 // adjacent constant elements joined with it; for fmt.Sprintf with a
-// constant format and only constant string arguments, the result.
+// constant format, the result with sprintfPlaceholder for each argument that
+// is not a constant string.
 func joinedConstants(info *types.Info, call *ast.CallExpr) []string {
 	sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
 	if !ok {
@@ -301,7 +365,7 @@ func joinedConstants(info *types.Info, call *ast.CallExpr) []string {
 		for _, a := range call.Args[1:] {
 			v, ok := constString(info, a)
 			if !ok {
-				return nil
+				v = sprintfPlaceholder
 			}
 			vals = append(vals, v)
 		}
@@ -401,7 +465,8 @@ func scanReadCall(info *types.Info, call *ast.CallExpr, projectGVR map[types.Obj
 		kindGVR := func(name string) {
 			switch {
 			case slices.Contains(mgmtClusterNames, name) && (callee == "List" || callee == "Get" || builder != ""),
-				slices.Contains(mgmtProjectNames, name) && (callee == "List" || collection):
+				slices.Contains(mgmtProjectNames, name) && (callee == "List" || collection),
+				slices.Contains(mgmtUserAttributeNames, name) && (callee == "List" || callee == "Get"):
 				report(fmt.Sprintf("kind %q GVR reaches %s: read it through steve", name, reachedBy(callee, builder)))
 			}
 		}
@@ -474,12 +539,59 @@ func constKindName(info *types.Info, call *ast.CallExpr) (string, bool) {
 	return "", false
 }
 
+// isUserAttributeGroupResource reports whether e is a schema.GroupResource
+// literal of management.cattle.io userattributes, or a
+// schema.ParseGroupResource of "userattributes.management.cattle.io": the
+// GroupResource is not yet a version, so it is reported where it is built,
+// whether or not WithVersion is called on it there.
+func isUserAttributeGroupResource(info *types.Info, e ast.Expr) bool {
+	switch x := ast.Unparen(e).(type) {
+	case *ast.CompositeLit:
+		return isNamedType(info.TypeOf(x), "k8s.io/apimachinery/pkg/runtime/schema", "GroupResource") &&
+			litField(info, x, "Group", 0) == "management.cattle.io" && litField(info, x, "Resource", 1) == "userattributes"
+	case *ast.CallExpr:
+		sel, ok := ast.Unparen(x.Fun).(*ast.SelectorExpr)
+		if !ok || len(x.Args) != 1 {
+			return false
+		}
+		fn, ok := info.Uses[sel.Sel].(*types.Func)
+		gr, _ := constString(info, x.Args[0])
+		return ok && fn.Pkg() != nil && fn.Pkg().Path() == "k8s.io/apimachinery/pkg/runtime/schema" &&
+			fn.Name() == "ParseGroupResource" && gr == "userattributes.management.cattle.io"
+	}
+	return false
+}
+
+// isUserAttributeRequest reports whether e is a steve.Request literal (or a
+// pointer to one) whose Type is the UserAttribute type, whatever its Cluster.
+func isUserAttributeRequest(info *types.Info, e ast.Expr) bool {
+	e = ast.Unparen(e)
+	if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.AND {
+		e = ast.Unparen(u.X)
+	}
+	lit, ok := e.(*ast.CompositeLit)
+	return ok && isNamedType(info.TypeOf(lit), steveRequestType, "Request") &&
+		strings.HasPrefix(litField(info, lit, "Type", 1), userAttributeTypeBase)
+}
+
+// isLocalUserAttributeRequest reports whether lit is a steve.Request whose
+// Cluster is the constant "local" and whose Type is the UserAttribute type:
+// steve behind the local proxy, which answers UserAttributes only to a
+// caller with access to cluster local.
+func isLocalUserAttributeRequest(info *types.Info, lit *ast.CompositeLit) bool {
+	if !isNamedType(info.TypeOf(lit), steveRequestType, "Request") {
+		return false
+	}
+	return litField(info, lit, "Cluster", 0) == "local" && strings.HasPrefix(litField(info, lit, "Type", 1), userAttributeTypeBase)
+}
+
 // isGVRLiteral reports whether e is a schema.GroupVersionResource literal
 // of the management.cattle.io group and the given resource; a
 // management.cattle.io GroupVersion, as a literal or an identifier in
-// mgmtGV, whose WithResource is called with the resource; or a
+// mgmtGV, whose WithResource is called with the resource; a
 // schema.ParseGroupResource of "<resource>.management.cattle.io" whose
-// WithVersion is called.
+// WithVersion is called; or a schema.GroupResource literal of that group and
+// resource whose WithVersion is called.
 func isGVRLiteral(info *types.Info, e ast.Expr, resource string, mgmtGV map[types.Object]bool) bool {
 	if call, ok := ast.Unparen(e).(*ast.CallExpr); ok {
 		sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
@@ -491,6 +603,10 @@ func isGVRLiteral(info *types.Info, e ast.Expr, resource string, mgmtGV map[type
 			res, _ := constString(info, call.Args[0])
 			return isMgmtGroupVersion(info, sel.X, mgmtGV) && res == resource
 		case "WithVersion":
+			if lit, ok := ast.Unparen(sel.X).(*ast.CompositeLit); ok {
+				return isNamedType(info.TypeOf(lit), "k8s.io/apimachinery/pkg/runtime/schema", "GroupResource") &&
+					litField(info, lit, "Group", 0) == "management.cattle.io" && litField(info, lit, "Resource", 1) == resource
+			}
 			parse, ok := ast.Unparen(sel.X).(*ast.CallExpr)
 			if !ok || len(parse.Args) != 1 {
 				return false
@@ -628,6 +744,21 @@ func TestManagementReadScanRejectsFixtures(t *testing.T) {
 			"management.cattle.io clusters GroupVersionResource: read clusters through steve",
 			"projects GroupVersionResource reaches List: list projects through steve",
 		}},
+		{"uaproxyv3", []string{`constant path "/k8s/clusters/local/apis/management.cattle.io/v3/userattributes/" reads UserAttributes through the local proxy: read them through steve`}},
+		{"uaproxyv1", []string{`constant path "/k8s/clusters/local/v1/management.cattle.io.userattributes" reads UserAttributes through the local proxy: read them through steve`}},
+		{"uagvrliteral", []string{userAttributeRule}},
+		{"uawithresource", []string{userAttributeRule}},
+		{"uaparse", []string{userAttributeRule}},
+		{"uakind", []string{`kind "userattribute" GVR reaches Get: read it through steve`}},
+		{"uasprintf", []string{`constant path "/k8s/clusters/local/v1/management.cattle.io.userattributes/{v}" reads UserAttributes through the local proxy: read them through steve`}},
+		{"uarequestassign", []string{"steve.Request for UserAttributes is given a Cluster: they are read through steve on the server root, never through a cluster's proxy"}},
+		{"uagrliteral", []string{userAttributeRule}},
+		{"uagrvar", []string{userAttributeRule}},
+		{"uaparsevar", []string{userAttributeRule}},
+		{"uajoinpath", []string{`constant path "k8s/clusters/local/v1/management.cattle.io.userattributes" reads UserAttributes through the local proxy: read them through steve`}},
+		{"uapathjoin", []string{`constant path "k8s/clusters/local/v1/management.cattle.io.userattributes" reads UserAttributes through the local proxy: read them through steve`}},
+		{"uaconcatnoslash", []string{`constant path "k8s/clusters/local/v1/management.cattle.io.userattributes" reads UserAttributes through the local proxy: read them through steve`}},
+		{"uasteverequest", []string{"steve.Request for UserAttributes on cluster local reads them through the local proxy: leave Cluster empty"}},
 	} {
 		t.Run(tt.fixture, func(t *testing.T) {
 			t.Parallel()
@@ -636,5 +767,21 @@ func TestManagementReadScanRejectsFixtures(t *testing.T) {
 			want := slices.Sorted(slices.Values(tt.want))
 			assert.Equal(t, want, got)
 		})
+	}
+}
+
+// TestNoUserAttributeKindInTheKindsTable asserts the kinds table holds no
+// row for UserAttributes. A row would generate get, patch and delete through
+// the local proxy, which Rancher answers only to a caller with access to
+// cluster local, and the scan cannot see a generated call.
+func TestNoUserAttributeKindInTheKindsTable(t *testing.T) {
+	t.Parallel()
+	for _, name := range mgmtUserAttributeNames {
+		_, found := kinds.Lookup(name)
+		assert.False(t, found, "kinds.Lookup(%q) finds a UserAttribute kind", name)
+	}
+	for _, k := range kinds.All() {
+		assert.False(t, k.GVR.Group == "management.cattle.io" && k.GVR.Resource == "userattributes",
+			"kind %q reads UserAttributes through the local proxy", k.Key)
 	}
 }

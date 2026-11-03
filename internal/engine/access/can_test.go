@@ -58,7 +58,7 @@ func canFactory(callerUser string, script ...scripted) *fakeFactory {
 func TestCanCallerAllowed(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: sar(true, `RBAC: allowed by ClusterRoleBinding "crb-1" of ClusterRole "cluster-owner-aggregator" to User "user-vwq4j"`)})
-	cmd := NewCan(f, f.caller).(runtime.ReadCommand)
+	cmd := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
@@ -85,13 +85,13 @@ func TestCanCallerAllowed(t *testing.T) {
 func TestCanDeniedAndUnknownExitCodes(t *testing.T) {
 	t.Parallel()
 	f := canFactory("m-54pdw", scripted{resp: sar(false, "")})
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, DecisionDenied, decodeCan(t, res).Decision)
 	assert.Equal(t, 12, res.ExitStatus)
 
 	f = canFactory("m-54pdw", scripted{resp: review(engine.ReviewSelfSubjectAccess, map[string]any{"allowed": false, "evaluationError": "webhook unreachable"})})
-	res, err = NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err = NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, DecisionUnknown, decodeCan(t, res).Decision)
 	assert.Equal(t, 13, res.ExitStatus)
@@ -128,7 +128,7 @@ func TestCanValidationBeforeAnyRequest(t *testing.T) {
 			t.Parallel()
 			f := canFactory("user-vwq4j")
 			f.caller.Resources = discovery()
-			_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), c.in, nil)
+			_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), c.in, nil)
 			require.ErrorContains(t, err, c.want)
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
@@ -157,7 +157,7 @@ func TestCanLocalConflictsMakeNoRequest(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			f := canFactory("user-vwq4j")
-			_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), c.in, nil)
+			_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), c.in, nil)
 			require.ErrorContains(t, err, c.want)
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
@@ -174,7 +174,7 @@ func TestCanLocalConflictsMakeNoRequest(t *testing.T) {
 func TestCanClusterScopedResourceRejectsProjectBeforeLookup(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j")
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(unreadProjectContext(t), canInput(map[string]string{"project": "p-cvrp4"}, "get", "nodes"), nil)
+	_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(unreadProjectContext(t), canInput(map[string]string{"project": "p-cvrp4"}, "get", "nodes"), nil)
 	require.EqualError(t, err, "resource nodes is cluster-scoped; omit --namespace and --project")
 	assert.Len(t, f.caller.Reviews, 1, "preflight only")
 }
@@ -184,7 +184,7 @@ func TestCanClusterScopedResourceRejectsProjectBeforeLookup(t *testing.T) {
 // does.
 func TestCanDescriptorClusterFlagCarriesTheStandardMessage(t *testing.T) {
 	t.Parallel()
-	for _, cmd := range []runtime.Command{NewCan(nil, nil), NewList(nil, nil)} {
+	for _, cmd := range []runtime.Command{NewCan(nil, nil, nil), NewList(nil, nil, nil)} {
 		d := cmd.Describe()
 		i := slices.IndexFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "cluster" })
 		require.GreaterOrEqual(t, i, 0, d.Name)
@@ -199,7 +199,7 @@ func TestCanDescriptorClusterFlagCarriesTheStandardMessage(t *testing.T) {
 func TestCanListVerbWithoutNamespaceIsAllNamespaces(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: sar(true, "RBAC: allowed by ClusterRoleBinding \"a\" of ClusterRole \"b\" to User \"c\"")})
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil, "list", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil, "list", "pods"), nil)
 	require.NoError(t, err)
 	spec, _, _ := unstructured.NestedMap(f.caller.Reviews[1].Object.Object, "spec", "resourceAttributes")
 	_, hasNS := spec["namespace"]
@@ -212,7 +212,7 @@ func TestCanListVerbWithoutNamespaceIsAllNamespaces(t *testing.T) {
 func TestCanNamedSubjectViaSAR(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: review(engine.ReviewSubjectAccess, map[string]any{"allowed": true, "reason": "RBAC: allowed by RoleBinding \"r\" of ClusterRole \"c\" to Group \"github_org://eng\""})})
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "github_org://eng"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "github_org://eng"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, IdentitySAR, out.Identity)
@@ -231,7 +231,7 @@ func TestCanNamedSubjectViaSAR(t *testing.T) {
 func TestCanSARRefusedIsRBACRefusal(t *testing.T) {
 	t.Parallel()
 	f := canFactory("m-54pdw", scripted{resp: http403(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Forbidden","code":403,"message":"subjectaccessreviews.authorization.k8s.io is forbidden"}`)})
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "github_org://eng"}, "get", "pods"), nil)
+	_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "github_org://eng"}, "get", "pods"), nil)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
@@ -246,7 +246,7 @@ func TestCanSingleScopeTerminalPassesThroughUnchanged(t *testing.T) {
 	t.Parallel()
 	body := `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Forbidden","code":403,"message":"selfsubjectaccessreviews.authorization.k8s.io is forbidden"}`
 	f := canFactory("user-vwq4j", scripted{resp: http403(body)})
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, body, ce.Message)
@@ -260,7 +260,7 @@ func TestCanSingleScopeTerminalPassesThroughUnchanged(t *testing.T) {
 func TestCanAllowedWithEvaluationErrorWarns(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: review(engine.ReviewSelfSubjectAccess, map[string]any{"allowed": true, "evaluationError": "webhook unreachable"})})
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionAllowed, out.Decision)
@@ -275,7 +275,7 @@ func TestCanAllowedWithEvaluationErrorWarns(t *testing.T) {
 func TestCanSingleReviewRequestFailureIsTerminal(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: engine.ReviewResponse{Status: 503, Mapped: clierr.Retryable(clierr.CodeGeneric, "unavailable")}})
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
+	_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "pods"), nil)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.True(t, ce.Retryable)
@@ -293,7 +293,7 @@ func TestCanProjectRollup(t *testing.T) {
 		scripted{resp: sar(true, "RBAC: allowed by RoleBinding \"a\" of ClusterRole \"b\" to User \"c\"")},
 		scripted{resp: engine.ReviewResponse{Status: 503, Mapped: clierr.Retryable(clierr.CodeGeneric, "POST selfsubjectaccessreviews: 503 Service Unavailable")}},
 	)
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	require.Len(t, out.Namespaces, 2)
@@ -316,7 +316,7 @@ func TestCanEmptyProjectIsUnknown(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j")
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionUnknown, out.Decision)
@@ -338,7 +338,7 @@ func TestCanEmptyProjectWithProxyDeniedSubjectIsUnknown(t *testing.T) {
 	local := localWith("u-abc12")
 	local.Lists["clusterroletemplatebindings|c-phmj7|"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{}
-	res, err := NewCan(f, local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty", "as": "u-abc12"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty", "as": "u-abc12"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionUnknown, out.Decision)
@@ -373,7 +373,7 @@ func TestCanBudgetCoversTargetDiscovery(t *testing.T) {
 		}
 		return blockUntilDone(ctx)
 	}
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
+	_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during")
 	assert.Len(t, f.caller.Reviews, 1, "the preflight ran; no question was asked")
 }
@@ -387,7 +387,7 @@ func TestCanBudgetCoversSubjectResolution(t *testing.T) {
 	f := canFactory("user-vwq4j")
 	local := localWith("u-abc12")
 	local.Before = blockUntilDone
-	_, err := NewCan(f, local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
+	_, err := NewCan(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during subject resolution")
 	assert.Empty(t, f.Impersonated, "nothing was impersonated")
 }
@@ -398,7 +398,7 @@ func TestCanBudgetCoversSubjectResolution(t *testing.T) {
 func TestCanBudgetCoversProjectRead(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j")
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}, "get", "pods"), nil)
+	_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during project resolution")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
@@ -418,7 +418,7 @@ func TestCanProjectSARClusterAccessLostMidRun(t *testing.T) {
 		scripted{resp: http403("")},
 	)
 	f.impersonated = map[string]*fakeClient{"u-abc12": {script: []scripted{{resp: http403(`{"message":"not allowed to impersonate user"}`)}}}}
-	res, err := NewCan(f, localWith("u-abc12")).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
+	res, err := newCanOver(f, localWith("u-abc12")).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "cluster access changed during the run; evaluated 1 of 2")
 	assert.NotContains(t, err.Error(), "impersonate")
@@ -438,7 +438,7 @@ func TestCanProjectSARRefusedIsRBACRefusal(t *testing.T) {
 		scripted{resp: http403(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Forbidden","code":403,"message":"subjectaccessreviews.authorization.k8s.io is forbidden"}`)},
 	)
 	f.impersonated = map[string]*fakeClient{"u-abc12": {script: []scripted{{resp: http403(`{"message":"not allowed to impersonate user"}`)}}}}
-	_, err := NewCan(f, localWith("u-abc12")).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
+	_, err := newCanOver(f, localWith("u-abc12")).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
@@ -454,7 +454,7 @@ func TestCanUnknownGroupsNegativeIsUnknown(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: review(engine.ReviewSubjectAccess, map[string]any{"allowed": false})})
 	f.impersonated = map[string]*fakeClient{"system:kube-controller-manager": {script: []scripted{{resp: whoamiResp("user-vwq4j")}}}}
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "system:kube-controller-manager"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "system:kube-controller-manager"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionUnknown, out.Decision)
@@ -469,7 +469,7 @@ func TestCanUnknownGroupsNegativeIsUnknown(t *testing.T) {
 func TestCanAnonymousViaSAR(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: review(engine.ReviewSubjectAccess, map[string]any{"allowed": false})})
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "system:anonymous"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "system:anonymous"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionDenied, out.Decision)
@@ -486,7 +486,7 @@ func TestCanAnonymousViaSAR(t *testing.T) {
 func TestCanNonResourceURLBody(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: sar(true, "RBAC: allowed by ClusterRoleBinding \"a\" of ClusterRole \"b\" to User \"c\"")})
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"non-resource-url": "/healthz"}, "POST"), nil)
+	res, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"non-resource-url": "/healthz"}, "POST"), nil)
 	require.NoError(t, err)
 	spec := f.caller.Reviews[1].Object.Object["spec"].(map[string]any)
 	nra, ok := spec["nonResourceAttributes"].(map[string]any)
@@ -504,7 +504,7 @@ func TestCanCarriesResolvedVersion(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: sar(true, "RBAC: allowed by ClusterRoleBinding \"a\" of ClusterRole \"b\" to User \"c\"")})
 	f.caller.Resources = append(f.caller.Resources, engine.APIResource{Group: "apps", Version: "v1", Name: "statefulsets", Kind: "StatefulSet", Namespaced: true})
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "statefulsets"), nil)
+	_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "statefulsets"), nil)
 	require.NoError(t, err)
 	spec, _, _ := unstructured.NestedMap(f.caller.Reviews[1].Object.Object, "spec", "resourceAttributes")
 	assert.Equal(t, "apps", spec["group"])
@@ -521,7 +521,7 @@ func TestCanSubjectWithoutClusterAccessIsOneDenial(t *testing.T) {
 	local := localWith("u-abc12")
 	local.Lists["clusterroletemplatebindings|c-phmj7|"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{}
-	res, err := NewCan(f, local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
+	res, err := NewCan(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionDenied, out.Decision)
@@ -544,7 +544,7 @@ func TestCanIncompleteDiscoveryWarns(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j", scripted{resp: sar(true, "RBAC: allowed by ClusterRoleBinding \"crb-1\" of ClusterRole \"admin\" to User \"user-vwq4j\"")})
 	f.caller.ResourcesErr = incompleteFor("dead.example")
-	cmd := NewCan(f, f.caller).(runtime.ReadCommand)
+	cmd := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "deployments"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
@@ -556,7 +556,7 @@ func TestCanIncompleteDiscoveryWarns(t *testing.T) {
 	f = canFactory("user-vwq4j")
 	f.caller.ResourcesErr = incompleteFor("dead.example")
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
-	res, err = NewCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "deployments"), nil)
+	res, err = NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "deployments"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, DecisionUnknown, decodeCan(t, res).Decision)
 	require.Len(t, res.Warnings, 1)
@@ -589,7 +589,7 @@ func TestCanTimeoutBoundsTheSingleReview(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j")
 	f.caller.Before = blockAfterFirstCall()
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"non-resource-url": "/healthz", flagTimeout: "20ms"}, "get"), nil)
+	_, err := NewCan(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"non-resource-url": "/healthz", flagTimeout: "20ms"}, "get"), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during the review")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)

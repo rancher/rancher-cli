@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -34,13 +35,15 @@ const (
 
 type canCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 	local   engine.ClusterClient
 }
 
 // NewCan builds `access can`. local is the management cluster client used
-// to resolve --as; nil means resolve it from clients on first use.
-func NewCan(clients engine.ClusterClientFactory, local engine.ClusterClient) runtime.Command {
-	return &canCmd{clients: clients, local: local}
+// to resolve --as; nil means resolve it from clients on first use. roots
+// serves the steve reads of the subject's cached groups.
+func NewCan(clients engine.ClusterClientFactory, roots engine.RootClientFactory, local engine.ClusterClient) runtime.Command {
+	return &canCmd{clients: clients, roots: roots, local: local}
 }
 
 func (c *canCmd) Describe() runtime.Descriptor {
@@ -90,6 +93,7 @@ type canResult struct {
 	ResultSource    ResultSource   `json:"resultSource"`
 	Identity        Identity       `json:"identity"`
 	GroupsFrom      GroupsFrom     `json:"groupsFrom,omitempty"`
+	GroupAliases    *groupAliases  `json:"groupAliases,omitempty"`
 }
 
 type canNamespace struct {
@@ -263,11 +267,12 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
-	plan, err := planIdentity(ctx, c.clients, callerClient, local, clusterID, caller, p.as, false)
+	attrs := steve.NewUserAttributes(steve.RootFactoryGetter(c.roots), local)
+	plan, err := planIdentity(ctx, c.clients, callerClient, local, attrs, clusterID, caller, p.as, false)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "subject resolution")
 	}
-	out := canResult{Subject: plan.Subject, Question: p.question, Scope: scope, Identity: plan.Identity, GroupsFrom: plan.GroupsFrom}
+	out := canResult{Subject: plan.Subject, Question: p.question, Scope: scope, Identity: plan.Identity, GroupsFrom: plan.GroupsFrom, GroupAliases: plan.GroupAliases}
 	if scope.mode == scopeProject && len(scope.targets) == 0 {
 		// A verified-empty project: no question was evaluated for anyone,
 		// so nothing (not even the proxy's cluster-wide refusal of the
@@ -292,7 +297,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 			return Outcome{}, r
 		}
 		outcome := classifyAccess(r.resp.Object)
-		if plan.GroupsFrom == GroupsAuthenticatedOnly && outcome.Decision == DecisionDenied {
+		if plan.groupsUnknown() && outcome.Decision == DecisionDenied {
 			// The subject's real groups are unknown; a negative answer
 			// proves nothing.
 			outcome.Decision, outcome.Note = DecisionUnknown, groupsUnknownNote
@@ -320,7 +325,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 		}
 		out.Decision, out.Reason, out.EvaluationError, out.Note = outcome.Decision, outcome.Reason, outcome.EvaluationError, outcome.Note
 		out.ResultSource = SourceAuthorizer
-		res := withDiscoveryWarning(runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitFor(out.Decision)}, discoveryWarning)
+		res := withDiscoveryWarning(runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitFor(out.Decision), Warnings: slices.Clone(plan.Warnings)}, discoveryWarning)
 		if outcome.EvaluationError != "" && outcome.Decision == DecisionAllowed {
 			res.Warnings = append(res.Warnings, "the authorizer reported an evaluation error: "+outcome.EvaluationError)
 		}
@@ -370,14 +375,14 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	default:
 		out.Decision = DecisionAllowed
 	}
-	res := runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitFor(out.Decision), Text: canText(out, false)}
+	res := runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitFor(out.Decision), Text: canText(out, false), Warnings: slices.Clone(plan.Warnings)}
 	return withDiscoveryWarning(res, discoveryWarning), nil
 }
 
 // renderDenial expands the proxy's one cluster-wide refusal into the
 // project shape without asking any authorizer.
 func (c *canCmd) renderDenial(out canResult, scope Scope, plan identityPlan, clusterID string) runtime.Result {
-	out.Decision, out.ResultSource, out.GroupsFrom = DecisionDenied, SourceRancherProxy, ""
+	out.Decision, out.ResultSource, out.GroupsFrom, out.GroupAliases = DecisionDenied, SourceRancherProxy, "", nil
 	out.Note = plan.Denied.Note
 	if scope.mode == scopeProject {
 		out.Note = oneDenialNote + ": " + plan.Denied.Note
@@ -397,6 +402,15 @@ func sarUser(subject AccessSubject) string {
 		return ""
 	}
 	return subject.Name
+}
+
+// groupsUnavailableMark is the text after "groups from <source>" when the
+// groups could not be read.
+func groupsUnavailableMark(a *groupAliases) string {
+	if a != nil && a.Status == "unavailable" {
+		return " (unavailable)"
+	}
+	return ""
 }
 
 func isCollectionVerb(v string) bool {
@@ -465,7 +479,7 @@ func canText(out canResult, allNamespaces bool) string {
 	}
 	fmt.Fprintf(&b, "source: %s | identity: %s", out.ResultSource, out.Identity)
 	if out.GroupsFrom != "" {
-		fmt.Fprintf(&b, " | groups from %s", out.GroupsFrom)
+		fmt.Fprintf(&b, " | groups from %s%s", out.GroupsFrom, groupsUnavailableMark(out.GroupAliases))
 	}
 	b.WriteString("\n")
 	return b.String()

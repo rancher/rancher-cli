@@ -99,7 +99,7 @@ func callerFixture(t *testing.T) (*clustersCmd, *fakeFactory) {
 		},
 	}
 	srv := clustersServer(t, steveItem("c-prod", "prod"), steveItem("c-edge", "edge"))
-	cmd := &clustersCmd{clients: f, roots: fakeRootFactory{fakeRootClient{srv}}, local: local}
+	cmd := &clustersCmd{clients: f, roots: rootsOver(fakeRootClient{srv}, local), local: local}
 	return cmd, f
 }
 
@@ -288,7 +288,7 @@ func TestClustersDiscoveryFailureIsTerminal(t *testing.T) {
 	cmd, _ := callerFixture(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
 	t.Cleanup(srv.Close)
-	cmd.roots = fakeRootFactory{fakeRootClient{srv}}
+	cmd.roots = rootsOver(fakeRootClient{srv}, cmd.local)
 	_, err := cmd.Execute(t.Context(), clustersInput("", ""), nil)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "rancher root GET /v1/management.cattle.io.clusters: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - retrying may succeed")
@@ -405,7 +405,7 @@ func TestClustersProbesRespectTheFanOutLimit(t *testing.T) {
 			f.clusterClients[id] = &blockingClient{fakeClient: scriptedClient(whoamiResp("u-alice")), release: release, inFlight: &inFlight, peak: &peak}
 		}
 		srv := clustersTestServer(t, items...)
-		cmd := &clustersCmd{clients: f, roots: fakeRootFactory{fakeRootClient{srv}}, local: local}
+		cmd := &clustersCmd{clients: f, roots: rootsOver(fakeRootClient{srv}, local), local: local}
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -452,7 +452,7 @@ func TestClustersBudgetExpiryDuringDiscoveryIsTerminal(t *testing.T) {
 	cmd, _ := callerFixture(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) }))
 	t.Cleanup(srv.Close)
-	cmd.roots = fakeRootFactory{fakeRootClient{srv}}
+	cmd.roots = rootsOver(fakeRootClient{srv}, cmd.local)
 	_, err := cmd.Execute(t.Context(), clustersInput("", ""), nil)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "fan-out budget")
@@ -466,7 +466,7 @@ func TestClustersTimeoutFlagIsTheBudget(t *testing.T) {
 	cmd, _ := callerFixture(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) }))
 	t.Cleanup(srv.Close)
-	cmd.roots = fakeRootFactory{fakeRootClient{srv}}
+	cmd.roots = rootsOver(fakeRootClient{srv}, cmd.local)
 	_, err := cmd.Execute(t.Context(), fakeInput{strs: map[string]string{flagTimeout: "50ms"}}, nil)
 	require.ErrorContains(t, err, "fan-out budget of 50ms exhausted during cluster discovery")
 }

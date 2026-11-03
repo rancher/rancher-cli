@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 // ParsedSubject is the --as value classified into the closed kind set
@@ -31,6 +32,13 @@ type ResolvedSubject struct {
 	GroupsFrom    GroupsFrom
 	Groups        []string
 	SANamespace   string
+	// GroupAliases says whether the cached groups were read; set for a
+	// Rancher user only.
+	GroupAliases *groupAliases
+	// GroupsUnavailable is set when Rancher refused the read of the user's
+	// cached groups: Groups then holds the two system groups only, and the
+	// issue carries the refusal.
+	GroupsUnavailable *Issue
 }
 
 const (
@@ -90,8 +98,10 @@ func ParseSubject(as, typeFlag string) (ParsedSubject, error) {
 }
 
 // ResolveSubject turns a parsed subject into the identity Kubernetes
-// sees. Only Rancher users need the management cluster.
-func ResolveSubject(ctx context.Context, local engine.ClusterClient, p ParsedSubject) (ResolvedSubject, error) {
+// sees. Only Rancher users need the management cluster. Their cached groups
+// are read through attrs; a refused read leaves the subject with the two
+// system groups and GroupsUnavailable set, never an error.
+func ResolveSubject(ctx context.Context, local engine.ClusterClient, attrs *steve.UserAttributes, p ParsedSubject) (ResolvedSubject, error) {
 	switch p.Kind {
 	case KindGroup:
 		return ResolvedSubject{Subject: AccessSubject{Kind: KindGroup, Name: p.Raw}, GroupsFrom: GroupsGroupOnly, Groups: []string{p.Raw}}, nil
@@ -116,16 +126,18 @@ func ResolveSubject(ctx context.Context, local engine.ClusterClient, p ParsedSub
 	id := user.GetName()
 	display, _, _ := unstructured.NestedString(user.Object, "displayName")
 	principals, _, _ := unstructured.NestedStringSlice(user.Object, "principalIds")
-	groups, err := userGroups(ctx, local, id)
+	cached, err := userGroups(ctx, attrs, id)
 	if err != nil {
 		return ResolvedSubject{}, err
 	}
 	return ResolvedSubject{
-		Subject:       AccessSubject{Kind: KindUser, Name: id, ID: id, DisplayName: display},
-		IsRancherUser: true,
-		PrincipalIDs:  principals,
-		GroupsFrom:    GroupsRancherUserAttribute,
-		Groups:        groups,
+		Subject:           AccessSubject{Kind: KindUser, Name: id, ID: id, DisplayName: display},
+		IsRancherUser:     true,
+		PrincipalIDs:      principals,
+		GroupsFrom:        GroupsRancherUserAttribute,
+		Groups:            cached.Groups,
+		GroupAliases:      cached.aliases(),
+		GroupsUnavailable: cached.Unavailable,
 	}, nil
 }
 
@@ -181,21 +193,47 @@ func findRancherUser(ctx context.Context, local engine.ClusterClient, raw string
 	}
 }
 
+// cachedGroups is what userGroups read: the groups a SubjectAccessReview
+// about the user carries, how many of them Rancher had cached, and the
+// refusal when Rancher would not say.
+type cachedGroups struct {
+	Groups      []string
+	Count       int
+	Unavailable *Issue
+}
+
+func (c cachedGroups) aliases() *groupAliases {
+	if c.Unavailable != nil {
+		return &groupAliases{Source: GroupsRancherUserAttribute, Status: "unavailable"}
+	}
+	n := c.Count
+	return &groupAliases{Source: GroupsRancherUserAttribute, Status: "available", Count: &n}
+}
+
 // userGroups reads the user's cached group principals. A missing
-// UserAttribute means the user has none (a user who never logged in).
-func userGroups(ctx context.Context, local engine.ClusterClient, userID string) ([]string, error) {
+// UserAttribute means the user has none (a user who never logged in). A
+// refused read is not an error: the result carries the two system groups
+// and the refusal.
+func userGroups(ctx context.Context, attrs *steve.UserAttributes, userID string) (cachedGroups, error) {
 	groups := []string{}
-	attr, err := local.Get(ctx, rbac.UserAttrGVR, "", userID)
-	if err != nil {
-		if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeNotFound {
-			return nil, err
-		}
-	} else {
+	var out cachedGroups
+	attr, found, err := attrs.Get(ctx, userID)
+	switch {
+	case err != nil && steve.IsUserAttributesRefusal(err):
+		issue := issueFrom(clierr.From(err))
+		out.Unavailable = &issue
+	case err != nil:
+		return cachedGroups{}, err
+	case found:
 		for _, g := range rbac.GroupPrincipalEntries(attr) {
 			groups = append(groups, g.Principal)
 		}
 	}
+	slices.Sort(groups)
+	groups = slices.Compact(groups)
+	out.Count = len(groups)
 	groups = append(groups, authenticatedGroup, cattleAuthenticated)
 	slices.Sort(groups)
-	return slices.Compact(groups), nil
+	out.Groups = slices.Compact(groups)
+	return out, nil
 }

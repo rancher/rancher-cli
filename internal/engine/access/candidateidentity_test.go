@@ -38,7 +38,7 @@ func TestResolveCandidateFixedTablesNeedNoServer(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := resolveCandidate(t.Context(), local, c.c)
+			got, err := resolveCandidate(t.Context(), local, attrsFor(local), c.c)
 			require.NoError(t, err)
 			assert.Equal(t, c.want, got)
 		})
@@ -57,7 +57,7 @@ func TestResolveCandidateRancherUserByExactGetOnly(t *testing.T) {
 		"u-abc12-attr": userAttrObj("u-abc12", "github_org://eng"),
 		"u-nogroups":   userObj("u-nogroups", "bob", "Bob", "local://u-nogroups"),
 	}}
-	got, err := resolveCandidate(t.Context(), local, candidate{Kind: KindUser, Name: "u-abc12"})
+	got, err := resolveCandidate(t.Context(), local, attrsFor(local), candidate{Kind: KindUser, Name: "u-abc12"})
 	require.NoError(t, err)
 	assert.Equal(t, candidateIdentity{
 		Subject:    AccessSubject{Kind: KindUser, Name: "u-abc12", ID: "u-abc12", DisplayName: "Alice"},
@@ -65,12 +65,12 @@ func TestResolveCandidateRancherUserByExactGetOnly(t *testing.T) {
 		Groups:     []string{"github_org://eng", "system:authenticated", "system:cattle:authenticated"},
 	}, got)
 
-	got, err = resolveCandidate(t.Context(), local, candidate{Kind: KindUser, Name: "u-nogroups"})
+	got, err = resolveCandidate(t.Context(), local, attrsFor(local), candidate{Kind: KindUser, Name: "u-nogroups"})
 	require.NoError(t, err)
 	assert.Equal(t, GroupsRancherUserAttribute, got.GroupsFrom, "a user who never logged in has no UserAttribute and still is a Rancher user")
 	assert.Equal(t, []string{"system:authenticated", "system:cattle:authenticated"}, got.Groups)
 
-	got, err = resolveCandidate(t.Context(), local, candidate{Kind: KindUser, Name: "alice"})
+	got, err = resolveCandidate(t.Context(), local, attrsFor(local), candidate{Kind: KindUser, Name: "alice"})
 	require.NoError(t, err)
 	assert.Equal(t, candidateIdentity{
 		Subject:    AccessSubject{Kind: KindUser, Name: "alice"},
@@ -85,7 +85,7 @@ func TestResolveCandidateRancherUserByExactGetOnly(t *testing.T) {
 func TestResolveCandidateOtherReadErrorIsReturned(t *testing.T) {
 	t.Parallel()
 	local := &fakeClient{GetErr: clierr.Retryable(clierr.CodeGeneric, "GET users: 503 Service Unavailable")}
-	_, err := resolveCandidate(t.Context(), local, candidate{Kind: KindUser, Name: "u-abc12"})
+	_, err := resolveCandidate(t.Context(), local, attrsFor(local), candidate{Kind: KindUser, Name: "u-abc12"})
 	require.ErrorContains(t, err, "503 Service Unavailable")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
@@ -104,7 +104,7 @@ func TestGroupMembersIndexesUserAttributes(t *testing.T) {
 			*userAttrObj("u-empty"),
 		}},
 	}}
-	members, warning := groupMembers(t.Context(), local)
+	members, warning := groupMembers(t.Context(), attrsFor(local))
 	assert.Empty(t, warning)
 	assert.Equal(t, map[string][]string{
 		"github_org://eng": {"u-abc12", "u-def34"},
@@ -112,9 +112,9 @@ func TestGroupMembersIndexesUserAttributes(t *testing.T) {
 	}, members)
 
 	local = &fakeClient{ListErr: clierr.New(clierr.CodeRBAC, "userattributes is forbidden")}
-	members, warning = groupMembers(t.Context(), local)
+	members, warning = groupMembers(t.Context(), attrsFor(local))
 	assert.Nil(t, members)
-	assert.Equal(t, "group members not expanded: userattributes is forbidden", warning)
+	assert.Equal(t, "group members not expanded: you cannot list userattributes (GET /v1/management.cattle.io.userattributes answered 403)"+userAttributesRemedyText, warning)
 }
 
 // TestGroupsCacheWarningStatesTheCacheLimit asserts the warning every

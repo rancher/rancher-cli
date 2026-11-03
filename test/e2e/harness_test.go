@@ -285,6 +285,39 @@ func localManagementGate(resolve shimIdentityResolver) func(string) bool {
 	}
 }
 
+// userAttributeAccess is the steve permission on userattributes for every
+// scenario: the harness administrator may get and list them, every other
+// identity has no right, and a bearer no identity holds is refused.
+func userAttributeAccess(resolve shimIdentityResolver) func(string) (testrancher.UserAttributeLevel, bool) {
+	return func(bearer string) (testrancher.UserAttributeLevel, bool) {
+		id, ok := resolve(bearer)
+		if !ok {
+			return testrancher.UserAttributesNone, false
+		}
+		if id.user == testrancher.SeedOwner {
+			return testrancher.UserAttributesGetList, true
+		}
+		return testrancher.UserAttributesNone, true
+	}
+}
+
+// userAttributesGVR is the UserAttribute resource envtest serves.
+var userAttributesGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
+
+// storedUserAttributes are the UserAttributes envtest holds, which steve's
+// routes in the facade serve.
+func storedUserAttributes() []map[string]any {
+	list, err := dynCli.Resource(userAttributesGVR).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(list.Items))
+	for i := range list.Items {
+		out = append(out, list.Items[i].Object)
+	}
+	return out
+}
+
 // withStoredClusters adds to visible every other management Cluster
 // envtest holds, as Rancher's steve lists a Cluster created moments ago, for
 // a scenario whose commands read the Clusters it creates. Other scenarios
@@ -1108,6 +1141,7 @@ func TestScenarios(t *testing.T) {
 				IdPURL:              idpSrv.URL,
 				ClusterVisibility:   clusterVisibility(resolve),
 				LocalManagementGate: localManagementGate(resolve),
+				UserAttributeAccess: userAttributeAccess(resolve), UserAttributeObjects: storedUserAttributes,
 				ClusterObject:       storedCluster,
 				ProjectVisibility:   projectVisibility(resolve),
 				NamespaceVisibility: namespaceVisibility(resolve),
@@ -1425,7 +1459,7 @@ func seedUserObjects() {
 // composite's groups section and its held-bindings group matching to have
 // something to read.
 func seedUserAttributeObjects() {
-	gvr := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
+	gvr := userAttributesGVR
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "management.cattle.io/v3",
 		"kind":       "UserAttribute",

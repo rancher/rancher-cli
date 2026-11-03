@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 // callerIdentity is what SelfSubjectReview reports for the client in use.
@@ -39,6 +40,20 @@ type identityPlan struct {
 	AsCaller     bool
 	Denied       *proxyDenial
 	Warnings     []string
+	// GroupAliases says whether the cached groups were read; set where the
+	// plan reports GroupsFrom.
+	GroupAliases *groupAliases
+	// GroupsUnavailable is set when Rancher refused the read of the
+	// subject's cached groups: Groups holds the two system groups only. The
+	// plan of the caller's own identity never carries it.
+	GroupsUnavailable *Issue
+}
+
+// groupsUnknown reports whether a denied answer proves nothing: the review
+// was asked about a subject whose real groups are unknown, either a bare
+// username or a Rancher user whose cached groups were not read.
+func (p identityPlan) groupsUnknown() bool {
+	return p.GroupsFrom == GroupsAuthenticatedOnly || (p.Identity == IdentitySAR && p.GroupsUnavailable != nil)
 }
 
 const noClusterAccessDetail = "a cluster owner grants it with a ClusterRoleTemplateBinding or ProjectRoleTemplateBinding"
@@ -97,22 +112,32 @@ func tlsTrustCause(err error) *clierr.Error {
 
 // planIdentity runs the identity protocol after the caller's own identity
 // check, given that caller identity. local is the management cluster client
-// (for Rancher user resolution); callerClient is the caller's client on the
-// target cluster.
+// (for Rancher user resolution) and attrs reads the UserAttributes;
+// callerClient is the caller's client on the target cluster.
 func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, callerClient, local engine.ClusterClient,
-	clusterID string, caller callerIdentity, as ParsedSubject, forList bool) (identityPlan, error) {
+	attrs *steve.UserAttributes, clusterID string, caller callerIdentity, as ParsedSubject, forList bool) (identityPlan, error) {
 	callerSubject, callerPrincipals := enrichCaller(ctx, local, caller.Username)
 	if as.Raw == "" {
 		return identityPlan{Subject: callerSubject, Identity: IdentityCaller, Client: callerClient, AsCaller: true, PrincipalIDs: callerPrincipals}, nil
 	}
-	resolved, err := ResolveSubject(ctx, local, as)
+	resolved, err := ResolveSubject(ctx, local, attrs, as)
 	if err != nil {
 		return identityPlan{}, err
 	}
 	if isCallerSubject(resolved.Subject, caller) {
-		return identityPlan{Subject: resolved.Subject, Identity: IdentityCaller, Client: callerClient, AsCaller: true, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs}, nil
+		groups := resolved.Groups
+		if resolved.GroupsUnavailable != nil {
+			// The caller's own review reports the groups; the two system
+			// groups alone would stand in for them.
+			groups = nil
+		}
+		return identityPlan{Subject: resolved.Subject, Identity: IdentityCaller, Client: callerClient, AsCaller: true, Groups: groups, PrincipalIDs: resolved.PrincipalIDs}, nil
 	}
-	sarPlan := identityPlan{Subject: resolved.Subject, Identity: IdentitySAR, GroupsFrom: resolved.GroupsFrom, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs, Client: callerClient}
+	sarPlan := identityPlan{Subject: resolved.Subject, Identity: IdentitySAR, GroupsFrom: resolved.GroupsFrom, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs, Client: callerClient,
+		GroupAliases: resolved.GroupAliases, GroupsUnavailable: resolved.GroupsUnavailable}
+	if resolved.GroupsUnavailable != nil {
+		sarPlan.Warnings = []string{groupsUnavailableWarning(resolved)}
+	}
 	if resolved.Subject.Kind == KindGroup || resolved.GroupsFrom == GroupsAnonymousIdentity {
 		// Nothing to impersonate: a group is not an identity and the
 		// anonymous identity's group set is known. list rejected both at
@@ -137,7 +162,8 @@ func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, call
 			// The route dropped the header and answered for the caller.
 			return sarFallback(sarPlan, forList, resolved, clusterID)
 		}
-		return identityPlan{Subject: resolved.Subject, Identity: IdentityImpersonated, Client: impersonated, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs}, nil
+		return identityPlan{Subject: resolved.Subject, Identity: IdentityImpersonated, Client: impersonated, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs,
+			GroupsUnavailable: resolved.GroupsUnavailable}, nil
 	case outcomeImpersonationRefused:
 		return sarFallback(sarPlan, forList, resolved, clusterID)
 	case outcomeNoClusterAccess:
@@ -145,7 +171,8 @@ func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, call
 		if resolved.IsRancherUser && noRancherBindingsFor(ctx, local, clusterID, resolved) {
 			note += " (no ClusterRoleTemplateBinding or ProjectRoleTemplateBinding grants it)"
 		}
-		return identityPlan{Subject: resolved.Subject, Identity: IdentityImpersonated, Client: impersonated, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs, Denied: &proxyDenial{Note: note}}, nil
+		return identityPlan{Subject: resolved.Subject, Identity: IdentityImpersonated, Client: impersonated, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs, Denied: &proxyDenial{Note: note},
+			GroupsUnavailable: resolved.GroupsUnavailable}, nil
 	case outcomeSubjectNotFound:
 		// The proxy could not impersonate the service account because it
 		// (or its namespace) does not exist on the cluster: a refusal
@@ -155,6 +182,13 @@ func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, call
 	default:
 		return identityPlan{}, r.err
 	}
+}
+
+// groupsUnavailableWarning says a review about a Rancher user was asked
+// without the groups Rancher has cached for the user.
+func groupsUnavailableWarning(resolved ResolvedSubject) string {
+	return fmt.Sprintf("the groups Rancher has cached for %s were not read: %s; the review was asked with %s and %s only, and a denied answer is reported unknown",
+		resolved.Subject.ID, resolved.GroupsUnavailable.Message, authenticatedGroup, cattleAuthenticated)
 }
 
 // isCallerSubject reports whether the named subject IS the caller: a user
@@ -255,9 +289,14 @@ func sarRefusal(resolved ResolvedSubject, clusterID string) *clierr.Error {
 // noRancherBindingsFor reports whether the management plane has no
 // ClusterRoleTemplateBinding in the cluster's namespace and no
 // ProjectRoleTemplateBinding anywhere naming the user, its principal ids,
-// or its group principals. Any read error reports false so the caller
-// never states the clause without evidence.
+// or its group principals. Any read error, and unread cached groups, report
+// false so the caller never states the clause without evidence.
 func noRancherBindingsFor(ctx context.Context, local engine.ClusterClient, clusterID string, resolved ResolvedSubject) bool {
+	if resolved.GroupsUnavailable != nil {
+		// A group binding could name the subject, and the cached groups
+		// that would show it were not read.
+		return false
+	}
 	crtb, _ := kinds.Lookup("clusterroletemplatebinding")
 	prtb, _ := kinds.Lookup("projectroletemplatebinding")
 	crtbs, err := local.List(ctx, crtb.GVR, clusterID, "")

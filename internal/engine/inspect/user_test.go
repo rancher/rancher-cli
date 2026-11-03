@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/stretchr/testify/assert"
@@ -50,6 +51,7 @@ func newUserCmdFake(c *fakeClient) *userCmd {
 }
 
 func newUserCmdFakeRoot(c *fakeClient, root *fakeRoot) *userCmd {
+	root.attrSource = c
 	return &userCmd{clients: &fakeFactory{client: c}, roots: fakeRoots{rc: root}}
 }
 
@@ -57,7 +59,7 @@ func TestInspectUserNeverLoggedInVerifiedEmpty(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withGetErr(userAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
@@ -96,7 +98,7 @@ func TestInspectUserProjectListForbiddenDegradesOnlyThatSection(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withGetErr(userAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "u-abc", "local://u-abc", "", "cluster-owner"))).
 		withListErr(prtbKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
@@ -120,7 +122,7 @@ func userWithClusterRoleClient() *fakeClient {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
 	return newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withGetErr(userAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "u-abc", "local://u-abc", "", "cluster-owner"))).
 		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
@@ -180,17 +182,37 @@ func TestInspectUserClusterDisplayNameUnreadableIsOmitted(t *testing.T) {
 // context canceled during the steve cluster GET fails the command even
 // though the GET's own error carries no cancellation sentinel, and that the
 // project reads never start.
+// cancelAfterClusterRoot cancels the caller's context once a steve cluster
+// read has answered.
+type cancelAfterClusterRoot struct {
+	engine.RootClient
+	cancel context.CancelFunc
+}
+
+func (r cancelAfterClusterRoot) GetJSON(ctx context.Context, path string) ([]byte, error) {
+	body, err := r.RootClient.GetJSON(ctx, path)
+	if strings.HasPrefix(path, "/v1/management.cattle.io.clusters/") {
+		r.cancel()
+	}
+	return body, err
+}
+
 func TestInspectUserCanceledContextPropagatesFromClusterRead(t *testing.T) {
 	_, _, _, prtbKind, _ := userGVR()
 	c := userWithClusterRoleClient()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	root := newSteveRoot(t, nil)
-	cmd := &userCmd{clients: &fakeFactory{client: c}, roots: fakeRoots{rc: cancelAfterRoot{RootClient: root, cancel: cancel}}}
+	root := newSteveRoot(t, map[string]steveAnswer{
+		"/v1/management.cattle.io.userattributes/u-abc":  {status: http.StatusNotFound},
+		"/v1/schemas/management.cattle.io.userattribute": {status: http.StatusOK, body: map[string]any{"id": "management.cattle.io.userattribute"}},
+	})
+	cmd := &userCmd{clients: &fakeFactory{client: c}, roots: fakeRoots{rc: cancelAfterClusterRoot{RootClient: root, cancel: cancel}}}
 
 	_, err := cmd.Execute(ctx, input{args: []string{"u-abc"}}, nil)
 	require.Error(t, err)
-	assert.Equal(t, []string{"/v1/management.cattle.io.clusters/c-1"}, root.requests())
+	assert.Equal(t, []string{
+		"/v1/management.cattle.io.userattributes/u-abc", "/v1/schemas/management.cattle.io.userattribute", "/v1/management.cattle.io.clusters/c-1",
+	}, root.requests())
 	assert.False(t, c.listed(prtbKind.GVR), "project reads never start once the cluster read was canceled")
 }
 
@@ -201,7 +223,7 @@ func TestInspectUserGroupsForbiddenBlocksAllThreeHeldSections(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeRBAC, "forbidden")).
+		withGetErr(userAttrGVR, "", "u-abc", clierr.New(clierr.CodeRBAC, "forbidden")).
 		withList(grbKind.GVR, listOfGRB(grbObjForTest("grb-1", "u-abc", "local://u-abc", "", "admin"))).
 		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "", "", "okta_group://eng", "cluster-member"))).
 		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
@@ -243,7 +265,7 @@ func TestInspectUserEnabledTriState(t *testing.T) {
 			tt.mutate(u)
 			c := newFakeClient().
 				withObject(userKind.GVR, "", "u-abc", u).
-				withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+				withGetErr(userAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
 				withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 				withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
 				withList(prtbKind.GVR, &unstructured.UnstructuredList{})
@@ -290,7 +312,7 @@ func TestInspectUserGroupsMultiProviderAndDuplicatePrincipal(t *testing.T) {
 	}}
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withObject(rbac.UserAttrGVR, "", "u-abc", ua).
+		withObject(userAttrGVR, "", "u-abc", ua).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
@@ -337,7 +359,7 @@ func TestInspectUserAttributesAllFields(t *testing.T) {
 	}}
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withObject(rbac.UserAttrGVR, "", "u-abc", ua).
+		withObject(userAttrGVR, "", "u-abc", ua).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
@@ -378,7 +400,7 @@ func TestInspectUserAttributesAbsentStayAbsent(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withGetErr(userAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
@@ -405,7 +427,7 @@ func TestInspectUserCancellationDuringClusterEnrichmentAbortsBeforeProjects(t *t
 	ctx, cancel := context.WithCancel(t.Context())
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withGetErr(userAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "u-abc", "local://u-abc", "", "cluster-owner"))).
 		withList(prtbKind.GVR, listOfPRTB(prtbObjForTest("prtb-1", "p-1", "c-1:p-1", "u-abc", "local://u-abc", "", "project-owner")))
@@ -500,7 +522,7 @@ func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
 	project, _ := kinds.Lookup("project")
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
-		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withGetErr(userAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(prtbKind.GVR, listOfPRTB(
@@ -583,4 +605,46 @@ func TestStyleUserTextGroupRowNeverTakesSubheaderBold(t *testing.T) {
 	assert.Contains(t, styled, "  GLOBAL-ADMINS (activedirectory)  [ad_group://cn=ga]\n", "the group row stays plain")
 	assert.NotContains(t, styled, "\x1b[1m  GLOBAL-ADMINS")
 	assert.Contains(t, styled, "\x1b[1m  GLOBAL\x1b[0m\n", "the real sub-header below ROLE BINDINGS is bold")
+}
+
+// TestInspectUserUserAttributesRefused asserts a caller steve gives no
+// userattributes type (a 404 for the object and for the schema) gets the
+// degraded groups and the three blocked role sections, with the cause in the
+// section warning, and that a missing object with the type served is the
+// verified-empty user.
+func TestInspectUserUserAttributesRefused(t *testing.T) {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	client := func() *fakeClient {
+		return newFakeClient().
+			withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+			withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+			withList(crtbKind.GVR, &unstructured.UnstructuredList{}).
+			withList(prtbKind.GVR, &unstructured.UnstructuredList{})
+	}
+	t.Run("no type", func(t *testing.T) {
+		root := &fakeRoot{attrNoSchema: true}
+		res, err := newUserCmdFakeRoot(client(), root).Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+		require.NoError(t, err)
+		r := res.Data.(userResult)
+		assert.Nil(t, r.User.Groups)
+		assert.Nil(t, r.Roles.Global)
+		sections := []string{}
+		for _, d := range r.Degraded {
+			sections = append(sections, d.Section)
+		}
+		assert.ElementsMatch(t, []string{"groups", "rolesGlobal", "rolesClusters", "rolesProjects"}, sections)
+		assert.Contains(t, strings.Join(res.Warnings, "\n"),
+			"you cannot read userattributes (GET /v1/management.cattle.io.userattributes/u-abc answered 404); Rancher's API shows you no userattributes type; a GlobalRole with get and list on userattributes.management.cattle.io allows it")
+		assert.Equal(t, []string{"/v1/management.cattle.io.userattributes/u-abc", "/v1/schemas/management.cattle.io.userattribute"}, root.attrPaths)
+	})
+	t.Run("type served, no object", func(t *testing.T) {
+		root := &fakeRoot{}
+		res, err := newUserCmdFakeRoot(client(), root).Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+		require.NoError(t, err)
+		r := res.Data.(userResult)
+		require.NotNil(t, r.User.Groups)
+		assert.Empty(t, *r.User.Groups)
+		assert.Empty(t, r.Degraded)
+		require.NotNil(t, r.Roles.Global)
+	})
 }

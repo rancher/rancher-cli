@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -18,13 +19,15 @@ import (
 // behind the binding.
 type explainCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 	local   engine.ClusterClient
 }
 
 // NewExplain builds `access explain`. local is the management-cluster
 // client the Rancher layer reads through; nil resolves it from clients.
-func NewExplain(clients engine.ClusterClientFactory, local engine.ClusterClient) runtime.Command {
-	return &explainCmd{clients: clients, local: local}
+// roots serves the steve reads of the subject's cached groups.
+func NewExplain(clients engine.ClusterClientFactory, roots engine.RootClientFactory, local engine.ClusterClient) runtime.Command {
+	return &explainCmd{clients: clients, roots: roots, local: local}
 }
 
 func (c *explainCmd) Describe() runtime.Descriptor {
@@ -80,6 +83,7 @@ type explainResult struct {
 	ResultSource    ResultSource  `json:"resultSource"`
 	Identity        Identity      `json:"identity"`
 	GroupsFrom      GroupsFrom    `json:"groupsFrom,omitempty"`
+	GroupAliases    *groupAliases `json:"groupAliases,omitempty"`
 }
 
 const (
@@ -140,16 +144,23 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
-	plan, err := planIdentity(ctx, c.clients, callerClient, local, clusterID, caller, p.as, false)
+	attrs := steve.NewUserAttributes(steve.RootFactoryGetter(c.roots), local)
+	plan, err := planIdentity(ctx, c.clients, callerClient, local, attrs, clusterID, caller, p.as, false)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "subject resolution")
 	}
-	out := explainResult{Subject: plan.Subject, Question: p.question, Scope: scope, Identity: plan.Identity, GroupsFrom: plan.GroupsFrom,
+	out := explainResult{Subject: plan.Subject, Question: p.question, Scope: scope, Identity: plan.Identity, GroupsFrom: plan.GroupsFrom, GroupAliases: plan.GroupAliases,
 		Chain: chainComplete, ChainIssues: []chainIssue{}}
+	// Without the cached groups the chain can name no binding held through a
+	// group, so it is never complete.
+	groupsIssue := groupsUnavailableChainIssue(plan)
 	if plan.Denied != nil {
 		// The proxy refused the subject's cluster access before any
 		// authorizer was asked: one denial, nothing to explain further.
-		out.Decision, out.ResultSource, out.GroupsFrom, out.Note = DecisionDenied, SourceRancherProxy, "", plan.Denied.Note
+		out.Decision, out.ResultSource, out.GroupsFrom, out.GroupAliases, out.Note = DecisionDenied, SourceRancherProxy, "", nil, plan.Denied.Note
+		if groupsIssue != nil {
+			out.Chain, out.ChainIssues = chainPartial, []chainIssue{*groupsIssue}
+		}
 		res := runtime.Result{Kind: "AccessExplanation", Data: out, ExitStatus: exitDenied, Text: explainText(out)}
 		return withDiscoveryWarning(res, discoveryWarning), nil
 	}
@@ -166,7 +177,7 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		return runtime.Result{}, budgetError(ctx, r.err, "the review")
 	}
 	outcome := classifyAccess(r.resp.Object)
-	if plan.GroupsFrom == GroupsAuthenticatedOnly && outcome.Decision == DecisionDenied {
+	if plan.groupsUnknown() && outcome.Decision == DecisionDenied {
 		outcome.Decision, outcome.Note = DecisionUnknown, groupsUnknownNote
 	}
 	out.Decision, out.Reason, out.EvaluationError, out.Note = outcome.Decision, outcome.Reason, outcome.EvaluationError, outcome.Note
@@ -180,6 +191,9 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	// The chain is read with the caller's own client on the downstream and
 	// the management client: what the caller may read, never more.
 	walker := newChainWalker(ctx, callerClient, local, clusterID, subject, p.question)
+	if groupsIssue != nil {
+		walker.issues = append(walker.issues, *groupsIssue)
+	}
 	switch out.Decision {
 	case DecisionAllowed:
 		out.Tree, out.Chain = walker.explainAllowed(out.Reason)
@@ -194,11 +208,21 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	if walker.issues != nil {
 		out.ChainIssues = walker.issues
 	}
-	res := runtime.Result{Kind: "AccessExplanation", Data: out, ExitStatus: exitFor(out.Decision), Text: explainText(out)}
+	res := runtime.Result{Kind: "AccessExplanation", Data: out, ExitStatus: exitFor(out.Decision), Text: explainText(out), Warnings: slices.Clone(plan.Warnings)}
 	if outcome.EvaluationError != "" && outcome.Decision == DecisionAllowed {
 		res.Warnings = append(res.Warnings, "the authorizer reported an evaluation error: "+outcome.EvaluationError)
 	}
 	return withDiscoveryWarning(res, discoveryWarning), nil
+}
+
+// groupsUnavailableChainIssue is the chain issue for a subject whose cached
+// groups were not read, or nil.
+func groupsUnavailableChainIssue(plan identityPlan) *chainIssue {
+	if plan.GroupsUnavailable == nil {
+		return nil
+	}
+	i := plan.GroupsUnavailable
+	return &chainIssue{Stage: stageManagementRead, Object: objectName("userattribute", "", plan.Subject.ID), Code: i.Code, Retryable: i.Retryable, Message: i.Message}
 }
 
 // explainText renders the decision line, the reason and note, the tree,
@@ -258,7 +282,7 @@ func explainText(out explainResult) string {
 	}
 	fmt.Fprintf(&b, "source: %s | identity: %s", out.ResultSource, out.Identity)
 	if out.GroupsFrom != "" {
-		fmt.Fprintf(&b, " | groups from %s", out.GroupsFrom)
+		fmt.Fprintf(&b, " | groups from %s%s", out.GroupsFrom, groupsUnavailableMark(out.GroupAliases))
 	}
 	b.WriteString("\n")
 	return b.String()

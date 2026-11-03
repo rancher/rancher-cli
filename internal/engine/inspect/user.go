@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
@@ -103,7 +102,7 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 
 	sec := newSections(ctx, sectionGroups, sectionRolesGlobal, sectionRolesClusters, sectionRolesProjects)
 
-	groupPrincipals, blocked, err := userAttributes(ctx, mgmt, sec, rs.UserID, &identity)
+	groupPrincipals, blocked, err := userAttributes(ctx, steve.NewUserAttributes(steve.RootFactoryGetter(c.roots), mgmt), sec, rs.UserID, &identity)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -133,21 +132,21 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	}, nil
 }
 
-// userAttributes reads the UserAttribute GET-BY-ID (never a list) and
-// fills identity's UserAttribute-sourced fields in place - one field
-// list, no copy step to keep in sync. It returns the flat
+// userAttributes reads the UserAttribute GET-BY-ID (never a list) through
+// steve and fills identity's UserAttribute-sourced fields in place - one
+// field list, no copy step to keep in sync. It returns the flat
 // group-principal set the role collectors match against and whether
-// the role sections are blocked. NotFound is a verified-empty user
+// the role sections are blocked. No object is a verified-empty user
 // (never logged in): groups is a non-nil empty slice, every other
 // field stays absent, role collectors run normally. Any other failure
 // degrades groups (nil, omitted from the wire) AND blocks all three
 // role collectors - their completeness is unknowable without the
 // user's group principals, so a direct-only result would misrepresent
 // a group-held-only user as verified-complete.
-func userAttributes(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string, identity *userIdentity) (groupPrincipals []string, blocked bool, err error) {
-	obj, gerr := mgmt.Get(ctx, rbac.UserAttrGVR, "", userID)
+func userAttributes(ctx context.Context, attrs *steve.UserAttributes, sec *sections, userID string, identity *userIdentity) (groupPrincipals []string, blocked bool, err error) {
+	obj, found, gerr := attrs.Get(ctx, userID)
 	switch {
-	case gerr != nil && clierr.IsNotFound(gerr):
+	case gerr == nil && !found:
 		empty := []userGroup{}
 		identity.Groups = &empty
 		return nil, false, nil

@@ -193,7 +193,7 @@ func leakClustersCmd(t *testing.T, whoami engine.ReviewResponse, clusters, imper
 		items = append(items, steveItem(id, id))
 	}
 	srv := clustersServer(t, items...)
-	return &clustersCmd{clients: f, roots: fakeRootFactory{fakeRootClient{srv}}, local: local}, srv
+	return &clustersCmd{clients: f, roots: rootsOver(fakeRootClient{srv}, local), local: local}, srv
 }
 
 // TestGoroutineLeakScenario is the child half: it runs the one scenario

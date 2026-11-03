@@ -9,8 +9,8 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // GroupPrincipalEntry is one cached group principal from a UserAttribute's
@@ -65,11 +65,6 @@ func GroupPrincipalEntries(obj *unstructured.Unstructured) []GroupPrincipalEntry
 	return entries
 }
 
-// UserAttrGVR is the UserAttribute CRD (cluster-scoped, name = user id).
-// Not a kinds-table row: it is an enrichment source, not an operator-facing
-// resource.
-var UserAttrGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
-
 // MemberRow is the one shared shape for every derived/composite member or
 // held-role enumeration: inspect project MEMBERS, inspect cluster MEMBERS,
 // a future inspect-user held-roles section, and any future revoke
@@ -90,9 +85,10 @@ type MemberRow struct {
 }
 
 // ResolveMembers enriches crtb/prtb bindings with display names from two
-// management-plane LISTs - Users (user display names; EnsureUser sets
-// User.displayName from the provider principal) and UserAttributes (group
-// display names via GroupPrincipals.<provider>.Items[]). No Norman.
+// management-plane reads - the Users LIST (user display names; EnsureUser
+// sets User.displayName from the provider principal) and the UserAttributes
+// collection through steve (group display names via
+// GroupPrincipals.<provider>.Items[]). No Norman.
 //
 // Lazy: empty input returns immediately; the users LIST runs only when a
 // user subject needs resolution, the userattributes LIST only when a group
@@ -104,7 +100,7 @@ type MemberRow struct {
 // distinguishes rows sharing a principal and role, which keeps duplicate
 // out-of-band bindings deterministic; collision warnings by principal;
 // source-failure warnings users-before-userattributes.
-func ResolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []unstructured.Unstructured) ([]MemberRow, []string, error) {
+func ResolveMembers(ctx context.Context, mgmt engine.ClusterClient, attrs *steve.UserAttributes, bindings []unstructured.Unstructured) ([]MemberRow, []string, error) {
 	if len(bindings) == 0 {
 		return []MemberRow{}, nil, nil
 	}
@@ -137,7 +133,7 @@ func ResolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		d, c, w, err := resolveGroupDisplayNames(ctx, mgmt, groupRefs)
+		d, c, w, err := resolveGroupDisplayNames(ctx, attrs, groupRefs)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -282,15 +278,15 @@ func resolveUserDisplayNames(ctx context.Context, mgmt engine.ClusterClient, use
 	return display, collided, "", nil
 }
 
-// resolveGroupDisplayNames LISTs management-plane UserAttributes and
+// resolveGroupDisplayNames reads every UserAttribute through steve and
 // resolves display names for the given group principals. Returns the
 // display map, collision set, a non-empty warning string on a degraded
 // (non-cancellation) LIST failure, and a non-nil error only on cancellation.
-func resolveGroupDisplayNames(ctx context.Context, mgmt engine.ClusterClient, groupRefs map[string]bool) (display map[string]string, collided map[string]bool, warning string, err error) {
+func resolveGroupDisplayNames(ctx context.Context, attrs *steve.UserAttributes, groupRefs map[string]bool) (display map[string]string, collided map[string]bool, warning string, err error) {
 	display = map[string]string{}
 	collided = map[string]bool{}
 
-	list, listErr := mgmt.List(ctx, UserAttrGVR, "", "")
+	list, listErr := attrs.List(ctx)
 	switch {
 	case listErr != nil && lookupCanceled(ctx, listErr):
 		return nil, nil, "", listErr
@@ -298,8 +294,8 @@ func resolveGroupDisplayNames(ctx context.Context, mgmt engine.ClusterClient, gr
 		return display, collided, "could not list userattributes; group display names are not shown: " + listErr.Error(), nil
 	}
 
-	for i := range list.Items {
-		for _, e := range GroupPrincipalEntries(&list.Items[i]) {
+	for _, u := range list {
+		for _, e := range GroupPrincipalEntries(u) {
 			if e.DisplayName == "" || !groupRefs[e.Principal] {
 				continue
 			}

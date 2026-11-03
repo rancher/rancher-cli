@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 // candidateIdentity is what a SubjectAccessReview about a candidate
@@ -35,7 +36,7 @@ const groupsCacheWarning = "group rows list only the members Rancher has cached 
 // answer is unknown); any other error is returned for the caller to turn
 // into the candidate's request issue. The --as resolver is never used: a
 // binding name is never matched against usernames or principal ids.
-func resolveCandidate(ctx context.Context, local engine.ClusterClient, c candidate) (candidateIdentity, error) {
+func resolveCandidate(ctx context.Context, local engine.ClusterClient, attrs *steve.UserAttributes, c candidate) (candidateIdentity, error) {
 	switch c.Kind {
 	case KindGroup:
 		return candidateIdentity{Subject: AccessSubject{Kind: KindGroup, Name: c.Name}, GroupsFrom: GroupsGroupOnly, Groups: []string{c.Name}}, nil
@@ -62,31 +63,36 @@ func resolveCandidate(ctx context.Context, local engine.ClusterClient, c candida
 		}
 		return candidateIdentity{}, err
 	}
-	groups, err := userGroups(ctx, local, u.GetName())
+	cached, err := userGroups(ctx, attrs, u.GetName())
 	if err != nil {
 		return candidateIdentity{}, err
+	}
+	if cached.Unavailable != nil {
+		// A review without the cached groups would answer a different
+		// question: the candidate's rows are unknown, with the refusal as
+		// their issue.
+		return candidateIdentity{}, clierr.New(cached.Unavailable.Code, cached.Unavailable.Message).WithRetryable(cached.Unavailable.Retryable)
 	}
 	display, _, _ := unstructured.NestedString(u.Object, "displayName")
 	return candidateIdentity{
 		Subject:    AccessSubject{Kind: KindUser, Name: c.Name, ID: u.GetName(), DisplayName: display},
 		GroupsFrom: GroupsRancherUserAttribute,
-		Groups:     groups,
+		Groups:     cached.Groups,
 	}, nil
 }
 
-// groupMembers reads every UserAttribute on the management cluster once
-// and indexes the user ids by group principal: Rancher's cache of the
-// groups each user held when they last logged in. The index is enrichment
-// only (a group row's knownMembers, a user row's "group <g>" marker), so a
-// failed LIST is returned as a warning and never fails the command.
-func groupMembers(ctx context.Context, local engine.ClusterClient) (map[string][]string, string) {
-	list, err := local.List(ctx, rbac.UserAttrGVR, "", "")
+// groupMembers reads every UserAttribute once and indexes the user ids by
+// group principal: Rancher's cache of the groups each user held when they
+// last logged in. The index is enrichment only (a group row's knownMembers,
+// a user row's "group <g>" marker), so a failed read is returned as a
+// warning and never fails the command.
+func groupMembers(ctx context.Context, attrs *steve.UserAttributes) (map[string][]string, string) {
+	list, err := attrs.List(ctx)
 	if err != nil {
 		return nil, "group members not expanded: " + errorMessage(err)
 	}
 	members := map[string][]string{}
-	for i := range list.Items {
-		u := &list.Items[i]
+	for _, u := range list {
 		for _, g := range rbac.GroupPrincipalEntries(u) {
 			members[g.Principal] = append(members[g.Principal], u.GetName())
 		}

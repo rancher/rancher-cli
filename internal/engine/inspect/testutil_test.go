@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -33,6 +34,10 @@ func (i input) Args() []string            { return i.args }
 func registrationInput(name string) input {
 	return input{args: []string{name}, b: map[string]bool{"registration": true}}
 }
+
+// userAttrGVR keys a fake's UserAttribute objects and errors; the root fake
+// serves them through steve.
+var userAttrGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
 
 type objKey struct {
 	gvr  schema.GroupVersionResource
@@ -227,4 +232,12 @@ func (*fakeClient) ServerResources(context.Context) ([]engine.APIResource, error
 
 func (f *fakeFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
 	return f.Cluster(ctx, id)
+}
+
+// unusedAttrs is a UserAttribute reader whose every read fails: for a test
+// whose bindings name no group, so nothing may ask.
+func unusedAttrs() *steve.UserAttributes {
+	return steve.NewUserAttributes(func(context.Context, steve.Request) ([]byte, error) {
+		return nil, errors.New("unexpected UserAttribute read")
+	}, &fakeClient{})
 }

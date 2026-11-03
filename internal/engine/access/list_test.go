@@ -55,7 +55,7 @@ func TestListDefaultNamespaceCanonicalRules(t *testing.T) {
 		rule([]any{"list", "get", "get"}, []any{""}, []any{"pods", "configmaps"}),
 		rule([]any{"get", "list"}, []any{""}, []any{"configmaps", "pods"}),
 	)})
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil), nil)
+	res, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil), nil)
 	require.NoError(t, err)
 	out := decodeList(t, res)
 	require.Len(t, out.Namespaces, 1)
@@ -81,7 +81,7 @@ func TestListDefaultNamespaceCanonicalRules(t *testing.T) {
 func TestListIncompleteIsExit13(t *testing.T) {
 	t.Parallel()
 	f := listFactory("user-vwq4j", scripted{resp: rules(true, rule([]any{"get"}, []any{""}, []any{"pods"}))})
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}), nil)
+	res, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}), nil)
 	require.NoError(t, err)
 	out := decodeList(t, res)
 	assert.True(t, out.Namespaces[0].Incomplete)
@@ -97,7 +97,7 @@ func TestListWideOutputHasNamespaceColumn(t *testing.T) {
 	t.Parallel()
 	same := rules(false, rule([]any{"get"}, []any{""}, []any{"pods"}))
 	f := listFactory("user-vwq4j", scripted{resp: same}, scripted{resp: same})
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}}, nil)
+	res, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}}, nil)
 	require.NoError(t, err)
 	assert.Contains(t, res.Text, "also in: team-b")
 	assert.NotContains(t, res.Text, "NAMESPACE")
@@ -128,7 +128,7 @@ func TestListTextDoesNotGroupDifferentCompletenessStates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			f := listFactory("user-vwq4j", script...)
-			res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}}, nil)
+			res, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}}, nil)
 			require.NoError(t, err)
 			assert.Contains(t, res.Text, "namespace team-a on")
 			assert.Contains(t, res.Text, "namespace team-b on")
@@ -151,7 +151,7 @@ func TestListAllNamespacesMemberIssueAndAlsoIn(t *testing.T) {
 		scripted{resp: engine.ReviewResponse{Status: 503, Mapped: clierr.Retryable(clierr.CodeGeneric, "503")}},
 	)
 	f.caller.Objects = map[string]*unstructured.Unstructured{} // no GET may be needed for discovered names
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}}, nil)
+	res, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}}, nil)
 	require.NoError(t, err)
 	out := decodeList(t, res)
 	require.Len(t, out.Namespaces, 2)
@@ -175,7 +175,7 @@ func TestListSubjectWithoutClusterAccess(t *testing.T) {
 	local := localWith("u-abc12")
 	local.Lists["clusterroletemplatebindings|c-phmj7|"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{}
-	res, err := NewList(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "u-abc12"}), nil)
+	res, err := NewList(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "u-abc12"}), nil)
 	require.NoError(t, err)
 	out := decodeList(t, res)
 	assert.Equal(t, SourceRancherProxy, out.ResultSource)
@@ -194,7 +194,7 @@ func TestListEmptyProjectIsCompleteScopeDiscovery(t *testing.T) {
 	t.Parallel()
 	f := listFactory("user-vwq4j")
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}), nil)
+	res, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}), nil)
 	require.NoError(t, err)
 	out := decodeList(t, res)
 	assert.Empty(t, out.Namespaces)
@@ -210,7 +210,7 @@ func TestListEmptyProjectIsCompleteScopeDiscovery(t *testing.T) {
 	local := localWith("u-abc12")
 	local.Lists["clusterroletemplatebindings|c-phmj7|"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{}
-	res, err = NewList(f, local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty", "as": "u-abc12"}), nil)
+	res, err = NewList(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty", "as": "u-abc12"}), nil)
 	require.NoError(t, err)
 	out = decodeList(t, res)
 	assert.Equal(t, SourceScopeDiscovery, out.ResultSource)
@@ -225,13 +225,13 @@ func TestListProjectScopeCarriesMembers(t *testing.T) {
 	t.Parallel()
 	f := listFactory("user-vwq4j", scripted{resp: rules(false)}, scripted{resp: rules(false)})
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-cvrp4"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{nsObj("team-b", nil), nsObj("team-a", nil)}}
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "Team"}), nil)
+	res, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "Team"}), nil)
 	require.NoError(t, err)
 	out := decodeList(t, res)
 	assert.Equal(t, map[string]any{"cluster": "c-phmj7", "project": "p-cvrp4", "namespaces": []any{"team-a", "team-b"}}, scopeJSON(t, out.Scope))
 
 	f = listFactory("user-vwq4j", scripted{resp: rules(false)}, scripted{resp: rules(false)})
-	res, err = NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}}, nil)
+	res, err = NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}}, nil)
 	require.NoError(t, err)
 	out = decodeList(t, res)
 	assert.Equal(t, map[string]any{"cluster": "c-phmj7", "allNamespaces": true}, scopeJSON(t, out.Scope))
@@ -242,13 +242,13 @@ func TestListProjectScopeCarriesMembers(t *testing.T) {
 func TestListGroupIsValidationAndLocalNamedSubjectRefuses(t *testing.T) {
 	t.Parallel()
 	f := listFactory("user-vwq4j")
-	_, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"as": "github_org://eng"}), nil)
+	_, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"as": "github_org://eng"}), nil)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Empty(t, f.caller.Reviews, "rejected before any request")
 
-	_, err = NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"as": "system:anonymous"}), nil)
+	_, err = NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"as": "system:anonymous"}), nil)
 	ce, ok = errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -257,7 +257,7 @@ func TestListGroupIsValidationAndLocalNamedSubjectRefuses(t *testing.T) {
 	f = listFactory("user-vwq4j")
 	f.resolve["prod"] = engine.LocalCluster
 	f.caller.Objects["u-abc12"] = userObj("u-abc12", "alice", "Alice", "local://u-abc12")
-	_, err = NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"as": "u-abc12"}), nil)
+	_, err = NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"as": "u-abc12"}), nil)
 	ce, ok = errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
@@ -279,7 +279,7 @@ func TestListTextIsOneRowPerGroupAndResource(t *testing.T) {
 		rule([]any{"get"}, []any{""}, []any{"pods"}),
 		named,
 	)})
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil), nil)
+	res, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil), nil)
 	require.NoError(t, err)
 	text := res.Text
 	for _, want := range []string{
@@ -303,7 +303,7 @@ func TestListTextIsOneRowPerGroupAndResource(t *testing.T) {
 
 	// Without a named rule the NAMES column is absent.
 	f = listFactory("user-vwq4j", scripted{resp: rules(false, rule([]any{"get"}, []any{""}, []any{"pods"}))})
-	res, err = NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil), nil)
+	res, err = NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil), nil)
 	require.NoError(t, err)
 	assert.Regexp(t, `(?m)^  API GROUP\s+RESOURCE\s+VERBS$`, res.Text)
 	assert.NotContains(t, res.Text, "NAMES")
@@ -329,7 +329,7 @@ func TestListTimeoutBoundsTheSingleNamespace(t *testing.T) {
 	t.Parallel()
 	f := listFactory("user-vwq4j")
 	f.caller.Before = blockAfterFirstCall()
-	_, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{flagTimeout: "20ms"}), nil)
+	_, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{flagTimeout: "20ms"}), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during namespace discovery")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
@@ -343,7 +343,7 @@ func TestListTimeoutBoundsTheSingleNamespace(t *testing.T) {
 func TestListBudgetCoversProjectRead(t *testing.T) {
 	t.Parallel()
 	f := listFactory("user-vwq4j")
-	_, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}), nil)
+	_, err := NewList(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during project resolution")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)

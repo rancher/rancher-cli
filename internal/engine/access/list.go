@@ -14,18 +14,20 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
 type listCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 	local   engine.ClusterClient
 }
 
-// NewList builds `access list`; see NewCan for the local argument.
-func NewList(clients engine.ClusterClientFactory, local engine.ClusterClient) runtime.Command {
-	return &listCmd{clients: clients, local: local}
+// NewList builds `access list`; see NewCan for the roots and local arguments.
+func NewList(clients engine.ClusterClientFactory, roots engine.RootClientFactory, local engine.ClusterClient) runtime.Command {
+	return &listCmd{clients: clients, roots: roots, local: local}
 }
 
 func (c *listCmd) Describe() runtime.Descriptor {
@@ -152,7 +154,8 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
-	plan, err := planIdentity(ctx, c.clients, callerClient, local, clusterID, caller, as, true)
+	attrs := steve.NewUserAttributes(steve.RootFactoryGetter(c.roots), local)
+	plan, err := planIdentity(ctx, c.clients, callerClient, local, attrs, clusterID, caller, as, true)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "subject resolution")
 	}

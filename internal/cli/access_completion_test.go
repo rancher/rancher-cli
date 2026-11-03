@@ -104,10 +104,10 @@ func storeAccessConfig(t *testing.T, f *accessFixture, network bool) string {
 	return dir
 }
 
-func canDescriptor() runtime.Descriptor      { return access.NewCan(nil, nil).Describe() }
-func listDescriptor() runtime.Descriptor     { return access.NewList(nil, nil).Describe() }
-func whoCanDescriptor() runtime.Descriptor   { return access.NewWhoCan(nil, nil).Describe() }
-func explainDescriptor() runtime.Descriptor  { return access.NewExplain(nil, nil).Describe() }
+func canDescriptor() runtime.Descriptor      { return access.NewCan(nil, nil, nil).Describe() }
+func listDescriptor() runtime.Descriptor     { return access.NewList(nil, nil, nil).Describe() }
+func whoCanDescriptor() runtime.Descriptor   { return access.NewWhoCan(nil, nil, nil).Describe() }
+func explainDescriptor() runtime.Descriptor  { return access.NewExplain(nil, nil, nil).Describe() }
 func clustersDescriptor() runtime.Descriptor { return access.NewClusters(nil, nil, nil).Describe() }
 func projectsDescriptor() runtime.Descriptor { return access.NewProjects(nil, nil, nil).Describe() }
 

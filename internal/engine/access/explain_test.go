@@ -51,7 +51,7 @@ func explainFixtures(review scripted) (*fakeFactory, *fakeClient) {
 func TestExplainAllowedCallerBuildsTheTree(t *testing.T) {
 	t.Parallel()
 	f, local := explainFixtures(scripted{resp: sar(true, explainReason)})
-	res, err := NewExplain(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
+	res, err := NewExplain(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeExplain(t, res)
 	assert.Equal(t, 0, res.ExitStatus)
@@ -84,7 +84,7 @@ func TestExplainAllowedCallerBuildsTheTree(t *testing.T) {
 func TestExplainDeniedListsTheSubjectsBindings(t *testing.T) {
 	t.Parallel()
 	f, local := explainFixtures(scripted{resp: sar(false, "")})
-	res, err := NewExplain(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
+	res, err := NewExplain(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeExplain(t, res)
 	assert.Equal(t, exitDenied, res.ExitStatus)
@@ -109,7 +109,7 @@ func TestExplainPartialChainKeepsTheExit(t *testing.T) {
 	f.caller.GetErrFor = map[string]error{"team-a/rb-1": refused, "project-member-promoted": refused}
 	local.Lists["clusterroletemplatebindings||"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*local.Objects["c-phmj7-p-cvrp4/prtb-1"]}}
-	res, err := NewExplain(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
+	res, err := NewExplain(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeExplain(t, res)
 	assert.Equal(t, 0, res.ExitStatus, "the chain is provenance; the decision decides the exit")
@@ -130,7 +130,7 @@ func TestExplainPartialChainKeepsTheExit(t *testing.T) {
 func TestExplainUnparseableReasonIsAnUnknownChain(t *testing.T) {
 	t.Parallel()
 	f, local := explainFixtures(scripted{resp: sar(true, "allowed by a webhook authorizer")})
-	res, err := NewExplain(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
+	res, err := NewExplain(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "delete", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeExplain(t, res)
 	assert.Equal(t, 0, res.ExitStatus)
@@ -151,7 +151,7 @@ func TestExplainProxyDenialIsDeniedWithoutAChain(t *testing.T) {
 	local := localWith("u-abc12")
 	local.Lists["clusterroletemplatebindings|c-phmj7|"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{}
-	res, err := NewExplain(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "u-abc12"}, "get", "pods"), nil)
+	res, err := NewExplain(f, attrRootsFor(local), local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a", "as": "u-abc12"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeExplain(t, res)
 	assert.Equal(t, exitDenied, res.ExitStatus)
@@ -186,6 +186,6 @@ func TestExplainNeverReadsTheProjectFlag(t *testing.T) {
 func TestExplainClusterScopedResourceNamesOnlyItsSelector(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j")
-	_, err := NewExplain(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "nodes"), nil)
+	_, err := NewExplain(f, attrRootsFor(f.caller), f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "nodes"), nil)
 	require.EqualError(t, err, "resource nodes is cluster-scoped; omit --namespace")
 }

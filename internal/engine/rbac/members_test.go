@@ -10,6 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 func memberBinding(name string, fields map[string]any) unstructured.Unstructured {
@@ -48,7 +51,7 @@ func TestResolveMembersUsersGroupsAndUnresolved(t *testing.T) {
 		},
 	}
 
-	rows, warns, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-a", map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "cluster-owner"}),
 		memberBinding("prtb-b", map[string]any{"groupPrincipalName": "github_org://8341", "roleTemplateName": "cluster-member"}),
 		memberBinding("prtb-c", map[string]any{"userPrincipalName": "okta_user://never-logged-in", "roleTemplateName": "cluster-member"}),
@@ -71,12 +74,12 @@ func TestResolveMembersLazyAndEmpty(t *testing.T) {
 		},
 	}
 
-	rows, warns, err := ResolveMembers(t.Context(), fc, nil)
+	rows, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), nil)
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 	assert.Empty(t, warns, "empty input must issue zero requests and zero warnings")
 
-	rows, warns, err = ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, warns, err = ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-g", map[string]any{"groupPrincipalName": "github_org://1", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -94,7 +97,7 @@ func TestResolveMembersCollisionStaysUnresolved(t *testing.T) {
 		},
 	}
 
-	rows, warns, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-1", map[string]any{"userPrincipalName": "okta_user://dup", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -114,7 +117,7 @@ func TestResolveMembersDuplicateUserOwnershipSameDisplay(t *testing.T) {
 		},
 	}
 
-	rows, warns, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-1", map[string]any{"userPrincipalName": "okta_user://dup", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -135,7 +138,7 @@ func TestResolveMembersUnrelatedCollisionsStaySilent(t *testing.T) {
 		},
 	}
 
-	rows, warns, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-1", map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -162,7 +165,7 @@ func TestResolveMembersGroupDisplayDisagreement(t *testing.T) {
 		},
 	}
 
-	rows, warns, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-flap", map[string]any{"groupPrincipalName": "github_org://flap", "roleTemplateName": "r"}),
 		memberBinding("prtb-ok", map[string]any{"groupPrincipalName": "github_org://ok", "roleTemplateName": "r"}),
 	})
@@ -185,7 +188,7 @@ func TestResolveMembersRepeatedPrincipalIDInOneUserIsNotACollision(t *testing.T)
 		},
 	}
 
-	rows, warns, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-1", map[string]any{"userPrincipalName": "okta_user://rep", "roleTemplateName": "r"}),
 	})
 	require.NoError(t, err)
@@ -203,7 +206,7 @@ func TestResolveMembersWarningOrderDeterministic(t *testing.T) {
 			"userattributes": errors.New("attrs forbidden"),
 		},
 	}
-	_, warns, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	_, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-g", map[string]any{"groupPrincipalName": "github_org://g", "roleTemplateName": "r"}),
 		memberBinding("prtb-a", map[string]any{"userName": "u-a", "roleTemplateName": "r"}),
 	})
@@ -220,7 +223,7 @@ func TestResolveMembersWarningOrderDeterministic(t *testing.T) {
 			userObj("u-4", "D", "", "okta_user://alpha"),
 		},
 	}
-	_, warns2, err := ResolveMembers(t.Context(), fc2, []unstructured.Unstructured{
+	_, warns2, err := ResolveMembers(t.Context(), fc2, attrsOver(fc2), []unstructured.Unstructured{
 		memberBinding("prtb-zeta", map[string]any{"userPrincipalName": "okta_user://zeta", "roleTemplateName": "r"}),
 		memberBinding("prtb-alpha", map[string]any{"userPrincipalName": "okta_user://alpha", "roleTemplateName": "r"}),
 	})
@@ -239,7 +242,7 @@ func TestResolveMembersSamePrincipalTwoRoles(t *testing.T) {
 		users: []map[string]any{userObj("u-alice", "Alice Ann", "", "local://u-alice")},
 	}
 
-	rows, warns, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, warns, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("crtb-owner", map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "cluster-owner"}),
 		memberBinding("crtb-member", map[string]any{"userName": "u-alice", "userPrincipalName": "local://u-alice", "roleTemplateName": "cluster-member"}),
 	})
@@ -259,7 +262,7 @@ func TestResolveMembersSortByBindingWhenPrincipalAndRoleTie(t *testing.T) {
 	t.Parallel()
 	fc := &fakeClient{}
 
-	rows, _, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, _, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("crtb-zeta", map[string]any{"userPrincipalName": "okta_user://dup", "roleTemplateName": "r"}),
 		memberBinding("crtb-alpha", map[string]any{"userPrincipalName": "okta_user://dup", "roleTemplateName": "r"}),
 	})
@@ -273,7 +276,7 @@ func TestResolveMembersFlagsSystemPrincipals(t *testing.T) {
 	t.Parallel()
 	fc := &fakeClient{}
 
-	rows, _, err := ResolveMembers(t.Context(), fc, []unstructured.Unstructured{
+	rows, _, err := ResolveMembers(t.Context(), fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("crtb-1", map[string]any{"userPrincipalName": "system://provisioning/fleet-default/lx-import-k3d", "roleTemplateName": "cluster-owner"}),
 		memberBinding("crtb-2", map[string]any{"userPrincipalName": "system:serviceaccount:cattle-system:x", "roleTemplateName": "cluster-owner"}),
 		memberBinding("crtb-3", map[string]any{"userName": "u-alice", "roleTemplateName": "cluster-member"}),
@@ -298,24 +301,20 @@ func TestResolveMembersCancellationAborts(t *testing.T) {
 	cancel()
 	fc := &fakeClient{listErrByGVR: map[string]error{"users": context.Canceled}}
 
-	_, _, err := ResolveMembers(ctx, fc, []unstructured.Unstructured{
+	_, _, err := ResolveMembers(ctx, fc, attrsOver(fc), []unstructured.Unstructured{
 		memberBinding("prtb-1", map[string]any{"userName": "u-x", "roleTemplateName": "r"}),
 	})
 	require.Error(t, err, "caller cancellation must abort, not degrade")
 }
 
 // cancelAfterUsersClient succeeds the users LIST but cancels the caller
-// context as a side effect, and counts userattributes LIST attempts.
+// context as a side effect.
 type cancelAfterUsersClient struct {
 	*fakeClient
-	cancel    context.CancelFunc
-	attrLists int
+	cancel context.CancelFunc
 }
 
 func (c *cancelAfterUsersClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
-	if gvr.Resource == "userattributes" {
-		c.attrLists++
-	}
 	list, err := c.fakeClient.List(ctx, gvr, ns, selector)
 	if gvr.Resource == "users" {
 		c.cancel()
@@ -338,11 +337,57 @@ func TestResolveMembersNoRequestAfterMidFlightCancel(t *testing.T) {
 		},
 		cancel: cancel,
 	}
+	var attrRequests int
+	attrs := steve.NewUserAttributes(userAttributeGetter(nil, nil, &attrRequests), listAllowedClient{allowed: true})
 
-	_, _, err := ResolveMembers(ctx, fc, []unstructured.Unstructured{
+	_, _, err := ResolveMembers(ctx, fc, attrs, []unstructured.Unstructured{
 		memberBinding("prtb-1", map[string]any{"userName": "u-alice", "roleTemplateName": "r"}),
 		memberBinding("prtb-2", map[string]any{"groupPrincipalName": "github_org://g", "roleTemplateName": "r"}),
 	})
 	require.Error(t, err)
-	assert.Zero(t, fc.attrLists, "no request may follow cancellation")
+	assert.Zero(t, attrRequests, "no request may follow cancellation")
+}
+
+// TestResolveMembersUserAttributeRefusals asserts the group display names
+// follow what the caller may read: a refused collection and a collection that
+// may leave items out give no names and a warning that says why.
+func TestResolveMembersUserAttributeRefusals(t *testing.T) {
+	t.Parallel()
+	group := []unstructured.Unstructured{memberBinding("prtb-g", map[string]any{"groupPrincipalName": "github_org://8341", "roleTemplateName": "r"})}
+	items := []unstructured.Unstructured{{Object: memberUserAttrObj("u-alice", map[string][]map[string]any{
+		"github": {{"metadata": map[string]any{"name": "github_org://8341"}, "displayName": "DevOps Team"}},
+	})}}
+	const prefix = "could not list userattributes; group display names are not shown: "
+	tests := []struct {
+		name     string
+		get      steve.Getter
+		listable bool
+		display  string
+		warning  string
+	}{
+		{name: "get and list", get: userAttributeGetter(items, nil, nil), listable: true, display: "DevOps Team"},
+		{
+			name: "collection 404", get: userAttributeGetter(nil, clierr.ResponseError("GET", 404, nil), nil), listable: true,
+			warning: prefix + "you cannot list userattributes (GET /v1/management.cattle.io.userattributes answered 404); Rancher's API shows you no userattributes type; a GlobalRole with get and list on userattributes.management.cattle.io allows it; see: " + clierr.Rancher + " get globalroles",
+		},
+		{
+			name: "get only", get: userAttributeGetter(nil, nil, nil), listable: false,
+			warning: prefix + "you cannot list every userattribute (a SelfSubjectAccessReview for list on userattributes.management.cattle.io answered denied); GET /v1/management.cattle.io.userattributes may leave items out; a GlobalRole with get and list on userattributes.management.cattle.io allows it; see: " + clierr.Rancher + " get globalroles",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			attrs := steve.NewUserAttributes(tc.get, listAllowedClient{allowed: tc.listable})
+			rows, warns, err := ResolveMembers(t.Context(), &fakeClient{}, attrs, group)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			assert.Equal(t, tc.display, rows[0].DisplayName)
+			if tc.warning == "" {
+				assert.Empty(t, warns)
+				return
+			}
+			assert.Equal(t, []string{tc.warning}, warns)
+		})
+	}
 }
