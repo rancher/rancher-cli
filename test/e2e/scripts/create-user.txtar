@@ -15,11 +15,20 @@ stdin password.txt
 stderr 'error \(CONFIRMATION_REQUIRED\):'
 
 # dry-run preview also names the backing password Secret create in a
-# warning.
+# warning, then one GlobalRoleBinding per global role the server marks as a
+# default for new users.
 stdin password.txt
 exec rancher create user e2e-new-user --password-stdin --dry-run -o json
 jsonquery stdout data.action create
 jsonquery stdout 'warnings.0' 'also creates a v1/Secret in cattle-local-user-passwords to hold the password'
+jsonquery stdout 'warnings.1' 'also creates a management.cattle.io/v3 GlobalRoleBinding for global role e2e-default-global-role'
+jsonquery stdout 'warnings.2' ''
+
+# a global role that does not exist is refused before anything is previewed.
+stdin password.txt
+! exec rancher create user e2e-new-user --password-stdin --global-role no-such-role --dry-run -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'role not found: no-such-role'
 
 # apply: creates the User, then the password Secret.
 stdin password.txt
@@ -31,8 +40,17 @@ cp stdout create-user.json
 jsonget create-user.json data.user.name user-id.txt
 setenvfrom USERID user-id.txt
 
+jsonquery create-user.json 'data.globalRoleBindings.0.globalRoleName' e2e-default-global-role
+jsonget create-user.json 'data.globalRoleBindings.0.name' binding-id.txt
+setenvfrom BINDINGID binding-id.txt
+
 exec rancher get user $USERID -o json
 jsonquery stdout data.username e2e-new-user
+
+# the binding exists and names the committed user id.
+exec rancher get globalrolebinding $BINDINGID -o json
+jsonquery stdout data.userName $USERID
+jsonquery stdout data.globalRoleName e2e-default-global-role
 
 # the backing Secret exists - never assert its password value (hygiene).
 rawget core/v1/secrets cattle-local-user-passwords $USERID secret.raw.json
@@ -59,6 +77,22 @@ setenvfrom FLAGSUSERID flags-user-id.txt
 exec rancher get user $FLAGSUSERID -o json
 jsonquery stdout data.description 'build robot'
 jsonquery stdout data.mustChangePassword true
+
+# --global-role replaces the defaults; a role with no rule that allows
+# creating tokens gets the warning, and the command still runs.
+stdin password.txt
+exec rancher create user e2e-typed-user --password-stdin --global-role e2e-global-role --dry-run -o json
+jsonquery stdout 'warnings.1' 'also creates a management.cattle.io/v3 GlobalRoleBinding for global role e2e-global-role'
+jsonquery stdout 'warnings.2' 'none of these global roles allows creating tokens; the user cannot log in with rancher-cli until granted one; preview the grant with: rancher --config '''$WORK${/}rancher-config''' grant ''e2e-typed-user'' --global --role user --dry-run'
+jsonquery stdout 'warnings.3' ''
+
+# the apply result carries the warning once, and binds only the typed role.
+stdin password.txt
+exec rancher create user e2e-typed-user --password-stdin --global-role e2e-global-role --apply --yes -o json
+jsonquery stdout 'data.globalRoleBindings.0.globalRoleName' e2e-global-role
+jsonquery stdout 'data.globalRoleBindings.1.globalRoleName' ''
+jsonquery stdout 'warnings.2' 'none of these global roles allows creating tokens; the user cannot log in with rancher-cli until granted one; preview the grant with: rancher --config '''$WORK${/}rancher-config''' grant ''e2e-typed-user'' --global --role user --dry-run'
+jsonquery stdout 'warnings.3' ''
 
 -- password.txt --
 Sup3rSecretPassw0rd!

@@ -333,7 +333,7 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 		body, err := json.Marshal(map[string]any{"kind": "Status", "status": "Failure", "reason": "Unauthorized", "code": http.StatusUnauthorized, "message": hostileValue("rejection")})
 		require.NoError(t, err)
 		rejected := fmt.Errorf("%w: %w", errCredentialUnauthorized, clierr.ResponseError(http.MethodPost, http.StatusUnauthorized, body))
-		got := tokenCmd{}.classifyRejection(rejected, storedCredential{name: "prod"}, p)
+		got := tokenCmd{}.classifyRejection(rejected, storedCredential{name: "prod"}, "", true, p)
 		require.ErrorIs(t, got, errStoredCredentialRejected)
 		msg := noticeWith(t, p, "was rejected")
 		assertNotice(t, msg, written.String(), "rejection")

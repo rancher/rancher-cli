@@ -246,7 +246,7 @@ func TestCompletableAllowlistIsExactlyTwelveKinds(t *testing.T) {
 		completable, "allowlist must be exactly these twelve kinds (oidcclient is the first Prime-capability kind)")
 }
 
-// Full-callback tests for the five live-completion flag-value sites. Each
+// Full-callback tests for the live-completion flag-value sites. Each
 // sub-test runs the real root.Run callback using the REAL script shape:
 //
 //	rancher --rancher-completion-proto=2 <words-before-flag-value> <currentWord> --generate-shell-completion
@@ -259,6 +259,7 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 	nsItems := `{"items":[{"metadata":{"name":"default"}},{"metadata":{"name":"kube-system"}}]}`
 	nodeItems := `{"items":[{"metadata":{"name":"node-1"}}]}`
 	projectItems := `{"count":1,"revision":"1","data":[{"id":"c-abc/p-abc","metadata":{"name":"p-abc"},"spec":{"clusterName":"c-abc"}}]}`
+	globalRoleItems := `{"items":[{"metadata":{"name":"user-base"}}]}`
 
 	newSrv := func(t *testing.T) *httptest.Server {
 		t.Helper()
@@ -269,6 +270,8 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 				_, _ = w.Write([]byte(nsItems))
 			case strings.Contains(r.URL.Path, "/api/v1/nodes"):
 				_, _ = w.Write([]byte(nodeItems))
+			case strings.HasSuffix(r.URL.Path, "/management.cattle.io/v3/globalroles"):
+				_, _ = w.Write([]byte(globalRoleItems))
 			case r.URL.Path == "/v1/management.cattle.io.projects/c-abc":
 				_, _ = w.Write([]byte(projectItems))
 			default:
@@ -337,6 +340,11 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 		setup(t)
 		got := run(t, []string{"get", "pod", "--cluster", "c-abc", "--namespace"}, "kube-")
 		assert.Contains(t, got, "kube-system", "--namespace partial: kube-system must appear")
+	})
+	t.Run("--global-role space-form partial (create user leaf)", func(t *testing.T) {
+		setup(t)
+		got := run(t, []string{"create", "user", "alice", "--global-role"}, "user-")
+		assert.Contains(t, got, "user-base", "--global-role partial: user-base must appear")
 	})
 	t.Run("--node space-form partial (usage leaf)", func(t *testing.T) {
 		setup(t)

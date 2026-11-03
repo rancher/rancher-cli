@@ -131,7 +131,9 @@ func TestTheUnscopedSignInsRefusalsNameNoCluster(t *testing.T) {
 		assert.Equal(t, clierr.CodeRBAC, ce.Code)
 		details, ok := ce.Details.(clierr.LoginFailureDetails)
 		require.True(t, ok, "%T", ce.Details)
-		assert.Contains(t, details.Recovery, "an administrator can allow the user to create tokens")
+		assert.Contains(t, details.Recovery, "create on tokens.ext.cattle.io")
+		assert.Contains(t, details.Recovery, "--global --role user --dry-run")
+		assert.True(t, strings.HasSuffix(details.Recovery, "; run the kubectl command again"), details.Recovery)
 		assert.NotContains(t, details.Recovery, "cluster", "no cluster is corrected")
 	})
 	t.Run("Rancher serves no ext tokens and no v3 create", func(t *testing.T) {

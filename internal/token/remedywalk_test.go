@@ -208,7 +208,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		add("a "+kind+" not found", kinds.NotFoundCurated(k, "x", "c-1"))
 	}
 	var rejected bytes.Buffer
-	_ = tokenCmd{}.classifyRejection(errCredentialUnauthorized, storedCredential{name: "prod", entry: cfg.Servers["prod"]},
+	_ = tokenCmd{}.classifyRejection(errCredentialUnauthorized, storedCredential{name: "prod", entry: cfg.Servers["prod"]}, "", true,
 		ui.New(&rejected, nil, true, false))
 	texts["a stored login rejected"] = strings.TrimSuffix(rejected.String(), "\n")
 	st := LoginStates{Commit: &config.CommitOutcome{Backend: clierr.BackendKeyring, State: config.CommitPossiblyCommitted}}

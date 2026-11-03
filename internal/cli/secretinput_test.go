@@ -162,13 +162,15 @@ func unauthorizedStub(w http.ResponseWriter, _ *http.Request) bool {
 }
 
 // shortPasswordStub serves the ext discovery of a server that has the
-// password-change-request resource, and answers every create the way a
+// password-change-request resource and the global roles create user reads, and answers every create the way a
 // server answers a password it refuses as too short: 422 with the length
 // rule, which names no value.
 func shortPasswordStub(w http.ResponseWriter, r *http.Request) bool {
 	switch {
 	case r.Method == http.MethodPost:
 		writeKubeJSON(w, http.StatusUnprocessableEntity, `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"password must be at least 12 characters","reason":"Invalid","code":422}`)
+	case r.URL.Path == "/k8s/clusters/local/apis/management.cattle.io/v3/globalroles":
+		writeKubeJSON(w, http.StatusOK, `{"kind":"GlobalRoleList","apiVersion":"management.cattle.io/v3","items":[{"apiVersion":"management.cattle.io/v3","kind":"GlobalRole","metadata":{"name":"user"},"newUserDefault":true}]}`)
 	case r.URL.Path == "/apis/ext.cattle.io":
 		writeKubeJSON(w, http.StatusOK, `{"kind":"APIGroup","apiVersion":"v1","name":"ext.cattle.io","versions":[{"groupVersion":"ext.cattle.io/v1","version":"v1"}],"preferredVersion":{"groupVersion":"ext.cattle.io/v1","version":"v1"}}`)
 	case r.URL.Path == "/k8s/clusters/local/apis":

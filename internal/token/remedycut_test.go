@@ -32,6 +32,7 @@ var cutFacts = []cutRule{
 	{"NoTerminalLogin", "this exec entry carries the CA inline", "carries the CA inline"},
 	{"NoTerminalLogin", "stands for a name of your choice", "stands for a name of your choice"},
 	{"ResidualRecovery", "", "no credential was stored"},
+	{"noTokenPermissionText", "", "the user has no role that allows creating tokens"},
 	{"deleteFailureText", "", "failed to delete"},
 	{"entryNotNamedError", "", "more than one server entry"},
 	{"entryOnOtherServerError", "", "the exec entry names server entry"},

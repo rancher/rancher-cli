@@ -234,6 +234,9 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			return append(errText(pluginEntriesError(url, names, cfg, "", userCheck{})),
 				append(errText(pluginEntriesError(url, names, cfg, "prod", u)), errText(pluginEntriesError(url, names, cfg, "", u))...)...)
 		},
+		"noTokenPermissionText": func() []string {
+			return []string{noTokenPermissionText("u-abc12", true), noTokenPermissionText("", true), noTokenPermissionText("u-abc12", false), noTokenPermissionText("", false)}
+		},
 		"reLogin":       func() []string { a, b := reLogin(name); return []string{a, b} },
 		"revokedClause": func() []string { return []string{revokedClause("the token", ref, RevokeOutcome{Result: ResultFailed})} },
 		"unmarkedSessionText": func() []string {
@@ -315,7 +318,7 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 		},
 		"tokenCmd.classifyRejection": func() []string {
 			var notices bytes.Buffer
-			_ = tokenCmd{}.classifyRejection(errCredentialUnauthorized, sc, ui.New(&notices, nil, true, false))
+			_ = tokenCmd{}.classifyRejection(errCredentialUnauthorized, sc, "", true, ui.New(&notices, nil, true, false))
 			return []string{notices.String()}
 		},
 		"tokenCmd.noTerminalError": func() []string {

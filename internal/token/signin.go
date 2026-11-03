@@ -21,6 +21,21 @@ const signInAgain = "run the kubectl command again"
 type signInRefusal struct {
 	err   error
 	retry string
+	// tokenPermission is set when Rancher refused the user the permission to
+	// create tokens: the recovery names the user's missing role, so it needs
+	// the user's id, which only the caller of recovery knows.
+	tokenPermission bool
+	// ext is true when the refused create was of an ext token.
+	ext bool
+}
+
+// recovery is the way on after the leftover tokens, "" for signInAgain. userID
+// is the user the sign-in is for, "" when unknown.
+func (r signInRefusal) recovery(userID string) string {
+	if r.tokenPermission {
+		return noTokenPermissionText(userID, r.ext) + "; " + signInAgain
+	}
+	return r.retry
 }
 
 const (
@@ -103,12 +118,11 @@ func createRefusal(err error, cluster string, ext bool) signInRefusal {
 // permission to create tokens, which an administrator grants.
 func unscopedCreateRefusal(err error, ext bool) signInRefusal {
 	status, _ := clierr.HTTPStatus(err)
-	const grant = "an administrator can allow the user to create tokens"
 	if ext {
 		text := "Rancher refused to create a token for this user: " + rancherMessage(err)
 		switch status {
 		case http.StatusForbidden:
-			return signInRefusal{err: clierr.New(clierr.CodeRBAC, text).WithCause(err), retry: grant}
+			return signInRefusal{err: clierr.New(clierr.CodeRBAC, text).WithCause(err), tokenPermission: true, ext: true}
 		case http.StatusBadRequest:
 			return signInRefusal{err: clierr.New(clierr.From(err).Code, text).WithCause(err)}
 		}
@@ -117,7 +131,7 @@ func unscopedCreateRefusal(err error, ext bool) signInRefusal {
 	case errors.Is(err, errServerTooOldForReuse):
 		return signInRefusal{err: signInTokenError(err, false), retry: "this command needs Rancher " + config.MinRancherVersion + " or later"}
 	case status == http.StatusForbidden:
-		return signInRefusal{err: signInTokenError(err, false), retry: grant}
+		return signInRefusal{err: signInTokenError(err, false), tokenPermission: true}
 	}
 	return signInRefusal{err: signInTokenError(err, false)}
 }

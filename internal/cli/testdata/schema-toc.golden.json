@@ -245,7 +245,7 @@
         },
         {
           "name": "create user",
-          "usage": "Create a local user"
+          "usage": "Create a local user and bind its global roles"
         },
         {
           "name": "create oidc-client",

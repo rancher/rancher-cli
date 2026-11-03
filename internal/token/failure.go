@@ -193,6 +193,9 @@ func FailAcquire(ae *AcquireError, server string) error {
 			ae.DerivedCreatedAt, "", ae.DerivedTokenCleanup, nil),
 	}
 	d.Recovery = recoveryText(d, server, false)
+	if errors.Is(ae.Err, errCredentialForbidden) {
+		d.Recovery = withTokenPermission(ae.SessionUserID, d.Recovery, server)
+	}
 	out := compose(ce, d)
 	if h := recoveryHint(d, server, false); h != "" {
 		out = out.WithHint(h)

@@ -240,7 +240,7 @@ func TestAcquireErrorWithPrimaryKeepsEvidence(t *testing.T) {
 	assert.Equal(t, "x509", ae.Err.Error(), "the original is untouched")
 	// Every field is copied: a field added to the struct without being
 	// checked here fails the count.
-	assert.Equal(t, 14, reflect.TypeFor[AcquireError]().NumField(), "AcquireError field set: Err, Marker, SessionTokenOutcome, SessionTokenKind, SessionTokenRef, SessionTokenUnmarked, SessionTokenSearch, SessionTokenCleanup, SessionCreatedAt, SessionExpiresAt, DerivedCreateOutcome, DerivedTokenRef, DerivedTokenCleanup, DerivedCreatedAt")
+	assert.Equal(t, 15, reflect.TypeFor[AcquireError]().NumField(), "AcquireError field set: Err, Marker, SessionTokenOutcome, SessionTokenKind, SessionTokenRef, SessionTokenUnmarked, SessionTokenSearch, SessionTokenCleanup, SessionCreatedAt, SessionExpiresAt, SessionUserID, DerivedCreateOutcome, DerivedTokenRef, DerivedTokenCleanup, DerivedCreatedAt")
 }
 
 // TestAcquireSessionCreateKindKnowledge asserts what the acquisition knows

@@ -150,7 +150,8 @@ func TestValidateLiveWiring(t *testing.T) {
 // table: grant and revoke own live completion through the rbac complete
 // package, access projects and the three access questions through the
 // access one, create cluster and the three cluster-family verbs that
-// take a pool through the provisioning one, the two oidc-client secret
+// take a pool through the provisioning one, create user's --global-role
+// through the user one, the two oidc-client secret
 // verbs through the oidcclient one, logs through the observe one, inspect
 // project's positional through the projects one, inspect cluster's
 // through the access one, the three sign-in commands through the token
@@ -171,7 +172,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{
 		"access projects", "grant", "revoke",
-		"create cluster", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
+		"create cluster", "create user", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",
 		"logs", "inspect project", "inspect cluster",

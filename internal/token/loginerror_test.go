@@ -221,6 +221,14 @@ func TestAcquireDerivedCreateRefusedEndsRBAC(t *testing.T) {
 	status, ok := clierr.HTTPStatus(ae.Err)
 	assert.True(t, ok)
 	assert.Equal(t, http.StatusForbidden, status)
+
+	failure, details := failureOf(t, FailAcquire(ae, "prod"))
+	assert.Equal(t, clierr.CodeRBAC, failure.Code)
+	assert.Contains(t, details.Recovery, "create on tokens.ext.cattle.io")
+	assert.Contains(t, details.Recovery, "--global --role user --dry-run")
+	assert.Contains(t, details.Recovery, "rancher get users")
+	assert.Contains(t, details.Recovery, "log in again with: ")
+	assert.Empty(t, failure.Hint)
 }
 
 // TestClassifyRejectionKeepsItsSentinels asserts a 401 and a 403 on the
@@ -246,22 +254,22 @@ func TestClassifyRejectionKeepsItsSentinels(t *testing.T) {
 
 	unauthorized := create(t, http.StatusUnauthorized)
 	require.ErrorIs(t, unauthorized, errCredentialUnauthorized)
-	got := tokenCmd{}.classifyRejection(unauthorized, plugin, p)
+	got := tokenCmd{}.classifyRejection(unauthorized, plugin, "", true, p)
 	rej, ok := errors.AsType[*pluginCredentialRejected](got)
 	require.True(t, ok, "got %v", got)
 	assert.Equal(t, "prod", rej.name)
 	assert.Empty(t, notices.String(), "a plugin-created login writes no notice")
-	got = tokenCmd{}.classifyRejection(unauthorized, user, p)
+	got = tokenCmd{}.classifyRejection(unauthorized, user, "", true, p)
 	require.ErrorIs(t, got, errStoredCredentialRejected)
 	assert.Contains(t, notices.String(), `the stored login credential for "prod" was rejected (credential rejected: the server rejected the credential (401)); falling back to interactive login`)
 
 	forbidden := create(t, http.StatusForbidden)
 	require.ErrorIs(t, forbidden, errCredentialForbidden)
-	got = tokenCmd{}.classifyRejection(forbidden, user, p)
+	got = tokenCmd{}.classifyRejection(forbidden, user, "", true, p)
 	ce, ok := errors.AsType[*clierr.Error](got)
 	require.True(t, ok, "got %v", got)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
-	assert.Equal(t, `the stored login credential for "prod" cannot create tokens: credential lacks permission to create tokens: the server refused the request (403) and gave no reason`, ce.Message)
+	assert.Equal(t, `the stored login credential for "prod" cannot create tokens: credential lacks permission to create tokens: the server refused the request (403) and gave no reason; `+noTokenPermissionText("", true), ce.Message)
 }
 
 // TestFreshCredentialErrorKeepsItsSentinels asserts the rejection of the

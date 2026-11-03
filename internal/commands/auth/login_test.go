@@ -2694,17 +2694,29 @@ func TestLoginDerivedCreateRefusedEnvelopeIsRBAC(t *testing.T) {
 				Code      string `json:"code"`
 				Message   string `json:"message"`
 				Retryable bool   `json:"retryable"`
+				Hint      string `json:"hint"`
 				Details   struct {
 					Primary struct {
 						Code    string `json:"code"`
 						Message string `json:"message"`
 					} `json:"primary"`
+					Recovery string `json:"recovery"`
 				} `json:"details"`
 			} `json:"error"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(loginFailureEnvelope(t, err, srv.URL), &env))
 	got := env.Data.Error
+	// The recovery names the missing permission and the administrator's
+	// grant for the user, then how to log in again; no hint, since the
+	// administrator runs the grant.
+	recovery := got.Details.Recovery
+	assert.Contains(t, recovery, "the user has no role that allows creating tokens (create on tokens.ext.cattle.io)")
+	assert.Contains(t, recovery, "rancher get users")
+	assert.Contains(t, recovery, "grant <user-id> --global --role user --dry-run")
+	assert.Contains(t, recovery, "; log in again with: ")
+	assert.Contains(t, recovery, "auth login 'prod'")
+	assert.Empty(t, got.Hint)
 	const message = "credential lacks permission to create tokens: the server refused the request (403) and gave no reason"
 	assert.Equal(t, clierr.CodeRBAC, got.Code)
 	assert.Equal(t, message, got.Message)

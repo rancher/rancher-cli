@@ -2327,7 +2327,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	base := kube.BaseURL(server)
 	resolvedCluster, warning, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
 	if rerr != nil {
-		return Token{}, cfg.TokenReuse, binding, t.classifyRejection(rerr, sc, p)
+		return Token{}, cfg.TokenReuse, binding, t.classifyRejection(rerr, sc, clusterID, true, p)
 	}
 	if warning != "" {
 		p.Notice(warning)
@@ -2375,7 +2375,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			}
 			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache, binding: binding, loginToken: stored}, cfg.TokenReuse, binding, nil
 		case errors.Is(err, errCredentialUnauthorized), errors.Is(err, errCredentialForbidden):
-			return Token{}, cfg.TokenReuse, binding, t.classifyRejection(err, sc, p)
+			return Token{}, cfg.TokenReuse, binding, t.classifyRejection(err, sc, resolvedCluster, created.Kind == TokenKindExt, p)
 		default:
 			return Token{}, cfg.TokenReuse, binding, err
 		}
@@ -2412,11 +2412,23 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 // request before or at the create onto the provenance-specific rule. A
 // 403 authenticates but cannot create tokens: the permission error is
 // surfaced and never prompts, because a new login yields the same RBAC.
-func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Prompter) error {
+// cluster is the cluster the create names, "" for a token for Rancher
+// itself. The 403 of a create for a token for Rancher itself is the user's
+// missing permission to create tokens, which an administrator grants. The
+// 403 of a create that names a cluster is Rancher's refusal of the user's
+// access to that cluster, which a stored login that could create tokens
+// before shows; the text names who can give the access. ext says the refused
+// create was of an ext token: a stored plugin login on a Rancher without
+// ext.cattle.io creates through the Norman route, whose text names no ext
+// resource.
+func (t tokenCmd) classifyRejection(err error, sc storedCredential, cluster string, ext bool, p runtime.Prompter) error {
 	switch {
+	case errors.Is(err, errCredentialForbidden) && cluster != "":
+		return clierr.New(clierr.CodeRBAC,
+			fmt.Sprintf("the stored login credential for %q cannot create tokens: %s; "+grantCluster, sc.name, clierr.From(err).Message, clierr.ShellQuote(cluster))).WithCause(err)
 	case errors.Is(err, errCredentialForbidden):
 		return clierr.New(clierr.CodeRBAC,
-			fmt.Sprintf("the stored login credential for %q cannot create tokens: %s", sc.name, clierr.From(err).Message)).WithCause(err)
+			fmt.Sprintf("the stored login credential for %q cannot create tokens: %s; %s", sc.name, clierr.From(err).Message, noTokenPermissionText(sc.entry.TokenUserID, ext))).WithCause(err)
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
 		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):

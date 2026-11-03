@@ -1,6 +1,7 @@
 package token
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -39,6 +40,9 @@ type AcquireError struct {
 	SessionTokenCleanup  RevokeOutcome
 	SessionCreatedAt     string
 	SessionExpiresAt     string
+	// SessionUserID is the user the session token belongs to, "" when the
+	// login response named none.
+	SessionUserID        string
 	DerivedCreateOutcome CreateOutcome
 	DerivedTokenRef      *TokenRef
 	DerivedTokenCleanup  RevokeOutcome
@@ -93,6 +97,7 @@ func (st *acquireState) finishAcquireError(primary error) *AcquireError {
 		SessionTokenOutcome: st.session.Create.Outcome, SessionTokenKind: st.session.Create.Kind, SessionTokenRef: st.session.Create.Ref,
 		SessionTokenUnmarked: !st.session.Create.Marked, SessionTokenSearch: st.session.Handoff,
 		SessionTokenCleanup: st.sClean, SessionCreatedAt: st.session.Create.CreatedAt, SessionExpiresAt: st.session.Create.ExpiresAt,
+		SessionUserID:        st.session.Create.UserID,
 		DerivedCreateOutcome: st.derived.Outcome, DerivedTokenRef: st.derived.Ref,
 		DerivedTokenCleanup: st.dClean, DerivedCreatedAt: st.derived.CreatedAt,
 	}
@@ -275,7 +280,7 @@ func signInForClusterToken(ctx context.Context, client *http.Client, input *logi
 		if !s.Marked && ct.Outcome == CreateNotAttempted {
 			marker = ""
 		}
-		return failSignIn(refusal.err, stage, marker, loginFate(loginOut), FateOf(ct.Outcome, ct.Kind, ct.Ref, ct.Marked, ct.CreatedAt, ct.ExpiresAt, clusterOut, nil), ct.UserID, refusal.retry, clusterID)
+		return failSignIn(refusal.err, stage, marker, loginFate(loginOut), FateOf(ct.Outcome, ct.Kind, ct.Ref, ct.Marked, ct.CreatedAt, ct.ExpiresAt, clusterOut, nil), ct.UserID, refusal.recovery(cmp.Or(ct.UserID, s.UserID)), clusterID)
 	}
 
 	resolved, warning, err := resolveClusterIDForCreate(ctx, client, st.base, s.Bearer, clusterID)

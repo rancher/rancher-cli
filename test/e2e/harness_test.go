@@ -1412,6 +1412,23 @@ func seedRoleObjects() {
 	if _, err := dynCli.Resource(grGVR).Create(context.Background(), grObj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 		panic("seeding globalrole e2e-global-role: " + err.Error())
 	}
+	// The one role the server marks as a default for new users: create user
+	// binds it when --global-role is not given. Its rules allow creating
+	// tokens, as the built-in user role's do.
+	defaultGR := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion":     "management.cattle.io/v3",
+		"kind":           "GlobalRole",
+		"metadata":       map[string]any{"name": "e2e-default-global-role"},
+		"newUserDefault": true,
+		"rules": []any{map[string]any{
+			"apiGroups": []any{"ext.cattle.io"},
+			"resources": []any{"tokens"},
+			"verbs":     []any{"create"},
+		}},
+	}}
+	if _, err := dynCli.Resource(grGVR).Create(context.Background(), defaultGR, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
+		panic("seeding globalrole e2e-default-global-role: " + err.Error())
+	}
 	grbGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalrolebindings"}
 	grbObj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion":     "management.cattle.io/v3",

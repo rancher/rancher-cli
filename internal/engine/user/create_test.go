@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -33,10 +34,71 @@ type fakeUserClient struct {
 	// editCreatedUser, when set, edits the User the real create returns,
 	// standing in for what the server stored.
 	editCreatedUser func(*unstructured.Unstructured)
+
+	// roles are the GlobalRoles the server holds, served by Get and List.
+	roles []*unstructured.Unstructured
+	// roleListErr and roleGetErr, when set, fail every GlobalRole list or get.
+	roleListErr error
+	roleGetErr  error
+	// bindingDryRunErr and bindingRealErr fail the binding create for a role,
+	// by globalRoleName.
+	bindingDryRunErr map[string]error
+	bindingRealErr   map[string]error
+
+	roleListCalls int
+	roleGetCalls  int
+	deleteCalls   int
+	// bindings records every GlobalRoleBinding sent, dry-run and real, in order.
+	bindings []sentBinding
+	// writes records every real create, in order, by resource.
+	writes []string
+	// onRoleList, when set, runs at the start of every GlobalRole list.
+	onRoleList func()
+}
+
+// sentBinding is one GlobalRoleBinding the fake received.
+type sentBinding struct {
+	dryRun bool
+	obj    *unstructured.Unstructured
+}
+
+func globalRole(id string, fields map[string]any) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "management.cattle.io/v3",
+		"kind":       "GlobalRole",
+		"metadata":   map[string]any{"name": id},
+	}}
+	maps.Copy(obj.Object, fields)
+	return obj
+}
+
+// tokenRules is the rules list that allows creating tokens, as user-base has.
+func tokenRules() []any {
+	return []any{map[string]any{
+		"apiGroups": []any{"ext.cattle.io"},
+		"resources": []any{"tokens"},
+		"verbs":     []any{"create"},
+	}}
 }
 
 func (f *fakeUserClient) Create(_ context.Context, gvr schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	if !dryRun {
+		f.writes = append(f.writes, gvr.Resource)
+	}
 	switch gvr.Resource {
+	case "globalrolebindings":
+		f.bindings = append(f.bindings, sentBinding{dryRun: dryRun, obj: obj.DeepCopy()})
+		role, _, _ := unstructured.NestedString(obj.Object, "globalRoleName")
+		errs := f.bindingRealErr
+		if dryRun {
+			errs = f.bindingDryRunErr
+		}
+		if err := errs[role]; err != nil {
+			return nil, err
+		}
+		out := obj.DeepCopy()
+		out.SetName("grb-" + role + "-created")
+		return out, nil
 	case "users":
 		f.userCreateCalls++
 		f.userObjs = append(f.userObjs, obj.DeepCopy())
@@ -77,16 +139,43 @@ func (f *fakeUserClient) Create(_ context.Context, gvr schema.GroupVersionResour
 	}
 }
 
-func (f *fakeUserClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
-	return nil, fmt.Errorf("fakeUserClient: Get not implemented")
+func (f *fakeUserClient) Get(_ context.Context, gvr schema.GroupVersionResource, _, name string) (*unstructured.Unstructured, error) {
+	if gvr.Resource != "globalroles" {
+		return nil, fmt.Errorf("fakeUserClient: Get not implemented for %v", gvr)
+	}
+	f.roleGetCalls++
+	if f.roleGetErr != nil {
+		return nil, f.roleGetErr
+	}
+	for _, r := range f.roles {
+		if r.GetName() == name {
+			return r.DeepCopy(), nil
+		}
+	}
+	return nil, clierr.New(clierr.CodeNotFound, "globalroles \""+name+"\" not found")
 }
-func (f *fakeUserClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
-	return nil, nil
+func (f *fakeUserClient) List(_ context.Context, gvr schema.GroupVersionResource, _, _ string) (*unstructured.UnstructuredList, error) {
+	if gvr.Resource != "globalroles" {
+		return nil, fmt.Errorf("fakeUserClient: List not implemented for %v", gvr)
+	}
+	f.roleListCalls++
+	if f.onRoleList != nil {
+		f.onRoleList()
+	}
+	if f.roleListErr != nil {
+		return nil, f.roleListErr
+	}
+	list := &unstructured.UnstructuredList{}
+	for _, r := range f.roles {
+		list.Items = append(list.Items, *r.DeepCopy())
+	}
+	return list, nil
 }
 func (f *fakeUserClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
 func (f *fakeUserClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+	f.deleteCalls++
 	return nil
 }
 func (f *fakeUserClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
@@ -111,19 +200,21 @@ type userInput struct {
 	args  []string
 	flags map[string]string
 	bools map[string]bool
+	lists map[string][]string
 }
 
-func (i userInput) String(k string) string  { return i.flags[k] }
-func (i userInput) IsSet(k string) bool     { _, ok := i.flags[k]; return ok }
-func (i userInput) Bool(k string) bool      { return i.bools[k] }
-func (i userInput) Strings(string) []string { return nil }
-func (i userInput) Args() []string          { return i.args }
+func (i userInput) String(k string) string    { return i.flags[k] }
+func (i userInput) IsSet(k string) bool       { _, ok := i.flags[k]; return ok }
+func (i userInput) Bool(k string) bool        { return i.bools[k] }
+func (i userInput) Strings(k string) []string { return i.lists[k] }
+func (i userInput) Args() []string            { return i.args }
 
 func planInput(username string) userInput {
 	return userInput{
 		args:  []string{username},
 		flags: map[string]string{},
 		bools: map[string]bool{"password-stdin": true},
+		lists: map[string][]string{},
 	}
 }
 
@@ -156,7 +247,7 @@ func TestCreatePlanWarningNeverNamesTheDryRunPreviewSecret(t *testing.T) {
 	client := &fakeUserClient{userPreviewName: "u-preview1", userRealName: "u-real2"}
 	eff, _, err := plan(t, client, fakeSrc{body: []byte("correctHorseBattery1\n")}, planInput("alice"))
 	require.NoError(t, err)
-	require.Len(t, eff.Warnings, 1)
+	require.NotEmpty(t, eff.Warnings)
 	assert.NotContains(t, eff.Warnings[0], "u-preview1")
 	assert.Contains(t, eff.Warnings[0], secretNamespace)
 }

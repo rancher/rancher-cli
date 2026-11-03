@@ -748,8 +748,15 @@ Never present a role list as permissions.
   pass `--include-system` to see them. Cluster teardown removes its agent
   account automatically - never delete a system account by hand.
 - `rancher create user <username> --password-stdin` creates a local user (a
-  `v3 User` plus its password secret) - the password only ever arrives on
-  stdin, never a flag. `rancher create password-change-request <user id>
+  `v3 User`, its password secret, and a `v3 GlobalRoleBinding` for each global
+  role the server marks `newUserDefault`, `user` on a default install) - the
+  password only ever arrives on stdin, never a flag. A user with no global
+  role cannot create a token and cannot log in, so pass `--global-role <id>`
+  (repeatable, replaces the defaults) when the defaults are not the roles you
+  want; the preview warns when none of the typed roles allows creating
+  tokens. If a binding fails after the user was created, the error names each
+  role not bound with the `rancher grant ... --global --role <id> --dry-run`
+  command that grants it. `rancher create password-change-request <user id>
   --password-stdin` changes an existing local user's password the same way
   (completes synchronously - no wait needed). Both require a server that
   supports local user passwords; on a server without that support they

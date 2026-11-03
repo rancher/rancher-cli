@@ -1729,10 +1729,11 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Creates the management.cattle.io/v3 User, then a same-named Secret in cattle-local-user-passwords that holds the password - the server hashes it on write (never the CLI). Requires a server that supports local user passwords (it serves the ext.cattle.io PasswordChangeRequest resource).",
+      "desc": "Creates the management.cattle.io/v3 User, then a same-named Secret in cattle-local-user-passwords that holds the password - the server hashes it on write (never the CLI) - then a management.cattle.io/v3 GlobalRoleBinding for each global role Rancher gives new users by default (the ones with newUserDefault set), or for each --global-role. A user with no global role cannot create a token and cannot log in. Requires a server that supports local user passwords (it serves the ext.cattle.io PasswordChangeRequest resource).",
       "destructive": "true",
       "examples": [
-        "echo -n \"$PASSWORD\" | rancher create user alice --password-stdin --apply --yes"
+        "echo -n \"$PASSWORD\" | rancher create user alice --password-stdin --apply --yes",
+        "echo -n \"$PASSWORD\" | rancher create user bob --password-stdin --global-role user-base --apply --yes"
       ],
       "flags": [
         {
@@ -1763,6 +1764,11 @@
           "desc": "require the user to set a new password at their next Rancher UI login",
           "name": "must-change-password",
           "type": "bool"
+        },
+        {
+          "desc": "global role `id` to bind (repeatable); default: the roles the server marks newUserDefault; list them with: `rancher get globalroles`",
+          "name": "global-role",
+          "type": "stringSlice"
         }
       ],
       "gates": [
@@ -1775,7 +1781,7 @@
       "shape": "text",
       "stability": "stable",
       "toolset": "core",
-      "usage": "Create a local user"
+      "usage": "Create a local user and bind its global roles"
     },
     {
       "aliases": [

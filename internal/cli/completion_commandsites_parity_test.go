@@ -12,7 +12,7 @@ import (
 // newCommandSitesServer serves every collection the command-shaped
 // completion sites read: the amazonec2 machine configs of fleet-default,
 // the cloud credential Secrets of cattle-global-data, the management
-// users and clusters, one cluster's two aggregated discovery roots, the
+// users, global roles and clusters, one cluster's two aggregated discovery roots, the
 // cattle-system pods of the local and of a downstream cluster, one
 // provisioning cluster in two namespaces, and one OIDC client.
 func newCommandSitesServer(t *testing.T) *pathCountingServer {
@@ -21,6 +21,7 @@ func newCommandSitesServer(t *testing.T) *pathCountingServer {
 		machineConfigsPath: items(plain("cfg-b"), plain("cfg-a"), plain("bad name!")),
 		cloudCredsPath:     completiontest.CloudCredentialsBody,
 		mgmtUsersPath:      usersBody,
+		globalRolesPath:    items(`{"metadata":{"name":"user-base"},"displayName":"User-Base"}`, `{"metadata":{"name":"admin"},"displayName":"Administrator"}`),
 		mgmtClustersPath:   clustersBody,
 		discoveryCorePath:  completiontest.DiscoveryCoreBody,
 		discoveryGroupPath: completiontest.DiscoveryGroupsBody,
@@ -58,11 +59,12 @@ func machineConfigPrefixes(spelling string) []string {
 // declare no --pool; logs --pod for a local-only target, a
 // downstream-only target by cluster id and display name, a target
 // without a static namespace and an unknown one; the oidc-client secret
-// name of the typed client. Each row asserts the exact
+// name of the typed client; create user's --global-role. Each row asserts the exact
 // candidates and the exact requests per path. NOT parallel: t.Setenv
 // mutates env globals, setStoredConfig mutates storedConfig.
 func TestCommandSitesFullCallback(t *testing.T) {
 	s := newCommandSitesServer(t)
+	globalRoles := []string{"admin:Administrator", "user-base:User-Base"}
 	users := []string{"alice", "bob", "sameid:sameid (Same Id)", "u-alice:alice (Alice Smith)", "u-badname:bad name!", "u-bob:bob"}
 	credentials := []string{"aws-prod", "cc-abc12", "cc-collide", "cc-dup1", "cc-dup2", "cc-hostile", "cc-noannotation", "marker-only"}
 	resources := []string{"deployments", "gauges", "ingresses", "nodes", "pods", "services"}
@@ -185,6 +187,13 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "logs --pod of an unknown target", words: []string{"logs", "nope", "--pod"}, hits: map[string]int{}},
 		{name: "logs --pod without a target", words: []string{"logs", "--pod"}, hits: map[string]int{}},
 		{name: "logs --pod with the network off", words: []string{"logs", "webhook", "--pod"}, noNet: true, hits: map[string]int{}},
+		// create user --global-role
+		{name: "create user --global-role", words: []string{"create", "user", "alice", "--global-role"}, want: globalRoles, hits: map[string]int{globalRolesPath: 1}},
+		{name: "create user --global-role= equals form", words: []string{"create", "user", "alice"}, cur: "--global-role=", want: []string{"--global-role=admin:Administrator", "--global-role=user-base:User-Base"}, hits: map[string]int{globalRolesPath: 1}},
+		{name: "create user --global-role repeated", words: []string{"create", "user", "alice", "--global-role", "admin", "--global-role"}, want: globalRoles, hits: map[string]int{globalRolesPath: 1}},
+		{name: "create user --global-role with the network off", words: []string{"create", "user", "alice", "--global-role"}, noNet: true, hits: map[string]int{}},
+		{name: "create user --description is no global role site", words: []string{"create", "user", "alice", "--description"}, hits: map[string]int{}},
+		{name: "create user username is no completion site", words: []string{"create", "user"}, hits: map[string]int{}},
 		// the oidc-client secret name
 		{name: "oidc-client rotate-secret secret name", words: []string{"oidc-client", "rotate-secret", "my-client"}, want: []string{"secret-1", "secret-2"}, hits: map[string]int{oidcClientPath: 1}},
 		{name: "oidc-client remove-secret secret name", words: []string{"oidc-client", "remove-secret", "my-client"}, want: []string{"secret-1", "secret-2"}, hits: map[string]int{oidcClientPath: 1}},
@@ -232,6 +241,7 @@ func TestCommandSitesUnderAnExecCredentialOnlyToken(t *testing.T) {
 		{name: "access can --as is refused", words: []string{"access", "can", "get", "pods", "--as"}, hits: map[string]int{}},
 		{name: "cluster scale --pool is refused", words: []string{"cluster", "scale", "prod", "--pool"}, hits: map[string]int{}},
 		{name: "oidc-client rotate-secret secret name is refused", words: []string{"oidc-client", "rotate-secret", "my-client"}, hits: map[string]int{}},
+		{name: "create user --global-role is refused", words: []string{"create", "user", "alice", "--global-role"}, hits: map[string]int{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

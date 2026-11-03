@@ -74,8 +74,8 @@ what drifted the previous revision of this doc).
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
 | `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (create the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
 | `internal/engine/oidcclient/complete` | The oidc-client secret verbs' live completion source: `SecretNameSource`, the secret name rotate-secret and remove-secret take as their second positional, read from the status of the client typed as the first. A restricted `complete` package under the import and declaration fences. |
-| `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) - the sanctioned two-resource public-API way to create a local user with a password, never Norman. |
-| `internal/engine/user/complete` | The users' live completion source: `UserIDSource`, the user kind's name (the ids of the management Users the kind table does not mark as system accounts). A restricted `complete` package under the import and declaration fences. |
+| `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write) plus one `GlobalRoleBinding` per global role (the roles the server marks `newUserDefault`, or the ones typed with `--global-role`; every write is previewed by a dry-run first, and a user with no global role cannot create a token), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) - the sanctioned two-resource public-API way to create a local user with a password, never Norman. |
+| `internal/engine/user/complete` | The users' live completion sources: `UserIDSource`, the user kind's name (the ids of the management Users the kind table does not mark as system accounts), and `GlobalRoleSource`, create user's `--global-role` value (the ids of the global roles). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (Rancher sets these token fields itself: the key, a TTL within the server's maximum TTL, and the user the token belongs to) and `delete` is guarded - deleting the token backing the active CLI session is rejected. |
 | `internal/engine/observe` | Rancher component log reads (`logs <target>`) and the support-bundle export of what Rancher's Kubernetes API can reach: the target table imported from `observe/complete`, one per-pod log fetcher, and the archive writer. |
 | `internal/engine/observe/complete` | The logs command's live completion source, `PodSource` (`--pod`: the pods of the typed target in its namespace under its selector, on the local cluster or the resolved downstream cluster as the target's row says), and the target table itself, which `observe` imports back. A restricted `complete` package under the import and declaration fences. |
@@ -345,6 +345,8 @@ graph TD
     user --> runtime
     user --> safety
     user --> clierr
+    user --> completion
+    user --> usercomplete
 
     usercomplete --> kinds
     usercomplete --> completion

@@ -263,6 +263,7 @@ var clusterValueWiringsWithoutSites = map[string]string{
 	"kind managementcluster":            "the commands that carry it take no --cluster",
 	"kind user":                         "the commands that carry it take no --cluster",
 	"command create cluster":            "the command takes no --cluster",
+	"command create user":               "the command takes no --cluster",
 	"command auth login":                "the command takes no --cluster",
 	"command inspect cluster":           "the command takes no --cluster",
 	"command cluster scale":             "the command takes no --cluster",
