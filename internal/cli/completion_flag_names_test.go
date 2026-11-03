@@ -266,7 +266,7 @@ func TestSubcommandCompletionConfigGroup(t *testing.T) {
 }
 
 // TestSubcommandCompletionTelemetryGroup: `telemetry <TAB>` (cur "") must
-// list the five telemetry commands. None takes a value, so nothing else
+// list the six telemetry commands. None takes a value, so nothing else
 // completes.
 func TestSubcommandCompletionTelemetryGroup(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -275,7 +275,7 @@ func TestSubcommandCompletionTelemetryGroup(t *testing.T) {
 	t.Setenv(config.EnvConfigDir, dir)
 
 	got := runNameLikeCompletion(t, []string{"telemetry"}, "")
-	for _, verb := range []string{"status", "on", "off", "reset", "show"} {
+	for _, verb := range []string{"status", "on", "off", "reset", "show", "upload"} {
 		assert.Contains(t, got, verb)
 	}
 }

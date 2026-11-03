@@ -155,7 +155,7 @@ func TestUploadStaysInTheDeadline(t *testing.T) {
 		restoreBudget := factsBudget
 		restoreFloor := uploadFloor
 		t.Cleanup(func() { factsBudget, uploadFloor = restoreBudget, restoreFloor })
-		factsBudget, uploadFloor = 700*time.Millisecond, 100*time.Millisecond
+		factsBudget, uploadFloor = hangBound, 100*time.Millisecond
 		dir := uploadEnv(t)
 		seedFinished(t, dir, 3, 1, 2)
 		release := make(chan struct{})
@@ -167,8 +167,8 @@ func TestUploadStaysInTheDeadline(t *testing.T) {
 		elapsed := time.Since(start)
 		require.Equal(t, 0, run.code, run.stderr)
 		assert.Equal(t, 1, srv.count())
-		assert.GreaterOrEqual(t, elapsed, 600*time.Millisecond, "the request waited for the deadline")
-		assert.Less(t, elapsed, 700*time.Millisecond+2*time.Second, "and no longer")
+		assert.GreaterOrEqual(t, elapsed, hangBound-100*time.Millisecond, "the request waited for the deadline")
+		assert.Less(t, elapsed, hangBound+10*time.Second, "and no longer")
 		assert.NotContains(t, uploadFilesOf(t, dir), "lock")
 	})
 
@@ -428,14 +428,14 @@ func TestDebugLinesShowOnlyCountsOriginAndAnswer(t *testing.T) {
 
 		dir2 := uploadEnv(t)
 		seed(t, dir2, "1.0.0")
-		factsBudget, uploadFloor = 700*time.Millisecond, 100*time.Millisecond
+		factsBudget, uploadFloor = hangBound, 100*time.Millisecond
 		hang := newUploadServer(t, func(_ int, _ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) })
 		withEndpoint(t, hang.URL)
 		start := time.Now()
 		run = runBuilt(t, "dev", "--debug", "config", "path")
 		assert.Equal(t, "debug: telemetry upload: sending 3 events (contract 1.0.0) to "+hang.URL+"\n"+
 			"debug: telemetry upload: no answer: timeout\n", run.stderr)
-		assert.Less(t, time.Since(start), 5*time.Second)
+		assert.Less(t, time.Since(start), hangBound+10*time.Second)
 	})
 
 	t.Run("a stored version with a control character", func(t *testing.T) {

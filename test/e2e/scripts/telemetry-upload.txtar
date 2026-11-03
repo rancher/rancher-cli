@@ -1,0 +1,23 @@
+# telemetry upload in a development build with an upload endpoint and nothing
+# stored exits 0, reports that nothing waits, makes no request and creates no
+# telemetry/upload; its own run records no event. A run that kubectl would
+# start as the exec plugin is refused with a VALIDATION error.
+mkdir $RANCHER_CLI_CONFIG_DIR
+env RANCHER_CLI_TELEMETRY=true
+env RANCHER_CLI_EXPERIMENT=telemetryupload=https://h.example
+
+exec rancher telemetry upload -o json
+jsonquery stdout kind TelemetryUpload
+jsonquery stdout data.skipped nothingWaiting
+jsonquery stdout data.sent 0
+jsonquery stdout data.timeLimitReached false
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/upload
+
+exec rancher telemetry show -o json
+jsonquery stdout 'data.#' 0
+
+env KUBERNETES_EXEC_INFO={}
+! exec rancher telemetry upload -o json
+env KUBERNETES_EXEC_INFO=
+jsonquery stderr data.error.code VALIDATION
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/upload

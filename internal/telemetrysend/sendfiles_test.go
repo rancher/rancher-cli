@@ -125,13 +125,25 @@ func TestYoungCompactedFileWaits(t *testing.T) {
 // TestAttemptLooksThenLocksThenListsAgain asserts an attempt on a directory
 // with no telemetry/events (and one with no telemetry directory) creates
 // nothing and sends nothing, and that events another process sent and deleted
-// between the first look and the lock are not sent.
+// between the first look and the lock are not sent. It holds for the
+// automatic attempt and for the command entry.
 func TestAttemptLooksThenLocksThenListsAgain(t *testing.T) {
+	entries := map[string]func(t *testing.T, in Input){
+		"the automatic attempt": func(t *testing.T, in Input) { t.Helper(); Send(t.Context(), in) },
+		"the command":           func(t *testing.T, in Input) { t.Helper(); SendNow(t.Context(), in) },
+	}
+	for name, send := range entries {
+		t.Run(name, func(t *testing.T) { lookThenLock(t, send) })
+	}
+}
+
+func lookThenLock(t *testing.T, send func(t *testing.T, in Input)) {
+	t.Helper()
 	srv := newTestServer(t, nil)
 	for name, dir := range map[string]string{"no events": uploadDir(t), "no telemetry": t.TempDir()} {
 		t.Run(name, func(t *testing.T) {
 			before := testfs.Snapshot(t, dir)
-			Send(t.Context(), input(dir, srv.URL))
+			send(t, input(dir, srv.URL))
 			assert.Empty(t, srv.seenRequests())
 			assert.Equal(t, before, testfs.Snapshot(t, dir))
 		})
@@ -145,7 +157,7 @@ func TestAttemptLooksThenLocksThenListsAgain(t *testing.T) {
 			require.NoError(t, os.Remove(filepath.Join(dir, "telemetry", filepath.FromSlash(paths[1]))))
 		}
 		srv := newTestServer(t, nil)
-		Send(t.Context(), input(dir, srv.URL))
+		send(t, input(dir, srv.URL))
 		reqs := srv.seenRequests()
 		require.Len(t, reqs, 1)
 		assert.Equal(t, []string{uidOf(1), uidOf(3)}, reqs[0].ids(t), "the second list is sent")
@@ -154,7 +166,7 @@ func TestAttemptLooksThenLocksThenListsAgain(t *testing.T) {
 		only := putSlotRange(t, again, hourAgo(3), 1, 1)
 		afterLook = func() { require.NoError(t, os.Remove(filepath.Join(again, "telemetry", filepath.FromSlash(only[0])))) }
 		none := newTestServer(t, nil)
-		Send(t.Context(), input(again, none.URL))
+		send(t, input(again, none.URL))
 		assert.Empty(t, none.seenRequests(), "nothing is left to send after the lock")
 	})
 }
@@ -447,7 +459,7 @@ func TestSendWritesDebugLines(t *testing.T) {
 		dir := build(t, "1.0.0")
 		srv := newTestServer(t, func(_ int, _ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) })
 		var out bytes.Buffer
-		in := shortInput(dir, srv.URL, 500*time.Millisecond)
+		in := shortInput(dir, srv.URL, hangBound)
 		in.Debug = &out
 		Send(t.Context(), in)
 		assert.Equal(t, "debug: telemetry upload: sending 3 events (contract 1.0.0) to "+srv.URL+"\ndebug: telemetry upload: no answer: timeout\n", out.String())

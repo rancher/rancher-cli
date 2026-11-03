@@ -794,6 +794,9 @@ var urfaveErrWriterReferences = map[string][]string{
 	"internal/cli.uploadStoredEvents": {
 		"no text: the writer becomes the upload's debug output",
 	},
+	"internal/cli.commandUpload": {
+		"no text: the writer becomes the upload command's debug output",
+	},
 	"internal/cli.runArgv": {
 		"no text: the nil check before the root's writer is set",
 		"no text: the assignment of the default error writer",

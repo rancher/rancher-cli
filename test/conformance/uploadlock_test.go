@@ -18,10 +18,11 @@ import (
 
 // The upload lock is the innermost lock: the code that holds it takes no other
 // lock, and nothing takes it while holding another. The scan lists the one
-// function that takes it, the one reference to the sender's entry, the one use
-// of the variable that holds it and the one call site of the function that
-// calls it; the closure of the sender holds no package that takes a lock or
-// reads a credential.
+// function that takes it, the one reference to each of the sender's two
+// entries, the one use of the variable that holds each and the one call site of
+// the function that calls the automatic one and of the function that builds
+// the command's; the closure of the sender holds no package that takes a lock
+// or reads a credential.
 const (
 	uploadLockTaker    = "internal/telemetrysend/send.go:run"
 	senderReference    = "internal/cli/upload.go:"
@@ -30,6 +31,12 @@ const (
 	uploadStoreCaller  = "internal/cli/run.go:run"
 	uploadStoreFunc    = "uploadStoredEvents"
 	rootRunWrapperFunc = "runArgv"
+
+	commandReference    = "internal/cli/upload.go:"
+	commandVariable     = "sendNow"
+	commandVariableCall = "internal/cli/upload.go:commandUpload"
+	commandBuilder      = "commandUpload"
+	commandBuilderCall  = "internal/cli/engine.go:adaptEntry"
 )
 
 // enclosingFunc returns the name of the function declaration that holds pos,
@@ -49,13 +56,20 @@ func enclosingFunc(file *ast.File, pos token.Pos) string {
 // telemetrysend.Send outside the listed place or more than once, a use of the
 // variable that holds the sender (its declaration and its one call) anywhere
 // else or more than once, a call of the upload function outside the listed
-// function, more than once, or before the root command ran.
+// function, more than once, or before the root command ran; and the same for
+// the command's entry telemetrysend.SendNow, its variable and the function that
+// builds the command's upload function, which only the command table's
+// construction of the run's dependencies may reference.
 func uploadLockFindings(t *testing.T, sources map[string]string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
 	takes := map[string]int{}
 	references := map[string]int{}
 	variableUses := map[string]int{}
+	commandReferences := map[string]int{}
+	commandUses := map[string]int{}
+	builderUses := map[string]int{}
+	declared := map[token.Pos]bool{}
 	var uploadCalls []string
 	var uploadPos, rootRunPos token.Pos
 	var out []string
@@ -64,9 +78,17 @@ func uploadLockFindings(t *testing.T, sources map[string]string) []string {
 		require.NoError(t, err, path)
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch v := n.(type) {
+			case *ast.FuncDecl:
+				declared[v.Name.Pos()] = true
 			case *ast.Ident:
-				if v.Name == senderVariable {
-					variableUses[path+":"+enclosingFunc(file, v.Pos())]++
+				where := path + ":" + enclosingFunc(file, v.Pos())
+				switch {
+				case v.Name == senderVariable:
+					variableUses[where]++
+				case v.Name == commandVariable:
+					commandUses[where]++
+				case v.Name == commandBuilder && !declared[v.Pos()]:
+					builderUses[where]++
 				}
 			case *ast.SelectorExpr:
 				if v.Sel.Name == "TakeUploadLock" {
@@ -74,6 +96,9 @@ func uploadLockFindings(t *testing.T, sources map[string]string) []string {
 				}
 				if x, ok := v.X.(*ast.Ident); ok && x.Name == "telemetrysend" && v.Sel.Name == "Send" {
 					references[path+":"+enclosingFunc(file, v.Pos())]++
+				}
+				if x, ok := v.X.(*ast.Ident); ok && x.Name == "telemetrysend" && v.Sel.Name == "SendNow" {
+					commandReferences[path+":"+enclosingFunc(file, v.Pos())]++
 				}
 			case *ast.CallExpr:
 				id, ok := v.Fun.(*ast.Ident)
@@ -120,6 +145,33 @@ func uploadLockFindings(t *testing.T, sources map[string]string) []string {
 		if variableUses[where] != wantUses[where] {
 			out = append(out, senderVariable+" is not used once in "+where)
 		}
+	}
+	for where, n := range commandReferences {
+		if where != commandReference || n != 1 {
+			out = append(out, "telemetrysend.SendNow referenced "+where+" x"+strconv.Itoa(n))
+		}
+	}
+	if commandReferences[commandReference] != 1 {
+		out = append(out, "telemetrysend.SendNow is not referenced once in "+commandReference)
+	}
+	wantCommandUses := map[string]int{commandReference: 1, commandVariableCall: 1}
+	for where, n := range commandUses {
+		if wantCommandUses[where] != n {
+			out = append(out, commandVariable+" used "+where+" x"+strconv.Itoa(n))
+		}
+	}
+	for where := range wantCommandUses {
+		if commandUses[where] != wantCommandUses[where] {
+			out = append(out, commandVariable+" is not used once in "+where)
+		}
+	}
+	for where, n := range builderUses {
+		if where != commandBuilderCall || n != 1 {
+			out = append(out, commandBuilder+" referenced "+where+" x"+strconv.Itoa(n))
+		}
+	}
+	if builderUses[commandBuilderCall] != 1 {
+		out = append(out, commandBuilder+" is not referenced once in "+commandBuilderCall)
 	}
 	if len(uploadCalls) != 1 || uploadCalls[0] != uploadStoreCaller {
 		out = append(out, "the upload function is called "+strings.Join(uploadCalls, ", ")+", want once in "+uploadStoreCaller)
@@ -251,7 +303,9 @@ func recordingLockFindings(t *testing.T, sources map[string]string) []string {
 // from one function of the sender; that the sender's entry is referenced once,
 // in a variable; that the function building the sender's input calls that
 // variable once; that run calls that function once, after the root command
-// returned; that the function the sender calls to resolve the recording
+// returned; that the command's entry is referenced once, in a variable, which
+// the function building the command's upload function uses once, and that
+// function is referenced once, where the run's dependencies are built; that the function the sender calls to resolve the recording
 // controls, and every function it reaches, takes no lock; and that the import
 // closure of the sender holds no package that takes a lock or reads a
 // credential on any release platform. The fixtures assert each way of breaking
@@ -289,9 +343,10 @@ func TestTheUploadLockIsTakenOnlyWhereListed(t *testing.T) {
 
 	good := map[string]string{
 		uploadLockTakerFile: "package a\nfunc run() { s.TakeUploadLock() }\n",
-		"internal/cli/upload.go": "package cli\nvar sendStoredEvents = telemetrysend.Send\n" +
-			"func uploadStoredEvents() { sendStoredEvents() }\n",
-		"internal/cli/run.go": "package cli\nfunc run() { runArgv(); uploadStoredEvents() }\n",
+		"internal/cli/upload.go": uploadFileHead +
+			"func uploadStoredEvents() { sendStoredEvents() }\n" + uploadFileCommand,
+		"internal/cli/run.go":    "package cli\nfunc run() { runArgv(); uploadStoredEvents() }\n",
+		"internal/cli/engine.go": "package cli\nfunc adaptEntry() { commandUpload() }\n",
 	}
 	assert.Empty(t, uploadLockFindings(t, good))
 	for name, mutate := range map[string]func(map[string]string){
@@ -311,12 +366,33 @@ func TestTheUploadLockIsTakenOnlyWhereListed(t *testing.T) {
 			m["internal/cli/other.go"] = "package cli\nfunc other() { sendStoredEvents() }\n"
 		},
 		"a second call of the sender's variable in the upload function": func(m map[string]string) {
-			m["internal/cli/upload.go"] = "package cli\nvar sendStoredEvents = telemetrysend.Send\n" +
-				"func uploadStoredEvents() { sendStoredEvents(); sendStoredEvents() }\n"
+			m["internal/cli/upload.go"] = uploadFileHead +
+				"func uploadStoredEvents() { sendStoredEvents(); sendStoredEvents() }\n" + uploadFileCommand
 		},
 		"no call of the sender's variable": func(m map[string]string) {
-			m["internal/cli/upload.go"] = "package cli\nvar sendStoredEvents = telemetrysend.Send\n" +
-				"func uploadStoredEvents() {}\n"
+			m["internal/cli/upload.go"] = uploadFileHead + "func uploadStoredEvents() {}\n" + uploadFileCommand
+		},
+		"a second reference to the command's entry": func(m map[string]string) {
+			m["internal/cli/other.go"] = "package cli\nvar x = telemetrysend.SendNow\n"
+		},
+		"a second use of the command's variable in the builder": func(m map[string]string) {
+			m["internal/cli/upload.go"] = uploadFileHead + "func uploadStoredEvents() { sendStoredEvents() }\n" +
+				"func commandUpload() { sendNow(); sendNow() }\n"
+		},
+		"a use of the command's variable in another function": func(m map[string]string) {
+			m["internal/cli/other.go"] = "package cli\nfunc other() { sendNow() }\n"
+		},
+		"no use of the command's variable": func(m map[string]string) {
+			m["internal/cli/upload.go"] = uploadFileHead + "func uploadStoredEvents() { sendStoredEvents() }\nfunc commandUpload() {}\n"
+		},
+		"the builder referenced in another function": func(m map[string]string) {
+			m["internal/cli/other.go"] = "package cli\nfunc other() { commandUpload() }\n"
+		},
+		"the builder referenced twice in the construction": func(m map[string]string) {
+			m["internal/cli/engine.go"] = "package cli\nfunc adaptEntry() { commandUpload(); commandUpload() }\n"
+		},
+		"the builder not referenced": func(m map[string]string) {
+			m["internal/cli/engine.go"] = "package cli\nfunc adaptEntry() {}\n"
 		},
 		"the upload before the root command ran": func(m map[string]string) {
 			m["internal/cli/run.go"] = "package cli\nfunc run() { uploadStoredEvents(); runArgv() }\n"
@@ -331,7 +407,11 @@ func TestTheUploadLockIsTakenOnlyWhereListed(t *testing.T) {
 	}
 }
 
-const uploadLockTakerFile = "internal/telemetrysend/send.go"
+const (
+	uploadLockTakerFile = "internal/telemetrysend/send.go"
+	uploadFileHead      = "package cli\nvar sendStoredEvents = telemetrysend.Send\nvar sendNow = telemetrysend.SendNow\n"
+	uploadFileCommand   = "func commandUpload() { sendNow() }\n"
+)
 
 // TestTheRecordingCallbackReachesNoLock asserts each way a function reached
 // from the recording controls callback takes a lock is reported, and that a

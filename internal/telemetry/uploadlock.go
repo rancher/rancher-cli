@@ -40,7 +40,7 @@ var (
 	// ErrUnsafeUploadDir is the error for a telemetry/upload path that is a
 	// symlink or not a directory. UploadLockStatus also returns it, wrapped,
 	// for a path whose type cannot be read.
-	ErrUnsafeUploadDir = errors.New("telemetry upload path is a symlink or not a directory")
+	ErrUnsafeUploadDir = errors.New("the upload directory is a symlink or not a directory")
 )
 
 // UploadLock is the upload lock of one telemetry directory, held through the

@@ -122,7 +122,7 @@ func TestWalkAfterTheDeletionRunsOnlyWithTimeLeft(t *testing.T) {
 			dir := uploadDir(t)
 			paths := putSlotRange(t, dir, hourAgo(3), 1, 2)
 			srv := newTestServer(t, nil)
-			in := shortInput(dir, srv.URL, 1500*time.Millisecond)
+			in := shortInput(dir, srv.URL, hangBound)
 			walks := 0
 			shrunk := false
 			t.Cleanup(telemetry.SetObserverForTest(func(op string) {

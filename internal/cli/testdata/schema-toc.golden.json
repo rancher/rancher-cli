@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 197,
+  "commandCount": 198,
   "effectSchema": {
     "actions": [
       "create",
@@ -194,6 +194,10 @@
           "usage": "Show whether usage recording is on and what is recorded, and any active experiments"
         },
         {
+          "name": "telemetry upload",
+          "usage": "Send the stored usage events now (development builds with the telemetryupload experiment)"
+        },
+        {
           "name": "telemetry on",
           "usage": "Turn usage recording on"
         },
@@ -210,7 +214,7 @@
           "usage": "List the recorded events"
         }
       ],
-      "desc": "Control and inspect usage recording: status, turn on, turn off, delete and list events.",
+      "desc": "Control and inspect usage recording: status, turn on, turn off, delete, list and send events.",
       "name": "telemetry"
     },
     {

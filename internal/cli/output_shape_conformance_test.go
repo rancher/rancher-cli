@@ -49,6 +49,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"telemetry off":                     runtime.ShapeText,
 	"telemetry reset":                   runtime.ShapeText,
 	"telemetry show":                    runtime.ShapeTabular,
+	"telemetry upload":                  runtime.ShapeText,
 	"config status":                     runtime.ShapeText,
 	"config update-server":              runtime.ShapeText,
 	"config use-server":                 runtime.ShapeText,

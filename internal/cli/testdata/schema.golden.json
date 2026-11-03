@@ -9778,6 +9778,22 @@
       "usage": "Show whether usage recording is on and what is recorded, and any active experiments"
     },
     {
+      "auth": false,
+      "commandType": "local",
+      "desc": "Development builds with the telemetryupload experiment only. Sends the stored events of finished hours and of the current hour to the experiment endpoint now, without waiting for the hourly limit or a Retry-After wait, with the same upload lock, request limits and decisions as the automatic upload. Records its attempt: the next automatic attempt comes about an hour later. Takes at most 30 seconds. Never runs from the kubectl exec plugin, and a release build refuses it. Its own run records no event. Exits 0 whatever the endpoint answered. sent counts every event in a request the endpoint answered with a 2xx, including the ones it refused; refused says how many. The data holds sent, refused, dropped, httpStatus, noAnswer, nextAttempt, timeLimitReached and skipped. With --debug it prints one line before and one after each request on standard error.",
+      "examples": [
+        "rancher telemetry upload",
+        "rancher telemetry upload -o json",
+        "rancher telemetry upload --debug"
+      ],
+      "group": "telemetry",
+      "name": "telemetry upload",
+      "serverAccess": "none",
+      "shape": "text",
+      "toolset": "core",
+      "usage": "Send the stored usage events now (development builds with the telemetryupload experiment)"
+    },
+    {
       "auth": true,
       "commandType": "local",
       "contract": "internal",
@@ -10310,12 +10326,13 @@
     {
       "commands": [
         "telemetry status",
+        "telemetry upload",
         "telemetry on",
         "telemetry off",
         "telemetry reset",
         "telemetry show"
       ],
-      "desc": "Control and inspect usage recording: status, turn on, turn off, delete and list events.",
+      "desc": "Control and inspect usage recording: status, turn on, turn off, delete, list and send events.",
       "name": "telemetry"
     },
     {

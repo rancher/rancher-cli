@@ -26,8 +26,51 @@ var uploadExcluded = map[string]string{
 	"token":          "the exec plugin shim: kubectl waits for it",
 }
 
+// uploadCommandBound is the longest `telemetry upload` runs. A package var so
+// tests shrink it together with uploadFloor.
+var uploadCommandBound = telemetry.UploadCommandBound
+
 // sendStoredEvents is the sender. Tests replace it to make it panic.
 var sendStoredEvents = telemetrysend.Send
+
+// sendNow is the sender of `telemetry upload`. Tests replace it.
+var sendNow = telemetrysend.SendNow
+
+// commandUpload builds the function `telemetry upload` runs. The function
+// refuses, in this order, an exec plugin run, a release build, a missing or
+// refused endpoint and recording that a control turned off, and calls the
+// sender only when none applies. It reads no file before it calls the sender.
+// With debug true the sender writes its lines to the run's error output.
+func commandUpload(c *ucli.Command, dir, version string, view telemetry.ExperimentView) telemetry.UploadFunc {
+	return func(ctx context.Context, debug bool, recording telemetry.Decision) telemetry.UploadResult {
+		switch {
+		case currentInvocation().ExecPlugin:
+			return telemetry.UploadResult{Refusal: telemetry.RefusalExecPlugin}
+		case !telemetry.IsDevelopmentVersion(version):
+			return telemetry.UploadResult{Refusal: telemetry.RefusalReleaseBuild}
+		case view.Endpoint == "" && view.EndpointProblem == "":
+			return telemetry.UploadResult{Refusal: telemetry.RefusalNoEndpoint}
+		case view.Endpoint == "":
+			return telemetry.UploadResult{Refusal: telemetry.RefusalInvalidEndpoint, RefusalReason: view.EndpointProblem}
+		case !recording.On:
+			return telemetry.UploadResult{Refusal: telemetry.RefusalRecordingOff, RefusalReason: string(recording.By)}
+		}
+		var out io.Writer
+		if debug {
+			out = c.Root().ErrWriter
+		}
+		return sendNow(ctx, telemetrysend.Input{
+			ConfigDir:   dir,
+			Version:     version,
+			Origin:      view.Endpoint,
+			Encoder:     telemetrysend.NewOTLPEncoder(),
+			Deadline:    time.Now().Add(uploadCommandBound),
+			Floor:       uploadFloor,
+			Debug:       out,
+			RecordingOn: func() bool { return recordingStillOn(dir) },
+		})
+	}
+}
 
 // uploadStoredEvents sends the stored events after a recorded run of a
 // development build whose telemetryupload experiment names an endpoint. It

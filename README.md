@@ -164,7 +164,7 @@ or point the instructions file of any other coding-agent harness at it.
 | [Access](COMMANDS.md#access) | who can do what, as the cluster's authorizer answers it (`access can`, `access list`, `access who-can`, `access explain`), which clusters a subject can reach through Rancher's proxy (`access clusters`), and which projects a subject can see and is a member of (`access projects`) |
 | [Logs & support](COMMANDS.md#logs--support) | logs of Rancher components, support bundle |
 | [kubectl integration](COMMANDS.md#kubectl-integration) | kubeconfig that uses the exec plugin, legacy `rancher token` command |
-| [Telemetry](COMMANDS.md#telemetry) | status, on, off, reset and show for local usage recording; recording is on by default, and release builds send no event |
+| [Telemetry](COMMANDS.md#telemetry) | status, on, off, reset, show and upload for local usage recording; recording is on by default, and release builds send no event |
 | [Discovery & tooling](COMMANDS.md#discovery--tooling) | schema, shell completion, agent-skill install |
 
 With a kubeconfig that authenticates through the exec plugin and no stored `rancher auth login` credential, the plugin asks you to log in once per cluster by default; `rancher config set-token-reuse on` lets the plugin keep one login credential per server instead (see REFERENCE.md, Token reuse for kubectl).

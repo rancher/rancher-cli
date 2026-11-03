@@ -7,6 +7,9 @@ type ExperimentView struct {
 	Names []string
 	// Endpoint is the canonical upload origin, or "" when none is set.
 	Endpoint string
+	// EndpointProblem is why the telemetryupload value was refused; "" when it
+	// was accepted, was not set or has no value. It never holds the value.
+	EndpointProblem string
 	// Warnings are the lines about items of the variable that were ignored.
 	Warnings []string
 }

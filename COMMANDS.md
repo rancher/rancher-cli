@@ -147,6 +147,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 | `telemetry off` | Set the `telemetry` key to `false`, then delete the recorded events, the server facts, the config directory id and the upload state (the upload lock and the state file in `telemetry/upload`); creates the config directory when it is missing |
 | `telemetry reset` | Delete the recorded events, the server facts, the config directory id and the upload state (the upload lock and the state file in `telemetry/upload`); keeps the `telemetry` key |
 | `telemetry show` | List the recorded events, oldest first; `-o json` carries every stored field of each event; in a development build with the `telemetryupload` experiment, a sent event is listed until the file that holds it is deleted |
+| `telemetry upload` | Send the stored events of finished hours and of the current hour to the `telemetryupload` experiment endpoint now, without waiting for the hourly limit; development builds only, at most 30 seconds, never from the kubectl exec plugin; exits 0 whatever the endpoint answered; `sent` counts every event in a request the endpoint answered with a 2xx, including the ones it refused |
 
 ## Discovery & tooling
 
@@ -180,6 +181,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 49-kind table: `get <kind>` (49), `patch <kind>`
 (49), `delete <kind>` (31 - 30 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-129 generated commands, 197 total together with the fixed commands above. The authoritative, always-current list is
+129 generated commands, 198 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

@@ -41,6 +41,7 @@ func TestLinesWithNoChosenCommandRecordNothing(t *testing.T) {
 		"telemetry off":                 {"telemetry", "off"},
 		"telemetry reset":               {"telemetry", "reset"},
 		"telemetry show":                {"telemetry", "show"},
+		"telemetry upload":              {"telemetry", "upload"},
 		"completion request with flags": {protoSentinel, "get", "cluster", "--output", ""},
 	}
 	for name, args := range rows {
@@ -124,6 +125,7 @@ func TestNoConfigDirectoryRecordsNothingAndCreatesNone(t *testing.T) {
 		"schema":           {"schema"},
 		"skill status":     {"skill", "status", "--agent", "claude"},
 		"telemetry status": {"telemetry", "status"},
+		"telemetry upload": {"telemetry", "upload"},
 	}
 	for name, args := range rows {
 		t.Run(name, func(t *testing.T) {

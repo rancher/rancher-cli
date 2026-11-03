@@ -68,6 +68,7 @@ var capabilityCoverageAllowlist = map[string]string{
 	"telemetry off":                  "local telemetry store, no kind row",
 	"telemetry reset":                "local telemetry store, no kind row",
 	"telemetry show":                 "local telemetry store, no kind row",
+	"telemetry upload":               "local telemetry store, no kind row",
 	"skill install":                  "agent-skill install, no kind row",
 	"skill status":                   "agent-skill status, no kind row",
 	"skill uninstall":                "agent-skill uninstall, no kind row",

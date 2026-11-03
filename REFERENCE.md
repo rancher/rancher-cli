@@ -2111,8 +2111,10 @@ development build with the `telemetryupload` experiment sends them; see
 | `rancher telemetry off` | Writes `telemetry: "false"`, then deletes the recorded events, the server facts, the config directory id and the upload state (the upload lock and the state file in `telemetry/upload`). Creates the config directory when it is missing. |
 | `rancher telemetry reset` | Deletes the recorded events, the server facts, the config directory id and the upload state (the upload lock and the state file in `telemetry/upload`), and keeps the `telemetry` key. |
 | `rancher telemetry show` | Lists the recorded events, oldest first; `-o json` carries every stored field of each event. In a development build with the `telemetryupload` experiment, a sent event is listed until the file that holds it is deleted. |
+| `rancher telemetry upload` | Sends the stored events of finished hours and of the current hour to the `telemetryupload` experiment endpoint now, without waiting for the hourly limit. Development builds only, at most 30 seconds, never from the kubectl exec plugin; see [Experiments](#experiments). |
 
-None of them makes a request to a server or reads a credential.
+Only `rancher telemetry upload` makes a request, to the experiment endpoint,
+through a function the CLI passes it; none of them reads a credential.
 
 The config directory id is a random id stored for this config directory,
 shown by `rancher telemetry status`. The contract version is the version of
@@ -2254,8 +2256,9 @@ never sends, and nothing is sent while recording is off, including when
 - What: every stored event of an hour that has ended and is at most 30 days
   old, including events stored before the experiment was set and events a
   release build stored in the same config directory. The events of the current
-  hour wait. A request holds one contract version, at most 1000 events and at
-  most 1 MiB compressed, goes to the endpoint's origin as OTLP/HTTP JSON with
+  hour wait until the hour ends; `rancher telemetry upload` sends them now. A
+  request holds one contract version, at most 1000 events and at most 1 MiB
+  compressed, goes to the endpoint's origin as OTLP/HTTP JSON with
   `Content-Encoding: gzip`, and is never redirected.
 - The request carries the CLI's User-Agent and no credential, and honors the
   proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`).
@@ -2274,6 +2277,27 @@ never sends, and nothing is sent while recording is off, including when
   events with older ids are sent again.
 - `rancher telemetry status` shows the last attempt, the next attempt, the
   events waiting and the events of the current hour.
+- `rancher telemetry upload` sends the stored events now, on request. It
+  refuses with a `VALIDATION` error (exit 2) in a release build, in an exec
+  plugin run, with no valid `telemetryupload` endpoint and while recording is
+  off. It sends the events of finished hours and of the current hour, ignores
+  the limit of one attempt an hour and any `Retry-After` wait, uses the same
+  upload lock, request limits and decisions, records its attempt in
+  `state.json` (the next automatic attempt comes about an hour later) and
+  stops after 30 seconds. It exits 0 whatever the endpoint answered, when
+  another upload holds the lock, when nothing waits and when the 30 seconds
+  passed before the first request. It exits 1 with a `GENERIC` error that
+  names the failed step and the requests already sent when `telemetry` or
+  `telemetry/upload` is a symlink or not a directory, the upload lock cannot
+  be read or created, the stored events cannot be listed, a request cannot be
+  built or the sender fails; it exits 2 with a `VALIDATION` error when
+  recording is turned off while it runs, and nothing is deleted; Ctrl-C gives
+  `INTERRUPTED` (exit 130). Text output is one line. `-o json` and `-o yaml`
+  carry `sent`, `refused`, `dropped`, `httpStatus`, `noAnswer`, `nextAttempt`,
+  `timeLimitReached` and `skipped` (`lockHeld`, `nothingWaiting`, `timeUp` or
+  empty). `sent` counts every event in a request the endpoint answered with a
+  2xx, including the ones it refused; `refused` says how many. The upload
+  command takes `--debug` like an automatic attempt, described below.
 
 With `--debug` on a run that attempts an upload, stderr gets one line before
 each request, `debug: telemetry upload: sending <n> events (contract

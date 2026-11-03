@@ -67,6 +67,9 @@ var realSurface = surfaceRules{
 		// The upload store's values hold paths, record ids and the text of
 		// the upload state file; none is written into an event.
 		"ReadyOptions", "ReadyList", "DeleteResult", "UploadState",
+		// UploadResult is the result of the upload command; it holds no event
+		// field.
+		"UploadResult",
 	},
 }
 

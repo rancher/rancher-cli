@@ -24,12 +24,12 @@ import (
 
 // excludedNames are the registered names that record nothing.
 var excludedNames = []string{
-	"completion", "telemetry status", "telemetry on", "telemetry off", "telemetry reset", "telemetry show",
+	"completion", "telemetry status", "telemetry on", "telemetry off", "telemetry reset", "telemetry show", "telemetry upload",
 }
 
-// TestTelemetryExcludedHasExactlyTheSixCommands asserts the exclusion table
-// holds the six names, each with a reason.
-func TestTelemetryExcludedHasExactlyTheSixCommands(t *testing.T) {
+// TestTelemetryExcludedHasExactlyTheSevenCommands asserts the exclusion table
+// holds the seven names, each with a reason.
+func TestTelemetryExcludedHasExactlyTheSevenCommands(t *testing.T) {
 	keys := make([]string, 0, len(telemetryExcluded))
 	for name, reason := range telemetryExcluded {
 		keys = append(keys, name)
@@ -129,6 +129,7 @@ func TestRecordedRunsEndToEnd(t *testing.T) {
 		{"telemetry off", []string{"telemetry", "off"}, false},
 		{"telemetry reset", []string{"telemetry", "reset"}, false},
 		{"telemetry show", []string{"telemetry", "show"}, false},
+		{"telemetry upload", []string{"telemetry", "upload"}, false},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {

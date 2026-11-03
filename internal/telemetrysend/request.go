@@ -76,8 +76,10 @@ func (a *attempt) sendAll(ctx context.Context, events []telemetry.StoredEvent) r
 	if len(events) == 0 {
 		return res
 	}
+	a.live = &res
 	client, err := newClient()
 	if err != nil {
+		res.failed = true
 		return res
 	}
 	defer client.CloseIdleConnections()
@@ -85,11 +87,16 @@ func (a *attempt) sendAll(ctx context.Context, events []telemetry.StoredEvent) r
 	reqCtx, cancel := context.WithDeadline(ctx, a.in.Deadline)
 	defer cancel()
 	for len(queue) > 0 {
-		if (res.requests == 0 && a.left() < a.in.Floor) || a.left() <= 0 || ctx.Err() != nil {
+		if (res.requests == 0 && a.left() < a.in.Floor) || a.left() <= 0 {
+			res.timeUp = true
+			return res
+		}
+		if ctx.Err() != nil {
 			return res
 		}
 		b, rest, err := fit(a.in.Encoder, queue[0])
 		if err != nil {
+			res.failed = true
 			return res
 		}
 		queue = queue[1:]
@@ -113,13 +120,13 @@ func (a *attempt) sendAll(ctx context.Context, events []telemetry.StoredEvent) r
 func (a *attempt) sendOne(ctx context.Context, client *http.Client, b built, res *result) (keep bool) {
 	req, err := newRequest(ctx, a.in.Origin+b.req.Path, b.req.ContentType, b.body)
 	if err != nil {
-		res.status, res.noAnswer = 0, noAnswerNetwork
+		res.status, res.noAnswer, res.outcome = 0, noAnswerNetwork, telemetry.OutcomeNoAnswer
 		a.debug("debug: telemetry upload: no answer: " + res.noAnswer)
 		return true
 	}
 	resp, body, _, err := httpx.DoLimited(client, req, answerLimit)
 	if err != nil {
-		res.status, res.noAnswer = 0, classify(err)
+		res.status, res.noAnswer, res.outcome = 0, classify(err), telemetry.OutcomeNoAnswer
 		a.debug("debug: telemetry upload: no answer: " + res.noAnswer)
 		return true
 	}
@@ -129,6 +136,8 @@ func (a *attempt) sendOne(ctx context.Context, client *http.Client, b built, res
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		res.sent += n
 		res.accepted = true
+		res.acceptedStatus = resp.StatusCode
+		res.outcome = telemetry.OutcomeAccepted
 		res.covered = appendIDs(res.covered, b.events)
 		count, known := a.in.Encoder.RefusedCount(body)
 		if known {
@@ -143,10 +152,12 @@ func (a *attempt) sendOne(ctx context.Context, client *http.Client, b built, res
 		resp.StatusCode == http.StatusRequestEntityTooLarge,
 		resp.StatusCode == http.StatusUnsupportedMediaType:
 		res.dropped += n
+		res.outcome = telemetry.OutcomeDeleted
 		res.covered = appendIDs(res.covered, b.events)
 		a.debug(fmt.Sprintf("debug: telemetry upload: answer HTTP %d, refused count unknown", resp.StatusCode))
 		return false
 	}
+	res.outcome = telemetry.OutcomeKept
 	if wait, ok := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
 		res.retryAfter, res.hasRetryAfter = wait, true
 	}

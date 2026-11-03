@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"slices"
+	"syscall"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/telemetry"
@@ -36,6 +40,11 @@ var (
 	jitter = func() time.Duration { return rand.N(maxJitter) }
 	// afterLook runs between the first look for events and the lock.
 	afterLook func()
+	// afterTake receives the error TakeUploadLock returned, nil for a lock
+	// taken, and returns the error the attempt uses. It may replace a nil error
+	// with one, to reach the paths a file system produces only in rare states;
+	// it never turns an error into nil.
+	afterTake func(err error) error
 )
 
 // Input is what Send needs. Send reads and sends no credential.
@@ -106,7 +115,7 @@ func Send(ctx context.Context, in Input) {
 	a.run(ctx)
 }
 
-// attempt is one call of Send.
+// attempt is one call of Send or SendNow.
 type attempt struct {
 	in    Input
 	store *telemetry.Store
@@ -114,6 +123,13 @@ type attempt struct {
 	// prior is the state file as read after the lock was taken, or after taking
 	// it failed; the zero value when it did not read.
 	prior telemetry.UploadState
+	// command is true for SendNow: the attempt ignores the hourly limit and
+	// lists the events of the current hour too.
+	command bool
+	// out is what SendNow returns; Send ignores it.
+	out telemetry.UploadResult
+	// live is the result of the requests so far, for a panic that ends them.
+	live *result
 }
 
 // left reports how much time remains before the deadline.
@@ -129,13 +145,38 @@ func (a *attempt) debug(line string) {
 // recordingOn reports whether the controls still allow a write.
 func (a *attempt) recordingOn() bool { return a.in.RecordingOn() }
 
-func (a *attempt) run(ctx context.Context) {
-	state, ok := a.store.ReadUploadState()
-	if ok && !state.AttemptDue(a.start) {
+// ready lists the events an attempt may send: those of finished hours, and for
+// the command those of the current hour too.
+func (a *attempt) ready() (*telemetry.ReadyList, error) {
+	return a.store.Ready(telemetry.ReadyOptions{CurrentHour: a.command, Written: a.in.Written})
+}
+
+// fail records the failure of an attempt unless an earlier one is recorded.
+func (a *attempt) fail(failure, path string) {
+	if a.out.Failure != "" {
 		return
 	}
-	list, err := a.store.Ready(telemetry.ReadyOptions{Written: a.in.Written})
+	a.out.Skipped, a.out.Failure, a.out.FailurePath = "", failure, path
+}
+
+// timeUp records that the deadline passed before the first request.
+func (a *attempt) timeUp() {
+	a.out.Skipped, a.out.TimeLimitReached = telemetry.SkippedTimeUp, true
+}
+
+// uploadPath is the path of telemetry/upload.
+func (a *attempt) uploadPath() string {
+	return filepath.Join(a.in.ConfigDir, "telemetry", "upload")
+}
+
+func (a *attempt) run(ctx context.Context) {
+	state, ok := a.store.ReadUploadState()
+	if ok && !a.command && !state.AttemptDue(a.start) {
+		return
+	}
+	list, err := a.ready()
 	if err != nil {
+		a.fail(telemetry.FailureReadFailed, "")
 		return
 	}
 	// Whether telemetry/upload exists before the lock is taken: the take
@@ -144,30 +185,44 @@ func (a *attempt) run(ctx context.Context) {
 	if len(leaveOut(list.Events, state.CoveredIDs)) == 0 && !existed {
 		// Nothing to send, and no earlier attempt created telemetry/upload
 		// for covered files that wait for a deletion: create nothing.
+		a.out.Skipped = telemetry.SkippedNothingWaiting
 		return
 	}
 	if a.left() < a.in.Floor {
+		a.timeUp()
 		return
 	}
 	if afterLook != nil {
 		afterLook()
 	}
 	lock, err := a.store.TakeUploadLock()
+	if afterTake != nil {
+		if err = afterTake(err); err != nil && lock != nil {
+			_ = lock.Release()
+			lock = nil
+		}
+	}
 	switch {
 	case err == nil:
-	case errors.Is(err, telemetry.ErrUploadLockHeld),
-		errors.Is(err, telemetry.ErrNoTelemetryDirectory),
-		errors.Is(err, telemetry.ErrUnsafeUploadDir):
+	case errors.Is(err, telemetry.ErrUploadLockHeld):
+		a.out.Skipped = telemetry.SkippedLockHeld
+		return
+	case errors.Is(err, telemetry.ErrNoTelemetryDirectory):
+		a.out.Skipped = telemetry.SkippedNothingWaiting
+		return
+	case errors.Is(err, telemetry.ErrUnsafeUploadDir):
+		a.fail(telemetry.FailureUploadDirectoryUnsafe, a.uploadPath())
 		return
 	default:
 		a.writeBackoff()
+		a.fail(lockFailure(err), filepath.Join(a.uploadPath(), "lock"))
 		return
 	}
 	defer func() { _ = lock.Release() }()
 	// Another process may have finished an attempt between the first read of
 	// the state file and the lock: read it again, and stop when it is not due.
 	a.prior, ok = a.store.ReadUploadState()
-	if ok && !a.prior.AttemptDue(a.start) {
+	if ok && !a.command && !a.prior.AttemptDue(a.start) {
 		return
 	}
 	if !a.recordingOn() {
@@ -176,17 +231,42 @@ func (a *attempt) run(ctx context.Context) {
 			_ = lock.Release()
 			_ = a.store.DeleteUploadState()
 		}
+		a.fail(telemetry.FailureRecordingTurnedOff, "")
 		return
 	}
 	if a.left() <= 0 {
+		a.timeUp()
 		return
 	}
-	list, err = a.store.Ready(telemetry.ReadyOptions{Written: a.in.Written})
+	list, err = a.ready()
 	if err != nil {
+		a.fail(telemetry.FailureReadFailed, "")
 		return
 	}
-	res := a.sendAll(ctx, leaveOut(list.Events, a.prior.CoveredIDs))
+	events := leaveOut(list.Events, a.prior.CoveredIDs)
+	res := a.sendAll(ctx, events)
+	a.note(res, len(events))
 	a.finish(lock, list, res)
+}
+
+// lockFailure names why the upload lock could not be taken, for a take error
+// that is neither a held lock nor an unsafe directory. A link the file system
+// refuses is checked before a permission error: EPERM from link means the file
+// system has no hard links, and it also matches fs.ErrPermission. Any other
+// error from the link, such as a full directory or too many links, is not a
+// refused link.
+func lockFailure(err error) string {
+	if errors.Is(err, telemetry.ErrUploadLockUnreadable) {
+		return telemetry.FailureLockUnreadable
+	}
+	if linkErr, ok := errors.AsType[*os.LinkError](err); ok &&
+		(errors.Is(linkErr.Err, errors.ErrUnsupported) || errors.Is(linkErr.Err, syscall.EPERM)) {
+		return telemetry.FailureLockUnavailable
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return telemetry.FailureLockPermissionDenied
+	}
+	return telemetry.FailureLockCreateFailed
 }
 
 // leaveOut returns the events whose record id is not in ids.
@@ -234,12 +314,43 @@ type result struct {
 	hasRetryAfter bool
 	// covered are the record ids of the requests whose answers covered them.
 	covered []string
+	// acceptedStatus is the status of the last 2xx answer; outcome is what the
+	// last request's answer did, one of the telemetry.Outcome constants.
+	acceptedStatus int
+	outcome        string
+	// timeUp is true when the deadline stopped the requests with events left;
+	// failed is true when a request could not be built.
+	timeUp, failed bool
+}
+
+// note records what the requests did in the result of the command. events is
+// the number of events the requests had to send.
+func (a *attempt) note(res result, events int) {
+	o := &a.out
+	o.Requests, o.Sent, o.Dropped = res.requests, res.sent, res.dropped
+	o.HTTPStatus, o.AcceptedStatus, o.NoAnswer = res.status, res.acceptedStatus, res.noAnswer
+	o.LastOutcome = res.outcome
+	if res.accepted && res.refusedKnown {
+		n := res.refused
+		o.Refused = &n
+	}
+	switch {
+	case res.failed:
+		a.fail(telemetry.FailureRequestFailed, "")
+	case res.requests == 0 && events == 0:
+		o.Skipped = telemetry.SkippedNothingWaiting
+	case res.requests == 0 && res.timeUp:
+		a.timeUp()
+	case res.timeUp:
+		o.TimeLimitReached = true
+	}
 }
 
 // finish decides what to delete and what the state file says, and writes it.
 // Nothing is deleted and nothing is written when recording was turned off.
 func (a *attempt) finish(lock *telemetry.UploadLock, list *telemetry.ReadyList, res result) {
 	if !a.recordingOn() {
+		a.fail(telemetry.FailureRecordingTurnedOff, "")
 		return
 	}
 	covered := orderedUnion(a.prior.CoveredIDs, res.covered)
@@ -251,7 +362,7 @@ func (a *attempt) finish(lock *telemetry.UploadLock, list *telemetry.ReadyList, 
 	if deleted && a.left() >= a.in.Floor {
 		// Drop the ids of the files just deleted. With less than the floor left
 		// the walk is skipped and the next attempt drops them.
-		if after, err := a.store.Ready(telemetry.ReadyOptions{Written: a.in.Written}); err == nil {
+		if after, err := a.ready(); err == nil {
 			list = after
 		}
 	}

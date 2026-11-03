@@ -89,10 +89,11 @@ var directRules = map[string]directRule{
 		standard: func(string) bool { return true },
 		others:   []string{windowsSys},
 	},
-	// The telemetry commands make no request and read no credential: the
-	// standard library without network packages, the error type, the config
-	// package (its use is limited by TestTelemetryCommandsUseOnlyTheAllowedConfigNames),
-	// the command runtime and the telemetry package.
+	// The telemetry commands read no credential, and only upload sends, through a
+	// function the CLI passes it: the standard library without network packages,
+	// the error type, the config package (its use is limited by
+	// TestTelemetryCommandsUseOnlyTheAllowedConfigNames), the command runtime
+	// and the telemetry package.
 	telemetrycmdDir: {
 		standard: func(p string) bool { return !isNetworkPath(p) },
 		others: []string{

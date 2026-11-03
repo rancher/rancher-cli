@@ -460,6 +460,9 @@ type runDeps struct {
 	// experiments is what the experiment variable turned on for this run, for
 	// the one command that lists it.
 	experiments telemetry.ExperimentView
+	// upload runs the attempt of `telemetry upload`; nil for a bare command and
+	// for the registry probe.
+	upload telemetry.UploadFunc
 }
 
 // adaptEntry wires one declarative entry through the single run path: it
@@ -551,7 +554,8 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				io.ServerIdentity = f.Identity
 				io.Capability = newCapabilityChecker(f)
 				io.Projects = projectResolver{f}
-				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: experimentView()})
+				view := experimentView()
+				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
 			}
 			addExperimentNotices(&io, d.Name)
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)

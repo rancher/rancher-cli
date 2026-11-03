@@ -70,7 +70,7 @@ func recordingStateNow() recordingState {
 }
 
 // telemetryExcluded maps the registered names of the commands that record
-// nothing to the reason. The telemetry commands show and delete what
+// nothing to the reason. The telemetry commands show, delete and send what
 // recording keeps; the completion command prints a shell script.
 var telemetryExcluded = map[string]string{
 	"completion":       "prints a shell script",
@@ -79,6 +79,7 @@ var telemetryExcluded = map[string]string{
 	"telemetry off":    "changes whether recording is on and deletes what it kept",
 	"telemetry reset":  "deletes what recording kept",
 	"telemetry show":   "lists what recording kept",
+	"telemetry upload": "sends what recording kept",
 }
 
 // now reads the clock for the duration of a run. It is a variable so a test

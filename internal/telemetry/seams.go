@@ -25,6 +25,9 @@ const (
 	maxFactsPerPass = 8
 	pruneInterval   = time.Hour
 	idStaleAfter    = time.Minute
+	// UploadCommandBound is the longest the upload command runs. It stays below
+	// idStaleAfter: no process takes over the upload lock the command holds.
+	UploadCommandBound = 30 * time.Second
 	// youngFileAge is how long a compacted file counts as still being
 	// written by another process.
 	youngFileAge = time.Minute

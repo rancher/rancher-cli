@@ -80,6 +80,7 @@ func noteExperiments(version string) {
 				origin, err := telemetrysend.Origin(it.Value)
 				if err != nil {
 					warn(it.Name + " ignored: " + err.Error())
+					view.EndpointProblem = err.Error()
 					continue
 				}
 				view.Names = append(view.Names, it.Name)

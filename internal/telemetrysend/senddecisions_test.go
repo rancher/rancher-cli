@@ -94,7 +94,7 @@ func TestDeleteOnlyAfterSuccess(t *testing.T) {
 		hang := newTestServer(t, func(_ int, _ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) })
 		st.NextAttempt = time.Now().Add(-time.Second)
 		writeState(t, dir, st)
-		Send(t.Context(), shortInput(dir, hang.URL, 400*time.Millisecond))
+		Send(t.Context(), shortInput(dir, hang.URL, hangBound))
 		require.Len(t, hang.seenRequests(), 1)
 		assert.Equal(t, paths, filesWaiting(dir, paths))
 		st, _ = attemptState(t, dir)
@@ -347,8 +347,20 @@ func slowBody(code int) respond {
 // the deadline, is no answer and keeps the files (a 204 has no body in the HTTP
 // client whatever its length says: one that announces a body and closes early
 // is still an answer and deletes); the refused count is null for an empty body
-// and one that does not parse.
+// and one that does not parse. Every row runs through the automatic attempt
+// and through the command entry.
 func TestUploadDecisionsReadOnlyTheStatus(t *testing.T) {
+	entries := map[string]func(t *testing.T, in Input){
+		"the automatic attempt": func(t *testing.T, in Input) { t.Helper(); Send(t.Context(), in) },
+		"the command":           func(t *testing.T, in Input) { t.Helper(); SendNow(t.Context(), in) },
+	}
+	for name, send := range entries {
+		t.Run(name, func(t *testing.T) { uploadDecisionRows(t, send) })
+	}
+}
+
+func uploadDecisionRows(t *testing.T, send func(t *testing.T, in Input)) {
+	t.Helper()
 	bodies := map[string]string{
 		"empty":       "",
 		"refusals":    `{"partialSuccess":{"rejectedLogRecords":"1"}}`,
@@ -371,7 +383,7 @@ func TestUploadDecisionsReadOnlyTheStatus(t *testing.T) {
 				dir := uploadDir(t)
 				paths := seedMixed(t, dir)
 				srv := newTestServer(t, answerWith(code, body))
-				Send(t.Context(), input(dir, srv.URL))
+				send(t, input(dir, srv.URL))
 				require.Len(t, srv.seenRequests(), 1)
 				st, ok := attemptState(t, dir)
 				require.True(t, ok)
@@ -423,7 +435,7 @@ func TestUploadDecisionsReadOnlyTheStatus(t *testing.T) {
 				})
 				self = srv.URL
 				before := len(other.seenRequests())
-				Send(t.Context(), input(dir, srv.URL))
+				send(t, input(dir, srv.URL))
 				assert.Len(t, srv.seenRequests(), 1, "no second request")
 				assert.Len(t, other.seenRequests(), before)
 				assert.Equal(t, paths, filesWaiting(dir, paths))
@@ -441,7 +453,7 @@ func TestUploadDecisionsReadOnlyTheStatus(t *testing.T) {
 		dir := uploadDir(t)
 		paths := seedMixed(t, dir)
 		srv := newTestServer(t, shortBody(204))
-		Send(t.Context(), input(dir, srv.URL))
+		send(t, input(dir, srv.URL))
 		require.Len(t, srv.seenRequests(), 1)
 		st, ok := attemptState(t, dir)
 		require.True(t, ok)
@@ -466,7 +478,7 @@ func TestUploadDecisionsReadOnlyTheStatus(t *testing.T) {
 				dir := uploadDir(t)
 				paths := seedMixed(t, dir)
 				srv := newTestServer(t, tc.answer(tc.code))
-				Send(t.Context(), shortInput(dir, srv.URL, 600*time.Millisecond))
+				send(t, shortInput(dir, srv.URL, hangBound))
 				require.Len(t, srv.seenRequests(), 1)
 				st, ok := attemptState(t, dir)
 				require.True(t, ok)

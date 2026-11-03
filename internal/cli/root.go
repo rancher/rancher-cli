@@ -81,6 +81,7 @@ func buildEntries() []entry {
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewUninstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewStatus(d.version) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewStatus(d.dir, d.experiments) }},
+		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewUpload(d.dir, d.upload) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewOn(d.dir) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewOff(d.dir) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewReset(d.dir) }},
@@ -430,7 +431,7 @@ var groupUsages = map[string]string{
 	"inspect":     "Inspect a cluster, workload or project with its related objects",
 	"project":     "Project namespace commands (project membership is managed with `rancher grant` and `rancher revoke`)",
 	"skill":       "Install, remove and check the agent skills that come with rancher-cli",
-	"telemetry":   "Local usage recording: status, turn on, turn off, delete and list events",
+	"telemetry":   "Local usage recording: status, turn on, turn off, delete, list and send events",
 	"oidc-client": "Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)",
 	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
@@ -873,7 +874,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		"auth":      "Authenticate with a Rancher server, manage API tokens, and inspect the session.",
 		"config":    "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
 		"skill":     "Install, remove, and check the agent skills that come with rancher-cli.",
-		"telemetry": "Control and inspect usage recording: status, turn on, turn off, delete and list events.",
+		"telemetry": "Control and inspect usage recording: status, turn on, turn off, delete, list and send events.",
 		"create":    "Create Rancher resources. Most commands in this group have their own flags for one kind; `rancher create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
 		// "project" is both a command group and a kind. Resolution order is
 		// command → group → kind, so rancher schema
