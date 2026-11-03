@@ -881,7 +881,7 @@ var fileOutputWriters = map[string]struct{ class, reason string }{
 		classHeader, "header: a comment line with the name of the Kubeconfig the server created, then the kubeconfig the server returned",
 	},
 	"internal/engine/kubeconfig.kubeconfigCmd.Execute": {
-		classDocument, "document: the bytes of clientcmd.Write; the command adds no text of its own",
+		classDocument, "document: the kubeconfig the command builds, written through internal/yamlwrite; the command adds no text of its own",
 	},
 	"internal/cli.completionCommand.Execute": {
 		classStatic, "static: the completion script embedded in the binary",

@@ -26,7 +26,8 @@ import (
 // refuses every reference to a listed function, called or held as a value. It
 // does not see a call through a function value made elsewhere, a method value,
 // or a YAML encoder inside another dependency; the round trip tests of
-// internal/config cover the writers known today.
+// internal/config and the kubeconfig tests of internal/engine/kubeconfig cover
+// the writers known today.
 
 const (
 	sigsYAMLPath      = "sigs.k8s.io/yaml"
@@ -88,7 +89,6 @@ type yamlWriteRow struct {
 var yamlWriteRows = []yamlWriteRow{
 	{"internal/skillinstall/content.go", "stampSkillMD", "writes the front matter of an embedded skill, text the build fixes"},
 	{"internal/testrancher/testrancher.go", "kubeconfigValueFixture", "test support; the package is not reachable from production code"},
-	{"internal/engine/kubeconfig/command.go", "kubeconfigCmd.Execute", "clientcmd.Write runs client-go's own YAML serializer, which has no hook for the escape"},
 }
 
 // yamlWriteUse is one use of a function that writes YAML, or one import of a

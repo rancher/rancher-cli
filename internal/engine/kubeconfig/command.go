@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
@@ -243,7 +242,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		p.Notice(machineNotice(dir, store, command, commandIsPath))
 	}
 
-	b, err := clientcmd.Write(kc)
+	b, err := writeKubeconfig(kc)
 	if err != nil {
 		return runtime.Result{}, err
 	}

@@ -1298,10 +1298,10 @@ Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
 `template=` (the bytes are
 the data), `logs` (container output whose newlines are its structure), and the
 file and script output of `kubeconfig`, `create kubeconfig` and `completion`.
-`-o yaml` writes DEL, the characters U+0080 to U+009F, U+FFFE and U+FFFF as
-YAML escapes (`\x7F`, `\N`, `\uFFFE`) inside a double-quoted string, which YAML
-readers decode back to the original character, and `-o json` writes them as
-they are.
+`-o yaml` and `kubeconfig` write DEL, the characters U+0080 to U+009F, U+FFFE
+and U+FFFF as YAML escapes (`\x7F`, `\N`, `\uFFFE`) inside a double-quoted
+string, which YAML readers decode back to the original character, and `-o json`
+writes them as they are.
 A value a command shows only once (a bearer token, a client secret) that holds
 such a character prints in Go's quoted form, and its line says so; `-o json`
 carries the value as it is.

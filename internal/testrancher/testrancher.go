@@ -1930,11 +1930,13 @@ func stringsFromAny(v any) []string {
 }
 
 // kubeconfigValueFixture builds a deterministic, valid kubeconfig document
-// naming each requested cluster (or "local" for an empty list) via the
-// repo's own clientcmdapi.Config + clientcmd.Write path - the same one
-// internal/engine/kubeconfig/command.go uses - rather than hand-built YAML, so a
-// cluster name carrying a YAML-significant character still encodes
-// correctly. One shared "rancher" AuthInfo carries every context, mirroring
+// naming each requested cluster (or "local" for an empty list) from a
+// clientcmdapi.Config written with clientcmd.Write rather than hand-built
+// YAML, which encodes a cluster name carrying a YAML-significant character
+// correctly. clientcmd.Write fails on DEL, on a character from U+0080 to
+// U+009F other than U+0085, on U+FFFE and on U+FFFF, and writes U+0085 as a
+// space: a cluster name holding any of them is not supported. One shared
+// "rancher" AuthInfo carries every context, mirroring
 // the real store's single reused credential. See handleKubeconfigsPOST's
 // ASSUMPTION comment.
 func kubeconfigValueFixture(clusters []string, currentContext, origin, bearer string) (string, error) {
