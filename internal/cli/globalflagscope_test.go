@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -67,8 +68,15 @@ func globalFlagIsOfferedBy(t *testing.T, row globalFlagScopeRow, gf runtime.Glob
 // word "--" offers after words.
 func offeredFlagTokens(t *testing.T, words []string) []string {
 	t.Helper()
+	return offeredTokensFor(t, words, "--")
+}
+
+// offeredTokensFor is the flag tokens a completion request for the current
+// word cur offers after words.
+func offeredTokensFor(t *testing.T, words []string, cur string) []string {
+	t.Helper()
 	out := surfaceRun(t, slices.Concat([]string{"--rancher-completion-proto=2"}, words,
-		[]string{"--rancher-completion-cur=--", "--generate-shell-completion"}))
+		[]string{"--rancher-completion-cur=" + cur, "--generate-shell-completion"}))
 	var tokens []string
 	for line := range strings.SplitSeq(out, "\n") {
 		if line != "" {
@@ -76,6 +84,19 @@ func offeredFlagTokens(t *testing.T, words []string) []string {
 		}
 	}
 	return tokens
+}
+
+// listsVersionFlag reports whether a help section has a row for --version.
+// The row of a flag with an alias starts with "--version," and the row of a
+// flag without one with "--version " (listsFlag reads only the second form).
+func listsVersionFlag(section string) bool {
+	for line := range strings.SplitSeq(section, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "--version,") || strings.HasPrefix(line, "--version ") {
+			return true
+		}
+	}
+	return false
 }
 
 // TestEveryCommandAndGroupOffersOnlyTheGlobalFlagsItAccepts asserts, for
@@ -87,10 +108,12 @@ func offeredFlagTokens(t *testing.T, words []string) []string {
 // read or change server resources, --project on commands that take it and
 // the rest on every command. A group offers a flag when a command under it
 // accepts it; the root offers every flag. A command lists --project under
-// its own OPTIONS, never under GLOBAL OPTIONS. The offer is checked in both
-// directions: a flag a command accepts must still be offered. It also
-// asserts that the built tree and the registry hold the same commands and
-// that every command of the tree carries its descriptor.
+// its own OPTIONS, never under GLOBAL OPTIONS. Completion offers --version
+// and its alias -v, and the help card lists --version, on the root only.
+// The offer is checked in both directions: a flag a command accepts must
+// still be offered. It also asserts that the built tree and the registry
+// hold the same commands and that every command of the tree carries its
+// descriptor.
 //
 // Limits:
 //   - It compares the offer with the manifest's appliesTo and the command
@@ -100,8 +123,8 @@ func offeredFlagTokens(t *testing.T, words []string) []string {
 //   - A flag typed before the command name (rancher --apply get pod) is
 //     accepted by the root and the line is judged at the command; the root's
 //     own offer is every flag.
-//   - Flags outside the manifest's global flags (--help, --version) are not
-//     in its range.
+//   - --version and its alias -v are asserted on the root only; --help is
+//     accepted by every command and is not asserted.
 //   - One candidate list serves bash, zsh, fish and pwsh; the test reads it
 //     through the binary's protocol, not through each shell script.
 //   - No command group in the built tree holds commands of mixed types; the
@@ -200,6 +223,9 @@ func TestEveryCommandAndGroupOffersOnlyTheGlobalFlagsItAccepts(t *testing.T) {
 			}
 			assert.Equal(t, want, listsFlag(globals, name), "%s: GLOBAL OPTIONS lists --%s", row.label, name)
 		}
+		assert.Equal(t, row.root, slices.Contains(offered, "--version"), "%s: completion offers --version", row.label)
+		assert.Equal(t, row.root, slices.Contains(offeredTokensFor(t, row.words, "-"), "-v"), "%s: completion offers -v", row.label)
+		assert.Equal(t, row.root, listsVersionFlag(globals), "%s: GLOBAL OPTIONS lists --version", row.label)
 		checked[row.label] = true
 	}
 
@@ -250,8 +276,8 @@ func TestAppliesToAcceptsByCommandType(t *testing.T) {
 // TestAGroupAcceptsAGlobalFlagWhenAnyCommandUnderItDoes asserts the rule on
 // a hand-built tree: a command accepts a flag by its type, a group when any
 // command under it does, whatever the order of the commands, and a command
-// with no descriptor accepts every flag. A flag the manifest does not list
-// (help, version) is accepted everywhere.
+// with no descriptor accepts every flag. The help flag, which the manifest
+// does not list, is accepted everywhere.
 func TestAGroupAcceptsAGlobalFlagWhenAnyCommandUnderItDoes(t *testing.T) {
 	leaf := func(name string, ct runtime.CommandType, flags ...runtime.ArgSpec) *ucli.Command {
 		return &ucli.Command{Name: name, Metadata: map[string]any{
@@ -261,7 +287,7 @@ func TestAGroupAcceptsAGlobalFlagWhenAnyCommandUnderItDoes(t *testing.T) {
 	group := func(subs ...*ucli.Command) *ucli.Command { return &ucli.Command{Name: "g", Commands: subs} }
 	project := runtime.ProjectFlag(false, "the project")
 	mutating := []string{"apply", "dry-run", "yes", "allow-deprecated"}
-	always := []string{"output", "help", "version"}
+	always := []string{"output", "help"}
 
 	for _, row := range []struct {
 		name string
@@ -297,10 +323,37 @@ func TestAGroupAcceptsAGlobalFlagWhenAnyCommandUnderItDoes(t *testing.T) {
 			slices.Concat(mutating, []string{"read-only", "project"}, always)},
 	} {
 		t.Run(row.name, func(t *testing.T) {
-			for _, name := range []string{"apply", "dry-run", "yes", "allow-deprecated", "read-only", "project", "output", "help", "version"} {
+			for _, name := range []string{"apply", "dry-run", "yes", "allow-deprecated", "read-only", "project", "output", "help"} {
 				assert.Equal(t, slices.Contains(row.accepted, name), commandAcceptsGlobalFlag(row.cmd, name), "--%s", name)
 			}
 		})
+	}
+}
+
+// TestOnlyTheRootAcceptsTheVersionFlag asserts that the rule accepts the
+// version flag on the root and refuses it on a command group and on a
+// command, and that the help flag is accepted by all three. The tree is run
+// once: a node that has not run has no parent and reads as its own root.
+func TestOnlyTheRootAcceptsTheVersionFlag(t *testing.T) {
+	cmd := &ucli.Command{Name: "c", Metadata: map[string]any{
+		descriptorMetadataKey: runtime.Descriptor{Name: "g c", CommandType: runtime.Local},
+	}}
+	group := &ucli.Command{Name: "g", Commands: []*ucli.Command{cmd}}
+	root := &ucli.Command{
+		Name:      "r",
+		Version:   "v-test",
+		Commands:  []*ucli.Command{group},
+		Action:    func(context.Context, *ucli.Command) error { return nil },
+		Writer:    io.Discard,
+		ErrWriter: io.Discard,
+	}
+	require.NoError(t, root.Run(t.Context(), []string{"r"}))
+
+	assert.True(t, commandAcceptsGlobalFlag(root, "version"), "the root accepts --version")
+	assert.False(t, commandAcceptsGlobalFlag(group, "version"), "a command group refuses --version")
+	assert.False(t, commandAcceptsGlobalFlag(cmd, "version"), "a command refuses --version")
+	for _, c := range []*ucli.Command{root, group, cmd} {
+		assert.True(t, commandAcceptsGlobalFlag(c, "help"), "%s accepts --help", c.Name)
 	}
 }
 
@@ -379,4 +432,27 @@ func TestAGlobalFlagTypedWhereItIsNotOfferedKeepsItsResult(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &env), "stdout: %s", stdout)
 	assert.NotEmpty(t, env.Data.Path)
+}
+
+// TestTheVersionFlagTypedOnACommandIsRefused asserts that --version and -v
+// typed after a command's name are refused with VALIDATION and exit code 2,
+// as they are for any flag the command does not define. Not parallel: it
+// sets the process environment and the captured command line.
+func TestTheVersionFlagTypedOnACommandIsRefused(t *testing.T) {
+	restoreRawArgv(t)
+	extraArgsEnv(t)
+	for _, argv := range [][]string{
+		{"config", "path", "--version", "-o", "json"},
+		{"get", "pod", "-v", "-o", "json"},
+	} {
+		t.Run(strings.Join(argv, " "), func(t *testing.T) {
+			root, err := BuildRoot("v-test")
+			require.NoError(t, err)
+			_, stderr, code := runBounded(t, root, argv)
+			assert.Equal(t, 2, code)
+			ce := renderedError(t, "json", stderr)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Contains(t, ce.Message, "flag provided but not defined")
+		})
+	}
 }

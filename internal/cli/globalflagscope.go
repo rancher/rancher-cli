@@ -12,11 +12,14 @@ import (
 // accepts the global flag name (its long name without the dashes). The
 // schema manifest's appliesTo for the flag decides, with the command type
 // and, for --project, whether the command takes it. A command group accepts
-// a flag when any command under it does, hidden commands included. A flag
-// the manifest does not list (help, version) is accepted everywhere, and a
-// command with no descriptor accepts every flag: a command that cannot be
-// classified loses nothing from its offer.
+// a flag when any command under it does, hidden commands included. Only the
+// root accepts --version. The help flag, which the manifest does not list,
+// is accepted everywhere, and a command with no descriptor accepts every flag:
+// a command that cannot be classified loses nothing from its offer.
 func commandAcceptsGlobalFlag(cmd *ucli.Command, name string) bool {
+	if name == "version" {
+		return cmd == cmd.Root()
+	}
 	i := slices.IndexFunc(runtime.GlobalFlags(), func(gf runtime.GlobalFlag) bool {
 		_, long, found := strings.CutLast(gf.Name, "--")
 		return found && long == name
