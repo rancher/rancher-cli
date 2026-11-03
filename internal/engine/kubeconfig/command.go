@@ -99,7 +99,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	// missing --cluster first, but Execute must be safe when called directly.
 	id := in.String("cluster")
 	if id == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required")
+		return runtime.Result{}, engine.ClusterRequiredError(engine.ClusterRequiredPlainMessage)
 	}
 	execValue := in.String("exec-command")
 	command, commandIsPath, err := execCommand(execValue, execValue != "" || in.IsSet("exec-command"))

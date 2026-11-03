@@ -161,9 +161,7 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		return c.allClusters(ctx, by, needles)
 	}
 	if clusterFlag == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list").
-			WithHint(engine.ClusterRequiredHint)
+		return runtime.Result{}, engine.ClusterRequiredError(engine.ClusterOrAllClustersRequiredMessage)
 	}
 
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, false)

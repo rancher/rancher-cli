@@ -205,13 +205,19 @@ func TestGetTokenNoClusterRejectsBeforeCacheProbe(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, clusterRequiredMessageWithUserID, ce.Message)
+	assert.Equal(t, clusterRequiredMessageWithUserID+clusterRequiredServerClause("https://r.ex"), ce.Message)
 	assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
 }
 
 // clusterRequiredMessageWithUserID is the refusal of a call with neither
-// --cluster nor --user-id.
+// --cluster nor --user-id, for a call that typed no --server.
 const clusterRequiredMessageWithUserID = "--cluster is required; pass a cluster id or name, or --user-id for a token for Rancher itself"
+
+// clusterRequiredServerClause is what the refusal adds when a --server was
+// typed: what the hint lists, and the server as scheme and host.
+func clusterRequiredServerClause(shown string) string {
+	return "; the command in the hint lists the clusters of the current server, and --server (" + shown + ") does not change that"
+}
 
 // TestGetTokenBrokenConfigMakesEveryCacheHitAMiss asserts the rule that
 // replaced the fast path's old promise. A warm record used to be served
@@ -1601,6 +1607,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		require.ErrorContains(t, ce, clusterRequiredMessageWithUserID)
+		assert.Equal(t, clusterRequiredMessageWithUserID+clusterRequiredServerClause("https://config.example"), ce.Message)
 		assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
 	})
 

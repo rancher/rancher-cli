@@ -113,13 +113,17 @@ func TestGetTokenClusterIsRequiredUnlessUserIDIsGiven(t *testing.T) {
 	serverID := config.CanonicalServerIdentity(srv.URL)
 	require.NoError(t, seedCache(t, dir, store.CredStore, config.CacheKeyFor("prod", serverID, "", "", ""), "warm-tok", time.Now().Add(time.Hour), "prod", serverID, ""))
 	require.NoError(t, seedCacheFor(t, dir, store.CredStore, config.CacheKeyFor("", serverID, "", "u-a", ""), "warm-user-tok", time.Now().Add(time.Hour), "", serverID, "", "u-a"))
+	withClause := clusterRequiredMessageWithUserID + clusterRequiredServerClause(srv.URL)
 	for _, tc := range []struct {
 		name  string
 		flags map[string]string
 		want  string
 	}{
-		{"no --cluster, no --user-id", map[string]string{"name": "prod"}, clusterRequiredMessageWithUserID},
-		{"no --cluster, no --user-id, no --name", map[string]string{}, clusterRequiredMessageWithUserID},
+		{"no --cluster, no --user-id", map[string]string{"name": "prod"}, withClause},
+		{"no --cluster, no --user-id, no --name", map[string]string{}, withClause},
+		{"--server=, no --cluster, no --user-id", map[string]string{"name": "prod", "server": ""}, clusterRequiredMessageWithUserID},
+		{"--server is no URL, no --cluster, no --user-id", map[string]string{"name": "prod", "server": "user:secret@r.example.com"},
+			clusterRequiredMessageWithUserID + clusterRequiredServerClause("<unusable URL>")},
 		{"--cluster=, no --user-id", map[string]string{"name": "prod", "cluster": ""}, "--cluster is empty; pass a value or omit --cluster"},
 		{"--cluster= with --user-id", map[string]string{"name": "prod", "cluster": "", "user-id": "u-a"}, "--cluster is empty; pass a value or omit --cluster"},
 		{"--cluster= with --user-id, no --name", map[string]string{"cluster": "", "user-id": "u-a"}, "--cluster is empty; pass a value or omit --cluster"},
@@ -137,7 +141,7 @@ func TestGetTokenClusterIsRequiredUnlessUserIDIsGiven(t *testing.T) {
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Equal(t, tc.want, ce.Message)
-			if tc.want == clusterRequiredMessageWithUserID {
+			if strings.HasPrefix(tc.want, clusterRequiredMessageWithUserID) {
 				assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
 			}
 			assert.Len(t, store.cacheReads(), before, "no cache slot is read")

@@ -212,7 +212,7 @@ func (createCmd) build(in runtime.Input) (*unstructured.Unstructured, string, er
 	}
 	cluster := in.String("cluster")
 	if cluster == "" {
-		return nil, "", clierr.New(clierr.CodeValidation, "--cluster is required")
+		return nil, "", engine.ClusterRequiredError(engine.ClusterRequiredPlainMessage)
 	}
 	name := args[0]
 	obj := &unstructured.Unstructured{Object: map[string]any{

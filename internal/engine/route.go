@@ -23,7 +23,9 @@ const FlagNamespace = "namespace"
 // namespaces (cattle-system, cattle-tokens, cattle-fleet-system), which live
 // on the local cluster: ClusterRequiredMessage, for commands that take a
 // namespace, says so and names the value; the hint lists the clusters to
-// choose from.
+// choose from. ClusterRequiredError builds the refusal from a message, so
+// every command gives the same code and hint. The messages below it are the
+// texts of the commands that word their refusal differently.
 const (
 	ClusterRequiredMessage = "--cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local"
 
@@ -31,10 +33,37 @@ const (
 	// neither --namespace nor --all-namespaces, where the local-cluster
 	// advice about Rancher's own namespaces does not apply.
 	ClusterRequiredPlainMessage = "--cluster is required; pass a cluster id or name"
+
+	// ClusterOrAllClustersRequiredMessage is the refusal for a command that
+	// takes either one cluster or every cluster, given neither.
+	ClusterOrAllClustersRequiredMessage = "--cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list"
 )
 
-// ClusterRequiredHint lists the clusters to choose from.
+// ClusterRequiredHint lists the clusters of the config directory's current
+// server (or of RANCHER_CLI_URL when it is set), which is the server every
+// command runs against.
 var ClusterRequiredHint = clierr.Rancher + " access clusters"
+
+// DownstreamClusterRequiredMessage is the refusal for a target that runs
+// only on a downstream cluster, given no --cluster.
+func DownstreamClusterRequiredMessage(target string) string {
+	return "--cluster is required; " + target + " runs only on a downstream cluster, pass a downstream cluster id or name"
+}
+
+// NamedClusterRequiredMessage is the refusal for the read of one object of a
+// cluster-scoped kind by its argName (id or name), given no --cluster.
+func NamedClusterRequiredMessage(argName, kind string) string {
+	return "--cluster is required when you give the " + argName + " of one " + kind
+}
+
+// ClusterRequiredError is the refusal of an absent --cluster: VALIDATION with
+// msg and the hint that lists the clusters. It is the one place a command's
+// own code builds such an error; a command with its own wording passes it as
+// msg. The pipeline builds the refusal of a required --cluster from the
+// declaration's MissingMessage and MissingHint.
+func ClusterRequiredError(msg string) *clierr.Error {
+	return clierr.New(clierr.CodeValidation, msg).WithHint(ClusterRequiredHint)
+}
 
 // ClusterFlag declares --cluster with the missing-cluster text that fits the
 // command: ClusterRequiredMessage when it takes --namespace or
@@ -80,7 +109,7 @@ func ResolveDownstreamCluster(ctx context.Context, clients ClusterClientFactory,
 		if err := runtime.MissingClusterError(ctx); err != nil {
 			return "", err
 		}
-		return "", clierr.New(clierr.CodeValidation, clusterRequiredMessage(namespaced)).WithHint(ClusterRequiredHint)
+		return "", ClusterRequiredError(clusterRequiredMessage(namespaced))
 	}
 	return clients.ResolveCluster(ctx, target)
 }

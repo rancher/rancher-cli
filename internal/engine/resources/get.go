@@ -490,8 +490,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		clusterFlag := in.String(FlagCluster)
 		if clusterFlag == "" {
 			if named {
-				return "", "", "", nil, clierr.New(clierr.CodeValidation,
-					"--cluster is required when you give the "+argName(k)+" of one "+k.Name)
+				return "", "", "", nil, engine.ClusterRequiredError(engine.NamedClusterRequiredMessage(argName(k), k.Name))
 			}
 			return engine.LocalCluster, "", "", nil, nil // list across all clusters
 		}

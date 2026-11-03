@@ -277,11 +277,15 @@ func clusterFlag() runtime.ArgSpec {
 }
 
 // clusterRequiredError is the refusal for a call with neither --cluster nor
-// --user-id.
-func clusterRequiredError() error {
-	return clierr.New(clierr.CodeValidation,
-		engine.ClusterRequiredPlainMessage+", or --user-id for a token for Rancher itself").
-		WithHint(engine.ClusterRequiredHint)
+// --user-id. server is the typed --server. When it is not empty the message
+// says what the hint lists and shows the server as scheme and host only: the
+// value can carry a password; the raw text is never written.
+func clusterRequiredError(server string) error {
+	msg := engine.ClusterRequiredPlainMessage + ", or --user-id for a token for Rancher itself"
+	if shown := config.DisplayServerURL(server); shown != "" {
+		msg += "; the command in the hint lists the clusters of the current server, and --server (" + shown + ") does not change that"
+	}
+	return engine.ClusterRequiredError(msg)
 }
 
 // callerCAFlagMissing is the refusal for a sign-in whose caller left out
@@ -429,7 +433,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	case in.String("cluster") == "" && in.IsSet("cluster"):
 		return runtime.Result{}, runtime.EmptyValueError("cluster")
 	case in.String("cluster") == "" && userID == "":
-		return runtime.Result{}, clusterRequiredError()
+		return runtime.Result{}, clusterRequiredError(in.String("server"))
 	}
 
 	flagServer := in.String("server")
@@ -1633,7 +1637,7 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName, use
 	// --cluster is a deliberate unscoped create - still purely flag-driven,
 	// never filled from stored state.
 	if cluster == "" && userID == "" && !ignoreCurrentContext {
-		return "", "", "", "", config.CASource{}, entryChoice{}, clusterRequiredError()
+		return "", "", "", "", config.CASource{}, entryChoice{}, clusterRequiredError(flagServer)
 	}
 
 	var cfg *config.Config

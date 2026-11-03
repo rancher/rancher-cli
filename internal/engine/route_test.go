@@ -79,3 +79,29 @@ func TestResolveDownstreamClusterMissingFlagWithProjectIsTheLookupsRefusal(t *te
 	_, err := ResolveDownstreamCluster(ctx, nil, flagInput{}, true)
 	require.ErrorIs(t, err, refusal)
 }
+
+// TestClusterRequiredErrorIsValidationWithTheClusterListingHint asserts the
+// builder gives the message it is passed, as VALIDATION, with the hint that
+// lists the clusters; and that each message of a command with its own wording
+// is the text its refusal shows.
+func TestClusterRequiredErrorIsValidationWithTheClusterListingHint(t *testing.T) {
+	t.Parallel()
+	for _, msg := range []string{
+		ClusterRequiredMessage,
+		ClusterRequiredPlainMessage,
+		ClusterOrAllClustersRequiredMessage,
+		DownstreamClusterRequiredMessage("agent"),
+		NamedClusterRequiredMessage("name", "clusterroletemplatebinding"),
+		"--cluster is required; a text of the caller's",
+	} {
+		ce := ClusterRequiredError(msg)
+		require.NotNil(t, ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Equal(t, msg, ce.Message)
+		assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+	}
+
+	assert.Equal(t, "--cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list", ClusterOrAllClustersRequiredMessage)
+	assert.Equal(t, "--cluster is required; agent runs only on a downstream cluster, pass a downstream cluster id or name", DownstreamClusterRequiredMessage("agent"))
+	assert.Equal(t, "--cluster is required when you give the id of one project", NamedClusterRequiredMessage("id", "project"))
+}

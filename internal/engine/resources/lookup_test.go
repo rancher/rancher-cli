@@ -18,6 +18,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// assertClusterListingHint asserts err is a clierr.Error whose hint is the
+// command that lists the clusters.
+func assertClusterListingHint(t *testing.T, err error) {
+	t.Helper()
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+}
+
 // lookupClient answers every Get with miss and every List with objects, or
 // with listErr, or never when block is set (it returns when its context ends).
 type lookupClient struct {
@@ -506,8 +515,10 @@ func TestHandleRowRefusalsNameTheID(t *testing.T) {
 	project := mustKind(t, "project")
 	_, err = NewGet(project, &recFactory{client: &memClient{}}).(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"x"}}, nil)
 	require.ErrorContains(t, err, "--cluster is required when you give the id of one project")
+	assertClusterListingHint(t, err)
 	_, err = NewGet(crtb, &recFactory{client: &memClient{}}).(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"x"}}, nil)
 	require.ErrorContains(t, err, "--cluster is required when you give the name of one clusterroletemplatebinding")
+	assertClusterListingHint(t, err)
 }
 
 // TestLookupIgnoresAnAnswerAfterTheContextEnds asserts a list that arrives

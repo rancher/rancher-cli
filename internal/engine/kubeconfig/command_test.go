@@ -292,6 +292,9 @@ func TestKubeconfigExecArgsOmitCacertWhenNoCA(t *testing.T) {
 	assert.NotContains(t, user.Exec.Args, "--cacert")
 }
 
+// TestKubeconfigRequiresClusterFlag asserts a direct call of Execute with no
+// --cluster, which bypasses the pipeline (it refuses a missing required flag
+// first), is refused with the shared text and the hint that lists clusters.
 func TestKubeconfigRequiresClusterFlag(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
@@ -301,6 +304,7 @@ func TestKubeconfigRequiresClusterFlag(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "--cluster is required")
+	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
 }
 
 // A RANCHER_CLI_URL override of a stored context's server must not pair the
