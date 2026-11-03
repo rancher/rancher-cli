@@ -33,7 +33,10 @@ func TestAllowanceLimit(t *testing.T) {
 	n, ok = allowanceLimit(completion.AllowanceSteveProjectPages)
 	require.True(t, ok)
 	assert.Equal(t, steve.MaxPages, n)
-	for _, a := range []completion.Allowance{0, -1, completion.AllowanceSteveProjectPages + 1, 100} {
+	n, ok = allowanceLimit(completion.AllowanceTwo)
+	require.True(t, ok)
+	assert.Equal(t, 2, n)
+	for _, a := range []completion.Allowance{0, -1, completion.AllowanceTwo + 1, 100} {
 		_, ok := allowanceLimit(a)
 		assert.False(t, ok, "allowance %d", a)
 	}

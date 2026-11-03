@@ -542,9 +542,11 @@ completion offers as a value carries no description. A description is cut to 56
 characters; control and invisible characters in it are dropped or shown as a
 space.
 
-At project and cluster scope, `grant --role` completion leaves out role
-templates whose `locked` field is true, since Rancher does not allow a new
-binding to one; `revoke --role` still offers them.
+`grant --role` completion leaves out role templates whose `locked` field is true
+and, at global scope, global roles that inherit a locked role template or one
+that does not exist, since Rancher does not allow a new binding to such a role;
+`revoke --role` still offers them. The candidates in a NOT_FOUND error of
+`grant` follow the same rule.
 
 - zsh and fish show the description in the completion list; PowerShell shows it
   as the tooltip of the candidate.

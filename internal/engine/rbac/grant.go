@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -61,8 +62,10 @@ func (grantCmd) Describe() runtime.Descriptor {
 
 // LiveSource hands the surface grant's source: --role completes the
 // roles of the scope typed on the line, leaving out role templates marked
-// locked at project and cluster scope, and the subject positional the user
-// subjects unless --type group is typed; every other site is declined.
+// locked at project and cluster scope and, at global scope, global roles
+// that inherit a locked role template or one that does not exist, and the
+// subject positional the user subjects unless --type group is typed; every
+// other site is declined.
 func (grantCmd) LiveSource() completion.Source { return complete.GrantSource() }
 
 // Plan verifies the role, resolves the subject, checks for a duplicate binding,
@@ -238,8 +241,9 @@ func roleCandidates(pool []clierr.Candidate, needle string) []clierr.Candidate {
 
 // checkRole verifies that role exists at the given scope before the mutation
 // is planned. On NOT_FOUND it returns a structured error with nearby
-// candidates (roletemplates whose context is the scope's, or globalroles
-// for global scope) and a discovery hint. On a context mismatch, or a
+// candidates (the roletemplates whose context is the scope's and that are not
+// locked, or the globalroles Rancher accepts in a binding, for global scope)
+// and a discovery hint. On a context mismatch, or a
 // missing context, the full at-scope pool is returned directly - the
 // name exists but the template cannot bind at this scope, so nearness
 // filtering would be misleading. A non-cancellation,
@@ -300,11 +304,14 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 }
 
 // rolePoolAtScope lists the role kind and returns as Candidates the roles
-// Rancher binds at scope: every globalrole at global scope, else the
-// roletemplates whose context equals the scope (a template with another
-// context, or none, is refused by the webhook). Cancellation propagates;
-// any other list failure degrades to (nil, nil) so an RBAC-restricted
-// granter is not blocked.
+// Rancher accepts in a new binding at scope: at global scope the globalroles
+// that inherit no locked roletemplate and no roletemplate that does not
+// exist (the roletemplates are listed too, only when some globalrole names an
+// inherited one; when that list fails, only the globalroles that name none
+// remain), else the roletemplates whose context equals the scope and that are
+// not locked (a template with another context, or none, is refused by the
+// webhook). Cancellation propagates; any other list failure degrades to
+// (nil, nil) so an RBAC-restricted granter is not blocked.
 func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind kinds.Kind, scope ScopeKind) ([]clierr.Candidate, error) {
 	list, err := client.List(ctx, roleKind.GVR, "", "")
 	if err != nil {
@@ -313,12 +320,29 @@ func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind 
 		}
 		return nil, nil // degraded
 	}
-	cands := make([]clierr.Candidate, 0, len(list.Items))
-	for i := range list.Items {
-		rt := &list.Items[i]
+	items := list.Items
+	if scope == ScopeGlobal {
+		roles := make([]map[string]any, len(items))
+		for i := range items {
+			roles[i] = items[i].Object
+		}
+		bindable, err := kinds.BindableGlobalRoles(roles, func() ([]map[string]any, error) {
+			return listRoleTemplateObjects(ctx, client)
+		})
+		if err != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		items = make([]unstructured.Unstructured, 0, len(bindable))
+		for _, role := range bindable {
+			items = append(items, unstructured.Unstructured{Object: role})
+		}
+	}
+	cands := make([]clierr.Candidate, 0, len(items))
+	for i := range items {
+		rt := &items[i]
 		if scope != ScopeGlobal {
 			rtCtx, _, _ := unstructured.NestedString(rt.Object, "context")
-			if rtCtx != string(scope) {
+			if rtCtx != string(scope) || kinds.RoleTemplateLocked(rt.Object) {
 				continue
 			}
 		}
@@ -326,6 +350,24 @@ func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind 
 		cands = append(cands, clierr.Candidate{ID: rt.GetName(), Name: display})
 	}
 	return cands, nil
+}
+
+// listRoleTemplateObjects lists every roletemplate, whatever its context:
+// Rancher reads the roletemplates a globalrole inherits by name alone.
+func listRoleTemplateObjects(ctx context.Context, client engine.ClusterClient) ([]map[string]any, error) {
+	k, ok := kinds.Lookup("roletemplate")
+	if !ok {
+		return nil, errors.New("roletemplate kind is not registered")
+	}
+	list, err := client.List(ctx, k.GVR, "", "")
+	if err != nil {
+		return nil, err
+	}
+	objs := make([]map[string]any, len(list.Items))
+	for i := range list.Items {
+		objs[i] = list.Items[i].Object
+	}
+	return objs, nil
 }
 
 // bindingMatchesSubject reports whether an existing binding is for the same

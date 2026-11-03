@@ -29,12 +29,14 @@ func claimAs(req completion.Request) (completion.Requirements, bool) {
 }
 
 // GrantSource is grant's source: the --role value, which leaves out the
-// role templates marked locked at project and cluster scope (Rancher does
-// not allow a new binding to one), and the subject positional, the user
-// subjects of SubjectSource unless --type group is typed, since no group
-// collection can be listed. Every other site is declined.
+// role templates marked locked at project and cluster scope and, at global
+// scope, the global roles that inherit a locked role template or one that
+// does not exist (Rancher does not allow a new binding to any of them), and
+// the subject positional, the user subjects of SubjectSource unless --type
+// group is typed, since no group collection can be listed. Every other site
+// is declined.
 func GrantSource() completion.Source {
-	return completion.Source{Claim: claimGrantRevoke, Complete: completeGrant}
+	return completion.Source{Claim: claimGrant, Complete: completeGrant}
 }
 
 // RevokeSource is revoke's source: the --role value of RoleSource, locked
@@ -53,6 +55,18 @@ func claimGrantRevoke(req completion.Request) (completion.Requirements, bool) {
 		return completion.ManagementListing(), true
 	}
 	return completion.Requirements{}, false
+}
+
+// claimGrant is claimGrantRevoke, except that grant's --role at global scope
+// lists the role templates after the global roles and so claims two requests.
+func claimGrant(req completion.Request) (completion.Requirements, bool) {
+	reqs, ok := claimGrantRevoke(req)
+	if ok && req.Flag == "role" {
+		if scope, _ := ScopeOfTail(req.Tail); scope == ScopeGlobal {
+			return completion.ManagementTwoListings(), true
+		}
+	}
+	return reqs, ok
 }
 
 func completeGrant(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {

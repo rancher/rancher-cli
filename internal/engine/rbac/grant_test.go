@@ -928,3 +928,54 @@ func TestGrantRoleReadDegraded(t *testing.T) {
 	require.NotNil(t, exec)
 	assert.Equal(t, "clusterroletemplatebindings/cluster-owner-*", eff.Target)
 }
+
+// TestGrantTypedLockedRoleGoesToTheServersCheck asserts a locked role
+// template at project and cluster scope, and a global role that inherits a
+// locked one, typed by hand, are not refused by the command's own role
+// check: the plan reaches the create dry-run, where the server decides.
+func TestGrantTypedLockedRoleGoesToTheServersCheck(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		in      stubInput
+		role    *unstructured.Unstructured
+		binding string
+	}{
+		{
+			name:    "project",
+			in:      stubInput{strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-locked"}, args: []string{"u-abc"}},
+			role:    &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "project-locked"}, "context": "project", "locked": true}},
+			binding: "projectroletemplatebindings",
+		},
+		{
+			name:    "cluster",
+			in:      stubInput{strings: map[string]string{"cluster": "c-x", "role": "cluster-locked"}, args: []string{"u-abc"}},
+			role:    &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "cluster-locked"}, "context": "cluster", "locked": true}},
+			binding: "clusterroletemplatebindings",
+		},
+		{
+			name:    "global",
+			in:      stubInput{bools: map[string]bool{"global": true}, strings: map[string]string{"role": "global-inherits-locked"}, args: []string{"u-abc"}},
+			role:    &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "global-inherits-locked"}, "inheritedClusterRoles": []any{"cluster-locked"}}},
+			binding: "globalrolebindings",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			client := &fakeClient{
+				users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+				gets: map[string]*unstructured.Unstructured{
+					"c-x/p-x":               projectGetObj("p-x"),
+					"/" + tt.role.GetName(): tt.role,
+				},
+				listsByGVR:  map[string]*unstructured.UnstructuredList{tt.binding: {}},
+				allowCreate: true,
+			}
+			_, exec, err := planGrant(t, NewGrant(fakeFactory{c: client}), tt.in)
+			require.NoError(t, err)
+			require.NotNil(t, exec)
+			assert.Equal(t, []bool{true}, client.createDryRuns)
+		})
+	}
+}

@@ -99,8 +99,8 @@ var positionalKinds = map[string]string{
 // one plain listing; the two discovery roots plus, for each root that
 // does not serve the aggregated document, its plain document and one
 // document per group up to the seam's group limit; or the Steve cluster
-// page walk bounded like the access commands' own. A value outside the
-// class is not granted.
+// page walk bounded like the access commands' own; or two plain listings.
+// A value outside the class is not granted.
 func allowanceLimit(a completion.Allowance) (int, bool) {
 	switch a {
 	case completion.AllowanceOne:
@@ -111,6 +111,8 @@ func allowanceLimit(a completion.Allowance) (int, bool) {
 		return steve.MaxPages, true
 	case completion.AllowanceSteveProjectPages:
 		return steve.MaxPages, true
+	case completion.AllowanceTwo:
+		return 2, true
 	}
 	return 0, false
 }

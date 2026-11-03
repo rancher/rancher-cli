@@ -2,6 +2,7 @@ package complete
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -75,14 +76,18 @@ func claimRole(req completion.Request) (completion.Requirements, bool) {
 	return completion.ManagementListing(), true
 }
 
-// completeRole lists the scope's role collection once and keeps the names
-// whose context is the scope's. The filter is client-side: the
-// RoleTemplate CRD declares no selectable field for context, so a field
-// selector cannot express it. Unless offerLocked is set, a role template
-// whose locked field is the JSON boolean true is left out at project and
-// cluster scope, since Rancher does not allow a new binding to one; a
-// global role is always kept. No scope, or a conflicting one, answers
-// nothing without a request.
+// completeRole lists the scope's role collection and keeps the names whose
+// context is the scope's. The filter is client-side: the RoleTemplate CRD
+// declares no selectable field for context, so a field selector cannot
+// express it. Unless offerLocked is set, a role template whose locked field
+// is the JSON boolean true is left out at project and cluster scope, and at
+// global scope a global role is left out when Rancher refuses a binding to
+// it: it inherits a locked role template or one that does not exist. Global
+// scope then lists the role templates too, a second request made only when
+// some global role names an inherited role template; when that listing
+// fails, only the global roles that name none are kept; when the context
+// ends during that listing, nothing is answered. No scope, or a conflicting
+// one, answers nothing without a request.
 func completeRole(ctx context.Context, conn *completion.Connection, req completion.Request, offerLocked bool) completion.Result {
 	scope, ok := ScopeOfTail(req.Tail)
 	if !ok {
@@ -101,15 +106,25 @@ func completeRole(ctx context.Context, conn *completion.Connection, req completi
 	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
 		return completion.Result{}
 	}
+	roles := list.Items
+	if scope == ScopeGlobal && !offerLocked {
+		var err error
+		roles, err = kinds.BindableGlobalRoles(roles, func() ([]map[string]any, error) {
+			return listRoleTemplates(ctx, conn)
+		})
+		if err != nil && ctx.Err() != nil {
+			return completion.Result{}
+		}
+	}
 	paths := k.DescriptionPaths()
 	var names []string
 	descriptions := map[string]string{}
-	for _, item := range list.Items {
+	for _, item := range roles {
 		if roleContext != "" {
 			if c, _ := item["context"].(string); c != roleContext {
 				continue
 			}
-			if locked, _ := item["locked"].(bool); locked && !offerLocked {
+			if kinds.RoleTemplateLocked(item) && !offerLocked {
 				continue
 			}
 		}
@@ -123,6 +138,24 @@ func completeRole(ctx context.Context, conn *completion.Connection, req completi
 		}
 	}
 	return completion.Result{Names: completion.Dedupe(names), Descriptions: descriptions}
+}
+
+// listRoleTemplates lists every RoleTemplate, whatever its context: Rancher
+// reads the role templates a global role inherits by name alone.
+func listRoleTemplates(ctx context.Context, conn *completion.Connection) ([]map[string]any, error) {
+	k, ok := kinds.Lookup("roletemplate")
+	if !ok {
+		return nil, errors.New("roletemplate kind is not registered")
+	}
+	p, err := completion.ManagementPath(k.GVR.Group, k.GVR.Version, k.GVR.Resource)
+	if err != nil {
+		return nil, err
+	}
+	var list completion.ItemList
+	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
+		return nil, err
+	}
+	return list.Items, nil
 }
 
 // flagPresent reports whether --name or --name=... is on the tail.

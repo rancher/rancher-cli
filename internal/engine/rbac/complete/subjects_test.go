@@ -35,18 +35,46 @@ func TestSubjectSourceClaim(t *testing.T) {
 // the same sites: --role under the role rule and the subject positional
 // unless --type group is typed (a bare --type, or --type user, still
 // claims; a --type typed twice takes its last spelling), and decline every
-// other site.
+// other site. The request budget of the --role site differs: grant claims
+// two requests at global scope only, where it lists the global roles and
+// then the role templates, and one request at project scope, cluster scope,
+// no scope and a conflicting scope; revoke and RoleSource claim one request
+// everywhere.
 func TestGrantAndRevokeSourceClaim(t *testing.T) {
 	t.Parallel()
+	scopes := []struct {
+		name  string
+		tail  []string
+		grant completion.Requirements
+	}{
+		{name: "global", tail: []string{"--global"}, grant: completion.ManagementTwoListings()},
+		{name: "global equals form", tail: []string{"--global=true"}, grant: completion.ManagementTwoListings()},
+		{name: "project", tail: []string{"--project", "Default"}, grant: completion.ManagementListing()},
+		{name: "cluster", tail: []string{"--cluster", "c-x"}, grant: completion.ManagementListing()},
+		{name: "no scope", grant: completion.ManagementListing()},
+		{name: "conflicting scope", tail: []string{"--global", "--cluster", "c-x"}, grant: completion.ManagementListing()},
+		{name: "global switched off", tail: []string{"--global=false", "--cluster", "c-x"}, grant: completion.ManagementListing()},
+	}
+	for _, sc := range scopes {
+		t.Run("role "+sc.name, func(t *testing.T) {
+			t.Parallel()
+			tail := append([]string{"jane"}, sc.tail...)
+			tail = append(tail, "--role")
+			reqs, ok := GrantSource().Claim(roleRequest(append([]string{"grant"}, tail...)...))
+			require.True(t, ok, "a --role site is owned at every scope; Complete answers nothing without one")
+			assert.Equal(t, sc.grant, reqs)
+			reqs, ok = RevokeSource().Claim(roleRequest(append([]string{"revoke"}, tail...)...))
+			require.True(t, ok)
+			assert.Equal(t, completion.ManagementListing(), reqs)
+			reqs, ok = RoleSource().Claim(roleRequest(append([]string{"grant"}, tail...)...))
+			require.True(t, ok)
+			assert.Equal(t, completion.ManagementListing(), reqs)
+		})
+	}
 	for name, src := range map[string]completion.Source{"grant": GrantSource(), "revoke": RevokeSource()} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			reqs, ok := src.Claim(roleRequest(name, "jane", "--global", "--role"))
-			require.True(t, ok)
-			assert.Equal(t, completion.ManagementListing(), reqs)
-			_, ok = src.Claim(roleRequest(name, "jane", "--role"))
-			assert.True(t, ok, "a --role site with no scope is still owned; Complete answers nothing")
-			for _, tail := range [][]string{nil, {"--type"}, {"--type", "user"}, {"--type=user"}, {"--cluster", "prod cluster"}, {"--type", "group", "--type", "user"}} {
+			for _, tail := range [][]string{nil, {"--type"}, {"--type", "user"}, {"--type=user"}, {"--cluster", "prod cluster"}, {"--type", "group", "--type", "user"}, {"--global"}, {"--global=true"}, {"--global", "--type", "user"}} {
 				reqs, ok := src.Claim(completion.Request{Index: 0, Tail: tail})
 				assert.True(t, ok, "%v", tail)
 				assert.Equal(t, completion.ManagementListing(), reqs)

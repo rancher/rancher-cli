@@ -76,6 +76,8 @@ const (
 	// AllowanceSteveProjectPages is one cluster's steve project collection
 	// followed page by page, bounded like the command's own read.
 	AllowanceSteveProjectPages
+	// AllowanceTwo is two requests: two collections listed.
+	AllowanceTwo
 )
 
 // DiscoveryGroupLimit bounds the group documents a source reads on a
@@ -105,6 +107,13 @@ func ManagementListing() Requirements {
 // one request.
 func PublicListing() Requirements {
 	return Requirements{Cluster: ClusterNone, Credential: CredentialNone, Allowance: AllowanceOne}
+}
+
+// ManagementTwoListings is the declaration of a source that lists two
+// collections of the management cluster, one after the other: no cluster
+// need, a management token, two requests.
+func ManagementTwoListings() Requirements {
+	return Requirements{Cluster: ClusterNone, Credential: CredentialManagement, Allowance: AllowanceTwo}
 }
 
 // ClusterListing is the declaration of a source that makes one request to
