@@ -569,33 +569,17 @@ func TestUploadCommandIsBounded(t *testing.T) {
 	})
 
 	t.Run("the limit passes after the first request", func(t *testing.T) {
-		shrink(t, hangBound, 100*time.Millisecond)
+		clock := stopSenderClock(t)
 		dir := uploadEnv(t)
 		seedTwoBatches(t, dir)
 		srv := newUploadServer(t, nil)
 		withEndpoint(t, srv.URL)
-		orig := sendNow
-		t.Cleanup(func() { sendNow = orig })
-		sendNow = func(ctx context.Context, in telemetrysend.Input) telemetry.UploadResult {
-			in.Encoder = lateEncoder{Encoder: in.Encoder, until: in.Deadline}
-			return orig(ctx, in)
-		}
+		clock.install(t, true)
 		run := runBuilt(t, "dev", "telemetry", "upload")
 		require.Equal(t, 0, run.code, run.stderr)
 		assert.Equal(t, 1, srv.count())
 		assert.Contains(t, run.stdout, "sent 1 events (HTTP 200, 0 refused), then stopped at the 30-second limit, the rest kept; next automatic attempt after ")
 	})
-}
-
-// lateEncoder reads each answer, then waits until the time passes.
-type lateEncoder struct {
-	telemetrysend.Encoder
-	until time.Time
-}
-
-func (e lateEncoder) RefusedCount(answer []byte) (int, bool) {
-	time.Sleep(time.Until(e.until) + 20*time.Millisecond)
-	return e.Encoder.RefusedCount(answer)
 }
 
 // TestUploadCommandOutput asserts, through Run in text and in JSON, the line and
@@ -607,22 +591,22 @@ func TestUploadCommandOutput(t *testing.T) {
 		name   string
 		events int
 		answer uploadAnswer
-		bound  time.Duration
+		hang   bool
 		late   bool
 		line   string
 		want   map[string]any
 	}{
 		{"a 200 with refusals", 5, func(_ int, w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(`{"partialSuccess":{"rejectedLogRecords":"3"}}`))
-		}, 0, false, "sent 5 events (HTTP 200, 3 refused)" + next, oneRefused},
-		{"a 200 with an unparsable body", 5, func(_ int, w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("<html>")) }, 0, false,
+		}, false, false, "sent 5 events (HTTP 200, 3 refused)" + next, oneRefused},
+		{"a 200 with an unparsable body", 5, func(_ int, w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("<html>")) }, false, false,
 			"sent 5 events (HTTP 200, refused count unknown)" + next,
 			map[string]any{"sent": 5, "refused": nil, "dropped": 0, "httpStatus": 200, "noAnswer": "", "skipped": "", "timeLimitReached": false}},
-		{"a 503", 5, replyStatus(503), 0, false, "sent 0 events: HTTP 503, files kept" + next,
+		{"a 503", 5, replyStatus(503), false, false, "sent 0 events: HTTP 503, files kept" + next,
 			map[string]any{"sent": 0, "refused": nil, "dropped": 0, "httpStatus": 503, "noAnswer": "", "skipped": "", "timeLimitReached": false}},
-		{"a 400", 5, replyStatus(400), 0, false, "sent 0 events: HTTP 400, 5 events deleted" + next,
+		{"a 400", 5, replyStatus(400), false, false, "sent 0 events: HTTP 400, 5 events deleted" + next,
 			map[string]any{"sent": 0, "refused": nil, "dropped": 5, "httpStatus": 400, "noAnswer": "", "skipped": "", "timeLimitReached": false}},
-		{"a timeout", 5, func(_ int, _ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) }, hangBound, false,
+		{"a timeout", 5, func(_ int, _ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) }, true, false,
 			"sent 0 events: no answer (timeout), files kept" + next,
 			map[string]any{"sent": 0, "refused": nil, "dropped": 0, "httpStatus": nil, "noAnswer": "timeout", "skipped": "", "timeLimitReached": false}},
 		{"a 2xx then a timeout", twoBatches, func(call int, w http.ResponseWriter, r *http.Request) {
@@ -631,7 +615,7 @@ func TestUploadCommandOutput(t *testing.T) {
 				return
 			}
 			testtransport.HangAndAbort(r)
-		}, hangBound, false, "sent 1 events (HTTP 200, 0 refused), then no answer (timeout), files kept" + next,
+		}, true, false, "sent 1 events (HTTP 200, 0 refused), then no answer (timeout), files kept" + next,
 			map[string]any{"sent": 1, "refused": 0, "dropped": 0, "httpStatus": nil, "noAnswer": "timeout", "skipped": "", "timeLimitReached": false}},
 		{"a 400 then a 503", twoBatches, func(call int, w http.ResponseWriter, _ *http.Request) {
 			if call == 0 {
@@ -639,7 +623,7 @@ func TestUploadCommandOutput(t *testing.T) {
 				return
 			}
 			w.WriteHeader(503)
-		}, 0, false, "sent 0 events: HTTP 503, files kept, 1 events deleted" + next,
+		}, false, false, "sent 0 events: HTTP 503, files kept, 1 events deleted" + next,
 			map[string]any{"sent": 0, "refused": nil, "dropped": 1, "httpStatus": 503, "noAnswer": "", "skipped": "", "timeLimitReached": false}},
 		{"a 2xx then a 400", twoBatches, func(call int, w http.ResponseWriter, _ *http.Request) {
 			if call == 0 {
@@ -647,12 +631,12 @@ func TestUploadCommandOutput(t *testing.T) {
 				return
 			}
 			w.WriteHeader(400)
-		}, 0, false, "sent 1 events (HTTP 200, 0 refused), then HTTP 400, 1 events deleted" + next,
+		}, false, false, "sent 1 events (HTTP 200, 0 refused), then HTTP 400, 1 events deleted" + next,
 			map[string]any{"sent": 1, "refused": 0, "dropped": 1, "httpStatus": 400, "noAnswer": "", "skipped": "", "timeLimitReached": false}},
-		{"the limit after the first request", twoBatches, nil, hangBound, true,
+		{"the limit after the first request", twoBatches, nil, false, true,
 			"sent 1 events (HTTP 200, 0 refused), then stopped at the 30-second limit, the rest kept" + next,
 			map[string]any{"sent": 1, "refused": 0, "dropped": 0, "httpStatus": 200, "noAnswer": "", "skipped": "", "timeLimitReached": true}},
-		{"nothing waiting", 0, nil, 0, false, "nothing waiting",
+		{"nothing waiting", 0, nil, false, false, "nothing waiting",
 			map[string]any{"sent": 0, "refused": nil, "dropped": 0, "httpStatus": nil, "noAnswer": "", "skipped": "nothingWaiting", "timeLimitReached": false}},
 	}
 	for _, row := range rows {
@@ -661,10 +645,9 @@ func TestUploadCommandOutput(t *testing.T) {
 				continue
 			}
 			t.Run(row.name+" "+format, func(t *testing.T) {
-				if row.bound > 0 {
-					oldBound, oldFloor := uploadCommandBound, uploadFloor
-					t.Cleanup(func() { uploadCommandBound, uploadFloor = oldBound, oldFloor })
-					uploadCommandBound, uploadFloor = row.bound, 100*time.Millisecond
+				var clock *senderClock
+				if row.hang || row.late {
+					clock = stopSenderClock(t)
 				}
 				dir := uploadEnv(t)
 				if row.events == twoBatches {
@@ -672,15 +655,24 @@ func TestUploadCommandOutput(t *testing.T) {
 				} else {
 					seedFinished(t, dir, 3, 1, row.events)
 				}
-				srv := newUploadServer(t, row.answer)
-				withEndpoint(t, srv.URL)
-				if row.late {
-					orig := sendNow
-					t.Cleanup(func() { sendNow = orig })
-					sendNow = func(ctx context.Context, in telemetrysend.Input) telemetry.UploadResult {
-						in.Encoder = lateEncoder{Encoder: in.Encoder, until: in.Deadline}
-						return orig(ctx, in)
+				answer := row.answer
+				if row.hang {
+					base := answer
+					hangAt := 0
+					if row.events == twoBatches {
+						hangAt = 1
 					}
+					answer = func(call int, w http.ResponseWriter, r *http.Request) {
+						if call == hangAt {
+							clock.pass()
+						}
+						base(call, w, r)
+					}
+				}
+				srv := newUploadServer(t, answer)
+				withEndpoint(t, srv.URL)
+				if clock != nil {
+					clock.install(t, row.late)
 				}
 				argv := []string{"telemetry", "upload"}
 				if format != "text" {

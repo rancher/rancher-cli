@@ -457,11 +457,16 @@ func TestSendWritesDebugLines(t *testing.T) {
 
 	t.Run("no answer", func(t *testing.T) {
 		dir := build(t, "1.0.0")
-		srv := newTestServer(t, func(_ int, _ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) })
+		clock := stopClock(t)
+		in := input(dir, "")
+		srv := newTestServer(t, func(_ int, _ http.ResponseWriter, r *http.Request) {
+			clock.pass(in)
+			testtransport.HangAndAbort(r)
+		})
 		var out bytes.Buffer
-		in := shortInput(dir, srv.URL, hangBound)
+		in.Origin = srv.URL
 		in.Debug = &out
-		Send(t.Context(), in)
+		Send(clock.context(), in)
 		assert.Equal(t, "debug: telemetry upload: sending 3 events (contract 1.0.0) to "+srv.URL+"\ndebug: telemetry upload: no answer: timeout\n", out.String())
 	})
 

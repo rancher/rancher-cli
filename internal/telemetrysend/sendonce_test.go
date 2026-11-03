@@ -122,7 +122,9 @@ func TestWalkAfterTheDeletionRunsOnlyWithTimeLeft(t *testing.T) {
 			dir := uploadDir(t)
 			paths := putSlotRange(t, dir, hourAgo(3), 1, 2)
 			srv := newTestServer(t, nil)
-			in := shortInput(dir, srv.URL, hangBound)
+			in := input(dir, srv.URL)
+			in.Floor = 50 * time.Millisecond
+			clock := stopClock(t)
 			walks := 0
 			shrunk := false
 			t.Cleanup(telemetry.SetObserverForTest(func(op string) {
@@ -131,7 +133,7 @@ func TestWalkAfterTheDeletionRunsOnlyWithTimeLeft(t *testing.T) {
 					walks++
 				case tc.leave != 0 && !shrunk && strings.HasPrefix(op, "remove events/"):
 					shrunk = true
-					time.Sleep(time.Until(in.Deadline) - tc.leave)
+					clock.leave(in, tc.leave)
 				}
 			}))
 			Send(t.Context(), in)

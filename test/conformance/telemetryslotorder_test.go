@@ -42,7 +42,7 @@ var observerAllowlist = map[string]requestAllowance{
 	"internal/cli/upload_test.go:TestUploadStaysInTheDeadline":                                    {1, "the observer only sleeps on a read; no list is compared"},
 	"internal/cli/uploadcommand_test.go:TestUploadCommandIsBounded":                               {1, "the observer only sleeps on a read; no list is compared"},
 	"internal/telemetrysend/sendonce_test.go:TestUploadOncePerHour":                               {1, "Send writes no event, and the test checks the next attempt against the real clock"},
-	"internal/telemetrysend/sendonce_test.go:TestWalkAfterTheDeletionRunsOnlyWithTimeLeft":        {1, "the observer only sleeps on a read; no list is compared"},
+	"internal/telemetrysend/sendonce_test.go:TestWalkAfterTheDeletionRunsOnlyWithTimeLeft":        {1, "the observer only moves the test clock on a read; no list is compared"},
 }
 
 // calledName returns the name a call's function expression ends in: f for

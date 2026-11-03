@@ -40,7 +40,7 @@ func SendNow(ctx context.Context, in Input) (out telemetry.UploadResult) {
 		in.Encoder == nil || in.RecordingOn == nil {
 		return telemetry.UploadResult{Failure: telemetry.FailureSenderFailed}
 	}
-	if time.Until(in.Deadline) < in.Floor {
+	if in.Deadline.Sub(clock()) < in.Floor {
 		a.timeUp()
 		return a.out
 	}

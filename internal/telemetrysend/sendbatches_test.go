@@ -238,12 +238,16 @@ func TestSplitFileResumesAfterTheCoveredIDs(t *testing.T) {
 	t.Run("1025 events", func(t *testing.T) {
 		dir := uploadDir(t)
 		file := putCompactedRange(t, dir, hourAgo(3), 1, 1025)
+		clock := stopClock(t)
+		var in Input
 		hang := newTestServer(t, func(call int, w http.ResponseWriter, r *http.Request) {
 			if call == 1 {
+				clock.pass(in)
 				testtransport.HangAndAbort(r)
 			}
 		})
-		Send(t.Context(), shortInput(dir, hang.URL, 3*time.Second))
+		in = input(dir, hang.URL)
+		Send(clock.context(), in)
 		reqs := hang.seenRequests()
 		require.Len(t, reqs, 2)
 		assert.Len(t, reqs[0].ids(t), 1000)
@@ -253,6 +257,7 @@ func TestSplitFileResumesAfterTheCoveredIDs(t *testing.T) {
 		assert.True(t, exists(dir, file), "the file stays: 25 events were not sent")
 		assert.Equal(t, "timeout", st.NoAnswer)
 
+		clock.restart()
 		st.NextAttempt = time.Now().Add(-time.Second)
 		writeState(t, dir, st)
 		srv := newTestServer(t, nil)

@@ -1,6 +1,7 @@
 package telemetrysend
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,15 +16,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/rancher/rancher-cli/internal/testtransport"
 )
-
-// shortInput is an input whose deadline is short, for requests that never
-// finish.
-func shortInput(dir, origin string, d time.Duration) Input {
-	in := input(dir, origin)
-	in.Deadline = time.Now().Add(d)
-	in.Floor = 50 * time.Millisecond
-	return in
-}
 
 // answerWith answers every request with the status, the headers and the body.
 func answerWith(code int, body string, headers ...string) respond {
@@ -91,10 +83,16 @@ func TestDeleteOnlyAfterSuccess(t *testing.T) {
 		assert.Equal(t, 1, st.Failures)
 		assert.Zero(t, st.Sent)
 
-		hang := newTestServer(t, func(_ int, _ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) })
 		st.NextAttempt = time.Now().Add(-time.Second)
 		writeState(t, dir, st)
-		Send(t.Context(), shortInput(dir, hang.URL, hangBound))
+		clock := stopClock(t)
+		in := input(dir, "")
+		hang := newTestServer(t, func(_ int, _ http.ResponseWriter, r *http.Request) {
+			clock.pass(in)
+			testtransport.HangAndAbort(r)
+		})
+		in.Origin = hang.URL
+		Send(clock.context(), in)
 		require.Len(t, hang.seenRequests(), 1)
 		assert.Equal(t, paths, filesWaiting(dir, paths))
 		st, _ = attemptState(t, dir)
@@ -329,12 +327,14 @@ func shortBody(code int) respond {
 	}
 }
 
-// slowBody sends the status and part of the body, then holds the request open.
-func slowBody(code int) respond {
+// slowBody sends the status and part of the body, calls stall, then holds the
+// request open.
+func slowBody(code int, stall func()) respond {
 	return func(_ int, w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(code)
 		_, _ = w.Write([]byte("abc"))
 		w.(http.Flusher).Flush()
+		stall()
 		testtransport.HangAndAbort(r)
 	}
 }
@@ -350,16 +350,16 @@ func slowBody(code int) respond {
 // and one that does not parse. Every row runs through the automatic attempt
 // and through the command entry.
 func TestUploadDecisionsReadOnlyTheStatus(t *testing.T) {
-	entries := map[string]func(t *testing.T, in Input){
-		"the automatic attempt": func(t *testing.T, in Input) { t.Helper(); Send(t.Context(), in) },
-		"the command":           func(t *testing.T, in Input) { t.Helper(); SendNow(t.Context(), in) },
+	entries := map[string]func(ctx context.Context, in Input){
+		"the automatic attempt": Send,
+		"the command":           func(ctx context.Context, in Input) { SendNow(ctx, in) },
 	}
 	for name, send := range entries {
 		t.Run(name, func(t *testing.T) { uploadDecisionRows(t, send) })
 	}
 }
 
-func uploadDecisionRows(t *testing.T, send func(t *testing.T, in Input)) {
+func uploadDecisionRows(t *testing.T, send func(ctx context.Context, in Input)) {
 	t.Helper()
 	bodies := map[string]string{
 		"empty":       "",
@@ -383,7 +383,7 @@ func uploadDecisionRows(t *testing.T, send func(t *testing.T, in Input)) {
 				dir := uploadDir(t)
 				paths := seedMixed(t, dir)
 				srv := newTestServer(t, answerWith(code, body))
-				send(t, input(dir, srv.URL))
+				send(t.Context(), input(dir, srv.URL))
 				require.Len(t, srv.seenRequests(), 1)
 				st, ok := attemptState(t, dir)
 				require.True(t, ok)
@@ -435,7 +435,7 @@ func uploadDecisionRows(t *testing.T, send func(t *testing.T, in Input)) {
 				})
 				self = srv.URL
 				before := len(other.seenRequests())
-				send(t, input(dir, srv.URL))
+				send(t.Context(), input(dir, srv.URL))
 				assert.Len(t, srv.seenRequests(), 1, "no second request")
 				assert.Len(t, other.seenRequests(), before)
 				assert.Equal(t, paths, filesWaiting(dir, paths))
@@ -453,7 +453,7 @@ func uploadDecisionRows(t *testing.T, send func(t *testing.T, in Input)) {
 		dir := uploadDir(t)
 		paths := seedMixed(t, dir)
 		srv := newTestServer(t, shortBody(204))
-		send(t, input(dir, srv.URL))
+		send(t.Context(), input(dir, srv.URL))
 		require.Len(t, srv.seenRequests(), 1)
 		st, ok := attemptState(t, dir)
 		require.True(t, ok)
@@ -464,21 +464,25 @@ func uploadDecisionRows(t *testing.T, send func(t *testing.T, in Input)) {
 	})
 
 	t.Run("an answer that cannot be read is no answer", func(t *testing.T) {
+		short := func(code int, _ func()) respond { return shortBody(code) }
 		for name, tc := range map[string]struct {
-			answer  func(code int) respond
+			answer  func(code int, stall func()) respond
 			code    int
 			noReply string
 		}{
-			"a 200 with a short body": {shortBody, 200, "network error"},
-			"a 400 with a short body": {shortBody, 400, "network error"},
+			"a 200 with a short body": {short, 200, "network error"},
+			"a 400 with a short body": {short, 400, "network error"},
 			"a 200 that stalls":       {slowBody, 200, "timeout"},
 			"a 400 that stalls":       {slowBody, 400, "timeout"},
 		} {
 			t.Run(name, func(t *testing.T) {
 				dir := uploadDir(t)
 				paths := seedMixed(t, dir)
-				srv := newTestServer(t, tc.answer(tc.code))
-				send(t, shortInput(dir, srv.URL, hangBound))
+				clock := stopClock(t)
+				in := input(dir, "")
+				srv := newTestServer(t, tc.answer(tc.code, func() { clock.pass(in) }))
+				in.Origin = srv.URL
+				send(clock.context(), in)
 				require.Len(t, srv.seenRequests(), 1)
 				st, ok := attemptState(t, dir)
 				require.True(t, ok)

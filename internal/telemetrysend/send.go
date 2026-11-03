@@ -45,7 +45,22 @@ var (
 	// with one, to reach the paths a file system produces only in rare states;
 	// it never turns an error into nil.
 	afterTake func(err error) error
+	// clock reads the time the deadline checks compare with the deadline: the
+	// start check of Send and SendNow and the time left in an attempt. The
+	// request timer of an attempt always runs on the real clock.
+	clock = time.Now
 )
+
+// SetClockForTest replaces the clock the deadline checks read and returns the
+// function that restores it. Only tests call it, and the calling test must not
+// use t.Parallel(). The timer that ends a request at the deadline stays on the
+// real clock, so a test that moves the clock past the deadline while a request
+// is in flight ends that request itself.
+func SetClockForTest(now func() time.Time) (restore func()) {
+	previous := clock
+	clock = now
+	return func() { clock = previous }
+}
 
 // Input is what Send needs. Send reads and sends no credential.
 type Input struct {
@@ -103,7 +118,7 @@ func Send(ctx context.Context, in Input) {
 	if origin, err := Origin(in.Origin); err != nil || origin != in.Origin {
 		return
 	}
-	if in.Encoder == nil || in.RecordingOn == nil || time.Until(in.Deadline) < in.Floor {
+	if in.Encoder == nil || in.RecordingOn == nil || in.Deadline.Sub(clock()) < in.Floor {
 		return
 	}
 	s, err := telemetry.OpenStore(in.ConfigDir)
@@ -133,7 +148,7 @@ type attempt struct {
 }
 
 // left reports how much time remains before the deadline.
-func (a *attempt) left() time.Duration { return time.Until(a.in.Deadline) }
+func (a *attempt) left() time.Duration { return a.in.Deadline.Sub(clock()) }
 
 // debug writes one debug line; a write error is dropped.
 func (a *attempt) debug(line string) {

@@ -36,14 +36,14 @@ func (failEncoder) Encode([]telemetry.StoredEvent) (Request, error) {
 }
 func (failEncoder) RefusedCount([]byte) (int, bool) { return 0, false }
 
-// lateEncoder reads each answer, then waits until the time passes.
+// lateEncoder reads each answer, then lets the time run out.
 type lateEncoder struct {
 	Encoder
-	until time.Time
+	pass func()
 }
 
 func (e lateEncoder) RefusedCount(answer []byte) (int, bool) {
-	time.Sleep(time.Until(e.until) + 20*time.Millisecond)
+	e.pass()
 	return e.Encoder.RefusedCount(answer)
 }
 
@@ -61,11 +61,6 @@ func putTwoBatches(t *testing.T, dir string) []string {
 	}
 	return paths
 }
-
-// hangBound is the time limit of the rows whose request never answers or whose
-// attempt runs to the limit. The store holds at most three events; the walk
-// and the first request finish inside it on a slow runner.
-const hangBound = 3 * time.Second
 
 // requireNoLock asserts the lock of dir is gone.
 func requireNoLock(t *testing.T, dir string) {
@@ -214,6 +209,8 @@ func TestUploadCommandResultValues(t *testing.T) {
 				putSlotRange(t, dir, hourAgo(3), 1, row.events)
 			}
 			answer := row.answer
+			clock := stopClock(t)
+			var in Input
 			if row.hang {
 				base := answer
 				answer = func(call int, w http.ResponseWriter, r *http.Request) {
@@ -221,15 +218,13 @@ func TestUploadCommandResultValues(t *testing.T) {
 						_, _ = w.Write([]byte("{}"))
 						return
 					}
+					clock.pass(in)
 					testtransport.HangAndAbort(r)
 				}
 			}
 			srv := newTestServer(t, answer)
-			in := input(dir, srv.URL)
-			if row.hang {
-				in = shortInput(dir, srv.URL, hangBound)
-			}
-			res := SendNow(t.Context(), in)
+			in = input(dir, srv.URL)
+			res := SendNow(clock.context(), in)
 			assert.Equal(t, row.want.sent, res.Sent)
 			assert.Equal(t, row.want.dropped, res.Dropped)
 			assert.Equal(t, row.want.requests, res.Requests)
@@ -253,8 +248,9 @@ func TestUploadCommandResultValues(t *testing.T) {
 		dir := uploadDir(t)
 		putTwoBatches(t, dir)
 		srv := newTestServer(t, nil)
-		in := shortInput(dir, srv.URL, hangBound)
-		in.Encoder = lateEncoder{Encoder: NewOTLPEncoder(), until: in.Deadline}
+		clock := stopClock(t)
+		in := input(dir, srv.URL)
+		in.Encoder = lateEncoder{Encoder: NewOTLPEncoder(), pass: func() { clock.pass(in) }}
 		res := SendNow(t.Context(), in)
 		assert.Len(t, srv.seenRequests(), 1)
 		assert.Equal(t, 1, res.Sent)
@@ -602,7 +598,9 @@ func TestUploadCommandIsBounded(t *testing.T) {
 		dir := uploadDir(t)
 		paths := putSlotRange(t, dir, hourAgo(3), 1, 2)
 		srv := newTestServer(t, nil)
-		in := shortInput(dir, srv.URL, 600*time.Millisecond)
+		in := input(dir, srv.URL)
+		in.Deadline = time.Now().Add(600 * time.Millisecond)
+		in.Floor = 50 * time.Millisecond
 		t.Cleanup(func() { afterLook = nil })
 		afterLook = func() { time.Sleep(time.Until(in.Deadline) + 20*time.Millisecond) }
 		res := SendNow(t.Context(), in)

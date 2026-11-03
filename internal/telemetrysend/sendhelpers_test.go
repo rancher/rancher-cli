@@ -3,6 +3,7 @@ package telemetrysend
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -186,19 +188,123 @@ func status(code int) respond {
 	return func(_ int, w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) }
 }
 
+// farDeadline is how far away the deadline of input is: no row waits for it.
+const farDeadline = 5 * time.Minute
+
 // input returns the input of an attempt against the server with a deadline
-// that leaves plenty of time.
+// that no runner reaches.
 func input(dir, origin string) Input {
 	return Input{
 		ConfigDir:   dir,
 		Version:     "dev",
 		Origin:      origin,
 		Encoder:     NewOTLPEncoder(),
-		Deadline:    time.Now().Add(20 * time.Second),
+		Deadline:    time.Now().Add(farDeadline),
 		Floor:       time.Second,
 		RecordingOn: func() bool { return true },
 	}
 }
+
+// testClock is the clock the deadline checks of an attempt read. It stands
+// still until a test moves it, so no row races the real time.
+type testClock struct {
+	parent context.Context
+	mu     sync.Mutex
+	now    time.Time
+	ctx    *passedContext
+}
+
+// stopClock holds the clock of the deadline checks still at the current time
+// until the test ends.
+func stopClock(t *testing.T) *testClock {
+	t.Helper()
+	c := &testClock{parent: t.Context(), now: time.Now(), ctx: newPassedContext(t.Context())}
+	t.Cleanup(SetClockForTest(c.read))
+	return c
+}
+
+func (c *testClock) read() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *testClock) set(at time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = at
+}
+
+// pass moves the clock 20 ms past the deadline of in and then ends the context
+// of the clock, in the order the real deadline does: the time is up before the
+// request fails. It is safe to call from a server handler.
+func (c *testClock) pass(in Input) {
+	c.mu.Lock()
+	c.now = in.Deadline.Add(20 * time.Millisecond)
+	ctx := c.ctx
+	c.mu.Unlock()
+	ctx.pass()
+}
+
+// leave moves the clock to d before the deadline of in; d may be negative.
+func (c *testClock) leave(in Input, d time.Duration) { c.set(in.Deadline.Add(-d)) }
+
+// restart holds the clock still at the current time again and makes a new
+// context, for a row that makes a second attempt after the time passed.
+func (c *testClock) restart() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = time.Now()
+	c.ctx = newPassedContext(c.parent)
+}
+
+// context returns the context a row passes to the attempt when a request hangs.
+// After pass, it ends with context.DeadlineExceeded, as the context of the
+// request does when the real deadline passes.
+func (c *testClock) context() context.Context {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ctx
+}
+
+// passedContext is a context that pass ends with context.DeadlineExceeded. Its
+// done channel is its own, so a context derived from it takes its error from
+// Err, as it does for any context that is not a standard cancelable one. It
+// also ends when its parent ends.
+type passedContext struct {
+	context.Context
+	done   chan struct{}
+	once   sync.Once
+	passed atomic.Bool
+}
+
+func newPassedContext(parent context.Context) *passedContext {
+	p := &passedContext{Context: parent, done: make(chan struct{})}
+	go func() {
+		select {
+		case <-parent.Done():
+			p.end()
+		case <-p.done:
+		}
+	}()
+	return p
+}
+
+func (p *passedContext) Done() <-chan struct{} { return p.done }
+
+func (p *passedContext) Err() error {
+	if p.passed.Load() {
+		return context.DeadlineExceeded
+	}
+	return p.Context.Err()
+}
+
+func (p *passedContext) pass() {
+	p.passed.Store(true)
+	p.end()
+}
+
+func (p *passedContext) end() { p.once.Do(func() { close(p.done) }) }
 
 // attemptState reads the state file of dir.
 func attemptState(t *testing.T, dir string) (telemetry.UploadState, bool) {
