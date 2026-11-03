@@ -87,11 +87,18 @@ func resolveRoles(ctx context.Context, client engine.ClusterClient, in runtime.I
 	return roleSet{ids: ids}, nil
 }
 
-// checkGlobalRole follows rbac.checkRole for global scope: it reads the global role id. A role that does not exist is
-// NOT_FOUND with the nearest roles as candidates. A role that cannot be read
-// for another reason returns a nil object and no error: the server enforces
-// the binding, and an unreadable role must not block an operator who may
-// create it. Cancellation always propagates.
+// checkGlobalRole follows rbac.checkRole for global scope: it reads the
+// global role id. A role that does not exist is NOT_FOUND with the nearest
+// roles as candidates. The candidates are chosen from the global roles
+// Rancher accepts in a new binding, those that inherit no locked role
+// template and no role template that does not exist; the role templates are
+// listed for that only when some global role names an inherited one, and
+// when that list fails the candidates are the global roles that name none. A
+// role that exists is returned as it is, whatever it inherits: the server
+// refuses it at the preview. A role that cannot be read for another reason
+// returns a nil object and no error: the server enforces the binding, and an
+// unreadable role must not block an operator who may create it.
+// Cancellation always propagates, also during the role template list.
 func checkGlobalRole(ctx context.Context, client engine.ClusterClient, k kinds.Kind, id string) (*unstructured.Unstructured, error) {
 	obj, err := client.Get(ctx, k.GVR, "", id)
 	if err == nil {
@@ -112,10 +119,21 @@ func checkGlobalRole(ctx context.Context, client engine.ClusterClient, k kinds.K
 		}
 		return nil, e
 	}
-	var near, all []clierr.Candidate
+	roles := make([]map[string]any, len(list.Items))
 	for i := range list.Items {
-		display, _, _ := unstructured.NestedString(list.Items[i].Object, "displayName")
-		c := clierr.Candidate{ID: list.Items[i].GetName(), Name: display}
+		roles[i] = list.Items[i].Object
+	}
+	bindable, berr := kinds.BindableGlobalRoles(roles, func() ([]map[string]any, error) {
+		return listRoleTemplateObjects(ctx, client)
+	})
+	if berr != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	var near, all []clierr.Candidate
+	for _, role := range bindable {
+		item := unstructured.Unstructured{Object: role}
+		display, _, _ := unstructured.NestedString(role, "displayName")
+		c := clierr.Candidate{ID: item.GetName(), Name: display}
 		all = append(all, c)
 		if strings.Contains(strings.ToLower(c.ID+" "+c.Name), strings.ToLower(id)) {
 			near = append(near, c)
@@ -125,6 +143,20 @@ func checkGlobalRole(ctx context.Context, client engine.ClusterClient, k kinds.K
 		near = all
 	}
 	return nil, e.WithCandidatesCut(near, candidateLimit)
+}
+
+// listRoleTemplateObjects lists every roletemplate, whatever its context:
+// Rancher reads the roletemplates a globalrole inherits by name alone.
+func listRoleTemplateObjects(ctx context.Context, client engine.ClusterClient) ([]map[string]any, error) {
+	list, err := client.List(ctx, mustKind("roletemplate").GVR, "", "")
+	if err != nil {
+		return nil, err
+	}
+	objs := make([]map[string]any, len(list.Items))
+	for i := range list.Items {
+		objs[i] = list.Items[i].Object
+	}
+	return objs, nil
 }
 
 // allowsCreatingTokens reports whether one of the global role's own rules

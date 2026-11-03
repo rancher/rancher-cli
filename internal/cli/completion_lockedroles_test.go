@@ -12,23 +12,53 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// lockedRoleCommands are the commands whose --role value completes live,
-// each with whether it offers role templates marked locked and global roles
-// that inherit one. Grant creates a binding, which Rancher refuses for such
-// a role; revoke removes a binding that already exists.
-var lockedRoleCommands = []struct {
-	name         string
+// lockedRoleCommand is a command whose role value completes live.
+type lockedRoleCommand struct {
+	name         string   // the command's Describe name; equals strings.Join(words, " ")
+	words        []string // the leading words of the argv
+	flag         string   // the flag that carries the role or global role
+	globalOnly   bool     // the command has no project or cluster scope
 	offersLocked bool
-}{
-	{name: "grant", offersLocked: false},
-	{name: "revoke", offersLocked: true},
+}
+
+// lockedRoleCommands are the commands whose --role value (grant, revoke) or
+// --global-role value (create user) completes live, each with whether it
+// offers role templates marked locked and global roles that inherit one.
+// Grant and create user create a binding, which Rancher refuses for such a
+// role; revoke removes a binding that already exists. Create user has no
+// project or cluster scope: only the global rows apply to it.
+var lockedRoleCommands = []lockedRoleCommand{
+	{name: "grant", words: []string{"grant"}, flag: "--role"},
+	{name: "revoke", words: []string{"revoke"}, flag: "--role", offersLocked: true},
+	{name: "create user", words: []string{"create", "user"}, flag: "--global-role", globalOnly: true},
 }
 
 // lockedRoleAllowlist names the commands that have a --role or --global-role
 // flag completing live and are not in lockedRoleCommands, each with the
-// reason.
-var lockedRoleAllowlist = map[string]string{
-	"create user": "completion and candidates of --global-role are a separate change",
+// reason. A command is named here, with its reason, when its suggestions
+// follow no rule for locked role templates.
+var lockedRoleAllowlist = map[string]string{}
+
+// lockedRoleWords returns the words and the current word of one table row
+// for cmd. A command with no scope takes the row's global form without
+// --global and with its own subject.
+func lockedRoleWords(cmd lockedRoleCommand, tail []string, cur string) ([]string, string) {
+	words := slices.Clone(cmd.words)
+	for _, w := range tail {
+		switch {
+		case cmd.globalOnly && w == "--global":
+			continue
+		case cmd.globalOnly && w == "jane":
+			w = "alice"
+		case w == "--role":
+			w = cmd.flag
+		}
+		words = append(words, w)
+	}
+	if cur == "--role=" {
+		cur = cmd.flag + "="
+	}
+	return words, cur
 }
 
 // lockedFixtureTemplates are the role templates the --role completion reads,
@@ -124,14 +154,16 @@ func newLockedRoleServer(t *testing.T) *pathCountingServer {
 
 // TestLockedRoleTemplatesInRoleCompletion asserts, through the real TAB
 // callback, that grant never offers a role template marked locked at
-// project and cluster scope, and at global scope never offers a global role
-// that inherits a locked role template or one that does not exist, and that
-// revoke always offers every role, in the space form and the --role= form of
-// the value. Project and cluster scope make one request. Global scope makes
-// one request for revoke and, for grant, a second listing of the role
-// templates. Only the full callback shows which command got which source.
-// NOT parallel: t.Setenv mutates env globals, setStoredConfig mutates
-// storedConfig.
+// project and cluster scope, and that grant's --role and create user's
+// --global-role never offer, at global scope, a global role that inherits a
+// locked role template or one that does not exist, and that revoke always
+// offers every role, in the space form and the --role= and --global-role=
+// form of the value. Project and cluster scope make one request. Global
+// scope makes one request for revoke and, for grant and create user, a
+// second listing of the role templates. Create user has no project or
+// cluster scope and runs the two global rows only. Only the full callback
+// shows which command got which source. NOT parallel: t.Setenv mutates env
+// globals, setStoredConfig mutates storedConfig.
 func TestLockedRoleTemplatesInRoleCompletion(t *testing.T) {
 	s := newLockedRoleServer(t)
 	projectGrant := []string{"project-false:Project False", "project-hidden:Project Hidden", "project-open:Project Open"}
@@ -142,10 +174,10 @@ func TestLockedRoleTemplatesInRoleCompletion(t *testing.T) {
 	globalRevoke := lockedGlobalCandidates(lockedFixtureGlobalRoles, func(lockedFixtureGlobalRole) bool { return true })
 	require.Len(t, globalGrant, 6)
 	require.Len(t, globalRevoke, 11)
-	withPrefix := func(candidates []string) []string {
+	withPrefix := func(flag string, candidates []string) []string {
 		out := make([]string, 0, len(candidates))
 		for _, c := range candidates {
-			out = append(out, "--role="+c)
+			out = append(out, flag+"="+c)
 		}
 		return out
 	}
@@ -156,6 +188,7 @@ func TestLockedRoleTemplatesInRoleCompletion(t *testing.T) {
 		name      string
 		tail      []string
 		cur       string
+		global    bool
 		grant     []string
 		rev       []string
 		grantHits map[string]int
@@ -163,14 +196,17 @@ func TestLockedRoleTemplatesInRoleCompletion(t *testing.T) {
 	}{
 		{name: "project with cluster", tail: []string{"jane", "--project", "Default", "--cluster", "c-aaa11", "--role"}, grant: projectGrant, rev: projectRevoke, grantHits: oneTemplates, revHits: oneTemplates},
 		{name: "project alone", tail: []string{"jane", "--project", "Default", "--role"}, grant: projectGrant, rev: projectRevoke, grantHits: oneTemplates, revHits: oneTemplates},
-		{name: "project equals form", tail: []string{"jane", "--project=Default", "--cluster=c-aaa11"}, cur: "--role=", grant: withPrefix(projectGrant), rev: withPrefix(projectRevoke), grantHits: oneTemplates, revHits: oneTemplates},
+		{name: "project equals form", tail: []string{"jane", "--project=Default", "--cluster=c-aaa11"}, cur: "--role=", grant: projectGrant, rev: projectRevoke, grantHits: oneTemplates, revHits: oneTemplates},
 		{name: "cluster", tail: []string{"jane", "--cluster", "c-aaa11", "--role"}, grant: clusterGrant, rev: clusterRevoke, grantHits: oneTemplates, revHits: oneTemplates},
-		{name: "cluster equals form", tail: []string{"jane", "--cluster=c-aaa11"}, cur: "--role=", grant: withPrefix(clusterGrant), rev: withPrefix(clusterRevoke), grantHits: oneTemplates, revHits: oneTemplates},
-		{name: "global", tail: []string{"jane", "--global", "--role"}, grant: globalGrant, rev: globalRevoke, grantHits: globalTwo, revHits: globalOne},
-		{name: "global equals form", tail: []string{"jane", "--global"}, cur: "--role=", grant: withPrefix(globalGrant), rev: withPrefix(globalRevoke), grantHits: globalTwo, revHits: globalOne},
+		{name: "cluster equals form", tail: []string{"jane", "--cluster=c-aaa11"}, cur: "--role=", grant: clusterGrant, rev: clusterRevoke, grantHits: oneTemplates, revHits: oneTemplates},
+		{name: "global", tail: []string{"jane", "--global", "--role"}, global: true, grant: globalGrant, rev: globalRevoke, grantHits: globalTwo, revHits: globalOne},
+		{name: "global equals form", tail: []string{"jane", "--global"}, cur: "--role=", global: true, grant: globalGrant, rev: globalRevoke, grantHits: globalTwo, revHits: globalOne},
 	}
 	for _, cmd := range lockedRoleCommands {
 		for _, tt := range tests {
+			if cmd.globalOnly && !tt.global {
+				continue
+			}
 			t.Run(cmd.name+" "+tt.name, func(t *testing.T) {
 				completionFixture(t, s.srv.URL, true)
 				s.reset()
@@ -178,7 +214,11 @@ func TestLockedRoleTemplatesInRoleCompletion(t *testing.T) {
 				if cmd.offersLocked {
 					want, hits = tt.rev, tt.revHits
 				}
-				got := runCompletion(t, append([]string{cmd.name}, tt.tail...), tt.cur)
+				if tt.cur != "" {
+					want = withPrefix(cmd.flag, want)
+				}
+				words, cur := lockedRoleWords(cmd, tt.tail, tt.cur)
+				got := runCompletion(t, words, cur)
 				assert.Equal(t, want, got)
 				assert.Equal(t, hits, s.reset())
 			})
@@ -186,13 +226,14 @@ func TestLockedRoleTemplatesInRoleCompletion(t *testing.T) {
 	}
 }
 
-// TestGlobalRoleCompletionReadsRoleTemplatesOnlyWhenNeeded asserts grant's
-// global --role completion lists the role templates only when a listed
-// global role names an inherited one, and answers from the global roles
-// alone otherwise; that a role template collection which lists none leaves
-// out every global role that names one; and that a role template listing
-// that fails (here a 404) leaves only the global roles that name none, while
-// revoke offers every global role in all three cases with one request.
+// TestGlobalRoleCompletionReadsRoleTemplatesOnlyWhenNeeded asserts the
+// global --role completion of grant and the --global-role completion of
+// create user list the role templates only when a listed global role names
+// an inherited one, and answer from the global roles alone otherwise; that a
+// role template collection which lists none leaves out every global role
+// that names one; and that a role template listing that fails (here a 404)
+// leaves only the global roles that name none, while revoke offers every
+// global role in all three cases with one request.
 // NOT parallel: t.Setenv mutates env globals, setStoredConfig mutates
 // storedConfig.
 func TestGlobalRoleCompletionReadsRoleTemplatesOnlyWhenNeeded(t *testing.T) {
@@ -238,7 +279,8 @@ func TestGlobalRoleCompletionReadsRoleTemplatesOnlyWhenNeeded(t *testing.T) {
 				if cmd.offersLocked {
 					want, hits = tt.revoke, map[string]int{globalRolesPath: 1}
 				}
-				got := runCompletion(t, []string{cmd.name, "jane", "--global", "--role"}, "")
+				words, cur := lockedRoleWords(cmd, []string{"jane", "--global", "--role"}, "")
+				got := runCompletion(t, words, cur)
 				assert.Equal(t, want, got)
 				assert.Equal(t, hits, s.reset())
 			})
@@ -257,6 +299,7 @@ func TestLockedRoleCompletionCoversEveryRoleCommand(t *testing.T) {
 	t.Parallel()
 	covered := map[string]bool{}
 	for _, c := range lockedRoleCommands {
+		assert.Equal(t, strings.Join(c.words, " "), c.name)
 		covered[c.name] = true
 	}
 	for name, reason := range lockedRoleAllowlist {
@@ -281,23 +324,24 @@ func TestLockedRoleCompletionCoversEveryRoleCommand(t *testing.T) {
 }
 
 // lockedCandidateCommands are the commands whose NOT_FOUND error lists roles
-// to bind, each covered by the candidate tables of internal/engine/rbac.
-var lockedCandidateCommands = []string{"grant"}
+// to bind, each covered by the candidate tables of internal/engine/rbac
+// (grant) and internal/engine/user (create user).
+var lockedCandidateCommands = []string{"grant", "create user"}
 
 // lockedCandidateAllowlist names the commands that declare a role or
 // global-role flag and are not in lockedCandidateCommands, each with the
 // reason.
 var lockedCandidateAllowlist = map[string]string{
-	"revoke":      "lists the roles the subject holds, not roles to bind; its completion offers every role by design",
-	"create user": "candidates of --global-role are a separate change",
+	"revoke": "lists the roles the subject holds, not roles to bind; its completion offers every role by design",
 }
 
 // TestLockedCandidatesCoverEveryRoleCommand asserts the commands of the
 // candidate tables and their allowlist are exactly the commands that declare
 // a role or global-role flag, so a command added with such a flag fails here
 // until its candidates are in the tables or the allowlist. It sees command
-// names and flags named role or global-role only; the rows themselves are in
-// internal/engine/rbac and above, and a suggestion path whose flag has
+// names and flags named role or global-role only: the rows themselves are in
+// internal/engine/rbac and internal/engine/user, and deleting the rows of
+// either package leaves this test green. A suggestion path whose flag has
 // another name is not found.
 func TestLockedCandidatesCoverEveryRoleCommand(t *testing.T) {
 	t.Parallel()

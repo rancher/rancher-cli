@@ -509,3 +509,48 @@ func TestCandidateLimitMatchesGrant(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, rbac.CandidateLimit, candidateLimit)
 }
+
+// TestCreateTypedAndDefaultRolesAreNotFilteredByInheritedTemplates asserts
+// the filter of the NOT_FOUND candidates reaches neither a typed global role
+// that exists nor the default roles: a typed role that inherits a locked role
+// template, and one that inherits a role template that does not exist, are
+// read and bound as typed with no role template list, and a default role
+// that inherits a locked role template is bound with one global role list and
+// no role template list.
+func TestCreateTypedAndDefaultRolesAreNotFilteredByInheritedTemplates(t *testing.T) {
+	t.Parallel()
+	lockedTemplate := roleTemplate("cluster-locked", "cluster", map[string]any{"locked": true})
+
+	t.Run("typed roles", func(t *testing.T) {
+		t.Parallel()
+		client := &fakeUserClient{
+			userPreviewName: "u-preview1",
+			roles: []*unstructured.Unstructured{
+				globalRole("inherits-locked", map[string]any{"inheritedClusterRoles": []any{"cluster-locked"}}),
+				globalRole("inherits-missing", map[string]any{"inheritedClusterRoles": []any{"no-such-template"}}),
+			},
+			roleTemplates: []*unstructured.Unstructured{lockedTemplate},
+		}
+		_, _, err := plan(t, client, fakeSrc{body: []byte(testPassword)}, typedInput("inherits-missing", "inherits-locked"))
+		require.NoError(t, err)
+		assert.Equal(t, []string{"inherits-locked", "inherits-missing"}, bindingRoles(client, true))
+		assert.Zero(t, client.roleListCalls)
+		assert.Zero(t, client.roleTemplateListCalls)
+	})
+
+	t.Run("default role", func(t *testing.T) {
+		t.Parallel()
+		client := &fakeUserClient{
+			userPreviewName: "u-preview1",
+			roles: []*unstructured.Unstructured{
+				globalRole("user", map[string]any{"newUserDefault": true, "rules": tokenRules(), "inheritedClusterRoles": []any{"cluster-locked"}}),
+			},
+			roleTemplates: []*unstructured.Unstructured{lockedTemplate},
+		}
+		_, _, err := plan(t, client, fakeSrc{body: []byte(testPassword)}, planInput("alice"))
+		require.NoError(t, err)
+		assert.Equal(t, []string{"user"}, bindingRoles(client, true))
+		assert.Equal(t, 1, client.roleListCalls)
+		assert.Zero(t, client.roleTemplateListCalls)
+	})
+}

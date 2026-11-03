@@ -769,7 +769,9 @@ Never present a role list as permissions.
   whose `locked` field is true and, at global scope, global roles that inherit a
   locked role template or one that does not exist (Rancher does not allow a new
   binding to such a role), and `revoke --role <TAB>` still offers them. The
-  candidates in a NOT_FOUND error of `grant` follow the same rule.
+  candidates in a NOT_FOUND error of `grant` follow the same rule, and
+  `create user --global-role` completion and its NOT_FOUND candidates leave out
+  the same global roles.
   Positional completion may return the full candidate list and rely on the
   shell's client-side prefix filtering.
 - `rancher create secret <name> --namespace <ns> --cluster <c> --from-literal k=v[,k=v...]` -

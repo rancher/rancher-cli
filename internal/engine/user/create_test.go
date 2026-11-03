@@ -40,14 +40,19 @@ type fakeUserClient struct {
 	// roleListErr and roleGetErr, when set, fail every GlobalRole list or get.
 	roleListErr error
 	roleGetErr  error
+	// roleTemplates are the RoleTemplates the server holds, served by List.
+	roleTemplates []*unstructured.Unstructured
+	// roleTemplateListErr, when set, fails every RoleTemplate list.
+	roleTemplateListErr error
 	// bindingDryRunErr and bindingRealErr fail the binding create for a role,
 	// by globalRoleName.
 	bindingDryRunErr map[string]error
 	bindingRealErr   map[string]error
 
-	roleListCalls int
-	roleGetCalls  int
-	deleteCalls   int
+	roleListCalls         int
+	roleTemplateListCalls int
+	roleGetCalls          int
+	deleteCalls           int
 	// bindings records every GlobalRoleBinding sent, dry-run and real, in order.
 	bindings []sentBinding
 	// writes records every real create, in order, by resource.
@@ -155,6 +160,17 @@ func (f *fakeUserClient) Get(_ context.Context, gvr schema.GroupVersionResource,
 	return nil, clierr.New(clierr.CodeNotFound, "globalroles \""+name+"\" not found")
 }
 func (f *fakeUserClient) List(_ context.Context, gvr schema.GroupVersionResource, _, _ string) (*unstructured.UnstructuredList, error) {
+	if gvr.Resource == "roletemplates" {
+		f.roleTemplateListCalls++
+		if f.roleTemplateListErr != nil {
+			return nil, f.roleTemplateListErr
+		}
+		list := &unstructured.UnstructuredList{}
+		for _, r := range f.roleTemplates {
+			list.Items = append(list.Items, *r.DeepCopy())
+		}
+		return list, nil
+	}
 	if gvr.Resource != "globalroles" {
 		return nil, fmt.Errorf("fakeUserClient: List not implemented for %v", gvr)
 	}

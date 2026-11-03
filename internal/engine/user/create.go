@@ -99,7 +99,8 @@ func (createCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// LiveSource completes the --global-role value with the global role ids.
+// LiveSource completes the --global-role value with the ids of the global
+// roles that Rancher accepts in a new binding.
 func (createCmd) LiveSource() completion.Source { return usercomplete.GlobalRoleSource() }
 
 func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
