@@ -867,7 +867,19 @@ and an RFC 7386 JSON merge patch (an object) with `--type merge`. In a merge
 patch, every list you include replaces the whole list in the object; kubectl's
 default strategic merge patch merges some lists by key, and the CLI does not
 support strategic merge patch. When a merge patch removes entries of a list
-the object has, the dry-run preview carries a warning naming the list.
+the object has, the dry-run preview carries a warning naming the list. A path
+(and a from of move or copy) in a JSON Patch must be empty or start with /, as
+RFC 6901 requires; the patch is refused before the object is read otherwise.
+The path of a move or copy cannot be empty; to replace the whole object, use
+replace with an empty path.
+
+An operation of a JSON Patch that does not apply to the object (no value at the
+path, a failed `test`, an index past the end of a list) is refused with
+`VALIDATION` after the object is read and before anything is sent. The message
+names the operation when it can, by its number, counted from 0, and its name,
+then the path and what to check. The refusal of a patch that replaces the whole
+object with a value that is not an object, and the fixed sentences for a merge
+patch and for a failure with no known operation, name no operation.
 
 ## Cluster provisioning
 

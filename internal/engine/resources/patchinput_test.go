@@ -2,6 +2,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -85,6 +86,17 @@ func TestPatchJSONKeepsEmptyPatches(t *testing.T) {
 	}
 }
 
+// notAPointerRefusal is the refusal of an operation whose path or from is not
+// a JSON Pointer.
+func notAPointerRefusal(i int, op, member, value string) string {
+	return fmt.Sprintf("invalid patch: patch operation %d (%s) has the %q %q, which is not a JSON Pointer; it must be empty or start with /", i, op, member, value)
+}
+
+// emptyPathRefusal is the refusal of a move or copy to the whole object.
+func emptyPathRefusal(i int, op string) string {
+	return fmt.Sprintf(`invalid patch: patch operation %d (%s) has the "path" "", which this command does not support for move and copy; to replace the whole object use replace with the "path" ""`, i, op)
+}
+
 // TestPatchInputRefusals asserts each plain reason, under each type, and
 // that no refusal sends a request.
 func TestPatchInputRefusals(t *testing.T) {
@@ -132,6 +144,23 @@ func TestPatchInputRefusals(t *testing.T) {
 		{"a merge number", "merge", `1`, "invalid patch: a merge patch is a JSON object, not a JSON number"},
 		{"a merge boolean", "merge", `false`, "invalid patch: a merge patch is a JSON object, not a JSON boolean"},
 		{"a merge null", "merge", `null`, "invalid patch: a merge patch is a JSON object, not a JSON null"},
+		{"add at a path of two segments with no slash", "", patchOf(opAdd("data/x", `1`)), notAPointerRefusal(0, "add", "path", "data/x")},
+		{"replace at a path with no slash", "", patchOf(opReplace("data/x", `1`)), notAPointerRefusal(0, "replace", "path", "data/x")},
+		{"remove at a path with no slash", "", patchOf(opRemove("data/x")), notAPointerRefusal(0, "remove", "path", "data/x")},
+		{"test at a path with no slash", "", patchOf(opTest("data/x", `1`)), notAPointerRefusal(0, "test", "path", "data/x")},
+		{"move from a path with no slash", "", patchOf(opMove("data/a", "/data/y")), notAPointerRefusal(0, "move", "from", "data/a")},
+		{"move to a path with no slash", "", patchOf(opMove("/data/a", "data/y")), notAPointerRefusal(0, "move", "path", "data/y")},
+		{"copy from a path with no slash", "", patchOf(opCopy("data/a", "/data/y")), notAPointerRefusal(0, "copy", "from", "data/a")},
+		{"copy to a path with no slash", "", patchOf(opCopy("/data/a", "data/y")), notAPointerRefusal(0, "copy", "path", "data/y")},
+		{"add at a path of one segment with no slash", "", patchOf(opAdd("x", `1`)), notAPointerRefusal(0, "add", "path", "x")},
+		{"remove of a top-level key by a path with no slash", "", patchOf(opRemove("foo/metadata")), notAPointerRefusal(0, "remove", "path", "foo/metadata")},
+		{"a path that starts with a space", "", patchOf(opAdd(" /x", `1`)), notAPointerRefusal(0, "add", "path", " /x")},
+		{"the second operation has a path with no slash", "", patchOf(opAdd("/data/c", `"3"`), opRemove("data/a")), notAPointerRefusal(1, "remove", "path", "data/a")},
+		{"a move with both members wrong names the path", "", patchOf(opMove("a/b", "c/d")), notAPointerRefusal(0, "move", "path", "c/d")},
+		{"move to the whole object", "", patchOf(opMove("/data/a", "")), emptyPathRefusal(0, "move")},
+		{"copy to the whole object", "", patchOf(opCopy("/data", "")), emptyPathRefusal(0, "copy")},
+		{"the second operation copies to the whole object", "", patchOf(opAdd("/data/c", `"3"`), opCopy("/data", "")), emptyPathRefusal(1, "copy")},
+		{"a copy to the whole object with a path that is not a pointer names the pointer", "", patchOf(opCopy("data/a", "")), notAPointerRefusal(0, "copy", "from", "data/a")},
 		{"a merge resourceVersion", "merge", `{"metadata":{"resourceVersion":"9"}}`, "the merge patch targets /metadata/resourceVersion; the server sets this field and a patch cannot change it"},
 		{"a merge managedFields removal", "merge", `{"metadata":{"managedFields":null}}`, "the merge patch targets /metadata/managedFields; the server sets this field and a patch cannot change it"},
 		{"a merge resourceVersion removal", "merge", `{"metadata":{"resourceVersion":null}}`, "the merge patch targets /metadata/resourceVersion;"},
@@ -146,6 +175,38 @@ func TestPatchInputRefusals(t *testing.T) {
 			assert.Empty(t, client.getName, "refused before any request")
 		})
 	}
+}
+
+// TestPatchPointerPathsAreAccepted asserts that a path or from that is empty
+// or starts with a slash is read, an escaped slash in the JSON text included,
+// and that a from the operation does not use is not checked.
+func TestPatchPointerPathsAreAccepted(t *testing.T) {
+	t.Parallel()
+	for name, patch := range map[string]string{
+		"a path under the object":      patchOf(opAdd("/data/c", `1`)),
+		"a path that is one slash":     patchOf(opAdd("/", `1`)),
+		"the whole object":             patchOf(opReplace("", `{}`)),
+		"an add of the whole object":   patchOf(opAdd("", `{}`)),
+		"a remove of the whole object": patchOf(opRemove("")),
+		"a move from the whole object": patchOf(opMove("", "/data/y")),
+		"a from that add ignores":      `[{"op":"add","path":"/x","value":1,"from":"zzz"}]`,
+		"escaped slashes in the JSON":  `[{"op":"add","path":"\/data\/c","value":1}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parsePatch([]byte(patch), patchTypeJSON)
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestPatchMergeKeysNamedOpAndPathAreNotOperations asserts that a merge patch
+// with keys named op and path is merged, not read as an operation.
+func TestPatchMergeKeysNamedOpAndPathAreNotOperations(t *testing.T) {
+	t.Parallel()
+	_, client, err := planTyped(t, "configmap", "app", configMapJSON, `{"op":{"path":"x"}}`, "merge")
+	require.NoError(t, err)
+	assert.NotEmpty(t, client.updates)
 }
 
 // TestPatchInputTrimsByteOrderMark asserts that a UTF-8 byte-order mark at
@@ -406,14 +467,14 @@ func TestPatchServerOwnedRefusalNeedsTheExactPath(t *testing.T) {
 	assert.NotContains(t, errText(err), "the merge patch targets")
 }
 
-// TestPatchApplyErrorNamesTheCheck asserts the text of an op that does not
-// apply to the fetched object.
-func TestPatchApplyErrorNamesTheCheck(t *testing.T) {
+// TestPatchApplyErrorNamesTheOperationAndPath asserts the text of an
+// operation that does not apply to the fetched object: its number, its name,
+// the path and what to check.
+func TestPatchApplyErrorNamesTheOperationAndPath(t *testing.T) {
 	t.Parallel()
 	_, _, err := planTyped(t, "configmap", "app", configMapJSON, `[{"op":"replace","path":"/data/zz","value":"1"}]`, "")
 	requireValidation(t, err)
-	require.ErrorContains(t, err, "cannot apply patch: ")
-	require.ErrorContains(t, err, "; check the patch operations against the resource")
+	assert.Equal(t, `patch operation 0 (replace) does not apply: the object has no value at "/data/zz" to replace; replace changes only a value that exists`, errText(err))
 }
 
 func errText(err error) string {
@@ -520,16 +581,16 @@ func TestPatchErrorsCarryNoValue(t *testing.T) {
 			`patch operation 0 (add) has no "value"`},
 		{"an add with a null value, then an op holding the canary", "",
 			`[{"op":"add","path":"/data/a","value":null},{"op":"remove","path":"/data/zz"},{"op":"add","path":"/data/b","value":"` + canary + `"}]`,
-			"cannot apply patch"},
+			`patch operation 1 (remove) does not apply: the object has no value at "/data/zz" to remove; check the path against the object`},
 		{"a test op that fails", "",
 			`[{"op":"test","path":"/data/a","value":"` + canary + `"}]`,
-			"testing value /data/a failed"},
+			`patch operation 0 (test) does not apply: the value at "/data/a" differs from the value in the "value" member, or there is no value there`},
 		{"an op on a path that is missing", "",
 			`[{"op":"add","path":"/nothing/here/` + "x" + `","value":"` + canary + `"}]`,
-			"cannot apply patch"},
+			`patch operation 0 (add) does not apply: there is no object or list at "/nothing/here" to put a value in; add puts a value only inside an existing object or list`},
 		{"a replace with a value that is not an object", "",
 			`[{"op":"replace","path":"","value":"` + canary + `"}]`,
-			"cannot apply patch"},
+			"patched object is not valid: the patch replaces the object with a JSON string; the object must stay a JSON object"},
 		{"a server-owned field in an op value", "",
 			`[{"op":"add","path":"/metadata","value":{"resourceVersion":"1","note":"` + canary + `"}}]`,
 			"patch operation 0 targets /metadata/resourceVersion; the server sets this field"},

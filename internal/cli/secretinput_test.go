@@ -249,11 +249,11 @@ func secretRows() []secretRow {
 	notJSON := `[{"op":"add","path":"/data/a","value":"` + c + `"`
 	add(
 		secretRow{flag: "patch", name: "a malformed op ahead of an op holding the canary", argv: line(patchLine, "-p", malformedPatch), code: validation, message: `patch operation 0 (add) has no "value"`},
-		secretRow{flag: "patch", name: "a test op that fails", argv: line(patchLine, "-p", failingTest), stub: configMapStub, code: validation, message: "testing value /data/a failed"},
+		secretRow{flag: "patch", name: "a test op that fails", argv: line(patchLine, "-p", failingTest), stub: configMapStub, code: validation, message: `the value at "/data/a" differs from the value in the "value" member, or there is no value there`},
 		secretRow{flag: "patch", name: "a patch that is not JSON", argv: line(patchLine, "-p", notJSON), code: validation, message: "not valid JSON"},
 		secretRow{flag: "patch", name: "an extra argument", argv: line(patchLine, "-p", "[]", c), code: validation, message: "unexpected argument at position 2"},
 		secretRow{flag: "patch-file", name: "a malformed op ahead of an op holding the canary", argv: line(patchLine, "--patch-file", "-"), stdin: malformedPatch, code: validation, message: `patch operation 0 (add) has no "value"`},
-		secretRow{flag: "patch-file", name: "a test op that fails", argv: line(patchLine, "--patch-file", "-"), stdin: failingTest, stub: configMapStub, code: validation, message: "testing value /data/a failed"},
+		secretRow{flag: "patch-file", name: "a test op that fails", argv: line(patchLine, "--patch-file", "-"), stdin: failingTest, stub: configMapStub, code: validation, message: `the value at "/data/a" differs from the value in the "value" member, or there is no value there`},
 		secretRow{flag: "patch-file", name: "a patch that is not JSON", argv: line(patchLine, "--patch-file", "-"), stdin: notJSON, code: validation, message: "not valid JSON"},
 	)
 

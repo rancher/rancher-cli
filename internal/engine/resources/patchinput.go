@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch/v5"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -35,12 +36,21 @@ type patchDoc struct {
 // isMerge reports whether the patch is an RFC 7386 merge patch.
 func (p patchDoc) isMerge() bool { return p.merge != nil }
 
-// apply returns doc with the patch applied.
+// apply returns doc with the patch applied. A patch that does not apply is a
+// VALIDATION error with a plain reason; no text of the library reaches it.
 func (p patchDoc) apply(doc []byte) ([]byte, error) {
 	if p.isMerge() {
-		return jsonpatch.MergePatch(doc, p.merge)
+		out, err := guarded(func() ([]byte, error) { return jsonpatch.MergePatch(doc, p.merge) })
+		if err != nil {
+			return nil, explainMergeApply(err)
+		}
+		return out, nil
 	}
-	return p.ops.Apply(doc)
+	out, err := p.runOps(doc, len(p.ops))
+	if err != nil {
+		return nil, p.explainApply(doc, err)
+	}
+	return out, nil
 }
 
 // parsePatch checks raw as a patch of type typ and decodes it. Every
@@ -106,7 +116,7 @@ func parseJSONPatch(raw []byte) (patchDoc, error) {
 	// An array of op objects, or null (an empty patch).
 	ops, err := jsonpatch.DecodePatch(raw)
 	if err != nil {
-		return patchDoc{}, invalidPatch(err.Error() + "; expected an RFC 6902 JSON patch array")
+		return patchDoc{}, invalidPatch("the operations could not be read; expected an RFC 6902 JSON patch array")
 	}
 	if err := refuseServerOwnedOps(ops); err != nil {
 		return patchDoc{}, err
@@ -125,8 +135,14 @@ var opNeeds = map[string]string{
 	"test":    "value",
 }
 
-// checkOpFields refuses op i when it lacks a member its op needs or names
-// an op RFC 6902 does not define. Member types are checked already.
+// checkOpFields refuses op i when it lacks a member its op needs, names an
+// op RFC 6902 does not define, has a path (or, for move and copy, a from)
+// that is not a JSON Pointer, or is a move or copy to the empty path. Member
+// types are checked already.
+//
+// A JSON Pointer is empty or starts with a slash. The library accepts any
+// other path and drops its first segment. The operation would then change a
+// different key than the one named.
 func checkOpFields(i int, members map[string]json.RawMessage) error {
 	opRaw, ok := members["op"]
 	if !ok {
@@ -143,6 +159,24 @@ func checkOpFields(i int, members map[string]json.RawMessage) error {
 	}
 	if _, ok := members[need]; need != "" && !ok {
 		return invalidPatch(fmt.Sprintf("patch operation %d (%s) has no %q", i, op, need))
+	}
+	pointers := []string{"path"}
+	if op == "move" || op == "copy" {
+		pointers = append(pointers, "from")
+	}
+	for _, member := range pointers {
+		var pointer string
+		_ = json.Unmarshal(members[member], &pointer)
+		if pointer != "" && !strings.HasPrefix(pointer, "/") {
+			return invalidPatch(fmt.Sprintf("patch operation %d (%s) has the %q %q, which is not a JSON Pointer; it must be empty or start with /", i, op, member, pointer))
+		}
+	}
+	// The library writes a key named "" for a move or copy to the empty
+	// path; the empty path names the whole object.
+	var path string
+	_ = json.Unmarshal(members["path"], &path)
+	if (op == "move" || op == "copy") && path == "" {
+		return invalidPatch(fmt.Sprintf(`patch operation %d (%s) has the "path" "", which this command does not support for move and copy; to replace the whole object use replace with the "path" ""`, i, op))
 	}
 	return nil
 }
@@ -258,13 +292,19 @@ func repeatedKey(raw []byte) (string, bool) {
 	return walk()
 }
 
+// patchedNotObject is the VALIDATION error for a patch that replaces the
+// object with a JSON value of the given class that is not an object.
+func patchedNotObject(class string) *clierr.Error {
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"patched object is not valid: the patch replaces the object with a JSON %s; the object must stay a JSON object", class))
+}
+
 // decodePatched reads the patched document as an object with a kind and a
 // name. No failure quotes the decoder: the missing-kind error carries the
 // whole document, Secret data included.
 func decodePatched(patchedJSON []byte) (*unstructured.Unstructured, error) {
 	if class := jsonClass(patchedJSON); class != "object" {
-		return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"patched object is not valid: the patch replaces the object with a JSON %s; the object must stay a JSON object", class))
+		return nil, patchedNotObject(class)
 	}
 	patched := &unstructured.Unstructured{}
 	if err := patched.UnmarshalJSON(patchedJSON); err != nil {

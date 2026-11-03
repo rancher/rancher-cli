@@ -46,6 +46,11 @@ jsonquery stderr data.error.message 'provide exactly one of --patch or --patch-f
 ! exec rancher patch configmap patch-cm --cluster testcluster --namespace default -o json
 jsonquery stderr data.error.message 'a patch is required: pass --patch or --patch-file'
 
+# an operation that does not apply to the object names itself, the path and what to check
+! exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch '[{"op":"replace","path":"/data/zz","value":"x"}]' -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message 'patch operation 0 (replace) does not apply: the object has no value at "/data/zz" to replace; replace changes only a value that exists'
+
 # --type merge applies an RFC 7386 merge patch; an object without it names the flag
 exec rancher patch configmap patch-cm --cluster testcluster --namespace default --type merge -p '{"data":{"key":"merged"}}' --dry-run -o json
 jsonquery stdout data.diff.0.path /data/key

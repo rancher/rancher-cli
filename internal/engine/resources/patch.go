@@ -122,10 +122,10 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	}
 	patchedJSON, err := patch.apply(origJSON)
 	if err != nil {
-		// Only an op patch fails here: a merge of a checked object into a
-		// fetched object always succeeds.
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			"cannot apply patch: "+err.Error()+"; check the patch operations against the resource")
+		// apply returns a VALIDATION error with a plain reason. A merge of a
+		// checked object into a fetched object does not fail; its fixed
+		// sentence exists for a change of the library.
+		return safety.Effect{}, nil, err
 	}
 	patched, err := decodePatched(patchedJSON)
 	if err != nil {
