@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 
 # Runs every wire-input fuzz target sequentially (Go allows one -fuzz
 # pattern per invocation), each under an external wall-clock watchdog.
 #
-# The Go fuzzer has no per-input hang timeout (go#48157) and the test
-# binary's own -timeout is INERT during the fuzz phase (verified on
-# go1.26.5: a hanging input runs to fuzztime and exits green). Detection is
-# therefore this external watchdog, not -timeout.
+# The test binary's own -timeout is INERT during the fuzz phase (verified
+# on go1.26.5). Go itself stops a fuzz worker that spends 60 seconds on
+# one input and writes that input to testdata/fuzz; an input that
+# hangs a worker fails the run without help. This external watchdog
+# covers what Go does not: a coordinator or go command that stalls, and a
+# run too slow for its deadline.
 #
 # Budget model, four named parts - never one blob:
 #   FUZZTIME (the actual fuzzing) + fuzzminimizetime (explicit, below) +
 #   a fixed startup/shutdown allowance (cold compile, baseline-corpus
 #   replay, worker teardown) = the outer watchdog deadline. A failure found
 #   at the end of the fuzz budget still gets its full minimization and its
-#   testdata write before any kill.
+#   testdata write before any kill. The grace after the deadline (QUITGRACE,
+#   then 5 seconds before the final kill) lies outside the deadline.
 FUZZTIME="${FUZZTIME:-30s}"
 MINIMIZETIME=60  # seconds; passed to go test as -fuzzminimizetime
-ALLOWANCE=120    # seconds; cold compile + baseline replay + teardown
+ALLOWANCE=300    # seconds; cold compile of the first target (the Kubernetes dependency graph) + baseline replay + teardown
+QUITGRACE=10     # seconds between SIGQUIT (stack dump) and SIGTERM
 
 # FUZZTIME grammar is deliberately restricted to <integer>(s|m): Go accepts
 # fuller durations ("1h30s") and an iteration count ("1000x"), but the
@@ -45,11 +50,16 @@ fuzz_seconds() {
 # background job in its OWN process group with PGID == its PID (verified on
 # stock Darwin Bash - no setsid, which Darwin does not ship). If cmd is
 # still running at deadline_seconds, the watchdog negative-PID-kills the
-# whole group (TERM, then KILL after a short grace) and the run is reported
-# as a distinct, timeout-specific failure (exit 124, a
-# "watchdog: ... exceeded ...s" message) - never conflated with an ordinary
-# go test property failure, whose real exit status is preserved. An EXIT
-# trap reaps both the command and the watchdog's own sleep on every path.
+# whole group: QUIT first, then TERM after QUITGRACE seconds, then KILL
+# after 5 more. QUIT makes the Go test binary print every goroutine's
+# stack and exit before the kill; the go command handles QUIT by waiting
+# for the test binary; a fuzz worker prints nothing (its stderr is the
+# null device). The stack shows where the coordinator is, not which input
+# a worker runs. The run is reported as a distinct, timeout-specific
+# failure (exit 124, a "watchdog: ... exceeded ...s" message) - never
+# conflated with an ordinary go test property failure, whose real exit
+# status is preserved. An EXIT trap reaps both the command and the
+# watchdog's own sleep on every path.
 run_with_watchdog() {
   local label="$1" deadline="$2"
   shift 2
@@ -87,6 +97,8 @@ run_with_watchdog() {
     (
       sleep "${deadline}"
       : >"${killed_flag}"
+      kill -QUIT -- "-${cmd_pid}" 2>/dev/null || true
+      sleep "${QUITGRACE}"
       kill -TERM -- "-${cmd_pid}" 2>/dev/null || true
       sleep 5
       kill -KILL -- "-${cmd_pid}" 2>/dev/null || true
@@ -133,14 +145,27 @@ run_fuzz_target() {
 }
 
 # selftest exercises the watchdog mechanism itself with dummy commands,
-# asserting its three distinct outcomes: ordinary success, an ordinary
-# failure (real exit status preserved), and a hanging PROCESS TREE (proving
-# group-kill, not just single-PID kill).
+# asserting its five distinct outcomes: ordinary success, an ordinary
+# failure (real exit status preserved), a hanging PROCESS TREE (proving
+# group-kill, not just single-PID kill), and a hang whose every process
+# prints a stack before the watchdog line, plus a command that ignores
+# SIGQUIT and SIGTERM and so needs SIGKILL. It also asserts that every
+# test command in this file runs under run_with_watchdog. It sets its own
+# short QUITGRACE: the production value and the order of the killed flag
+# against the first signal are not asserted here. It must run in the
+# foreground: a shell that ignores SIGQUIT at start-up (a background job
+# without job control) hides the stack row's handlers; the row first
+# checks that SIGQUIT can be caught. The scan joins line continuations and
+# accepts a test command only in a line that starts with run_with_watchdog.
+# It does not see a test command run through a variable or an alias, or
+# after a `;` on a run_with_watchdog line, and it flags any other line
+# that holds the words (a message or a here-document).
 selftest() {
   # Each case also proves the watchdog timer's whole process GROUP is
   # gone afterward - a bare-PID kill would leave the deadline sleep
   # orphaned to PID 1 while the case itself still reported success.
   WATCHDOG_PID_FILE="$(mktemp)"
+  QUITGRACE=3
 
   assert_watchdog_reaped() {
     local label="$1" wd
@@ -180,8 +205,96 @@ selftest() {
   fi
   assert_watchdog_reaped "hang case" || return 1
 
+  echo "==> selftest: hang prints a stack from every process in the group"
+  sigquit_status=0
+  # shellcheck disable=SC2016 # the dummy command expands its own variable
+  bash -c 'trap "exit 42" QUIT; kill -QUIT $$; exit 0' || sigquit_status=$?
+  if [ "${sigquit_status}" -ne 42 ]; then
+    echo "selftest FAILED: SIGQUIT is ignored in this shell (the selftest was started as a background job without job control); run it in the foreground" >&2
+    return 1
+  fi
+  out="$(mktemp)"
+  status=0
+  # shellcheck disable=SC2016 # the dummy command expands its own variable
+  run_with_watchdog "selftest-quit" 3 bash -c '
+    trap "echo stack-child >&2; exit 3" QUIT
+    bash -c "trap \"echo stack-grandchild >&2; exit 3\" QUIT; sleep 100 & wait"
+  ' 2>"${out}" || status=$?
+  if [ "${status}" -ne 124 ] \
+    || ! grep -qx 'stack-child' "${out}" \
+    || ! grep -qx 'stack-grandchild' "${out}" \
+    || [ "$(tail -n 1 "${out}")" != "watchdog: selftest-quit exceeded 3s" ]; then
+    echo "selftest FAILED: hang case (status ${status}) did not print both stacks before the watchdog line:" >&2
+    cat "${out}" >&2
+    rm -f "${out}"
+    return 1
+  fi
+  rm -f "${out}"
+  assert_watchdog_reaped "stack case" || return 1
+
+  echo "==> selftest: a command that ignores SIGQUIT and SIGTERM is killed"
+  QUITGRACE=1
+  pid_file="$(mktemp)"
+  out="$(mktemp)"
+  status=0
+  # shellcheck disable=SC2016 # the dummy command expands its own variable
+  run_with_watchdog "selftest-kill" 2 bash -c '
+    trap "" QUIT
+    trap "echo term-received >&2" TERM
+    echo $$ >"$1"
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do sleep 1; done
+    echo ended-itself >&2
+  ' _ "${pid_file}" 2>"${out}" || status=$?
+  cmd_group="$(cat "${pid_file}")"
+  killed=0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if ! kill -0 -- "-${cmd_group}" 2>/dev/null; then
+      killed=1
+      break
+    fi
+    sleep 0.2
+  done
+  if [ "${killed}" -eq 0 ]; then
+    kill -KILL -- "-${cmd_group}" 2>/dev/null || true
+  fi
+  if [ "${status}" -ne 124 ] || [ "${killed}" -ne 1 ] \
+    || ! grep -qx 'term-received' "${out}" \
+    || grep -qx 'ended-itself' "${out}"; then
+    echo "selftest FAILED: kill case (status ${status}, group gone ${killed}) did not receive SIGTERM and then die to SIGKILL:" >&2
+    cat "${out}" >&2
+    rm -f "${out}" "${pid_file}"
+    return 1
+  fi
+  rm -f "${out}" "${pid_file}"
+  assert_watchdog_reaped "kill case" || return 1
+
+  echo "==> selftest: every target runs under the watchdog"
+  if ! awk '
+    /^[[:space:]]*#/ { next }
+    {
+      code = $0
+      sub(/[[:space:]]#.*$/, "", code)
+      if (acc == "") start = NR
+      if (code ~ /\\$/) {
+        acc = acc substr(code, 1, length(code) - 1) " "
+        next
+      }
+      logical = acc code
+      acc = ""
+    }
+    logical ~ /(^|[^[:alnum:]_.-])go([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+test([[:space:]]|$)/ &&
+    logical !~ /^[[:space:]]*run_with_watchdog[[:space:]]/ {
+      print "line " start ": " logical
+      bad = 1
+    }
+    END { exit bad }
+  ' "${SELF}"; then
+    echo "selftest FAILED: the lines above run the test command outside run_with_watchdog" >&2
+    return 1
+  fi
+
   rm -f "${WATCHDOG_PID_FILE}"
-  echo "==> selftest: all three outcomes distinct, correct, and reaped"
+  echo "==> selftest: all five outcomes distinct, correct, and reaped"
 }
 
 if [ "${1:-}" = "--selftest" ]; then

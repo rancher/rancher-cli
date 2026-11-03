@@ -14,11 +14,12 @@ permissions:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
-    # Six targets, each with an ~8-minute outer watchdog envelope (5m fuzz +
-    # 1m minimization + 2m allowance) = ~48 minutes, plus checkout/setup/
-    # self-test/script overhead and failure-artifact upload. 60 minutes keeps
-    # a comfortable margin so the job timeout never preempts a per-target
-    # watchdog's distinct hang diagnosis.
+    # Seven targets, each with an 11-minute outer watchdog deadline (5m fuzz +
+    # 1m minimization + 5m allowance). A normal run takes about 40 minutes. A
+    # failing run stops at its first failing target and takes at most about
+    # 45 minutes (the job timeout is 60), with checkout/setup/self-test/
+    # script overhead and failure-artifact upload. The margin keeps the job
+    # timeout from preempting a per-target watchdog's distinct hang diagnosis.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,7 +34,7 @@ jobs:
       # generated corpus, WITHOUT discarding the restored build cache: an
       # isolated GOCACHE was tried and rejected (it forces a cold compile of
       # the Kubernetes-heavy dependency graph every run, blowing the fixed
-      # 120s startup allowance). go clean -fuzzcache removes only the
+      # startup allowance). go clean -fuzzcache removes only the
       # coverage-expanding fuzz entries under the normal GOCACHE.
       - name: Clean generated fuzz corpus
         run: go clean -fuzzcache
