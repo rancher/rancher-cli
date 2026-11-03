@@ -36,6 +36,7 @@ func runTelemetry(t *testing.T, verb string) (stdout, stderr string, code int) {
 func TestTelemetryCommandsRunUnderEnvAndConfigReadOnly(t *testing.T) {
 	restoreRawArgv(t)
 	t.Cleanup(telemetry.SetEnabledForTest())
+	t.Cleanup(telemetry.SetFixedClockForTest())
 	t.Setenv(telemetry.EnvTelemetry, "")
 	for _, source := range []string{"env", "config"} {
 		t.Run(source, func(t *testing.T) {
@@ -74,6 +75,7 @@ func TestTelemetryCommandsRunUnderEnvAndConfigReadOnly(t *testing.T) {
 func TestTelemetryCommandsMakeNoRequest(t *testing.T) {
 	restoreRawArgv(t)
 	t.Cleanup(telemetry.SetEnabledForTest())
+	t.Cleanup(telemetry.SetFixedClockForTest())
 	t.Setenv(telemetry.EnvTelemetry, "")
 	rec := extraArgsEnv(t)
 	for _, verb := range telemetryVerbs {
@@ -89,6 +91,7 @@ func TestTelemetryCommandsMakeNoRequest(t *testing.T) {
 func TestTelemetryEnvelopes(t *testing.T) {
 	restoreRawArgv(t)
 	t.Cleanup(telemetry.SetEnabledForTest())
+	t.Cleanup(telemetry.SetFixedClockForTest())
 	t.Setenv(telemetry.EnvTelemetry, "")
 	extraArgsEnv(t)
 	dir := os.Getenv(config.EnvConfigDir)
@@ -183,6 +186,7 @@ func quote(s string) string {
 func TestTelemetryShowEmptyListEnvelope(t *testing.T) {
 	restoreRawArgv(t)
 	t.Cleanup(telemetry.SetEnabledForTest())
+	t.Cleanup(telemetry.SetFixedClockForTest())
 	t.Setenv(telemetry.EnvTelemetry, "")
 	extraArgsEnv(t)
 	stdout, stderr, code := runTelemetry(t, "show")
@@ -243,6 +247,7 @@ func TestTelemetryOffFailureEnvelopeNamesEachError(t *testing.T) {
 	}
 	restoreRawArgv(t)
 	t.Cleanup(telemetry.SetEnabledForTest())
+	t.Cleanup(telemetry.SetFixedClockForTest())
 	t.Setenv(telemetry.EnvTelemetry, "")
 	extraArgsEnv(t)
 	tel := filepath.Join(os.Getenv(config.EnvConfigDir), "telemetry")

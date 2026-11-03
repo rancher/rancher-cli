@@ -23,13 +23,18 @@ import (
 )
 
 // uploadEnv makes the environment of a run of the built tree that records
-// events: the hermetic environment of experimentEnv, recording turned on, and
-// the state the process keeps reset when the test ends. It returns the config
-// directory. Not for a parallel test.
+// events: the hermetic environment of experimentEnv, recording turned on, the
+// telemetry clock frozen, and the state the process keeps reset when the test
+// ends. The frozen clock keeps the 150 ms read limit of the hourly pass from
+// running out on a slow runner, which would leave an hour the pass meant to
+// remove. A test that needs a due pass moves the marker file's modification
+// time back, which stays real. It returns the config directory. Not for a
+// parallel test.
 func uploadEnv(t *testing.T) (dir string) {
 	t.Helper()
 	experimentEnv(t)
 	t.Cleanup(telemetry.SetEnabledForTest())
+	t.Cleanup(telemetry.SetFixedClockForTest())
 	t.Setenv(telemetry.EnvTelemetry, "")
 	t.Cleanup(telemetry.ResetServerForTest)
 	t.Cleanup(resetRecordingState)

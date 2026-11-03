@@ -132,6 +132,7 @@ func TestPassFileOfThisRunIsSent(t *testing.T) {
 	t.Run("the pass removes an hour older than the age cap", func(t *testing.T) {
 		dir := uploadEnv(t)
 		slots := seedFinished(t, dir, 5*24, 1, 3)
+		hour := filepath.Base(filepath.Dir(slots[0]))
 		old(t, dir)
 		srv := newUploadServer(t, nil)
 		withEndpoint(t, srv.URL)
@@ -140,9 +141,41 @@ func TestPassFileOfThisRunIsSent(t *testing.T) {
 		assert.Empty(t, run.stderr)
 		assert.Zero(t, srv.count())
 		assert.False(t, anyExists(slots))
-		_, err := os.Stat(filepath.Join(dir, "telemetry", "events", hourName(hourStart(5*24))))
+		_, err := os.Stat(filepath.Join(dir, "telemetry", "events", hour))
 		assert.ErrorIs(t, err, os.ErrNotExist, "the pass removed the hour")
 	})
+}
+
+// TestPassRemovesAnOldHourWhenItsWriteOutlastsTheReadLimit asserts that the
+// hourly pass still removes an hour older than the age cap, and the run sends
+// nothing, when writing the compacted file takes twice the pass's read limit
+// in real time: uploadEnv freezes the telemetry clock, so a slow runner cannot
+// end the pass before the removal. The observer sleeps 300 ms on the sync of
+// the compacted file (the read limit is 150 ms; the test states the number
+// because the constant is private), and the test asserts the sleep ran.
+func TestPassRemovesAnOldHourWhenItsWriteOutlastsTheReadLimit(t *testing.T) {
+	dir := uploadEnv(t)
+	slots := seedFinished(t, dir, 5*24, 1, 3)
+	hour := filepath.Base(filepath.Dir(slots[0]))
+	past := time.Now().Add(-48 * time.Hour)
+	require.NoError(t, os.Chtimes(filepath.Join(dir, "telemetry", "pruned"), past, past))
+	srv := newUploadServer(t, nil)
+	withEndpoint(t, srv.URL)
+	slept := 0
+	t.Cleanup(telemetry.SetObserverForTest(func(op string) {
+		if slept == 0 && strings.HasPrefix(op, "sync events/") && strings.HasSuffix(op, ".jsonl") {
+			slept++
+			time.Sleep(300 * time.Millisecond)
+		}
+	}))
+	run := runBuilt(t, "dev", "config", "path")
+	require.Equal(t, 0, run.code, run.stderr)
+	require.Equal(t, 1, slept, "the pass wrote the compacted file and the observer slept on its sync")
+	assert.Empty(t, run.stderr)
+	assert.Zero(t, srv.count())
+	assert.False(t, anyExists(slots))
+	_, err := os.Stat(filepath.Join(dir, "telemetry", "events", hour))
+	assert.ErrorIs(t, err, os.ErrNotExist, "the pass removed the hour")
 }
 
 // TestUploadStaysInTheDeadline asserts that, with the refresh budget and the
