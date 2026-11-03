@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"math/rand/v2"
+	"sync/atomic"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/fsacl"
@@ -88,6 +89,57 @@ func SetObserverForTest(fn func(op string)) (restore func()) {
 	old := observer
 	observer = fn
 	return func() { observer = old }
+}
+
+var distinctSlotsActive, fixedClockActive bool
+
+// SetDistinctSlotsForTest makes every random choice the package makes a
+// counter: the first returns 0, the next 1, and so on, modulo the range. An
+// event write then takes slot 0000 of its hour, the next 0001, and no write
+// meets a taken slot, so the file operations a test compares do not depend on
+// chance. It also makes the random names of drop markers and facts temporary
+// files predictable, and a drop marker name can repeat. Activating it while it
+// is active changes nothing and returns a restore that does nothing, so one
+// activation lasts the whole test however many helpers call it; call the
+// returned restore in cleanup. Only tests call it. The calling test must not
+// use t.Parallel(): the seam is process-wide.
+func SetDistinctSlotsForTest() (restore func()) {
+	if distinctSlotsActive {
+		return func() {}
+	}
+	old := randIntn
+	var next atomic.Int64
+	randIntn = func(n int) int { return int(next.Add(1)-1) % n }
+	distinctSlotsActive = true
+	return func() {
+		randIntn = old
+		distinctSlotsActive = false
+	}
+}
+
+// SetFixedClockForTest makes the package read one time, the current UTC time
+// at activation, for the whole test, so every event hour and every comparison
+// with the current time stays the same however long the test runs. The time is
+// not truncated to the hour. The read limit of the hourly pass never expires
+// and an upload lock written during the test never becomes stale. File
+// modification times stay real while the clock is frozen, so a file created
+// during the test can read as younger than the clock; a test that needs a due
+// hourly pass moves the marker file's modification time back. Activating it
+// while it is active changes nothing and returns a restore that does nothing;
+// call the returned restore in cleanup. Only tests call it. The calling test
+// must not use t.Parallel(): the seam is process-wide.
+func SetFixedClockForTest() (restore func()) {
+	if fixedClockActive {
+		return func() {}
+	}
+	old := nowFunc
+	fixed := time.Now().UTC()
+	nowFunc = func() time.Time { return fixed }
+	fixedClockActive = true
+	return func() {
+		nowFunc = old
+		fixedClockActive = false
+	}
 }
 
 func pause(stage string) {

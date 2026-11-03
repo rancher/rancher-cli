@@ -18,10 +18,10 @@ import (
 
 // recordingEnv makes the environment one recorded run reads: new temporary
 // HOME, USERPROFILE and EDITOR, the file credential store, a config
-// directory that exists, recording turned on, and the server and the
-// command line the process keeps reset when the test ends. It returns the
-// config directory. The test must not call t.Parallel(): the settings it
-// makes are process-wide.
+// directory that exists, recording turned on, event slots chosen in order, a
+// frozen telemetry clock, and the server and the command line the process
+// keeps reset when the test ends. It returns the config directory. The test
+// must not call t.Parallel(): the settings it makes are process-wide.
 func recordingEnv(tb testing.TB) string {
 	tb.Helper()
 	restoreArgv(tb)
@@ -37,6 +37,8 @@ func recordingEnv(tb testing.TB) string {
 	tb.Setenv(config.EnvConfigDir, dir)
 	tb.Chdir(tb.TempDir())
 	tb.Cleanup(telemetry.SetEnabledForTest())
+	tb.Cleanup(telemetry.SetDistinctSlotsForTest())
+	tb.Cleanup(telemetry.SetFixedClockForTest())
 	tb.Cleanup(telemetry.ResetServerForTest)
 	tb.Cleanup(resetRecordingState)
 	return dir
@@ -146,9 +148,14 @@ func countBuilds(tb testing.TB) *int {
 	return n
 }
 
-// observeFiles collects the telemetry file operations until the test ends.
+// observeFiles collects the telemetry file operations until the test ends. It
+// also makes event slots come in order and freezes the clock the telemetry
+// package reads, so the operations of a run do not depend on a random slot
+// meeting a taken one or on a run crossing an hour.
 func observeFiles(tb testing.TB) *[]string {
 	tb.Helper()
+	tb.Cleanup(telemetry.SetDistinctSlotsForTest())
+	tb.Cleanup(telemetry.SetFixedClockForTest())
 	var ops []string
 	tb.Cleanup(telemetry.SetObserverForTest(func(op string) { ops = append(ops, op) }))
 	return &ops

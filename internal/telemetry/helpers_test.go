@@ -183,12 +183,5 @@ func testUUID() string {
 // create when two random choices land on the same slot.
 func useDistinctSlots(t *testing.T) {
 	t.Helper()
-	old := randIntn
-	next := 0
-	randIntn = func(n int) int {
-		v := next % n
-		next++
-		return v
-	}
-	t.Cleanup(func() { randIntn = old })
+	t.Cleanup(SetDistinctSlotsForTest())
 }
