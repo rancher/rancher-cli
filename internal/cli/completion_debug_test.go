@@ -262,10 +262,136 @@ func TestCompletionTraceAndRefusalForAServerURLWithUserinfo(t *testing.T) {
 		completionDebugOut, rawCompleting = &trace, true
 		t.Cleanup(func() { rawCompleting, completionDebugOut = origProto, origOut })
 		t.Setenv(config.EnvCompletionDebug, "1")
-		_, ok := completionServerURL("ftp://hostzq7/pathzq7?q=1")
+		_, ok := completionServerURL("ftp://hostzq7/pathzq7?token=querymarkerzq7")
 		assert.False(t, ok)
 		assert.Contains(t, trace.String(), "scheme unsupported: ftp://hostzq7\n")
 		assert.NotContains(t, trace.String(), "pathzq7")
+		assert.NotContains(t, trace.String(), "querymarkerzq7")
+	})
+}
+
+// TestCompletionTraceShowsServerURLsAsSchemeAndHost asserts that every site of
+// the completion trace that prints a server URL, or an error text that holds
+// one, prints the scheme and host only: each row gives the site a URL with a
+// path word and a query value, and the captured trace holds the expected
+// scheme and host and neither marker. The rows are the list of the sites: a
+// new trace line that prints a server URL, a URL-derived value or an error
+// text that holds a request URL needs a row here. The live completion row
+// asserts on the whole trace of one request, so a site the table does not list
+// is still checked on that path.
+// NOT parallel: it mutates the completion state, the stored config and the
+// environment.
+func TestCompletionTraceShowsServerURLsAsSchemeAndHost(t *testing.T) {
+	const (
+		pathWord   = "pathzq7"
+		queryValue = "querymarkerzq7"
+		leakedHost = "leakzq7"
+	)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedBase := closed.URL
+	closed.Close()
+	marked := func(base string) string { return base + "/" + pathWord + "?token=" + queryValue }
+
+	setup := func(t *testing.T, cfg *config.Config) (dir string, trace *bytes.Buffer) {
+		t.Helper()
+		keyring.MockInit()
+		dir = t.TempDir()
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+		setStoredConfigForTest(t, cfg, dir)
+		t.Setenv(config.EnvConfigDir, dir)
+		t.Setenv(config.EnvToken, "mgmt-token")
+		t.Setenv(config.EnvURL, "")
+		t.Setenv(config.EnvCredentialStore, "file")
+		t.Setenv(config.EnvCompletionDebug, "1")
+		origProto, origOut := rawCompleting, completionDebugOut
+		trace = &bytes.Buffer{}
+		completionDebugOut, rawCompleting = trace, true
+		t.Cleanup(func() { rawCompleting, completionDebugOut = origProto, origOut })
+		return dir, trace
+	}
+	assertNoMarker := func(t *testing.T, trace string) {
+		t.Helper()
+		assert.NotContains(t, trace, pathWord)
+		assert.NotContains(t, trace, queryValue)
+		assert.NotContains(t, trace, leakedHost)
+	}
+	require.Equal(t, srv.URL, config.DisplayServerURL(marked(srv.URL)), "the expected text is the display form")
+
+	t.Run("the connection line of the credential lookup", func(t *testing.T) {
+		_, trace := setup(t, &config.Config{CurrentServer: "srv", Servers: map[string]config.Server{"srv": {URL: srv.URL}}})
+		t.Setenv(config.EnvURL, marked(srv.URL))
+		got := resolveCompletionToken("c-1")
+		assert.Equal(t, "mgmt-token", got.Token)
+		assert.Contains(t, trace.String(), "connection: url="+srv.URL+" ca=false\n")
+		assertNoMarker(t, trace.String())
+	})
+
+	t.Run("the connection line of a URL that does not parse", func(t *testing.T) {
+		_, trace := setup(t, &config.Config{CurrentServer: "srv", Servers: map[string]config.Server{"srv": {URL: srv.URL}}})
+		t.Setenv(config.EnvURL, "https://hostzq7:abc/"+pathWord+"?token="+queryValue+"@"+leakedHost)
+		assert.Equal(t, TokenCapability{}, resolveCompletionToken("c-1"))
+		assert.Contains(t, trace.String(), "connection: url=<unusable URL> ca=false\n")
+		assertNoMarker(t, trace.String())
+	})
+
+	t.Run("two stored servers share the URL and neither is current", func(t *testing.T) {
+		dir, trace := setup(t, &config.Config{
+			CurrentServer: "cur",
+			Servers: map[string]config.Server{
+				"cur": {URL: "https://current.example"},
+				"a":   {URL: srv.URL},
+				"b":   {URL: srv.URL},
+			},
+		})
+		assert.Empty(t, fileStoreTokenSilent(dir, marked(srv.URL)))
+		assert.Contains(t, trace.String(), "have URL "+srv.URL+" and neither is current\n")
+		assertNoMarker(t, trace.String())
+	})
+
+	t.Run("no stored server has the URL", func(t *testing.T) {
+		dir, trace := setup(t, &config.Config{
+			CurrentServer: "cur",
+			Servers: map[string]config.Server{
+				"cur": {URL: "https://current.example"},
+				"a":   {URL: srv.URL},
+			},
+		})
+		assert.Empty(t, fileStoreTokenSilent(dir, marked("http://other.example")))
+		assert.Contains(t, trace.String(), "no stored server has URL http://other.example\n")
+		assertNoMarker(t, trace.String())
+	})
+
+	t.Run("a live request that fails to connect", func(t *testing.T) {
+		cfg := &config.Config{
+			CurrentServer: "srv",
+			Servers:       map[string]config.Server{"srv": {URL: marked(closedBase)}},
+			Completion:    config.CompletionConfig{Network: true},
+		}
+		_, _ = setup(t, cfg)
+		t.Setenv(config.EnvURL, marked(closedBase))
+		stdout, trace := runCompletionTraced(t, []string{"get", "cluster"})
+		assert.Empty(t, stdout)
+		assert.Contains(t, trace, "GET /", "the request was issued")
+		assert.Contains(t, trace, "connection: url="+closedBase+" ca=false\n")
+		assertNoMarker(t, trace)
+	})
+
+	t.Run("a command that needs no credential", func(t *testing.T) {
+		s := newAuthListServer(t, false)
+		storeCompletionConfig(t)
+		t.Setenv(config.EnvCompletionDebug, "1")
+		var trace strings.Builder
+		prev, prevOut := rawCompleting, completionDebugOut
+		rawCompleting, completionDebugOut = true, &trace
+		t.Cleanup(func() { rawCompleting, completionDebugOut = prev, prevOut })
+		d := runtime.Descriptor{Name: "auth login", Flags: []runtime.ArgSpec{{Name: "auth-provider", Type: "string"}}}
+		got := liveCandidates(authCtx(t), authProviderSite(), d, fakeTarget{server: marked(s.srv.URL), ok: true}, []string{"--auth-provider"})
+		assert.Equal(t, authConfigNames, sorted(got))
+		assert.Contains(t, trace.String(), "connection: url="+s.srv.URL+" ca=false, no credential\n")
+		assertNoMarker(t, trace.String())
 	})
 }
 

@@ -658,3 +658,118 @@ func TestCompletionTraceWritesOnlyFilteredText(t *testing.T) {
 	assert.Equal(t, traceTally{declarations: 1, debugfs: 1, writes: 1, filtered: 1}, total,
 		"T5: the scan must find the declaration of %s, %s, its one write and its one filtered Sprintf", traceSink, traceFunction)
 }
+
+// completionTraceURLFindings checks one parsed file of internal/cli: for every
+// call of completionDebugf, an argument after the format that is a bare
+// identifier or a selector whose last name ends in "url", in any case, is a
+// finding, since a server URL passed as it is reaches the trace with its path
+// and query. A call such as config.DisplayServerURL(x) is not a finding. It
+// returns the findings and the number of completionDebugf calls it saw.
+func completionTraceURLFindings(fset *token.FileSet, file *ast.File) (findings []string, calls int) {
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		fn, ok := call.Fun.(*ast.Ident)
+		if !ok || fn.Name != traceFunction {
+			return true
+		}
+		calls++
+		for _, arg := range call.Args[min(1, len(call.Args)):] {
+			var name string
+			switch arg := arg.(type) {
+			case *ast.Ident:
+				name = arg.Name
+			case *ast.SelectorExpr:
+				name = arg.Sel.Name
+			}
+			if strings.HasSuffix(strings.ToLower(name), "url") {
+				findings = append(findings, fset.Position(arg.Pos()).String()+": "+name+" is passed to "+traceFunction+" as it is")
+			}
+		}
+		return true
+	})
+	return findings, calls
+}
+
+// TestCompletionTraceURLDetectorFixtures asserts the detector of
+// TestCompletionTraceNamesNoRawServerURL on source text: a bare name and a
+// selector that end in "URL" are findings, and a call, a name that does not
+// end in it, a format with no argument and another function are not.
+func TestCompletionTraceURLDetectorFixtures(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, call string
+		findings   int
+		calls      int
+	}{
+		{"a variable named effectiveURL", `completionDebugf("no stored server has URL %s", effectiveURL)`, 1, 1},
+		{"a field named ServerURL", `completionDebugf("url=%s", conn.ServerURL)`, 1, 1},
+		{"a lower case name", `completionDebugf("url=%s", serverurl)`, 1, 1},
+		{"a call of the display function", `completionDebugf("url=%s", config.DisplayServerURL(effectiveURL))`, 0, 1},
+		{"a name that does not end in URL", `completionDebugf("connection: url=%s", canonical)`, 0, 1},
+		{"a format with no argument", `completionDebugf("stop: no server URL")`, 0, 1},
+		{"another function", `debugf("url=%s", rawURL)`, 0, 0},
+		{"a call with the URL in the format position", `completionDebugf(rawURL)`, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			src := "package cli\n\nfunc f() {\n\t" + tc.call + "\n}\n"
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, "fixture.go", src, 0)
+			require.NoError(t, err)
+			findings, calls := completionTraceURLFindings(fset, file)
+			assert.Len(t, findings, tc.findings, "%v", findings)
+			assert.Equal(t, tc.calls, calls)
+		})
+	}
+}
+
+// TestCompletionTraceNamesNoRawServerURL asserts that no call of
+// completionDebugf in the Go files that sit directly in internal/cli passes a
+// server URL variable or field as it is: the trace prints a server URL as
+// scheme and host only (config.DisplayServerURL or the canonical form), and a
+// raw URL holds the path and query its user or file wrote. The scan read more
+// than 20 files and more than 30 calls, so it cannot pass on a tree that no
+// longer holds them.
+//
+// Limits:
+//   - it matches names, not types: a URL passed under a name that does not
+//     end in "URL" (server, raw), or inside a larger expression, is not seen;
+//     the last name of the argument is matched, in any case, so serverURLs,
+//     urlText and a method call such as u.String() are not seen;
+//   - a variable whose name ends in "URL" and that holds only scheme and host
+//     (canonicalURL) is a finding too, and the scan has no allowlist: such a
+//     variable gets another name;
+//   - it sees only direct calls of completionDebugf in the files that sit
+//     directly in internal/cli: a wrapper function that calls it, or a file
+//     in another directory, is not seen;
+//   - it does not see an error text that holds a URL, such as the transport
+//     error of a request;
+//   - the values written are covered by the behavior test of internal/cli
+//     (TestCompletionTraceShowsServerURLsAsSchemeAndHost), not by this scan.
+func TestCompletionTraceNamesNoRawServerURL(t *testing.T) {
+	t.Parallel()
+	files, err := repositoryFiles()
+	require.NoError(t, err)
+	scanned, total := 0, 0
+	for _, p := range files {
+		if path.Dir(p) != "internal/cli" || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		scanned++
+		src, err := os.ReadFile(p)
+		require.NoError(t, err)
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, p, src, 0)
+		require.NoError(t, err)
+		findings, calls := completionTraceURLFindings(fset, file)
+		for _, f := range findings {
+			t.Errorf("%s", f)
+		}
+		total += calls
+	}
+	assert.Greater(t, scanned, 20, "the scan read too few files of internal/cli")
+	assert.Greater(t, total, 30, "the scan found too few calls of %s", traceFunction)
+}

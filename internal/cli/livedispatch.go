@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -121,6 +123,13 @@ func tracedConnection(hc *http.Client, cap TokenCapability, limit int) *completi
 	conn.SetClusterLister(listClusters)
 	conn.SetTrace(func(path string, status, size int, elapsed time.Duration, err error) {
 		if err != nil {
+			// A transport error names the whole request URL, which starts with
+			// the server URL; the line already shows the server-relative path.
+			// The cause names a host at most, and a nil cause prints as <nil>,
+			// never as the URL.
+			if ue, ok := errors.AsType[*url.Error](err); ok {
+				err = ue.Err
+			}
 			completionDebugf("GET %s: %v (%s)", path, err, elapsed.Round(time.Millisecond))
 			return
 		}

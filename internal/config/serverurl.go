@@ -239,6 +239,9 @@ func stripURLUserinfo(raw string) string {
 // scheme and a host (userinfo, path, query and fragment dropped), the same
 // form of the text left after the userinfo is removed when it does not parse
 // and that text parses, else "<unusable URL>". An empty URL shows as empty.
+// For a URL that does not parse, the userinfo is looked for only before the
+// first "/", "?" or "#": an "@" in a path or query is not the end of a
+// userinfo, and what follows it is no host.
 func DisplayServerURL(raw string) string {
 	if raw == "" {
 		return ""
@@ -246,7 +249,12 @@ func DisplayServerURL(raw string) string {
 	if shown, ok := schemeAndHost(raw); ok {
 		return shown
 	}
-	if shown, ok := schemeAndHost(stripURLUserinfo(raw)); ok {
+	scheme := urlSchemePrefixRE.FindString(raw)
+	rest := raw[len(scheme):]
+	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+		rest = rest[:i]
+	}
+	if shown, ok := schemeAndHost(stripURLUserinfo(scheme + rest)); ok {
 		return shown
 	}
 	return unusableURLText

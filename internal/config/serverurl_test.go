@@ -43,6 +43,12 @@ func TestDisplayServerURL(t *testing.T) {
 		{"a slash in the password", "https://u:pwzq7/w@hostzq7:abc", "<unusable URL>"},
 		{"an identity of an unusable URL", "unusable:https://hostzq7:abc", "<unusable URL>"},
 		{"a bare host", "hostzq7", "<unusable URL>"},
+		{"an at sign in the query of a bad port", "https://hostzq7:abc?e=pwzq7@other", "<unusable URL>"},
+		{"an at sign in the path of a bad port", "https://hostzq7:abc/p@th", "<unusable URL>"},
+		{"an at sign in the query of a bad escape", "https://hostzq7/a%zz?q=1@leakzq7", "https://hostzq7"},
+		{"an at sign in the path of an IPv6 host with a bad port", "https://[::1]:abc/p@q", "<unusable URL>"},
+		{"an at sign in the fragment after a bad escape", "https://hostzq7/%zz#a@leakzq7", "https://hostzq7"},
+		{"a slash in the user information", "https://u:p/x@hostzq7", "<unusable URL>"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -50,6 +56,7 @@ func TestDisplayServerURL(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 			assert.NotContains(t, got, "@")
 			assert.NotContains(t, got, "pwzq7")
+			assert.NotContains(t, got, "leakzq7")
 		})
 	}
 }

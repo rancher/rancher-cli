@@ -282,14 +282,14 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 		if config.SameServerURL(srv.URL, effectiveURL) {
 			if matchName != "" {
 				// Ambiguous: two stored servers share the same URL - skip.
-				completionDebugf("file store skipped: servers %q and %q both have URL %s and neither is current", matchName, name, effectiveURL)
+				completionDebugf("file store skipped: servers %q and %q both have URL %s and neither is current", matchName, name, config.DisplayServerURL(effectiveURL))
 				return ""
 			}
 			matchName = name
 		}
 	}
 	if matchName == "" {
-		completionDebugf("file store skipped: no stored server has URL %s", effectiveURL)
+		completionDebugf("file store skipped: no stored server has URL %s", config.DisplayServerURL(effectiveURL))
 		return ""
 	}
 	// Silent read: bypass NewFileStore.GetToken (which calls warnLoosePerm).
