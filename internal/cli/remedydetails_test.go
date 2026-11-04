@@ -46,21 +46,21 @@ func nonBareRoot(t *testing.T, cmd runtime.Command) *ucli.Command {
 // run's config directory in the remedy command it holds, in the details lines
 // of the text error, and leaves no marker in the JSON error. A command that
 // reads a directory and fails with a timed-out read carries
-// provider.InspectClusterRemedy in such a message.
+// provider.InspectClusterRemedyFor in such a message.
 func TestPartialFailureDetailsNameTheDirectoryInTheCommandTheyCarry(t *testing.T) {
 	for name, details := range map[string]clierr.TextDetails{
 		"delete project": resources.DeleteProjectPartialFailure{Objects: []safety.Object{
-			{Kind: "namespace", Name: "ns-1", Outcome: safety.OutcomeFailed, Code: clierr.CodeGeneric, Message: "the read timed out (check with: " + provider.InspectClusterRemedy + ")"},
+			{Kind: "namespace", Name: "ns-1", Outcome: safety.OutcomeFailed, Code: clierr.CodeGeneric, Message: "the read timed out (check with: " + provider.InspectClusterRemedyFor("c-m-x") + ")"},
 		}},
 		"revoke": rbac.RevokePartialFailure{
 			Deleted: []string{"b-1"},
-			Failed:  rbac.RevokeFailure{Name: "b-2", Code: clierr.CodeGeneric, Message: "the read timed out (check with: " + provider.InspectClusterRemedy + ")"},
+			Failed:  rbac.RevokeFailure{Name: "b-2", Code: clierr.CodeGeneric, Message: "the read timed out (check with: " + provider.InspectClusterRemedyFor("c-m-x") + ")"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			directoryRuleEnv(t)
 			dir := filepath.Join(t.TempDir(), "cfg")
-			want := "rancher --config " + clierr.ShellQuote(dir) + " inspect cluster <cluster-id>"
+			want := "rancher --config " + clierr.ShellQuote(dir) + " inspect cluster 'c-m-x'"
 
 			_, stderr := runDirectoryLine(t, nonBareRoot(t, detailsFailureCommand{details}), "--config", dir, "details-failure")
 			assert.Contains(t, stderr, want)

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"net/http"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -17,6 +18,7 @@ import (
 // reports its owner as status.userInfo.username, the name Rancher gives
 // the request's user from the token. Failures map as Preflight's do.
 func Owner(ctx context.Context, eff config.Effective) (string, error) {
+	ctx = kube.WithAnswers(ctx)
 	rc, err := localRESTConfig(eff)
 	if err != nil {
 		return "", err
@@ -29,7 +31,9 @@ func Owner(ctx context.Context, eff config.Effective) (string, error) {
 	review := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "authentication.k8s.io/v1", "kind": "SelfSubjectReview"}}
 	created, err := dyn.Resource(gvr).Create(ctx, review, metav1.CreateOptions{FieldManager: kube.FieldManager})
 	if err != nil {
-		return "", clierr.WrapUnlessCanceled(err, mapPreflightErr)
+		return "", clierr.WrapUnlessCanceled(err, func(err error) error {
+			return mapPreflightErr(ctx, http.MethodPost, eff, err)
+		})
 	}
 	username, _, _ := unstructured.NestedString(created.Object, "status", "userInfo", "username")
 	if username == "" {

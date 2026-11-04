@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,7 +43,7 @@ func getToken(ctx context.Context, eff config.Effective, gvr schema.GroupVersion
 	defer cancel()
 	obj, err := dyn.Resource(gvr).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, mapErr(ctx, http.MethodGet, eff, err)
 	}
 	return obj, nil
 }

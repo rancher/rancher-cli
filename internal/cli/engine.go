@@ -216,7 +216,7 @@ func (r *rootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return body, nil
 	}
-	return nil, clierr.FromResponse("GET "+path+" on the Rancher server", http.MethodGet, resp.StatusCode, body, &clierr.Request{})
+	return nil, clierr.FromResponse("GET "+path+" on the Rancher server", http.MethodGet, resp.StatusCode, body, &clierr.Request{Server: config.DisplayServerURL(r.base)})
 }
 
 // ServerInfo resolves the memoized /rancherversion version+edition for this

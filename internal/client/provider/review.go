@@ -67,7 +67,7 @@ func (r *dynamicClient) PostReview(ctx context.Context, req engine.ReviewRequest
 	}
 	out := engine.ReviewResponse{Status: resp.StatusCode, Body: body}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		out.Mapped = clierr.FromResponse("", http.MethodPost, resp.StatusCode, body, &clierr.Request{Cluster: r.clusterID})
+		out.Mapped = clierr.FromResponse("", http.MethodPost, resp.StatusCode, body, &clierr.Request{Cluster: r.clusterID, Server: r.server()})
 		return out, nil
 	}
 	obj := &unstructured.Unstructured{}
@@ -200,22 +200,30 @@ var maxDiscoveryBytes int64 = 16 << 20
 // inventory from a survivor. The caller's own cancellation passes through
 // unmapped.
 func (r *dynamicClient) ServerResources(ctx context.Context) ([]engine.APIResource, error) {
+	ctx = kube.WithAnswers(ctx)
 	if err := ctx.Err(); err != nil {
-		return nil, clierr.WrapUnlessCanceled(err, mapErr)
+		return nil, clierr.WrapUnlessCanceled(err, r.discoveryErr(ctx))
 	}
 	if out, failed, ok := r.aggregatedResources(ctx); ok {
 		return out, engine.ErrDiscoveryIncompleteFor(failed)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, clierr.WrapUnlessCanceled(err, mapErr)
+		return nil, clierr.WrapUnlessCanceled(err, r.discoveryErr(ctx))
 	}
 	lists, failed, err := r.legacyResources(ctx)
 	if err != nil {
-		return nil, clierr.WrapUnlessCanceled(err, func(err error) error {
-			return mapRequestErr(err, &clierr.Request{Cluster: r.clusterID, Endpoint: true})
-		})
+		return nil, clierr.WrapUnlessCanceled(err, r.discoveryErr(ctx))
 	}
 	return engine.ResourcesFromLegacy(lists), engine.ErrDiscoveryIncompleteFor(failed)
+}
+
+// discoveryErr maps the error of a discovery request of the call ctx
+// belongs to. The walk has no bound of its own, only its caller's, so a
+// deadline error names no time.
+func (r *dynamicClient) discoveryErr(ctx context.Context) func(error) error {
+	return func(err error) error {
+		return mapRequestErrWithin(ctx, http.MethodGet, 0, err, &clierr.Request{Cluster: r.clusterID, Endpoint: true, Server: r.server()})
+	}
 }
 
 // legacyWorkers bounds the group version documents read at once on the
@@ -267,7 +275,9 @@ func (r *dynamicClient) legacyResources(ctx context.Context) ([]*metav1.APIResou
 				path = "/api/" + gv.Version
 			}
 			var list metav1.APIResourceList
-			if _, err := r.getDiscoveryJSON(ctx, path, &list); err != nil {
+			// These requests run at the same time: each records its own
+			// answer, and none stands for another that ran out of time.
+			if _, err := r.getDiscoveryJSON(kube.WithNewAnswers(ctx), path, &list); err != nil {
 				errs[i] = err
 				return
 			}

@@ -50,8 +50,8 @@ func TestMappersPassATLSTrustErrorThrough(t *testing.T) {
 	trust := clierr.New(clierr.CodeTLSTrust, "untrusted")
 	wrapped := &url.Error{Op: "Get", URL: "https://rancher.example/version", Err: trust}
 
-	assert.Same(t, trust, mapPreflightErr(wrapped))
-	assert.Same(t, trust, mapRequestErr(wrapped, &clierr.Request{Cluster: "c-1"}))
+	assert.Same(t, trust, mapPreflightErr(t.Context(), http.MethodGet, config.Effective{}, wrapped))
+	assert.Same(t, trust, mapRequestErr(t.Context(), http.MethodGet, wrapped, &clierr.Request{Cluster: "c-1"}))
 }
 
 // TestLocalProbesClassifyACertificateFailure asserts the requests auth

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -55,12 +56,14 @@ func TestVersionDiagnosticsEndWithTheirCommand(t *testing.T) {
 }
 
 // TestADeadlineMessageEndsWithTheCommandThatInspectsTheCluster asserts the
-// message of a hung request names the likely cause first and ends with the
-// command that inspects the cluster.
+// message of a hung request through a downstream cluster names the likely
+// cause first and ends with the command that inspects that cluster, with
+// the cluster's id and no placeholder.
 func TestADeadlineMessageEndsWithTheCommandThatInspectsTheCluster(t *testing.T) {
 	t.Parallel()
 	err := &url.Error{Op: "Get", URL: "https://rancher.example/k8s/clusters/c-m-x/api/v1/nodes", Err: context.DeadlineExceeded}
-	ce, ok := errors.AsType[*clierr.Error](mapErr(err))
+	ce, ok := errors.AsType[*clierr.Error](mapRequestErr(t.Context(), http.MethodGet, err, &clierr.Request{Cluster: "c-m-x"}))
 	require.True(t, ok)
-	assert.True(t, strings.HasSuffix(ce.Message, "its agent may be disconnected; check the cluster with: "+clierr.Rancher+" inspect cluster <cluster-id>"), ce.Message)
+	assert.True(t, strings.HasSuffix(ce.Message, "its agent may be disconnected; check the cluster with: "+clierr.Rancher+" inspect cluster 'c-m-x'"), ce.Message)
+	assert.Equal(t, clierr.Rancher+" inspect cluster 'c-m-x'", InspectClusterRemedyFor("c-m-x"))
 }

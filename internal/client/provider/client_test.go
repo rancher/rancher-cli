@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -574,11 +575,11 @@ func TestLogsServerErrorRetryabilityFollowsTheBody(t *testing.T) {
 }
 
 // TestTypedServerErrorShowsTheServersMessage asserts a 500 that is no
-// Status, read through client-go, shows the server's own message the way
-// an answer read without client-go does: the message of the cluster
-// router's norman object and of steve's error object, both written as
-// text/plain, never the raw JSON; the first line of other text; and the
-// status text for a body client-go does not keep.
+// Status, read through client-go, shows the server's own message after the
+// server and the status, the way an answer read without client-go does: the
+// message of the cluster router's norman object and of steve's error object,
+// both written as text/plain, never the raw JSON; the first line of other
+// text; and nothing for a body client-go does not keep.
 func TestTypedServerErrorShowsTheServersMessage(t *testing.T) {
 	t.Parallel()
 	norman := `{"Code":{"Code":"ServerError","Status":500},"Message":"failed to find cluster agent","Cause":null,"FieldName":""}`
@@ -589,10 +590,10 @@ func TestTypedServerErrorShowsTheServersMessage(t *testing.T) {
 		body        string
 		want        string
 	}{
-		{"router object as text/plain", "text/plain; charset=utf-8", norman, `("failed to find cluster agent")`},
-		{"steve object as text/plain", "text/plain", steve, `("boom")`},
-		{"steve object as application/json", "application/json", steve, `("Internal Server Error")`},
-		{"several lines of text", "text/plain", "upstream connect error\nreset before headers\n", `("upstream connect error")`},
+		{"router object as text/plain", "text/plain; charset=utf-8", norman, `: failed to find cluster agent - retry later`},
+		{"steve object as text/plain", "text/plain", steve, `: boom - retry later`},
+		{"steve object as application/json", "application/json", steve, ` - retry later`},
+		{"several lines of text", "text/plain", "upstream connect error\nreset before headers\n", `: upstream connect error - retry later`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -612,7 +613,8 @@ func TestTypedServerErrorShowsTheServersMessage(t *testing.T) {
 			assert.True(t, ce.Retryable)
 			require.ErrorContains(t, err, tc.want)
 			assert.NotContains(t, ce.Message, `{"`)
-			assert.Contains(t, ce.Message, ") has prevented the request from succeeding - retrying may succeed")
+			assert.Contains(t, ce.Message, " answered HTTP 500 Internal Server Error")
+			assert.True(t, strings.HasPrefix(ce.Message, config.DisplayServerURL(srv.URL)+" answered HTTP 500"), ce.Message)
 		})
 	}
 }

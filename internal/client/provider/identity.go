@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/selfuser"
@@ -29,7 +30,7 @@ func Identity(ctx context.Context, eff config.Effective) (string, error) {
 	defer cancel()
 	created, err := dyn.Resource(selfuser.GVR).Create(ctx, selfuser.New(), metav1.CreateOptions{FieldManager: kube.FieldManager})
 	if err != nil {
-		return "", mapErr(err)
+		return "", mapErr(ctx, http.MethodPost, eff, err)
 	}
 	return selfuser.UserID(created), nil
 }

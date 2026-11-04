@@ -56,6 +56,7 @@ var statusAllowlist = map[string]string{
 	"internal/runtime/completion/projects.go:GetBody":        "completion is best effort; its errors never reach the pipeline",
 	"internal/runtime/completion/projects.go:StatusError":    "completion is a leaf of the standard library and cannot import clierr",
 	"internal/client/provider/review.go:aggregatedResources": "a non-200 only selects the legacy walk",
+	"internal/client/kube/answered.go:RoundTrip":             "the status selects a Retry-After rewrite and a per-call record, never an error",
 	"internal/engine/access/fanout.go:fanOutFailure":         "records a review's status beside the classified error it carries",
 	"internal/engine/access/review.go:postReview":            "decides on ReviewResponse.Status, the typed status beside the classified Mapped error",
 	"internal/token/directwait.go:probeDirect":               "the status selects a readiness probe outcome, never an error",

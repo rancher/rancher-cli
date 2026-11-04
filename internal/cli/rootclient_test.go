@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -145,11 +146,11 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 		{"422", http.StatusUnprocessableEntity, "text/plain", "bad",
 			clierr.CodeValidation, "", "", false},
 		{"429", http.StatusTooManyRequests, "text/plain", "slow down",
-			clierr.CodeGeneric, " - retry later", "", true},
+			clierr.CodeGeneric, "GET /x on the Rancher server: {S} answered HTTP 429 Too Many Requests: slow down - retry later", "", true},
 		{"503 no body", http.StatusServiceUnavailable, "", "",
-			clierr.CodeGeneric, "GET /x on the Rancher server: the server is currently unable to handle the request - retrying may succeed", "", true},
+			clierr.CodeGeneric, "GET /x on the Rancher server: {S} answered HTTP 503 Service Unavailable - retry later", "", true},
 		{"500 steve object", http.StatusInternalServerError, object, `{"type":"error","links":{},"code":"ServerError","message":"etcdserver: request timed out","status":500}`,
-			clierr.CodeGeneric, `GET /x on the Rancher server: an error on the server ("etcdserver: request timed out") has prevented the request from succeeding - retrying may succeed`, "", true},
+			clierr.CodeGeneric, "GET /x on the Rancher server: {S} answered HTTP 500 Internal Server Error: etcdserver: request timed out - retry later", "", true},
 	}
 	var row int
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -170,17 +171,43 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok, r.name)
 		assert.Equal(t, r.code, ce.Code, r.name)
-		if strings.HasPrefix(r.message, " - ") {
-			assert.True(t, strings.HasPrefix(ce.Message, "GET /x on the Rancher server: "), r.name)
-			assert.True(t, strings.HasSuffix(ce.Message, r.message), "%s: %q", r.name, ce.Message)
-		} else if r.message != "" {
-			assert.Equal(t, r.message, ce.Message, r.name)
+		if r.message != "" {
+			assert.Equal(t, strings.ReplaceAll(r.message, "{S}", config.DisplayServerURL(srv.URL)), ce.Message, r.name)
 		}
 		assert.Equal(t, r.hint, ce.Hint, r.name)
 		assert.Equal(t, r.retryable, ce.Retryable, r.name)
 		st, ok := clierr.HTTPStatus(err)
 		require.True(t, ok, r.name)
 		assert.Equal(t, r.status, st, r.name)
+	}
+}
+
+// TestRootClientFailsAtOnceOnAnUnavailableServer asserts a server that
+// answers a 5xx or a 429, with a Retry-After header of 1 or 120 seconds or
+// with none, gets one request from the root client, which answers at once
+// with a retryable GENERIC error that starts with the server and the status
+// and holds the status for clierr.HTTPStatus.
+func TestRootClientFailsAtOnceOnAnUnavailableServer(t *testing.T) {
+	for _, status := range append([]int{429}, testtransport.UnavailableStatuses...) {
+		for _, retryAfter := range []string{"", "1", "120"} {
+			t.Run(strconv.Itoa(status)+" Retry-After "+retryAfter, func(t *testing.T) {
+				answers := testtransport.NewAnswers(t, true, status, retryAfter, "application/json", `{"type":"https://developers.cloudflare.com/error-1033/","title":"Error 1033","status":530}`)
+				rc, err := seedRootConfig(t, answers.Server()).Root()
+				require.NoError(t, err)
+				start := time.Now()
+				_, err = rc.GetJSON(t.Context(), "/x")
+				assert.Less(t, time.Since(start), 5*time.Second)
+				assert.Equal(t, 1, answers.Count())
+				ce, ok := errors.AsType[*clierr.Error](err)
+				require.True(t, ok, "%v", err)
+				assert.Equal(t, clierr.CodeGeneric, ce.Code)
+				assert.True(t, ce.Retryable)
+				assert.True(t, strings.HasPrefix(ce.Message, "GET /x on the Rancher server: "+config.DisplayServerURL(answers.URL())+" answered HTTP "+strconv.Itoa(status)), ce.Message)
+				got, ok := clierr.HTTPStatus(err)
+				assert.True(t, ok)
+				assert.Equal(t, status, got)
+			})
+		}
 	}
 }
 

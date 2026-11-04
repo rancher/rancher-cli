@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -19,6 +20,9 @@ var AuthStatusRemedy = Rancher + " auth status"
 // Request names the call a server status answers. A nil *Request means
 // nothing is known about the call: the texts for a refusal with no reason
 // name no request, and no remedy is attached.
+//
+// A request with a Server words a 429 and a 5xx status-first, as
+// "<Server> answered HTTP <code> ..."; one without keeps the older wording.
 type Request struct {
 	// Verb, Group, Resource and Name name the object the call reads or
 	// writes; an empty Verb names none.
@@ -41,6 +45,10 @@ type Request struct {
 	// NoCredential marks a call that sends no credential, so a 401 does not
 	// name one and carries no remedy.
 	NoCredential bool
+	// Server is the server the call went to, in the form output may show
+	// it (config.DisplayServerURL: scheme and host, no userinfo or path).
+	// The caller sets it: this package cannot import config.
+	Server string
 }
 
 // what is "<verb> <resource>.<group>", the group left out for the core
@@ -272,6 +280,9 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 	}
 	noReason := wrapped && (reason == "" || reason == unknownMessage)
 	code := int(se.ErrStatus.Code)
+	// The status-first wording needs a server and a text that ends with the
+	// status's own, so the caller's prefix is known.
+	named := wrapped && req != nil && req.Server != ""
 	if noReason {
 		// A status with no reason reads its status text in every arm that
 		// shows the message; the 401 and 403 arms word their own.
@@ -313,8 +324,14 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 	case apierrors.IsInvalid(se), apierrors.IsBadRequest(se):
 		return New(CodeValidation, msg)
 	case apierrors.IsTooManyRequests(se):
+		if named {
+			return Retryable(CodeGeneric, answeredMessage(prefix, req, code, serverDetail(se, reason, noReason), false))
+		}
 		return Retryable(CodeGeneric, msg+" - retry later")
 	case apierrors.IsServiceUnavailable(se), se.ErrStatus.Code == http.StatusBadGateway, se.ErrStatus.Code == http.StatusGatewayTimeout:
+		if named {
+			return Retryable(CodeGeneric, answeredMessage(prefix, req, code, serverDetail(se, reason, noReason), false))
+		}
 		if wrapped && unexpectedServerResponse(se) {
 			// apimachinery quotes a 502's body into its text.
 			msg = prefix + unexpectedResponseText(se)
@@ -324,6 +341,9 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 		}
 		return Retryable(CodeGeneric, msg+" - retrying may succeed")
 	case unexpectedServerResponse(se):
+		if named {
+			return Retryable(CodeGeneric, answeredMessage(prefix, req, code, serverDetail(se, reason, noReason), true))
+		}
 		if wrapped {
 			msg = prefix + unexpectedResponseText(se)
 		}
@@ -335,9 +355,116 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 			return Retryable(CodeGeneric, msg+" - often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed")
 		}
 		return Retryable(CodeGeneric, msg+" - retrying may succeed")
+	case named && isCloudflareCode(code):
+		// A Status body that carries a proxy's own code.
+		return Retryable(CodeGeneric, answeredMessage(prefix, req, code, serverDetail(se, reason, noReason), false))
 	default:
 		return New(CodeGeneric, msg)
 	}
+}
+
+// isCloudflareCode reports the codes only a CDN in front of Rancher sends:
+// 520 to 527 and 530. 528 and 529 are not among them.
+func isCloudflareCode(code int) bool {
+	return (code >= 520 && code <= 527) || code == 530
+}
+
+// AnsweredLead is the start of a message about a status the server answered:
+// "<server> answered HTTP <code>" and the standard status text when there
+// is one. It reads "the server" when req is nil or names no server.
+func AnsweredLead(req *Request, status int) string {
+	who := "the server"
+	if req != nil && req.Server != "" {
+		who = req.Server
+	}
+	lead := who + " answered HTTP " + strconv.Itoa(status)
+	if text := http.StatusText(status); text != "" {
+		lead += " " + text
+	}
+	return lead
+}
+
+// answeredMessage words a 429 or a 5xx for a request that names its server:
+// the lead of AnsweredLead, then the server's own message (detail) and what
+// the status proves, then what to do. prefix is the text the caller put in
+// front of the error. unexpected marks an answer whose body was not a
+// Kubernetes Status, the one kind whose message can say the cluster agent
+// is disconnected.
+func answeredMessage(prefix string, req *Request, code int, detail string, unexpected bool) string {
+	var parts []string
+	if detail != "" {
+		parts = append(parts, detail)
+	}
+	advice := "retry later"
+	switch {
+	case isCloudflareCode(code) && throughCluster(req):
+		parts = append(parts, "cluster "+ShellQuote(req.Cluster)+" could not be reached")
+	case isCloudflareCode(code):
+		parts = append(parts, "a proxy or load balancer in front of Rancher could not reach Rancher")
+	case (code == http.StatusBadGateway || code == http.StatusGatewayTimeout) && throughCluster(req):
+		parts = append(parts, "cluster "+ShellQuote(req.Cluster)+" could not be reached")
+		advice = "its agent may not be registered yet; retry once the cluster is active"
+	case unexpected && strings.Contains(detail, "cluster agent disconnected"):
+		advice = "retry once the cluster reconnects"
+	}
+	lead := AnsweredLead(req, code)
+	if len(parts) > 0 {
+		lead += ": " + strings.Join(parts, "; ")
+	}
+	return prefix + lead + " - " + advice
+}
+
+// serverDetail is the text the server itself gave for an error, "" when it
+// gave none. A Kubernetes Status body gives its message (reason). Any other
+// body gives the text of the unexpected-server-response cause, read as
+// unexpectedResponseText reads it. Text that only repeats the status, or
+// apimachinery's own words for it, is no detail.
+func serverDetail(se *apierrors.StatusError, reason string, noReason bool) string {
+	code := int(se.ErrStatus.Code)
+	text := ""
+	if cause, taken, ok := unexpectedCause(se); ok {
+		switch {
+		case cause == unknownMessage:
+		case taken:
+			text = cause
+		default:
+			text = serverMessage([]byte(cause))
+		}
+	} else if !noReason {
+		text = bounded(reason)
+	}
+	if text == statusText(code) || sameWords(text, code) {
+		return ""
+	}
+	return text
+}
+
+// sameWords reports text as apimachinery's own message for code, with the
+// " (<verb> <resource> <name>)" suffix a typed request adds cut off.
+func sameWords(text string, code int) bool {
+	if i := strings.LastIndex(text, " ("); i > 0 && strings.HasSuffix(text, ")") {
+		text = text[:i]
+	}
+	own := apierrors.NewGenericServerResponse(code, "", schema.GroupResource{}, "", "", 0, false)
+	return text == own.ErrStatus.Message
+}
+
+// unexpectedCause is the server's text recorded in an unexpected server
+// response, and whether it was already taken from the body as the CLI shows
+// it; ok is false for an error that is not one.
+func unexpectedCause(se *apierrors.StatusError) (cause string, taken, ok bool) {
+	if se.ErrStatus.Details == nil {
+		return "", false, false
+	}
+	for _, c := range se.ErrStatus.Details.Causes {
+		switch c.Type {
+		case metav1.CauseTypeUnexpectedServerResponse:
+			cause, ok = c.Message, true
+		case causeServerMessageTaken:
+			taken = true
+		}
+	}
+	return cause, taken, ok
 }
 
 // throughCluster reports a call through a cluster other than the local one,

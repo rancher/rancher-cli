@@ -113,7 +113,7 @@ func TestMapPreflightErr(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var ce *clierr.Error
-			require.ErrorAs(t, mapPreflightErr(tt.err), &ce)
+			require.ErrorAs(t, mapPreflightErr(t.Context(), http.MethodGet, config.Effective{}, tt.err), &ce)
 			assert.Equal(t, tt.wantCode, ce.Code)
 			assert.Equal(t, tt.wantRetryable, ce.Retryable)
 		})

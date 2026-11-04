@@ -199,7 +199,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	texts["a server entry's removal"] = config.DeleteServerCommand + clierr.ShellQuoteArgs("", "prod")
 	texts["token reuse off"] = config.TokenReuseOffCommand
 	texts["the status report"] = config.StatusCommand
-	texts["a timed-out read"] = provider.InspectClusterRemedy
+	texts["a timed-out read"] = provider.InspectClusterRemedyFor("c-1")
 	texts["a refused request"] = clierr.AuthStatusRemedy
 	texts["a missing --cluster"] = engine.ClusterRequiredHint
 	for _, kind := range []string{"cluster", "pod"} {

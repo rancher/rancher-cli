@@ -40,8 +40,11 @@ func SetRequestTimeoutForTest(d time.Duration) (restore func()) {
 	return func() { requestTimeout = old }
 }
 
+// opCtx bounds one operation and makes sure its context records what the
+// server answers (kube.WithAnswers); a context that records already keeps
+// its record, so a call inside another shares it.
 func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(ctx, requestTimeout)
+	return context.WithTimeout(kube.WithAnswers(ctx), requestTimeout)
 }
 
 // bootstrapLocalDynamic builds a dynamic client bound to the LOCAL cluster's
@@ -157,7 +160,8 @@ func (r *dynamicClient) resolveVersion(ctx context.Context, gvr schema.GroupVers
 	groups, err := r.groups(ctx)
 	if err != nil {
 		return gvr, clierr.WrapUnlessCanceled(err, func(err error) error {
-			return mapRequestErr(fmt.Errorf("discovering version for group %q: %w", gvr.Group, err), &clierr.Request{Cluster: r.clusterID, Endpoint: true})
+			return mapRequestErr(ctx, http.MethodGet, fmt.Errorf("discovering version for group %q: %w", gvr.Group, err),
+				&clierr.Request{Cluster: r.clusterID, Endpoint: true, Server: r.server()})
 		})
 	}
 	for _, g := range groups.Groups {
@@ -208,9 +212,12 @@ func (r *dynamicClient) curateNotFound(gvr schema.GroupVersionResource, name str
 	return err
 }
 
+// server is the server this client talks to, as output may show it.
+func (r *dynamicClient) server() string { return config.DisplayServerURL(r.host) }
+
 // request describes one call of this client for the error mapping.
 func (r *dynamicClient) request(verb string, gvr schema.GroupVersionResource, ns, name string) *clierr.Request {
-	return &clierr.Request{Verb: verb, Group: gvr.Group, Resource: gvr.Resource, Name: name, Cluster: r.clusterID}
+	return &clierr.Request{Verb: verb, Group: gvr.Group, Resource: gvr.Resource, Name: name, Cluster: r.clusterID, Server: r.server()}
 }
 
 // forbiddenHint adds the caller-scoped command kinds.ForbiddenHint names
@@ -229,6 +236,7 @@ func (r *dynamicClient) forbiddenHint(gvr schema.GroupVersionResource, verb, ns,
 }
 
 func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return nil, err
@@ -236,10 +244,11 @@ func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
 	out, err := r.ri(gvr, ns).Get(ctx, name, metav1.GetOptions{})
-	return out, r.forbiddenHint(gvr, "get", ns, name, r.curateNotFound(gvr, name, mapRequestErr(err, r.request("get", gvr, ns, name))))
+	return out, r.forbiddenHint(gvr, "get", ns, name, r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodGet, err, r.request("get", gvr, ns, name))))
 }
 
 func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
+	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return nil, err
@@ -247,7 +256,7 @@ func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResourc
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
 	out, err := r.ri(gvr, ns).List(ctx, metav1.ListOptions{LabelSelector: selector})
-	return out, r.forbiddenHint(gvr, "list", ns, "", mapRequestErr(err, r.request("list", gvr, ns, "")))
+	return out, r.forbiddenHint(gvr, "list", ns, "", mapRequestErr(ctx, http.MethodGet, err, r.request("list", gvr, ns, "")))
 }
 
 // Logs fetches a container's log via the typed clientset (pod logs have no
@@ -264,12 +273,14 @@ func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.Lo
 	})
 	b, err := req.DoRaw(ctx)
 	if err != nil {
-		return "", mapRequestErr(restoreStatus(err, b), &clierr.Request{Verb: "get", Resource: "pods/log", Name: pod, Cluster: r.clusterID})
+		return "", mapRequestErr(ctx, http.MethodGet, restoreStatus(err, b),
+			&clierr.Request{Verb: "get", Resource: "pods/log", Name: pod, Cluster: r.clusterID, Server: r.server()})
 	}
 	return string(b), nil
 }
 
 func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return nil, err
@@ -281,10 +292,11 @@ func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResou
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
 	out, err := r.ri(gvr, ns).Create(ctx, obj, opts)
-	return out, mapRequestErr(err, r.request("create", gvr, ns, obj.GetName()))
+	return out, mapRequestErr(ctx, http.MethodPost, err, r.request("create", gvr, ns, obj.GetName()))
 }
 
 func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return nil, err
@@ -297,10 +309,11 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 	}
 	out, err := r.ri(gvr, ns).Update(ctx, obj, opts)
 	return out, r.forbiddenHint(gvr, "update", ns, obj.GetName(),
-		r.curateNotFound(gvr, obj.GetName(), mapRequestErr(err, r.request("update", gvr, ns, obj.GetName()))))
+		r.curateNotFound(gvr, obj.GetName(), mapRequestErr(ctx, http.MethodPut, err, r.request("update", gvr, ns, obj.GetName()))))
 }
 
 func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
+	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return err
@@ -314,5 +327,5 @@ func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResou
 	if resourceVersion != "" {
 		opts.Preconditions = &metav1.Preconditions{ResourceVersion: &resourceVersion}
 	}
-	return r.curateNotFound(gvr, name, mapRequestErr(r.ri(gvr, ns).Delete(ctx, name, opts), r.request("delete", gvr, ns, name)))
+	return r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodDelete, r.ri(gvr, ns).Delete(ctx, name, opts), r.request("delete", gvr, ns, name)))
 }

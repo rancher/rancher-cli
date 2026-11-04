@@ -472,3 +472,235 @@ func TestTypedNoReasonStatusReadsAReason(t *testing.T) {
 		})
 	}
 }
+
+// answeredCodes are the statuses the status-first wording is asserted over,
+// with the standard text and what each says about a request that goes to
+// Rancher itself and one that goes through the cluster 'c-m-x'. The strings
+// are written out here, never built from the code under test.
+var answeredCodes = []struct {
+	code    int
+	text    string
+	rancher string
+	cluster string
+}{
+	{429, "Too Many Requests", "", ""},
+	{500, "Internal Server Error", "", ""},
+	{501, "Not Implemented", "", ""},
+	{502, "Bad Gateway", "", ": cluster 'c-m-x' could not be reached"},
+	{503, "Service Unavailable", "", ""},
+	{504, "Gateway Timeout", "", ": cluster 'c-m-x' could not be reached"},
+	{505, "HTTP Version Not Supported", "", ""},
+	{520, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+	{521, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+	{522, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+	{523, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+	{524, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+	{525, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+	{526, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+	{527, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+	{528, "", "", ""},
+	{529, "", "", ""},
+	{530, "", ": a proxy or load balancer in front of Rancher could not reach Rancher", ": cluster 'c-m-x' could not be reached"},
+}
+
+const answeredServer = "https://rancher.example.com"
+
+// answeredWant is the message for a status: the lead, what the status
+// proves (middle, written with its leading colon), and the advice.
+func answeredWant(prefix string, code int, text, middle, advice string) string {
+	lead := answeredServer + " answered HTTP " + fmt.Sprint(code)
+	if text != "" {
+		lead += " " + text
+	}
+	return prefix + lead + middle + " - " + advice
+}
+
+// TestAnsweredStatusNamesTheServerAndTheStatus asserts a 429 or a 5xx for a
+// request that names its server starts with the server and the HTTP status,
+// for each code, through Rancher itself, with no cluster named, and through
+// the cluster c-m-x, and for each shape of the error: client-go's answer
+// for a body it did not keep, the answer read without client-go, and a
+// text body that repeats the status. Every one is GENERIC and retryable; a
+// gateway code through a cluster never says Rancher could not be reached;
+// 503 and 429 never carry the Rancher sentence.
+func TestAnsweredStatusNamesTheServerAndTheStatus(t *testing.T) {
+	t.Parallel()
+	shapes := map[string]func(code int, text string) error{
+		"client-go unknown": func(code int, _ string) error {
+			return apierrors.NewGenericServerResponse(code, http.MethodGet, schema.GroupResource{}, "", unknownMessage, 0, true)
+		},
+		"read without client-go": func(code int, _ string) error { return ResponseError(http.MethodGet, code, nil) },
+		"a text body that repeats the status": func(code int, text string) error {
+			return apierrors.NewGenericServerResponse(code, http.MethodGet, schema.GroupResource{}, "", statusText(code), 0, true)
+		},
+	}
+	for _, row := range answeredCodes {
+		for shape, build := range shapes {
+			for _, cluster := range []string{"local", "", "c-m-x"} {
+				t.Run(fmt.Sprintf("%d %s %s", row.code, shape, cluster), func(t *testing.T) {
+					t.Parallel()
+					middle := row.rancher
+					if cluster == "c-m-x" {
+						middle = row.cluster
+					}
+					advice := "retry later"
+					if cluster == "c-m-x" && (row.code == 502 || row.code == 504) {
+						advice = "its agent may not be registered yet; retry once the cluster is active"
+					}
+					want := answeredWant("", row.code, row.text, middle, advice)
+					ce := FromStatus(build(row.code, row.text), &Request{Server: answeredServer, Cluster: cluster})
+					require.NotNil(t, ce)
+					assert.Equal(t, CodeGeneric, ce.Code)
+					assert.True(t, ce.Retryable)
+					assert.Equal(t, want, ce.Message)
+					status, ok := HTTPStatus(ce)
+					assert.True(t, ok)
+					assert.Equal(t, row.code, status)
+					if cluster == "c-m-x" {
+						assert.NotContains(t, ce.Message, "could not reach Rancher")
+					}
+					if row.code == 429 || row.code == 503 {
+						assert.NotContains(t, ce.Message, "in front of Rancher")
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestAnsweredStatusKeepsTheServersMessage asserts the server's own message
+// follows the status as it was received, bounded, before the sentence about
+// what the status proves, for a Kubernetes Status, a text body, Rancher's
+// error object and a body read without client-go; that a caller's prefix
+// stays in front; that a message about the cluster agent disconnecting
+// changes the advice of an unexpected response only; and that a Status
+// body with a proxy's code is retryable when the request names its server.
+func TestAnsweredStatusKeepsTheServersMessage(t *testing.T) {
+	t.Parallel()
+	statusJSON := func(code int, reason, message string) []byte {
+		return []byte(fmt.Sprintf(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":%q,"reason":%q,"code":%d}`, message, reason, code))
+	}
+	typed := func(code int, body string) error {
+		return apierrors.NewGenericServerResponse(code, http.MethodGet, schema.GroupResource{}, "", body, 0, true)
+	}
+	const prefix = "GET /x on the Rancher server: "
+	rancherSentence := "a proxy or load balancer in front of Rancher could not reach Rancher"
+	for _, tc := range []struct {
+		name      string
+		err       error
+		cluster   string
+		message   string
+		retryable bool
+		code      string
+	}{
+		{"a Status 503", wrapped("p", ResponseError(http.MethodGet, 503, statusJSON(503, "ServiceUnavailable", "etcdserver: request timed out"))), "local",
+			"p: " + answeredServer + " answered HTTP 503 Service Unavailable: etcdserver: request timed out - retry later", true, CodeGeneric},
+		{"a text 500", typed(500, "etcdserver: request timed out"), "local",
+			answeredServer + " answered HTTP 500 Internal Server Error: etcdserver: request timed out - retry later", true, CodeGeneric},
+		{"a text 503", typed(503, "service unavailable: upstream"), "local",
+			answeredServer + " answered HTTP 503 Service Unavailable: service unavailable: upstream - retry later", true, CodeGeneric},
+		{"a text 429", typed(429, "slow down"), "local",
+			answeredServer + " answered HTTP 429 Too Many Requests: slow down - retry later", true, CodeGeneric},
+		{"a Status 429", wrapped("p", ResponseError(http.MethodGet, 429, statusJSON(429, "TooManyRequests", "slow down"))), "",
+			"p: " + answeredServer + " answered HTTP 429 Too Many Requests: slow down - retry later", true, CodeGeneric},
+		{"Rancher's error object as text", typed(500, `{"type":"error","code":"ServerError","message":"boom","status":500}`), "local",
+			answeredServer + " answered HTTP 500 Internal Server Error: boom - retry later", true, CodeGeneric},
+		{"an error object read without client-go behind a prefix", wrapped(prefix[:len(prefix)-2], ResponseError(http.MethodGet, 503, []byte(`{"type":"error","message":"boom"}`))), "local",
+			prefix + answeredServer + " answered HTTP 503 Service Unavailable: boom - retry later", true, CodeGeneric},
+		{"a 530 with a message through Rancher", wrapped("p", ResponseError(http.MethodGet, 530, []byte("edge says no\nsecond line"))), "local",
+			"p: " + answeredServer + " answered HTTP 530: edge says no; " + rancherSentence + " - retry later", true, CodeGeneric},
+		{"a 530 with a message through a cluster", ResponseError(http.MethodGet, 530, []byte("edge says no")), "c-m-x",
+			answeredServer + " answered HTTP 530: edge says no; cluster 'c-m-x' could not be reached - retry later", true, CodeGeneric},
+		{"a 502 with a message through a cluster", typed(502, "upstream connect error"), "c-m-x",
+			answeredServer + " answered HTTP 502 Bad Gateway: upstream connect error; cluster 'c-m-x' could not be reached - its agent may not be registered yet; retry once the cluster is active", true, CodeGeneric},
+		{"a 502 with a message through Rancher", typed(502, "upstream connect error"), "local",
+			answeredServer + " answered HTTP 502 Bad Gateway: upstream connect error - retry later", true, CodeGeneric},
+		{"the agent disconnecting through Rancher", typed(500, "error trying to reach service: cluster agent disconnected"), "local",
+			answeredServer + " answered HTTP 500 Internal Server Error: error trying to reach service: cluster agent disconnected - retry once the cluster reconnects", true, CodeGeneric},
+		{"the agent disconnecting through a cluster", typed(500, "cluster agent disconnected"), "c-m-x",
+			answeredServer + " answered HTTP 500 Internal Server Error: cluster agent disconnected - retry once the cluster reconnects", true, CodeGeneric},
+		{"the agent disconnecting in a 503 changes no advice", typed(503, "cluster agent disconnected"), "local",
+			answeredServer + " answered HTTP 503 Service Unavailable: cluster agent disconnected - retry later", true, CodeGeneric},
+		{"a message cut at the bound", typed(500, strings.Repeat("y", 300)), "local",
+			answeredServer + " answered HTTP 500 Internal Server Error: " + strings.Repeat("y", maxServerMessage) + "… - retry later", true, CodeGeneric},
+		{"a Status message cut at the bound", wrapped("p", ResponseError(http.MethodGet, 503, statusJSON(503, "ServiceUnavailable", strings.Repeat("z", 300)))), "local",
+			"p: " + answeredServer + " answered HTTP 503 Service Unavailable: " + strings.Repeat("z", maxServerMessage) + "… - retry later", true, CodeGeneric},
+		{"a Status body with a proxy's code", wrapped("p", ResponseError(http.MethodGet, 530, statusJSON(530, "", "edge says no"))), "local",
+			"p: " + answeredServer + " answered HTTP 530: edge says no; " + rancherSentence + " - retry later", true, CodeGeneric},
+		{"a Status body with a proxy's code through a cluster", wrapped("p", ResponseError(http.MethodGet, 527, statusJSON(527, "", "edge says no"))), "c-m-x",
+			"p: " + answeredServer + " answered HTTP 527: edge says no; cluster 'c-m-x' could not be reached - retry later", true, CodeGeneric},
+		{"a Status 500 stays not retryable", wrapped("p", ResponseError(http.MethodGet, 500, statusJSON(500, "InternalError", "Internal error occurred: etcdserver: request timed out"))), "local",
+			"p: Internal error occurred: etcdserver: request timed out", false, CodeGeneric},
+		{"a Status 505 stays not retryable", wrapped("p", ResponseError(http.MethodGet, 505, statusJSON(505, "", "nope"))), "local",
+			"p: nope", false, CodeGeneric},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ce := FromStatus(tc.err, &Request{Server: answeredServer, Cluster: tc.cluster})
+			require.NotNil(t, ce)
+			assert.Equal(t, tc.code, ce.Code)
+			assert.Equal(t, tc.retryable, ce.Retryable)
+			assert.Equal(t, tc.message, ce.Message)
+			if tc.cluster == "c-m-x" {
+				assert.NotContains(t, ce.Message, "could not reach Rancher")
+			}
+		})
+	}
+}
+
+// TestAnsweredStatusKeepsTheOlderWordingWithNoServer asserts a request with
+// no server, and no request at all, keeps the wording and the retryability
+// the table gave before it named servers, for a 429, a gateway code, 503,
+// another 5xx and a Status body with a proxy's code.
+func TestAnsweredStatusKeepsTheOlderWordingWithNoServer(t *testing.T) {
+	t.Parallel()
+	for _, req := range []*Request{nil, {}, {Cluster: "local"}} {
+		for _, tc := range []struct {
+			name      string
+			err       error
+			message   string
+			retryable bool
+		}{
+			{"429", ResponseError(http.MethodGet, 429, nil), "the server has received too many requests and has asked us to try again later - retry later", true},
+			{"503", ResponseError(http.MethodGet, 503, nil), "the server is currently unable to handle the request - retrying may succeed", true},
+			{"530", ResponseError(http.MethodGet, 530, nil), `an error on the server ("status 530") has prevented the request from succeeding - retrying may succeed`, true},
+			{"a Status 530", ResponseError(http.MethodGet, 530, []byte(`{"kind":"Status","message":"edge says no","code":530}`)), "edge says no", false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				ce := FromStatus(tc.err, req)
+				require.NotNil(t, ce)
+				assert.Equal(t, tc.message, ce.Message)
+				assert.Equal(t, tc.retryable, ce.Retryable)
+			})
+		}
+	}
+	t.Run("an error with text after the status keeps the older wording", func(t *testing.T) {
+		t.Parallel()
+		err := fmt.Errorf("%w; more", ResponseError(http.MethodGet, 503, nil))
+		ce := FromStatus(err, &Request{Server: answeredServer})
+		require.NotNil(t, ce)
+		assert.NotContains(t, ce.Message, "answered HTTP")
+		assert.True(t, ce.Retryable)
+	})
+}
+
+// TestAnsweredLeadNamesTheServerOrSaysTheServer asserts the lead of a
+// message about an answered status: the server as the request names it, or
+// "the server", then the code and the standard text where there is one.
+func TestAnsweredLeadNamesTheServerOrSaysTheServer(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		req    *Request
+		status int
+		want   string
+	}{
+		{&Request{Server: answeredServer}, 429, answeredServer + " answered HTTP 429 Too Many Requests"},
+		{&Request{Server: answeredServer, Cluster: "c-m-x"}, 530, answeredServer + " answered HTTP 530"},
+		{&Request{Server: answeredServer}, 503, answeredServer + " answered HTTP 503 Service Unavailable"},
+		{&Request{}, 429, "the server answered HTTP 429 Too Many Requests"},
+		{nil, 529, "the server answered HTTP 529"},
+	} {
+		assert.Equal(t, tc.want, AnsweredLead(tc.req, tc.status))
+	}
+}

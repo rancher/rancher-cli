@@ -181,6 +181,34 @@ func TestWaitForTimeoutDuringAGetNamesNoCutError(t *testing.T) {
 	}
 }
 
+// answeredThenCutClient is a ClusterClient whose Get blocks until the
+// context ends and then returns what the provider client returns for a
+// call a deadline ended after the server answered 429: a retryable GENERIC
+// error whose cause holds the status.
+type answeredThenCutClient struct{ seqClient }
+
+func (answeredThenCutClient) Get(ctx context.Context, _ schema.GroupVersionResource, _, _ string) (*unstructured.Unstructured, error) {
+	<-ctx.Done()
+	return nil, clierr.Retryable(clierr.CodeGeneric, "https://rancher.example.com answered HTTP 429 Too Many Requests and the request ran out of time (30s) - retry later").
+		WithCause(clierr.ResponseError(http.MethodGet, http.StatusTooManyRequests, nil))
+}
+
+// TestWaitForTimeoutDuringAGetThatWasAnsweredNamesTheAnswer asserts a Get
+// that the wait's own deadline cut is recorded as the last error when it
+// names a status the server answered, and not when it names none.
+func TestWaitForTimeoutDuringAGetThatWasAnsweredNamesTheAnswer(t *testing.T) {
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		cond := waitCond{kind: "state", name: "active"}
+		_, err := waitFor(t.Context(), &answeredThenCutClient{}, schema.GroupVersionResource{}, "", "x", cond, 50*time.Millisecond, false)
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok)
+		assert.Equal(t, "timed out waiting for x; last state: <no state observed>; last error: GENERIC: "+
+			"https://rancher.example.com answered HTTP 429 Too Many Requests and the request ran out of time (30s) - retry later; "+
+			"retry with a longer --timeout or inspect the resource to see why the wait condition is not met", ce.Message)
+	})
+}
+
 // TestWaitForNotFoundStillEndsAtOnce asserts NOT_FOUND keeps its own
 // handling: the wait ends at the first Get with that error.
 func TestWaitForNotFoundStillEndsAtOnce(t *testing.T) {

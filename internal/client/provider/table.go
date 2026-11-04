@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/engine"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -52,6 +54,7 @@ func (r *dynamicClient) tableRequest(gvr schema.GroupVersionResource, ns, name s
 
 // ListTable lists gvr's objects in ns as the server's Table.
 func (r *dynamicClient) ListTable(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (engine.TableAnswer, error) {
+	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return engine.TableAnswer{}, err
@@ -60,17 +63,18 @@ func (r *dynamicClient) ListTable(ctx context.Context, gvr schema.GroupVersionRe
 	defer cancel()
 	req, err := r.tableRequest(gvr, ns, "")
 	if err != nil {
-		return engine.TableAnswer{}, mapRequestErr(err, r.request("list", gvr, ns, ""))
+		return engine.TableAnswer{}, mapRequestErr(ctx, http.MethodGet, err, r.request("list", gvr, ns, ""))
 	}
 	if selector != "" {
 		req = req.Param("labelSelector", selector)
 	}
 	out, err := readTable(ctx, req, true)
-	return out, r.forbiddenHint(gvr, "list", ns, "", mapRequestErr(err, r.request("list", gvr, ns, "")))
+	return out, r.forbiddenHint(gvr, "list", ns, "", mapRequestErr(ctx, http.MethodGet, err, r.request("list", gvr, ns, "")))
 }
 
 // GetTable reads the named object as the server's Table.
 func (r *dynamicClient) GetTable(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (engine.TableAnswer, error) {
+	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return engine.TableAnswer{}, err
@@ -78,14 +82,14 @@ func (r *dynamicClient) GetTable(ctx context.Context, gvr schema.GroupVersionRes
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
 	if name == "" {
-		return engine.TableAnswer{}, mapRequestErr(errors.New("name is required"), r.request("get", gvr, ns, name))
+		return engine.TableAnswer{}, mapRequestErr(ctx, http.MethodGet, errors.New("name is required"), r.request("get", gvr, ns, name))
 	}
 	req, err := r.tableRequest(gvr, ns, name)
 	if err != nil {
-		return engine.TableAnswer{}, mapRequestErr(err, r.request("get", gvr, ns, name))
+		return engine.TableAnswer{}, mapRequestErr(ctx, http.MethodGet, err, r.request("get", gvr, ns, name))
 	}
 	out, err := readTable(ctx, req, false)
-	return out, r.forbiddenHint(gvr, "get", ns, name, r.curateNotFound(gvr, name, mapRequestErr(err, r.request("get", gvr, ns, name))))
+	return out, r.forbiddenHint(gvr, "get", ns, name, r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodGet, err, r.request("get", gvr, ns, name))))
 }
 
 // readTable sends req and decodes the answer: a Table of either version, or,

@@ -288,7 +288,6 @@ var builtOnRancherCarriers = map[string]string{
 // builtOnRancherReviewed is every variable built on clierr.Rancher that
 // holds a remedy command, which the hint flattener has to read.
 var builtOnRancherReviewed = []string{
-	"internal/client/provider.InspectClusterRemedy",
 	"internal/clierr.AuthStatusRemedy",
 	"internal/config.DeleteServerCommand",
 	"internal/config.LoginCommand",

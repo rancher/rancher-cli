@@ -94,10 +94,11 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 		case err != nil:
 			// Transient error: fall through to the poll-or-timeout select below,
 			// carrying whatever state was last observed into the eventual message.
-			// A Get cut by the wait's own deadline or by a cancel says nothing
-			// about the server, so only a Get that ended with the context still
-			// live is recorded.
-			if ctx.Err() == nil {
+			// A Get cut by the wait's own deadline or by a cancel, with no
+			// answer, says nothing about the server. One that ended with the
+			// context still live is recorded, and so is one that names a status
+			// the server answered.
+			if _, answered := clierr.HTTPStatus(err); ctx.Err() == nil || answered {
 				lastErr = clierr.From(err)
 			}
 		default:

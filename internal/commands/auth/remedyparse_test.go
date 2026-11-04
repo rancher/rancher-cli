@@ -159,7 +159,7 @@ func TestFixedRemedyCommandsParse(t *testing.T) {
 			{config.TokenReuseOffCommand, []string{"off"}},
 			{config.LoginCommand, nil},
 			{config.DeleteServerCommand + " 'x'", []string{"x"}},
-			{provider.InspectClusterRemedy, []string{"c-1"}},
+			{provider.InspectClusterRemedyFor("c-1"), []string{"c-1"}},
 			{clierr.Rancher + " auth list-tokens", nil},
 		} {
 			check(t, tc.command, tc.args)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,7 +27,7 @@ func TestMapErrPassesThroughStructuredError(t *testing.T) {
 	t.Parallel()
 	inner := clierr.New(clierr.CodeGeneric, "refused to follow a redirect from https://a to https://b: a redirect to another origin is not followed, to keep credentials from being sent there; check that https://a is the correct address")
 	wrapped := &url.Error{Op: "Patch", URL: "https://a/x", Err: inner}
-	got := mapErr(wrapped)
+	got := mapErr(t.Context(), http.MethodPatch, config.Effective{}, wrapped)
 	ce, ok := errors.AsType[*clierr.Error](got)
 	require.True(t, ok)
 	assert.Same(t, inner, ce)
@@ -57,38 +58,53 @@ func TestMapRequestErrNamesTheRefusedRequest(t *testing.T) {
 		{clierr.Request{Verb: "list", Resource: "namespaces", Cluster: "local"},
 			"the server refused list namespaces (403) and gave no reason"},
 	} {
-		ce, ok := errors.AsType[*clierr.Error](mapRequestErr(forbidden, &tc.q))
+		ce, ok := errors.AsType[*clierr.Error](mapRequestErr(t.Context(), http.MethodGet, forbidden, &tc.q))
 		require.True(t, ok)
 		assert.Equal(t, clierr.CodeRBAC, ce.Code)
 		assert.Equal(t, tc.want, ce.Message)
 		assert.Empty(t, ce.Hint)
 	}
 	unauthorized := &apierrors.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Reason: metav1.StatusReasonUnauthorized, Code: 401}}
-	ce, ok := errors.AsType[*clierr.Error](mapRequestErr(unauthorized,
+	ce, ok := errors.AsType[*clierr.Error](mapRequestErr(t.Context(), http.MethodGet, unauthorized,
 		&clierr.Request{Verb: "list", Group: "management.cattle.io", Resource: "clusters", Cluster: "local"}))
 	require.True(t, ok)
 	assert.Equal(t, "the server rejected the credential (401) for list clusters.management.cattle.io", ce.Message)
 	assert.Equal(t, clierr.Rancher+" auth status", ce.Hint)
 }
 
-// TestMapErrDeadlineExceeded covers the hung agent-tunnel request: client-go
-// hands back a *url.Error wrapping context.DeadlineExceeded with no HTTP
-// status at all, which must classify retryable with a hint pointing at the
-// likely cause instead of falling through to the uncurated default.
-func TestMapErrDeadlineExceeded(t *testing.T) {
-	t.Run("wrapped deadline maps to GENERIC+retryable+hint", func(t *testing.T) {
-		err := &url.Error{Op: "Get", URL: "https://rancher.example/k8s/clusters/c-m-x/api/v1/nodes", Err: context.DeadlineExceeded}
-		got := mapErr(err)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, clierr.CodeGeneric, ce.Code)
-		assert.True(t, ce.Retryable, "request timeout must be retryable")
-		assert.Contains(t, ce.Message, clierr.Rancher+" inspect cluster")
-		assert.Empty(t, ce.Hint)
-	})
+// TestMapRequestErrDeadlineExceeded asserts a request that ran out of time
+// with no response is a retryable GENERIC error: through the local cluster
+// or with no cluster named it says the server may be slow and names no
+// command; through a downstream cluster it also names the agent and the
+// command that inspects that cluster, with its id quoted.
+func TestMapRequestErrDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+	timeout := &url.Error{Op: "Get", URL: "https://rancher.example/k8s/clusters/c-m-x/api/v1/nodes", Err: context.DeadlineExceeded}
+	const cause = `Get "https://rancher.example/k8s/clusters/c-m-x/api/v1/nodes": context deadline exceeded`
+	for name, tc := range map[string]struct {
+		q    *clierr.Request
+		want string
+	}{
+		"local cluster":            {&clierr.Request{Cluster: "local"}, cause + " - the server may be slow; retry later"},
+		"no request":               {nil, cause + " - the server may be slow; retry later"},
+		"no cluster named":         {&clierr.Request{}, cause + " - the server may be slow; retry later"},
+		"a downstream cluster":     {&clierr.Request{Cluster: "c-m-x"}, cause + " - the server may be slow, or its agent may be disconnected; check the cluster with: " + clierr.Rancher + " inspect cluster 'c-m-x'"},
+		"a cluster id with a dash": {&clierr.Request{Cluster: "-c"}, cause + " - the server may be slow, or its agent may be disconnected; check the cluster with: " + clierr.Rancher + " inspect cluster -- '-c'"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var ce *clierr.Error
+			require.ErrorAs(t, mapRequestErr(t.Context(), http.MethodGet, timeout, tc.q), &ce)
+			assert.Equal(t, clierr.CodeGeneric, ce.Code)
+			assert.True(t, ce.Retryable, "request timeout must be retryable")
+			assert.Equal(t, tc.want, ce.Message)
+			assert.Empty(t, ce.Hint)
+			assert.NotContains(t, ce.Message, "<cluster-id>")
+		})
+	}
 
 	t.Run("context cancellation is not given the timeout hint", func(t *testing.T) {
-		got := mapErr(&url.Error{Op: "Get", URL: "https://rancher.example", Err: context.Canceled})
+		got := mapErr(t.Context(), http.MethodGet, config.Effective{}, &url.Error{Op: "Get", URL: "https://rancher.example", Err: context.Canceled})
 		var ce *clierr.Error
 		require.ErrorAs(t, got, &ce)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)

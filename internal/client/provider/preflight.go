@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -22,6 +23,7 @@ import (
 // caller's own cancellation passes through unmapped, never as a retryable
 // connectivity failure.
 func Preflight(ctx context.Context, eff config.Effective) (string, error) {
+	ctx = kube.WithAnswers(ctx)
 	rc, err := localRESTConfig(eff)
 	if err != nil {
 		return "", err
@@ -32,7 +34,9 @@ func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 	}
 	ver, err := serverVersion(ctx, disc)
 	if err != nil {
-		return "", clierr.WrapUnlessCanceled(err, mapPreflightErr)
+		return "", clierr.WrapUnlessCanceled(err, func(err error) error {
+			return mapPreflightErr(ctx, http.MethodGet, eff, err)
+		})
 	}
 	if ver == nil {
 		return "", clierr.New(clierr.CodeGeneric, "server returned no version info")
@@ -72,12 +76,19 @@ func discoveryConfig(rc *rest.Config) *rest.Config {
 
 // mapPreflightErr distinguishes an answer from no answer. An answer goes
 // through the status table as a call that names an API, so a 404 says to
-// check the server URL; a structured error produced below the status
-// layer (the redirect refusal) is returned as is; no answer at all is a
-// retryable connectivity failure.
-func mapPreflightErr(err error) error {
-	if ce := clierr.FromStatus(err, &clierr.Request{Endpoint: true}); ce != nil {
+// check the server URL; a call that ran out of time after an answer names
+// that answer; a structured error produced below the status layer (the
+// redirect refusal) is returned as is; no answer at all is a retryable
+// connectivity failure. method is the HTTP method of the call.
+func mapPreflightErr(ctx context.Context, method string, eff config.Effective, err error) error {
+	q := &clierr.Request{Endpoint: true, Server: config.DisplayServerURL(eff.URL)}
+	if ce := clierr.FromStatus(err, q); ce != nil {
 		return ce
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		if ce := answeredThenTimedOut(ctx, method, requestTimeout, q); ce != nil {
+			return ce
+		}
 	}
 	return clierr.Retryable(clierr.CodeGeneric, "cannot reach server: "+err.Error()+"; check the server URL and CA")
 }
