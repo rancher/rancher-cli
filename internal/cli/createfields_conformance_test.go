@@ -27,14 +27,16 @@ import (
 
 // rancherAPIFieldsGolden is written by `make rancher-api-fields-update`
 // (scripts/rancher-api-fields): the top-level fields of the Rancher API
-// types the bespoke create commands build, read from the pinned oracle
-// versions' pkg/apis.
+// types the bespoke create commands build, read from the pkg/apis of the
+// commit each pinned oracle image names.
 const rancherAPIFieldsGolden = "testdata/rancher-api-fields.golden.json"
 
 type rancherAPIFields struct {
 	Module  string `json:"module"`
 	Oracles map[string]struct {
-		Tag           string `json:"tag"`
+		Image         string `json:"image"`
+		Label         string `json:"label"`
+		Commit        string `json:"commit"`
 		PseudoVersion string `json:"pseudoVersion"`
 	} `json:"oracles"`
 	Resources []struct {
@@ -612,51 +614,204 @@ func scriptAssignment(t *testing.T, path, name string) string {
 	return string(m[1])
 }
 
-// imageTag returns the tag of a repo:tag@digest image reference.
-func imageTag(t *testing.T, ref string) string {
-	t.Helper()
-	m := regexp.MustCompile(`^[^@]+:([^:@]+)@sha256:[0-9a-f]+$`).FindStringSubmatch(ref)
-	require.NotEmptyf(t, m, "image reference %q is not repo:tag@sha256:digest", ref)
-	return m[1]
-}
-
 // pseudoVersionRE is the shape of a pkg/apis pseudo-version: no release
 // tag, a UTC commit time and the commit's first 12 hex digits.
 var pseudoVersionRE = regexp.MustCompile(`^v0\.0\.0-[0-9]{14}-[0-9a-f]{12}$`)
 
-// TestRancherAPIFieldsPinsMatchOracles asserts the tags
-// scripts/rancher-api-fields reads are the oracle images' tags in
-// scripts/e2e-fidelity, and that the golden was written from them, so
-// bumping an oracle image fails until the golden is regenerated. The
-// script derives each pseudo-version from its tag; the golden records it.
-func TestRancherAPIFieldsPinsMatchOracles(t *testing.T) {
-	t.Parallel()
-	const fidelity, fields = "../../scripts/e2e-fidelity", "../../scripts/rancher-api-fields"
-	tags := map[string]string{
-		"community": scriptAssignment(t, fields, "COMMUNITY_TAG"),
-		"prime":     scriptAssignment(t, fields, "PRIME_TAG"),
-	}
-	assert.Equal(t, imageTag(t, scriptAssignment(t, fidelity, "ORACLE_IMAGE")), tags["community"],
-		"%s COMMUNITY_TAG must be the tag of ORACLE_IMAGE in %s", fields, fidelity)
-	assert.Equal(t, imageTag(t, scriptAssignment(t, fidelity, "PRIME_ORACLE_IMAGE")), tags["prime"],
-		"%s PRIME_TAG must be the tag of PRIME_ORACLE_IMAGE in %s", fields, fidelity)
+// rancherAPIFieldsLabels is the label that names the Rancher commit of each
+// edition's oracle image: the table label_key holds in
+// scripts/rancher-api-fields.
+var rancherAPIFieldsLabels = map[string]string{
+	"community": "org.opencontainers.image.revision",
+	"prime":     "org.opencontainers.image.oss.revision",
+}
 
-	g := loadRancherAPIFields(t)
-	require.Len(t, g.Oracles, len(tags))
-	for edition, tag := range tags {
-		got, ok := g.Oracles[edition]
-		require.True(t, ok, "the golden has no %s oracle", edition)
-		assert.Equal(t, tag, got.Tag, "%s: run make rancher-api-fields-update", edition)
-		assert.Regexp(t, pseudoVersionRE, got.PseudoVersion, "%s: run make rancher-api-fields-update", edition)
+// rancherAPIFieldsImages maps each edition to its image assignment in
+// scripts/e2e-fidelity.
+var rancherAPIFieldsImages = map[string]string{
+	"community": "ORACLE_IMAGE",
+	"prime":     "PRIME_ORACLE_IMAGE",
+}
+
+// checkRancherAPIFields returns what is wrong with a golden's oracles and
+// per-field edition lists against the image references of
+// scripts/e2e-fidelity, keyed by edition.
+func checkRancherAPIFields(g rancherAPIFields, images map[string]string) []string {
+	var problems []string
+	for edition := range g.Oracles {
+		if _, ok := rancherAPIFieldsLabels[edition]; !ok {
+			problems = append(problems, "the golden has an oracle for the unknown edition "+edition)
+		}
 	}
-	oracleTags := slices.Collect(maps.Values(tags))
+	for _, edition := range slices.Sorted(maps.Keys(rancherAPIFieldsLabels)) {
+		got, ok := g.Oracles[edition]
+		if !ok {
+			problems = append(problems, "the golden has no "+edition+" oracle")
+			continue
+		}
+		if !pinnedImageRE.MatchString(images[edition]) {
+			problems = append(problems, fmt.Sprintf("%s image %q in scripts/e2e-fidelity is not a repository:tag@sha256:digest reference", edition, images[edition]))
+		}
+		if got.Image != images[edition] {
+			problems = append(problems, fmt.Sprintf("%s image is %q, scripts/e2e-fidelity has %q", edition, got.Image, images[edition]))
+		}
+		if got.Label != rancherAPIFieldsLabels[edition] {
+			problems = append(problems, fmt.Sprintf("%s label is %q, want %q", edition, got.Label, rancherAPIFieldsLabels[edition]))
+		}
+		if !commitRE.MatchString(got.Commit) {
+			problems = append(problems, fmt.Sprintf("%s commit %q is not 40 lowercase hex digits", edition, got.Commit))
+		} else if !strings.HasSuffix(got.PseudoVersion, got.Commit[:12]) {
+			problems = append(problems, fmt.Sprintf("%s pseudo-version %q does not end with the first 12 digits of commit %s", edition, got.PseudoVersion, got.Commit))
+		}
+		if !pseudoVersionRE.MatchString(got.PseudoVersion) {
+			problems = append(problems, fmt.Sprintf("%s pseudo-version %q is not a pkg/apis pseudo-version", edition, got.PseudoVersion))
+		}
+	}
 	for _, r := range g.Resources {
-		for f, versions := range r.Fields {
-			assert.NotEmpty(t, versions, "%s %s", r.Resource, f)
-			for _, v := range versions {
-				assert.Contains(t, oracleTags, v, "%s %s names a version that is not an oracle", r.Resource, f)
+		for f, editions := range r.Fields {
+			if len(editions) == 0 {
+				problems = append(problems, fmt.Sprintf("%s %s names no edition", r.Resource, f))
+			}
+			for _, e := range editions {
+				if _, ok := rancherAPIFieldsLabels[e]; !ok {
+					problems = append(problems, fmt.Sprintf("%s %s names the unknown edition %q", r.Resource, f, e))
+				}
 			}
 		}
+	}
+	return problems
+}
+
+// commitRE is the shape of a commit id.
+var commitRE = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// pinnedImageRE is the shape of a pinned image reference: a repository, a
+// tag and a sha256 digest.
+var pinnedImageRE = regexp.MustCompile(`^[^\s@:]+(:[0-9]+)?(/[^\s@:]+)*:[^\s@:/]+@sha256:[0-9a-f]{64}$`)
+
+func rancherAPIFieldsPinnedImages(t *testing.T) map[string]string {
+	t.Helper()
+	images := map[string]string{}
+	for edition, name := range rancherAPIFieldsImages {
+		images[edition] = scriptAssignment(t, "../../scripts/e2e-fidelity", name)
+	}
+	return images
+}
+
+// TestRancherAPIFieldsPinsMatchOracles asserts the golden was written from
+// the oracle images pinned in scripts/e2e-fidelity: exactly the editions
+// community and prime, each with its image reference (tag and digest), the
+// label that names its commit, a 40-digit commit, and a pseudo-version of
+// that commit; and that every field names only those editions. Bumping an
+// oracle image fails until the golden is regenerated. The link from the
+// label to the commit is checked by scripts/rancher-api-fields, which
+// reads the labels from the registries.
+func TestRancherAPIFieldsPinsMatchOracles(t *testing.T) {
+	t.Parallel()
+	g := loadRancherAPIFields(t)
+	assert.Empty(t, checkRancherAPIFields(g, rancherAPIFieldsPinnedImages(t)), "run make rancher-api-fields-update")
+}
+
+// TestRancherAPIFieldsPinsMutations asserts the pins check fails for each
+// change to an otherwise passing golden or image pin.
+func TestRancherAPIFieldsPinsMutations(t *testing.T) {
+	t.Parallel()
+	images := rancherAPIFieldsPinnedImages(t)
+	good := loadRancherAPIFields(t)
+	require.Empty(t, checkRancherAPIFields(good, images))
+
+	clone := func(t *testing.T) rancherAPIFields {
+		t.Helper()
+		raw, err := json.Marshal(good)
+		require.NoError(t, err)
+		var g rancherAPIFields
+		require.NoError(t, json.Unmarshal(raw, &g))
+		return g
+	}
+	firstField := func(g rancherAPIFields) (resource, field string) {
+		r := g.Resources[0]
+		return r.Resource, slices.Sorted(maps.Keys(r.Fields))[0]
+	}
+	cases := []struct {
+		name   string
+		mutate func(g *rancherAPIFields, images map[string]string)
+		want   string
+	}{
+		{"digest changed with the tag kept", func(g *rancherAPIFields, _ map[string]string) {
+			o := g.Oracles["prime"]
+			o.Image = o.Image[:len(o.Image)-1] + "0"
+			if o.Image == good.Oracles["prime"].Image {
+				o.Image = o.Image[:len(o.Image)-1] + "1"
+			}
+			g.Oracles["prime"] = o
+		}, "prime image is"},
+		{"tag changed", func(g *rancherAPIFields, _ map[string]string) {
+			o := g.Oracles["community"]
+			o.Image = strings.Replace(o.Image, ":v", ":v9", 1)
+			g.Oracles["community"] = o
+		}, "community image is"},
+		{"pin changed in scripts/e2e-fidelity", func(_ *rancherAPIFields, images map[string]string) {
+			images["community"] += "x"
+		}, "community image is"},
+		{"pin and golden both lost the digest", func(g *rancherAPIFields, images map[string]string) {
+			o := g.Oracles["prime"]
+			o.Image, _, _ = strings.Cut(o.Image, "@")
+			g.Oracles["prime"] = o
+			images["prime"] = o.Image
+		}, "is not a repository:tag@sha256:digest reference"},
+		{"edition removed", func(g *rancherAPIFields, _ map[string]string) {
+			delete(g.Oracles, "prime")
+		}, "the golden has no prime oracle"},
+		{"third edition added", func(g *rancherAPIFields, _ map[string]string) {
+			g.Oracles["enterprise"] = g.Oracles["prime"]
+		}, "unknown edition enterprise"},
+		{"label changed", func(g *rancherAPIFields, _ map[string]string) {
+			o := g.Oracles["prime"]
+			o.Label = rancherAPIFieldsLabels["community"]
+			g.Oracles["prime"] = o
+		}, "prime label is"},
+		{"commit shortened", func(g *rancherAPIFields, _ map[string]string) {
+			o := g.Oracles["community"]
+			o.Commit = o.Commit[:39]
+			g.Oracles["community"] = o
+		}, "community commit"},
+		{"commit does not match the pseudo-version", func(g *rancherAPIFields, _ map[string]string) {
+			o := g.Oracles["community"]
+			o.Commit = strings.Repeat("a", 40)
+			g.Oracles["community"] = o
+		}, "does not end with the first 12 digits"},
+		{"pseudo-version is not a pseudo-version", func(g *rancherAPIFields, _ map[string]string) {
+			o := g.Oracles["prime"]
+			o.PseudoVersion = "v1.2.3-" + o.Commit[:12]
+			g.Oracles["prime"] = o
+		}, "is not a pkg/apis pseudo-version"},
+		{"field list emptied", func(g *rancherAPIFields, _ map[string]string) {
+			res, f := firstField(*g)
+			for _, r := range g.Resources {
+				if r.Resource == res {
+					r.Fields[f] = nil
+				}
+			}
+		}, "names no edition"},
+		{"field names an unknown edition", func(g *rancherAPIFields, _ map[string]string) {
+			res, f := firstField(*g)
+			for _, r := range g.Resources {
+				if r.Resource == res {
+					r.Fields[f] = append(r.Fields[f], "v2.15.2")
+				}
+			}
+		}, "names the unknown edition"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g := clone(t)
+			imgs := maps.Clone(images)
+			tc.mutate(&g, imgs)
+			problems := checkRancherAPIFields(g, imgs)
+			require.NotEmpty(t, problems)
+			assert.Contains(t, strings.Join(problems, "\n"), tc.want)
+		})
 	}
 }
 

@@ -2,11 +2,15 @@
   "module": "github.com/rancher/rancher/pkg/apis",
   "oracles": {
     "community": {
-      "tag": "v2.15.2",
+      "image": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+      "label": "org.opencontainers.image.revision",
+      "commit": "272e65580ca92b9dc51e0f0f0f9ae9d6d356e3b8",
       "pseudoVersion": "v0.0.0-20260923184111-272e65580ca9"
     },
     "prime": {
-      "tag": "v2.14.5",
+      "image": "registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca",
+      "label": "org.opencontainers.image.oss.revision",
+      "commit": "63d8501ec84950c65d9fb62c1666ef193d468bf5",
       "pseudoVersion": "v0.0.0-20260826145222-63d8501ec849"
     }
   },
@@ -16,23 +20,23 @@
       "path": "spec",
       "fields": {
         "clusters": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "currentContext": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "description": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "includeDefaultEntry": [
-          "v2.15.2"
+          "community"
         ],
         "ttl": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ]
       }
     },
@@ -41,16 +45,16 @@
       "path": "spec",
       "fields": {
         "currentPassword": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "newPassword": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "userID": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ]
       }
     },
@@ -59,32 +63,32 @@
       "path": "spec",
       "fields": {
         "clusterName": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "description": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "enabled": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "kind": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "ttl": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "userID": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "userPrincipal": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ]
       }
     },
@@ -93,24 +97,24 @@
       "path": "spec",
       "fields": {
         "description": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "redirectURIs": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "refreshTokenExpirationSeconds": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "scopes": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "tokenExpirationSeconds": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ]
       }
     },
@@ -119,28 +123,28 @@
       "path": "spec",
       "fields": {
         "clusterName": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "containerDefaultResourceLimit": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "description": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "displayName": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "namespaceDefaultResourceQuota": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "resourceQuota": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ]
       }
     },
@@ -149,36 +153,36 @@
       "path": "",
       "fields": {
         "description": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "displayName": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "enabled": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "me": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "mustChangePassword": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "password": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "principalIds": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "username": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ]
       }
     },
@@ -187,55 +191,55 @@
       "path": "spec",
       "fields": {
         "agentEnvVars": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "cloudCredentialSecretName": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "clusterAPIConfig": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "clusterAgentDeploymentCustomization": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "defaultClusterRoleForProjectMembers": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "defaultPodSecurityAdmissionConfigurationTemplateName": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "enableNetworkPolicy": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "fleetAgentDeploymentCustomization": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "kubernetesVersion": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "localClusterAuthEndpoint": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "redeploySystemAgentGeneration": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "rkeConfig": [
-          "v2.14.5",
-          "v2.15.2"
+          "community",
+          "prime"
         ],
         "webhookDeploymentCustomization": [
-          "v2.15.2"
+          "community"
         ]
       }
     }

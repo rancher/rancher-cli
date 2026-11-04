@@ -8,25 +8,25 @@ set -euo pipefail
 # and compares them with internal/cli/testdata/rancher-api-fields.golden.json.
 # RANCHER_API_FIELDS_UPDATE=1 (make rancher-api-fields-update) writes the
 # golden instead; review its diff like the schema golden. The golden lists
-# the union of both versions, each field with the versions that have it.
+# the union of both editions, each field with the editions that have it.
 #
 # The module is required in a throwaway module in a temporary directory,
 # removed on exit, never in this repository: a go.mod or go.sum here that
 # named it would make manifest scanners (trivy fs, osv-scanner, Dependabot)
 # report every advisory of its dependency tree against this repository.
-# Needs network access to the Go module proxy on a cold module cache.
+# Needs network access to the Go module proxy on a cold module cache, and to
+# the registries of the two images.
 
-# COMMUNITY_TAG and PRIME_TAG must match the tags of ORACLE_IMAGE and
-# PRIME_ORACLE_IMAGE in scripts/e2e-fidelity, and the golden records them;
-# TestRancherAPIFieldsPinsMatchOracles (internal/cli) checks both, so
-# bumping an oracle image fails until this script and the golden follow.
-# The tags are the only input: each is resolved on RANCHER_REPO to its
-# commit, and the module proxy names that commit's pkg/apis
-# pseudo-version, which the golden records (needs network access to the
-# repository as well).
-COMMUNITY_TAG="v2.15.2"
-PRIME_TAG="v2.14.5"
-RANCHER_REPO="https://github.com/rancher/rancher"
+# Each oracle image names its Rancher commit in a label; label_key below
+# says which label per edition. The images are the ORACLE_IMAGE and
+# PRIME_ORACLE_IMAGE assignments of scripts/e2e-fidelity, read the way
+# TestRancherAPIFieldsPinsMatchOracles (internal/cli) reads them, and the
+# golden records each image, label and commit. The label values are the
+# only other input: the module proxy names the pkg/apis pseudo-version of
+# each commit, which the golden records too.
+# RANCHER_API_FIELDS_LABELS_FILE names a JSON file that stands in for the
+# registry read, for tests: one object keyed by edition, each value the
+# output of docker buildx imagetools inspect --format '{{json .Image}}'.
 module="github.com/rancher/rancher/pkg/apis"
 
 cd "$(dirname "$0")/.."
@@ -48,35 +48,95 @@ run() {
   fi
 }
 
+# label_key sets the variable named by its second argument to the label that
+# names the Rancher commit of the edition's oracle image.
+label_key() {
+  case $1 in
+    community) printf -v "$2" '%s' org.opencontainers.image.revision ;;
+    prime) printf -v "$2" '%s' org.opencontainers.image.oss.revision ;;
+    *)
+      echo "error: no label is set for the edition $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# pinned_image sets the variable named by its second argument to the first
+# NAME="value" line of scripts/e2e-fidelity, the pattern the guard test
+# uses. The file is never sourced: it runs the harness.
+pinned_image() {
+  local line
+  if ! line=$(grep -m1 -E "^$1=\"[^\"]+\"\$" scripts/e2e-fidelity); then
+    echo "error: scripts/e2e-fidelity has no $1=\"...\" line" >&2
+    exit 1
+  fi
+  line=${line#*=\"}
+  printf -v "$2" '%s' "${line%\"}"
+}
+
+# read_commit sets the variable named by its third argument to the Rancher
+# commit the image of the edition names in its label. The labels come from
+# the registry, three tries 5 seconds apart, or from the file named by
+# RANCHER_API_FIELDS_LABELS_FILE, which is read without a registry call. Like
+# resolve_version it runs in the script's own shell, so every step that can
+# fail is checked and stops the script with a message.
+read_commit() {
+  local edition=$1 image=$2 key raw commit attempt=1
+  label_key "$edition" key
+  if [ -n "${RANCHER_API_FIELDS_LABELS_FILE:-}" ]; then
+    if [ "${RANCHER_API_FIELDS_UPDATE:-}" = "1" ]; then
+      echo "error: RANCHER_API_FIELDS_LABELS_FILE is set; the golden is written only from the registries' labels" >&2
+      exit 1
+    fi
+    echo "note: the $edition labels come from RANCHER_API_FIELDS_LABELS_FILE=$RANCHER_API_FIELDS_LABELS_FILE, not from the registry" >&2
+    if ! commit=$("$work/labels/labels" "$key" "$RANCHER_API_FIELDS_LABELS_FILE" "$edition" 2>&1); then
+      echo "error: cannot read the $edition commit from label $key of $image:" >&2
+      echo "$commit" >&2
+      exit 1
+    fi
+  else
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "error: reading the labels of $image needs docker with buildx" >&2
+      exit 1
+    fi
+    while ! raw=$(docker buildx imagetools inspect "$image" --format '{{json .Image}}' 2>"$work/buildx.err"); do
+      if [ "$attempt" -ge 3 ]; then
+        echo "error: cannot read the labels of $image after $attempt attempts:" >&2
+        cat "$work/buildx.err" >&2
+        exit 1
+      fi
+      attempt=$((attempt + 1))
+      sleep 5
+    done
+    if ! commit=$("$work/labels/labels" "$key" <<<"$raw" 2>&1); then
+      echo "error: cannot read the $edition commit from label $key of $image:" >&2
+      echo "$commit" >&2
+      exit 1
+    fi
+  fi
+  echo "$edition: label $key of $image is $commit"
+  printf -v "$3" '%s' "$commit"
+}
+
 # resolve_version sets the variable named by its second argument to the
-# pkg/apis pseudo-version of the commit tag points at on RANCHER_REPO,
-# peeled when the tag is annotated. It runs in the script's own shell, not
-# in a command substitution, where bash would ignore set -e; every step
-# that can fail is checked and stops the script with a message.
+# pkg/apis pseudo-version of the commit, which is 40 lowercase hex digits.
+# It runs in the script's own shell, not in a command substitution, where
+# bash would ignore set -e; every step that can fail is checked and stops
+# the script with a message.
 resolve_version() {
-  local tag=$1 refs commit info version
-  if ! refs=$(git ls-remote "$RANCHER_REPO" "refs/tags/$tag" "refs/tags/$tag^{}" 2>&1); then
-    echo "error: cannot read tag $tag from $RANCHER_REPO:" >&2
-    echo "$refs" >&2
-    exit 1
-  fi
-  commit=$(awk -v tag="refs/tags/$tag" '$2 == tag "^{}" { peeled = $1 } $2 == tag { plain = $1 } END { print (peeled != "" ? peeled : plain) }' <<<"$refs")
-  if [ -z "$commit" ]; then
-    echo "error: $RANCHER_REPO has no tag $tag" >&2
-    exit 1
-  fi
+  local commit=$1 info version
   if [ ! -f "$work/resolve/go.mod" ]; then
     mkdir -p "$work/resolve"
     (cd "$work/resolve" && run "creating the module that resolves versions" go mod init rancherapifieldsresolve)
   fi
   if ! info=$(cd "$work/resolve" && go list -m -json "$module@$commit" 2>&1); then
-    echo "error: cannot resolve $module at commit $commit (tag $tag):" >&2
+    echo "error: cannot resolve $module at commit $commit:" >&2
     echo "$info" >&2
     exit 1
   fi
   version=$(sed -n 's/^[[:space:]]*"Version": "\(.*\)",$/\1/p' <<<"$info")
   if [ -z "$version" ] || [ "${version##*-}" != "${commit:0:12}" ]; then
-    echo "error: the module proxy named \"$version\" for $module at commit $commit (tag $tag):" >&2
+    echo "error: the module proxy named \"$version\" for $module at commit $commit:" >&2
     echo "$info" >&2
     exit 1
   fi
@@ -86,7 +146,130 @@ resolve_version() {
 # vendor directory, and may update their own go.mod freely.
 export GOWORK=off GOFLAGS=-mod=mod
 
-mkdir -p "$work/extract" "$work/merge"
+mkdir -p "$work/extract" "$work/merge" "$work/labels"
+cat >"$work/labels/main.go" <<'GOEOF'
+// Command labels prints the commit an oracle image names in one label. It
+// reads the output of docker buildx imagetools inspect --format
+// '{{json .Image}}' from standard input: a map keyed by platform for a
+// multi-platform image, or one object for a single-platform image. With a
+// file and an edition after the label key, it reads that edition's entry of
+// a JSON object in the file instead. Every platform must carry the label
+// with the same value, 40 lowercase hex digits.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"regexp"
+	"sort"
+)
+
+var commitRE = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+type image struct {
+	Config *struct {
+		Labels map[string]string `json:"Labels"`
+	} `json:"config"`
+}
+
+func main() {
+	commit, err := run(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(commit)
+}
+
+func run(args []string) (string, error) {
+	if len(args) != 1 && len(args) != 3 {
+		return "", fmt.Errorf("want the label key, and optionally a file and an edition")
+	}
+	var raw []byte
+	var err error
+	if len(args) == 3 {
+		raw, err = entry(args[1], args[2])
+	} else {
+		raw, err = io.ReadAll(os.Stdin)
+	}
+	if err != nil {
+		return "", err
+	}
+	return commit(raw, args[0])
+}
+
+func entry(path, edition string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var byEdition map[string]json.RawMessage
+	if err := json.Unmarshal(data, &byEdition); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	raw, ok := byEdition[edition]
+	if !ok {
+		return nil, fmt.Errorf("%s has no entry for the edition %s", path, edition)
+	}
+	return raw, nil
+}
+
+func commit(raw []byte, key string) (string, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil {
+		return "", fmt.Errorf("cannot parse the image description: %w", err)
+	}
+	platforms := map[string]json.RawMessage{}
+	if _, ok := top["config"]; ok {
+		platforms["single platform"] = raw
+	} else {
+		for name, desc := range top {
+			if name != "unknown/unknown" {
+				platforms[name] = desc
+			}
+		}
+	}
+	if len(platforms) == 0 {
+		return "", fmt.Errorf("the image description names no platform")
+	}
+	names := make([]string, 0, len(platforms))
+	for name := range platforms {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var first, firstName string
+	for _, name := range names {
+		var img image
+		if err := json.Unmarshal(platforms[name], &img); err != nil {
+			return "", fmt.Errorf("%s: cannot parse the image description: %w", name, err)
+		}
+		value, ok := "", false
+		if img.Config != nil {
+			value, ok = img.Config.Labels[key]
+		}
+		if !ok {
+			return "", fmt.Errorf("%s: the image has no label %s", name, key)
+		}
+		if !commitRE.MatchString(value) {
+			return "", fmt.Errorf("%s: label %s is %q, not 40 lowercase hex digits", name, key, value)
+		}
+		if first == "" {
+			first, firstName = value, name
+		} else if value != first {
+			return "", fmt.Errorf("the platforms disagree on label %s: %s has %s, %s has %s", key, firstName, first, name, value)
+		}
+	}
+	return first, nil
+}
+GOEOF
+(
+  cd "$work/labels"
+  run "creating the label reader module" go mod init rancherapifieldslabels
+  run "building the label reader" go build -o labels .
+)
+
 cat >"$work/extract/main.go" <<'EOF'
 // Command extract prints, as JSON, the top-level fields of the Rancher API
 // types the bespoke create commands build: one level only, the json names
@@ -192,8 +375,8 @@ func names(fs []field, skip map[string]bool) []string {
 EOF
 
 cat >"$work/merge/main.go" <<'EOF'
-// Command merge writes the golden: the union of the per-version field
-// lists, each field with the oracle tags whose types have it.
+// Command merge writes the golden: the union of the per-edition field
+// lists, each field with the editions whose types have it.
 package main
 
 import (
@@ -209,7 +392,9 @@ type resource struct {
 }
 
 type oracle struct {
-	Tag           string `json:"tag"`
+	Image         string `json:"image"`
+	Label         string `json:"label"`
+	Commit        string `json:"commit"`
 	PseudoVersion string `json:"pseudoVersion"`
 }
 
@@ -225,19 +410,19 @@ type golden struct {
 	Resources []goldenResource  `json:"resources"`
 }
 
-// Arguments: module, then edition tag pseudo-version extract-output, once
-// per oracle.
+// Arguments: module, then edition image label commit pseudo-version
+// extract-output, once per oracle.
 func main() {
 	args := os.Args[1:]
 	g := golden{Module: args[0], Oracles: map[string]oracle{}}
 	byName := map[string]*goldenResource{}
 	var order []string
-	if (len(args)-1)%4 != 0 {
-		panic("want the module, then four arguments per oracle")
+	if (len(args)-1)%6 != 0 {
+		panic("want the module, then six arguments per oracle")
 	}
-	for i := 1; i < len(args); i += 4 {
-		edition, tag, version, path := args[i], args[i+1], args[i+2], args[i+3]
-		g.Oracles[edition] = oracle{Tag: tag, PseudoVersion: version}
+	for i := 1; i < len(args); i += 6 {
+		edition, image, label, commit, version, path := args[i], args[i+1], args[i+2], args[i+3], args[i+4], args[i+5]
+		g.Oracles[edition] = oracle{Image: image, Label: label, Commit: commit, PseudoVersion: version}
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			panic(err)
@@ -254,18 +439,18 @@ func main() {
 				order = append(order, r.Resource)
 			}
 			if gr.Path != r.Path {
-				panic(r.Resource + ": the versions disagree on the path of its fields")
+				panic(r.Resource + ": the editions disagree on the path of its fields")
 			}
 			for _, f := range r.Fields {
-				gr.Fields[f] = append(gr.Fields[f], tag)
+				gr.Fields[f] = append(gr.Fields[f], edition)
 			}
 		}
 	}
 	sort.Strings(order)
 	for _, name := range order {
 		gr := byName[name]
-		for _, tags := range gr.Fields {
-			sort.Strings(tags)
+		for _, editions := range gr.Fields {
+			sort.Strings(editions)
 		}
 		g.Resources = append(g.Resources, *gr)
 	}
@@ -316,8 +501,14 @@ extract() {
     fi
   )
 }
-resolve_version "$COMMUNITY_TAG" COMMUNITY_VERSION
-resolve_version "$PRIME_TAG" PRIME_VERSION
+pinned_image ORACLE_IMAGE COMMUNITY_IMAGE
+pinned_image PRIME_ORACLE_IMAGE PRIME_IMAGE
+read_commit community "$COMMUNITY_IMAGE" COMMUNITY_COMMIT
+read_commit prime "$PRIME_IMAGE" PRIME_COMMIT
+label_key community COMMUNITY_LABEL
+label_key prime PRIME_LABEL
+resolve_version "$COMMUNITY_COMMIT" COMMUNITY_VERSION
+resolve_version "$PRIME_COMMIT" PRIME_VERSION
 extract "$COMMUNITY_VERSION" "$work/community.json"
 extract "$PRIME_VERSION" "$work/prime.json"
 
@@ -325,8 +516,8 @@ extract "$PRIME_VERSION" "$work/prime.json"
   cd "$work/merge"
   run "creating the merge module" go mod init rancherapifieldsmerge
   if ! go run . "$module" \
-    community "$COMMUNITY_TAG" "$COMMUNITY_VERSION" "$work/community.json" \
-    prime "$PRIME_TAG" "$PRIME_VERSION" "$work/prime.json" >"$work/golden.json" 2>"$work/merge.log"; then
+    community "$COMMUNITY_IMAGE" "$COMMUNITY_LABEL" "$COMMUNITY_COMMIT" "$COMMUNITY_VERSION" "$work/community.json" \
+    prime "$PRIME_IMAGE" "$PRIME_LABEL" "$PRIME_COMMIT" "$PRIME_VERSION" "$work/prime.json" >"$work/golden.json" 2>"$work/merge.log"; then
     echo "error: merging the field lists failed:" >&2
     cat "$work/merge.log" >&2
     exit 1
