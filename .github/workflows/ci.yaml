@@ -18,17 +18,21 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# ci-windows.yaml carries copies of the two Windows jobs below
-# (install-windows and e2e-windows) for a run of just those two. Its job
-# names differ from the check names this workflow reports. A run of it
-# never replaces a full run of this workflow: a merge requires the full run.
+# ci-windows.yaml carries copies of the four Windows jobs below
+# (install-windows-install, install-windows-config, install-windows-cli and
+# e2e-windows) for a run of just those four. Its job names differ from the
+# check names this workflow reports. A run of it never replaces a full run
+# of this workflow: a merge requires the full run.
 # A change to a Windows job here is made in the copy in the same commit.
 jobs:
-  # The three parts of scripts/validate run as parallel jobs; the commit
-  # hook and make validate run static and then tests, which runs both test
-  # parts in one process, so the hook and CI share one definition. The
-  # static part includes the shell gate (syntax and shellcheck over
-  # install.sh and scripts/*).
+  # Six parts of scripts/validate run as parallel jobs: static, the race
+  # detector tests in three shards (test-1, test-2, test-3), the source
+  # scans with the build contract (conformance) and the cache model
+  # (cachemodel). The commit hook and make validate run static and then
+  # tests, which runs the same go test calls in one process, so the hook and
+  # CI share one definition. The static part includes the shell gate (syntax
+  # and shellcheck over install.sh and scripts/*) and the check that the
+  # three shards hold every race package and every internal/cli test once.
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -54,7 +58,7 @@ jobs:
           path: ${{ steps.go-cache.outputs.path }}
           key: ${{ steps.go-cache.outputs.key }}
 
-  test:
+  test-1:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -68,7 +72,8 @@ jobs:
       - id: go-cache
         uses: $/.github/actions/go-cache
         with:
-          name: test
+          name: test-1
+          fallback-name: test
       - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
@@ -99,14 +104,14 @@ jobs:
             status=1
           fi
           exit "$status"
-      - run: ./scripts/validate tests-race
+      - run: ./scripts/validate tests-race-1
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
         with:
           path: ${{ steps.go-cache.outputs.path }}
           key: ${{ steps.go-cache.outputs.key }}
 
-  test-norace:
+  test-2:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -120,8 +125,84 @@ jobs:
       - id: go-cache
         uses: $/.github/actions/go-cache
         with:
-          name: test-norace
-      - run: ./scripts/validate tests-norace
+          name: test-2
+          fallback-name: test
+      - uses: $/.github/actions/setup-tools
+        with:
+          lint-tools: "false"
+      - run: ./scripts/validate tests-race-2
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
+
+  test-3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: test-3
+          fallback-name: test
+      - uses: $/.github/actions/setup-tools
+        with:
+          lint-tools: "false"
+      - run: ./scripts/validate tests-race-3
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
+
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: conformance
+          fallback-name: test-norace
+      - run: ./scripts/validate tests-conformance
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
+
+  cachemodel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: cachemodel
+          fallback-name: test-norace
+      - run: ./scripts/validate tests-cachemodel
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
         with:
@@ -132,7 +213,7 @@ jobs:
   # 32/64 assumptions) surfaces on the PR, not at tag time. The list must
   # match the build loop in release.yaml. linux/amd64 is kept for the 1:1
   # mapping with the release matrix, although the build contract in
-  # test-norace builds the same platform. One job per platform, so the
+  # conformance builds the same platform. One job per platform, so the
   # platforms build in parallel; each job, like every other job that uses
   # Go, has its own cache entry through go-cache.
   cross-compile:
@@ -206,7 +287,7 @@ jobs:
         with:
           path: ${{ steps.go-cache.outputs.path }}
           key: ${{ steps.go-cache.outputs.setup-go-key }}
-  # Runs the tests the two Windows jobs run, on Linux under strace, and fails
+  # Runs the tests the Windows jobs run, on Linux under strace, and fails
   # on every hardware fault (SIGSEGV, SIGBUS, SIGFPE) a test takes that has no
   # row in .github/fault-allowlist, including the faults Go recovers from. On
   # Windows the kernel writes the exception frame onto the stack of the
@@ -266,7 +347,8 @@ jobs:
         with:
           path: ${{ steps.go-cache.outputs.path }}
           key: ${{ steps.go-cache.outputs.key }}
-  install-windows:
+
+  install-windows-install:
     # The installer's behavior and security tests (token handling,
     # checksums, the atomic junction switch) only execute on Windows -
     # everywhere else they skip, so without this job they would never
@@ -290,11 +372,42 @@ jobs:
       - id: go-cache
         uses: $/.github/actions/go-cache
         with:
-          name: install-windows
+          name: install-windows-install
+          fallback-name: install-windows
       # Only the Windows suite: the package's POSIX-sh installer tests
       # assume sh/symlink semantics and fail on a Windows runner. -race
       # per the repo's testing mandate (the runner ships gcc).
       - run: go test -race -count=1 -run TestWindows ./install/
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
+
+  install-windows-config:
+    # The two ./internal/config/ steps share this job: the second reuses
+    # the build of the first.
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      # Informational: names the host and nothing gates on it. Prints one line
+      # per processor. A query error is not shown and does not fail the step,
+      # so a runner without WMI access prints nothing.
+      - name: CPU model
+        shell: pwsh
+        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: install-windows-config
+          fallback-name: install-windows
       # Three things this leg is for. The path-identity tests for Windows
       # spellings - volume and separator forms of one directory,
       # %APPDATA% compared in another casing - are build-tagged for
@@ -329,6 +442,41 @@ jobs:
       # the log shows which Windows branches of the helpers ran and which
       # skipped.
       - run: go test -race -count=1 -v ./internal/testfs/
+      # The rename, removal and read retry tests log what Windows
+      # returns: errors by errno with the retry off, and what plain reads
+      # hit while a file is replaced. -v prints those lines when the
+      # tests pass.
+      - run: go test -race -count=1 -v -run 'TestRenameOverAnOpenTarget|TestRemoveOfAnOpenFile|TestReadsRetryASharingViolation|TestShareRetryLeavesOtherErrorsAlone|TestConcurrentWritersOfOneFile|TestReadsDuringReplace|TestRootReadsDuringRootReplace' ./internal/config/
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.go-cache.outputs.path }}
+          key: ${{ steps.go-cache.outputs.key }}
+
+  install-windows-cli:
+    # The two ./internal/cli/ steps share this job: they reuse one Go
+    # build cache.
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      # Informational: names the host and nothing gates on it. Prints one line
+      # per processor. A query error is not shown and does not fail the step,
+      # so a runner without WMI access prints nothing.
+      - name: CPU model
+        shell: pwsh
+        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: go-cache
+        uses: $/.github/actions/go-cache
+        with:
+          name: install-windows-cli
+          fallback-name: install-windows
       # What one recorded command run costs the exec plugin's cache hit,
       # through the built command tree: the directory stat and the store's
       # file operations, on NTFS, on top of the hit's own reads, and no
@@ -348,11 +496,6 @@ jobs:
       # The same hit timed with recording on and off, ten runs of each, for
       # the median. No -race: the detector would hide the difference.
       - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
-      # The rename, removal and read retry tests log what Windows
-      # returns: errors by errno with the retry off, and what plain reads
-      # hit while a file is replaced. -v prints those lines when the
-      # tests pass.
-      - run: go test -race -count=1 -v -run 'TestRenameOverAnOpenTarget|TestRemoveOfAnOpenFile|TestReadsRetryASharingViolation|TestShareRetryLeavesOtherErrorsAlone|TestConcurrentWritersOfOneFile|TestReadsDuringReplace|TestRootReadsDuringRootReplace' ./internal/config/
       # The exec plugin's remedies carry a shell-quoted Windows path, and
       # the lookup and the no-terminal login run on it too.
       - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/

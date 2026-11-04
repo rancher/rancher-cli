@@ -28,6 +28,35 @@ const (
 		"then dispatch ci.yaml on the branch and confirm the e2e job's go-cache lookup finds the setup-go key"
 )
 
+// goCacheFallbacks maps the go-cache name of each job that replaced another
+// job to the id the replaced job had in ci.yaml: until the new job has an
+// entry of its own, it restores the entry of the job it replaced. Every other
+// job passes no fallback-name.
+var goCacheFallbacks = map[string]string{
+	"test-1":                  "test",
+	"test-2":                  "test",
+	"test-3":                  "test",
+	"conformance":             "test-norace",
+	"cachemodel":              "test-norace",
+	"install-windows-install": "install-windows",
+	"install-windows-config":  "install-windows",
+	"install-windows-cli":     "install-windows",
+}
+
+// formerCIJobIDs are the ids of the ci.yaml jobs that the jobs in
+// goCacheFallbacks replaced; a fallback-name may name only one of them.
+var formerCIJobIDs = []string{"test", "test-norace", "install-windows"}
+
+// goCacheInputs are the inputs of the go-cache action, with their defaults.
+var goCacheInputs = map[string]string{"name": "", "fallback-name": "", "setup-go-key": "false"}
+
+// The two restore keys of go-cache that use fallback-name. They are empty
+// when the input is empty.
+const (
+	fallbackKeyWithHash = "${{ inputs.fallback-name != '' && format('go-{0}-{1}-{2}-{3}-{4}-', inputs.fallback-name, runner.os, runner.arch, steps.paths.outputs.goversion, hashFiles('go.sum')) || '' }}"
+	fallbackKeyNoHash   = "${{ inputs.fallback-name != '' && format('go-{0}-{1}-{2}-{3}-', inputs.fallback-name, runner.os, runner.arch, steps.paths.outputs.goversion) || '' }}"
+)
+
 // goCacheOutputs are the outputs of the go-cache action, the only ones a
 // workflow may read.
 var goCacheOutputs = []string{"key", "path", "cache-hit", "setup-go-key", "setup-go-cache-hit"}
@@ -153,6 +182,7 @@ type cacheFile struct {
 	workflow  cacheWorkflow
 	rawJobs   map[string]map[string]any
 	outputs   map[string]string
+	inputs    map[string]string
 	actionRun []workflowStep
 }
 
@@ -177,6 +207,9 @@ func parseCacheFile(filePath, text string) (cacheFile, error) {
 	f.isAction = strings.HasPrefix(filePath, ".github/actions/") && (base == "action.yml" || base == "action.yaml")
 	if f.isAction {
 		var action struct {
+			Inputs map[string]struct {
+				Default string `yaml:"default"`
+			} `yaml:"inputs"`
 			Outputs map[string]struct {
 				Value string `yaml:"value"`
 			} `yaml:"outputs"`
@@ -186,6 +219,10 @@ func parseCacheFile(filePath, text string) (cacheFile, error) {
 		}
 		if err := yaml.Unmarshal([]byte(text), &action); err != nil {
 			return f, fmt.Errorf("%s: %w", filePath, err)
+		}
+		f.inputs = map[string]string{}
+		for name, in := range action.Inputs {
+			f.inputs[name] = in.Default
 		}
 		f.outputs = map[string]string{}
 		for name, o := range action.Outputs {
@@ -669,6 +706,7 @@ func goCacheNameProblems(f, ci cacheFile, haveCI bool, ciNames map[string]string
 	add := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
 	label := f.path + " job " + id
 	passed := cacheStep.With["name"]
+	out = append(out, goCacheFallbackProblems(label, passed, cacheStep.With["fallback-name"])...)
 	got, want, problem := expectedGoCacheNames(id, job, passed)
 	if problem != "" {
 		return []string{label + ": " + problem}
@@ -704,6 +742,27 @@ func goCacheNameProblems(f, ci cacheFile, haveCI bool, ciNames map[string]string
 		if !reflect.DeepEqual(blockOrNil(f.workflow.Env), blockOrNil(ci.workflow.Env)) || !reflect.DeepEqual(blockOrNil(f.workflow.Defaults), blockOrNil(ci.workflow.Defaults)) {
 			add("%s: the top-level env and defaults of %s must equal those of ci.yaml", label, f.path)
 		}
+	}
+	return out
+}
+
+// goCacheFallbackProblems checks the fallback-name one job passes to go-cache
+// with the name it passes: exactly the jobs in goCacheFallbacks pass one, the
+// id it lists, which is one of the replaced job ids in formerCIJobIDs and not
+// the job's own name.
+func goCacheFallbackProblems(label, name, fallback string) []string {
+	var out []string
+	add := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
+	if fallback != "" {
+		if !slices.Contains(formerCIJobIDs, fallback) {
+			add("%s: fallback-name %q is none of the replaced job ids %q", label, fallback, formerCIJobIDs)
+		}
+		if fallback == name {
+			add("%s: fallback-name %q is the job's own go-cache name", label, fallback)
+		}
+	}
+	if want := goCacheFallbacks[name]; fallback != want {
+		add("%s: the go-cache name %q must pass fallback-name %q (empty means none), got %q", label, name, want, fallback)
 	}
 	return out
 }
@@ -807,6 +866,9 @@ func goCacheActionProblems(files []cacheFile) []string {
 			}
 		}
 	}
+	if !reflect.DeepEqual(action.inputs, goCacheInputs) {
+		add("%s: go-cache declares exactly the inputs and defaults %q, found %q", goCacheActionFile, goCacheInputs, action.inputs)
+	}
 	restoreStep, haveRestore := restoreIdx["restore"]
 	lookupStep, haveLookup := restoreIdx["setup-go-lookup"]
 	if restores != 2 || !haveRestore || !haveLookup {
@@ -824,13 +886,13 @@ func goCacheActionProblems(files []cacheFile) []string {
 		if want := keyPrefix + "${{ hashFiles('go.sum') }}-${{ steps.paths.outputs.day }}"; r.With["key"] != want {
 			add("%s: the restore key must be %q, got %q", goCacheActionFile, want, r.With["key"])
 		}
-		wantKeys := []string{keyPrefix + "${{ hashFiles('go.sum') }}-", keyPrefix, "setup-go-${{ runner.os }}-"}
+		wantKeys := []string{keyPrefix + "${{ hashFiles('go.sum') }}-", keyPrefix, fallbackKeyWithHash, fallbackKeyNoHash, "setup-go-${{ runner.os }}-"}
 		var gotKeys []string
 		for line := range strings.SplitSeq(strings.TrimSpace(r.With["restore-keys"]), "\n") {
 			gotKeys = append(gotKeys, strings.TrimSpace(line))
 		}
 		if !slices.Equal(gotKeys, wantKeys) {
-			add("%s: the restore step must have the three restore-keys in order, want %q, got %q", goCacheActionFile, wantKeys, gotKeys)
+			add("%s: the restore step must have the five restore-keys in order (the two for fallback-name are empty without the input), want %q, got %q", goCacheActionFile, wantKeys, gotKeys)
 		}
 	}
 	switch {
@@ -982,6 +1044,8 @@ const (
 inputs:
   name:
     required: true
+  fallback-name:
+    default: ""
   setup-go-key:
     default: "false"
 outputs:
@@ -1014,6 +1078,8 @@ runs:
         restore-keys: |
           go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-
           go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-
+          ` + fallbackKeyWithHash + `
+          ` + fallbackKeyNoHash + `
           setup-go-${{ runner.os }}-
     # The key format of actions/setup-go@` + fxSetupGoSHA + `
     - id: setup-go-key
@@ -1178,6 +1244,8 @@ func TestCacheStepRules(t *testing.T) {
 			fxRun("git config --global core.autocrlf false"), fxCheckout, fxSetupGo, fxGoCache("e2e-windows", ""), envtestWindows,
 			fxRun("bash scripts/e2e"), fxSave("e2e-windows", false)))},
 		{name: "a copy of a ci.yaml job in another workflow under another job id", files: withCopy(copyOf("install-windows"), "")},
+		{name: "a job that falls back to the cache of the job it replaced", files: ciOnly(fxJob("test-1", fxCheckout, fxSetupGo,
+			fxGoCache("test-1", "          fallback-name: test\n"), fxRun("go test ./..."), fxSave("test-1", false)))},
 		{name: "a Linux job with its own env and the envtest step", files: ciOnly(fxJobWith("fault-check", "    env:\n      GOFLAGS: -mod=mod\n",
 			fxCheckout, fxSetupGo, fxGoCache("fault-check", ""), envtestLinux, fxRun("make e2e"), fxSave("fault-check", false)))},
 		{name: "an envtest restore step on the Windows path", files: ciOnly(fxStandardJob("test", "test", restoreAt(envtestPathWindows)))},
@@ -1275,6 +1343,38 @@ func TestCacheStepRules(t *testing.T) {
 		{name: "a cartesian matrix", files: ciOnly(fxJobWith("cross-compile", "    strategy:\n      matrix:\n        goos: [linux, darwin]\n        goarch: [amd64, arm64]\n",
 			fxCheckout, fxSetupGo, fxGoCache("cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}", ""), fxRun("go build ./..."), fxSave("cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}", false))),
 			wants: []string{"only a matrix made of include entries is supported"}},
+		{name: "a fallback naming the job's own name", files: ciOnly(fxJob("test-2", fxCheckout, fxSetupGo,
+			fxGoCache("test-2", "          fallback-name: test-2\n"), fxRun("go test ./..."), fxSave("test-2", false))),
+			wants: []string{"is the job's own go-cache name", "must pass fallback-name"}},
+		{name: "a fallback naming an unknown job", files: ciOnly(fxJob("test-2", fxCheckout, fxSetupGo,
+			fxGoCache("test-2", "          fallback-name: nothing\n"), fxRun("go test ./..."), fxSave("test-2", false))),
+			wants: []string{"is none of the replaced job ids", "must pass fallback-name"}},
+		{name: "a fallback naming a job id that exists only after the split", files: ciOnly(fxJob("test-2", fxCheckout, fxSetupGo,
+			fxGoCache("test-2", "          fallback-name: test-1\n"), fxRun("go test ./..."), fxSave("test-2", false))),
+			wants: []string{"is none of the replaced job ids"}},
+		{name: "a replacing job with no fallback", files: ciOnly(fxJob("test-3", fxCheckout, fxSetupGo,
+			fxGoCache("test-3", ""), fxRun("go test ./..."), fxSave("test-3", false))),
+			wants: []string{`the go-cache name "test-3" must pass fallback-name "test"`}},
+		{name: "a replacing job with another job's fallback", files: ciOnly(fxJob("conformance", fxCheckout, fxSetupGo,
+			fxGoCache("conformance", "          fallback-name: test\n"), fxRun("go test ./..."), fxSave("conformance", false))),
+			wants: []string{`the go-cache name "conformance" must pass fallback-name "test-norace"`}},
+		{name: "a fallback on a job that replaced nothing", files: ciOnly(fxJob("lint", fxCheckout, fxSetupGo,
+			fxGoCache("lint", "          fallback-name: test\n"), fxRun("go vet ./..."), fxSave("lint", false))),
+			wants: []string{`the go-cache name "lint" must pass fallback-name "" (empty means none)`}},
+		{name: "a copy that drops the fallback of its twin", files: map[string]string{
+			ciWorkflowPath: fxWorkflow("", fxJob("install-windows-install", fxCheckout, fxSetupGo,
+				fxGoCache("install-windows-install", "          fallback-name: install-windows\n"), fxRun("go test ./..."), fxSave("install-windows-install", false))),
+			ciCopy: fxWorkflow("", fxJob("install-windows-install-early", fxCheckout, fxSetupGo,
+				fxGoCache("install-windows-install", ""), fxRun("go test ./..."), fxSave("install-windows-install", false))),
+		}, wants: []string{"a job in another workflow must equal the ci.yaml job", `must pass fallback-name "install-windows"`}},
+		{name: "a restore step with no fallback lines", files: cacheActionWith("          "+fallbackKeyWithHash+"\n          "+fallbackKeyNoHash+"\n", ""),
+			wants: []string{"the restore step must have the five restore-keys in order"}},
+		{name: "a fallback line that always looks up a name", files: cacheActionWith(fallbackKeyNoHash, "go-${{ inputs.fallback-name }}-"),
+			wants: []string{"the restore step must have the five restore-keys in order"}},
+		{name: "the two fallback lines in the other order", files: cacheActionWith(fallbackKeyWithHash+"\n          "+fallbackKeyNoHash, fallbackKeyNoHash+"\n          "+fallbackKeyWithHash),
+			wants: []string{"the restore step must have the five restore-keys in order"}},
+		{name: "no fallback-name input", files: cacheActionWith("  fallback-name:\n    default: \"\"\n", ""),
+			wants: []string{"go-cache declares exactly the inputs and defaults"}},
 		{name: "a copy that passes its own job id", files: withCopy(strings.Replace(copyOf("install-windows"), "name: install-windows\n", "name: install-windows-early\n", 1), ""),
 			wants: []string{"must be the name of a ci.yaml job"}},
 		{name: "a restore after go-cache on a Go build directory", files: ciOnly(fxStandardJob("test", "test", restoreAt("~/.cache/go-build"))),

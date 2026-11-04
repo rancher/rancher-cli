@@ -1,10 +1,12 @@
 name: go-cache
 description: >-
   Restore the Go module and build caches for one job from the entries the
-  main branch saved, and clear the Go test cache so every test runs. The
-  job saves the caches itself with actions/cache/save, on a main push only,
-  using the outputs of this action. Not for the release workflow, which
-  restores no cache.
+  main branch saved, and clear the Go test cache so every test runs. When
+  the job has no entry of its own yet, it restores the entry of the job it
+  replaced if fallback-name names one. The job saves the caches itself with
+  actions/cache/save, on a main push only, under its own name, using the
+  outputs of this action. Not for the release workflow, which restores no
+  cache.
 
 inputs:
   name:
@@ -13,6 +15,13 @@ inputs:
       appended and joined with a hyphen. In a copy of a ci.yaml job in
       another workflow, that ci.yaml job's name.
     required: true
+  fallback-name:
+    description: >-
+      The name of another cache entry to restore when none of the job's own
+      matches, for a job that replaces another job: the id the replaced job
+      had in ci.yaml. The job still saves under its own name. Empty adds no
+      restore key.
+    default: ""
   setup-go-key:
     description: >-
       "true" also checks whether the entry actions/setup-go looks up
@@ -62,6 +71,11 @@ runs:
           printf '%s\n' "day=$(date -u +%Y-%m-%d)"
         } >> "$GITHUB_OUTPUT"
 
+    # With fallback-name empty, the two lines that use it are empty, and
+    # actions/cache drops empty lines from restore-keys: no key with an
+    # empty name is looked up. The own-name keys come first and the
+    # setup-go key last, so the fallback is used only when the job has no
+    # entry of its own.
     - id: restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -72,6 +86,8 @@ runs:
         restore-keys: |
           go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-
           go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-
+          ${{ inputs.fallback-name != '' && format('go-{0}-{1}-{2}-{3}-{4}-', inputs.fallback-name, runner.os, runner.arch, steps.paths.outputs.goversion, hashFiles('go.sum')) || '' }}
+          ${{ inputs.fallback-name != '' && format('go-{0}-{1}-{2}-{3}-', inputs.fallback-name, runner.os, runner.arch, steps.paths.outputs.goversion) || '' }}
           setup-go-${{ runner.os }}-
 
     # The key below is the one actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e

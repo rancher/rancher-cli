@@ -23,14 +23,16 @@ const (
 // earlyJobs maps each job of ci-windows.yaml to the job of ci.yaml it
 // copies.
 var earlyJobs = map[string]string{
-	"install-windows-early": "install-windows",
-	"e2e-windows-early":     "e2e-windows",
+	"install-windows-install-early": "install-windows-install",
+	"install-windows-config-early":  "install-windows-config",
+	"install-windows-cli-early":     "install-windows-cli",
+	"e2e-windows-early":             "e2e-windows",
 }
 
-// ciCheckNames are the check names the ruleset for main requires. ci.yaml
-// reports every one of them. A renamed or removed job leaves a required check
-// that never reports, and the change has to be a deliberate edit of this list
-// and of the ruleset. Other jobs may be added.
+// ciCheckNames are the check names ci.yaml reports for the jobs a merge
+// waits on. A job that is renamed or removed stops reporting its check, so
+// the change has to be a deliberate edit of this list. Other jobs may be
+// added.
 var ciCheckNames = []string{
 	"cross-compile (darwin/amd64)",
 	"cross-compile (darwin/arm64)",
@@ -40,9 +42,13 @@ var ciCheckNames = []string{
 	"cross-compile (windows/amd64)",
 	"e2e",
 	"e2e-windows",
-	"install-windows",
+	"install-windows-cli",
+	"install-windows-config",
+	"install-windows-install",
 	"lint",
-	"test",
+	"test-1",
+	"test-2",
+	"test-3",
 }
 
 var shaPinnedUseRE = regexp.MustCompile(`@[0-9a-f]{40}$`)
@@ -141,8 +147,9 @@ func windowsEarlyProblems(ci, early map[string]any) []string {
 	}
 
 	earlyJobMap := mapOf(early["jobs"])
-	if got := sortedKeys(earlyJobMap); !slices.Equal(got, []string{"e2e-windows-early", "install-windows-early"}) {
-		add("b", "ci-windows.yaml holds the jobs %v and must hold exactly install-windows-early and e2e-windows-early", got)
+	wantEarly := []string{"e2e-windows-early", "install-windows-cli-early", "install-windows-config-early", "install-windows-install-early"}
+	if got := sortedKeys(earlyJobMap); !slices.Equal(got, wantEarly) {
+		add("b", "ci-windows.yaml holds the jobs %v and must hold exactly %v", got, wantEarly)
 	}
 
 	reported := workflowCheckNames(ci)
@@ -272,7 +279,7 @@ func testfsStepProblems(id string, job map[string]any) []string {
 
 // TestWindowsEarlyWorkflowStaysSeparate asserts the Windows-only workflow
 // stays a separate file and that a run of it cannot be mistaken for a full run:
-// dispatch only, jobs with names no check lists, copies of the two Windows
+// dispatch only, jobs with names no check lists, copies of the four Windows
 // jobs of ci.yaml, pinned actions and the narrowest permissions.
 func TestWindowsEarlyWorkflowStaysSeparate(t *testing.T) {
 	t.Parallel()
@@ -292,7 +299,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-  test:
+  test-1:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make test
+  test-2:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make test
+  test-3:
     runs-on: ubuntu-latest
     steps:
       - run: make test
@@ -314,12 +329,24 @@ jobs:
           - { goos: windows, goarch: amd64 }
     steps:
       - run: go build ./...
-  install-windows:
+  install-windows-install:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: go test -race -count=1 -run TestWindows ./install/
+  install-windows-config:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - run: go test -race -count=1 -v ./internal/testfs/
+  install-windows-cli:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: go test -race -count=1 ./internal/token/
   e2e-windows:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -338,12 +365,24 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  install-windows-early:
+  install-windows-install-early:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: go test -race -count=1 -run TestWindows ./install/
+  install-windows-config-early:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - run: go test -race -count=1 -v ./internal/testfs/
+  install-windows-cli-early:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: go test -race -count=1 ./internal/token/
   e2e-windows-early:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -377,7 +416,7 @@ func earlySteps(early map[string]any, id string) []any {
 func TestWindowsEarlyProblemsTable(t *testing.T) {
 	t.Parallel()
 	tagged := func(early map[string]any) {
-		for _, id := range []string{"install-windows-early"} {
+		for _, id := range []string{"install-windows-install-early"} {
 			earlySteps(early, id)[0].(map[string]any)["uses"] = "actions/checkout@v7"
 		}
 	}
@@ -405,17 +444,27 @@ func TestWindowsEarlyProblemsTable(t *testing.T) {
 		{name: "a missing job", edit: func(_, early map[string]any) {
 			delete(mapOf(early["jobs"]), "e2e-windows-early")
 		}, want: []string{"b"}},
+		{name: "a missing install job", edit: func(_, early map[string]any) {
+			delete(mapOf(early["jobs"]), "install-windows-cli-early")
+		}, want: []string{"b"}},
 		{name: "a job named like a ci check", edit: func(_, early map[string]any) {
 			earlyJob(early, "e2e-windows-early")["name"] = "e2e-windows"
 		}, want: []string{"c", "e"}},
 		{name: "a job named like another ci check", edit: func(_, early map[string]any) {
 			earlyJob(early, "e2e-windows-early")["name"] = "e2e"
 		}, want: []string{"c", "e"}},
+		{name: "a job named like an install check", edit: func(_, early map[string]any) {
+			earlyJob(early, "install-windows-cli-early")["name"] = "install-windows-cli"
+		}, want: []string{"c", "e"}},
 		{name: "a changed run line in a copy", edit: func(_, early map[string]any) {
 			earlySteps(early, "e2e-windows-early")[0].(map[string]any)["run"] = "bash scripts/e2e --other"
 		}, want: []string{"d"}},
 		{name: "a deleted step in a copy", edit: func(_, early map[string]any) {
-			job := earlyJob(early, "install-windows-early")
+			job := earlyJob(early, "install-windows-install-early")
+			job["steps"] = job["steps"].([]any)[:1]
+		}, want: []string{"d"}},
+		{name: "a deleted step in the copy of another install job", edit: func(_, early map[string]any) {
+			job := earlyJob(early, "install-windows-config-early")
 			job["steps"] = job["steps"].([]any)[:1]
 		}, want: []string{"d"}},
 		{name: "a changed step timeout in a copy", edit: func(_, early map[string]any) {
@@ -425,7 +474,7 @@ func TestWindowsEarlyProblemsTable(t *testing.T) {
 			earlyJob(early, "e2e-windows-early")["runs-on"] = "windows-2022"
 		}, want: []string{"d"}},
 		{name: "a changed pin in one copy", edit: func(_, early map[string]any) {
-			earlySteps(early, "install-windows-early")[0].(map[string]any)["uses"] = "actions/checkout@" + strings.Repeat("a", 40)
+			earlySteps(early, "install-windows-install-early")[0].(map[string]any)["uses"] = "actions/checkout@" + strings.Repeat("a", 40)
 		}, want: []string{"d"}},
 		{name: "a step key no typed struct lists", edit: func(_, early map[string]any) {
 			earlySteps(early, "e2e-windows-early")[0].(map[string]any)["continue-on-error"] = true
@@ -444,7 +493,7 @@ func TestWindowsEarlyProblemsTable(t *testing.T) {
 			early["env"] = map[string]any{"A": "b"}
 		}, want: []string{"e"}},
 		{name: "a job env on a ci Windows job only", edit: func(ci, _ map[string]any) {
-			mapOf(mapOf(ci["jobs"])["install-windows"])["env"] = map[string]any{"GOFLAGS": "-run=x"}
+			mapOf(mapOf(ci["jobs"])["install-windows-install"])["env"] = map[string]any{"GOFLAGS": "-run=x"}
 		}, want: []string{"d"}},
 		{name: "a job continue-on-error on a ci Windows job only", edit: func(ci, _ map[string]any) {
 			mapOf(mapOf(ci["jobs"])["e2e-windows"])["continue-on-error"] = true
@@ -477,7 +526,7 @@ func TestWindowsEarlyProblemsTable(t *testing.T) {
 			mapOf(early["concurrency"])["cancel-in-progress"] = true
 		}, want: []string{"e"}},
 		{name: "version tags in both files", edit: func(ci, early map[string]any) {
-			for _, steps := range [][]any{earlySteps(early, "install-windows-early"), mapOf(mapOf(ci["jobs"])["install-windows"])["steps"].([]any)} {
+			for _, steps := range [][]any{earlySteps(early, "install-windows-install-early"), mapOf(mapOf(ci["jobs"])["install-windows-install"])["steps"].([]any)} {
 				steps[0].(map[string]any)["uses"] = "actions/checkout@v7"
 			}
 		}, want: []string{"f"}},
@@ -493,11 +542,16 @@ func TestWindowsEarlyProblemsTable(t *testing.T) {
 			jobs["lint2"] = jobs["lint"]
 			delete(jobs, "lint")
 		}, want: []string{"g"}},
-		{name: "a twelfth ci job", edit: func(ci, _ map[string]any) {
+		{name: "a renamed ci Windows job", edit: func(ci, _ map[string]any) {
+			jobs := mapOf(ci["jobs"])
+			jobs["install-windows-cli2"] = jobs["install-windows-cli"]
+			delete(jobs, "install-windows-cli")
+		}, want: []string{"d", "g"}},
+		{name: "an added ci job", edit: func(ci, _ map[string]any) {
 			mapOf(ci["jobs"])["fault-check"] = map[string]any{"runs-on": "ubuntu-latest", "steps": []any{}}
 		}},
-		{name: "a ci job with the name of a required check", edit: func(ci, _ map[string]any) {
-			mapOf(mapOf(ci["jobs"])["test"])["name"] = "lint"
+		{name: "a ci job with the name of another check ci.yaml reports", edit: func(ci, _ map[string]any) {
+			mapOf(mapOf(ci["jobs"])["test-1"])["name"] = "lint"
 		}, want: []string{"g"}},
 		{name: "a ci matrix without windows", edit: func(ci, _ map[string]any) {
 			matrix := mapOf(mapOf(mapOf(mapOf(ci["jobs"])["cross-compile"])["strategy"])["matrix"])
@@ -522,14 +576,14 @@ func TestWindowsEarlyProblemsTable(t *testing.T) {
 	}
 }
 
-// TestWindowsLegsRunTheHelperTests asserts the install-windows job of
+// TestWindowsLegsRunTheHelperTests asserts the install-windows-config job of
 // ci.yaml and its copy in ci-windows.yaml run the tests of internal/testfs
 // with -v: the Windows branches of the helpers run nowhere else.
 func TestWindowsLegsRunTheHelperTests(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ path, id string }{
-		{ciWorkflowPath, "install-windows"},
-		{earlyWorkflowPath, "install-windows-early"},
+		{ciWorkflowPath, "install-windows-config"},
+		{earlyWorkflowPath, "install-windows-config-early"},
 	} {
 		job := mapOf(mapOf(readWorkflowMap(t, c.path)["jobs"])[c.id])
 		require.NotNil(t, job, "%s has no job %s", c.path, c.id)

@@ -17,7 +17,7 @@ Go: the version go.mod names (1.27). Automation is `make`, dispatching to
 |---|---|
 | `make build` | build `bin/rancher` (CGO-free) |
 | `make test` | `go test -cover` on every package, with `-race` on all but `test/conformance` and `test/cachemodel`; `test/conformance` runs uncached |
-| `make validate` | gofmt, vet, lint, tests (race detector except the source scans and the cache model) - the commit gate; CI runs it as three parallel jobs: `./scripts/validate static`, `./scripts/validate tests-race` and `./scripts/validate tests-norace` |
+| `make validate` | gofmt, vet, lint, tests (race detector except the source scans and the cache model) - the commit gate; CI runs it as six parallel jobs, with the race pass in three shards: `./scripts/validate static`, `tests-race-1`, `tests-race-2`, `tests-race-3`, `tests-conformance` and `tests-cachemodel` |
 | `make e2e` | envtest provider suite + testscript scenarios |
 | `make e2e-fidelity` | verify recorded fidelity goldens against a real Rancher in Docker with an imported k3s downstream (~7-9 min boot; never on PRs - CI runs it on demand or weekly) |
 | `make e2e-fidelity-update` | re-record the fidelity oracle goldens, downstream family included (review the diff like the schema golden) |

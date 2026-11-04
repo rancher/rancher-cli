@@ -7,14 +7,35 @@
 #
 # -pass=race runs only the race pass. -pass=norace runs only the passes
 # without the race detector: the norace packages that are not fresh, then
-# the fresh ones. With no -pass all three run in that order: race, norace,
-# fresh. The option takes its value as -pass=VALUE or -pass VALUE, with one
-# or two leading dashes, may be given once, and is not passed to go test.
-# Any other value exits 2 before any go command runs. CI runs the two
-# passes as separate jobs.
+# the fresh ones. -pass=norace-cached runs only the norace packages that
+# are not fresh, and -pass=fresh only the fresh ones. With no -pass all
+# three run in that order: race, norace, fresh. The option takes its value
+# as -pass=VALUE or -pass VALUE, with one or two leading dashes, may be
+# given once, and is not passed to go test. Any other value exits 2 before
+# any go command runs. CI runs the race pass as three shards and the
+# norace and fresh packages as separate jobs.
 #
-# -coverprofile=FILE is the one flag that writes a file. Each pass writes
-# its own profile and they are merged into FILE (the profiles hold
+# -shard=I/3 (I is 1, 2 or 3; the same four spellings as -pass) runs one
+# third of the race pass and needs -pass=race. The packages of the race
+# pass other than internal/cli, sorted with LC_ALL=C sort, go to the shards
+# by position: item k (counting from 0) goes to shard k mod 3 + 1. The
+# names that go test -list prints for internal/cli (tests, fuzz tests,
+# examples and benchmarks, without the summary line) are assigned the same
+# way. A shard makes two go test calls, both always run: its packages, then
+# internal/cli with -run set to its names (the call is skipped when the
+# shard has none). TestMain is not a listed name and runs in every
+# internal/cli process. -shard is refused with any spelling of -run.
+# Without -shard, the race pass is one go test call over every package.
+#
+# -shard-check takes no other flag. It computes the three assignments with
+# the code a shard uses, prints the size of each shard, and fails unless every
+# race package other than internal/cli and every internal/cli name is in
+# exactly one shard and both lists are not empty. On failure it names each
+# missing, unexpected and repeated item and prints the three lists. It sees the
+# files of the host OS only.
+#
+# -coverprofile=FILE is the one flag that writes a file. Each go test call
+# writes its own profile and they are merged into FILE (the profiles hold
 # different packages); -covermode=atomic is added unless the flags name a
 # mode, because the merged profiles must share one.
 #
@@ -56,7 +77,8 @@ for f in "${fresh[@]}"; do
   fi
 done
 
-# take_pass records the value of -pass: race or norace, once.
+# take_pass records the value of -pass: race, norace, fresh or
+# norace-cached, once.
 pass=
 pass_given=
 take_pass() {
@@ -66,14 +88,34 @@ take_pass() {
   fi
   pass_given=1
   case "$1" in
-    race | norace) pass=$1 ;;
+    race | norace | fresh | norace-cached) pass=$1 ;;
     *)
-      echo "error: -pass takes race or norace, not \"$1\"" >&2
+      echo "error: -pass takes race, norace, fresh or norace-cached, not \"$1\"" >&2
       exit 2
       ;;
   esac
 }
 
+# take_shard records the value of -shard: 1/3, 2/3 or 3/3, once.
+shard=
+shard_given=
+take_shard() {
+  if [ -n "$shard_given" ]; then
+    echo "error: -shard is given more than once" >&2
+    exit 2
+  fi
+  shard_given=1
+  case "$1" in
+    1/3 | 2/3 | 3/3) shard=${1%/3} ;;
+    *)
+      echo "error: -shard takes 1/3, 2/3 or 3/3, not \"$1\"" >&2
+      exit 2
+      ;;
+  esac
+}
+
+argc=$#
+shard_check=
 flags=()
 profile=
 covermode=
@@ -84,11 +126,25 @@ while [ $# -gt 0 ]; do
       ;;
     -pass | --pass)
       if [ $# -lt 2 ]; then
-        echo "error: $1 needs race or norace" >&2
+        echo "error: $1 needs race, norace, fresh or norace-cached" >&2
         exit 2
       fi
       take_pass "$2"
       shift
+      ;;
+    -shard=* | --shard=*)
+      take_shard "${1#*=}"
+      ;;
+    -shard | --shard)
+      if [ $# -lt 2 ]; then
+        echo "error: $1 needs 1/3, 2/3 or 3/3" >&2
+        exit 2
+      fi
+      take_shard "$2"
+      shift
+      ;;
+    -shard-check | --shard-check)
+      shard_check=1
       ;;
     -coverprofile=* | --coverprofile=*)
       profile=${1#*=}
@@ -110,6 +166,24 @@ while [ $# -gt 0 ]; do
       ;;
   esac
   shift
+done
+if [ -n "$shard_check" ] && [ "$argc" -ne 1 ]; then
+  echo "error: -shard-check takes no other flag" >&2
+  exit 2
+fi
+if [ -n "$shard_given" ] && [ "$pass" != race ]; then
+  echo "error: -shard needs -pass=race" >&2
+  exit 2
+fi
+for f in "${flags[@]}"; do
+  case "$f" in
+    -run | --run | -run=* | --run=* | -test.run | --test.run | -test.run=* | --test.run=*)
+      if [ -n "$shard_given" ]; then
+        echo "error: -shard cannot be combined with $f: a shard sets -run itself" >&2
+        exit 2
+      fi
+      ;;
+  esac
 done
 if [ ${#flags[@]} -eq 0 ] && [ -z "$profile" ]; then
   flags=(-cover)
@@ -155,6 +229,7 @@ for f in "${flags[@]}"; do
 done
 
 race_flags=("${flags[@]}")
+cli_flags=("${flags[@]}")
 norace_flags=("${flags[@]}")
 fresh_flags=("${flags[@]}")
 if [ -z "$count_named" ]; then
@@ -165,30 +240,184 @@ if [ -n "$profile" ]; then
   trap 'rm -rf "$profiles"' EXIT
   if [ -z "$covermode" ]; then
     race_flags+=(-covermode=atomic)
+    cli_flags+=(-covermode=atomic)
     norace_flags+=(-covermode=atomic)
     fresh_flags+=(-covermode=atomic)
   fi
   race_flags+=("-coverprofile=$profiles/race")
+  cli_flags+=("-coverprofile=$profiles/racecli")
   norace_flags+=("-coverprofile=$profiles/norace")
   fresh_flags+=("-coverprofile=$profiles/fresh")
 fi
 
-status=0
-if [ "$pass" != norace ]; then
-  go test -race "${race_flags[@]}" "${race_pkgs[@]}" || status=1
+# The package whose tests are assigned to the shards one by one: the others
+# are assigned as packages. A shard runs it in a call of its own because -run
+# applies to every package of a call.
+sharded_pkg=internal/cli
+
+# lines prints its argument with a newline after each line, and nothing for
+# an empty argument.
+lines() {
+  if [ -n "$1" ]; then
+    printf '%s\n' "$1"
+  fi
+}
+
+# shard_items reads a list on stdin and prints the items of shard $1 (1, 2
+# or 3). The list is sorted first; item k, counting from 0, goes to shard
+# k mod 3 + 1.
+shard_items() {
+  LC_ALL=C sort | awk -v want="$1" '(NR - 1) % 3 + 1 == want'
+}
+
+# list_cli captures what go test -list prints for the sharded package in
+# cli_raw, and stops the script when the list fails. The list gets none of
+# the flags the script was given.
+cli_raw=
+list_cli() {
+  if ! cli_raw=$(go test -list '.*' "$module/$sharded_pkg"); then
+    echo "error: go test -list failed for $sharded_pkg" >&2
+    exit 1
+  fi
+}
+
+# cli_names prints the names in cli_raw without the summary line, one per
+# line, sorted. It fails on an empty list and on a name that is not a Go
+# identifier.
+cli_names() {
+  local out
+  out=$(lines "$cli_raw" | LC_ALL=C grep -Ev '^(ok|FAIL|\?)([[:space:]]|$)' || true)
+  if [ -z "$out" ]; then
+    echo "error: go test -list printed no names for $sharded_pkg" >&2
+    return 1
+  fi
+  if lines "$out" | LC_ALL=C grep -qvE '^[A-Za-z_][A-Za-z0-9_]*$'; then
+    echo "error: go test -list printed a name that is not a Go identifier for $sharded_pkg:" >&2
+    lines "$out" | LC_ALL=C grep -vE '^[A-Za-z_][A-Za-z0-9_]*$' >&2
+    return 1
+  fi
+  lines "$out" | LC_ALL=C sort
+}
+
+# shard_pkgs prints the packages of the race pass other than the sharded
+# one, sorted; it fails on an empty list.
+shard_pkgs() {
+  local out
+  out=$(lines "$(printf '%s\n' "${race_pkgs[@]}")" | LC_ALL=C grep -vxF "$module/$sharded_pkg" || true)
+  if [ -z "$out" ]; then
+    echo "error: the race pass holds no package other than $sharded_pkg" >&2
+    return 1
+  fi
+  lines "$out" | LC_ALL=C sort
+}
+
+if [ -n "$shard_check" ]; then
+  # The sorted union of the three shards must equal the sorted list the
+  # shards were made from, which must have no repeated item; the packages
+  # must also add up, with the norace packages and the sharded one, to
+  # everything go list prints. Each item is then in exactly one shard.
+  list_cli
+  if ! pkgs=$(shard_pkgs); then
+    exit 1
+  fi
+  if ! names=$(cli_names); then
+    exit 1
+  fi
+  problems=0
+  for kind in packages names; do
+    if [ "$kind" = packages ]; then
+      all=$pkgs
+      others=$(printf '%s\n' "${norace_pkgs[@]}" "${fresh_pkgs[@]}" "$module/$sharded_pkg")
+      expected=$(lines "$all_pkgs" | LC_ALL=C sort)
+    else
+      all=$names
+      others=
+      # Every name of a test, fuzz test, example or benchmark in the raw
+      # list, found by its prefix instead of by dropping the summary line.
+      expected=$(lines "$cli_raw" | awk '/^(Test|Fuzz|Example|Benchmark)[A-Za-z0-9_]*[ \t]*$/ { print $1 }' | LC_ALL=C sort)
+    fi
+    union=$others
+    parts=()
+    for i in 1 2 3; do
+      part=$(lines "$all" | shard_items "$i")
+      parts+=("$part")
+      echo "shard $i/3: $(lines "$part" | wc -l | tr -d ' ') $kind"
+      union=$(printf '%s\n%s' "$union" "$part")
+    done
+    union=$(lines "$union" | LC_ALL=C grep . | LC_ALL=C sort)
+    repeated=$({
+      lines "$union" | uniq -d
+      lines "$expected" | uniq -d
+    } | LC_ALL=C sort -u)
+    missing=$(LC_ALL=C comm -13 <(lines "$union" | LC_ALL=C sort -u) <(lines "$expected" | LC_ALL=C sort -u))
+    unexpected=$(LC_ALL=C comm -23 <(lines "$union" | LC_ALL=C sort -u) <(lines "$expected" | LC_ALL=C sort -u))
+    if [ -n "$repeated" ] || [ "$union" != "$expected" ]; then
+      echo "error: the shards do not hold every one of the $kind exactly once" >&2
+      lines "$missing" | awk '{ print "  missing: " $0 }' >&2
+      lines "$unexpected" | awk '{ print "  unexpected: " $0 }' >&2
+      lines "$repeated" | awk '{ print "  repeated: " $0 }' >&2
+      for i in 1 2 3; do
+        echo "shard $i/3 $kind:" >&2
+        lines "${parts[$((i - 1))]}" | awk '{ print "  " $0 }' >&2
+      done
+      problems=1
+    fi
+  done
+  if [ "$problems" -ne 0 ]; then
+    exit 1
+  fi
+  echo "ok: every race package other than $sharded_pkg and every $sharded_pkg name is in exactly one shard"
+  exit 0
 fi
-if [ "$pass" != race ]; then
-  if [ ${#norace_pkgs[@]} -gt 0 ]; then
-    go test "${norace_flags[@]}" "${norace_pkgs[@]}" || status=1
+
+run_race=
+run_cached=
+run_fresh=
+case "$pass" in
+  race) run_race=1 ;;
+  norace) run_cached=1 run_fresh=1 ;;
+  fresh) run_fresh=1 ;;
+  norace-cached) run_cached=1 ;;
+  *) run_race=1 run_cached=1 run_fresh=1 ;;
+esac
+
+status=0
+if [ -n "$run_race" ]; then
+  if [ -z "$shard" ]; then
+    go test -race "${race_flags[@]}" "${race_pkgs[@]}" || status=1
+  else
+    # Both listings come first: a shard that cannot list stops here, before
+    # a go test call that could pass on an empty list.
+    list_cli
+    if ! pkgs=$(shard_pkgs); then
+      exit 1
+    fi
+    if ! names=$(cli_names); then
+      exit 1
+    fi
+    mine=()
+    while IFS= read -r pkg; do
+      mine+=("$pkg")
+    done <<<"$(lines "$pkgs" | shard_items "$shard")"
+    if [ ${#mine[@]} -gt 0 ] && [ -n "${mine[0]}" ]; then
+      go test -race "${race_flags[@]}" "${mine[@]}" || status=1
+    fi
+    pattern=$(lines "$names" | shard_items "$shard" | paste -s -d '|' -)
+    if [ -n "$pattern" ]; then
+      go test -race "${cli_flags[@]}" -run "^($pattern)\$" "$module/$sharded_pkg" || status=1
+    fi
   fi
-  if [ ${#fresh_pkgs[@]} -gt 0 ]; then
-    go test "${fresh_flags[@]}" "${fresh_pkgs[@]}" || status=1
-  fi
+fi
+if [ -n "$run_cached" ] && [ ${#norace_pkgs[@]} -gt 0 ]; then
+  go test "${norace_flags[@]}" "${norace_pkgs[@]}" || status=1
+fi
+if [ -n "$run_fresh" ] && [ ${#fresh_pkgs[@]} -gt 0 ]; then
+  go test "${fresh_flags[@]}" "${fresh_pkgs[@]}" || status=1
 fi
 
 if [ -n "$profile" ]; then
   written=()
-  for f in "$profiles/race" "$profiles/norace" "$profiles/fresh"; do
+  for f in "$profiles/race" "$profiles/racecli" "$profiles/norace" "$profiles/fresh"; do
     if [ -s "$f" ]; then
       written+=("$f")
     fi

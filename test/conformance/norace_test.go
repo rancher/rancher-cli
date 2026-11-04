@@ -1,11 +1,13 @@
 package conformance
 
 import (
+	"bytes"
 	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -287,34 +289,59 @@ func TestFreshPackagesRunUncached(t *testing.T) {
 	}
 }
 
-// passCall is one go test call that the go stub logged.
+// passCall is one go test call that the go stub logged. run is the value of
+// a -run flag given as its own word, the form a shard uses.
 type passCall struct {
 	race, count1 bool
 	flags, pkgs  []string
+	run          string
 }
 
 // passStubModule is the module path the go stub prints for go list -m.
 const passStubModule = "example.com/m"
 
+// passStubCLI is the import path of the one package a shard assigns test by
+// test.
+const passStubCLI = passStubModule + "/internal/cli"
+
+// passStubNames is what the go stub prints for go test -list of the sharded
+// package unless a test says otherwise: names in no order, then the summary
+// line.
+var passStubNames = []string{"TestD", "BenchmarkB", "TestA", "FuzzF", "TestC", "ExampleE", "TestB", "ok  \t" + passStubCLI + "\t0.012s"}
+
 // passRun is the result of one run of the copied scripts/test.
 type passRun struct {
-	code   int
-	stderr string
-	goLog  []string
-	calls  []passCall
+	code      int
+	stdout    string
+	stderr    string
+	goLog     []string
+	calls     []passCall
+	listCalls []string
+	dir       string
 }
 
-// runPassScript copies the real scripts/test into a temp directory, puts a
-// go stub first on PATH and runs the copy with args. The stub logs every
-// call; go list -m prints passStubModule and go list ./... prints packages.
+// runPassScript runs the copied scripts/test with the default stub names.
 func runPassScript(t *testing.T, packages []string, args ...string) passRun {
+	t.Helper()
+	return runPassScriptWith(t, packages, passStubNames, nil, args...)
+}
+
+// runPassScriptWith copies the real scripts/test into a temp directory, puts
+// a go stub first on PATH and runs the copy with args. The stub logs every
+// call; go list -m prints passStubModule, go list ./... prints packages, go
+// test -list prints names (and fails when STUB_LIST_FAIL is set), and a go
+// test call with -coverprofile writes a profile that names each package it
+// was given.
+func runPassScriptWith(t *testing.T, packages, names, extraEnv []string, args ...string) passRun {
 	t.Helper()
 	root := t.TempDir()
 	copyRepositoryFile(t, noRaceScriptPath, root)
 	stubs := filepath.Join(root, "stubs")
 	logPath := filepath.Join(root, "go.log")
 	listPath := filepath.Join(root, "packages.txt")
+	namesPath := filepath.Join(root, "names.txt")
 	writeTestFile(t, listPath, strings.Join(packages, "\n")+"\n", 0o644)
+	writeTestFile(t, namesPath, strings.Join(names, "\n")+"\n", 0o644)
 	writeTestFile(t, filepath.Join(stubs, "go"), `#!/bin/bash
 printf 'go %s\n' "$*" >> "$STUB_LOG"
 if [ "$1" = list ]; then
@@ -323,27 +350,64 @@ if [ "$1" = list ]; then
   else
     cat "$STUB_PACKAGES"
   fi
+  exit 0
 fi
+if [ "$1" = test ] && [ "$2" = -list ]; then
+  if [ -n "${STUB_LIST_FAIL:-}" ]; then
+    echo "list failed" >&2
+    exit 1
+  fi
+  cat "$STUB_NAMES"
+  exit 0
+fi
+for arg in "$@"; do
+  case "$arg" in
+    -coverprofile=*)
+      file=${arg#*=}
+      echo "mode: atomic" > "$file"
+      for pkg in "$@"; do
+        case "$pkg" in
+          `+passStubModule+`*) echo "$pkg/file.go:1.1,2.1 1 1" >> "$file" ;;
+        esac
+      done
+      ;;
+  esac
+done
 `, 0o755)
-	env := []string{
+	env := append([]string{
 		"PATH=" + stubs + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"STUB_LOG=" + logPath,
 		"STUB_PACKAGES=" + listPath,
-	}
-	code, stderr := runScript(t, root, filepath.Join(root, noRaceScriptPath), env, args...)
-	run := passRun{code: code, stderr: stderr, goLog: readLog(t, logPath)}
+		"STUB_NAMES=" + namesPath,
+	}, extraEnv...)
+	cmd := exec.CommandContext(t.Context(), filepath.Join(root, noRaceScriptPath), args...)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), env...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	code := exitCodeOf(t, cmd.Run())
+	run := passRun{code: code, stdout: stdout.String(), stderr: stderr.String(), goLog: readLog(t, logPath), dir: root}
 	for _, line := range run.goLog {
+		if list, ok := strings.CutPrefix(line, "go test -list "); ok {
+			run.listCalls = append(run.listCalls, list)
+			continue
+		}
 		rest, ok := strings.CutPrefix(line, "go test ")
 		if !ok {
 			continue
 		}
 		var call passCall
-		for word := range strings.FieldsSeq(rest) {
+		words := strings.Fields(rest)
+		for i := 0; i < len(words); i++ {
+			word := words[i]
 			switch {
 			case word == "-race":
 				call.race = true
 			case word == "-count=1":
 				call.count1 = true
+			case word == "-run" && i+1 < len(words):
+				i++
+				call.run = words[i]
 			case strings.HasPrefix(word, passStubModule):
 				call.pkgs = append(call.pkgs, word)
 			default:
@@ -357,9 +421,11 @@ fi
 
 // TestTestPassesSplitTheRun asserts that scripts/test with -pass=race makes
 // one go test call with the race detector over every listed package except
-// the norace ones; with -pass=norace, two calls without it, the norace
-// packages that are not fresh and then the fresh ones with -count=1; with
-// no -pass, the race call followed by the two norace calls, so that every
+// the norace ones (internal/cli included, with no -run and no -list call);
+// with -pass=norace, two calls without it, the norace packages that are not
+// fresh and then the fresh ones with -count=1; with -pass=norace-cached only
+// the first of those two and with -pass=fresh only the second; with no
+// -pass, the race call followed by the two norace calls, so that every
 // listed package appears in exactly one call; that -pass takes its value
 // in the four spellings the flag package accepts; that every call carries
 // exactly the flags the script was given (two flags; with none, the default
@@ -389,7 +455,7 @@ func TestTestPassesSplitTheRun(t *testing.T) {
 			noRaceOnly = append(noRaceOnly, pkg)
 		}
 	}
-	for _, name := range []string{"", "/internal/a", "/internal/b"} {
+	for _, name := range []string{"", "/internal/a", "/internal/b", "/internal/cli"} {
 		listed = append(listed, passStubModule+name)
 		racePkgs = append(racePkgs, passStubModule+name)
 	}
@@ -441,6 +507,27 @@ func TestTestPassesSplitTheRun(t *testing.T) {
 		assert.Equal(t, racePkgs, r.calls[0].pkgs, "%q", spelling)
 	}
 
+	cachedOnly := run("-pass=norace-cached")
+	assertCalls("-pass=norace-cached", cachedOnly)
+	require.Len(t, cachedOnly.calls, 1, "norace-cached mode makes exactly one go test call, got %q", cachedOnly.goLog)
+	assert.False(t, cachedOnly.calls[0].race, "norace-cached mode runs without -race")
+	assert.False(t, cachedOnly.calls[0].count1, "the norace packages that are not fresh may come from the test cache")
+	assert.Equal(t, noRaceOnly, cachedOnly.calls[0].pkgs)
+
+	freshOnly := run("-pass=fresh")
+	assertCalls("-pass=fresh", freshOnly)
+	require.Len(t, freshOnly.calls, 1, "fresh mode makes exactly one go test call, got %q", freshOnly.goLog)
+	assert.False(t, freshOnly.calls[0].race, "fresh mode runs without -race")
+	assert.True(t, freshOnly.calls[0].count1, "the fresh packages run with -count=1")
+	assert.Equal(t, fresh, freshOnly.calls[0].pkgs)
+
+	for _, r := range []passRun{raceOnly, noRaceRun, cachedOnly, freshOnly, run()} {
+		assert.Empty(t, r.listCalls, "a run without -shard lists no tests")
+		for _, call := range r.calls {
+			assert.Empty(t, call.run, "a run without -shard sets no -run of its own")
+		}
+	}
+
 	both := run()
 	assertCalls("no -pass", both)
 	assert.Equal(t, slices.Concat(raceOnly.calls, noRaceRun.calls), both.calls, "no -pass makes the race call, then the norace calls")
@@ -459,8 +546,248 @@ func TestTestPassesSplitTheRun(t *testing.T) {
 		{"-pass"}, {"--pass"},
 		{"-pass=race", "-pass=race"}, {"-pass=race", "-pass=norace"}, {"-pass=norace", "--pass=race"},
 		{"-pass", "race", "-pass=race"}, {"--pass", "norace", "--pass", "norace"},
+		{"-pass=Fresh"}, {"-pass=norace-cache"}, {"-pass=fresh", "-pass=norace-cached"},
 	} {
 		r := run(args...)
+		assert.Equal(t, 2, r.code, "arguments %q", args)
+		assert.Empty(t, r.goLog, "arguments %q must make no go call", args)
+		assert.Equal(t, 1, strings.Count(r.stderr, "\n"), "arguments %q: want one line on stderr, got %q", args, r.stderr)
+	}
+}
+
+// shardOf returns the items of the sorted list that belong to shard i (1, 2
+// or 3): item k, counting from 0, goes to shard k mod 3 + 1.
+func shardOf(items []string, i int) []string {
+	sorted := slices.Clone(items)
+	slices.Sort(sorted)
+	var mine []string
+	for k, item := range sorted {
+		if k%3+1 == i {
+			mine = append(mine, item)
+		}
+	}
+	return mine
+}
+
+// shardStubPackages returns the package list the go stub prints for the
+// shard tests: the norace packages the script lists, the module root, five
+// packages and the sharded one, in no order.
+func shardStubPackages(t *testing.T) (listed, shardable []string) {
+	t.Helper()
+	script, err := os.ReadFile(noRaceScriptPath)
+	require.NoError(t, err)
+	noRaceDirs, err := noRacePackages(string(script))
+	require.NoError(t, err)
+	for _, dir := range noRaceDirs {
+		listed = append(listed, passStubModule+"/"+dir)
+	}
+	for _, name := range []string{"/internal/e", "", "/internal/b", "/internal/a", "/internal/d", "/internal/c"} {
+		listed = append(listed, passStubModule+name)
+		shardable = append(shardable, passStubModule+name)
+	}
+	listed = append(listed, passStubCLI)
+	return listed, shardable
+}
+
+// TestTestShardsSplitTheRacePass asserts that scripts/test with
+// -pass=race and -shard=I/3 lists the tests of internal/cli once, with no
+// script flag, and makes two go test calls with the race detector: the
+// shard's packages (every race package except internal/cli, sorted bytewise
+// and assigned by position, item k to shard k mod 3 + 1) and internal/cli
+// with -run set to the shard's names (every name go test -list prints, tests,
+// fuzz tests, examples and benchmarks, the summary line dropped, assigned the
+// same way); that the call for internal/cli is skipped when the shard has no
+// name; that no norace call is made; that the three shards together make each
+// package and each name appear exactly once; that -shard takes its value in
+// the four spellings; that every call carries the flags the script was given;
+// and that a failing list, an empty list or a name that is not a Go
+// identifier ends the run with a non-zero status before any go test call.
+func TestTestShardsSplitTheRacePass(t *testing.T) {
+	t.Parallel()
+	testfs.SkipOnWindows(t, posixOnlyReason)
+	listed, shardable := shardStubPackages(t)
+	names := []string{"BenchmarkB", "ExampleE", "FuzzF", "TestA", "TestB", "TestC", "TestD"}
+
+	pattern := func(names []string) string { return "^(" + strings.Join(names, "|") + ")$" }
+	pkgCounts := map[string]int{}
+	nameCounts := map[string]int{}
+	for i := 1; i <= 3; i++ {
+		r := runPassScriptWith(t, listed, passStubNames, nil, "-vet=off", "-pass=race", "-shard="+strconv.Itoa(i)+"/3")
+		require.Zero(t, r.code, "shard %d: %s", i, r.stderr)
+		assert.Equal(t, []string{".* " + passStubCLI}, r.listCalls, "shard %d lists the tests of internal/cli once, with no script flag", i)
+		require.Len(t, r.calls, 2, "shard %d makes two go test calls, got %q", i, r.goLog)
+		for j, call := range r.calls {
+			assert.True(t, call.race, "shard %d call %d runs with -race", i, j+1)
+			assert.Equal(t, []string{"-vet=off"}, call.flags, "shard %d call %d carries the script's flags", i, j+1)
+		}
+		assert.Equal(t, shardOf(shardable, i), r.calls[0].pkgs, "shard %d packages", i)
+		assert.Empty(t, r.calls[0].run, "the package call of shard %d sets no -run", i)
+		assert.Equal(t, []string{passStubCLI}, r.calls[1].pkgs, "shard %d runs internal/cli in a call of its own", i)
+		assert.Equal(t, pattern(shardOf(names, i)), r.calls[1].run, "shard %d names", i)
+		for _, pkg := range r.calls[0].pkgs {
+			pkgCounts[pkg]++
+		}
+		for name := range strings.SplitSeq(strings.Trim(r.calls[1].run, "^()$"), "|") {
+			nameCounts[name]++
+		}
+	}
+	for _, pkg := range shardable {
+		assert.Equal(t, 1, pkgCounts[pkg], "%s is in exactly one shard", pkg)
+	}
+	assert.Len(t, pkgCounts, len(shardable), "no norace package and not internal/cli is in a package call")
+	for _, name := range names {
+		assert.Equal(t, 1, nameCounts[name], "%s is in exactly one shard", name)
+	}
+	assert.Len(t, nameCounts, len(names))
+
+	for _, spelling := range [][]string{{"-shard=2/3"}, {"--shard=2/3"}, {"-shard", "2/3"}, {"--shard", "2/3"}} {
+		r := runPassScriptWith(t, listed, passStubNames, nil, append([]string{"-pass=race"}, spelling...)...)
+		require.Zero(t, r.code, "%q: %s", spelling, r.stderr)
+		require.Len(t, r.calls, 2, "%q", spelling)
+		assert.Equal(t, shardOf(shardable, 2), r.calls[0].pkgs, "%q", spelling)
+		assert.Equal(t, pattern(shardOf(names, 2)), r.calls[1].run, "%q", spelling)
+		assert.Equal(t, []string{"-cover"}, r.calls[0].flags, "%q: a run with no flags carries the default -cover", spelling)
+	}
+
+	few := runPassScriptWith(t, listed, []string{"TestA", "TestB"}, nil, "-pass=race", "-shard=3/3")
+	require.Zero(t, few.code, few.stderr)
+	require.Len(t, few.calls, 1, "a shard with no internal/cli name makes only the package call, got %q", few.goLog)
+	assert.Equal(t, shardOf(shardable, 3), few.calls[0].pkgs)
+	assert.Empty(t, few.calls[0].run)
+
+	one := runPassScriptWith(t, listed, []string{"TestA"}, nil, "-pass=race", "-shard=1/3")
+	require.Zero(t, one.code, one.stderr)
+	require.Len(t, one.calls, 2)
+	assert.Equal(t, "^(TestA)$", one.calls[1].run)
+
+	for name, c := range map[string]struct {
+		names []string
+		env   []string
+	}{
+		"a failing list":                   {names: passStubNames, env: []string{"STUB_LIST_FAIL=1"}},
+		"a list with only the summary":     {names: []string{"ok  \t" + passStubCLI + "\t0.1s"}},
+		"a list with only a no-test line":  {names: []string{"?   \t" + passStubCLI + "\t[no test files]"}},
+		"an empty list":                    {names: nil},
+		"a name that is not an identifier": {names: []string{"TestA", "Test-B"}},
+		"a name with a space":              {names: []string{"TestA", "Test B"}},
+		"a name with a pipe":               {names: []string{"TestA", "TestB|TestC"}},
+	} {
+		r := runPassScriptWith(t, listed, c.names, c.env, "-pass=race", "-shard=1/3")
+		assert.NotZero(t, r.code, "%s must fail the run", name)
+		assert.Empty(t, r.calls, "%s: no go test call before the list is known to be right, got %q", name, r.goLog)
+	}
+
+	t.Run("coverage", func(t *testing.T) {
+		t.Parallel()
+		profile := filepath.Join(t.TempDir(), "cover.out")
+		r := runPassScriptWith(t, listed, passStubNames, nil, "-pass=race", "-shard=1/3", "-coverprofile="+profile)
+		require.Zero(t, r.code, r.stderr)
+		require.Len(t, r.calls, 2)
+		for i, call := range r.calls {
+			assert.Contains(t, call.flags, "-covermode=atomic", "call %d", i+1)
+		}
+		data, err := os.ReadFile(profile)
+		require.NoError(t, err)
+		got := strings.Split(strings.TrimSpace(string(data)), "\n")
+		assert.Equal(t, "mode: atomic", got[0])
+		var profiled []string
+		for _, line := range got[1:] {
+			profiled = append(profiled, strings.TrimSuffix(strings.Fields(line)[0], "/file.go:1.1,2.1"))
+		}
+		want := append(shardOf(shardable, 1), passStubCLI)
+		assert.ElementsMatch(t, want, profiled, "the merged profile holds the packages of both calls of the shard")
+	})
+}
+
+// TestTestShardCheck asserts that scripts/test -shard-check lists the tests
+// of internal/cli once, makes no go test call, prints one size line per shard
+// and kind (six lines and the final line, no list of items) and succeeds when
+// every race package and name is in exactly one shard; that a failing list,
+// an empty list and a name that is not a Go identifier fail it; and that a
+// name listed twice, a package listed twice and a package list without
+// internal/cli reach the comparison and fail it, with the item named on
+// stderr and the three lists printed there.
+func TestTestShardCheck(t *testing.T) {
+	t.Parallel()
+	testfs.SkipOnWindows(t, posixOnlyReason)
+	listed, shardable := shardStubPackages(t)
+	stubNames := []string{"BenchmarkB", "ExampleE", "FuzzF", "TestA", "TestB", "TestC", "TestD"}
+	r := runPassScriptWith(t, listed, passStubNames, nil, "-shard-check")
+	require.Zero(t, r.code, r.stderr)
+	assert.Empty(t, r.calls, "the shard check runs no tests")
+	assert.Equal(t, []string{".* " + passStubCLI}, r.listCalls)
+	assert.Equal(t, []string{"go list -m", "go list ./...", "go test -list .* " + passStubCLI}, r.goLog)
+	assert.Empty(t, r.stderr)
+	out := strings.Split(strings.TrimSpace(r.stdout), "\n")
+	require.Len(t, out, 7, "six size lines and the final line, got %q", r.stdout)
+	for i, kind := range []string{"packages", "names"} {
+		items := shardable
+		if kind == "names" {
+			items = stubNames
+		}
+		for j := 1; j <= 3; j++ {
+			assert.Equal(t, "shard "+strconv.Itoa(j)+"/3: "+strconv.Itoa(len(shardOf(items, j)))+" "+kind, out[i*3+j-1])
+		}
+	}
+	assert.True(t, strings.HasPrefix(out[6], "ok: "), out[6])
+
+	for name, c := range map[string]struct {
+		names []string
+		env   []string
+	}{
+		"a failing list":                   {names: passStubNames, env: []string{"STUB_LIST_FAIL=1"}},
+		"an empty list":                    {names: nil},
+		"a name that is not an identifier": {names: []string{"TestA", "Test-B"}},
+	} {
+		r := runPassScriptWith(t, listed, c.names, c.env, "-shard-check")
+		assert.NotZero(t, r.code, "%s must fail the check", name)
+	}
+
+	withoutCLI := slices.DeleteFunc(slices.Clone(listed), func(pkg string) bool { return pkg == passStubCLI })
+	twice := passStubModule + "/internal/a"
+	for name, c := range map[string]struct {
+		packages, names []string
+		wantStderr      string
+	}{
+		"a name listed twice":                 {listed, []string{"TestA", "TestA", "TestB"}, "repeated: TestA\n"},
+		"a package listed twice":              {append(slices.Clone(listed), twice), passStubNames, "repeated: " + twice + "\n"},
+		"a package list without internal/cli": {withoutCLI, passStubNames, "unexpected: " + passStubCLI + "\n"},
+	} {
+		r := runPassScriptWith(t, c.packages, c.names, nil, "-shard-check")
+		assert.Equal(t, 1, r.code, "%s must fail the check", name)
+		assert.Empty(t, r.calls, "%s: no tests run", name)
+		assert.Contains(t, r.stderr, "error: the shards do not hold every one of the", name)
+		assert.Contains(t, r.stderr, c.wantStderr, name)
+		assert.Contains(t, r.stderr, "shard 1/3 ", "%s: the lists are printed on failure", name)
+		assert.NotContains(t, r.stdout, "ok: ", name)
+	}
+}
+
+// TestTestShardRefusals asserts that scripts/test refuses a malformed,
+// repeated or misplaced -shard, -shard with any pass but race or with a
+// -run of any spelling, and -shard-check with any other flag, each with one
+// line on stderr, exit 2 and no go call.
+func TestTestShardRefusals(t *testing.T) {
+	t.Parallel()
+	testfs.SkipOnWindows(t, posixOnlyReason)
+	listed, _ := shardStubPackages(t)
+	for _, args := range [][]string{
+		{"-pass=race", "-shard=0/3"}, {"-pass=race", "-shard=4/3"}, {"-pass=race", "-shard=1/2"},
+		{"-pass=race", "-shard="}, {"-pass=race", "-shard", ""}, {"-pass=race", "-shard=a/3"},
+		{"-pass=race", "-shard=1"}, {"-pass=race", "-shard=1/3/3"}, {"-pass=race", "-shard=01/3"},
+		{"-pass=race", "-shard"}, {"-pass=race", "--shard"},
+		{"-pass=race", "-shard=1/3", "-shard=1/3"}, {"-pass=race", "-shard=1/3", "--shard", "2/3"},
+		{"-pass=race", "-shard", "1/3", "-shard", "1/3"},
+		{"-shard=1/3"}, {"-shard", "1/3"},
+		{"-pass=norace", "-shard=1/3"}, {"-pass=fresh", "-shard=1/3"}, {"-pass=norace-cached", "-shard=1/3"},
+		{"-pass=race", "-shard=1/3", "-run"}, {"-pass=race", "-shard=1/3", "-run=TestX"},
+		{"-pass=race", "-shard=1/3", "--run", "TestX"}, {"-pass=race", "-shard=1/3", "--run=TestX"},
+		{"-pass=race", "-shard=1/3", "-test.run=TestX"}, {"-pass=race", "-shard=1/3", "--test.run", "TestX"},
+		{"-pass=race", "-shard=1/3", "-test.run"}, {"-pass=race", "-shard=1/3", "--test.run=TestX"},
+		{"-shard-check", "-pass=race"}, {"-shard-check", "-vet=off"}, {"-vet=off", "-shard-check"},
+		{"-shard-check", "-shard=1/3"}, {"-shard-check", "-shard-check"}, {"--shard-check", "-coverprofile=x"},
+	} {
+		r := runPassScript(t, listed, args...)
 		assert.Equal(t, 2, r.code, "arguments %q", args)
 		assert.Empty(t, r.goLog, "arguments %q must make no go call", args)
 		assert.Equal(t, 1, strings.Count(r.stderr, "\n"), "arguments %q: want one line on stderr, got %q", args, r.stderr)

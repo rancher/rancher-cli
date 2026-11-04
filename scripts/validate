@@ -2,17 +2,25 @@
 set -e
 cd "$(dirname "$0")/.."
 
-# One definition of the commit gate. CI runs three parts as parallel jobs:
-#   static        formatting, vet, module tidiness, lint, the shell and
-#                 workflow gates, the local-doc reference gate
-#   tests-race    the unit tests with the race detector
-#   tests-norace  the unit tests without it, then the build contract
-# The part tests runs tests-race and tests-norace in one process, for the
-# commit hook and make validate: the same go test calls in the same order,
-# each pass even when the one before it failed. With no argument static
-# and tests run, static first. Each part is a function called as a plain
-# statement: inside an if, && or ||, set -e stops applying within the
-# function.
+# One definition of the commit gate. CI runs six parts as parallel jobs:
+#   static            formatting, vet, the shard check, module tidiness,
+#                     lint, the shell and workflow gates, the local-doc
+#                     reference gate
+#   tests-race-1/2/3  one third each of the unit tests with the race
+#                     detector (scripts/test -shard)
+#   tests-conformance the source scans, then the build contract
+#   tests-cachemodel  the cache model tests
+# The other parts run the same go test calls as groups, for the commit hook
+# and make validate:
+#   tests-race        the race detector tests, in one unsharded call
+#   tests-norace      the cache model tests, the source scans, then the
+#                     build contract
+#   tests             tests-race and tests-norace in one process: the same
+#                     go test calls in the same order, each pass even when
+#                     the one before it failed
+# With no argument static and tests run, static first. Each part is a
+# function called as a plain statement: inside an if, && or ||, set -e
+# stops applying within the function.
 
 static() {
   # gofmt: fail on any unformatted file the repository carries. The files
@@ -26,6 +34,10 @@ static() {
   fi
 
   go vet ./...
+
+  # Every race package and every internal/cli test is in exactly one of the
+  # three race shards CI runs. It runs here, once per run of this script.
+  ./scripts/test -shard-check
 
   # go.mod/go.sum tidiness: go mod tidy -diff exits non-zero when go.mod or
   # go.sum would change - module churn belongs in its own reviewed commit,
@@ -138,6 +150,20 @@ tests_norace() {
   build_contract
 }
 
+# One third of the race pass; CI runs the three as separate jobs.
+tests_race_shard() {
+  ./scripts/test -vet=off -pass=race "-shard=$1/3"
+}
+
+tests_conformance() {
+  ./scripts/test -vet=off -pass=fresh
+  build_contract
+}
+
+tests_cachemodel() {
+  ./scripts/test -vet=off -pass=norace-cached
+}
+
 # Both test parts in one process. A failed call is recorded so that the
 # second one still runs; only the two calls on the left of || are exempt
 # from set -e. The build contract runs only when both passed.
@@ -152,7 +178,7 @@ tests() {
 }
 
 usage() {
-  echo "usage: scripts/validate [static|tests|tests-race|tests-norace]" >&2
+  echo "usage: scripts/validate [static|tests|tests-race|tests-norace|tests-race-1|tests-race-2|tests-race-3|tests-conformance|tests-cachemodel]" >&2
   exit 2
 }
 
@@ -167,6 +193,11 @@ case $# in
       tests) tests ;;
       tests-race) tests_race ;;
       tests-norace) tests_norace ;;
+      tests-race-1) tests_race_shard 1 ;;
+      tests-race-2) tests_race_shard 2 ;;
+      tests-race-3) tests_race_shard 3 ;;
+      tests-conformance) tests_conformance ;;
+      tests-cachemodel) tests_cachemodel ;;
       *) usage ;;
     esac
     ;;

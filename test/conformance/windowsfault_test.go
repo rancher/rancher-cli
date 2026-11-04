@@ -336,7 +336,7 @@ func otherSetupGoSetsCache(jobs map[string]faultJob, value string) bool {
 
 // TestFaultCheckJobTracesEveryWindowsTest asserts that the job fault-check
 // of ci.yaml runs, under scripts/fault-trace, every go test command and the
-// e2e script that the two Windows jobs run, as the same text with -race
+// e2e script that the Windows jobs run, as the same text with -race
 // removed, each as the whole run of a step that cannot be skipped or run
 // without the trace, and then runs scripts/fault-check whether or not a
 // test failed. The only other command a step may run is the install of
