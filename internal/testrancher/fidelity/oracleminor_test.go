@@ -1175,11 +1175,27 @@ func assertNoRemovalOrBoot(t *testing.T, res runResult) {
 // call from a numbered response file (the file named default answers any
 // further call). It overrides the two time variables in the extracted shell
 // text only; the script itself reads no variable for them.
+//
+// Time in the run is fake: the function's own sleep moves bash's SECONDS
+// forward and takes no real time, and SECONDS never ticks on its own, so the
+// number of attempts depends on the loop and never on how long an attempt
+// takes.
 type fnHarness struct {
 	dir string
 	// limitVar and waitVar name the two time variables, fn the function.
 	limitVar, waitVar, fn string
+	// firstCallDelay, when set, is the time in seconds the curl stub waits
+	// before it answers its first call.
+	firstCallDelay string
 }
+
+// fakeClock is the shell text that run puts ahead of the extracted function.
+// Unsetting SECONDS removes its special property, so it is an ordinary
+// variable that only sleep changes.
+const fakeClock = `unset SECONDS
+SECONDS=0
+sleep() { SECONDS=$((SECONDS + $1)); }
+`
 
 func newFnHarness(t *testing.T, limitVar, waitVar, fn string, responses map[string]string) *fnHarness {
 	t.Helper()
@@ -1191,6 +1207,7 @@ func newFnHarness(t *testing.T, limitVar, waitVar, fn string, responses map[stri
 n=$(cat "$STUB_DIR/count" 2>/dev/null || echo 0)
 n=$((n + 1))
 echo "$n" > "$STUB_DIR/count"
+if [ "$n" = 1 ] && [ -n "${STUB_FIRST_DELAY:-}" ]; then sleep "$STUB_FIRST_DELAY"; fi
 printf '%s\n' "$*" >> "$STUB_DIR/argv"
 cat > "$STUB_DIR/stdin.$n"
 if [ -f "$STUB_DIR/resp.$n" ]; then cat "$STUB_DIR/resp.$n"; else cat "$STUB_DIR/resp.default"; fi
@@ -1217,6 +1234,7 @@ func (h *fnHarness) run(t *testing.T, limit, wait int) (stdout, stderr string, c
 	extracted := script[start : start+fnStart+end+3]
 
 	program := "set -euo pipefail\n" +
+		fakeClock +
 		"BASE_URL=http://127.0.0.1:1 BOOTSTRAP_PW=bootstrap-secret-pw\n" +
 		"CA_FILE=" + filepath.Join(h.dir, "ca.pem") + "\n" +
 		extracted +
@@ -1224,6 +1242,9 @@ func (h *fnHarness) run(t *testing.T, limit, wait int) (stdout, stderr string, c
 		h.fn + "\n"
 	cmd := exec.CommandContext(t.Context(), "bash", "-c", program)
 	cmd.Env = []string{"PATH=" + h.dir + string(os.PathListSeparator) + os.Getenv("PATH"), "STUB_DIR=" + h.dir}
+	if h.firstCallDelay != "" {
+		cmd.Env = append(cmd.Env, "STUB_FIRST_DELAY="+h.firstCallDelay)
+	}
 	var out, errOut strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
@@ -1287,7 +1308,7 @@ func TestOracleMinorLoginGivesUp(t *testing.T) {
 	assert.Equal(t, "error: the admin login did not return a token within 2 s (last HTTP status 503)\n", stderr)
 	assert.NotContains(t, stderr, "leak-marker")
 	assert.NotContains(t, stderr, "Traceback")
-	assert.GreaterOrEqual(t, h.calls(t), 2, "the login is retried until the limit")
+	assert.Equal(t, 3, h.calls(t), "calls at 0, 1 and 2 s, then the limit of 2 s is reached")
 }
 
 func testCertificatePEM(t *testing.T) string {
@@ -1341,7 +1362,7 @@ func TestOracleMinorCAGivesUp(t *testing.T) {
 	_, stderr, code := h.run(t, 2, 1)
 	assert.Equal(t, 1, code)
 	assert.Equal(t, "error: http://127.0.0.1:1/cacerts did not return a certificate within 2 s (last HTTP status 503)\n", stderr)
-	assert.GreaterOrEqual(t, h.calls(t), 2)
+	assert.Equal(t, 3, h.calls(t), "calls at 0, 1 and 2 s, then the limit of 2 s is reached")
 	_, err := os.Stat(filepath.Join(h.dir, "ca.pem"))
 	assert.True(t, os.IsNotExist(err), "no CA file may be left behind")
 
@@ -1349,6 +1370,7 @@ func TestOracleMinorCAGivesUp(t *testing.T) {
 	_, stderr, code = none.run(t, 1, 1)
 	assert.Equal(t, 1, code)
 	assert.Equal(t, "error: http://127.0.0.1:1/cacerts did not return a certificate within 1 s (no HTTP answer)\n", stderr)
+	assert.Equal(t, 2, none.calls(t), "calls at 0 and 1 s, then the limit of 1 s is reached")
 }
 
 // TestOracleMinorLoginRefused asserts that a 401 or 403 ends the login at once
@@ -1377,11 +1399,197 @@ func TestOracleMinorLoginNoAnswer(t *testing.T) {
 	_, stderr, code := h.run(t, 1, 1)
 	assert.Equal(t, 1, code)
 	assert.Equal(t, "error: the admin login did not return a token within 1 s (no HTTP answer)\n", stderr)
+	assert.Equal(t, 2, h.calls(t), "calls at 0 and 1 s, then the limit of 1 s is reached")
 }
 
-// shellFunction returns the text of one top-level function of the script.
+// clockFunctions lists every function of scripts/e2e-fidelity that loops on
+// bash's SECONDS, with the variables that hold its time limit and its wait.
+var clockFunctions = []struct{ fn, limitVar, waitVar string }{
+	{"login_admin", "LOGIN_LIMIT_SECONDS", "LOGIN_WAIT_SECONDS"},
+	{"fetch_ca", "CA_LIMIT_SECONDS", "CA_WAIT_SECONDS"},
+}
+
+// TestOracleMinorRetryClockIgnoresSlowCalls asserts that the number of
+// attempts of each function in clockFunctions follows the loop alone: a first
+// curl call that takes 2.2 s of real time, longer than the whole limit of 2 s,
+// still leaves the calls at 0, 1 and 2 s of the fake clock, three in all. On
+// the real clock that call would use up the limit and end the loop after one.
+func TestOracleMinorRetryClockIgnoresSlowCalls(t *testing.T) {
+	for _, c := range clockFunctions {
+		t.Run(c.fn, func(t *testing.T) {
+			t.Parallel()
+			h := newFnHarness(t, c.limitVar, c.waitVar, c.fn, map[string]string{"default": "000"})
+			h.firstCallDelay = "2.2"
+			_, stderr, code := h.run(t, 2, 1)
+			assert.Equal(t, 1, code)
+			assert.Contains(t, stderr, "within 2 s (no HTTP answer)")
+			assert.Equal(t, 3, h.calls(t), "the slow first call must not use up the limit")
+		})
+	}
+}
+
+var (
+	secondsWord = regexp.MustCompile(`\bSECONDS\b`)
+
+	// otherClockRead matches the other ways a shell function can read the
+	// real time: date with a format, EPOCHSECONDS, EPOCHREALTIME and
+	// printf's %(...)T.
+	otherClockRead = regexp.MustCompile(`\bEPOCHSECONDS\b|\bEPOCHREALTIME\b|\bdate\b[^\n]*\+|\bprintf\s[^\n]*%\([^)]*\)T`)
+
+	// functionStart matches the first line of a shell function definition:
+	// name() { or name () { or function name { or function name() {, with
+	// any indentation. Group 1 or 2 is the name, group 3 the rest of the
+	// line. A brace on the next line, a subshell body f() ( and names with
+	// - or . are not recognized.
+	functionStart = regexp.MustCompile(`^\s*(?:function\s+([A-Za-z_]\w*)\s*(?:\(\))?|([A-Za-z_]\w*)\s*\(\))\s*\{(.*)$`)
+)
+
+// otherClockReaderReasons holds the functions of scripts/e2e-fidelity that the
+// scan flags for another way of reading the time than SECONDS (a log
+// timestamp, for example) and that are not in clockFunctions, each with the
+// reason it needs no fake clock. A function that reads SECONDS cannot be
+// listed here; the test fails if one is.
+var otherClockReaderReasons = map[string]string{}
+
+// clockReaders returns the sorted names of the shell functions of a script
+// that read the clock, and the sorted names of those among them that read
+// SECONDS. SECONDS counts anywhere, and "(top level)" stands for a line
+// outside any function; the other ways to read the time (date with a format,
+// EPOCHSECONDS, EPOCHREALTIME, printf %(...)T) count only inside a function.
+// Comment lines and variables that only end in SECONDS (LOGIN_LIMIT_SECONDS)
+// do not count. A function ends at a line that holds only a closing brace at
+// the indentation of its definition, so an inner { ...; } group does not end
+// it.
+func clockReaders(script string) (all, seconds []string) {
+	found := map[string]bool{}
+	foundSeconds := map[string]bool{}
+	current, indent := "", ""
+	for line := range strings.SplitSeq(script, "\n") {
+		line = strings.TrimRight(line, "\r")
+		text := line
+		closes := false
+		if current == "" {
+			if m := functionStart.FindStringSubmatch(line); m != nil {
+				current = m[1] + m[2]
+				text = m[3]
+				indent = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+				trimmed := strings.TrimRight(text, " \t")
+				closes = trimmed == "}" || strings.HasSuffix(trimmed, " }") || strings.HasSuffix(trimmed, ";}")
+			}
+		} else if strings.TrimRight(line, " \t") == indent+"}" {
+			closes = true
+		}
+		if !strings.HasPrefix(strings.TrimSpace(text), "#") {
+			switch {
+			case secondsWord.MatchString(text):
+				name := current
+				if name == "" {
+					name = "(top level)"
+				}
+				found[name] = true
+				foundSeconds[name] = true
+			case current != "" && otherClockRead.MatchString(text):
+				found[current] = true
+			}
+		}
+		if closes {
+			current = ""
+		}
+	}
+	return slices.Sorted(maps.Keys(found)), slices.Sorted(maps.Keys(foundSeconds))
+}
+
+// TestOracleMinorClockReadersScan asserts that the scan finds each way a
+// shell function reads the clock, under each way of writing the function
+// definition, and ignores top-level date calls, comments and variables that
+// only end in SECONDS.
+func TestOracleMinorClockReadersScan(t *testing.T) {
+	cases := []struct {
+		name, script string
+		want         []string
+	}{
+		{"seconds", "timed() {\n  local d=$((SECONDS + LIMIT_SECONDS))\n}\n", []string{"timed"}},
+		{"seconds braces and CRLF", "timed() {\r\n  echo ${SECONDS}\r\n}\r\n", []string{"timed"}},
+		{"seconds at top level", "echo $SECONDS\n", []string{"(top level)"}},
+		{"date with a format", "poll() {\n  local end=$(( $(date +%s) + 60 ))\n}\n", []string{"poll"}},
+		{"EPOCHSECONDS", "poll() {\n  local end=$((EPOCHSECONDS + 60))\n}\n", []string{"poll"}},
+		{"EPOCHREALTIME", "poll() {\n  echo \"${EPOCHREALTIME}\"\n}\n", []string{"poll"}},
+		{"printf time format", "poll() {\n  printf '%(%s)T' -1\n}\n", []string{"poll"}},
+		{"one line", "poll() { local end=$((SECONDS + 1)); }\nquiet() {\n  echo hi\n}\n", []string{"poll"}},
+		{"space before the parentheses", "poll () {\n  echo $(date +%s)\n}\n", []string{"poll"}},
+		{"function keyword", "function poll {\n  echo $SECONDS\n}\n", []string{"poll"}},
+		{"function keyword and parentheses", "function poll() {\n  echo $SECONDS\n}\n", []string{"poll"}},
+		{"indented definition", "if true; then\n  poll() {\n    echo $SECONDS\n  }\nfi\n", []string{"poll"}},
+		{"inner group then date", "f() {\n  a || {\n    echo x\n  }\n  local e=$(( $(date +%s) + 5 ))\n}\n", []string{"f"}},
+		{"one-line close without a space", "f() { echo;}\ng() {\n  local e=$(( $(date +%s) + 5 ))\n}\n", []string{"g"}},
+		{"close with trailing whitespace", "f() {\n  echo\n}  \ng() {\n  local e=$(( $(date +%s) + 5 ))\n}\n", []string{"g"}},
+		{"inner group then SECONDS", "f() {\n  a || {\n    echo x\n  }\n  local e=$((SECONDS + 5))\n}\n", []string{"f"}},
+		{"start line that continues", "f() { x=${y}\n  local e=$(date +%s)\n}\ng() {\n  echo hi\n}\n", []string{"f"}},
+		{"date at top level", "STARTED=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\n", nil},
+		{"names and comments", "LIMIT_SECONDS=5\n# the loop reads SECONDS\nquiet() {\n  # date +%s\n  echo \"${LIMIT_SECONDS}\"\n}\n", nil},
+		{"two readers", "a() {\n  echo $SECONDS\n}\nb() { date +%s; }\n", []string{"a", "b"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			all, _ := clockReaders(c.script)
+			assert.Equal(t, c.want, all)
+		})
+	}
+}
+
+// TestOracleMinorClockFunctionsMatchTheScriptsClockReaders asserts that the
+// functions of scripts/e2e-fidelity that read the clock are exactly the ones
+// in clockFunctions (or in otherClockReaderReasons with a reason), which run
+// through the fake clock and the slow-call test; and that no other test file
+// names them. shellFunction refuses a clock function by name, because its
+// callers have no fake clock.
+func TestOracleMinorClockFunctionsMatchTheScriptsClockReaders(t *testing.T) {
+	raw, err := os.ReadFile(realScriptPath(t))
+	require.NoError(t, err)
+	var declared []string
+	for _, c := range clockFunctions {
+		declared = append(declared, c.fn)
+	}
+	slices.Sort(declared)
+	all, seconds := clockReaders(string(raw))
+	for _, name := range seconds {
+		_, listed := otherClockReaderReasons[name]
+		assert.Falsef(t, listed, "%s reads SECONDS and cannot be listed in otherClockReaderReasons", name)
+	}
+	var readers []string
+	for _, name := range all {
+		if reason, ok := otherClockReaderReasons[name]; ok && !slices.Contains(seconds, name) {
+			assert.NotEmptyf(t, reason, "%s needs a reason", name)
+			continue
+		}
+		readers = append(readers, name)
+	}
+	assert.Equal(t, declared, readers,
+		"a function that reads the clock belongs in clockFunctions, which means extending the table and the slow-call test; a false positive gets a row with a reason in otherClockReaderReasons")
+
+	files, err := filepath.Glob("*_test.go")
+	require.NoError(t, err)
+	for _, file := range files {
+		if file == "oracleminor_test.go" {
+			continue
+		}
+		body, err := os.ReadFile(file)
+		require.NoError(t, err)
+		for _, fn := range declared {
+			assert.NotContainsf(t, string(body), fn,
+				"%s names %s; clock functions are run only through newFnHarness in oracleminor_test.go", file, fn)
+		}
+	}
+}
+
+// shellFunction returns the text of one top-level function of the script. It
+// refuses a function in clockFunctions, which only fnHarness.run may run: a
+// program built from the returned text has the real SECONDS.
 func shellFunction(t *testing.T, name string) string {
 	t.Helper()
+	for _, c := range clockFunctions {
+		require.NotEqualf(t, c.fn, name, "%s reads the clock; run it through newFnHarness", name)
+	}
 	raw, err := os.ReadFile(realScriptPath(t))
 	require.NoError(t, err)
 	script := string(raw)
