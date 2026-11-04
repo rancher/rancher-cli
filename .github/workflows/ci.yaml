@@ -9,8 +9,13 @@ on:
 permissions:
   contents: read
 
+# A push run gets a group of its own commit. With a group of the ref, a
+# third push to main would cancel the push run still waiting, and that run
+# would never finish or save its caches. Other runs share the group of their
+# ref: a dispatch waits its turn behind the run in progress on its branch, and
+# a new pull request run cancels the one before it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # ci-windows.yaml carries copies of the two Windows jobs below
