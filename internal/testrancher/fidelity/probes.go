@@ -1270,10 +1270,44 @@ func sarAllowed(decoded map[string]any, status int) bool {
 	return status == http.StatusCreated && allowed
 }
 
+// fixtureRetryAttempts and fixtureRetryPause bound the retry of a fixture
+// create on the downstream cluster. Rancher proxies those requests through
+// a tunnel to the downstream agent and answers 5xx until the agent
+// reconnects. Five attempts with four pauses fit inside defaultStepTimeout.
+// Tests shorten the pause and must not run in parallel.
+const fixtureRetryAttempts = 5
+
+var fixtureRetryPause = 3 * time.Second
+
+// retriableFixtureCreate reports whether a 5xx answer to a create of body at
+// path may be retried: the path goes through the proxy of the probe's
+// downstream cluster and the body names its object. Such a create either
+// makes the object or answers 409, which counts as done, so a retry cannot
+// make a second object. A body that is not JSON, has no metadata.name or
+// sets metadata.generateName is never retried.
+func retriableFixtureCreate(path, body string, captured map[string]string) bool {
+	id := captured["downstream"]
+	if id == "" || !strings.HasPrefix(path, "/k8s/clusters/"+id+"/") {
+		return false
+	}
+	var obj struct {
+		Metadata struct {
+			Name         string `json:"name"`
+			GenerateName string `json:"generateName"`
+		} `json:"metadata"`
+	}
+	if json.Unmarshal([]byte(body), &obj) != nil {
+		return false
+	}
+	return obj.Metadata.Name != "" && obj.Metadata.GenerateName == ""
+}
+
 // createFixture POSTs body to pathTemplate (captures resolved) as admin.
 // A 2xx or a 409 (the fixture already exists) counts as done; anything
 // else is surfaced, since an observation that depends on the fixture
-// would otherwise record the wrong shape.
+// would otherwise record the wrong shape. A 5xx answer to a create that
+// retriableFixtureCreate accepts is retried up to fixtureRetryAttempts
+// times; a transport error or any other status ends the step at once.
 func createFixture(name, pathTemplate, body string) Step {
 	return Step{
 		Name: name,
@@ -1283,14 +1317,30 @@ func createFixture(name, pathTemplate, body string) Step {
 			if strings.Contains(path, "{") || strings.Contains(body, "{downstream}") {
 				return fmt.Errorf("setup %s: capture in %q unresolved", name, pathTemplate)
 			}
-			status, err := adminDo(ctx, tgt, http.MethodPost, path, body)
-			if err != nil {
-				return fmt.Errorf("setup %s: %w", name, err)
+			attempts := 1
+			if retriableFixtureCreate(path, body, captured) {
+				attempts = fixtureRetryAttempts
 			}
-			if status == http.StatusConflict || (status >= 200 && status < 300) {
-				return nil
+			for n := 1; ; n++ {
+				status, err := adminDo(ctx, tgt, http.MethodPost, path, body)
+				if err != nil {
+					return fmt.Errorf("setup %s: %w", name, err)
+				}
+				if status == http.StatusConflict || (status >= 200 && status < 300) {
+					return nil
+				}
+				if status < 500 || n >= attempts {
+					if n > 1 {
+						return fmt.Errorf("setup %s: POST %s answered %d after %d attempts", name, path, status, n)
+					}
+					return fmt.Errorf("setup %s: POST %s answered %d", name, path, status)
+				}
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("setup %s: POST %s answered %d, retry ended: %w", name, path, status, ctx.Err())
+				case <-time.After(fixtureRetryPause):
+				}
 			}
-			return fmt.Errorf("setup %s: POST %s answered %d", name, path, status)
 		},
 	}
 }
