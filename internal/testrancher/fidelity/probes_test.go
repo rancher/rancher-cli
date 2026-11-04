@@ -59,6 +59,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"discovery/aggregated-downstream", "discovery/aggregated-on-local",
 		"discovery/dead-group-legacy-document",
 		"owner/local-creates-name-the-creator", "owner/login-body-names-no-owner",
+		"login/user-base-user-creates-an-ext-token", "login/clusters-create-user-cannot-create-an-ext-token",
 		"owner-downstream/scoped-creates-and-reviews", "owner-downstream/cluster-login-and-review",
 		"access-downstream/owner-management-gate", "access-downstream/owner-steve",
 		"access-downstream/member-steve-by-id", "access-downstream/member-cluster-token",
@@ -408,6 +409,8 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 		{"revoke/ext-token-deleted-by-another-token-of-its-user", "second-delete-with-the-other-token"}:         "bearer already accepted on the previous request; the object is read by a direct get",
 		{"access-downstream/member-cluster-token", "downstream-read-with-the-cluster-token"}:                    "token created in a setup step; its failures belong to the access-downstream investigation",
 		{"serverfacts/install-uuid-no-global-role", "read"}:                                                     "login bearer right after the login",
+		{"login/user-base-user-creates-an-ext-token", "ext-create-with-the-login-bearer"}:                       "login bearer right after the login",
+		{"login/clusters-create-user-cannot-create-an-ext-token", "ext-create-with-the-login-bearer"}:           "login bearer right after the login",
 	}
 	adminReads := map[key]bool{
 		{"tok/create-shape", "get"}:          true,

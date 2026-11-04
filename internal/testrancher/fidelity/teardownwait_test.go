@@ -519,18 +519,22 @@ func checkTeardownWithin(t *testing.T, p Probe, allow map[stepKey]string, budget
 // sends its requests and succeeds. Each entry names the capture its setup
 // step stores and what the step deletes.
 var teardownAllowlist = map[stepKey]string{
-	{"access-downstream/member-cluster-token", "member cluster token"}:               "token is stored by the setup step that creates the member's cluster token; the step deletes that token",
-	{"access-downstream/owner-management-gate", "cluster owner login token"}:         "clusterownerlogin is stored by the cluster owner setup step; the step deletes that login token",
-	{"access-downstream/owner-management-gate", "cluster owner user"}:                "owneruid is stored by the cluster owner setup step; the step deletes that user",
-	{"access-downstream/owner-steve", "cluster owner login token"}:                   "clusterownerlogin is stored by the cluster owner setup step; the step deletes that login token",
-	{"access-downstream/owner-steve", "cluster owner user"}:                          "owneruid is stored by the cluster owner setup step; the step deletes that user",
-	{"access/standard-cloud-credential-by-name", "standard user's cloud credential"}: "ccid is stored by the setup step that creates the cloud credential; the step deletes that credential",
-	{"owner-downstream/cluster-login-and-review", "owner user"}:                      "owneruid is stored by the owner user setup step; the step deletes that user",
-	{"owner/login-body-names-no-owner", "owner user"}:                                "owneruid is stored by the owner user setup step; the step deletes that user",
-	{"revoke-downstream/cluster-scoped-v3-token-logout-401", "owner user"}:           "owneruid is stored by the owner user setup step; the step deletes that user",
-	{"revoke/standard-user-login-token-logout-deletes-itself", "owner user"}:         "owneruid is stored by the owner user setup step; the step deletes that user",
-	{"serverfacts/install-uuid-no-global-role", "role-less user's login token"}:      "rolelesslogin is stored by the role-less user setup step; the step deletes that login token",
-	{"serverfacts/install-uuid-no-global-role", "role-less user"}:                    "rolelessuid is stored by the role-less user setup step; the step deletes that user",
+	{"access-downstream/member-cluster-token", "member cluster token"}:                                        "token is stored by the setup step that creates the member's cluster token; the step deletes that token",
+	{"access-downstream/owner-management-gate", "cluster owner login token"}:                                  "clusterownerlogin is stored by the cluster owner setup step; the step deletes that login token",
+	{"access-downstream/owner-management-gate", "cluster owner user"}:                                         "owneruid is stored by the cluster owner setup step; the step deletes that user",
+	{"access-downstream/owner-steve", "cluster owner login token"}:                                            "clusterownerlogin is stored by the cluster owner setup step; the step deletes that login token",
+	{"access-downstream/owner-steve", "cluster owner user"}:                                                   "owneruid is stored by the cluster owner setup step; the step deletes that user",
+	{"access/standard-cloud-credential-by-name", "standard user's cloud credential"}:                          "ccid is stored by the setup step that creates the cloud credential; the step deletes that credential",
+	{"owner-downstream/cluster-login-and-review", "owner user"}:                                               "owneruid is stored by the owner user setup step; the step deletes that user",
+	{"owner/login-body-names-no-owner", "owner user"}:                                                         "owneruid is stored by the owner user setup step; the step deletes that user",
+	{"login/user-base-user-creates-an-ext-token", "only one global role binding after the login"}:             "owneruid and ownergrb are stored by the owner user setup step; the step reads that user's bindings",
+	{"login/clusters-create-user-cannot-create-an-ext-token", "only one global role binding after the login"}: "owneruid and ownergrb are stored by the owner user setup step; the step reads that user's bindings",
+	{"login/user-base-user-creates-an-ext-token", "owner user"}:                                               "owneruid is stored by the owner user setup step; the step deletes that user",
+	{"login/clusters-create-user-cannot-create-an-ext-token", "owner user"}:                                   "owneruid is stored by the owner user setup step; the step deletes that user",
+	{"revoke-downstream/cluster-scoped-v3-token-logout-401", "owner user"}:                                    "owneruid is stored by the owner user setup step; the step deletes that user",
+	{"revoke/standard-user-login-token-logout-deletes-itself", "owner user"}:                                  "owneruid is stored by the owner user setup step; the step deletes that user",
+	{"serverfacts/install-uuid-no-global-role", "role-less user's login token"}:                               "rolelesslogin is stored by the role-less user setup step; the step deletes that login token",
+	{"serverfacts/install-uuid-no-global-role", "role-less user"}:                                             "rolelessuid is stored by the role-less user setup step; the step deletes that user",
 }
 
 // assertGuardTotals asserts the project delete count the probes' teardowns

@@ -159,14 +159,20 @@ func ownerProbes() []Probe {
 	}
 }
 
-// ownerUserFixture creates a local user for a probe that logs in: a name
-// and a password new on every run, so no earlier run's user is looked up
-// or removed, the baseline user GlobalRole, and, with member set, the
-// project-member role on the downstream cluster's Default project. It
-// records the user's name, password and id as ownername, ownerpw and
-// owneruid for the observations and the teardown, which deletes the user
-// by that id; Rancher removes a deleted user's bindings.
+// ownerUserFixture is localUserFixture with the baseline user GlobalRole.
 func ownerUserFixture(member bool) Step {
+	return localUserFixture("user", member)
+}
+
+// localUserFixture creates a local user for a probe that logs in: a name
+// and a password new on every run, so no earlier run's user is looked up
+// or removed, the given GlobalRole as its only global role, and, with member
+// set, the project-member role on the downstream cluster's Default project.
+// It records the user's name, password and id, and the id of the
+// GlobalRoleBinding it created, as ownername, ownerpw, owneruid and ownergrb
+// for the observations and the teardown, which deletes the user by its id;
+// Rancher removes a deleted user's bindings.
+func localUserFixture(globalRole string, member bool) Step {
 	return Step{
 		Name: "create owner user",
 		Do: func(ctx context.Context, tgt Target, captured map[string]string) error {
@@ -186,10 +192,16 @@ func ownerUserFixture(member bool) Step {
 				return fmt.Errorf("creating the owner user: status %d, want %d with an id", status, http.StatusCreated)
 			}
 			captured["ownername"], captured["ownerpw"], captured["owneruid"] = name, password, id
-			if err := adminCreate(ctx, tgt, "binding the user role to the owner user", "/v3/globalrolebindings",
-				fmt.Sprintf(`{"type":"globalRoleBinding","globalRoleId":"user","userId":%q}`, id)); err != nil {
-				return err
+			binding, status, err := adminJSON(ctx, tgt, http.MethodPost, "/v3/globalrolebindings",
+				fmt.Sprintf(`{"type":"globalRoleBinding","globalRoleId":%q,"userId":%q}`, globalRole, id))
+			if err != nil {
+				return fmt.Errorf("binding the %s role to the owner user: %w", globalRole, err)
 			}
+			bindingID, _ := binding["id"].(string)
+			if status != http.StatusCreated || bindingID == "" {
+				return fmt.Errorf("binding the %s role to the owner user: status %d, want %d with an id", globalRole, status, http.StatusCreated)
+			}
+			captured["ownergrb"] = bindingID
 			if !member {
 				return nil
 			}

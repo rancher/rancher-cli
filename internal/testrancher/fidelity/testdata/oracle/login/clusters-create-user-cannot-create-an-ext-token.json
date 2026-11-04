@@ -1,0 +1,67 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "login",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "baseType": "token",
+        "expiresAt": "\u003cts\u003e",
+        "id": "{loginid}",
+        "token": "\u003csecret\u003e",
+        "type": "token"
+      }
+    },
+    {
+      "name": "binding",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "baseType": "globalRoleBinding",
+        "created": "\u003cts\u003e",
+        "createdTS": "\u003cts\u003e",
+        "creatorId": "\u003cuser-id\u003e",
+        "globalRoleId": "clusters-create",
+        "groupPrincipalId": null,
+        "id": "{ownergrb}",
+        "name": "{ownergrb}",
+        "ownerReferences": [
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "kind": "GlobalRole",
+            "name": "clusters-create",
+            "type": "/v3/schemas/ownerReference",
+            "uid": "\u003cuid\u003e"
+          }
+        ],
+        "status": {
+          "lastUpdateTime": "\u003cts\u003e",
+          "type": "/v3/schemas/globalRoleBindingStatus"
+        },
+        "type": "globalRoleBinding",
+        "userId": "{owneruid}",
+        "userPrincipalId": "local://{owneruid}",
+        "uuid": "\u003cuid\u003e"
+      }
+    },
+    {
+      "name": "ext-create-with-the-login-bearer",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "details": {
+          "group": "ext.cattle.io",
+          "kind": "tokens"
+        },
+        "kind": "Status",
+        "message": "tokens.ext.cattle.io is forbidden: User \"{owneruid}\" cannot create resource \"tokens\" in API group \"ext.cattle.io\" at the cluster scope",
+        "metadata": {},
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    }
+  ]
+}

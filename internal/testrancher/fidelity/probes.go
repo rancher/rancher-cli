@@ -42,6 +42,7 @@ func All() []Probe {
 	probes = append(probes, accessProbes()...)
 	probes = append(probes, discoveryProbes()...)
 	probes = append(probes, ownerProbes()...)
+	probes = append(probes, loginProbes()...)
 	probes = append(probes, callerScopeProbes()...)
 	probes = append(probes, revocationProbes()...)
 	probes = append(probes, projectNamespaceProbes()...)
