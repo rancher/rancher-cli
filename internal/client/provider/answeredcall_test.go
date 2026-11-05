@@ -67,7 +67,8 @@ func writeAnswer(w http.ResponseWriter, status int, retryAfter, body string) {
 // seconds, its wait is cut by the deadline, and it names the 429; call B,
 // started after the server wrote that 429, hangs with no answer and says the
 // server may be slow, is answered 530 and names 530, or is answered 404 and
-// is NOT_FOUND, and none of them names a 429. Run with -race.
+// is NOT_FOUND, and none of them names a 429 (matched as "HTTP 429", since
+// the message also names the test server's random port). Run with -race.
 func TestConcurrentCallsOnOneClientKeepTheirOwnLastAnswer(t *testing.T) {
 	t.Cleanup(SetRequestTimeoutForTest(2 * time.Second))
 	for _, tc := range []struct {
@@ -81,21 +82,21 @@ func TestConcurrentCallsOnOneClientKeepTheirOwnLastAnswer(t *testing.T) {
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok, "%v", err)
 			assert.Contains(t, ce.Message, "the server may be slow")
-			assert.NotContains(t, ce.Message, "429")
+			assert.NotContains(t, ce.Message, "HTTP 429")
 			_, answered := clierr.HTTPStatus(err)
 			assert.False(t, answered)
 		}},
 		{"B is answered 530", func(w http.ResponseWriter) { writeAnswer(w, 530, "", cloudflareBody) }, func(t *testing.T, err error) {
 			t.Helper()
 			ce := assertAnswered(t, err, 530)
-			assert.NotContains(t, ce.Message, "429")
+			assert.NotContains(t, ce.Message, "HTTP 429")
 		}},
 		{"B is answered 404", func(w http.ResponseWriter) { writeAnswer(w, 404, "", notFoundBody) }, func(t *testing.T, err error) {
 			t.Helper()
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok, "%v", err)
 			assert.Equal(t, clierr.CodeNotFound, ce.Code)
-			assert.NotContains(t, ce.Message, "429")
+			assert.NotContains(t, ce.Message, "HTTP 429")
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
