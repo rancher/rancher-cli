@@ -251,29 +251,28 @@ func partJobKeyProblems(jobID string, job map[string]any) []string {
 
 // allowedPartSteps lists every step a part job may have, each as the whole
 // step: checkout, setup-go, go-cache and the cache save with the commits
-// recorded in cacheUsesPins (go-cache with the fallback-name of
-// goCacheFallbacks), the tools install the part needs, the completion shell
-// tests step of the tests-race-1 part, and the part step.
-// Any other step in a part job can change what the part runs.
+// recorded in cacheUsesPins, the tools install the part needs, the
+// completion shell tests step of the tests-race-1 part, and the part step.
+// The part jobs goCacheReaders lists (test-2, test-3, cachemodel) have
+// go-cache with restore-from in place of go-cache without it, and no cache
+// save. Any other step in a part job can change what the part runs.
 func allowedPartSteps(jobID, part string) []map[string]any {
-	goCacheWith := func(name string) map[string]any {
-		with := map[string]any{"name": name}
-		if fallback := goCacheFallbacks[name]; fallback != "" {
-			with["fallback-name"] = fallback
-		}
-		return with
-	}
 	pinned := func(name string) string { return name + "@" + cacheUsesPins[name] }
 	steps := []map[string]any{
 		{"uses": pinned("actions/checkout"), "with": map[string]any{"persist-credentials": false}},
 		{"uses": pinned("actions/setup-go"), "with": map[string]any{"go-version-file": "go.mod", "cache": false}},
-		{"id": "go-cache", "uses": goCacheAction, "with": goCacheWith(jobID)},
-		{"uses": pinned("actions/cache/save"), "if": expectedSaveIf(jobID, "go-cache", "cache-hit"), "with": map[string]any{
-			"path": goCacheOutputExpr("go-cache", "path"),
-			"key":  goCacheOutputExpr("go-cache", "key"),
-		}},
-		{"run": part},
 	}
+	if reader, ok := goCacheReaders[jobID]; ok {
+		steps = append(steps, map[string]any{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": jobID, "restore-from": reader.source}})
+	} else {
+		steps = append(steps,
+			map[string]any{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": jobID}},
+			map[string]any{"uses": pinned("actions/cache/save"), "if": expectedSaveIf(jobID, "go-cache", "cache-hit"), "with": map[string]any{
+				"path": goCacheOutputExpr("go-cache", "path"),
+				"key":  goCacheOutputExpr("go-cache", "key"),
+			}})
+	}
+	steps = append(steps, map[string]any{"run": part})
 	switch part {
 	case staticStepBody:
 		steps = append(steps, map[string]any{"uses": setupToolsAction, "with": map[string]any{"shells": "false"}})
@@ -295,7 +294,7 @@ func partStepProblems(jobID, part string, steps []map[string]any) []string {
 	allowed := allowedPartSteps(jobID, part)
 	for i, step := range steps {
 		if !slices.ContainsFunc(allowed, func(a map[string]any) bool { return reflect.DeepEqual(a, step) }) {
-			out = append(out, fmt.Sprintf("job %s step %d is none of the steps a part job may have (checkout, setup-go, go-cache, setup-tools, the completion shell tests step, the part step and the cache save, each exactly as listed in allowedPartSteps): %v", jobID, i+1, step))
+			out = append(out, fmt.Sprintf("job %s step %d is none of the steps a part job may have (checkout, setup-go, go-cache with restore-from and no cache save in a reader job or go-cache and the cache save in any other, setup-tools, the completion shell tests step and the part step, each exactly as listed in allowedPartSteps): %v", jobID, i+1, step))
 		}
 	}
 	return out
@@ -315,9 +314,11 @@ func partStepProblems(jobID, part string, steps []map[string]any) []string {
 // no other run body writes the environment file, the path file or the go env
 // file; that every step of the six part jobs is one of the listed steps,
 // each matched whole (the completion shell tests step only in the job of
-// tests-race-1); that each part job has exactly the keys runs-on
-// (ubuntu-latest), timeout-minutes and steps; and that each job installs only
-// the tools its part uses.
+// tests-race-1; go-cache with restore-from and no cache save in test-2,
+// test-3 and cachemodel, which restore the entry of another job, go-cache
+// without it and the cache save in the other part jobs); that each part job
+// has exactly the keys runs-on (ubuntu-latest), timeout-minutes and steps;
+// and that each job installs only the tools its part uses.
 // TestSharedActionsHoldNoEnvWrites holds the two local actions the part jobs
 // call (go-cache and setup-tools) to the same environment-write rule.
 //
@@ -519,6 +520,30 @@ func TestPartJobStepRules(t *testing.T) {
 	}
 	static := allowedPartSteps("lint", staticStepBody)
 	assert.Empty(t, partStepProblems("lint", staticStepBody, static), "the steps of the static part")
+
+	for _, id := range []string{"test-2", "test-3", "cachemodel"} {
+		part := map[string]string{"test-2": testsRace2StepBody, "test-3": testsRace3StepBody, "cachemodel": testsCacheModelStepBody}[id]
+		saver := allowedPartSteps("conformance", testsConformanceStepBody)
+		plainGoCache := map[string]any{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": id}}
+		save := maps.Clone(saver[3])
+		save["if"] = expectedSaveIf(id, "go-cache", "cache-hit")
+		for _, a := range allowedPartSteps(id, part) {
+			uses, _ := a["uses"].(string)
+			assert.False(t, isCacheSaveUses(uses), "%s is a reader: its allowed steps hold no cache save", id)
+		}
+		source := goCacheReaders[id].source
+		assert.NotEmpty(t, partStepProblems(id, part, []map[string]any{plainGoCache}), "%s with a go-cache step that has no restore-from", id)
+		assert.NotEmpty(t, partStepProblems(id, part, []map[string]any{save}), "%s with a cache save", id)
+		assert.NotEmpty(t, partStepProblems(id, part, []map[string]any{
+			{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": id, "restore-from": "lint"}},
+		}), "%s with another source", id)
+		assert.NotEmpty(t, partStepProblems(id, part, []map[string]any{
+			{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": id, "restore-from": source, "setup-go-key": "true"}},
+		}), "%s with setup-go-key", id)
+	}
+	assert.NotEmpty(t, partStepProblems(job, testsConformanceStepBody, []map[string]any{
+		{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": job, "restore-from": "test-1"}},
+	}), "a saver part job with restore-from")
 
 	setupGoWith := func(key string, value any) map[string]any {
 		steps := good()

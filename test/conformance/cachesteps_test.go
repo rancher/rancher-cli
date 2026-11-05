@@ -28,38 +28,36 @@ const (
 		"then dispatch ci.yaml on the branch and confirm the e2e job's go-cache lookup finds the setup-go key"
 )
 
-// goCacheFallbacks maps the go-cache name of each job that replaced another
-// job to the id the replaced job had in ci.yaml: until the new job has an
-// entry of its own, it restores the entry of the job it replaced. Every other
-// job passes no fallback-name.
-var goCacheFallbacks = map[string]string{
-	"test-1":                  "test",
-	"test-2":                  "test",
-	"test-3":                  "test",
-	"conformance":             "test-norace",
-	"cachemodel":              "test-norace",
-	"install-windows-install": "install-windows",
-	"install-windows-config":  "install-windows",
-	"install-windows-cli":     "install-windows",
-}
-
-// formerCIJobIDs are the ids of the ci.yaml jobs that the jobs in
-// goCacheFallbacks replaced; a fallback-name may name only one of them.
-var formerCIJobIDs = []string{"test", "test-norace", "install-windows"}
-
-// goCacheInputs are the inputs of the go-cache action, with their defaults.
-var goCacheInputs = map[string]string{"name": "", "fallback-name": "", "setup-go-key": "false"}
-
-// The two restore keys of go-cache that use fallback-name. They are empty
-// when the input is empty.
-const (
-	fallbackKeyWithHash = "${{ inputs.fallback-name != '' && format('go-{0}-{1}-{2}-{3}-{4}-', inputs.fallback-name, runner.os, runner.arch, steps.paths.outputs.goversion, hashFiles('go.sum')) || '' }}"
-	fallbackKeyNoHash   = "${{ inputs.fallback-name != '' && format('go-{0}-{1}-{2}-{3}-', inputs.fallback-name, runner.os, runner.arch, steps.paths.outputs.goversion) || '' }}"
-)
-
 // goCacheOutputs are the outputs of the go-cache action, the only ones a
 // workflow may read.
 var goCacheOutputs = []string{"key", "path", "cache-hit", "setup-go-key", "setup-go-cache-hit"}
+
+// goCacheInputs are the inputs of the go-cache action, with their defaults.
+var goCacheInputs = map[string]string{"name": "", "restore-from": "", "setup-go-key": "false"}
+
+// goCacheReader is a job that restores the entry of another job: source is
+// the go-cache name of that job.
+type goCacheReader struct {
+	source string
+	reason string
+}
+
+// goCacheReaders lists the jobs of ci.yaml that restore the entry of another
+// job through restore-from and never save, by ci.yaml job id (cross-compile
+// for the matrix job; a copy in another workflow is listed under the id of
+// the ci.yaml job it copies). Such a job is a reader. Every other job saves
+// its own entry and passes no restore-from. The source of a reader is a job of
+// the same workflow that saves, is no reader, runs on the same runner and has
+// the same steps before checkout, so the entry holds the same cache and
+// go.sum reads the same bytes.
+var goCacheReaders = map[string]goCacheReader{
+	"test-2":                  {"test-1", "the race shards share the dependency builds of internal/cli; each shard builds its own test variants"},
+	"test-3":                  {"test-1", "the race shards share the dependency builds of internal/cli; each shard builds its own test variants"},
+	"cachemodel":              {"e2e", "the package imports the standard library, slices and testify only, which the entry of e2e holds"},
+	"cross-compile":           {"e2e", "builds one platform without cgo; the entry of e2e holds the modules and the standard library"},
+	"fault-check":             {"e2e", "runs tests without the race detector on the build of e2e, and builds its own test variants"},
+	"install-windows-install": {"install-windows-cli", "both run on the Windows runner with the default checkout, so go.sum hashes the same and the entry fits"},
+}
 
 // saveKeyKinds pair each key output a save step writes with the output that
 // says whether an entry with that key exists.
@@ -585,8 +583,11 @@ func hasSetupGo(steps []workflowStep) bool {
 // that runs go, save steps at the end that include the save of the
 // go-cache key, the setup-go key input exactly when the job saves that
 // key, and a go-cache name that matches the job (in ci.yaml) or a ci.yaml
-// job it equals (in another workflow).
-func goCacheRefreshProblems(files []cacheFile) []string {
+// job it equals (in another workflow). A job listed in readers passes
+// restore-from with its source and saves nothing, and its source is a job of
+// the same workflow that saves; any other job passes no restore-from. Every
+// key of readers is a job of ci.yaml and every source a go-cache name of one.
+func goCacheRefreshProblems(files []cacheFile, readers map[string]goCacheReader) []string {
 	var out []string
 	add := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
 	skip := map[string]bool{}
@@ -613,11 +614,25 @@ func goCacheRefreshProblems(files []cacheFile) []string {
 			}
 		}
 	}
+	for _, id := range slices.Sorted(maps.Keys(readers)) {
+		r := readers[id]
+		if _, ok := ci.workflow.Jobs[id]; !haveCI || !ok {
+			add("goCacheReaders lists job %q, which %s does not have", id, ciWorkflowPath)
+		}
+		if _, ok := ciNames[r.source]; !ok {
+			add("goCacheReaders: the source %q of job %q is no go-cache name of a %s job", r.source, id, ciWorkflowPath)
+		}
+		if r.reason == "" {
+			add("goCacheReaders: job %q needs a reason", id)
+		}
+	}
+	readerSeen := map[string]bool{}
 	for _, f := range files {
 		if f.isAction || skip[f.path] {
 			continue
 		}
 		usedBy := map[string]string{}
+		var jobs []cacheJob
 		for _, u := range f.units() {
 			if !hasSetupGo(u.steps) {
 				continue
@@ -655,8 +670,118 @@ func goCacheRefreshProblems(files []cacheFile) []string {
 					add("%s: go-cache must come before any step that runs go, but step %d does", u.label, i+1)
 				}
 			}
-			out = append(out, jobSaveProblems(u, cacheStep, idx)...)
+			tableID := id
+			names, _, problem := expectedGoCacheNames(id, *u.job, cacheStep.With["name"])
+			if f.path != ciWorkflowPath {
+				tableID = ""
+				if problem == "" && len(names) > 0 {
+					tableID = ciNames[names[0]]
+				}
+			}
+			reader, listed := readers[tableID]
+			if listed && f.path == ciWorkflowPath {
+				readerSeen[tableID] = true
+			}
+			out = append(out, jobSaveProblems(u, cacheStep, idx, reader, listed)...)
 			out = append(out, goCacheNameProblems(f, ci, haveCI, ciNames, id, *u.job, cacheStep, usedBy)...)
+			if problem != "" {
+				continue
+			}
+			jobs = append(jobs, cacheJob{
+				label:          u.label,
+				names:          names,
+				restoreFrom:    cacheStep.With["restore-from"],
+				saves:          slices.ContainsFunc(u.steps, isSaveStep),
+				runsOn:         f.rawJobs[id]["runs-on"],
+				jobSettings:    rawJobSettings(f.rawJobs[id]),
+				beforeCheckout: rawStepsBefore(f.rawJobs[id], checkoutIdx),
+			})
+		}
+		out = append(out, readerSourceProblems(jobs)...)
+	}
+	for _, id := range slices.Sorted(maps.Keys(readers)) {
+		if _, ok := ci.workflow.Jobs[id]; haveCI && ok && !readerSeen[id] {
+			add("goCacheReaders lists job %q, which uses no single go-cache step in %s", id, ciWorkflowPath)
+		}
+	}
+	return out
+}
+
+// cacheJob is what the reader rules read of one job that uses go-cache.
+type cacheJob struct {
+	label          string
+	names          []string
+	restoreFrom    string
+	saves          bool
+	runsOn         any
+	jobSettings    map[string]any
+	beforeCheckout []any
+}
+
+// readerJobSettingKeys are the job keys besides runs-on that change the
+// shell or the file system a job builds in: they must be equal in a reader
+// and its source. A job env is left out: Go's build cache is keyed by the
+// content of each build, so a reader with other env (fault-check runs its
+// tests through an exec wrapper) restores a less useful entry, never a wrong
+// one.
+var readerJobSettingKeys = []string{"defaults", "container"}
+
+// rawJobSettings returns the readerJobSettingKeys values of a raw job.
+func rawJobSettings(job map[string]any) map[string]any {
+	out := map[string]any{}
+	for _, k := range readerJobSettingKeys {
+		if v, ok := job[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// rawStepsBefore returns the steps of a raw job before the step at index
+// end, as the plain values the file holds.
+func rawStepsBefore(job map[string]any, end int) []any {
+	steps, _ := job["steps"].([]any)
+	if end < 0 || end > len(steps) {
+		return nil
+	}
+	return steps[:end]
+}
+
+// readerSourceProblems checks the source of every job of one workflow that
+// passes restore-from: a job of the workflow uses that go-cache name, saves,
+// passes no restore-from itself, has the same runs-on value, the same
+// defaults and container, and the same steps before checkout.
+func readerSourceProblems(jobs []cacheJob) []string {
+	var out []string
+	add := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
+	byName := map[string]cacheJob{}
+	for _, j := range jobs {
+		for _, name := range j.names {
+			byName[name] = j
+		}
+	}
+	for _, j := range jobs {
+		if j.restoreFrom == "" {
+			continue
+		}
+		src, ok := byName[j.restoreFrom]
+		switch {
+		case !ok:
+			add("%s: restore-from %q is the go-cache name of no job of this workflow", j.label, j.restoreFrom)
+			continue
+		case src.restoreFrom != "":
+			add("%s: restore-from %q names %s, which is itself a reader: the source of a reader is a job that saves", j.label, j.restoreFrom, src.label)
+		case !src.saves:
+			add("%s: restore-from %q names %s, which does not save", j.label, j.restoreFrom, src.label)
+		}
+		if !reflect.DeepEqual(j.runsOn, src.runsOn) {
+			add("%s: runs-on %v differs from %v of %s, the job restore-from %q names", j.label, j.runsOn, src.runsOn, src.label, j.restoreFrom)
+		}
+		if !reflect.DeepEqual(j.jobSettings, src.jobSettings) {
+			add("%s: the job defaults or container differ from those of %s, the job restore-from %q names", j.label, src.label, j.restoreFrom)
+		}
+		if !reflect.DeepEqual(j.beforeCheckout, src.beforeCheckout) {
+			add("%s: the steps before checkout differ from those of %s, the job restore-from %q names: the checkout line endings, and so the go.sum hash, could differ", j.label, src.label, j.restoreFrom)
 		}
 	}
 	return out
@@ -664,10 +789,22 @@ func goCacheRefreshProblems(files []cacheFile) []string {
 
 // jobSaveProblems checks the end of one job that uses go-cache: save steps
 // after every other step that include the save of the go-cache key, and the
-// setup-go key input paired with the save of that key.
-func jobSaveProblems(u stepUnit, cacheStep workflowStep, idx int) []string {
+// setup-go key input paired with the save of that key. A job listed as a
+// reader instead passes restore-from with its source and has no save step; a
+// job not listed passes no restore-from.
+func jobSaveProblems(u stepUnit, cacheStep workflowStep, idx int, reader goCacheReader, isReader bool) []string {
 	var out []string
 	add := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
+	restoreFrom := cacheStep.With["restore-from"]
+	switch {
+	case isReader && restoreFrom != reader.source:
+		add("%s: a job listed in goCacheReaders must pass restore-from %q to go-cache, got %q", u.label, reader.source, restoreFrom)
+	case !isReader && restoreFrom != "":
+		add("%s: the job is not in goCacheReaders and must not pass restore-from, got %q", u.label, restoreFrom)
+	}
+	if isReader && slices.ContainsFunc(u.steps, isSaveStep) {
+		add("%s: a job listed in goCacheReaders must have no actions/cache/save step", u.label)
+	}
 	first := -1
 	for i := idx + 1; i < len(u.steps); i++ {
 		if isSaveStep(u.steps[i]) {
@@ -688,7 +825,7 @@ func jobSaveProblems(u stepUnit, cacheStep workflowStep, idx int) []string {
 			}
 		}
 	}
-	if !saves["key"] {
+	if !isReader && !saves["key"] {
 		add("%s: the saves at the end of the job must include the save whose key is outputs.key of the go-cache step", u.label)
 	}
 	if cacheStep.With["setup-go-key"] == "true" && (u.job == nil || u.job.RunsOn.Kind != yaml.ScalarNode || !strings.HasPrefix(u.job.RunsOn.Value, "ubuntu-")) {
@@ -706,7 +843,6 @@ func goCacheNameProblems(f, ci cacheFile, haveCI bool, ciNames map[string]string
 	add := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
 	label := f.path + " job " + id
 	passed := cacheStep.With["name"]
-	out = append(out, goCacheFallbackProblems(label, passed, cacheStep.With["fallback-name"])...)
 	got, want, problem := expectedGoCacheNames(id, job, passed)
 	if problem != "" {
 		return []string{label + ": " + problem}
@@ -742,27 +878,6 @@ func goCacheNameProblems(f, ci cacheFile, haveCI bool, ciNames map[string]string
 		if !reflect.DeepEqual(blockOrNil(f.workflow.Env), blockOrNil(ci.workflow.Env)) || !reflect.DeepEqual(blockOrNil(f.workflow.Defaults), blockOrNil(ci.workflow.Defaults)) {
 			add("%s: the top-level env and defaults of %s must equal those of ci.yaml", label, f.path)
 		}
-	}
-	return out
-}
-
-// goCacheFallbackProblems checks the fallback-name one job passes to go-cache
-// with the name it passes: exactly the jobs in goCacheFallbacks pass one, the
-// id it lists, which is one of the replaced job ids in formerCIJobIDs and not
-// the job's own name.
-func goCacheFallbackProblems(label, name, fallback string) []string {
-	var out []string
-	add := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
-	if fallback != "" {
-		if !slices.Contains(formerCIJobIDs, fallback) {
-			add("%s: fallback-name %q is none of the replaced job ids %q", label, fallback, formerCIJobIDs)
-		}
-		if fallback == name {
-			add("%s: fallback-name %q is the job's own go-cache name", label, fallback)
-		}
-	}
-	if want := goCacheFallbacks[name]; fallback != want {
-		add("%s: the go-cache name %q must pass fallback-name %q (empty means none), got %q", label, name, want, fallback)
 	}
 	return out
 }
@@ -812,7 +927,9 @@ func ciE2EKeyProblems(files []cacheFile) []string {
 }
 
 // goCacheActionProblems returns what is wrong with the go-cache action
-// file, when it is among the files: its two restore steps and their keys,
+// file, when it is among the files: its inputs and their defaults, its two
+// restore steps and their keys (the key and the restore keys name the job
+// through restore-from or name, and no other line names it),
 // the step that clears the test cache after both, run bodies with no
 // expression and no write to the environment or the path, the five
 // outputs with their expressions, and the step ids the expressions name.
@@ -877,7 +994,7 @@ func goCacheActionProblems(files []cacheFile) []string {
 	if haveLookup && steps[lookupStep].With["lookup-only"] != "true" {
 		add("%s: the setup-go-lookup step must set lookup-only to true", goCacheActionFile)
 	}
-	const keyPrefix = "go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-"
+	const keyPrefix = "go-${{ inputs.restore-from || inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-"
 	if haveRestore {
 		r := steps[restoreIdx["restore"]]
 		if !strings.HasSuffix(r.With["key"], "-${{ steps.paths.outputs.day }}") {
@@ -886,13 +1003,13 @@ func goCacheActionProblems(files []cacheFile) []string {
 		if want := keyPrefix + "${{ hashFiles('go.sum') }}-${{ steps.paths.outputs.day }}"; r.With["key"] != want {
 			add("%s: the restore key must be %q, got %q", goCacheActionFile, want, r.With["key"])
 		}
-		wantKeys := []string{keyPrefix + "${{ hashFiles('go.sum') }}-", keyPrefix, fallbackKeyWithHash, fallbackKeyNoHash, "setup-go-${{ runner.os }}-"}
+		wantKeys := []string{keyPrefix + "${{ hashFiles('go.sum') }}-", keyPrefix, "setup-go-${{ runner.os }}-"}
 		var gotKeys []string
 		for line := range strings.SplitSeq(strings.TrimSpace(r.With["restore-keys"]), "\n") {
 			gotKeys = append(gotKeys, strings.TrimSpace(line))
 		}
 		if !slices.Equal(gotKeys, wantKeys) {
-			add("%s: the restore step must have the five restore-keys in order (the two for fallback-name are empty without the input), want %q, got %q", goCacheActionFile, wantKeys, gotKeys)
+			add("%s: the restore step must have the three restore-keys in order, want %q, got %q", goCacheActionFile, wantKeys, gotKeys)
 		}
 	}
 	switch {
@@ -1014,7 +1131,7 @@ func TestCIGoCachesRefresh(t *testing.T) {
 	t.Parallel()
 	files := readCacheFiles(t)
 	require.True(t, slices.ContainsFunc(files, func(f cacheFile) bool { return f.path == goCacheActionFile }), "%s is missing", goCacheActionFile)
-	assert.Empty(t, goCacheRefreshProblems(files))
+	assert.Empty(t, goCacheRefreshProblems(files, goCacheReaders))
 	assert.Empty(t, goCacheActionProblems(files))
 	assert.Empty(t, ciE2EKeyProblems(files))
 }
@@ -1044,7 +1161,7 @@ const (
 inputs:
   name:
     required: true
-  fallback-name:
+  restore-from:
     default: ""
   setup-go-key:
     default: "false"
@@ -1074,12 +1191,10 @@ runs:
         path: |
           ${{ steps.paths.outputs.gomodcache }}
           ${{ steps.paths.outputs.gocache }}
-        key: go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-${{ steps.paths.outputs.day }}
+        key: go-${{ inputs.restore-from || inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-${{ steps.paths.outputs.day }}
         restore-keys: |
-          go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-
-          go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-
-          ` + fallbackKeyWithHash + `
-          ` + fallbackKeyNoHash + `
+          go-${{ inputs.restore-from || inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-
+          go-${{ inputs.restore-from || inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-
           setup-go-${{ runner.os }}-
     # The key format of actions/setup-go@` + fxSetupGoSHA + `
     - id: setup-go-key
@@ -1104,6 +1219,15 @@ runs:
 
 func fxGoCache(name, extra string) string {
 	return "      - id: go-cache\n        uses: $/.github/actions/go-cache\n        with:\n          name: " + name + "\n" + extra
+}
+
+// fxReader is a job that restores the entry of the go-cache name source and
+// saves nothing, with extra steps after go-cache.
+func fxReader(id, name, source string, extra ...string) string {
+	steps := []string{fxCheckout, fxSetupGo, fxGoCache(name, "          restore-from: "+source+"\n")}
+	steps = append(steps, extra...)
+	steps = append(steps, fxRun("go test ./..."))
+	return fxJob(id, steps...)
 }
 
 func fxRun(body string) string { return "      - run: " + body + "\n" }
@@ -1185,10 +1309,10 @@ func fxReplace(t *testing.T, text, old, replacement string) string {
 	return strings.Replace(text, old, replacement, 1)
 }
 
-func allCacheProblems(files []cacheFile) []string {
+func allCacheProblems(files []cacheFile, readers map[string]goCacheReader) []string {
 	var out []string
 	out = append(out, onlyMainPushesSaveProblems(files)...)
-	out = append(out, goCacheRefreshProblems(files)...)
+	out = append(out, goCacheRefreshProblems(files, readers)...)
 	out = append(out, goCacheActionProblems(files)...)
 	out = append(out, setupGoKeyProblems(files)...)
 	return out
@@ -1200,9 +1324,10 @@ func allCacheProblems(files []cacheFile) []string {
 func TestCacheStepRules(t *testing.T) {
 	t.Parallel()
 	type row struct {
-		name  string
-		files map[string]string
-		wants []string
+		name    string
+		files   map[string]string
+		readers map[string]goCacheReader
+		wants   []string
 	}
 	const (
 		ciCopy  = ".github/workflows/ci-windows.yaml"
@@ -1237,6 +1362,17 @@ func TestCacheStepRules(t *testing.T) {
 		return map[string]string{goCacheActionFile: fxReplace(t, fxGoCacheAction, old, replacement)}
 	}
 	savesBoth := []string{fxSave("e2e", false), fxSave("e2e", true)}
+	const why = "a reason"
+	readsTest1 := map[string]goCacheReader{"test-2": {"test-1", why}}
+	windowsJob := func(job string) string { return strings.Replace(job, "ubuntu-latest", "windows-latest", 1) }
+	cliJob := windowsJob(fxStandardJob("install-windows-cli", "install-windows-cli"))
+	installReader := windowsJob(fxReader("install-windows-install", "install-windows-install", "install-windows-cli"))
+	installReaders := map[string]goCacheReader{"install-windows-install": {"install-windows-cli", why}}
+	earlyCopies := func(installRestoreFrom string) string {
+		return fxWorkflow("",
+			windowsJob(fxStandardJob("install-windows-cli-early", "install-windows-cli")),
+			windowsJob(fxReader("install-windows-install-early", "install-windows-install", installRestoreFrom)))
+	}
 
 	accept := []row{
 		{name: "two saves at the end of a job", files: ciOnly(fxE2E(true, savesBoth...))},
@@ -1244,8 +1380,6 @@ func TestCacheStepRules(t *testing.T) {
 			fxRun("git config --global core.autocrlf false"), fxCheckout, fxSetupGo, fxGoCache("e2e-windows", ""), envtestWindows,
 			fxRun("bash scripts/e2e"), fxSave("e2e-windows", false)))},
 		{name: "a copy of a ci.yaml job in another workflow under another job id", files: withCopy(copyOf("install-windows"), "")},
-		{name: "a job that falls back to the cache of the job it replaced", files: ciOnly(fxJob("test-1", fxCheckout, fxSetupGo,
-			fxGoCache("test-1", "          fallback-name: test\n"), fxRun("go test ./..."), fxSave("test-1", false)))},
 		{name: "a Linux job with its own env and the envtest step", files: ciOnly(fxJobWith("fault-check", "    env:\n      GOFLAGS: -mod=mod\n",
 			fxCheckout, fxSetupGo, fxGoCache("fault-check", ""), envtestLinux, fxRun("make e2e"), fxSave("fault-check", false)))},
 		{name: "an envtest restore step on the Windows path", files: ciOnly(fxStandardJob("test", "test", restoreAt(envtestPathWindows)))},
@@ -1258,6 +1392,16 @@ func TestCacheStepRules(t *testing.T) {
 		{name: "fuzz.yaml keeps setup-go's cache", files: map[string]string{
 			fuzzWF: fxWorkflow("", fxJob("fuzz", fxCheckout, fxPlainSetupGo, fxRun("go test ./..."))),
 		}},
+		{name: "a reader of a job that saves", files: ciOnly(fxStandardJob("test-1", "test-1"), fxReader("test-2", "test-2", "test-1")), readers: readsTest1},
+		{name: "readers of one job, one of them a matrix job", files: ciOnly(fxE2E(true, savesBoth...),
+			fxReader("cachemodel", "cachemodel", "e2e"),
+			fxJobWith("cross-compile", fxMatrix, fxCheckout, fxSetupGo,
+				fxGoCache("cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}", "          restore-from: e2e\n"), fxRun("go build ./..."))),
+			readers: map[string]goCacheReader{"cachemodel": {"e2e", why}, "cross-compile": {"e2e", why}}},
+		{name: "a reader and its copy in another workflow", files: map[string]string{
+			ciWorkflowPath: fxWorkflow("", cliJob, installReader),
+			ciCopy:         earlyCopies("install-windows-cli"),
+		}, readers: installReaders},
 		{name: "a fuzz workflow on a schedule", files: map[string]string{
 			fuzzWF: fxWorkflow("  schedule:\n    - cron: \"23 6 * * 1\"\n", fxJob("fuzz", fxCheckout, fxPlainSetupGo, fxRun("go test ./..."))),
 		}},
@@ -1343,38 +1487,6 @@ func TestCacheStepRules(t *testing.T) {
 		{name: "a cartesian matrix", files: ciOnly(fxJobWith("cross-compile", "    strategy:\n      matrix:\n        goos: [linux, darwin]\n        goarch: [amd64, arm64]\n",
 			fxCheckout, fxSetupGo, fxGoCache("cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}", ""), fxRun("go build ./..."), fxSave("cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}", false))),
 			wants: []string{"only a matrix made of include entries is supported"}},
-		{name: "a fallback naming the job's own name", files: ciOnly(fxJob("test-2", fxCheckout, fxSetupGo,
-			fxGoCache("test-2", "          fallback-name: test-2\n"), fxRun("go test ./..."), fxSave("test-2", false))),
-			wants: []string{"is the job's own go-cache name", "must pass fallback-name"}},
-		{name: "a fallback naming an unknown job", files: ciOnly(fxJob("test-2", fxCheckout, fxSetupGo,
-			fxGoCache("test-2", "          fallback-name: nothing\n"), fxRun("go test ./..."), fxSave("test-2", false))),
-			wants: []string{"is none of the replaced job ids", "must pass fallback-name"}},
-		{name: "a fallback naming a job id that exists only after the split", files: ciOnly(fxJob("test-2", fxCheckout, fxSetupGo,
-			fxGoCache("test-2", "          fallback-name: test-1\n"), fxRun("go test ./..."), fxSave("test-2", false))),
-			wants: []string{"is none of the replaced job ids"}},
-		{name: "a replacing job with no fallback", files: ciOnly(fxJob("test-3", fxCheckout, fxSetupGo,
-			fxGoCache("test-3", ""), fxRun("go test ./..."), fxSave("test-3", false))),
-			wants: []string{`the go-cache name "test-3" must pass fallback-name "test"`}},
-		{name: "a replacing job with another job's fallback", files: ciOnly(fxJob("conformance", fxCheckout, fxSetupGo,
-			fxGoCache("conformance", "          fallback-name: test\n"), fxRun("go test ./..."), fxSave("conformance", false))),
-			wants: []string{`the go-cache name "conformance" must pass fallback-name "test-norace"`}},
-		{name: "a fallback on a job that replaced nothing", files: ciOnly(fxJob("lint", fxCheckout, fxSetupGo,
-			fxGoCache("lint", "          fallback-name: test\n"), fxRun("go vet ./..."), fxSave("lint", false))),
-			wants: []string{`the go-cache name "lint" must pass fallback-name "" (empty means none)`}},
-		{name: "a copy that drops the fallback of its twin", files: map[string]string{
-			ciWorkflowPath: fxWorkflow("", fxJob("install-windows-install", fxCheckout, fxSetupGo,
-				fxGoCache("install-windows-install", "          fallback-name: install-windows\n"), fxRun("go test ./..."), fxSave("install-windows-install", false))),
-			ciCopy: fxWorkflow("", fxJob("install-windows-install-early", fxCheckout, fxSetupGo,
-				fxGoCache("install-windows-install", ""), fxRun("go test ./..."), fxSave("install-windows-install", false))),
-		}, wants: []string{"a job in another workflow must equal the ci.yaml job", `must pass fallback-name "install-windows"`}},
-		{name: "a restore step with no fallback lines", files: cacheActionWith("          "+fallbackKeyWithHash+"\n          "+fallbackKeyNoHash+"\n", ""),
-			wants: []string{"the restore step must have the five restore-keys in order"}},
-		{name: "a fallback line that always looks up a name", files: cacheActionWith(fallbackKeyNoHash, "go-${{ inputs.fallback-name }}-"),
-			wants: []string{"the restore step must have the five restore-keys in order"}},
-		{name: "the two fallback lines in the other order", files: cacheActionWith(fallbackKeyWithHash+"\n          "+fallbackKeyNoHash, fallbackKeyNoHash+"\n          "+fallbackKeyWithHash),
-			wants: []string{"the restore step must have the five restore-keys in order"}},
-		{name: "no fallback-name input", files: cacheActionWith("  fallback-name:\n    default: \"\"\n", ""),
-			wants: []string{"go-cache declares exactly the inputs and defaults"}},
 		{name: "a copy that passes its own job id", files: withCopy(strings.Replace(copyOf("install-windows"), "name: install-windows\n", "name: install-windows-early\n", 1), ""),
 			wants: []string{"must be the name of a ci.yaml job"}},
 		{name: "a restore after go-cache on a Go build directory", files: ciOnly(fxStandardJob("test", "test", restoreAt("~/.cache/go-build"))),
@@ -1412,24 +1524,71 @@ func TestCacheStepRules(t *testing.T) {
 			goCacheActionFile: strings.Replace(strings.Replace(fxGoCacheAction, "    - shell: bash\n      run: go clean -testcache\n", "", 1),
 				"    # The key format", "    - shell: bash\n      run: go clean -testcache\n    # The key format", 1),
 		}, wants: []string{"must come after both restore steps"}},
-		{name: "a restore key with no name", files: cacheActionWith("key: go-${{ inputs.name }}-", "key: go-"),
+		{name: "a restore key with no name", files: cacheActionWith("key: go-${{ inputs.restore-from || inputs.name }}-", "key: go-"),
 			wants: []string{"the restore key must be"}},
-		{name: "a restore key with another prefix", files: cacheActionWith("key: go-${{ inputs.name }}-", "key: gx-${{ inputs.name }}-"),
+		{name: "a restore key with another prefix", files: cacheActionWith("key: go-${{ inputs.restore-from || inputs.name }}-", "key: gx-${{ inputs.restore-from || inputs.name }}-"),
 			wants: []string{"the restore key must be"}},
 		{name: "a fuzz workflow that runs on pull_request_target", files: map[string]string{
 			fuzzWF: fxWorkflow("  pull_request_target:\n", fxJob("fuzz", fxCheckout, fxPlainSetupGo, fxRun("go test ./..."))),
 		}, wants: []string{"setup-go keeps its own cache here"}},
 		{name: "the setup-go key on a Windows job", files: ciOnly(strings.Replace(fxE2E(true, savesBoth...), "ubuntu-latest", "windows-latest", 1)),
 			wants: []string{"is for a job that runs on ubuntu"}},
+		{name: "a reader with a save step", files: ciOnly(fxStandardJob("test-1", "test-1"), fxReader("test-2", "test-2", "test-1", fxSave("test-2", false))),
+			readers: readsTest1, wants: []string{"must have no actions/cache/save step"}},
+		{name: "a listed reader that passes no restore-from", files: ciOnly(fxStandardJob("test-1", "test-1"), fxStandardJob("test-2", "test-2")),
+			readers: readsTest1, wants: []string{"must pass restore-from \"test-1\" to go-cache, got \"\""}},
+		{name: "a listed reader that passes another source", files: ciOnly(fxStandardJob("test-1", "test-1"), fxStandardJob("lint", "lint"), fxReader("test-2", "test-2", "lint")),
+			readers: readsTest1, wants: []string{"must pass restore-from \"test-1\" to go-cache, got \"lint\""}},
+		{name: "a job that is not listed passes restore-from", files: ciOnly(fxStandardJob("test-1", "test-1"),
+			fxJob("lint", fxCheckout, fxSetupGo, fxGoCache("lint", "          restore-from: test-1\n"), fxRun("go vet ./..."), fxSave("lint", false))),
+			wants: []string{"the job is not in goCacheReaders and must not pass restore-from"}},
+		{name: "a reader whose source is a reader", files: ciOnly(fxStandardJob("test-1", "test-1"), fxReader("test-2", "test-2", "test-1"), fxReader("test-3", "test-3", "test-2")),
+			readers: map[string]goCacheReader{"test-2": {"test-1", why}, "test-3": {"test-2", why}}, wants: []string{"which is itself a reader"}},
+		{name: "a reader whose source runs on another runner", files: ciOnly(fxE2E(true, savesBoth...), cliJob, fxReader("cachemodel", "cachemodel", "install-windows-cli")),
+			readers: map[string]goCacheReader{"cachemodel": {"install-windows-cli", why}}, wants: []string{"differs from windows-latest"}},
+		{name: "a reader with a step before checkout that its source lacks", files: map[string]string{
+			ciWorkflowPath: fxWorkflow("", cliJob, strings.Replace(installReader, "    steps:\n", "    steps:\n"+fxRun("git config --global core.autocrlf false"), 1)),
+		}, readers: installReaders, wants: []string{"the steps before checkout differ"}},
+		{name: "a reader whose source does not save", files: ciOnly(fxE2E(true), fxReader("cachemodel", "cachemodel", "e2e")),
+			readers: map[string]goCacheReader{"cachemodel": {"e2e", why}}, wants: []string{"which does not save"}},
+		{name: "a reader of a name no job of its workflow uses", files: ciOnly(fxStandardJob("test-1", "test-1"), fxReader("test-2", "test-2", "test-1"), fxReader("cachemodel", "cachemodel", "e2e")),
+			readers: map[string]goCacheReader{"test-2": {"test-1", why}, "cachemodel": {"e2e", why}}, wants: []string{"is the go-cache name of no job of this workflow"}},
+		{name: "a reader and a copy with another restore-from", files: map[string]string{
+			ciWorkflowPath: fxWorkflow("", cliJob, installReader),
+			ciCopy:         earlyCopies("install-windows-config"),
+		}, readers: installReaders, wants: []string{"a job in another workflow must equal the ci.yaml job"}},
+		{name: "a readers table key that is no job", files: ciOnly(fxStandardJob("test-1", "test-1"), fxReader("test-2", "test-2", "test-1")),
+			readers: map[string]goCacheReader{"test-2": {"test-1", why}, "test-9": {"test-1", why}}, wants: []string{`lists job "test-9", which`}},
+		{name: "a readers table source that no job uses", files: ciOnly(fxStandardJob("test-1", "test-1"), fxReader("test-2", "test-2", "test-8")),
+			readers: map[string]goCacheReader{"test-2": {"test-8", why}}, wants: []string{`the source "test-8" of job "test-2" is no go-cache name`}},
+		{name: "a readers table key whose job has no go-cache step", files: ciOnly(fxStandardJob("test-1", "test-1"), fxJob("test-2", fxCheckout, fxRun("echo test"))),
+			readers: readsTest1, wants: []string{`lists job "test-2", which uses no single go-cache step`}},
+		{name: "a reader whose job defaults differ from its source", files: ciOnly(fxStandardJob("test-1", "test-1"),
+			strings.Replace(fxReader("test-2", "test-2", "test-1"), "    steps:\n", "    defaults:\n      run:\n        shell: sh\n    steps:\n", 1)),
+			readers: readsTest1, wants: []string{"the job defaults or container differ"}},
+		{name: "a reader whose job container differs from its source", files: ciOnly(fxStandardJob("test-1", "test-1"),
+			strings.Replace(fxReader("test-2", "test-2", "test-1"), "    steps:\n", "    container: golang:1\n    steps:\n", 1)),
+			readers: readsTest1, wants: []string{"the job defaults or container differ"}},
+		{name: "a readers table row with no reason", files: ciOnly(fxStandardJob("test-1", "test-1"), fxReader("test-2", "test-2", "test-1")),
+			readers: map[string]goCacheReader{"test-2": {"test-1", ""}}, wants: []string{`job "test-2" needs a reason`}},
+		{name: "a readers table with no ci.yaml", files: map[string]string{fuzzWF: fxWorkflow("", fxJob("fuzz", fxCheckout, fxPlainSetupGo, fxRun("go test ./...")))},
+			readers: readsTest1, wants: []string{`lists job "test-2", which`}},
+		{name: "own-name restore keys beside the restore-from ones", files: cacheActionWith("          setup-go-${{ runner.os }}-\n",
+			"          go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-${{ hashFiles('go.sum') }}-\n"+
+				"          go-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.goversion }}-\n"+
+				"          setup-go-${{ runner.os }}-\n"),
+			wants: []string{"the restore step must have the three restore-keys in order"}},
+		{name: "no restore-from input", files: cacheActionWith("  restore-from:\n    default: \"\"\n", ""),
+			wants: []string{"go-cache declares exactly the inputs and defaults"}},
 		{name: "a third-party action at another commit", files: ciOnly(fxJob("test", strings.Replace(fxCheckout, "3d3c42e5", "3d3c42e6", 1), fxSetupGo, fxGoCache("test", ""), fxRun("go test ./..."), fxSave("test", false))),
 			wants: []string{"cacheUsesPins records"}},
 	}
 
 	for _, r := range accept {
-		assert.Empty(t, allCacheProblems(fxFiles(t, maps.Clone(r.files))), "must accept: %s", r.name)
+		assert.Empty(t, allCacheProblems(fxFiles(t, maps.Clone(r.files)), r.readers), "must accept: %s", r.name)
 	}
 	for _, r := range refuse {
-		problems := allCacheProblems(fxFiles(t, maps.Clone(r.files)))
+		problems := allCacheProblems(fxFiles(t, maps.Clone(r.files)), r.readers)
 		require.NotEmpty(t, r.wants, r.name)
 		for _, want := range r.wants {
 			assert.True(t, slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, want) }),

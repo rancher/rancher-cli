@@ -73,7 +73,6 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: test-1
-          fallback-name: test
       - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
@@ -126,16 +125,11 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: test-2
-          fallback-name: test
+          restore-from: test-1
       - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
       - run: ./scripts/validate tests-race-2
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
-        with:
-          path: ${{ steps.go-cache.outputs.path }}
-          key: ${{ steps.go-cache.outputs.key }}
 
   test-3:
     runs-on: ubuntu-latest
@@ -152,16 +146,11 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: test-3
-          fallback-name: test
+          restore-from: test-1
       - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
       - run: ./scripts/validate tests-race-3
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
-        with:
-          path: ${{ steps.go-cache.outputs.path }}
-          key: ${{ steps.go-cache.outputs.key }}
 
   conformance:
     runs-on: ubuntu-latest
@@ -178,7 +167,6 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: conformance
-          fallback-name: test-norace
       - run: ./scripts/validate tests-conformance
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
@@ -201,21 +189,16 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: cachemodel
-          fallback-name: test-norace
+          restore-from: e2e
       - run: ./scripts/validate tests-cachemodel
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
-        with:
-          path: ${{ steps.go-cache.outputs.path }}
-          key: ${{ steps.go-cache.outputs.key }}
 
   # Compile-check every release platform so an arch-specific break (endian,
   # 32/64 assumptions) surfaces on the PR, not at tag time. The list must
   # match the build loop in release.yaml. linux/amd64 is kept for the 1:1
   # mapping with the release matrix, although the build contract in
   # conformance builds the same platform. One job per platform, so the
-  # platforms build in parallel; each job, like every other job that uses
-  # Go, has its own cache entry through go-cache.
+  # platforms build in parallel; each job restores the entry of the e2e job
+  # through go-cache and saves none.
   cross-compile:
     name: cross-compile (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
@@ -242,17 +225,13 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}
+          restore-from: e2e
       - name: Compile
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: go build ./...
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
-        with:
-          path: ${{ steps.go-cache.outputs.path }}
-          key: ${{ steps.go-cache.outputs.key }}
 
   e2e:
     runs-on: ubuntu-latest
@@ -317,6 +296,7 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: fault-check
+          restore-from: e2e
       - name: Cache envtest assets
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -342,11 +322,6 @@ jobs:
       - name: Fault check
         if: ${{ !cancelled() }}
         run: ./scripts/fault-check
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
-        with:
-          path: ${{ steps.go-cache.outputs.path }}
-          key: ${{ steps.go-cache.outputs.key }}
 
   install-windows-install:
     # The installer's behavior and security tests (token handling,
@@ -373,16 +348,11 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: install-windows-install
-          fallback-name: install-windows
+          restore-from: install-windows-cli
       # Only the Windows suite: the package's POSIX-sh installer tests
       # assume sh/symlink semantics and fail on a Windows runner. -race
       # per the repo's testing mandate (the runner ships gcc).
       - run: go test -race -count=1 -run TestWindows ./install/
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
-        with:
-          path: ${{ steps.go-cache.outputs.path }}
-          key: ${{ steps.go-cache.outputs.key }}
 
   install-windows-config:
     # The two ./internal/config/ steps share this job: the second reuses
@@ -407,7 +377,6 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: install-windows-config
-          fallback-name: install-windows
       # Three things this leg is for. The path-identity tests for Windows
       # spellings - volume and separator forms of one directory,
       # %APPDATA% compared in another casing - are build-tagged for
@@ -476,7 +445,6 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: install-windows-cli
-          fallback-name: install-windows
       # What one recorded command run costs the exec plugin's cache hit,
       # through the built command tree: the directory stat and the store's
       # file operations, on NTFS, on top of the hit's own reads, and no

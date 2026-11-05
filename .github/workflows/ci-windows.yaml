@@ -39,13 +39,8 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: install-windows-install
-          fallback-name: install-windows
+          restore-from: install-windows-cli
       - run: go test -race -count=1 -run TestWindows ./install/
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
-        with:
-          path: ${{ steps.go-cache.outputs.path }}
-          key: ${{ steps.go-cache.outputs.key }}
 
   install-windows-config-early:
     runs-on: windows-latest
@@ -68,7 +63,6 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: install-windows-config
-          fallback-name: install-windows
       - run: go test -race -count=1 ./internal/config/
       - run: go test -race -count=1 ./internal/telemetry/ ./internal/telemetrysend/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
       # The test helpers for the Windows differences: -v prints each test and
@@ -103,7 +97,6 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: install-windows-cli
-          fallback-name: install-windows
       - run: go test -race -count=1 -run 'TestRecordingAddsTheListedOperationsToThePluginHit|TestARecordedRunReadsTheFactsFileOnce|TestTheFirstLoginReadsAndWritesTheFactsFileAndNothingElse|TestTheFileOperationsOfAPluginSignInAreTheListed|TestTheFileOperationsOfAFirstPluginRunAreTheListed|TestTelemetryOffAlwaysWinsOverUpload|TestDevBuildsHonorExperiments|TestExecPluginRunsNeverUpload|TestReleaseBuildsIgnoreExperiments|TestNoUploadWithoutAnEndpoint|TestUploadURLRules|TestPassFileOfThisRunIsSent|TestPassRemovesAnOldHourWhenItsWriteOutlastsTheReadLimit|TestUploadStaysInTheDeadline|TestUploadNeverChangesTheRun|TestUploadSendsNoCredential|TestDebugLinesShowOnlyCountsOriginAndAnswer|TestARecordedRunWithTheExperimentReadsTheStateOnce|TestUploadExcludedNamesRegisteredCommands|TestTheControlsFunctionTakesNoLock|TestUploadCommandRefusals|TestUploadCommandIgnoresTheHourlyLimit|TestUploadCommandSendsTheCurrentHour|TestUploadCommandWithNoConfigDirectory|TestUploadCommandSharesTheLock|TestUploadCommandIsBounded|TestUploadCommandOutput|TestDebugLinesOfTheUploadCommand|TestUploadCommandRecordsNothing|TestUploadCommandSendsNoCredential|TestUploadCommandTakesNoConfigLock|TestUploadCommandReportsFailures|TestUploadCommandUnderReadOnly|TestUploadCommandBoundIsTheTelemetryBound|TestLinesWithNoChosenCommandRecordNothing|TestNoConfigDirectoryRecordsNothingAndCreatesNone|TestTelemetryExcludedHasExactlyTheSevenCommands|TestEveryRegisteredCommandRecordsOrIsExcluded|TestSubcommandCompletionTelemetryGroup' ./internal/cli/
       - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
       - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
