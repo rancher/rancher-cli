@@ -414,6 +414,91 @@ func TestCIRunsEveryValidatePartOnce(t *testing.T) {
 	assert.Equal(t, 20, wf.Jobs["cross-compile"].TimeoutMinutes, "job cross-compile timeout-minutes")
 }
 
+// freshPassStepBodies are the step bodies in the workflows that run the
+// fresh pass of scripts/test: the ci.yaml conformance part and make
+// validate, which the release workflow runs.
+var freshPassStepBodies = []string{testsConformanceStepBody, "make validate"}
+
+// TestFreshTimeoutFitsEveryJobThatRunsIt asserts that the timeout scripts/test
+// gives the fresh pass is longer than go test's default of 10 minutes and at
+// least 5 minutes shorter than the timeout-minutes of every job that runs the
+// fresh pass: the ci.yaml conformance job, where a slow run then fails with
+// go test's report of the running tests before the runner cancels the job,
+// and the release workflow's validate job, where make validate runs other
+// parts before and after the fresh pass, so the rule bounds only the fresh
+// pass there.
+func TestFreshTimeoutFitsEveryJobThatRunsIt(t *testing.T) {
+	t.Parallel()
+	script, err := os.ReadFile(noRaceScriptPath)
+	require.NoError(t, err)
+	minutes := freshTimeoutOf(t, string(script))
+	for _, path := range []string{ciWorkflowPath, ".github/workflows/release.yaml"} {
+		assert.Empty(t, freshTimeoutProblems(minutes, readWorkflow(t, path)), path)
+	}
+}
+
+// freshTimeoutProblems checks a fresh timeout of the given minutes against
+// every job of the workflow with a step that runs the fresh pass; the
+// workflow must have exactly one such job.
+func freshTimeoutProblems(minutes int, wf workflowFile) []string {
+	var out []string
+	jobs := 0
+	for id, job := range wf.Jobs {
+		if !slices.ContainsFunc(job.Steps, func(s workflowStep) bool {
+			return slices.Contains(freshPassStepBodies, strings.TrimSpace(s.Run))
+		}) {
+			continue
+		}
+		jobs++
+		if minutes <= 10 {
+			out = append(out, fmt.Sprintf("the fresh timeout of %dm is not longer than go test's default of 10m", minutes))
+		}
+		if limit := job.TimeoutMinutes - 5; minutes > limit {
+			out = append(out, fmt.Sprintf("the fresh timeout of %dm is more than job %s's timeout-minutes %d minus 5", minutes, id, job.TimeoutMinutes))
+		}
+	}
+	if jobs != 1 {
+		out = append(out, fmt.Sprintf("%d jobs run one of %q, want 1", jobs, freshPassStepBodies))
+	}
+	return out
+}
+
+// TestFreshTimeoutProblemsRules asserts what freshTimeoutProblems accepts and
+// refuses.
+func TestFreshTimeoutProblemsRules(t *testing.T) {
+	t.Parallel()
+	wf := func(limits ...int) workflowFile {
+		w := workflowFile{Jobs: map[string]workflowJob{}}
+		for i, limit := range limits {
+			w.Jobs["conformance"+strconv.Itoa(i)] = workflowJob{TimeoutMinutes: limit, Steps: []workflowStep{{Run: testsConformanceStepBody}}}
+		}
+		return w
+	}
+	for _, c := range []struct {
+		name    string
+		minutes int
+		wf      workflowFile
+		want    string
+	}{
+		{name: "fits", minutes: 25, wf: wf(30)},
+		{name: "make validate in a job too short", minutes: 25, wf: workflowFile{Jobs: map[string]workflowJob{
+			"validate": {TimeoutMinutes: 20, Steps: []workflowStep{{Run: "make validate"}}},
+		}}, want: "minus 5"},
+		{name: "too close to the job limit", minutes: 26, wf: wf(30), want: "minus 5"},
+		{name: "the job limit itself", minutes: 30, wf: wf(30), want: "minus 5"},
+		{name: "go test's default", minutes: 10, wf: wf(30), want: "not longer than go test's default"},
+		{name: "no job runs the fresh pass", minutes: 25, wf: wf(), want: "0 jobs run"},
+		{name: "two jobs run the fresh pass", minutes: 25, wf: wf(30, 30), want: "2 jobs run"},
+	} {
+		problems := freshTimeoutProblems(c.minutes, c.wf)
+		if c.want == "" {
+			assert.Empty(t, problems, c.name)
+			continue
+		}
+		assert.True(t, slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, c.want) }), "%s: %q", c.name, problems)
+	}
+}
+
 // TestPartJobStepRules asserts what the step allowlist of the part jobs
 // accepts and refuses: the listed steps, each whole, and nothing else.
 func TestPartJobStepRules(t *testing.T) {

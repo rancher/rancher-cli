@@ -46,6 +46,13 @@
 # packages may come from the cache. Every fresh entry must also be in
 # norace (the script refuses one that is not).
 #
+# The fresh pass also runs with -timeout=$fresh_timeout unless the flags
+# name a timeout. With an empty build cache, one of its tests type-checks
+# the whole module inside the test run, which can take longer than go
+# test's default of 10 minutes. The value stays at least 5 minutes under
+# the timeout-minutes of every workflow job that runs the fresh pass
+# (TestFreshTimeoutFitsEveryJobThatRunsIt).
+#
 # The listed norace packages hold the source scans (test/conformance) and
 # the cache model (test/cachemodel). Their tests read files or enumerate
 # states and test no concurrent code, so the race detector has nothing to
@@ -221,10 +228,13 @@ for dir in "${norace[@]}"; do
   fi
 done
 
+fresh_timeout=25m
 count_named=
+timeout_named=
 for f in "${flags[@]}"; do
   case "$f" in
     -count | --count | -count=* | --count=* | -test.count | --test.count | -test.count=* | --test.count=*) count_named=1 ;;
+    -timeout | --timeout | -timeout=* | --timeout=* | -test.timeout | --test.timeout | -test.timeout=* | --test.timeout=*) timeout_named=1 ;;
   esac
 done
 
@@ -234,6 +244,9 @@ norace_flags=("${flags[@]}")
 fresh_flags=("${flags[@]}")
 if [ -z "$count_named" ]; then
   fresh_flags+=(-count=1)
+fi
+if [ -z "$timeout_named" ]; then
+  fresh_flags+=("-timeout=$fresh_timeout")
 fi
 if [ -n "$profile" ]; then
   profiles=$(mktemp -d)

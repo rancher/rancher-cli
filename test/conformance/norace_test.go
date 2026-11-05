@@ -267,6 +267,21 @@ func TestNoRaceScanSeesConcurrency(t *testing.T) {
 	}
 }
 
+// freshTimeoutRE matches the script's one assignment of the timeout the
+// fresh pass runs with, in whole minutes.
+var freshTimeoutRE = regexp.MustCompile(`(?m)^fresh_timeout=([0-9]+)m$`)
+
+// freshTimeoutOf returns the minutes of the fresh timeout the script
+// assigns.
+func freshTimeoutOf(t *testing.T, script string) int {
+	t.Helper()
+	m := freshTimeoutRE.FindAllStringSubmatch(script, -1)
+	require.Len(t, m, 1, "scripts/test assigns fresh_timeout=<minutes>m exactly once")
+	minutes, err := strconv.Atoi(m[0][1])
+	require.NoError(t, err)
+	return minutes
+}
+
 // freshListRE matches the script's one list of packages that run with
 // -count=1.
 var freshListRE = regexp.MustCompile(`(?m)^fresh=\(([^)]*)\)$`)
@@ -294,7 +309,7 @@ func TestFreshPackagesRunUncached(t *testing.T) {
 type passCall struct {
 	race, count1 bool
 	flags, pkgs  []string
-	run          string
+	run, timeout string
 }
 
 // passStubModule is the module path the go stub prints for go list -m.
@@ -405,6 +420,8 @@ done
 				call.race = true
 			case word == "-count=1":
 				call.count1 = true
+			case strings.HasPrefix(word, "-timeout="):
+				call.timeout = strings.TrimPrefix(word, "-timeout=")
 			case word == "-run" && i+1 < len(words):
 				i++
 				call.run = words[i]
@@ -423,7 +440,9 @@ done
 // one go test call with the race detector over every listed package except
 // the norace ones (internal/cli included, with no -run and no -list call);
 // with -pass=norace, two calls without it, the norace packages that are not
-// fresh and then the fresh ones with -count=1; with -pass=norace-cached only
+// fresh and then the fresh ones with -count=1 and the script's fresh
+// timeout (only the fresh call has a -timeout, and a timeout in any spelling
+// among the flags replaces it); with -pass=norace-cached only
 // the first of those two and with -pass=fresh only the second; with no
 // -pass, the race call followed by the two norace calls, so that every
 // listed package appears in exactly one call; that -pass takes its value
@@ -444,6 +463,7 @@ func TestTestPassesSplitTheRun(t *testing.T) {
 	require.Len(t, freshLists, 1)
 	freshDirs := strings.Fields(freshLists[0][1])
 	require.NotEmpty(t, freshDirs)
+	freshTimeout := strconv.Itoa(freshTimeoutOf(t, string(script))) + "m"
 
 	var listed, racePkgs, noRaceOnly, fresh []string
 	for _, dir := range noRaceDirs {
@@ -498,6 +518,8 @@ func TestTestPassesSplitTheRun(t *testing.T) {
 	assert.False(t, noRaceRun.calls[0].count1, "the norace packages that are not fresh may come from the test cache")
 	assert.Equal(t, fresh, noRaceRun.calls[1].pkgs)
 	assert.True(t, noRaceRun.calls[1].count1, "the fresh packages run with -count=1")
+	assert.Empty(t, noRaceRun.calls[0].timeout, "the norace packages that are not fresh keep go test's default timeout")
+	assert.Equal(t, freshTimeout, noRaceRun.calls[1].timeout, "the fresh packages run with the script's fresh timeout")
 
 	for _, spelling := range [][]string{{"-pass", "race"}, {"-pass=race"}, {"--pass", "race"}, {"--pass=race"}} {
 		r := run(spelling...)
@@ -519,7 +541,31 @@ func TestTestPassesSplitTheRun(t *testing.T) {
 	require.Len(t, freshOnly.calls, 1, "fresh mode makes exactly one go test call, got %q", freshOnly.goLog)
 	assert.False(t, freshOnly.calls[0].race, "fresh mode runs without -race")
 	assert.True(t, freshOnly.calls[0].count1, "the fresh packages run with -count=1")
+	assert.Equal(t, freshTimeout, freshOnly.calls[0].timeout, "the fresh packages run with the script's fresh timeout")
 	assert.Equal(t, fresh, freshOnly.calls[0].pkgs)
+	assert.Empty(t, raceOnly.calls[0].timeout, "race mode keeps go test's default timeout")
+	assert.Empty(t, cachedOnly.calls[0].timeout, "norace-cached mode keeps go test's default timeout")
+
+	for _, spelling := range [][]string{
+		{"-timeout", "5m"}, {"--timeout", "5m"}, {"-timeout=5m"}, {"--timeout=5m"},
+		{"-test.timeout", "5m"}, {"--test.timeout", "5m"}, {"-test.timeout=5m"}, {"--test.timeout=5m"},
+	} {
+		r := runPassScript(t, listed, append([]string{"-pass=fresh"}, spelling...)...)
+		require.Zero(t, r.code, "%q: %s", spelling, r.stderr)
+		require.Len(t, r.calls, 1, "%q", spelling)
+		var timeoutWords []string
+		for _, line := range r.goLog {
+			if rest, ok := strings.CutPrefix(line, "go test "); ok {
+				words := strings.Fields(rest)
+				for i, word := range words {
+					if strings.Contains(word, "timeout") {
+						timeoutWords = append(timeoutWords, words[i:min(i+len(spelling), len(words))]...)
+					}
+				}
+			}
+		}
+		assert.Equal(t, spelling, timeoutWords, "a timeout in the flags replaces the fresh timeout and reaches go test as given")
+	}
 
 	for _, r := range []passRun{raceOnly, noRaceRun, cachedOnly, freshOnly, run()} {
 		assert.Empty(t, r.listCalls, "a run without -shard lists no tests")
@@ -619,6 +665,7 @@ func TestTestShardsSplitTheRacePass(t *testing.T) {
 		for j, call := range r.calls {
 			assert.True(t, call.race, "shard %d call %d runs with -race", i, j+1)
 			assert.Equal(t, []string{"-vet=off"}, call.flags, "shard %d call %d carries the script's flags", i, j+1)
+			assert.Empty(t, call.timeout, "shard %d call %d keeps go test's default timeout", i, j+1)
 		}
 		assert.Equal(t, shardOf(shardable, i), r.calls[0].pkgs, "shard %d packages", i)
 		assert.Empty(t, r.calls[0].run, "the package call of shard %d sets no -run", i)
