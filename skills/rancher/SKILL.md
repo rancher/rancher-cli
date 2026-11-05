@@ -752,6 +752,13 @@ Never present a role list as permissions.
   and provisioning accounts) by default, matching what Rancher itself hides;
   pass `--include-system` to see them. Cluster teardown removes its agent
   account automatically - never delete a system account by hand.
+- `rancher get clusterrepo`, `rancher get app` and `rancher get operation` read
+  the Helm repositories, installed apps and Helm operations of one cluster; each
+  cluster keeps its own, so pass `--cluster <id|name>` (`local` for Rancher's own
+  cluster), and `--namespace` for one app or operation. They are read-only:
+  patch, create and delete are refused with `VALIDATION` before any request. An
+  app's Helm values, chart default values and install notes, and an operation's
+  `status.token`, are not shown.
 - `rancher create user <username> --password-stdin` creates a local user (a
   `v3 User`, its password secret, and a `v3 GlobalRoleBinding` for each global
   role the server marks `newUserDefault`, `user` on a default install) - the

@@ -174,6 +174,10 @@ func claimLiveSource(req completion.Request, d runtime.Descriptor, lc completion
 		key, ok := positional[d.Name]
 		if !ok && isGeneratedVerb(d.Name) {
 			if k, found := kindForDescriptor(d); found {
+				if k.NoPatchReason != "" && strings.HasPrefix(d.Name, "patch ") {
+					completionDebugf("source: %s is always refused; it offers no names", d.Name)
+					return completion.Source{}, completion.Requirements{}, false
+				}
 				key, ok = k.Key, true
 			}
 		}

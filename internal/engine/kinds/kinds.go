@@ -114,7 +114,14 @@ type Kind struct {
 	// is absent - surfaced by `rancher schema`. "" renders a plain
 	// "not available". Meaningless on Deletable: true rows; leave empty.
 	NoDeleteReason string
-	Sensitive      bool // patch on this kind is Destructive (parity branch 2)
+	// NoPatchReason, when non-empty, makes the generated patch a refusal: the
+	// command keeps its flags, states the refusal in its usage and
+	// description, completes no names, and answers VALIDATION
+	// before any request with this text as the reason, surfaced by `rancher
+	// schema` as the verb's note. "" generates the ordinary patch. A row that
+	// also has a patch override is refused at startup.
+	NoPatchReason string
+	Sensitive     bool // patch on this kind is Destructive (parity branch 2)
 	// WaitDefault is the --for expression --wait or --timeout alone applies;
 	// "" = no default (--wait or --timeout alone rejects) - an explicit --for
 	// is honored regardless. Set only for kinds where the expression is
@@ -146,6 +153,10 @@ type Kind struct {
 	Completable bool
 	Binding     safety.Binding
 	Columns     []Column // extra table columns beyond NAME
+	// GetDesc, when non-empty, is the description of the generated get (help
+	// and the schema's desc): what a reader of the table needs to know that
+	// the columns alone do not say.
+	GetDesc string
 	// ServerTable marks a kind whose text tables (the default format,
 	// table and wide) come from the cluster's API server, as kubectl's do:
 	// get asks for the server's Table and shows its columns and cells, so
@@ -843,6 +854,57 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "k3k.io", Version: "v1beta1", Resource: "clusters"},
 		Policy: NSPlain, K8sKind: "Cluster", Scope: Downstream, Deletable: true, WaitDefault: "condition=Ready",
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+	},
+	{
+		// The catalog rows read Rancher's own catalog objects, which every
+		// cluster keeps for itself (hence Downstream). The columns copy the
+		// server's table for each CRD, header for header and path for path.
+		Key: "clusterrepo", Name: "clusterrepo", Aliases: []string{"clusterrepos"},
+		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "clusterrepos"},
+		Policy: NSNone, K8sKind: "ClusterRepo", Scope: Downstream, Deletable: false, Completable: true,
+		NoDeleteReason:      "this CLI does not delete repositories",
+		NoPatchReason:       "this CLI does not change repositories",
+		NoCreateViaManifest: "this CLI does not add repositories",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "HTTP-URL", Path: []string{"spec", "url"}},
+			{Header: "ENABLED", Path: []string{"spec", "enabled"}},
+			{Header: "GIT-REPO", Path: []string{"spec", "gitRepo"}},
+			{Header: "GIT-BRANCH", Path: []string{"spec", "gitBranch"}},
+			{Header: "DOWNLOAD-TIME", Path: []string{"status", "downloadTime"}},
+		},
+	},
+	{
+		Key: "app", Name: "app", Aliases: []string{"apps"},
+		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "apps"},
+		Policy: NSPlain, K8sKind: "App", Scope: Downstream, Deletable: false, Completable: true,
+		NoDeleteReason:      "deleting an app object leaves its Helm release installed; this CLI does not uninstall apps",
+		NoPatchReason:       "Rancher writes app objects from the Helm release; the CLI does not change them",
+		NoCreateViaManifest: "Rancher creates an app when it installs a chart; this CLI does not install charts",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "CHART", Path: []string{"spec", "chart", "metadata", "name"}},
+			{Header: "VERSION", Path: []string{"spec", "chart", "metadata", "version"}},
+			{Header: "RELEASE-NAME", Path: []string{"spec", "name"}},
+			{Header: "RELEASE-VERSION", Path: []string{"spec", "version"}},
+			{Header: "STATUS", Path: []string{"spec", "info", "status"}},
+		},
+		RedactPaths: [][]string{{"spec", "values"}, {"spec", "chart", "values"}, {"spec", "info", "notes"}},
+	},
+	{
+		Key: "operation", Name: "operation", Aliases: []string{"operations"},
+		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "operations"},
+		Policy: NSPlain, K8sKind: "Operation", Scope: Downstream, Deletable: false, Completable: true,
+		NoDeleteReason:      "this CLI does not delete operations",
+		NoPatchReason:       "Rancher writes operation objects; the CLI does not change them",
+		NoCreateViaManifest: "Rancher creates an operation for each Helm command it runs",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "TARGET-NAMESPACE", Path: []string{"status", "podNamespace"}},
+			{Header: "COMMAND", Path: []string{"status", "command"}, Join: true},
+		},
+		GetDesc:     "The columns are Rancher's, with two differences: COMMAND shows the command's words joined with commas, and TARGET-NAMESPACE is the namespace of the pod that ran the command, where the Rancher UI's \"Tgt Namespace\" is the release's namespace.",
+		RedactPaths: [][]string{{"status", "token"}},
 	},
 	{
 		// Empty GVR version: ext.cattle.io is resolved via discovery at call

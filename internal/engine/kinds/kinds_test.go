@@ -29,6 +29,9 @@ var cliOnlyKinds = map[string]bool{
 	"oidcclient":               true, // first Prime-capability kind row; no MCP tool counterpart yet
 	"helmop":                   true, // no MCP tool counterpart
 	"fleetworkspace":           true, // no MCP tool counterpart
+	"clusterrepo":              true, // no rancher-ai-mcp tool counterpart
+	"app":                      true, // no rancher-ai-mcp tool counterpart
+	"operation":                true, // no rancher-ai-mcp tool counterpart
 }
 
 func TestConformsToMCPVocabulary(t *testing.T) {

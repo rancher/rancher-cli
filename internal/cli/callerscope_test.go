@@ -465,6 +465,10 @@ func callerRows(t *testing.T) map[string]callerRow {
 		}
 		taking++
 		if k, ok := kindForDescriptor(d); ok && isGeneratedVerb(d.Name) {
+			if k.NoPatchReason != "" && d.CommandType == runtime.Mutating {
+				// A refused patch resolves no cluster: it refuses before any request.
+				continue
+			}
 			rows[d.Name] = generatedRow(d, k)
 			continue
 		}
@@ -473,7 +477,7 @@ func callerRows(t *testing.T) map[string]callerRow {
 			rows[d.Name] = row
 		}
 	}
-	assert.Equal(t, 82, taking, "the commands that take a cluster or clusters flag")
+	assert.Equal(t, 88, taking, "the commands that take a cluster or clusters flag")
 	for name, row := range callerBespokeRows {
 		if _, ok := rows[name]; !ok {
 			rows[name] = row

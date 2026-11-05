@@ -1,0 +1,46 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "list",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "items": "\u003cscrubbed\u003e",
+        "kind": "OperationList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    },
+    {
+      "name": "table",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "meta.k8s.io/v1",
+        "columnDefinitions": [
+          {
+            "format": "name",
+            "name": "Name",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Target Namespace",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Command",
+            "priority": 0,
+            "type": "string"
+          }
+        ],
+        "kind": "Table",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    }
+  ]
+}

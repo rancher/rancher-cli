@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/rancher/rancher-cli/internal/telemetry"
@@ -493,12 +494,37 @@ var notFoundHints = []hintEntry[notFoundInput]{
 		detail: constText[notFoundInput]("management clusters cannot be deleted directly; to delete a provisioning cluster (<name> is its name), run this and add --apply --yes after reading the preview: " + clierr.Rancher + " delete provisioning-cluster <name> --dry-run"),
 	},
 	{
+		// The catalog rows say why they have no delete, using the row's own
+		// reason; the typed word may be the name or a plural alias.
+		match: func(in notFoundInput) bool {
+			k, ok := catalogDeleteRow(in)
+			return ok && k.NoDeleteReason != ""
+		},
+		detail: func(in notFoundInput) string {
+			k, _ := catalogDeleteRow(in)
+			return k.Name + " cannot be deleted - " + k.NoDeleteReason
+		},
+	},
+	{
 		// There is no help command; help is the --help flag. The hint is the
 		// command the caller meant, built from the words typed around
 		// `help` (or its short spelling `h`).
 		match: func(in notFoundInput) bool { return in.name == "help" || in.name == "h" },
 		hint:  helpHint,
 	},
+}
+
+// catalogDeleteRow returns the clusterrepo, app or operation row the word
+// typed under the delete group resolves to.
+func catalogDeleteRow(in notFoundInput) (kinds.Kind, bool) {
+	if in.c.Name != "delete" {
+		return kinds.Kind{}, false
+	}
+	k, ok := kinds.Lookup(in.name)
+	if !ok || !slices.Contains([]string{"clusterrepo", "app", "operation"}, k.Key) {
+		return kinds.Kind{}, false
+	}
+	return k, true
 }
 
 // helpHint returns the runnable `--help` command for a mistyped `help` (or

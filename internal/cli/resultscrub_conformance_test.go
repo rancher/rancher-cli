@@ -592,6 +592,9 @@ func generatedScrubRows() []scrubRow {
 				"clusterregistrationtoken": "is read-only",
 			}[k.Key]
 		}
+		if k.NoPatchReason != "" {
+			patch.refused = "patch is not supported"
+		}
 		if k.Key == "provisioningcluster" {
 			patch.setup = func(f *scrubFake, _ *plantSet) { f.decorate = provisioningClusterWithPools(false) }
 		}

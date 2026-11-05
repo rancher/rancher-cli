@@ -1,0 +1,34 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "standard-clusterrepos",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "items": "\u003cscrubbed\u003e",
+        "kind": "ClusterRepoList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    },
+    {
+      "name": "standard-apps",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "details": {
+          "group": "catalog.cattle.io",
+          "kind": "apps"
+        },
+        "kind": "Status",
+        "message": "\u003cscrubbed\u003e",
+        "metadata": "\u003cscrubbed\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    }
+  ]
+}

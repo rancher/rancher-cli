@@ -73,6 +73,9 @@ func TestExpectedProbeSet(t *testing.T) {
 		"server-table-downstream/nodes-and-pods", "server-table/local-namespaces",
 		"serverfacts/rancherversion", "serverfacts/install-uuid-standard", "serverfacts/install-uuid-admin",
 		"serverfacts/install-uuid-no-global-role",
+		"catalog/discovery-downstream", "catalog/clusterrepos-downstream", "catalog/apps-downstream",
+		"catalog/operations-downstream", "catalog/clusterrepos-local", "catalog/standard-user-local",
+		"catalog/webhook-app-local",
 	}
 	var got []string
 	for _, p := range All() {
@@ -392,7 +395,9 @@ func TestAccessProbesAreRegistered(t *testing.T) {
 // its goldens record, unless it is allowlisted with a reason; and that the
 // admin reads of an ext token right after its create or delete do the
 // same. Rancher reads tokens from informer caches, so without the wait such
-// an observation can record the cache delay instead of the behavior.
+// an observation can record the cache delay instead of the behavior. It also
+// covers the catalog reads that wait until Rancher serves a CRD after a boot
+// or import, and asserts that no other observation waits.
 func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing.T) {
 	t.Parallel()
 	type key struct{ probe, observation string }
@@ -417,13 +422,24 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 		{"tok/dryrun-delete", "still-there"}: true,
 		{"tok/revoke", "gone"}:               true,
 	}
+	catalogReads := map[key]bool{
+		{"catalog/discovery-downstream", "group-version"}:        true,
+		{"catalog/clusterrepos-downstream", "list"}:              true,
+		{"catalog/apps-downstream", "list"}:                      true,
+		{"catalog/operations-downstream", "list"}:                true,
+		{"catalog/clusterrepos-local", "list"}:                   true,
+		{"catalog/standard-user-local", "standard-clusterrepos"}: true,
+		{"catalog/webhook-app-local", "admin-webhook-app"}:       true,
+	}
 	capturedBearer := regexp.MustCompile(`^Bearer \{[^}]+\}$`)
 	used := map[key]bool{}
+	seen := map[key]bool{}
 	for _, p := range All() {
 		for _, o := range p.Observations {
 			k := key{p.Name, o.Name}
+			seen[k] = true
 			selected := capturedBearer.MatchString(o.Request.Headers["Authorization"]) ||
-				o.Request.Identity == IdentityRevoked || adminReads[k]
+				o.Request.Identity == IdentityRevoked || adminReads[k] || catalogReads[k]
 			if !selected {
 				assert.Zero(t, o.WaitForStatus, "%s %s does not use a token right after its create or delete", p.Name, o.Name)
 				continue
@@ -454,5 +470,8 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 	}
 	for k, reason := range allowed {
 		assert.True(t, used[k], "allowlist entry %s %s (%s) matches no selected observation", k.probe, k.observation, reason)
+	}
+	for k := range catalogReads {
+		assert.True(t, seen[k], "catalogReads entry %s %s matches no observation", k.probe, k.observation)
 	}
 }

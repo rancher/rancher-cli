@@ -284,6 +284,9 @@ func clusterValueKindKey(d runtime.Descriptor) (string, bool) {
 	}
 	if isGeneratedVerb(d.Name) {
 		if k, found := kindForDescriptor(d); found {
+			if k.NoPatchReason != "" && strings.HasPrefix(d.Name, "patch ") {
+				return "", false // an always refused patch offers no names
+			}
 			return k.Key, true
 		}
 	}

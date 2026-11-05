@@ -684,6 +684,18 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   `--selector` and the CLI keeps only the objects in the project's namespaces.
   `get clusterregistrationtoken` reads through the Steve API and applies the
   selector itself to the list it gets back.
+- The catalog kinds `clusterrepo`, `app` and `operation` (catalog.cattle.io)
+  are read-only. Each cluster keeps its own, so they take `--cluster` (`local`
+  for Rancher's own cluster); `app` and `operation` take `--namespace`, and a
+  `clusterrepo` has none. `patch` of each is refused with `VALIDATION` and the
+  reason, before any request; `create resource` refuses a manifest of each;
+  `delete` is not generated, and `rancher delete app` (or `apps`) says why. The
+  CLI hides an app's `spec.values`, `spec.chart.values` and `spec.info.notes`
+  and an operation's `status.token` from every output. The columns copy
+  Rancher's own table, with two differences for `operation`: COMMAND shows the
+  command's words joined with commas, and TARGET-NAMESPACE is the namespace of
+  the pod that ran the command, where the Rancher UI's "Tgt Namespace" is the
+  release's namespace.
 - `delete` exists only for kinds where deleting an object makes sense. Rancher
   settings and feature flags (`setting`, `feature`), role templates and global
   roles (`roletemplate`, `globalrole`), and objects a controller creates and

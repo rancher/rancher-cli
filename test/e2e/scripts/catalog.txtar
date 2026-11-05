@@ -1,0 +1,106 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj catalog.cattle.io/v1/clusterrepos . clusterrepo.yaml
+seedobj catalog.cattle.io/v1/apps default app.yaml
+seedobj catalog.cattle.io/v1/operations default operation.yaml
+flipstatus testcluster catalog.cattle.io/v1/clusterrepos . e2e-repo '{"downloadTime":"2026-01-02T03:04:05Z"}'
+flipstatus testcluster catalog.cattle.io/v1/operations default e2e-op '{"podNamespace":"cattle-system","command":["upgrade","rancher-webhook"],"token":"op-token-value"}'
+
+# clusterrepo: list as a table, then get by name.
+exec rancher get clusterrepo --cluster testcluster -o table
+stdout 'HTTP-URL'
+stdout 'DOWNLOAD-TIME'
+stdout 'e2e-repo'
+stdout 'https://charts.example.test'
+stdout '2026-01-02T03:04:05Z'
+exec rancher get clusterrepo e2e-repo --cluster testcluster -o json
+jsonquery stdout data.spec.url https://charts.example.test
+
+# app: list as a table, get by name, and the Helm values stay hidden.
+exec rancher get app --cluster testcluster --namespace default -o table
+stdout 'RELEASE-NAME'
+stdout 'e2e-app'
+exec rancher get app e2e-app --cluster testcluster --namespace default -o json
+jsonquery stdout data.spec.chart.metadata.name e2e-chart
+jsonquery stdout data.spec.info.status deployed
+jsonquery stdout data.spec.values ''
+jsonquery stdout data.spec.chart.values ''
+jsonquery stdout data.spec.info.notes ''
+exec rancher get app e2e-app --cluster testcluster --namespace default -o yaml
+! stdout 'topsecret'
+! stdout 'notes-text'
+
+# operation: list as a table (COMMAND joins the list), get by name, and the
+# token path is absent.
+exec rancher get operation --cluster testcluster --namespace default -o table
+stdout 'TARGET-NAMESPACE'
+stdout 'upgrade,rancher-webhook'
+exec rancher get operation e2e-op --cluster testcluster --namespace default -o json
+jsonquery stdout data.status.podNamespace cattle-system
+jsonquery stdout data.status.token ''
+exec rancher get operation e2e-op --cluster testcluster --namespace default -o yaml
+! stdout 'op-token-value'
+
+# Refused verbs: patch, create and delete of each kind end in VALIDATION.
+! exec rancher patch clusterrepo e2e-repo --cluster testcluster --patch '[{"op":"add","path":"/metadata/labels/x","value":"y"}]' --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher patch app e2e-app --cluster testcluster --namespace default --patch '[{"op":"add","path":"/metadata/labels/x","value":"y"}]' --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher patch operation e2e-op --cluster testcluster --namespace default --patch '[{"op":"add","path":"/metadata/labels/x","value":"y"}]' --apply -o json
+jsonquery stderr data.error.code VALIDATION
+
+! exec rancher create resource -f clusterrepo.yaml --cluster testcluster --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher create resource -f app.yaml --cluster testcluster --namespace default --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher create resource -f operation.yaml --cluster testcluster --namespace default --apply -o json
+jsonquery stderr data.error.code VALIDATION
+
+! exec rancher delete clusterrepo e2e-repo --cluster testcluster --apply --yes -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher delete apps e2e-app --cluster testcluster --namespace default --apply --yes -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher delete operations e2e-op --cluster testcluster --namespace default --apply --yes -o json
+jsonquery stderr data.error.code VALIDATION
+
+-- clusterrepo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: e2e-repo
+spec:
+  url: https://charts.example.test
+  enabled: true
+-- app.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: App
+metadata:
+  name: e2e-app
+  namespace: default
+spec:
+  name: e2e-release
+  version: 3
+  chart:
+    metadata:
+      name: e2e-chart
+      version: 1.2.3
+    values:
+      image: topsecret-default
+  values:
+    password: topsecret
+  info:
+    status: deployed
+    notes: notes-text
+-- operation.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: Operation
+metadata:
+  name: e2e-op
+  namespace: default
+status:
+  podNamespace: cattle-system
+  command:
+    - upgrade
+    - rancher-webhook
+  token: op-token-value

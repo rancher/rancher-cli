@@ -1,0 +1,214 @@
+package cli
+
+import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
+	"sync/atomic"
+	"testing"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	verbPatch  = "patch"
+	verbCreate = "create"
+	verbDelete = "delete"
+)
+
+// refusalCase is one refused verb of one kind row, typed as a complete command
+// line so that only the refusal can stop it.
+type refusalCase struct {
+	key  string
+	verb string
+	// word is the row's Name, the word the surface offers for the kind.
+	word string
+	// args is the command line after --config <dir>. A patch line carries a
+	// valid inline patch and a create line a manifest of the kind, so no other
+	// check can refuse it first.
+	args []string
+	// manifest, when set, is the manifest file the create line reads; the
+	// token {file} in args names it.
+	manifest string
+	// want is the whole message of the refusal, as a literal.
+	want string
+}
+
+const refusalPatchBody = `[{"op":"add","path":"/metadata/labels/x","value":"y"}]`
+
+func patchRefusal(key, word, want string, flags ...string) refusalCase {
+	args := append([]string{verbPatch, word, "x", "--patch", refusalPatchBody}, flags...)
+	return refusalCase{key: key, verb: verbPatch, word: word, args: args, want: want}
+}
+
+func createRefusal(key, word, manifest, want string) refusalCase {
+	return refusalCase{
+		key: key, verb: verbCreate, word: word, manifest: manifest, want: want,
+		args: []string{"create", "resource", "-f", "{file}", "--cluster", "local", "--namespace", "default"},
+	}
+}
+
+func deleteRefusal(key, word, want string) refusalCase {
+	return refusalCase{
+		key: key, verb: verbDelete, word: word, want: want,
+		args: []string{"delete", word, "x"},
+	}
+}
+
+func manifestOf(apiVersion, kind string, namespaced bool) string {
+	m := "apiVersion: " + apiVersion + "\nkind: " + kind + "\nmetadata:\n  name: x\n"
+	if namespaced {
+		m += "  namespace: default\n"
+	}
+	return m
+}
+
+func unknownDelete(word string) string {
+	return `unknown command "` + word + `"`
+}
+
+// refusalCases lists every refused verb of every row, by key. Each entry types
+// the row's Name, the word the surface offers, and carries the whole message
+// as a literal, never built from the row's fields.
+func refusalCases() []refusalCase {
+	return []refusalCase{
+		patchRefusal("clusterregistrationtoken", "clusterregistrationtoken",
+			"clusterregistrationtoken is read-only: patching a cluster registration token is not supported; create a new one instead",
+			"--namespace", "default"),
+		patchRefusal("managementtoken", "management-token",
+			"management-token: patch is not supported - Rancher sets these token fields itself (the key, a TTL within the server's maximum TTL, and the user the token belongs to); the CLI does not change them; use the Rancher API or UI to manage token fields"),
+
+		patchRefusal("clusterrepo", "clusterrepo",
+			"clusterrepo: patch is not supported - this CLI does not change repositories; read it with "+clierr.Rancher+" get 'clusterrepo' --cluster 'local'",
+			"--cluster", "local"),
+		patchRefusal("app", "app",
+			"app: patch is not supported - Rancher writes app objects from the Helm release; the CLI does not change them; read it with "+clierr.Rancher+" get 'app' --cluster 'local' --namespace 'default'",
+			"--cluster", "local", "--namespace", "default"),
+		patchRefusal("operation", "operation",
+			"operation: patch is not supported - Rancher writes operation objects; the CLI does not change them; read it with "+clierr.Rancher+" get 'operation' --cluster 'local' --namespace 'default'",
+			"--cluster", "local", "--namespace", "default"),
+
+		createRefusal("clusterrepo", "clusterrepo", manifestOf("catalog.cattle.io/v1", "ClusterRepo", false),
+			"cannot create a clusterrepo from a manifest; this CLI does not add repositories"),
+		createRefusal("app", "app", manifestOf("catalog.cattle.io/v1", "App", true),
+			"cannot create an app from a manifest; Rancher creates an app when it installs a chart; this CLI does not install charts"),
+		createRefusal("operation", "operation", manifestOf("catalog.cattle.io/v1", "Operation", true),
+			"cannot create an operation from a manifest; Rancher creates an operation for each Helm command it runs"),
+
+		deleteRefusal("clusterrepo", "clusterrepo",
+			`unknown command "clusterrepo"; clusterrepo cannot be deleted - this CLI does not delete repositories`),
+		deleteRefusal("app", "app",
+			`unknown command "app"; app cannot be deleted - deleting an app object leaves its Helm release installed; this CLI does not uninstall apps`),
+		deleteRefusal("operation", "operation",
+			`unknown command "operation"; operation cannot be deleted - this CLI does not delete operations`),
+
+		createRefusal("token", "token", manifestOf("ext.cattle.io/v1", "Token", false),
+			"cannot create a token from a manifest; create tokens with '"+clierr.Rancher+" create token --dry-run' and add --apply --yes after reading the preview (the token's value is printed once)"),
+		createRefusal("managementtoken", "management-token", manifestOf("management.cattle.io/v3", "Token", false),
+			"cannot create a management-token from a manifest; create tokens with '"+clierr.Rancher+" create token --dry-run' and add --apply --yes after reading the preview (it creates an ext.cattle.io Token)"),
+		createRefusal("kubeconfig", "kubeconfig", manifestOf("ext.cattle.io/v1", "Kubeconfig", false),
+			"cannot create a kubeconfig from a manifest; create kubeconfigs with '"+clierr.Rancher+" create kubeconfig --dry-run' and add --apply --yes after reading the preview (the kubeconfig is printed once)"),
+
+		deleteRefusal("managementcluster", "cluster",
+			`unknown command "cluster"; management clusters cannot be deleted directly; to delete a provisioning cluster (<name> is its name), run this and add --apply --yes after reading the preview: `+clierr.Rancher+` delete provisioning-cluster <name> --dry-run`),
+		deleteRefusal("node", "node", unknownDelete("node")),
+		deleteRefusal("persistentvolume", "persistentvolume", unknownDelete("persistentvolume")),
+		deleteRefusal("event", "event", unknownDelete("event")),
+		deleteRefusal("bundle", "bundle", unknownDelete("bundle")),
+		deleteRefusal("bundledeployment", "bundledeployment", unknownDelete("bundledeployment")),
+		deleteRefusal("clustergroup", "clustergroup", unknownDelete("clustergroup")),
+		deleteRefusal("fleetcluster", "fleet-cluster", unknownDelete("fleet-cluster")),
+		deleteRefusal("fleetworkspace", "fleet-workspace", unknownDelete("fleet-workspace")),
+		deleteRefusal("setting", "setting", unknownDelete("setting")),
+		deleteRefusal("feature", "feature", unknownDelete("feature")),
+		deleteRefusal("roletemplate", "roletemplate", unknownDelete("roletemplate")),
+		deleteRefusal("globalrole", "globalrole", unknownDelete("globalrole")),
+		deleteRefusal("capicluster", "capi-cluster", unknownDelete("capi-cluster")),
+		deleteRefusal("capimachine", "machine", unknownDelete("machine")),
+		deleteRefusal("capimachineset", "machineset", unknownDelete("machineset")),
+		deleteRefusal("capimachinedeployment", "machinedeployment", unknownDelete("machinedeployment")),
+		deleteRefusal("nodedriver", "nodedriver", unknownDelete("nodedriver")),
+		deleteRefusal("clusterregistrationtoken", "clusterregistrationtoken", unknownDelete("clusterregistrationtoken")),
+	}
+}
+
+// expectedRefusals derives, from the row table and the override table, the
+// set of (key, verb) pairs a row refuses.
+func expectedRefusals() map[string]bool {
+	out := map[string]bool{}
+	ov := kindOverrides()
+	for _, k := range kinds.All() {
+		o := ov[k.Key]
+		if _, refused := o.refusals[verbPatch]; refused || k.NoPatchReason != "" {
+			out[k.Key+" "+verbPatch] = true
+		}
+		if k.NoCreateViaManifest != "" {
+			out[k.Key+" "+verbCreate] = true
+		}
+		if !k.Deletable && o.del == nil {
+			out[k.Key+" "+verbDelete] = true
+		}
+	}
+	return out
+}
+
+// TestRefusalListMatchesTheTables asserts that the list of refused verbs
+// equals, both ways, the verbs the row table and the override table refuse: a
+// row that gains or loses a refusal fails until the list changes.
+func TestRefusalListMatchesTheTables(t *testing.T) {
+	listed := map[string]bool{}
+	for _, c := range refusalCases() {
+		id := c.key + " " + c.verb
+		assert.False(t, listed[id], "%s is listed twice", id)
+		listed[id] = true
+		row, ok := kinds.ByKey(c.key)
+		require.True(t, ok, "%s is not a row key", c.key)
+		assert.Equal(t, row.Name, c.word, "%s types the row's Name", id)
+	}
+	assert.Equal(t, expectedRefusals(), listed)
+}
+
+// TestEveryRefusedVerbIsATypedValidationError asserts that each refused verb of
+// each row, run as a complete command line through run, ends with a VALIDATION
+// error whose whole message is the entry's literal, and that no request
+// reaches the server. Not parallel: run sets the captured argv and the test
+// sets the process environment.
+func TestEveryRefusedVerbIsATypedValidationError(t *testing.T) {
+	exitEnv(t)
+	var requests atomic.Int64
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.NotFound(w, nil)
+	}))
+	defer srv.Close()
+	dir := grConfigDir(t, srv)
+
+	for _, c := range refusalCases() {
+		t.Run(c.key+" "+c.verb, func(t *testing.T) {
+			before := requests.Load()
+			args := slices.Clone(c.args)
+			if c.manifest != "" {
+				file := filepath.Join(t.TempDir(), "manifest.yaml")
+				require.NoError(t, os.WriteFile(file, []byte(c.manifest), 0o600))
+				if i := slices.Index(args, "{file}"); i >= 0 {
+					args[i] = file
+				}
+			}
+			var out, errOut bytes.Buffer
+			root := grRoot(t)
+			root.Writer, root.ErrWriter = &out, &errOut
+			got := run(t.Context(), root, append([]string{"rancher", "--config", dir}, args...))
+
+			require.NotNil(t, got.err, "stderr: %s", errOut.String())
+			assert.Equal(t, clierr.CodeValidation, got.err.Code)
+			assert.Equal(t, c.want, got.err.Message)
+			assert.Equal(t, before, requests.Load(), "the refusal must come before any request")
+		})
+	}
+}

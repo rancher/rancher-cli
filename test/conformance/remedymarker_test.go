@@ -994,7 +994,8 @@ func applyExceptions(hits []remedyHit, check string, exceptions []remedyExceptio
 }
 
 const (
-	whyKubeconfig = "written into the kubeconfig file, read later from any shell"
+	whyKubeconfig    = "written into the kubeconfig file, read later from any shell"
+	whyJSONPatchStep = "patch operation here means one step of a JSON patch, not the command rancher patch operation"
 )
 
 // remedyExceptions are the texts the checks report that stay as they are,
@@ -1004,6 +1005,17 @@ var remedyExceptions = []remedyException{
 	{"internal/engine/kubeconfig/records.go", remedyCheckMarker, "rancher", false, whyKubeconfig, ""},
 	{"internal/testrancher/fidelity/probes.go", remedyCheckWord, "delete user ", false, "a fidelity probe's step name, naming the request the step sends; never printed to a user", "delete user"},
 
+	{"internal/engine/resources/patch.go", remedyCheckWord, "patch operation %d targets %s; the server sets this field and a patch cannot change it", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchapplyerror.go", remedyCheckWord, "patch operation %d (%s) does not apply to the object; check the operation against the object", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchapplyerror.go", remedyCheckWord, "patch operation %d (%s) does not apply: %s", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d (%s) has no %q", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d (%s) has the \"path\" \"\", which this command does not support for move and copy; to replace the whole object use replace with the \"path\" \"\"", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d (%s) has the %q %q, which is not a JSON Pointer; it must be empty or start with /", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d has %s %q that is not a string", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d has no \"op\"", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d has no \"path\"", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d has the unknown operation %q; use add, remove, replace, move, copy or test", false, whyJSONPatchStep, "patch operation"},
+	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d is a JSON %s, not an object with \"op\" and \"path\"", false, whyJSONPatchStep, "patch operation"},
 	{"internal/engine/extres/kubeconfig.go", remedyCheckMarker, "# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n", false, "a header written into the kubeconfig file, read later from any shell", ""},
 	{"internal/engine/observe/bundle.go", remedyCheckMarker, "This is a rancher-cli support bundle.", true, "README text inside the support bundle, read later from any shell", ""},
 	{"internal/commands/configcmd/config_edit.go", remedyCheckMarker, "# No rancher CLI config file exists yet at this path.", true, "the comment of the file the editor opens", ""},

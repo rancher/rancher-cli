@@ -140,7 +140,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	}
 	if k.NoCreateViaManifest != "" {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("cannot create a %s from a manifest; %s", k.Name, k.NoCreateViaManifest))
+			fmt.Sprintf("cannot create %s %s from a manifest; %s", createArticle(k), k.Name, k.NoCreateViaManifest))
 	}
 
 	overrides, err := c.reconcile(ctx, k, in, obj.GetNamespace())
@@ -165,6 +165,19 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 		return safety.Effect{}, nil, err
 	}
 	return eff, exec, nil
+}
+
+// anArticleKeys lists the keys of the rows whose name takes "an" in the
+// refusal message of a manifest create; every other row takes "a". A row
+// whose name starts with a vowel sound adds its key here.
+var anArticleKeys = map[string]bool{"app": true, "operation": true}
+
+// createArticle returns the article the refusal message puts before k's name.
+func createArticle(k kinds.Kind) string {
+	if anArticleKeys[k.Key] {
+		return "an"
+	}
+	return "a"
 }
 
 // parseManifest returns the memoized parse of the manifest named by the

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -87,13 +88,14 @@ func (c getCmd) Describe() runtime.Descriptor {
 	flags := getFlags(c.k)
 	flags = slices.Insert(flags, len(flags)-3, runtime.ArgSpec{Name: FlagSelector, Type: "string", Aliases: []string{"l"},
 		Desc: "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)"})
-	var desc string
+	desc := c.k.GetDesc
 	if c.k.SystemFilter != nil {
 		flags = append(flags, runtime.ArgSpec{Name: flagIncludeSystem, Type: "bool",
 			Desc: "include " + kinds.Plural(c.k.SystemFilter.Label) + " (hidden by default)"})
-		desc = "A list of " + kinds.Plural(c.k.Name) + " leaves out " + kinds.Plural(c.k.SystemFilter.Label) +
+		system := "A list of " + kinds.Plural(c.k.Name) + " leaves out " + kinds.Plural(c.k.SystemFilter.Label) +
 			" by default; pass --include-system to show them. Getting one " + c.k.Name +
 			" always returns it, hidden or not."
+		desc = strings.TrimSpace(system + " " + desc)
 	}
 	return runtime.Descriptor{
 		Name:        "get " + c.k.Name,

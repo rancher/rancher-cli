@@ -144,6 +144,9 @@ func buildEntries() []entry {
 			if o.patch != nil {
 				return o.patch(k, d)
 			}
+			if k.NoPatchReason != "" {
+				return resources.NewRefusePatch(k)
+			}
 			return resources.NewPatch(k, d.clients, d.src)
 		}})
 		if k.Deletable || delOverrideOnNonDeletable(k, o) {
@@ -380,6 +383,10 @@ func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.Ver
 	if note, refused := ov.refusals[verb]; refused {
 		vs.State = runtime.VerbRefused
 		vs.Note = note
+	}
+	if verb == "patch" && k.NoPatchReason != "" {
+		vs.State = runtime.VerbRefused
+		vs.Note = k.NoPatchReason
 	}
 	return vs
 }
@@ -801,6 +808,17 @@ func checkKindTable(validate func() error) error {
 	return nil
 }
 
+// checkPatchRefusals rejects a row that sets NoPatchReason and also has a
+// patch override: two sources would decide what patch does for the row.
+func checkPatchRefusals(rows []kinds.Kind, overrides map[string]kindOverride) error {
+	for _, k := range rows {
+		if k.NoPatchReason != "" && overrides[k.Key].patch != nil {
+			return fmt.Errorf("internal error: kind definitions: kind %q sets NoPatchReason and also has a patch override", k.Key)
+		}
+	}
+	return nil
+}
+
 // buildWiredRegistry constructs and validates the command registry for the
 // full surface. It handles kind validation, resolver composition, entry wiring,
 // and the fixed schema/completion registrations.
@@ -809,6 +827,9 @@ func checkKindTable(validate func() error) error {
 // the real CLI path and nil for callers that only need the manifest shape.
 func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wiredRegistry, error) {
 	if err := checkKindTable(kinds.Validate); err != nil {
+		return wiredRegistry{}, err
+	}
+	if err := checkPatchRefusals(kinds.All(), kindOverrides()); err != nil {
 		return wiredRegistry{}, err
 	}
 	resolver, err := composeBindings()

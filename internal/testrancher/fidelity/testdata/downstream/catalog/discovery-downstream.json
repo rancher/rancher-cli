@@ -1,0 +1,131 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "group-version",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "groupVersion": "catalog.cattle.io/v1",
+        "kind": "APIResourceList",
+        "resources": [
+          {
+            "categories": [
+              "catalog"
+            ],
+            "kind": "App",
+            "name": "apps",
+            "namespaced": true,
+            "singularName": "app",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "App",
+            "name": "apps/status",
+            "namespaced": true,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          },
+          {
+            "kind": "ClusterRepo",
+            "name": "clusterrepos",
+            "namespaced": false,
+            "singularName": "clusterrepo",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "ClusterRepo",
+            "name": "clusterrepos/status",
+            "namespaced": false,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          },
+          {
+            "categories": [
+              "catalog"
+            ],
+            "kind": "Operation",
+            "name": "operations",
+            "namespaced": true,
+            "singularName": "operation",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "Operation",
+            "name": "operations/status",
+            "namespaced": true,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          },
+          {
+            "kind": "UIPlugin",
+            "name": "uiplugins",
+            "namespaced": true,
+            "singularName": "uiplugin",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "UIPlugin",
+            "name": "uiplugins/status",
+            "namespaced": true,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

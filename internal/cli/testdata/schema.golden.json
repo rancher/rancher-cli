@@ -3159,6 +3159,71 @@
     },
     {
       "aliases": [
+        "apps"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get app",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List apps or show one"
+    },
+    {
+      "aliases": [
         "azureconfigs"
       ],
       "args": [
@@ -3532,6 +3597,58 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List clusterregistrationtokens or show one"
+    },
+    {
+      "aliases": [
+        "clusterrepos"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get clusterrepo",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List clusterrepos or show one"
     },
     {
       "aliases": [
@@ -5045,6 +5162,72 @@
     },
     {
       "aliases": [
+        "operations"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "The columns are Rancher's, with two differences: COMMAND shows the command's words joined with commas, and TARGET-NAMESPACE is the namespace of the pod that ran the command, where the Rancher UI's \"Tgt Namespace\" is the release's namespace.",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get operation",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List operations or show one"
+    },
+    {
+      "aliases": [
         "persistentvolumes",
         "pv"
       ],
@@ -6540,6 +6723,77 @@
     },
     {
       "aliases": [
+        "apps"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: Rancher writes app objects from the Helm release; the CLI does not change them.",
+      "destructive": "false",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch app",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: app cannot be patched"
+    },
+    {
+      "aliases": [
         "azureconfigs"
       ],
       "args": [
@@ -6939,6 +7193,63 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Patch the clusterregistrationtoken"
+    },
+    {
+      "aliases": [
+        "clusterrepos"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: this CLI does not change repositories.",
+      "destructive": "false",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch clusterrepo",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: clusterrepo cannot be patched"
     },
     {
       "aliases": [
@@ -8564,6 +8875,77 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Patch the oidcclient"
+    },
+    {
+      "aliases": [
+        "operations"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: Rancher writes operation objects; the CLI does not change them.",
+      "destructive": "false",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch operation",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: operation cannot be patched"
     },
     {
       "aliases": [
@@ -10702,6 +11084,9 @@
         "get machineset",
         "get machinedeployment",
         "get k3k-cluster",
+        "get clusterrepo",
+        "get app",
+        "get operation",
         "get token",
         "get management-token",
         "get kubeconfig",
@@ -10772,6 +11157,9 @@
         "patch machineset",
         "patch machinedeployment",
         "patch k3k-cluster",
+        "patch clusterrepo",
+        "patch app",
+        "patch operation",
         "patch token",
         "patch management-token",
         "patch kubeconfig",
@@ -12054,6 +12442,114 @@
       },
       "version": "v1beta1",
       "waitDefault": "condition=Ready"
+    },
+    {
+      "aliases": [
+        "clusterrepos"
+      ],
+      "completable": true,
+      "group": "catalog.cattle.io",
+      "key": "clusterrepo",
+      "name": "clusterrepo",
+      "namespacePolicy": "none",
+      "resource": "clusterrepos",
+      "scope": "downstream",
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "this CLI does not add repositories",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "this CLI does not delete repositories",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "this CLI does not change repositories",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "apps"
+      ],
+      "completable": true,
+      "group": "catalog.cattle.io",
+      "key": "app",
+      "name": "app",
+      "namespacePolicy": "plain",
+      "resource": "apps",
+      "scope": "downstream",
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "Rancher creates an app when it installs a chart; this CLI does not install charts",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "deleting an app object leaves its Helm release installed; this CLI does not uninstall apps",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "Rancher writes app objects from the Helm release; the CLI does not change them",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "operations"
+      ],
+      "completable": true,
+      "group": "catalog.cattle.io",
+      "key": "operation",
+      "name": "operation",
+      "namespacePolicy": "plain",
+      "resource": "operations",
+      "scope": "downstream",
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "Rancher creates an operation for each Helm command it runs",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "this CLI does not delete operations",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "Rancher writes operation objects; the CLI does not change them",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v1"
     },
     {
       "aliases": [

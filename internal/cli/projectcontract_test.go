@@ -507,6 +507,17 @@ func TestProjectContract(t *testing.T) {
 			}
 			declaring++
 			args := append(h.contractArgs(d, true), "--project", "web")
+			if verb, _, _ := strings.Cut(d.Name, " "); verb == "patch" && kind.NoPatchReason != "" {
+				// A refused patch declares --project and refuses before it reads
+				// the project: the refusal guard asserts the whole message.
+				for _, argv := range [][]string{args, before(args, words)} {
+					r := h.run(t, argv...)
+					assert.Empty(t, r.requests, "%v: refused before any request", argv)
+					require.NotNil(t, r.err, "%v: %s", argv, r.stderr)
+					assert.Equal(t, "VALIDATION", r.err.Code, "%v", argv)
+				}
+				return
+			}
 			for _, argv := range [][]string{args, before(args, words)} {
 				r := h.run(t, argv...)
 				assert.Equal(t, 1, r.count(contractProjectPath), "%v: one project collection read on the typed cluster: %v", argv, r.requests)
@@ -532,7 +543,7 @@ func TestProjectContract(t *testing.T) {
 			hints = append(hints, r.err.Hint)
 		})
 	}
-	assert.Equal(t, 57, declaring, "the commands that take --project")
+	assert.Equal(t, 61, declaring, "the commands that take --project")
 
 	t.Run("usage --by project", func(t *testing.T) {
 		r := h.run(t, "usage", "--cluster", "c-abc", "--by", "project", "--project", "web", "-o", "json")
