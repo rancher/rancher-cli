@@ -87,8 +87,6 @@ type OAuthProvider struct {
 // AzureADProvider represents an Azure AD authentication provider.
 type AzureADProvider struct {
 	AuthProvider  `json:",inline"`
-	RedirectURL   string `json:"redirectUrl"`
-	TenantID      string `json:"tenantId,omitempty"`
 	OAuthProvider `json:",inline"`
 }
 

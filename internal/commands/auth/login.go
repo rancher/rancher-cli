@@ -582,10 +582,17 @@ func (l loginCmd) authenticateAndStore(
 		if !carriesWarnings {
 			authErr = config.WithNotices(authErr, earlyWarnings)
 		}
+		// The remedy is a piped login for the entry, which names the entry's
+		// own CA or none (never RANCHER_CLI_CACERT's), since the entry is
+		// registered at this URL by now. A delegated login adds it only if
+		// its recheck finds the entry as registered: for an entry that
+		// changed since, no command is valid, and the decoration says to
+		// check the entry.
 		if delegated {
-			return runtime.Result{}, decorateDelegatedAuthFailure(ctx, l.dir, authErr, snap)
+			remedy, _ := token.AuthLoginRemedyOf(authErr, declCfg, name, serverURL, caSelector)
+			return runtime.Result{}, decorateDelegatedAuthFailure(ctx, l.dir, authErr, snap, remedy)
 		}
-		return runtime.Result{}, authErr
+		return runtime.Result{}, token.AuthLoginRemedy(authErr, declCfg, name, serverURL, caSelector)
 	}
 
 	// A provider-issued token is authenticated by construction - the server
@@ -765,9 +772,11 @@ func (l loginCmd) authenticateAndStore(
 // delete or repoint during that window must not produce a hint that
 // immediately fails NOT_FOUND or targets changed trust. This recheck is
 // read-only - it writes nothing - and never replaces authErr, which stays
-// the primary error either way.
-func decorateDelegatedAuthFailure(ctx context.Context, dir string, authErr error, snap register.AuthSnapshot) error {
-	return decorateDelegatedFailure(ctx, dir, authErr, snap, "")
+// the primary error either way. remedy is the piped login of a refusal that
+// has one (the zero value for any other failure): it is the alternative to
+// the undo while the entry is as registered, and its hint is the hint.
+func decorateDelegatedAuthFailure(ctx context.Context, dir string, authErr error, snap register.AuthSnapshot, remedy token.LoginRefusalRemedy) error {
+	return decorateDelegatedFailure(ctx, dir, authErr, snap, "", remedy)
 }
 
 // decorateDelegatedVerifyFailure is decorateDelegatedAuthFailure for the
@@ -784,7 +793,7 @@ func decorateDelegatedVerifyFailure(ctx context.Context, dir string, verifyErr e
 	if ce, ok := errors.AsType[*clierr.Error](verifyErr); ok && ce.Code == clierr.CodeTLSTrust {
 		extra = ""
 	}
-	return decorateDelegatedFailure(ctx, dir, verifyErr, snap, extra)
+	return decorateDelegatedFailure(ctx, dir, verifyErr, snap, extra, token.LoginRefusalRemedy{})
 }
 
 // decorateDelegatedFailure is the shared body behind decorateDelegatedAuthFailure
@@ -792,15 +801,19 @@ func decorateDelegatedVerifyFailure(ctx context.Context, dir string, verifyErr e
 // deciding whether the retry hint is still the undo-the-registration command
 // (entry unchanged) or has to fall back to a plain "check it" pointer (entry
 // changed or vanished since registration). The message is the failure's own
-// text, then extra - a caller's own alternative to the closing remedy, or ""
-// when there is none - and the closing remedy last, so that the command ends
-// the message. A failure that is not a structured error, or a context already
-// cancelled, skips the recheck and returns failure unchanged.
-func decorateDelegatedFailure(ctx context.Context, dir string, failure error, snap register.AuthSnapshot, extra string) error {
+// text, then extra - a caller's own clause, or "" when there is none - then
+// the remedy, and the undo command or the "check it" pointer last. While the
+// entry is as registered, the remedy (a piped login) adds its command as one
+// more alternative to the undo, and its hint is the hint; once the entry
+// changed it adds only its command-free part, since the command would name
+// the entry as it was. A failure that is not a structured error, or a
+// context already cancelled, skips the recheck and returns failure
+// unchanged, its own hint included, with no remedy.
+func decorateDelegatedFailure(ctx context.Context, dir string, failure error, snap register.AuthSnapshot, extra string, remedy token.LoginRefusalRemedy) error {
 	ce, ok := errors.AsType[*clierr.Error](failure)
 	if !ok || ctx.Err() != nil {
 		// Not a structured error, or cancellation preempts the recheck:
-		// preserve the original error verbatim, no hint.
+		// preserve the original error verbatim, its own hint included.
 		return failure
 	}
 
@@ -814,6 +827,9 @@ func decorateDelegatedFailure(ctx context.Context, dir string, failure error, sn
 		return nil
 	})
 	if lockErr != nil || !current {
+		if remedy.Instruction != "" {
+			extra = joinClauses(extra, remedy.Fallback)
+		}
 		if extra != "" {
 			extra = "; " + extra
 		}
@@ -821,12 +837,21 @@ func decorateDelegatedFailure(ctx context.Context, dir string, failure error, sn
 			fmt.Sprintf("; server entry %q may have changed since registration; check it with: ", snap.Name) + clierr.Rancher + " config list-servers").
 			WithHint("")
 	}
+	hint := config.LoginHintFor(snap.Name)
+	if remedy.Instruction != "" {
+		extra, hint = joinClauses(extra, remedy.Instruction), remedy.Hint
+	}
 	undo := "; undo the registration with: "
 	if extra != "" {
 		undo = "; " + extra + "; or undo the registration with: "
 	}
 	return ce.WithMessage(ce.Message + undo + config.DeleteServerCommand + clierr.ShellQuoteArgs("", snap.Name)).
-		WithHint(config.LoginHintFor(snap.Name))
+		WithHint(hint)
+}
+
+// joinClauses joins the clauses that are not empty with "; ".
+func joinClauses(clauses ...string) string {
+	return strings.Join(slices.DeleteFunc(clauses, func(c string) bool { return c == "" }), "; ")
 }
 
 // resolveLoginToken returns the credential to store. Its provenance says

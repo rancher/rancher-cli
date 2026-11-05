@@ -407,7 +407,7 @@ var codeDescs = map[string]string{
 	CodeGeneric:                        "an error with no more specific code, including a server or transport failure",
 	CodePrimeRequired:                  "the command requires Rancher Prime and the connected server does not have it",
 	CodeTLSTrust:                       "the server's TLS certificate is not trusted and was not accepted",
-	CodeCapabilityUnsupported:          "the connected server does not support the workflow the command needs",
+	CodeCapabilityUnsupported:          "the workflow the command needs is not supported by the connected server or by this CLI",
 	CodeInterrupted:                    "the command was ended by Ctrl-C or a termination signal",
 }
 

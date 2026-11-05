@@ -39,6 +39,16 @@ type authListServer struct {
 
 func newAuthListServer(t *testing.T, tls bool) *authListServer {
 	t.Helper()
+	return newAuthListServerOf(t, tls, []map[string]string{
+		{"id": "local", "type": "localProvider"},
+		{"id": "corp-ldap", "type": "openLdapProvider"},
+		{"id": "gh", "type": "githubProvider"},
+	})
+}
+
+// newAuthListServerOf is newAuthListServer listing the given entries.
+func newAuthListServerOf(t *testing.T, tls bool, entries []map[string]string) *authListServer {
+	t.Helper()
 	s := &authListServer{}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
@@ -55,11 +65,7 @@ func newAuthListServer(t *testing.T, tls bool) *authListServer {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{
-			{"id": "local", "type": "localProvider"},
-			{"id": "corp-ldap", "type": "openLdapProvider"},
-			{"id": "gh", "type": "githubProvider"},
-		}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": entries})
 	})
 	if tls {
 		s.srv = httptest.NewTLSServer(h)
@@ -147,6 +153,50 @@ func TestAuthProviderCandidatesCarryNoDescription(t *testing.T) {
 
 	stdout, _ = completeAuthProviderOutput(t, &config.Config{}, nil, "token", "--server", srv.srv.URL, "--user", "alice")
 	assert.Equal(t, "corp-ldap\nlocal\n", stdout)
+}
+
+// TestAuthProviderCompletionOffersNoUnsupportedProviderType asserts that
+// with every provider type this CLI cannot sign in with listed on the server
+// (the seven Rancher lists and one it does not), --auth-provider completes
+// none of them: not the id of their auth configs, not their provider type and
+// not their provider name, for each command that takes the flag. A value the
+// completion offers is one the command accepts.
+// NOT parallel: the environment and the stored config are process-wide.
+func TestAuthProviderCompletionOffersNoUnsupportedProviderType(t *testing.T) {
+	unsupported := []struct{ id, typ, name string }{
+		{"corp-gh", "githubProvider", "github"},
+		{"corp-ghapp", "githubAppProvider", "githubapp"},
+		{"corp-google", "googleOAuthProvider", "googleoauth"},
+		{"corp-oidc", "oidcProvider", "oidc"},
+		{"corp-kc", "keyCloakOIDCProvider", "keycloakoidc"},
+		{"corp-generic", "genericOIDCProvider", "genericoidc"},
+		{"corp-cognito", "cognitoProvider", "cognito"},
+		{"corp-foo", "fooProvider", "foo"},
+	}
+	entries := []map[string]string{
+		{"id": "local", "type": "localProvider"},
+		{"id": "corp-ldap", "type": "openLdapProvider"},
+	}
+	for _, u := range unsupported {
+		entries = append(entries, map[string]string{"id": u.id, "type": u.typ})
+	}
+	srv := newAuthListServerOf(t, false, entries)
+	cfg := func() *config.Config {
+		return &config.Config{CurrentServer: "cur", Servers: map[string]config.Server{"cur": {URL: srv.srv.URL}}}
+	}
+	for name, words := range map[string][]string{
+		"auth get-token": {"auth", "get-token"},
+		"auth login":     {"auth", "login"},
+		"token":          {"token", "--server", srv.srv.URL, "--user", "alice"},
+	} {
+		got, _ := completeAuthProvider(t, cfg(), nil, words...)
+		assert.Equal(t, authConfigNames, got, name)
+		for _, u := range unsupported {
+			assert.NotContains(t, got, u.id, name)
+			assert.NotContains(t, got, u.typ, name)
+			assert.NotContains(t, got, u.name, name)
+		}
+	}
 }
 
 // TestGetTokenCompletesAuthProviderFromItsOwnTarget asserts, through the

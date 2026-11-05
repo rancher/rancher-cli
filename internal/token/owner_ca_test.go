@@ -151,7 +151,7 @@ func TestCreateKubeconfigIsOfferedOnlyWhenTheCurrentLoginServes(t *testing.T) {
 				}
 				require.NoError(t, store.SetToken(config.ServerRef{Name: "prod", URL: tc.current.URL}, tok))
 			}
-			err := tokenCmd{dir: dir, store: store}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+			err := tokenCmd{dir: dir, store: store}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", false),
 				noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url, userID: tc.userID})
 			_, msg := refusal(t, err)
 			const remedy = "; for a kubeconfig that carries its own token, run: rancher create kubeconfig --clusters 'c-1' --apply --yes"
@@ -165,7 +165,7 @@ func TestCreateKubeconfigIsOfferedOnlyWhenTheCurrentLoginServes(t *testing.T) {
 	t.Run("a config.yaml that cannot be read", func(t *testing.T) {
 		dir := t.TempDir()
 		require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("not: [yaml"), 0o600))
-		err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+		err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", false),
 			noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url})
 		_, msg := refusal(t, err)
 		assert.NotContains(t, msg, "create kubeconfig")
@@ -175,14 +175,14 @@ func TestCreateKubeconfigIsOfferedOnlyWhenTheCurrentLoginServes(t *testing.T) {
 		cfg := &config.Config{CurrentServer: "prod", Servers: map[string]config.Server{"prod": {URL: url}}}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
-		err := tokenCmd{dir: dir}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+		err := tokenCmd{dir: dir}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", false),
 			noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url})
 		_, msg := refusal(t, err)
 		assert.NotContains(t, msg, "create kubeconfig")
 	})
 	t.Run("no current server", func(t *testing.T) {
 		dir := t.TempDir()
-		err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+		err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", false),
 			noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url})
 		_, msg := refusal(t, err)
 		assert.NotContains(t, msg, "create kubeconfig")

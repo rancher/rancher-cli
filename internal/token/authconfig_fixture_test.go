@@ -87,28 +87,19 @@ type authCall struct {
 	cluster, name, userID, authConfig string
 	signIn                            []string
 	notices                           *bytes.Buffer
+	// noInput is --no-input, with no terminal.
+	noInput bool
+	// prompter, when set, is the call's prompter in place of those.
+	prompter runtime.Prompter
+	// cacert is the call's --cacert: a path, or an inline PEM.
+	cacert string
 }
 
 // callWith runs the exec plugin for c against the fixture and returns its
 // result's token and the owner the fixture knows it by.
 func (x *ownerFixture) callWith(c authCall) (token, owner string, err error) {
 	x.t.Helper()
-	s := map[string]string{"server": x.srv.URL}
-	for k, v := range map[string]string{"cluster": c.cluster, "name": c.name, "user-id": c.userID, "auth-provider": c.authConfig} {
-		if v != "" {
-			s[k] = v
-		}
-	}
-	notices := c.notices
-	if notices == nil {
-		notices = &bytes.Buffer{}
-	}
-	p := ui.New(notices, strings.NewReader(""), false, false)
-	if len(c.signIn) > 0 {
-		p = ui.New(notices, newLineReader(c.signIn...), false, true)
-	}
-	cmd := NewTokenCommand(x.dir, x.store, anchorFor(x.dir)).(runtime.ReadCommand)
-	res, err := cmd.Execute(x.t.Context(), tin{s: s}, p)
+	res, err := x.executeWith(c)
 	if err != nil {
 		return "", "", err
 	}
@@ -117,6 +108,31 @@ func (x *ownerFixture) callWith(c authCall) (token, owner string, err error) {
 	owner, found := x.f.BearerOwner(cred.Status.Token)
 	require.True(x.t, found, "the served token is one the server issued")
 	return cred.Status.Token, owner, nil
+}
+
+// executeWith runs the exec plugin for c against the fixture and returns
+// its result, which is what the plugin writes to stdout, and its error.
+func (x *ownerFixture) executeWith(c authCall) (runtime.Result, error) {
+	x.t.Helper()
+	s := map[string]string{"server": x.srv.URL}
+	for k, v := range map[string]string{"cluster": c.cluster, "name": c.name, "user-id": c.userID, "auth-provider": c.authConfig, "cacert": c.cacert} {
+		if v != "" {
+			s[k] = v
+		}
+	}
+	notices := c.notices
+	if notices == nil {
+		notices = &bytes.Buffer{}
+	}
+	p := ui.New(notices, strings.NewReader(""), c.noInput, false)
+	if len(c.signIn) > 0 {
+		p = ui.New(notices, newLineReader(c.signIn...), false, true)
+	}
+	cmd := NewTokenCommand(x.dir, x.store, anchorFor(x.dir)).(runtime.ReadCommand)
+	if c.prompter != nil {
+		return cmd.Execute(x.t.Context(), tin{s: s}, c.prompter)
+	}
+	return cmd.Execute(x.t.Context(), tin{s: s}, p)
 }
 
 // cachedWith reports whether a record is cached under the slot of name,

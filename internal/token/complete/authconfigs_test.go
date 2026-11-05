@@ -55,3 +55,24 @@ func TestAuthConfigSourceOffersNothingOnAFailure(t *testing.T) {
 		assert.Empty(t, AuthConfigSource().Complete(t.Context(), conn, completion.Request{Flag: "auth-provider"}).Names, name)
 	}
 }
+
+// TestAuthConfigSourceOffersNoUnsupportedProviderType asserts that with the
+// seven provider types Rancher lists that this CLI cannot sign in with, and
+// one it does not list, on the server, none of them is offered: not the id
+// of an auth config, not its provider type and not its provider name.
+func TestAuthConfigSourceOffersNoUnsupportedProviderType(t *testing.T) {
+	t.Parallel()
+	srv := completiontest.New(t, map[string]string{"/v1-public/authproviders": `{"data":[
+		{"id":"local","type":"localProvider"},
+		{"id":"corp-gh","type":"githubProvider"},
+		{"id":"corp-ghapp","type":"githubAppProvider"},
+		{"id":"corp-google","type":"googleOAuthProvider"},
+		{"id":"corp-oidc","type":"oidcProvider"},
+		{"id":"corp-kc","type":"keyCloakOIDCProvider"},
+		{"id":"corp-generic","type":"genericOIDCProvider"},
+		{"id":"corp-cognito","type":"cognitoProvider"},
+		{"id":"corp-foo","type":"fooProvider"}]}`})
+	conn := completion.NewConnection(srv.HTTP.Client(), "", srv.HTTP.URL, false, 1)
+	got := AuthConfigSource().Complete(t.Context(), conn, completion.Request{Flag: "auth-provider"})
+	assert.Equal(t, []string{"local"}, got.Names)
+}

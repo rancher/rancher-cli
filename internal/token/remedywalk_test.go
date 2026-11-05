@@ -79,9 +79,9 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 
 	dir := t.TempDir()
 	nt := tokenCmd{dir: dir}
-	add("no terminal", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+	add("no terminal", nt.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com"}))
-	add("no terminal, no --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+	add("no terminal, no --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com"}))
 	choice := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
 		configs: []string{"local", "okta"}, noTerminal: []clierr.Candidate{{ID: "okta", Name: "okta"}}})
@@ -91,6 +91,12 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		configs: []string{"local", "openldap"}})
 	add("no terminal, a provider choice no provider can answer", nt.withNoTerminalRemedies(none,
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", keepsLogin: true}))
+
+	unsupported := clierr.New(clierr.CodeCapabilityUnsupported, "x").WithCause(&unsupportedConfigRefused{config: unsupportedAuthConfig{ID: "corp-gh", Type: "githubProvider"}})
+	add("an auth config this CLI cannot sign in with", nt.withNoTerminalRemedies(unsupported,
+		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com"}))
+	add("an auth config this CLI cannot sign in with, no --name", nt.withNoTerminalRemedies(unsupported,
+		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", caCert: "/etc/rancher/ca.pem"}))
 
 	for name, record := range map[string]string{
 		"no terminal, a store change unfinished":        "version: 1\nid: 0123456789abcdef0123456789abcdef\nsteps:\n- kind: pin\n  target: file\n",
@@ -102,7 +108,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		c := &config.Config{CredentialStore: "file", CredentialTransitionID: "0123456789abcdef0123456789abcdef"}
 		c.SetPath(config.FilePath(changed))
 		require.NoError(t, c.Write())
-		add(name, tokenCmd{dir: changed}.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+		add(name, tokenCmd{dir: changed}.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 			noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com"}))
 	}
 
@@ -114,27 +120,27 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	require.NoError(t, lc.Write())
 	require.NoError(t, config.NewFileStore(logged).SetToken(config.ServerRef{Name: "prod", URL: "https://r.example.com"}, "id:secret"))
 	add("no terminal, the current server's login serves the call", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
-		interactiveLoginRequired("local", "x"), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
+		interactiveLoginRequired("local", false), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
 	add("no terminal, a --name of a plugin login entry", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
-		interactiveLoginRequired("local", "x"), noTerminalCall{name: "exec-login-r.ex-c-1", clusterID: "c-1", serverURL: "https://r.example.com", caCert: "/etc/rancher/ca.pem"}))
-	add("no terminal, --user-id without --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+		interactiveLoginRequired("local", false), noTerminalCall{name: "exec-login-r.ex-c-1", clusterID: "c-1", serverURL: "https://r.example.com", caCert: "/etc/rancher/ca.pem"}))
+	add("no terminal, --user-id without --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", caCert: "/etc/rancher/ca.pem", keepsLogin: true}))
-	add("no terminal, --user-id without --name, token reuse off", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+	add("no terminal, --user-id without --name, token reuse off", nt.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
-	add("no terminal, --user-id without --cluster", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+	add("no terminal, --user-id without --cluster", nt.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 		noTerminalCall{serverURL: "https://r.example.com", userID: "u-abc12", keepsLogin: true}))
 	add("no terminal, --user-id without --cluster, token reuse off", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
-		interactiveLoginRequired("local", "x"), noTerminalCall{serverURL: "https://r.example.com", userID: "u-abc12"}))
+		interactiveLoginRequired("local", false), noTerminalCall{serverURL: "https://r.example.com", userID: "u-abc12"}))
 	add("no terminal, a provider choice, --user-id without --name", nt.withNoTerminalRemedies(choice,
 		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", keepsLogin: true}))
-	add("no terminal, with --user-id", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+	add("no terminal, with --user-id", nt.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
-	add("no terminal, with --user-id and an auth config", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+	add("no terminal, with --user-id and an auth config", nt.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", authConfig: "corp-ldap"}))
-	add("no terminal, --user-id and an auth config without --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+	add("no terminal, --user-id and an auth config without --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", false),
 		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", authConfig: "corp-ldap", caCert: "/etc/rancher/ca.pem", keepsLogin: true}))
 	add("no terminal, the current server's login serves the call through the auth config", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
-		interactiveLoginRequired("local", "x"), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", authConfig: "corp-ldap"}))
+		interactiveLoginRequired("local", false), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", authConfig: "corp-ldap"}))
 	add("a plugin login entry name too long", userCheck{userID: "u-abc12", clusterID: "c-1", serverID: "https://r.example.com", caSource: "/etc/rancher/ca.pem"}.entryNameTooLong(cfg, config.MaxEntryNameLength+1))
 	add("a plugin login entry name too long, with an auth config", userCheck{userID: "u-abc12", authConfig: "corp-ldap", clusterID: "c-1", serverID: "https://r.example.com", caSource: "/etc/rancher/ca.pem"}.entryNameTooLong(cfg, config.MaxEntryNameLength+1))
 	add("a plugin login entry named from a server URL host with an invisible character", userCheck{userID: "u-abc12", clusterID: "c-1", serverID: "https://r.example.com", caSource: "/etc/rancher/ca.pem"}.entryNameCharacters(cfg, config.NameProblem{Rune: rune(0x200b)}))

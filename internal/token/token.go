@@ -1079,11 +1079,11 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 	if input.caFlag == "" {
 		return SessionAcquireResult{}, callerCAFlagMissing("loginInput.caFlag")
 	}
-	authProviders, unsupported, unsupportedIDs, err := getAuthProviders(ctx, client, input.server)
+	authProviders, unsupported, err := getAuthProviders(ctx, client, input.server)
 	if err != nil {
 		return SessionAcquireResult{}, err
 	}
-	if err := refuseUnsupportedConfig(input.authProvider, unsupportedIDs, unsupported, authProviders); err != nil {
+	if err := refuseUnsupportedConfig(input.authProvider, unsupported, authProviders); err != nil {
 		return SessionAcquireResult{}, err
 	}
 	selectedProvider, err := selectAuthProvider(ctx, authProviders, unsupported, input.authProvider, input.exactAuthConfig, p)
@@ -1097,7 +1097,7 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 
 	if samlProviders[input.authProvider] {
 		if p.NoInput() {
-			return SessionAcquireResult{}, interactiveLoginRequired(input.authConfigName(), "run without --no-input, or use a cached --name")
+			return SessionAcquireResult{}, interactiveLoginRequired(input.authConfigName(), true)
 		}
 		return samlAuth(ctx, client, input, p)
 	}
@@ -1113,7 +1113,7 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (CreateResult, error) {
 	notAttempted := loginNotAttempted(input)
 	if !p.CanPrompt() {
-		return notAttempted, interactiveLoginRequired(input.authConfigName(), "run in a terminal, or use a cached --name")
+		return notAttempted, interactiveLoginRequired(input.authConfigName(), p.NoInput())
 	}
 	label := "Enter username: "
 	if def := input.usernameDefault; def != "" {
@@ -1123,7 +1123,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	username, err := p.Prompt(ctx, label)
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return notAttempted, interactiveLoginRequired(input.authConfigName(), "run in a terminal, or use a cached --name")
+			return notAttempted, interactiveLoginRequired(input.authConfigName(), p.NoInput())
 		}
 		return notAttempted, err
 	}
@@ -1137,7 +1137,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	password, err := p.PromptSecret(ctx, "Enter password: ")
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return notAttempted, interactiveLoginRequired(input.authConfigName(), "run in a terminal, or use a cached --name")
+			return notAttempted, interactiveLoginRequired(input.authConfigName(), p.NoInput())
 		}
 		return notAttempted, err
 	}
@@ -1369,45 +1369,80 @@ type providerEntry struct {
 	ID   string `json:"id"`
 }
 
+// unsupportedAuthConfig is an entry of the server's list of auth configs
+// whose provider type this CLI cannot sign in with. ID is the name of the
+// auth config, "" when the server gave none.
+type unsupportedAuthConfig struct{ ID, Type string }
+
+// name is what a message calls the auth config: its id, or the provider
+// name of its type when it has no id.
+func (u unsupportedAuthConfig) name() string {
+	if u.ID != "" {
+		return u.ID
+	}
+	return providerName(u.Type)
+}
+
+// unsupportedConfigRefused is why a sign-in was refused: --auth-provider
+// names an auth config this CLI cannot sign in with. The exec plugin and
+// auth login each add the way to a credential that needs no sign-in.
+type unsupportedConfigRefused struct{ config unsupportedAuthConfig }
+
+func (e *unsupportedConfigRefused) Error() string {
+	return "auth config " + e.config.name() + " is not one this CLI can sign in with"
+}
+
+// unsupportedTypes are the provider types of the entries, sorted and
+// without repeats.
+func unsupportedTypes(entries []unsupportedAuthConfig) []string {
+	types := make([]string, 0, len(entries))
+	for _, u := range entries {
+		types = append(types, u.Type)
+	}
+	slices.Sort(types)
+	return slices.Compact(types)
+}
+
 // getAuthProviders lists the server's auth providers: the ones this CLI can
-// log in with (local first), and the types the server advertises that it
-// cannot, so a caller can name them instead of silently dropping them.
-func getAuthProviders(ctx context.Context, client *http.Client, server string) ([]typedProvider, []string, []string, error) {
+// log in with (local first), and the entries whose type the server
+// advertises but this CLI cannot use, in the server's order and without
+// repeats, so a caller can name them instead of silently dropping them.
+func getAuthProviders(ctx context.Context, client *http.Client, server string) ([]typedProvider, []unsupportedAuthConfig, error) {
 	authProvidersURL := fmt.Sprintf(authProviderURL, server)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authProvidersURL, nil)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error creating request: %w", err)
+		return nil, nil, fmt.Errorf("error creating request: %w", err)
 	}
 
 	resp, respBody, err := httpx.Do(client, req)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error listing auth providers: %w", err)
+		return nil, nil, fmt.Errorf("error listing auth providers: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		// The provider list names an API, not an object: a 404 means the
 		// URL does not lead to Rancher.
-		return nil, nil, nil, clierr.FromResponse("error listing auth providers", http.MethodGet, resp.StatusCode, respBody,
+		return nil, nil, clierr.FromResponse("error listing auth providers", http.MethodGet, resp.StatusCode, respBody,
 			&clierr.Request{Endpoint: true, NoCredential: true})
 	}
 
 	var list providerList
 	if err := json.Unmarshal(respBody, &list); err != nil {
-		return nil, nil, nil, fmt.Errorf("error decoding the auth provider list: %w; check the server URL", err)
+		return nil, nil, fmt.Errorf("error decoding the auth provider list: %w; check the server URL", err)
 	}
 
 	var supportedProviders []typedProvider
-	var unsupported, unsupportedIDs []string
+	var unsupported []unsupportedAuthConfig
 	for _, raw := range list.Data {
 		var provider providerEntry
 		if err := json.Unmarshal(raw, &provider); err != nil {
-			return nil, nil, nil, fmt.Errorf("error decoding the auth provider list: %w; check the server URL", err)
+			return nil, nil, fmt.Errorf("error decoding the auth provider list: %w; check the server URL", err)
 		}
 		providerType := provider.Type
 		if providerType != "" && !supportedAuthProviders[providerType] {
-			unsupported = append(unsupported, providerType)
-			if provider.ID != "" {
-				unsupportedIDs = append(unsupportedIDs, provider.ID)
+			entry := unsupportedAuthConfig{ID: provider.ID, Type: providerType}
+			if !slices.Contains(unsupported, entry) {
+				unsupported = append(unsupported, entry)
 			}
 		}
 
@@ -1425,7 +1460,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 
 			err = json.Unmarshal(raw, tp)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
+				return nil, nil, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
 			}
 
 			if tp.GetType() == "localProvider" {
@@ -1436,8 +1471,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 		}
 	}
 
-	slices.Sort(unsupported)
-	return supportedProviders, slices.Compact(unsupported), unsupportedIDs, nil
+	return supportedProviders, unsupported, nil
 }
 
 // refuseUnsupportedConfig refuses an --auth-provider value that is the exact
@@ -1446,32 +1480,54 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 // value names that config, and signing in through another config of a
 // provider with that name would pick a config the user did not name. The
 // auth configs this CLI can sign in with are the candidates, as for a miss.
-func refuseUnsupportedConfig(want string, unsupportedIDs, unsupported []string, providers []typedProvider) error {
-	if want == "" || !slices.Contains(unsupportedIDs, want) {
+func refuseUnsupportedConfig(want string, unsupported []unsupportedAuthConfig, providers []typedProvider) error {
+	if want == "" {
 		return nil
 	}
-	msg := "--auth-provider " + want + " names an auth config this CLI cannot sign in with"
-	if note := unsupportedNote(unsupported); note != "" {
-		msg += "; " + note
+	for _, u := range unsupported {
+		if u.ID == want {
+			return unsupportedConfigError(want, u, unsupported, providers)
+		}
 	}
-	return clierr.New(clierr.CodeNotFound, msg).WithCandidates(authConfigCandidates(providers))
+	return nil
+}
+
+// unsupportedConfigError is the refusal of an --auth-provider value that
+// names the auth config u: CAPABILITY_UNSUPPORTED, with the auth configs this
+// CLI can sign in with as candidates (none when it can sign in with none).
+// The cause is what the exec plugin and auth login add the remedy from.
+func unsupportedConfigError(want string, u unsupportedAuthConfig, unsupported []unsupportedAuthConfig, providers []typedProvider) error {
+	msg := "--auth-provider " + want + " names an auth config this CLI cannot sign in with: " +
+		u.name() + " (" + u.Type + "); " + unsupportedNote(unsupportedTypes(unsupported))
+	return clierr.New(clierr.CodeCapabilityUnsupported, msg).
+		WithCandidates(authConfigCandidates(providers)).
+		WithCause(&unsupportedConfigRefused{config: u})
 }
 
 // unsupportedNote names the providers the server advertises that this CLI
-// cannot log in with; "" when there are none.
+// cannot log in with, the server change that would let it, and the way
+// to a login through an API token; "" when there are none.
 func unsupportedNote(unsupported []string) string {
 	if len(unsupported) == 0 {
 		return ""
 	}
 	return "advertised by the server but not supported by this CLI: " + strings.Join(unsupported, ", ") +
-		" (server change requested: " + unsupportedProvidersRFE + ")"
+		" (server change requested: " + unsupportedProvidersRFE + ")" + apiTokenSentence
 }
+
+// apiTokenSentence follows the types in every note: a person who cannot sign
+// in through one of those providers can still log in as a user with an API
+// token.
+const apiTokenSentence = "; to sign in as a user of one of them, create an API token in the Rancher UI and log in with it using auth login --token-stdin"
 
 // selectAuthProvider picks the auth config to sign in with. want is the
 // --auth-provider value: an auth config's name (an entry's id) matches that
 // entry; otherwise every entry whose provider type (openLdapProvider) or
 // provider name (openldap) equals it. One match is the choice; several ask
 // with a terminal, among only those, and fail with their names without one.
+// When nothing this CLI can sign in with matches, an entry in unsupported
+// whose provider type or provider name equals want is refused, the first in
+// the server's order, also when no auth config can be signed in with at all.
 // With exact, only an auth config's name matches: the provider type and
 // provider name do not, and a miss is NOT_FOUND naming the enabled auth
 // configs. A miss names the auth configs as candidates and, in the message,
@@ -1480,8 +1536,17 @@ func unsupportedNote(unsupported []string) string {
 // precedes the prompt, also when only one entry is left to prompt for: a
 // user who came for GitHub must not type those credentials into the local
 // password prompt.
-func selectAuthProvider(ctx context.Context, providers []typedProvider, unsupported []string, want string, exact bool, p runtime.Prompter) (typedProvider, error) {
-	note := unsupportedNote(unsupported)
+func selectAuthProvider(ctx context.Context, providers []typedProvider, unsupported []unsupportedAuthConfig, want string, exact bool, p runtime.Prompter) (typedProvider, error) {
+	note := unsupportedNote(unsupportedTypes(unsupported))
+	if want != "" && !exact && !slices.ContainsFunc(providers, func(prov typedProvider) bool {
+		return prov.GetID() == want || prov.GetType() == want || providerName(prov.GetType()) == want
+	}) {
+		for _, u := range unsupported {
+			if u.Type == want || providerName(u.Type) == want {
+				return nil, unsupportedConfigError(want, u, unsupported, providers)
+			}
+		}
+	}
 	if len(providers) == 0 {
 		msg := "this server has no auth config this CLI can sign in with"
 		if note != "" {

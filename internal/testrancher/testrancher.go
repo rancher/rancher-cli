@@ -192,7 +192,9 @@ type Options struct {
 	SeedToken string
 	// ExtraProviders are provider types listed alongside localProvider, for
 	// a flow the facade does not itself serve (the SAML authtokens flow
-	// completes in the browser).
+	// completes in the browser). azureADProvider is not one: the facade
+	// serves its sign-in, which needs its own endpoints, so New refuses it
+	// here and AuthConfigs lists it.
 	ExtraProviders []string
 	// Users are the named users the facade authenticates; defaults to one
 	// user with LoginUser/LoginPass and UserID user-e2e.
@@ -525,6 +527,16 @@ func (f *Facade) LoginRecords() []LoginRecord {
 	return slices.Clone(f.loginRecords)
 }
 
+// IdPVerifiers returns the code_verifier the identity-provider stub received
+// with the first exchange of each authorization code its authorize endpoint
+// issued, in order, those it refused included.
+func (f *Facade) IdPVerifiers() []string {
+	if f.idp == nil {
+		return nil
+	}
+	return f.idp.codeVerifiers()
+}
+
 // IdPRequest is a device-authorization request the identity-provider stub
 // answered: the path it came to, which names the auth config whose endpoints
 // the CLI used, and the client id it sent.
@@ -703,6 +715,9 @@ func (f *Facade) DepositAuthTokenRaw(requestID, b64 string) {
 // New builds a Facade from opts, applying defaults for the optional
 // fields.
 func New(opts Options) *Facade {
+	if slices.Contains(opts.ExtraProviders, "azureADProvider") {
+		panic("testrancher: ExtraProviders cannot list azureADProvider; list it in AuthConfigs")
+	}
 	if opts.LoginUser == "" {
 		opts.LoginUser = "e2e-user"
 	}
@@ -810,7 +825,7 @@ func (f *Facade) dispatch(w http.ResponseWriter, r *http.Request) {
 		f.handleRelease(w, rke2ReleaseFixture)
 	case r.Method == http.MethodGet && r.URL.Path == k3sReleasePath:
 		f.handleRelease(w, k3sReleaseFixture)
-	case f.idp != nil && f.opts.IdPURL == "" && r.Method == http.MethodPost && f.idpRoute(w, r):
+	case f.idp != nil && f.opts.IdPURL == "" && f.idpRoute(w, r):
 	case f.opts.SelfSubjectReviews && r.Method == http.MethodPost && selfSubjectReviewCluster(r.URL.Path) != "":
 		f.handleSelfSubjectReview(w, r)
 	case strings.HasPrefix(r.URL.Path, "/v3-public"):
@@ -820,9 +835,9 @@ func (f *Facade) dispatch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// IdPHandler serves the device-code identity-provider stub for a caller
-// that hosts it on its own origin (Options.IdPURL). It answers POST
-// /idp/devicecode and POST /idp/token, and the same two under
+// IdPHandler serves the identity-provider stub for a caller that hosts it
+// on its own origin (Options.IdPURL). It answers POST /idp/devicecode, POST
+// /idp/token and GET /idp/authorize, and the same three under
 // /idp/<auth config name>/ for each azureADProvider config; anything else
 // is 404, and every route is 404 when the facade was built without
 // EnableIdP.
@@ -831,15 +846,16 @@ func (f *Facade) IdPHandler() http.Handler {
 		return http.NotFoundHandler()
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !f.idpRoute(w, r) {
+		if !f.idpRoute(w, r) {
 			http.NotFound(w, r)
 		}
 	})
 }
 
-// idpRoute answers a POST to the stub's device-code or token path of the
-// default Azure AD entry, or of one of the azureADProvider configs, and
-// reports whether the path was one of them.
+// idpRoute answers a POST to the stub's device-code or token path, or a GET
+// to its authorize path, of the default Azure AD entry or of one of the
+// azureADProvider configs, and reports whether the request was one of them.
+// Only the authorize path takes a GET.
 func (f *Facade) idpRoute(w http.ResponseWriter, r *http.Request) bool {
 	prefixes := []string{"/idp"}
 	for _, c := range f.opts.AuthConfigs {
@@ -848,15 +864,18 @@ func (f *Facade) idpRoute(w http.ResponseWriter, r *http.Request) bool {
 		}
 	}
 	for _, prefix := range prefixes {
-		switch r.URL.Path {
-		case prefix + "/devicecode":
+		switch {
+		case r.URL.Path == prefix+"/devicecode" && r.Method == http.MethodPost:
 			f.mu.Lock()
 			f.idpRequests = append(f.idpRequests, IdPRequest{Path: r.URL.Path, ClientID: r.PostFormValue("client_id")})
 			f.mu.Unlock()
 			f.idp.handleDeviceCode(w, r)
 			return true
-		case prefix + "/token":
+		case r.URL.Path == prefix+"/token" && r.Method == http.MethodPost:
 			f.idp.handleToken(w, r)
+			return true
+		case r.URL.Path == prefix+"/authorize" && r.Method == http.MethodGet:
+			f.idp.handleAuthorize(w, r)
 			return true
 		}
 	}
@@ -871,8 +890,62 @@ func (f *Facade) fallthroughTo(w http.ResponseWriter, r *http.Request) {
 	f.opts.Fallthrough.ServeHTTP(w, r)
 }
 
+// samlProviderTypes are the provider types whose list entry carries the URL
+// their sign-in starts at, which Rancher forms from the auth config's name.
+var samlProviderTypes = []string{"pingProvider", "adfsProvider", "keyCloakProvider", "oktaProvider", "shibbolethProvider", "genericSAMLProvider"}
+
+// codeExchangeProviderTypes are the provider types whose list entry carries a
+// redirectUrl that starts the sign-in at the identity provider.
+var codeExchangeProviderTypes = []string{"githubProvider", "githubAppProvider", "googleOAuthProvider", "oidcProvider", "cognitoProvider", "keyCloakOIDCProvider", "genericOIDCProvider"}
+
+// scopesProviderTypes are the provider types whose list entry carries the
+// scopes as one string, space separated; Azure AD carries them as an array.
+var scopesProviderTypes = []string{"cognitoProvider", "keyCloakOIDCProvider", "genericOIDCProvider"}
+
+// codeExchangeRedirect is the redirectUrl of a code-exchange provider's list
+// entry in the form Rancher builds for the type: the GitHub types go to
+// GitHub's authorize URL with the client id, Google to its consent URL, and
+// the OIDC types to the identity provider's authorize URL with the client id,
+// the response type and the Rancher URL as the redirect. The OIDC ones point
+// at the facade's own authorize path, with a client id of the facade; that
+// path is served only with EnableIdP, and no test follows these URLs. Google's
+// carries no scope and no state: Rancher builds it from a config with no
+// scopes and an empty state.
+func codeExchangeRedirect(server, typ string) string {
+	switch typ {
+	case "githubProvider", "githubAppProvider":
+		return "https://github.com/login/oauth/authorize?client_id=facade-client"
+	case "googleOAuthProvider":
+		return "https://accounts.google.com/o/oauth2/auth?access_type=offline&client_id=facade-client&prompt=consent&response_type=code"
+	}
+	return server + "/idp/authorize?client_id=facade-client&response_type=code&redirect_uri=" + server
+}
+
+// listEntry is the entry of the list of auth providers for the auth config
+// id of provider type typ, with the fields Rancher adds for the type beside
+// the id and the type. server is the facade's origin. Any other type has the
+// id and the type only, as the local, OpenLDAP and FreeIPA ones do. Rancher
+// also sends the three logout booleans on every entry; the CLI reads none of
+// them and the facade leaves them out.
+func listEntry(server, id, typ string) map[string]any {
+	e := map[string]any{"id": id, "type": typ}
+	switch {
+	case slices.Contains(samlProviderTypes, typ):
+		e["redirectUrl"] = server + "/v1-saml/" + id + "/login"
+	case slices.Contains(codeExchangeProviderTypes, typ):
+		e["redirectUrl"] = codeExchangeRedirect(server, typ)
+		if slices.Contains(scopesProviderTypes, typ) {
+			e["scopes"] = "openid profile email"
+		}
+	case typ == "activeDirectoryProvider":
+		e["defaultLoginDomain"] = ""
+	}
+	return e
+}
+
 func (f *Facade) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
-	data := []map[string]any{{"id": "local", "type": "localProvider"}}
+	server := "https://" + r.Host
+	data := []map[string]any{listEntry(server, "local", "localProvider")}
 	base := f.opts.IdPURL
 	if base == "" {
 		base = "https://" + r.Host
@@ -881,9 +954,10 @@ func (f *Facade) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 		return map[string]any{
 			"id":            id,
 			"type":          "azureADProvider",
-			"redirectUrl":   "",
+			"redirectUrl":   base + prefix + "/authorize?client_id=" + clientID + "&redirect_uri=" + server + "&response_type=code&scope=openid",
+			"tenantId":      "facade-tenant",
 			"clientId":      clientID,
-			"scopes":        []string{"openid"},
+			"scopes":        []string{"openid", "profile", "email"},
 			"authUrl":       base + prefix + "/authorize",
 			"deviceAuthUrl": base + prefix + "/devicecode",
 			"tokenUrl":      base + prefix + "/token",
@@ -893,14 +967,14 @@ func (f *Facade) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 		data = append(data, azure(f.azureADName(), "facade-client", "/idp"))
 	}
 	for _, p := range f.opts.ExtraProviders {
-		data = append(data, map[string]any{"id": strings.ToLower(strings.TrimSuffix(p, "Provider")), "type": p})
+		data = append(data, listEntry(server, strings.ToLower(strings.TrimSuffix(p, "Provider")), p))
 	}
 	for _, c := range f.opts.AuthConfigs {
 		if c.Type == "azureADProvider" {
 			data = append(data, azure(c.Name, c.clientID(), "/idp/"+c.Name))
 			continue
 		}
-		data = append(data, map[string]any{"id": c.Name, "type": c.Type})
+		data = append(data, listEntry(server, c.Name, c.Type))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }

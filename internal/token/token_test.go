@@ -1297,16 +1297,18 @@ func TestSelectAuthProviderMatchesTheProviderID(t *testing.T) {
 
 // TestSelectAuthProviderNotFoundNamesUnsupported asserts a miss names the
 // providers the server advertises that this CLI cannot log in with, with
-// the server change requested, while the candidates stay the supported
-// auth configs only.
+// the server change requested and the way to a login through an API token,
+// while the candidates stay the supported auth configs only.
 func TestSelectAuthProviderNotFoundNamesUnsupported(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider", ID: "local"}}}
-	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "github", false, ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, []unsupportedAuthConfig{{Type: "githubProvider"}}, "nope", false, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Contains(t, ce.Message, "--auth-provider github matches no auth config this CLI can sign in with on this server; advertised by the server but not supported by this CLI: githubProvider (server change requested: rancher/rancher#57034)")
+	assert.Equal(t, "--auth-provider nope matches no auth config this CLI can sign in with on this server; "+
+		"advertised by the server but not supported by this CLI: githubProvider (server change requested: rancher/rancher#57034); "+
+		"to sign in as a user of one of them, create an API token in the Rancher UI and log in with it using auth login --token-stdin", ce.Message)
 	assert.Equal(t, []string{"local"}, candidateIDs(ce.Candidates))
 }
 
@@ -1316,7 +1318,7 @@ func TestSelectAuthProviderNotFoundNamesUnsupported(t *testing.T) {
 func TestSelectAuthProviderAmbiguousNamesUnsupported(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "pingProvider", ID: "ping"}, &AuthProvider{Type: "oktaProvider", ID: "okta"}}
-	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, []unsupportedAuthConfig{{Type: "githubProvider"}}, "", false, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -1332,21 +1334,21 @@ func TestSelectAuthProviderSingleNoticesUnsupported(t *testing.T) {
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider", ID: "local"}}}
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, blockingReader{}, false, true)
-	got, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, p)
+	got, err := selectAuthProvider(t.Context(), ps, []unsupportedAuthConfig{{Type: "githubProvider"}}, "", false, p)
 	require.NoError(t, err)
 	assert.Equal(t, "localProvider", got.GetType())
 	assert.Contains(t, errBuf.String(), "Auth config: local")
 	assert.Contains(t, errBuf.String(), "not supported by this CLI: githubProvider")
 
 	var quiet strings.Builder
-	_, err = selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, ui.New(&quiet, blockingReader{}, true, false))
+	_, err = selectAuthProvider(t.Context(), ps, []unsupportedAuthConfig{{Type: "githubProvider"}}, "", false, ui.New(&quiet, blockingReader{}, true, false))
 	require.NoError(t, err)
 	assert.Empty(t, quiet.String(), "no prompt, no notice")
 }
 
 // TestGetAuthProvidersSplitsSupportedAndUnsupported asserts the server's
 // list is split: supported providers decoded with their ids, local first;
-// unsupported types returned sorted and deduplicated.
+// unsupported entries returned in the server's order.
 func TestGetAuthProvidersSplitsSupportedAndUnsupported(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1354,19 +1356,20 @@ func TestGetAuthProvidersSplitsSupportedAndUnsupported(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"id":"github","type":"githubProvider"},{"id":"okta","type":"oktaProvider"},{"id":"local","type":"localProvider"},{"id":"google","type":"googleOAuthProvider"},{"id":"github2","type":"githubProvider"}]}`))
 	}))
 	defer srv.Close()
-	supported, unsupported, _, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
+	supported, unsupported, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
 	require.NoError(t, err)
 	require.Len(t, supported, 2)
 	assert.Equal(t, "localProvider", supported[0].GetType(), "local first")
 	assert.Equal(t, "local", supported[0].GetID())
 	assert.Equal(t, "oktaProvider", supported[1].GetType())
-	assert.Equal(t, []string{"githubProvider", "googleOAuthProvider"}, unsupported)
+	assert.Equal(t, []unsupportedAuthConfig{{ID: "github", Type: "githubProvider"}, {ID: "google", Type: "googleOAuthProvider"}, {ID: "github2", Type: "githubProvider"}}, unsupported)
+	assert.Equal(t, []string{"githubProvider", "googleOAuthProvider"}, unsupportedTypes(unsupported))
 }
 
 // TestGetAuthProvidersDecodesTheList asserts how getAuthProviders decodes
 // the server's provider list: the providers this CLI supports, local first;
-// the unsupported types sorted and deduplicated; their ids in response
-// order; keys matched as encoding/json matches them (the last
+// the unsupported entries (id and type) in response order, a repeated
+// entry once; keys matched as encoding/json matches them (the last
 // case-insensitive match), the same rule the provider decode uses; and an
 // error for a list that does not decode - a body that is not JSON or has
 // data after the list, a data member that is not an array, an element
@@ -1382,8 +1385,7 @@ func TestGetAuthProvidersDecodesTheList(t *testing.T) {
 		body            string
 		wantSupported   []string
 		wantTypes       []string
-		wantUnsupported []string
-		wantIDs         []string
+		wantUnsupported []unsupportedAuthConfig
 		wantErr         string
 	}{
 		{name: "data absent", failsIf: "an absent data member is an error", body: `{}`},
@@ -1392,7 +1394,7 @@ func TestGetAuthProvidersDecodesTheList(t *testing.T) {
 		{name: "element without a type is skipped", failsIf: "an element without a type is listed", body: `{"data":[{"id":"x"},{"id":"local","type":"localProvider"}]}`, wantSupported: []string{"local"}, wantTypes: []string{"localProvider"}},
 		{name: "local provider first", failsIf: "localProvider is not moved first", body: `{"data":[{"id":"okta","type":"oktaProvider"},{"id":"local","type":"localProvider"}]}`, wantSupported: []string{"local", "okta"}, wantTypes: []string{"localProvider", "oktaProvider"}},
 		{name: "last case-insensitive type key counts", failsIf: "the type is read from a different key than the provider decode uses", body: `{"data":[{"id":"l","type":"githubProvider","TYPE":"localProvider"}]}`, wantSupported: []string{"l"}, wantTypes: []string{"localProvider"}},
-		{name: "last case-insensitive type key counts, reversed", failsIf: "the type is read from a different key than the provider decode uses", body: `{"data":[{"id":"l","type":"localProvider","TYPE":"githubProvider"}]}`, wantUnsupported: []string{"githubProvider"}, wantIDs: []string{"l"}},
+		{name: "last case-insensitive type key counts, reversed", failsIf: "the type is read from a different key than the provider decode uses", body: `{"data":[{"id":"l","type":"localProvider","TYPE":"githubProvider"}]}`, wantUnsupported: []unsupportedAuthConfig{{ID: "l", Type: "githubProvider"}}},
 		{name: "last case-insensitive data key counts", failsIf: "the list is read from a different key than encoding/json uses", body: `{"data":[{"id":"local","type":"localProvider"}],"DATA":null}`},
 		{
 			name:            "Rancher-shaped list with members the CLI does not read",
@@ -1400,24 +1402,21 @@ func TestGetAuthProvidersDecodesTheList(t *testing.T) {
 			body:            `{"type":"collection","links":{"self":"https://r/v1-public/authproviders"},"actions":{},"pagination":{"limit":1000},"resourceType":"authProvider","data":[{"id":"local","type":"localProvider","baseType":"authProvider","links":{"self":"https://r/v1-public/authproviders/local"},"actions":{"login":"https://r/v1-public/authproviders/local?action=login"}},{"id":"github","type":"githubProvider","baseType":"authProvider","links":{},"actions":{},"redirectUrl":"https://github.com/login/oauth/authorize"}]}`,
 			wantSupported:   []string{"local"},
 			wantTypes:       []string{"localProvider"},
-			wantUnsupported: []string{"githubProvider"},
-			wantIDs:         []string{"github"},
+			wantUnsupported: []unsupportedAuthConfig{{ID: "github", Type: "githubProvider"}},
 		},
 		{
-			name:            "unsupported types sorted and deduplicated",
-			failsIf:         "the unsupported types are not sorted or not deduplicated",
-			body:            `{"data":[{"id":"g1","type":"githubProvider"},{"id":"go","type":"googleOAuthProvider"},{"id":"g2","type":"githubProvider"}]}`,
-			wantUnsupported: []string{"githubProvider", "googleOAuthProvider"},
-			wantIDs:         []string{"g1", "go", "g2"},
+			name:            "unsupported entries keep response order and a repeated entry is listed once",
+			failsIf:         "the unsupported entries are sorted, or a repeated entry is listed twice",
+			body:            `{"data":[{"id":"g1","type":"githubProvider"},{"id":"go","type":"googleOAuthProvider"},{"id":"g2","type":"githubProvider"},{"id":"g1","type":"githubProvider"}]}`,
+			wantUnsupported: []unsupportedAuthConfig{{ID: "g1", Type: "githubProvider"}, {ID: "go", Type: "googleOAuthProvider"}, {ID: "g2", Type: "githubProvider"}},
 		},
 		{
-			name:            "unsupported ids keep response order",
-			failsIf:         "the unsupported ids are sorted, deduplicated or dropped, or an empty id is listed",
+			name:            "an unsupported entry with no id is listed with an empty id",
+			failsIf:         "an entry with no id is dropped, or one with an id loses it",
 			body:            `{"data":[{"id":"g2","type":"githubProvider"},{"id":"okta","type":"oktaProvider"},{"type":"githubProvider"},{"id":"g1","type":"githubProvider"}]}`,
 			wantSupported:   []string{"okta"},
 			wantTypes:       []string{"oktaProvider"},
-			wantUnsupported: []string{"githubProvider"},
-			wantIDs:         []string{"g2", "g1"},
+			wantUnsupported: []unsupportedAuthConfig{{ID: "g2", Type: "githubProvider"}, {Type: "githubProvider"}, {ID: "g1", Type: "githubProvider"}},
 		},
 		{name: "body that is not JSON", failsIf: "a list that does not decode is read", body: `{"data":[`, wantErr: listErr},
 		{name: "page that is not the API names the remedy", failsIf: "the list error does not point at the server URL", body: `<html>`, wantErr: "; check the server URL"},
@@ -1428,7 +1427,7 @@ func TestGetAuthProvidersDecodesTheList(t *testing.T) {
 		{name: "element a scalar", failsIf: "an element that does not decode is skipped", body: `{"data":["x",{"id":"local","type":"localProvider"}]}`, wantErr: listErr},
 		{name: "number type", failsIf: "an element that does not decode is skipped", body: `{"data":[{"id":"n","type":5}]}`, wantErr: listErr},
 		{name: "bool id", failsIf: "an element that does not decode is skipped", body: `{"data":[{"id":true,"type":"githubProvider"}]}`, wantErr: listErr},
-		{name: "supported provider whose fields do not decode", failsIf: "a decode error of a supported provider is ignored", body: `{"data":[{"id":"azure","type":"azureADProvider","redirectUrl":5}]}`, wantErr: "error decoding the auth provider azureADProvider"},
+		{name: "supported provider whose fields do not decode", failsIf: "a decode error of a supported provider is ignored", body: `{"data":[{"id":"azure","type":"azureADProvider","clientId":5}]}`, wantErr: "error decoding the auth provider azureADProvider"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1438,7 +1437,7 @@ func TestGetAuthProvidersDecodesTheList(t *testing.T) {
 				_, _ = w.Write([]byte(c.body))
 			}))
 			defer srv.Close()
-			supported, unsupported, ids, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
+			supported, unsupported, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
 			if c.wantErr != "" {
 				require.ErrorContains(t, err, c.wantErr, "fails if %s", c.failsIf)
 				return
@@ -1452,7 +1451,6 @@ func TestGetAuthProvidersDecodesTheList(t *testing.T) {
 			assert.Equal(t, c.wantSupported, gotSupported, "supported; fails if %s", c.failsIf)
 			assert.Equal(t, c.wantTypes, gotTypes, "supported types; fails if %s", c.failsIf)
 			assert.Equal(t, c.wantUnsupported, unsupported, "unsupported; fails if %s", c.failsIf)
-			assert.Equal(t, c.wantIDs, ids, "unsupported ids; fails if %s", c.failsIf)
 		})
 	}
 }
@@ -1480,7 +1478,7 @@ func TestGetAuthProvidersDecodeErrorsKeepTheCause(t *testing.T) {
 				_, _ = w.Write([]byte(c.body))
 			}))
 			defer srv.Close()
-			_, _, _, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
+			_, _, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
 			require.ErrorContains(t, err, "error decoding the auth provider list: ")
 			require.ErrorContains(t, err, "; check the server URL")
 			assert.ErrorAs(t, err, c.cause, "the encoding/json error stays wrapped")

@@ -143,7 +143,7 @@ func TestUserIDSignInMatchesTheAuthConfigByItsExactNameOnly(t *testing.T) {
 		_, _, err := x.callWith(authCall{cluster: "c-test", userID: "user-alice", authConfig: "github", signIn: []string{"alice", "pw-alice"}})
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok, "%v", err)
-		assert.Equal(t, clierr.CodeNotFound, ce.Code)
+		assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
 		assert.True(t, strings.HasPrefix(ce.Message, "--auth-provider github names an auth config this CLI cannot sign in with"), ce.Message)
 	})
 }

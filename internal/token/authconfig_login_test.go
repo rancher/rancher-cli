@@ -152,22 +152,26 @@ func TestATypeOfSeveralConfigsAsksAndSignsInThroughTheChoice(t *testing.T) {
 }
 
 // TestTheSignInNoticeIsSaidOnlyWhenASignInFollows asserts the notice is not
-// printed before a refusal for want of a terminal or under --no-input.
+// printed before a refusal for want of a terminal or under --no-input, and
+// that the refusal records which of the two it is.
 func TestTheSignInNoticeIsSaidOnlyWhenASignInFollows(t *testing.T) {
 	isolateSignIn(t)
 	for _, tc := range []struct {
-		name string
-		p    runtime.Prompter
-		want string
+		name        string
+		p           runtime.Prompter
+		wantNoInput bool
 	}{
-		{"no terminal", noTerminal(), "interactive login required for auth config corp-ldap; run in a terminal, or use a cached --name"},
-		{"no-input with a terminal", noInputWithTerminal(), "interactive login required for auth config corp-ldap; run in a terminal, or use a cached --name"},
+		{"no terminal", noTerminal(), false},
+		{"no-input with a terminal", noInputWithTerminal(), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, srv := newTokenFacade(t, twoLDAPConfigs())
 			p := newEventPrompter(tc.p)
 			_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "corp-ldap", ResponseType: "json"}, 0, p)
-			require.ErrorContains(t, err, tc.want)
+			require.EqualError(t, err, "interactive login required for auth config corp-ldap")
+			nt, ok := errors.AsType[*needsTerminal](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, tc.wantNoInput, nt.noInput)
 			assert.Zero(t, p.count("Signing in through"), "events %q", p.events)
 		})
 	}
@@ -176,7 +180,10 @@ func TestTheSignInNoticeIsSaidOnlyWhenASignInFollows(t *testing.T) {
 			so := twoAzureConfigs(t)
 			p := newEventPrompter(noInputWithTerminal())
 			_, err := AcquireLoginCredential(t.Context(), so.client, LoginRequest{CAFlag: "--cacert", Server: so.url, AuthProvider: "corp-azure", AuthFlow: deviceAuthFlow, IdPClient: so.client, ResponseType: "json"}, 0, p)
-			require.ErrorContains(t, err, "interactive login required for auth config corp-azure; run without --no-input, or use a cached --name")
+			require.EqualError(t, err, "interactive login required for auth config corp-azure")
+			nt, ok := errors.AsType[*needsTerminal](err)
+			require.True(t, ok, "got %v", err)
+			assert.True(t, nt.noInput)
 			assert.Zero(t, p.count("Signing in through"), "events %q", p.events)
 		})
 	})
@@ -185,45 +192,48 @@ func TestTheSignInNoticeIsSaidOnlyWhenASignInFollows(t *testing.T) {
 // TestEveryRefusalNamesTheAuthConfig asserts each call site of the sign-in
 // refusal names the auth config, with the cause the exec plugin builds its
 // remedies from: the password prompts, SAML under --no-input, and OAuth
-// under --no-input, and that the cause's own text names it too.
+// under --no-input, that the cause's own text names it too, and that the
+// cause says whether --no-input is the reason. The message names no remedy:
+// each command adds its own.
 func TestEveryRefusalNamesTheAuthConfig(t *testing.T) {
 	t.Parallel()
-	const terminalRemedy = "interactive login required for auth config corp-ldap; run in a terminal, or use a cached --name"
+	const refusal = "interactive login required for auth config corp-ldap"
 	basic := func() *loginInput {
 		return &loginInput{caFlag: "--cacert", server: "https://r.invalid", authProvider: "openLdapProvider", authConfig: "corp-ldap"}
 	}
 	for _, tc := range []struct {
-		name string
-		run  func(t *testing.T) error
-		want string
+		name        string
+		run         func(t *testing.T) error
+		want        string
+		wantNoInput bool
 	}{
 		{"no terminal", func(t *testing.T) error {
 			t.Helper()
 			_, err := basicAuth(t.Context(), failingTransportClient(t), basic(), noTerminal())
 			return err
-		}, terminalRemedy},
+		}, refusal, false},
 		{"the username refused", func(t *testing.T) error {
 			t.Helper()
 			_, err := basicAuth(t.Context(), failingTransportClient(t), basic(), usernameRefused{})
 			return err
-		}, terminalRemedy},
+		}, refusal, false},
 		{"the password refused", func(t *testing.T) error {
 			t.Helper()
 			_, err := basicAuth(t.Context(), failingTransportClient(t), basic(), usernameOnly{})
 			return err
-		}, terminalRemedy},
+		}, refusal, false},
 		{"SAML under --no-input", func(t *testing.T) error {
 			t.Helper()
 			srv := configsServer(t, [2]string{"okta", "oktaProvider"})
 			_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{caFlag: "--cacert", server: srv.URL}, ui.Discard())
 			return err
-		}, "interactive login required for auth config okta; run without --no-input, or use a cached --name"},
+		}, "interactive login required for auth config okta", true},
 		{"OAuth under --no-input", func(t *testing.T) error {
 			t.Helper()
 			_, err := oauthAuth(t.Context(), failingTransportClient(t), &loginInput{caFlag: "--cacert", server: "https://r.invalid", authProvider: "azureADProvider", authConfig: "corp-azure"},
 				&AzureADProvider{}, ui.Discard())
 			return err
-		}, "interactive login required for auth config corp-azure; run without --no-input, or use a cached --name"},
+		}, "interactive login required for auth config corp-azure", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -232,6 +242,7 @@ func TestEveryRefusalNamesTheAuthConfig(t *testing.T) {
 			nt, ok := errors.AsType[*needsTerminal](err)
 			require.True(t, ok, "got %v", err)
 			assert.Equal(t, "interactive login required for auth config "+nt.authConfig, nt.Error())
+			assert.Equal(t, tc.wantNoInput, nt.noInput)
 		})
 	}
 }
@@ -294,7 +305,7 @@ func TestASAMLConfigOfSeveralSaysTheBrowserPageChoosesItself(t *testing.T) {
 
 	under := newEventPrompter(ui.Discard())
 	_, err = AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "okta-eu", ResponseType: "json"}, 0, under)
-	require.ErrorContains(t, err, "interactive login required for auth config okta-eu; run without --no-input, or use a cached --name")
+	require.EqualError(t, err, "interactive login required for auth config okta-eu")
 	assert.Zero(t, under.count(notice), "no notice before a --no-input refusal; events %q", under.events)
 }
 

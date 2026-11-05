@@ -188,7 +188,7 @@ func TestNoAuthConfigText(t *testing.T) {
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, "this server has no auth config this CLI can sign in with", ce.Message)
 
-	_, err = selectAuthProvider(t.Context(), nil, []string{"githubProvider"}, "", false, ui.Discard())
+	_, err = selectAuthProvider(t.Context(), nil, []unsupportedAuthConfig{{Type: "githubProvider"}}, "", false, ui.Discard())
 	require.ErrorContains(t, err, "this server has no auth config this CLI can sign in with; advertised by the server but not supported by this CLI: githubProvider")
 }
 
@@ -199,7 +199,7 @@ func TestAnEntryWithNoIDIsNamedByItsProviderName(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "openLdapProvider"}}
 	var errBuf strings.Builder
-	got, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, ui.New(&errBuf, blockingReader{}, false, true))
+	got, err := selectAuthProvider(t.Context(), ps, []unsupportedAuthConfig{{Type: "githubProvider"}}, "", false, ui.New(&errBuf, blockingReader{}, false, true))
 	require.NoError(t, err)
 	assert.Equal(t, "openLdapProvider", got.GetType())
 	assert.Contains(t, errBuf.String(), "Auth config: openldap\n")
@@ -214,14 +214,15 @@ func TestTheSingleEntryNoticeNamesTheAuthConfig(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "openLdapProvider", ID: "corp-ldap"}}
 	var errBuf strings.Builder
-	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, ui.New(&errBuf, blockingReader{}, false, true))
+	_, err := selectAuthProvider(t.Context(), ps, []unsupportedAuthConfig{{Type: "githubProvider"}}, "", false, ui.New(&errBuf, blockingReader{}, false, true))
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "Auth config: corp-ldap (openldap)\n")
 }
 
 // TestAnExactNameOfAnUnsupportedConfigIsRefused asserts an --auth-provider
 // value that names an auth config of a type this CLI cannot sign in with is
-// NOT_FOUND with the unsupported-types note, and never reaches the match by
+// CAPABILITY_UNSUPPORTED, naming the auth config and its type before the
+// unsupported-types note, and never reaches the match by
 // provider name: a GitHub config named openldap beside one OpenLDAP config
 // corp-ldap must not sign in through corp-ldap. Mutation: drop the refusal
 // before selectAuthProvider.
@@ -235,9 +236,9 @@ func TestAnExactNameOfAnUnsupportedConfigIsRefused(t *testing.T) {
 	_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{caFlag: "--cacert", server: srv.URL, authProvider: "openldap"}, noTerminal())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.True(t, strings.HasPrefix(ce.Message, "--auth-provider openldap names an auth config this CLI cannot sign in with; "), ce.Message)
-	assert.Contains(t, ce.Message, "githubProvider")
+	assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
+	assert.Equal(t, 11, ce.ExitCode())
+	assert.True(t, strings.HasPrefix(ce.Message, "--auth-provider openldap names an auth config this CLI cannot sign in with: openldap (githubProvider); advertised by the server but not supported by this CLI: githubProvider"), ce.Message)
 	require.Len(t, ce.Candidates, 1)
 	assert.Equal(t, "corp-ldap", ce.Candidates[0].ID)
 }
@@ -268,7 +269,7 @@ func TestAnEntryWithNoIDIsNeverNamedToThePlugin(t *testing.T) {
 
 // TestAnExactNameOnAServerWithOnlyUnsupportedConfigsIsRefused asserts a
 // server whose only auth config is of a type this CLI cannot sign in with
-// answers its exact name with NOT_FOUND and no candidates, not with the
+// answers its exact name with CAPABILITY_UNSUPPORTED and no candidates, not with the
 // no-config error. Mutation: drop the refusal before selectAuthProvider.
 func TestAnExactNameOnAServerWithOnlyUnsupportedConfigsIsRefused(t *testing.T) {
 	t.Parallel()
@@ -280,7 +281,7 @@ func TestAnExactNameOnAServerWithOnlyUnsupportedConfigsIsRefused(t *testing.T) {
 	_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{caFlag: "--cacert", server: srv.URL, authProvider: "github"}, noTerminal())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.True(t, strings.HasPrefix(ce.Message, "--auth-provider github names an auth config this CLI cannot sign in with; "), ce.Message)
+	assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
+	assert.True(t, strings.HasPrefix(ce.Message, "--auth-provider github names an auth config this CLI cannot sign in with: github (githubProvider); "), ce.Message)
 	assert.Empty(t, ce.Candidates)
 }

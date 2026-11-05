@@ -1380,7 +1380,7 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 | `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422) |
 | `PRIME_REQUIRED` | 9 | the command requires Rancher Prime and the connected server does not have it |
 | `TLS_TRUST` | 10 | the server's TLS certificate is not trusted and was not accepted |
-| `CAPABILITY_UNSUPPORTED` | 11 | the connected server does not support the workflow the command needs |
+| `CAPABILITY_UNSUPPORTED` | 11 | the workflow the command needs is not supported by the connected server or by this CLI |
 | `INTERRUPTED` | 130 | the command was ended by Ctrl-C or a termination signal |
 | `GENERIC` | 1 | an error with no more specific code, including a server or transport failure |
 <!-- /conformance:error-codes -->
@@ -1768,9 +1768,15 @@ menu, the candidates of an error and shell completion all list these names.
 The value is matched in this order:
 
 1. An auth config whose name is the value. If that auth config's type is one
-   this CLI cannot sign in with, the call fails with `NOT_FOUND`, names the
-   types it cannot use, and offers the auth configs it can sign in with; it
-   does not go on to the next step.
+   this CLI cannot sign in with, the call fails with `CAPABILITY_UNSUPPORTED`
+   (exit 11), names the auth config and its type and the types it cannot use,
+   and offers the auth configs it can sign in with; it does not go on to the
+   next step. The remedy is the login that takes an API token piped to it
+   (`auth login <name> --url <url> --token-stdin`), for a token created in the
+   Rancher UI. The hint is that login when it runs as written. Otherwise the
+   hint is empty: the call has no entry name, an inline CA, or (for `auth
+   login`) an entry that changed since it was registered; the message then
+   holds the command, or says to check the entry.
 2. Otherwise every auth config whose provider type (`openLdapProvider`) or
    provider name (`openldap`) is the value. One match is used. With several, a
    terminal gets a menu of only those; with no terminal the call fails with
@@ -1778,7 +1784,13 @@ The value is matched in this order:
    given to `--auth-provider`. Through the exec plugin, its remedies name
    `--auth-provider` with the auth configs that sign in without a terminal;
    when none does, or under `--no-input`, the refusal is `AUTH`.
-3. No match is `NOT_FOUND`, with the auth configs this CLI can sign in with as
+3. When no auth config this CLI can sign in with matched, an auth config of a
+   type this CLI cannot sign in with whose provider type or provider name is
+   the value fails the way an auth config named by the value does (the first in
+   the server's order when several match), also when the server has no auth
+   config this CLI can sign in with. A call with `--user-id` matches by name
+   only (the first and last items).
+4. No match is `NOT_FOUND`, with the auth configs this CLI can sign in with as
    candidates.
 
 Every password and OAuth sign-in sends the chosen auth config's name as

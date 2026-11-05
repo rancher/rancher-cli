@@ -344,7 +344,7 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 		var written bytes.Buffer
 		p := newEventPrompter(ui.New(&written, nil, false, true))
 		entries := []typedProvider{&AuthProvider{Type: "openLdapProvider", ID: hostileValue("authConfig")}}
-		_, err := selectAuthProvider(t.Context(), entries, []string{hostileValue("unsupportedType")}, "", false, p)
+		_, err := selectAuthProvider(t.Context(), entries, []unsupportedAuthConfig{{Type: hostileValue("unsupportedType")}}, "", false, p)
 		require.NoError(t, err)
 		assertNotice(t, noticeWith(t, p, "Auth config: "), written.String(), "authConfig", "unsupportedType")
 	})
@@ -356,7 +356,7 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 			&AuthProvider{Type: "openLdapProvider", ID: hostileValue("firstAuthConfig")},
 			&AuthProvider{Type: "githubProvider", ID: hostileValue("secondAuthConfig")},
 		}
-		_, err := selectAuthProvider(t.Context(), entries, []string{hostileValue("unsupportedType")}, "", false, p)
+		_, err := selectAuthProvider(t.Context(), entries, []unsupportedAuthConfig{{Type: hostileValue("unsupportedType")}}, "", false, p)
 		require.NoError(t, err)
 		assertNotice(t, noticeWith(t, p, "Auth configs:"), written.String(), "firstAuthConfig", "secondAuthConfig", "unsupportedType")
 	})

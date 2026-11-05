@@ -55,9 +55,14 @@ the keychain), with the keychain reachable, then run the command again.
   auth configs the call fails with their names). A provider the server
   advertises but this CLI cannot log in with (GitHub and the other OAuth
   providers whose client secret the server
-  holds) is named as such in the prompt and in the `NOT_FOUND` error rather
-  than dropped: the fix is server-side (rancher/rancher#57034); paste a
-  token created in the UI meanwhile. The provider path creates its own
+  holds) is named as such in the prompt, and `--auth-provider` naming one
+  (by auth config name, provider type or provider name) fails with
+  `CAPABILITY_UNSUPPORTED` (exit 11) rather than being dropped: the fix is
+  server-side (rancher/rancher#57034); create an API token in the UI and pipe
+  it to the login in the error's hint meanwhile (when that command cannot run
+  as written - no entry name, an inline CA, or an entry that changed since the
+  registration - the hint is empty and the message holds the command or says
+  to check the entry). The provider path creates its own
   purpose-made, individually revocable token behind the scenes (see the
   token taxonomy below). Dropping `<name>` works too - `rancher auth login
   --url <url>` derives the entry name from the URL's host.

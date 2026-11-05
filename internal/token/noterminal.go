@@ -9,11 +9,15 @@ import (
 )
 
 // needsTerminal is why a sign-in was refused: it has to ask someone, and
-// nobody can answer here. The four sign-in prompts give it, and both auth
+// nobody can answer here. The sign-in prompts give it, and both auth
 // login and the exec plugin reach them; each says what to do about it in
 // its own terms. authConfig is the name of the auth config the sign-in
-// was for.
-type needsTerminal struct{ authConfig string }
+// was for; noInput is set when --no-input is the reason, in a terminal or
+// not.
+type needsTerminal struct {
+	authConfig string
+	noInput    bool
+}
 
 func (e *needsTerminal) Error() string {
 	return "interactive login required for auth config " + e.authConfig
@@ -36,12 +40,14 @@ type providerChoiceNeedsTerminal struct {
 
 func (e *providerChoiceNeedsTerminal) Error() string { return e.text }
 
-// interactiveLoginRequired is the refusal a sign-in prompt gives, with the
-// remedy of a command run by someone who could answer it. authConfig names
-// the auth config the sign-in was for.
-func interactiveLoginRequired(authConfig, remedy string) *clierr.Error {
-	return clierr.New(clierr.CodeAuth, "interactive login required for auth config "+authConfig+"; "+remedy).
-		WithCause(&needsTerminal{authConfig: authConfig})
+// interactiveLoginRequired is the refusal a sign-in prompt gives. It names
+// no remedy: each command that shows it says what to do in its own terms
+// (the exec plugin in withNoTerminalRemedies, auth login in
+// AuthLoginRemedy). authConfig names the auth config the sign-in was for;
+// noInput says that --no-input is why nobody can answer.
+func interactiveLoginRequired(authConfig string, noInput bool) *clierr.Error {
+	return clierr.New(clierr.CodeAuth, "interactive login required for auth config "+authConfig).
+		WithCause(&needsTerminal{authConfig: authConfig, noInput: noInput})
 }
 
 // noTerminalCall is what the plugin's no-terminal remedies are filled in
@@ -90,10 +96,17 @@ type noTerminalCall struct {
 // AMBIGUOUS_SELECTION; when none does, or under --no-input, it is the
 // AUTH refusal of a sign-in prompt for all of them.
 //
+// The refusal of an auth config this CLI cannot sign in with keeps its code,
+// CAPABILITY_UNSUPPORTED: a terminal would not make the auth config usable,
+// so it gets only the piped login (unsupportedConfigRemedy).
+//
 // While a store change is unfinished the message names it too, and while
 // its record cannot be read the status report is the hint. Every other
 // error passes through.
 func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
+	if _, ok := errors.AsType[*unsupportedConfigRefused](err); ok {
+		return t.unsupportedConfigRemedy(err, call)
+	}
 	if nt, ok := errors.AsType[*needsTerminal](err); ok {
 		head := "interactive login required for auth config " + nt.authConfig + "; this call has no terminal to answer it"
 		return t.noTerminalError(err, call, clierr.CodeAuth, head, "", nil, "")
@@ -118,12 +131,35 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 	return t.noTerminalError(err, call, clierr.CodeAmbiguousSelection, head, choice, pc.noTerminal, pc.note)
 }
 
-// noTerminalError builds the remedies both refusals share: head says what
-// was refused, then the login that takes a piped API token, choice (when
-// set) the auth config to name, the sentence about a terminal sign-in, the
-// kubeconfig the call could use, and note (when set). cause is kept as the
-// new error's cause.
-func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, choice string, candidates []clierr.Candidate, note string) error {
+// unsupportedConfigRemedy is the exec plugin's form of the refusal of an
+// auth config this CLI cannot sign in with. A terminal would not make that
+// config usable, so the only remedy is the login that takes a piped API
+// token (NoTerminalLogin). It is the hint when it runs as written; for a
+// call with no --name, or an inline CA, it is in the message, since a hint
+// is a command that runs as written. While a store change is unfinished the
+// message names it too.
+func (t tokenCmd) unsupportedConfigRemedy(err error, call noTerminalCall) error {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok {
+		return err
+	}
+	cfg, pending := t.remedyConfig()
+	login := NoTerminalLogin(cfg, call.name, call.clusterID, call.serverURL, call.caCert, call.caFrom, call.shim)
+	msg := ce.Message
+	hint := login.Hint()
+	if hint == "" {
+		msg += "; " + login.Instruction("to log in with an API token, pipe it to: ")
+	}
+	out := clierr.New(ce.Code, msg).WithCause(err).WithCandidates(ce.Candidates)
+	if hint != "" {
+		out = out.WithHint(hint)
+	}
+	return pending.Apply(out)
+}
+
+// remedyConfig is the config in the directory, nil when it cannot be read,
+// and the store change it leaves unfinished.
+func (t tokenCmd) remedyConfig() (*config.Config, config.UnfinishedChange) {
 	var (
 		pending config.UnfinishedChange
 		cfg     *config.Config
@@ -132,6 +168,16 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 		cfg = loaded
 		pending = config.UnfinishedChangeOf(t.dir, cfg)
 	}
+	return cfg, pending
+}
+
+// noTerminalError builds the remedies both refusals share: head says what
+// was refused, then the login that takes a piped API token, choice (when
+// set) the auth config to name, the sentence about a terminal sign-in, the
+// kubeconfig the call could use, and note (when set). cause is kept as the
+// new error's cause.
+func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, choice string, candidates []clierr.Candidate, note string) error {
+	cfg, pending := t.remedyConfig()
 	login := NoTerminalLogin(cfg, call.name, call.clusterID, call.serverURL, call.caCert, call.caFrom, call.shim)
 	of, signIn := "", "sign in"
 	if call.userID != "" {
@@ -167,6 +213,73 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 		out = out.WithHint(h)
 	}
 	return pending.Apply(out)
+}
+
+// The leads of auth login's remedy for a refused sign-in, one per form. Each
+// is followed by the piped login (LoginRemedy.Instruction); auth login
+// always has an entry name, so the command is complete.
+const (
+	loginLeadTerminal    = loginFallbackTerminal + ", or to log in with an API token, pipe it to: "
+	loginLeadNoInput     = loginFallbackNoInput + ", or to log in with an API token, pipe it to: "
+	loginLeadUnsupported = "to log in with an API token, pipe it to: "
+
+	loginFallbackTerminal = "run in a terminal"
+	loginFallbackNoInput  = "run without --no-input"
+)
+
+// LoginRefusalRemedy is what auth login adds to a refusal of a sign-in: the
+// piped login to run, and what to say when the entry the login would name
+// changed after it was registered.
+type LoginRefusalRemedy struct {
+	// Instruction is the way to a credential that needs no sign-in, ending
+	// with the piped login for the entry: for a refusal that a terminal, or
+	// no --no-input, would answer, it opens with that.
+	Instruction string
+	// Hint is the piped login, valid as written.
+	Hint string
+	// Fallback is the part of Instruction that holds no command ("run in a
+	// terminal"), for a text that cannot end with one; "" for the refusal
+	// of an auth config this CLI cannot sign in with, which a terminal does
+	// not answer.
+	Fallback string
+}
+
+// AuthLoginRemedyOf is auth login's remedy for the refusals that say nobody
+// can answer a sign-in prompt, and for the refusal of an auth config this CLI
+// cannot sign in with; false for any other error, nil included. The login is
+// the piped login for the entry name at serverURL (NoTerminalLogin over cfg).
+// The CA is caSelector, the --cacert value or the entry's stored selector,
+// never the PEM, which would leave the hint empty; an entry registered at
+// serverURL uses its own CA, so the command names none.
+func AuthLoginRemedyOf(err error, cfg *config.Config, name, serverURL, caSelector string) (LoginRefusalRemedy, bool) {
+	var lead, fallback string
+	if nt, ok := errors.AsType[*needsTerminal](err); ok {
+		lead, fallback = loginLeadTerminal, loginFallbackTerminal
+		if nt.noInput {
+			lead, fallback = loginLeadNoInput, loginFallbackNoInput
+		}
+	} else if _, ok := errors.AsType[*unsupportedConfigRefused](err); ok {
+		lead = loginLeadUnsupported
+	} else {
+		return LoginRefusalRemedy{}, false
+	}
+	if _, ok := errors.AsType[*clierr.Error](err); !ok {
+		return LoginRefusalRemedy{}, false
+	}
+	login := NoTerminalLogin(cfg, name, "", serverURL, caSelector, config.CASource{}, false)
+	return LoginRefusalRemedy{Instruction: login.Instruction(lead), Hint: login.Hint(), Fallback: fallback}, true
+}
+
+// AuthLoginRemedy is err with auth login's remedy (AuthLoginRemedyOf) added
+// at the end of its message and its hint set to the piped login. Any other
+// error, and nil, is returned as it is.
+func AuthLoginRemedy(err error, cfg *config.Config, name, serverURL, caSelector string) error {
+	remedy, ok := AuthLoginRemedyOf(err, cfg, name, serverURL, caSelector)
+	if !ok {
+		return err
+	}
+	ce, _ := errors.AsType[*clierr.Error](err)
+	return ce.WithMessage(ce.Message + "; " + remedy.Instruction).WithHint(remedy.Hint)
 }
 
 // currentLoginServes reports whether create kubeconfig, which uses the

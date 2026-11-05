@@ -1,23 +1,45 @@
 # auth login against a server that advertises a provider this CLI cannot log
 # in with (githubProvider, a code-exchange provider whose secret the server
-# holds): naming that auth config is refused and names it and the server
-# change requested, a miss names it too, the candidates stay the supported
-# auth configs, and --auth-provider accepts an auth config's name.
+# holds): naming that auth config, by its name, provider type or provider name,
+# is CAPABILITY_UNSUPPORTED and names it, the server change requested and the
+# API token login that works, a miss still names the unsupported type, the
+# candidates stay the supported auth configs, and --auth-provider accepts an
+# auth config's name. Every login here is a new name with --url, the
+# delegated path: the piped login comes first, the undo of the registration is
+# the alternative that ends the message, and the hint is the piped login. The
+# message and hint are read from the JSON envelope into files.
 
-! exec rancher auth login gh --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider github --no-input -o json
-jsonquery stderr data.error.code NOT_FOUND
-stderr '--auth-provider github names an auth config this CLI cannot sign in with; advertised by the server but not supported by this CLI: githubProvider \(server change requested: rancher/rancher#57034\)'
+# a new name with --url, naming the auth config by its name
+! exec rancher auth login gh1 --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider github --no-input -o json
+jsonquery stderr data.error.code CAPABILITY_UNSUPPORTED
+jsonget stderr data.error.message msg.txt
+grep '^--auth-provider github names an auth config this CLI cannot sign in with: github \(githubProvider\); advertised by the server but not supported by this CLI: githubProvider \(server change requested: rancher/rancher#57034\); to sign in as a user of one of them, create an API token in the Rancher UI and log in with it using auth login --token-stdin; to log in with an API token, pipe it to: .*auth login ''gh1'' --url ''https?://[^'']+'' --token-stdin; or undo the registration with: .*config delete-server ''gh1''$' msg.txt
 jsonquery stderr 'data.error.candidates.#(id=="local").id' local
+# the hint is the login of an API token piped to it, valid as printed
+jsonget stderr data.error.hint hint.txt
+grep 'auth login ''gh1'' --url ''https?://[^'']+'' --token-stdin$' hint.txt
 
-! exec rancher auth login gh --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider nosuch --no-input -o json
+# a new name with --url, naming the same auth config by its provider type
+! exec rancher auth login gh2 --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider githubProvider --no-input -o json
+jsonquery stderr data.error.code CAPABILITY_UNSUPPORTED
+jsonget stderr data.error.message msg.txt
+grep '^--auth-provider githubProvider names an auth config this CLI cannot sign in with: github \(githubProvider\); ' msg.txt
+
+# a new name with --url, a value that names no auth config
+! exec rancher auth login gh3 --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider nosuch --no-input -o json
 jsonquery stderr data.error.code NOT_FOUND
-stderr '--auth-provider nosuch matches no auth config this CLI can sign in with on this server; advertised by the server but not supported by this CLI: githubProvider \(server change requested: rancher/rancher#57034\)'
+jsonget stderr data.error.message msg.txt
+grep '^--auth-provider nosuch matches no auth config this CLI can sign in with on this server; advertised by the server but not supported by this CLI: githubProvider \(server change requested: rancher/rancher#57034\); to sign in as a user of one of them, create an API token in the Rancher UI and log in with it using auth login --token-stdin' msg.txt
 # candidates are the supported auth configs only (the harness advertises local
 # and the facade's azuread); the unsupported one is named in the message, never offered
 jsonquery stderr 'data.error.candidates.#(id=="local").id' local
 ! jsonquery stderr 'data.error.candidates.#(id=="github").id' github
 
-# the auth config name "local" reaches the local flow, which then needs a terminal
+# a new name with --url, the auth config name "local" reaches the local flow,
+# which then needs a terminal, and the refusal ends with the same remedy
 ! exec rancher auth login loc --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider local --no-input -o json
 jsonquery stderr data.error.code AUTH
-stderr 'interactive login required for auth config local'
+jsonget stderr data.error.message msg.txt
+grep '^interactive login required for auth config local; run without --no-input, or to log in with an API token, pipe it to: .*auth login ''loc'' --url ''https?://[^'']+'' --token-stdin; or undo the registration with: .*config delete-server ''loc''$' msg.txt
+jsonget stderr data.error.hint hint.txt
+grep 'auth login ''loc'' --url ''https?://[^'']+'' --token-stdin$' hint.txt

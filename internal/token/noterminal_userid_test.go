@@ -32,7 +32,7 @@ func TestNoTerminalRemediesNameTheUserForACallWithUserID(t *testing.T) {
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod", URL: serverURL}, "id:secret"))
 	cmd := tokenCmd{dir: dir, store: store}
 
-	needs := interactiveLoginRequired("local", "x")
+	needs := interactiveLoginRequired("local", false)
 	none := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{configs: []string{"local", "openldap"}})
 	some := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
 		configs: []string{"local", "okta"}, noTerminal: []clierr.Candidate{{ID: "okta", Name: "okta"}}})

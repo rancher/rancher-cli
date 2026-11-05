@@ -46,7 +46,7 @@ func TestTheCreateKubeconfigRemedyNeedsALoginThroughTheAuthConfig(t *testing.T) 
 			cmd := tokenCmd{dir: dir, store: store}
 			got := cmd.currentLoginServes(cfg, noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url, userID: tc.userID, authConfig: tc.authConfig})
 			assert.Equal(t, tc.serves, got)
-			err := cmd.withNoTerminalRemedies(interactiveLoginRequired("local", "x"), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url, userID: tc.userID, authConfig: tc.authConfig})
+			err := cmd.withNoTerminalRemedies(interactiveLoginRequired("local", false), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url, userID: tc.userID, authConfig: tc.authConfig})
 			ce, msg := refusal(t, err)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
 			if tc.serves {

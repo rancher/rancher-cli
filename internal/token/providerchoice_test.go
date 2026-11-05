@@ -269,7 +269,7 @@ func TestSelectAuthProviderRecordsWhoSignsInWithoutATerminal(t *testing.T) {
 		&AuthProvider{Type: "localProvider", ID: "local"}, &AuthProvider{Type: "oktaProvider", ID: "okta"}, azure, &AuthProvider{Type: "openLdapProvider", ID: "openldap"},
 	}
 
-	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, noTerminal())
+	_, err := selectAuthProvider(t.Context(), ps, []unsupportedAuthConfig{{Type: "githubProvider"}}, "", false, noTerminal())
 	cause, ok := errors.AsType[*providerChoiceNeedsTerminal](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, []string{"local", "okta", "azuread", "openldap"}, cause.configs)

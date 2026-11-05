@@ -325,7 +325,7 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			call := noTerminalCall{name: name + "-c-1", clusterID: "c-1", serverURL: url, userID: "u-abc12"}
 			choice := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
 				configs: []string{"local", "okta"}, noTerminal: []clierr.Candidate{{ID: "okta", Name: "okta"}}})
-			return append(errText(tokenCmd{dir: dir}.withNoTerminalRemedies(interactiveLoginRequired("local", "x"), call)),
+			return append(errText(tokenCmd{dir: dir}.withNoTerminalRemedies(interactiveLoginRequired("local", false), call)),
 				errText(tokenCmd{dir: dir}.withNoTerminalRemedies(choice, call))...)
 		},
 		"tokenCmd.withStoreConflictSteps": func() []string {

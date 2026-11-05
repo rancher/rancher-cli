@@ -299,7 +299,7 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 		_ = resp.Body.Close()
 		return nil
 	}
-	providers, _, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
+	providers, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
 	require.NoError(t, err)
 	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", false, ui.Discard())
 	require.NoError(t, err)

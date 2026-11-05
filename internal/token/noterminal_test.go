@@ -290,15 +290,14 @@ func TestTheLegacyShimNamesTheRemediesWithoutATerminal(t *testing.T) {
 }
 
 // TestAuthLoginKeepsItsOwnNoTerminalRemedy asserts the sign-in prompts
-// the plugin shares with auth login still say what auth login's caller
-// can do - the plugin's remedies are the plugin's own - and carry the
-// cause the plugin recognizes.
+// the plugin shares with auth login name no remedy themselves - each
+// command adds its own - and carry the cause both recognize.
 func TestAuthLoginKeepsItsOwnNoTerminalRemedy(t *testing.T) {
 	t.Parallel()
 	srv := localProviderServer(t)
 	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL}, 0, noTerminal())
 	require.Error(t, err)
-	require.ErrorContains(t, err, "interactive login required for auth config local; run in a terminal, or use a cached --name")
+	require.EqualError(t, err, "interactive login required for auth config local")
 	assert.NotContains(t, err.Error(), "create kubeconfig")
 	_, ok := errors.AsType[*needsTerminal](err)
 	assert.True(t, ok)
@@ -366,7 +365,7 @@ func TestNoTerminalRemedyDoesNotSuggestANameRegisteredElsewhere(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd := tokenCmd{dir: dir, store: config.NewFileStore(dir)}
-	err := cmd.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "sign in"),
+	err := cmd.withNoTerminalRemedies(interactiveLoginRequired("localProvider", false),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.ex"})
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)

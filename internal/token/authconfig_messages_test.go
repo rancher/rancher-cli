@@ -70,7 +70,7 @@ func authMessageRows(t *testing.T, authConfig string) []messageRow {
 		{"no terminal, a named entry", noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: url, userID: "u-abc12", authConfig: authConfig}},
 		{"no terminal, no entry to log in to", noTerminalCall{clusterID: "c-1", serverURL: url, userID: "u-abc12", authConfig: authConfig, keepsLogin: true}},
 	} {
-		row(c.label, tokenCmd{dir: t.TempDir()}.withNoTerminalRemedies(interactiveLoginRequired("local", "x"), c.call))
+		row(c.label, tokenCmd{dir: t.TempDir()}.withNoTerminalRemedies(interactiveLoginRequired("local", false), c.call))
 	}
 	return disambiguate(rows)
 }

@@ -41,8 +41,6 @@ func TestWireCompatibility(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "azureADProvider", provider.GetType())
-		assert.Equal(t, "https://rancher.example.com/verify-auth-azure", provider.RedirectURL)
-		assert.Equal(t, "abc-def-ghi", provider.TenantID)
 		assert.Equal(t, "client123", provider.ClientID)
 		assert.Equal(t, []string{"openid", "profile", "email"}, provider.Scopes)
 		assert.Equal(t, "https://login.microsoftonline.com/abc-def-ghi/oauth2/v2.0/authorize", provider.AuthURL)

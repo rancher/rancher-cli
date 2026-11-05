@@ -156,7 +156,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 		nt, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
 		assert.Equal(t, "local", nt.authConfig)
-		require.ErrorContains(t, err, "run in a terminal, or use a cached --name")
+		require.EqualError(t, err, "interactive login required for auth config local")
 		assert.Empty(t, p.events, "no hook and no prompt")
 	})
 }
@@ -253,7 +253,7 @@ func TestTheOAuthDeviceCodeSignInGivesTheHookBeforeItsCode(t *testing.T) {
 // port that is invalid or cannot be listened on fails before the hook.
 func TestTheOAuthAuthCodeSignInGivesTheHookBeforeTheBrowser(t *testing.T) {
 	so := splitOriginFacade(t)
-	providers, _, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
+	providers, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
 	require.NoError(t, err)
 	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", false, ui.Discard())
 	require.NoError(t, err)

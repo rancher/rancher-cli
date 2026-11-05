@@ -10392,7 +10392,7 @@
     },
     {
       "code": "CAPABILITY_UNSUPPORTED",
-      "desc": "the connected server does not support the workflow the command needs",
+      "desc": "the workflow the command needs is not supported by the connected server or by this CLI",
       "exit": 11
     },
     {
