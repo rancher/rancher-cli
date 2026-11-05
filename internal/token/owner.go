@@ -323,7 +323,7 @@ func requestOwner(ctx context.Context, client *http.Client, base, clusterID, bea
 // config, the auth config the response names must be that one
 // (checkSignInAuthConfig). Any other answer, or a failed request, revokes
 // the token with its own bearer before anything is cached; a token that
-// cannot be revoked ends as fresh.leftover says.
+// cannot be revoked ends as fresh.leftover() says.
 func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, base string, created CreateResult, fresh *freshToken) error {
 	owner := created.UserID
 	if owner == "" {
@@ -340,7 +340,7 @@ func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, ba
 				code, retryable = ce.Code, ce.Retryable
 			}
 			return clierr.New(code, "checking the signed-in user against --user-id "+clierr.ShellQuote(u.userID)+": "+err.Error()+"; "+
-				signInRevokedClause("the token the sign-in created", created.Ref, out, fresh.leftover)).WithRetryable(retryable).WithCause(err).WithDetails(fateDetails(fresh, out))
+				signInRevokedClause("the token the sign-in created", created.Ref, out, fresh.leftover())).WithRetryable(retryable).WithCause(err).WithDetails(fateDetails(fresh, out))
 		}
 	}
 	if owner == u.userID {
@@ -348,7 +348,7 @@ func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, ba
 	}
 	out := revokeRefused(ctx, fresh)
 	return clierr.New(clierr.CodeAuth, "the sign-in was made as Rancher user "+clierr.ShellQuote(owner)+", and this exec entry names user "+
-		clierr.ShellQuote(u.userID)+" with --user-id; "+signInRevokedClause("the token it created", created.Ref, out, fresh.leftover)+"; sign in as "+clierr.ShellQuote(u.userID)).
+		clierr.ShellQuote(u.userID)+" with --user-id; "+signInRevokedClause("the token it created", created.Ref, out, fresh.leftover())+"; sign in as "+clierr.ShellQuote(u.userID)).
 		WithDetails(fateDetails(fresh, out))
 }
 
@@ -362,7 +362,7 @@ func (u userCheck) checkSignInAuthConfig(ctx context.Context, created CreateResu
 		return nil
 	}
 	out := revokeRefused(ctx, fresh)
-	revoked := signInRevokedClause("the token it created", created.Ref, out, fresh.leftover)
+	revoked := signInRevokedClause("the token it created", created.Ref, out, fresh.leftover())
 	if created.AuthConfig == "" {
 		return clierr.New(clierr.CodeAuth, "the token create response of the sign-in named no auth config; it cannot be checked against --auth-provider "+
 			clierr.ShellQuote(u.authConfig)+"; "+revoked).WithDetails(fateDetails(fresh, out))

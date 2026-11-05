@@ -293,21 +293,29 @@ func TestSignInCancelledDuringTheDirectWait(t *testing.T) {
 }
 
 // TestOtherProducersKeepTheirCancelledWaitDetails asserts the callers that
-// are not the token reuse off sign-in - a stored login and the
-// plugin-created login - keep the cancelled wait's details as they were:
-// the cluster token's fate under clusterToken, and the failed-delete text
-// with no command named.
+// are not the token reuse off sign-in - a stored login, the plugin-created
+// login and the legacy shim's login with no cluster - keep the cancelled
+// wait's details as they were: the cluster token's fate under clusterToken.
+// The failed-delete text names the token, who can delete it and the command
+// that person runs: the owner of an ext token from a directory signed in as
+// that owner, an administrator for a v3 token.
 func TestOtherProducersKeepTheirCancelledWaitDetails(t *testing.T) {
+	const lead = "cancelled while waiting for the direct endpoint to accept the new credential; the token it created could not be revoked; "
 	for _, tc := range []struct {
 		name   string
 		stored bool
 		reuse  bool
-	}{{"a stored login", true, false}, {"the plugin-created login", false, true}} {
+		shim   bool
+	}{{"a stored login", true, false, false}, {"the plugin-created login", false, true, false}, {"the legacy shim with no cluster", false, false, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				d := newInMemoryDirectEndpoint(t, 1000, "review")
 				t.Setenv(execInfoEnv, "")
-				x := newInMemoryPluginFixture(t, tc.reuse, testrancher.Options{ClusterDeleteMode: "fail"})
+				opts := testrancher.Options{ClusterDeleteMode: "fail"}
+				if tc.shim {
+					opts = testrancher.Options{SessionDeleteMode: "fail"}
+				}
+				x := newInMemoryPluginFixture(t, tc.reuse, opts)
 				x.route(d)
 				if tc.stored {
 					parent, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{CAFlag: "--cacert", Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
@@ -323,7 +331,12 @@ func TestOtherProducersKeepTheirCancelledWaitDetails(t *testing.T) {
 					}
 					cancel()
 				}()
-				_, err := x.command(x.store).Execute(ctx, x.input("local", "kc"), localPrompter())
+				var err error
+				if tc.shim {
+					_, err = x.command(x.store).runWithParams(ctx, runParams{Server: x.url, AuthProvider: "localProvider", legacyShim: true}, localPrompter())
+				} else {
+					_, err = x.command(x.store).Execute(ctx, x.input("local", "kc"), localPrompter())
+				}
 				require.ErrorIs(t, err, context.Canceled)
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok)
@@ -331,7 +344,18 @@ func TestOtherProducersKeepTheirCancelledWaitDetails(t *testing.T) {
 				require.True(t, ok, "the details are the cancelled wait's, got %T", ce.Details)
 				require.NotNil(t, details.Fate)
 				assert.Equal(t, ResultFailed, details.Fate.Cleanup.Result)
-				assert.Equal(t, "cancelled while waiting for the direct endpoint to accept the new credential; the token it created could not be revoked", ce.Message)
+				require.NotNil(t, details.Fate.Ref)
+				msg := clierr.ExpandRemedies(ce.Message, "")
+				require.True(t, strings.HasPrefix(msg, lead), "got %q", msg)
+				_, remove := clierr.RecoveryCommands(*details.Fate.Ref)
+				remove = clierr.ExpandRemedies(remove, "")
+				switch details.Fate.Ref.Kind {
+				case TokenKindExt:
+					assert.Contains(t, msg, "user 'user-e2e' can delete it from a directory signed in as user 'user-e2e'; run: "+remove)
+				default:
+					assert.Contains(t, msg, details.Fate.Ref.String()+" expires")
+					assert.Contains(t, msg, "an administrator can delete it sooner with: "+remove)
+				}
 			})
 		})
 	}

@@ -261,7 +261,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		warnings = append(warnings, st.Warnings...)
 		// A login token that outlives the sign-in is listed with how it ends.
 		loginFate := SessionTokenFate(cred)
-		if w, ok := LoginTokenWarning(loginFate, loginTokenNoun(loginFate), func(f clierr.TokenFate) string {
+		if w, ok := LoginTokenWarning(loginFate, func(f clierr.TokenFate) string {
 			return signInLeftover(f, ct.UserID, cred.Marker)
 		}); ok {
 			warnings = append(warnings, w)

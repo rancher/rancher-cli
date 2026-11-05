@@ -1572,11 +1572,12 @@ reports the outcome in the error's `details`:
   `TLS_TRUST` error, including the check of the signed-in user against
   `--user-id` in the kubectl plugin's sign-in. Absent for any other failure.
 
-Login deletes the transient session token with its own bearer through
+Login deletes the transient session token (a kubeconfig token after a
+browser (SAML) sign-in) with its own bearer through
 Rancher's logout endpoint (`POST /v1/logout`, which deletes the token its
 bearer names), and sends the delete through the Rancher proxy when logout
 does not answer 200 or 204. A standard user cannot delete a
-`management-token` through the proxy, so a session token neither request
+`management-token` through the proxy, so a token neither request
 deleted (a provider set to forced single logout fails logout) stays valid
 until it expires. It is listed in `residualTokens` (on a failed login, in
 `sessionToken`) with its `cleanup.error` naming both answers, for example
@@ -1593,20 +1594,24 @@ whatever kind Rancher created it as: `management-token` (a deprecated
 kind: deleting it needs `--allow-deprecated`) or, on a Rancher that has
 moved session tokens to the new API, a `token`; the failure details say
 which (`sessionToken.ref.kind`, or `sessionToken.kind` when the name is
-unknown). When the sign-in response was lost, the kind is unknown too and
-`recovery` names both collections, so the marker search cannot miss the
-token. A pasted or piped token is yours and is never revoked.
+unknown). When the sign-in response of a password or OAuth login was
+lost, the kind is unknown too and `recovery` names both collections, so
+the marker search cannot miss the token. A pasted or piped token is yours
+and is never revoked.
 
-A browser (SAML) sign-in is different: Rancher creates the session token
-from the browser, so it carries no marker. When the CLI learned its name
-from the sign-in, `recovery` gives the exact `management-token` command.
-When it did not, `sessionToken.search` carries what the CLI knows: the
-auth provider, when the browser was opened (`handoffAt`), when the CLI
-stopped waiting (`pollEndedAt`, which is not a bound: the browser sign-in
-can complete later), and, when the server declared one, the request expiry
-(`requestExpiresAt`). Those facts narrow a manual check of
-`rancher get management-tokens -o json` or the UI's Account & API Keys
-page; they cannot identify the token.
+A browser (SAML) sign-in is different: Rancher creates a kubeconfig
+token from the browser, with its own description, so it carries no marker.
+A kubeconfig token is always a `management-token`, and deleting it needs
+`--allow-deprecated`. When the CLI learned its name from the sign-in,
+`recovery` gives the exact `management-token` command, which is an
+administrator's to run. When it did not, `sessionToken.search` carries
+what the CLI knows: the auth provider, when the browser was opened
+(`handoffAt`), when the CLI stopped waiting (`pollEndedAt`, which is not
+a bound: the browser sign-in can complete later), and, when the server
+declared one, the request expiry (`requestExpiresAt`). Those facts narrow
+a manual check; they cannot identify the token. An administrator can
+inspect the candidates with `rancher get management-tokens -o json`; the
+user who signed in can find them in the UI under Account & API Keys.
 
 ## Revoking the CLI's tokens
 

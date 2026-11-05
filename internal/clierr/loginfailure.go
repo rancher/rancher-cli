@@ -213,6 +213,16 @@ type TokenFate struct {
 	ExpiresAt string `json:"-"`
 }
 
+// LoginTokenNoun is Rancher's name for the token a login creates and
+// deletes: a session token for the password and OAuth flows, a kubeconfig
+// token for SAML, which Search identifies. A nil fate is not SAML.
+func (f *TokenFate) LoginTokenNoun() string {
+	if f != nil && f.Search != nil {
+		return "kubeconfig token"
+	}
+	return "session token"
+}
+
 // CredentialRecovery is the local half of recovery: which backend the
 // commit reached, what it may hold for this server after the failure, and
 // the command that clears it, with its risk stated. Present only when the
@@ -394,7 +404,7 @@ func (d LoginFailureDetails) TextDetails() []string {
 		lines = append(lines, "operation marker: [op:"+d.OperationMarker+"]")
 	}
 	if d.SessionToken != nil {
-		lines = append(lines, fateLine("session token", d.SessionToken))
+		lines = append(lines, fateLine(d.SessionToken.LoginTokenNoun(), d.SessionToken))
 	}
 	if d.DerivedToken != nil {
 		lines = append(lines, fateLine("derived token", d.DerivedToken))

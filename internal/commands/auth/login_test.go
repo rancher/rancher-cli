@@ -1316,6 +1316,7 @@ func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "token-sess2:sessionsecret", tok, "no ext group: the session token itself is stored (legacy semantics)")
 	assert.Contains(t, errBuf.String(), "does not serve ext.cattle.io")
+	assert.Contains(t, errBuf.String(), "storing the session token directly", "a password login stores a session token")
 }
 
 // TestLoginProviderFlowDerivedCreateTimeoutIsBoundedAndNotMistakenForExtAbsent
@@ -1925,6 +1926,35 @@ func TestLoginSuccessWithFailedSessionCleanupWarns(t *testing.T) {
 	}
 }
 
+// TestLoginSuccessWithFailedSAMLTokenCleanupNamesAKubeconfigToken asserts a
+// browser sign-in whose token could not be deleted (logout and the DELETE
+// fallback both fail): the login succeeds, and the warning calls the token a
+// kubeconfig token, which is what Rancher creates for SAML, not a session
+// token, with the administrator's delete command. Not parallel: it shrinks the
+// token package's poll timing.
+func TestLoginSuccessWithFailedSAMLTokenCleanupNamesAKubeconfigToken(t *testing.T) {
+	restore := token.SetSAMLTimingForTest(2*time.Second, 10*time.Millisecond)
+	defer restore()
+	f := testrancher.New(testrancher.Options{EnableSAMLAuthTokens: true, ExtraProviders: []string{"oktaProvider"}, SessionDeleteMode: "fail"})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := cmdtest.FilePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := cmdtest.Input{Str: map[string]string{"auth-provider": "oktaProvider"}, Pos: []string{"prod"}}
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) }))
+	require.NoError(t, err)
+	residual := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
+	require.Len(t, residual, 1)
+	ref := residual[0].Ref
+	require.NotNil(t, ref)
+	assert.Equal(t, clierr.TokenKindV3, ref.Kind)
+	require.NotNil(t, residual[0].Search, "the fate carries the SAML handoff's search facts, since the token cannot carry the CLI's marker")
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "the transient kubeconfig token "+ref.String()+" created by this login could not be revoked (logout 500; delete 500 Internal Server Error); ")
+	assert.Contains(t, res.Warnings[0], "an administrator can delete it sooner with: "+clierr.MarkRemedy("rancher delete management-token '"+ref.Name+"' --apply --yes --allow-deprecated"))
+	assert.NotContains(t, res.Warnings[0], "session token")
+}
+
 // TestLoginReadOnlyHelperRecoveryMatrix asserts finishUnsupportedStore's
 // aggregate rule across credential shapes. Every residual here has a known
 // name (S's name arrives with its bearer, D's with the derived token create response), so
@@ -2145,7 +2175,10 @@ func TestLoginSAMLTimeoutRecoveryNamesHandoffFacts(t *testing.T) {
 	assert.Contains(t, d.Recovery, "oktaProvider")
 	assert.Contains(t, d.Recovery, "at or after "+d.SessionToken.Search.HandoffAt)
 	assert.Contains(t, d.Recovery, "stopped waiting at "+d.SessionToken.Search.PollEndedAt)
-	assert.Contains(t, d.Recovery, "rancher get management-tokens -o json")
+	assert.Contains(t, d.Recovery, "a kubeconfig token may have been created through oktaProvider")
+	assert.NotContains(t, d.Recovery, "session token")
+	assert.Contains(t, d.Recovery, "an administrator can inspect them with: "+clierr.MarkRemedy("rancher get management-tokens -o json"))
+	assert.Contains(t, d.Recovery, "the user who signed in can find them in the UI under Account & API Keys")
 	assert.NotContains(t, d.Recovery, "[op:")
 	assert.Empty(t, f.DeleteRequests())
 }

@@ -193,7 +193,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	text, _ = ResidualRecovery(clierr.TokenFate{Marked: true}, "prod", "m", false)
 	texts["a marked token of unknown kind"] = text
 	text, _ = ResidualRecovery(clierr.TokenFate{Search: &clierr.UnmarkedTokenSearch{AuthProvider: "saml"}}, "prod", "m", true)
-	texts["an unmarked session token"] = text
+	texts["a SAML kubeconfig token the CLI cannot name"] = text
 	for name, f := range signInLeftoverFates() {
 		texts["a sign-in token left behind, "+name+", user known"] = signInLeftover(f, "u-abc12", "m")
 		texts["a sign-in token left behind, "+name+", user unknown"] = signInLeftover(f, "", "m")

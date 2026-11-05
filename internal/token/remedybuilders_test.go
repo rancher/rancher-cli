@@ -237,11 +237,8 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 		"noTokenPermissionText": func() []string {
 			return []string{noTokenPermissionText("u-abc12", true), noTokenPermissionText("", true), noTokenPermissionText("u-abc12", false), noTokenPermissionText("", false)}
 		},
-		"reLogin":       func() []string { a, b := reLogin(name); return []string{a, b} },
-		"revokedClause": func() []string { return []string{revokedClause("the token", ref, RevokeOutcome{Result: ResultFailed})} },
-		"unmarkedSessionText": func() []string {
-			return []string{unmarkedSessionText(clierr.UnmarkedTokenSearch{AuthProvider: "saml"})}
-		},
+		"reLogin":          func() []string { a, b := reLogin(name); return []string{a, b} },
+		"revokedClause":    func() []string { return []string{revokedClause("the token", ref, RevokeOutcome{Result: ResultFailed})} },
 		"useServerCommand": func() []string { return []string{useServerCommand(name), useServerCommand("")} },
 		"useServerNote":    func() []string { return []string{useServerNote("prod"), useServerNote("")} },
 		"LoginRemedy.signIn": func() []string {
@@ -461,19 +458,24 @@ func TestAPluginLoginEntryAtAnotherURLGetsANewEntryLogin(t *testing.T) {
 	}
 }
 
-// TestUnmarkedSessionTextNamesTheListCommand asserts the whole text of the
-// description of a session token the CLI cannot name, with and without the
-// request's expiry: the window clause, the facts and the command that lists
-// the candidates, opened by clierr.Rancher.
-func TestUnmarkedSessionTextNamesTheListCommand(t *testing.T) {
+// TestResidualRecoveryOfASAMLTokenTheCLICannotNameIsTheSignInText asserts the
+// whole text for a kubeconfig token the CLI cannot name, with and without the
+// request's expiry: the window clause, the facts, the administrator's command
+// that lists the candidates, opened by clierr.Rancher, and the UI route for the
+// user who signed in. It is the text the exec plugin's sign-in gives.
+func TestResidualRecoveryOfASAMLTokenTheCLICannotNameIsTheSignInText(t *testing.T) {
 	t.Parallel()
-	const head = "a session token may have been created through saml at or after 2026-10-12T10:00:00Z"
+	const head = "a kubeconfig token may have been created through saml at or after 2026-10-12T10:00:00Z"
 	const tail = "; the CLI stopped waiting at 2026-10-12T10:05:00Z, " +
 		"but the browser sign-in can still complete after that, and the token may be newer; " +
-		"these facts narrow the candidates but cannot identify one token; look for them in the UI under Account & API Keys, or inspect them with: "
-	const command = " get management-tokens -o json"
+		"these facts narrow the candidates but cannot identify one token; " +
+		"an administrator can inspect them with: "
+	const command = " get management-tokens -o json; the user who signed in can find them in the UI under Account & API Keys"
 	search := clierr.UnmarkedTokenSearch{AuthProvider: "saml", HandoffAt: "2026-10-12T10:00:00Z", PollEndedAt: "2026-10-12T10:05:00Z"}
-	assert.Equal(t, head+tail+clierr.Rancher+command, unmarkedSessionText(search))
+	text, hint := ResidualRecovery(clierr.TokenFate{Search: &search}, "prod", "m", true)
+	assert.Equal(t, head+tail+clierr.Rancher+command, text)
+	assert.Empty(t, hint)
 	search.RequestExpiresAt = "2026-10-12T10:10:00Z"
-	assert.Equal(t, head+" and not after 2026-10-12T10:10:00Z"+tail+clierr.Rancher+command, unmarkedSessionText(search))
+	text, _ = ResidualRecovery(clierr.TokenFate{Search: &search}, "prod", "m", true)
+	assert.Equal(t, head+" and not after 2026-10-12T10:10:00Z"+tail+clierr.Rancher+command, text)
 }

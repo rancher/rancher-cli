@@ -199,6 +199,24 @@ func TestAcquireLegacyFallbackTransfersSession(t *testing.T) {
 	assert.Empty(t, cred.DerivedCreatedAt)
 }
 
+// TestAcquireLegacyFallbackNoticeCallsASAMLTokenAKubeconfigToken asserts the
+// notice for a server without ext.cattle.io names the token it stores as
+// Rancher does: a kubeconfig token for a SAML sign-in, which, like a password
+// sign-in, stores the token it created directly.
+func TestAcquireLegacyFallbackNoticeCallsASAMLTokenAKubeconfigToken(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f, client := samlProviderFacadeInMemory(t, testrancher.Options{Legacy: true})
+		p := newHandoffPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
+		cred, err := AcquireLoginCredential(t.Context(), client, LoginRequest{CAFlag: "--cacert", Server: rancherOrigin, AuthProvider: "oktaProvider", ResponseType: "json"}, 0, p)
+		require.NoError(t, err)
+		assert.Equal(t, ProvenanceLegacySession, cred.Provenance)
+		notices := strings.Join(p.notices, "\n")
+		assert.Contains(t, notices, "does not serve ext.cattle.io")
+		assert.Contains(t, notices, "storing the kubeconfig token directly")
+		assert.NotContains(t, notices, "session token")
+	})
+}
+
 // TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups asserts the no-create path
 // of the full acquisition: a SAML sign-in the browser never completes is an
 // unknown, unmarked S with the SAML handoff, D not attempted, both cleanups
@@ -337,9 +355,12 @@ type handoffPrompter struct {
 	requestID string
 	publicKey string
 	onHandoff func(requestID, publicKey string)
+	// notices is every notice the CLI printed, the login URL's included.
+	notices []string
 }
 
 func (h *handoffPrompter) Notice(msg string) {
+	h.notices = append(h.notices, msg)
 	before, _, found := strings.Cut(msg, "/dashboard/auth/login?")
 	if !found {
 		return

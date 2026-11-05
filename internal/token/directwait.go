@@ -268,10 +268,18 @@ func waitDirectReady(ctx context.Context, ec *execCluster, bearer string, bound 
 type freshToken struct {
 	create  CreateResult
 	cleanup func(ctx context.Context) RevokeOutcome
-	// leftover says how the token ends when its delete fails, for the
-	// person who can act on it. Only the sign-in of the exec plugin with
-	// token reuse off sets it; every other producer leaves it empty.
-	leftover string
+}
+
+// leftover says how the token ends when its delete fails, for the person
+// who can act on it: the token, who can delete it, the command that person
+// runs and, when the create reported one, the expiry. It is empty when the
+// create named no token, since a delete is attempted only for a named one.
+func (f *freshToken) leftover() string {
+	c := f.create
+	if c.Ref == nil {
+		return ""
+	}
+	return signInLeftover(clierr.TokenFate{Kind: c.Ref.Kind, Ref: c.Ref, Marked: c.Marked, ExpiresAt: c.ExpiresAt}, c.UserID, "")
 }
 
 // newFreshToken pairs a successful create with the bearer that may delete
@@ -310,7 +318,8 @@ func (d directWaitDetails) TextDetails() []string {
 
 // directWaitCancelled is the error for a caller cancellation during the
 // wait: the fresh token's fate travels as details, the cancellation as the
-// cause. A failed delete ends with the token's leftover text when it has one.
+// cause. A failed delete ends with the token's leftover text, which names
+// the token, who can delete it and the command.
 func directWaitCancelled(cause error, fresh *freshToken, cleanup RevokeOutcome) error {
 	fate := &clierr.TokenFate{Outcome: fresh.create.Outcome, Kind: fresh.create.Kind, Ref: fresh.create.Ref, Marked: fresh.create.Marked, CreatedAt: fresh.create.CreatedAt, Cleanup: &cleanup}
 	msg := "cancelled while waiting for the direct endpoint to accept the new credential"
@@ -321,8 +330,8 @@ func directWaitCancelled(cause error, fresh *freshToken, cleanup RevokeOutcome) 
 		msg += "; the create outcome is unknown, nothing was revoked"
 	default:
 		msg += "; the token it created could not be revoked"
-		if fresh.leftover != "" {
-			msg += "; " + fresh.leftover
+		if leftover := fresh.leftover(); leftover != "" {
+			msg += "; " + leftover
 		}
 	}
 	return clierr.New(clierr.CodeGeneric, msg).WithCause(cause).WithDetails(directWaitDetails{Fate: fate})

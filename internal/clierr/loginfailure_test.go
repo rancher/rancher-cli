@@ -151,6 +151,57 @@ func TestFateLineRendersEveryCleanupResult(t *testing.T) {
 	}
 }
 
+// TestLoginTokenNounByFate asserts the noun of the token a login creates and
+// deletes for every shape of fate: a kubeconfig token when the fate carries the
+// SAML sign-in's search facts, whatever the kind or name, and a session token for
+// every other fate, a missing one included.
+func TestLoginTokenNounByFate(t *testing.T) {
+	t.Parallel()
+	search := &UnmarkedTokenSearch{AuthProvider: "saml", HandoffAt: "2026-10-12T10:00:00Z", PollEndedAt: "2026-10-12T10:05:00Z"}
+	for _, kind := range []TokenKind{TokenKindV3, TokenKindExt, ""} {
+		for _, tc := range []struct {
+			name   string
+			search *UnmarkedTokenSearch
+			want   string
+		}{{"no SAML sign-in", nil, "session token"}, {"a SAML sign-in", search, "kubeconfig token"}} {
+			t.Run(string(kind)+" kind, "+tc.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Equal(t, tc.want, (&TokenFate{Kind: kind, Search: tc.search}).LoginTokenNoun())
+				named := &TokenFate{Kind: kind, Ref: &TokenRef{Kind: TokenKindV3, Name: "token-1"}, Search: tc.search}
+				assert.Equal(t, tc.want, named.LoginTokenNoun(), "a known name does not change the noun")
+			})
+		}
+	}
+	var none *TokenFate
+	assert.Equal(t, "session token", none.LoginTokenNoun(), "a missing fate is not a SAML sign-in")
+}
+
+// TestLoginFailureDetailsTextNamesALoginTokenByItsKind asserts the login token's
+// line says kubeconfig token for a SAML sign-in, named or not, and session
+// token for the other flows.
+func TestLoginFailureDetailsTextNamesALoginTokenByItsKind(t *testing.T) {
+	t.Parallel()
+	search := &UnmarkedTokenSearch{AuthProvider: "saml", HandoffAt: "2026-10-12T10:00:00Z", PollEndedAt: "2026-10-12T10:05:00Z"}
+	for _, tc := range []struct {
+		name string
+		fate *TokenFate
+		want string
+	}{
+		{"SAML, no name", &TokenFate{Outcome: CreateUnidentified, Kind: TokenKindV3, Search: search, Cleanup: &RevokeOutcome{Result: ResultNotAttempted}},
+			"kubeconfig token: unidentified (v3); cleanup: notAttempted"},
+		{"SAML, named", &TokenFate{Outcome: CreateKnown, Kind: TokenKindV3, Ref: &TokenRef{Kind: TokenKindV3, Name: "kubeconfig-user-1"}, Search: search, Cleanup: &RevokeOutcome{Result: ResultFailed, Error: "403"}},
+			"kubeconfig token v3/kubeconfig-user-1: known; cleanup failed: 403"},
+		{"another flow", &TokenFate{Outcome: CreateKnown, Kind: TokenKindV3, Ref: &TokenRef{Kind: TokenKindV3, Name: "token-1"}, Cleanup: &RevokeOutcome{Result: ResultFailed, Error: "403"}},
+			"session token v3/token-1: known; cleanup failed: 403"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := LoginFailureDetails{Primary: PrimaryFailure{Code: CodeGeneric, Message: "lost"}, Stage: StageAuthentication, SessionToken: tc.fate, Recovery: "r"}
+			assert.Contains(t, d.TextDetails(), tc.want)
+		})
+	}
+}
+
 // TestLoginFailureDetailsTextIncludesThePrimaryDetails asserts that the
 // primary's own projection is rendered directly under it, exactly once,
 // and that a primary without details adds no line.

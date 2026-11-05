@@ -211,26 +211,10 @@ func (si clusterSignIn) withSignInFate(err error, warnings []string) error {
 	return failSignIn(primary, clierr.StageClusterToken, si.Marker, si.Login, cluster, si.Cluster.UserID, "", si.Cluster.ClusterName).WithWarnings(warnings...)
 }
 
-// clusterFate is the cluster token's fate at creation, with no cleanup
-// outcome yet.
-func (si clusterSignIn) clusterFate() *clierr.TokenFate {
-	ct := si.Cluster
-	return FateOf(ct.Outcome, ct.Kind, ct.Ref, ct.Marked, ct.CreatedAt, ct.ExpiresAt, RevokeOutcome{}, nil)
-}
-
-// leftover says how the cluster token ends if its delete fails.
-func (si clusterSignIn) leftover() string {
-	f := si.clusterFate()
-	if f == nil {
-		return ""
-	}
-	return signInLeftover(*f, si.Cluster.UserID, si.Marker)
-}
-
 // warning is the warning for a login token that could not be deleted, empty
 // when it was deleted.
 func (si clusterSignIn) warning() string {
-	text, _ := LoginTokenWarning(si.Login, loginTokenNoun(si.Login), func(f clierr.TokenFate) string {
+	text, _ := LoginTokenWarning(si.Login, func(f clierr.TokenFate) string {
 		return signInLeftover(f, si.Cluster.UserID, si.Marker)
 	})
 	return text
@@ -246,7 +230,7 @@ func signInRecovery(login, cluster *clierr.TokenFate, marker, userID, retry, clu
 	for _, t := range []struct {
 		noun string
 		f    *clierr.TokenFate
-	}{{loginTokenNoun(login), login}, {clusterTokenNoun(clusterName != ""), cluster}} {
+	}{{login.LoginTokenNoun(), login}, {clusterTokenNoun(clusterName != ""), cluster}} {
 		if cleanFate(t.f) {
 			continue
 		}
@@ -264,16 +248,6 @@ func signInRecovery(login, cluster *clierr.TokenFate, marker, userID, retry, clu
 		return retry
 	}
 	return strings.Join(parts, "; ") + "; " + retry
-}
-
-// loginTokenNoun is Rancher's name for the token a sign-in creates: a
-// session token for the password and OAuth flows, a kubeconfig token for
-// SAML, which the browser handoff identifies.
-func loginTokenNoun(f *clierr.TokenFate) string {
-	if f != nil && f.Search != nil {
-		return "kubeconfig token"
-	}
-	return "session token"
 }
 
 // signInWho is who acts on a token left behind, and how that person's
@@ -356,12 +330,13 @@ func SessionTokenFate(cred LoginCredential) *clierr.TokenFate {
 
 // LoginTokenWarning is the warning for the token a login created and could
 // not delete, which outlives the login that succeeded: the token, why the
-// delete failed, and recovery(f), how it ends. noun is Rancher's name for the
-// token. It reports false when f names no token whose delete failed.
-func LoginTokenWarning(f *clierr.TokenFate, noun string, recovery func(clierr.TokenFate) string) (string, bool) {
+// delete failed, and recovery(f), how it ends. The token is named as f says
+// (LoginTokenNoun). It reports false when f names no token whose delete
+// failed.
+func LoginTokenWarning(f *clierr.TokenFate, recovery func(clierr.TokenFate) string) (string, bool) {
 	if f == nil || f.Ref == nil || f.Cleanup == nil || f.Cleanup.Result != clierr.ResultFailed {
 		return "", false
 	}
 	return fmt.Sprintf("the transient %s %s created by this login could not be revoked (%s); %s",
-		noun, f.Ref.String(), f.Cleanup.Error, recovery(*f)), true
+		f.LoginTokenNoun(), f.Ref.String(), f.Cleanup.Error, recovery(*f)), true
 }

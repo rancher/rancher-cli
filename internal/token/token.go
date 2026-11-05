@@ -621,7 +621,6 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			}
 			signIn = &si
 			fresh := newFreshToken(si.Cluster, client, kube.BaseURL(server), si.Cluster.Bearer)
-			fresh.leftover = si.leftover()
 			if params.UserID != "" {
 				if oerr := t.user.checkSignInOwner(ctx, client, kube.BaseURL(server), si.Cluster, fresh); oerr != nil {
 					return runtime.Result{}, si.withSignInFate(oerr, loginWarnings)
@@ -659,7 +658,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 				// its own bearer, and the error reports it and the login
 				// token.
 				out := revokeRefused(ctx, rancherToken.fresh)
-				msg := perr.Message + "; " + signInRevokedClause("the token the sign-in created", rancherToken.fresh.create.Ref, out, rancherToken.fresh.leftover)
+				msg := perr.Message + "; " + signInRevokedClause("the token the sign-in created", rancherToken.fresh.create.Ref, out, rancherToken.fresh.leftover())
 				perr = perr.WithMessage(msg).WithDetails(fateDetails(rancherToken.fresh, out))
 				return runtime.Result{}, signIn.withSignInFate(perr, loginWarnings)
 			}
@@ -1218,9 +1217,10 @@ func SetSAMLTimingForTest(timeout, interval time.Duration) (restore func()) {
 // id and a public key, then polls Rancher's authtokens collection for the
 // encrypted token the browser deposits there. Nothing here creates a token -
 // the server does, out of band - so every failure after the URL is published
-// leaves a session token that may exist and can only be found through the SAML
-// handoff this returns. The created token is always v3 and never carries a
-// description, so it can never be marked.
+// leaves a kubeconfig token that may exist and can only be found through the
+// SAML handoff this returns. The created token is always v3. Rancher sets its
+// description to "Kubeconfig token", so the CLI cannot add its marker and the
+// token can never be marked.
 func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (SessionAcquireResult, error) {
 	res := SessionAcquireResult{Create: CreateResult{Outcome: CreateNotAttempted, Kind: TokenKindV3}}
 

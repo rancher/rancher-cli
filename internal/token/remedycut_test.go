@@ -45,7 +45,6 @@ var cutFacts = []cutRule{
 	{"signInLeftover", "expires at", "expires at"},
 	{"tokenCmd.noTerminalError", "", "no terminal to"},
 	{"tokenCmd.withStoreConflictSteps", "", "conflict"},
-	{"unmarkedSessionText", "", "a session token may have been created through"},
 	{"useServerNote", "", "selecting an entry"},
 	{"userCheck.checkCreatedOwner", "belongs to Rancher user", "belongs to Rancher user"},
 	{"userCheck.entryNameTooLong", "", "would have a name of"},

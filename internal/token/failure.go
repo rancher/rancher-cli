@@ -257,26 +257,14 @@ func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool)
 		return fmt.Sprintf("%slist tokens with: %s; a leftover token created by this login carries %q in its description; revoke it with the found name",
 			prefix, strings.Join(lists, "; and with: "), "[op:"+marker+"]"), ""
 	case f.Search != nil:
-		return unmarkedSessionText(*f.Search), ""
+		// A SAML sign-in carries no description to mark, so only the provider
+		// and the client-side window of the browser handoff are known. They
+		// narrow the candidates; they cannot identify one token, and the text
+		// says so rather than offering a command that would delete the wrong
+		// one.
+		return signInLeftover(f, "", marker), ""
 	}
 	return "", ""
-}
-
-// unmarkedSessionText describes a session token the CLI cannot name: the
-// SAML sign-in carries no description to mark, so only the provider and the
-// client-side window of the browser handoff are known. These narrow the
-// candidates; they cannot identify one token, and the text says so rather
-// than offering a command that would delete the wrong one.
-func unmarkedSessionText(s clierr.UnmarkedTokenSearch) string {
-	window := "at or after " + s.HandoffAt
-	if s.RequestExpiresAt != "" {
-		window += " and not after " + s.RequestExpiresAt
-	}
-	return fmt.Sprintf("a session token may have been created through %s %s; the CLI stopped waiting at %s, "+
-		"but the browser sign-in can still complete after that, and the token may be newer; "+
-		"these facts narrow the candidates but cannot identify one token; "+
-		"look for them in the UI under Account & API Keys, or inspect them with: %s get management-tokens -o json",
-		s.AuthProvider, window, s.PollEndedAt, clierr.Rancher)
 }
 
 // cleanFate is true when a token's create is settled and nothing it created

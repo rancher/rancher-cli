@@ -710,11 +710,11 @@ func (l loginCmd) authenticateAndStore(
 	// construction, so it reads true even though no explicit round-trip ran.
 	verified := !noVerify || viaProvider
 
-	// A session token this login created and could not revoke outlives the
-	// login that succeeded: it is listed with how it ends.
+	// A token this login created and could not revoke outlives the login
+	// that succeeded: it is listed with how it ends.
 	if persisted {
 		f := token.SessionTokenFate(cred)
-		if w, ok := token.LoginTokenWarning(f, "session token", func(f clierr.TokenFate) string {
+		if w, ok := token.LoginTokenWarning(f, func(f clierr.TokenFate) string {
 			text, _ := token.ResidualRecovery(f, name, cred.Marker, true)
 			return text
 		}); ok {
