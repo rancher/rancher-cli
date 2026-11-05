@@ -27,6 +27,8 @@ var cliOnlyKinds = map[string]bool{
 	"managementtoken":          true, // deprecated legacy v3 Token; no MCP tool counterpart
 	"nodedriver":               true,
 	"oidcclient":               true, // first Prime-capability kind row; no MCP tool counterpart yet
+	"helmop":                   true, // no MCP tool counterpart
+	"fleetworkspace":           true, // no MCP tool counterpart
 }
 
 func TestConformsToMCPVocabulary(t *testing.T) {
@@ -745,4 +747,44 @@ func TestOIDCClientRowTexts(t *testing.T) {
 	}
 	assert.Equal(t, []string{"CLIENT-ID", "SECRETS", "TOKEN-EXPIRATION", "REFRESH-EXPIRATION"}, headers)
 	assert.Equal(t, "deleting this OIDC client also deletes its Secret, which invalidates every client secret; every application that uses one loses access", k.DeleteCascadeWarning)
+}
+
+// TestFleetHelmOpAndWorkspaceRows asserts the helmop row waits on Ready and
+// fails on Stalled, warns about the uninstall on delete and carries no
+// redaction, and that the fleet-workspace row is cluster-scoped, cannot be
+// deleted, waits on nothing and asks for --yes on patch.
+func TestFleetHelmOpAndWorkspaceRows(t *testing.T) {
+	t.Parallel()
+	op, ok := Lookup("helmops")
+	require.True(t, ok)
+	assert.Equal(t, "helmop", op.Key)
+	assert.Equal(t, "helmop", op.Name)
+	assert.Equal(t, []string{"helmops"}, op.Aliases)
+	assert.Equal(t, "HelmOp", op.K8sKind)
+	assert.Equal(t, Management, op.Scope)
+	assert.Equal(t, safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta}, op.Binding)
+	assert.Equal(t, NSWorkspace, op.Policy)
+	assert.Equal(t, "fleet-default", op.DefaultNamespace)
+	assert.Equal(t, "condition=Ready", op.WaitDefault)
+	assert.True(t, op.WaitFailsOnStalled)
+	assert.True(t, op.Deletable)
+	assert.False(t, op.Sensitive)
+	assert.Empty(t, op.RedactPaths)
+	assert.Contains(t, op.DeleteCascadeWarning, "keepResources")
+
+	ws, ok := Lookup("fleet-workspaces")
+	require.True(t, ok)
+	assert.Equal(t, "fleetworkspace", ws.Key)
+	assert.Equal(t, "fleet-workspace", ws.Name)
+	assert.Equal(t, []string{"fleetworkspaces", "fleet-workspaces"}, ws.Aliases)
+	assert.Equal(t, "FleetWorkspace", ws.K8sKind)
+	assert.Equal(t, Management, ws.Scope)
+	assert.Equal(t, safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta}, ws.Binding)
+	assert.Contains(t, ws.NoDeleteReason, "provisioning.cattle.io/managed")
+	assert.Equal(t, NSNone, ws.Policy)
+	assert.False(t, ws.Deletable)
+	assert.NotEmpty(t, ws.NoDeleteReason)
+	assert.True(t, ws.Sensitive)
+	assert.Empty(t, ws.WaitDefault)
+	assert.False(t, ws.WaitFailsOnStalled)
 }

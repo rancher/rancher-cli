@@ -688,10 +688,13 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   settings and feature flags (`setting`, `feature`), role templates and global
   roles (`roletemplate`, `globalrole`), and objects a controller creates and
   manages (Fleet bundle deployments, CAPI machines) are not deletable. Deleting
-  a GitRepo deletes its bundles and their bundle deployments; lowering a machine
+  a GitRepo or a HelmOp deletes its bundles and their bundle deployments, which
+  uninstalls the deployed workloads or chart from every target cluster; lowering a machine
   pool's node count with `cluster scale` deletes machines; deleting a
   provisioning cluster deletes its Fleet cluster and CAPI cluster. Fleet bundles
-  and cluster groups have no `delete` in this CLI either. The `cluster` kind
+  and cluster groups have no `delete` in this CLI either, and neither do Fleet
+  workspaces (`fleet-workspace`): deleting one removes its namespace and
+  everything in it. The `cluster` kind
   (management.cattle.io) cannot be deleted either; to delete a cluster, use
   `delete provisioning-cluster`. `delete user` is destructive (requires
   `--yes`): it deletes the User object, and Rancher's controllers then delete

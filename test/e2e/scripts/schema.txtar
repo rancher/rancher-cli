@@ -1,14 +1,14 @@
 # bare schema is the TOC: orientation, not the manifest
 exec rancher schema -o json
 cp stdout toc.json
-jsonquery toc.json 'data.commandCount' 198
-jsonquery toc.json 'data.kindCount' 49
-jsonquery toc.json 'data.kinds.#' 49
+jsonquery toc.json 'data.commandCount' 203
+jsonquery toc.json 'data.kindCount' 51
+jsonquery toc.json 'data.kinds.#' 51
 # generated get/patch/delete <kind> commands are COLLAPSED on the bare
 # TOC - assert a NON-generated command's group entry and the collapsed count
 # (verify both actual values when writing this, like every count pin)
 jsonquery toc.json 'data.groups.#(name="auth").commands.0.name' 'auth login'
-jsonquery toc.json 'data.generatedCommandCount' 129
+jsonquery toc.json 'data.generatedCommandCount' 134
 # global contracts are disclosed on the bare TOC: the exit map and the
 # Effect contract - an agent parses --dry-run output without --all
 jsonquery toc.json 'data.effectSchema.actions.#' 3
@@ -17,7 +17,7 @@ jsonquery toc.json 'data.effectSchema.fields.#(name="resourceVersion").type' str
 # the full manifest is explicit: --all
 exec rancher schema --all -o json
 cp stdout schema.json
-jsonquery schema.json 'data.commands.#' 198
+jsonquery schema.json 'data.commands.#' 203
 jsonquery schema.json data.effectSchema.actions.0 create
 jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods

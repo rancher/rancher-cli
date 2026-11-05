@@ -2232,6 +2232,43 @@
     },
     {
       "aliases": [
+        "helmops"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete helmop",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the helmop"
+    },
+    {
+      "aliases": [
         "ingresses",
         "ing"
       ],
@@ -4034,6 +4071,53 @@
     },
     {
       "aliases": [
+        "fleetworkspaces",
+        "fleet-workspaces"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get fleet-workspace",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List fleet-workspaces or show one"
+    },
+    {
+      "aliases": [
         "gitrepos"
       ],
       "args": [
@@ -4232,6 +4316,60 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List harvesterconfigs or show one"
+    },
+    {
+      "aliases": [
+        "helmops"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get helmop",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List helmops or show one"
     },
     {
       "aliases": [
@@ -7385,6 +7523,58 @@
     },
     {
       "aliases": [
+        "fleetworkspaces",
+        "fleet-workspaces"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch fleet-workspace",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the fleet-workspace"
+    },
+    {
+      "aliases": [
         "gitrepos"
       ],
       "args": [
@@ -7601,6 +7791,64 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Patch the harvesterconfig"
+    },
+    {
+      "aliases": [
+        "helmops"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "false",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch helmop",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the helmop"
     },
     {
       "aliases": [
@@ -10427,10 +10675,12 @@
         "get serviceaccount",
         "get event",
         "get gitrepo",
+        "get helmop",
         "get bundle",
         "get bundledeployment",
         "get clustergroup",
         "get fleet-cluster",
+        "get fleet-workspace",
         "get setting",
         "get feature",
         "get user",
@@ -10495,10 +10745,12 @@
         "patch serviceaccount",
         "patch event",
         "patch gitrepo",
+        "patch helmop",
         "patch bundle",
         "patch bundledeployment",
         "patch clustergroup",
         "patch fleet-cluster",
+        "patch fleet-workspace",
         "patch setting",
         "patch feature",
         "patch user",
@@ -10546,6 +10798,7 @@
         "delete persistentvolumeclaim",
         "delete serviceaccount",
         "delete gitrepo",
+        "delete helmop",
         "delete user",
         "delete globalrolebinding",
         "delete clusterroletemplatebinding",
@@ -11162,6 +11415,37 @@
     },
     {
       "aliases": [
+        "helmops"
+      ],
+      "defaultNamespace": "fleet-default",
+      "group": "fleet.cattle.io",
+      "key": "helmop",
+      "name": "helmop",
+      "namespacePolicy": "workspace",
+      "resource": "helmops",
+      "scope": "management",
+      "verbs": {
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v1alpha1",
+      "waitDefault": "condition=Ready"
+    },
+    {
+      "aliases": [
         "bundles"
       ],
       "defaultNamespace": "fleet-default",
@@ -11279,6 +11563,36 @@
       },
       "version": "v1alpha1",
       "waitDefault": "condition=Ready"
+    },
+    {
+      "aliases": [
+        "fleetworkspaces",
+        "fleet-workspaces"
+      ],
+      "group": "management.cattle.io",
+      "key": "fleetworkspace",
+      "name": "fleet-workspace",
+      "namespacePolicy": "none",
+      "resource": "fleetworkspaces",
+      "scope": "management",
+      "sensitive": true,
+      "verbs": {
+        "delete": {
+          "note": "this CLI does not delete fleet workspaces; deleting one removes its namespace and every Fleet and provisioning object in it, unless the workspace has the annotation provisioning.cattle.io/managed: \"false\"",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v3"
     },
     {
       "aliases": [

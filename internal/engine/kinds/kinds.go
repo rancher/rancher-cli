@@ -555,6 +555,14 @@ var table = []Kind{
 		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
+		Key: "helmop", Name: "helmop", Aliases: []string{"helmops"},
+		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "helmops"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "HelmOp", Scope: Management, Deletable: true, WaitDefault: "condition=Ready",
+		WaitFailsOnStalled:   true,
+		DeleteCascadeWarning: "deleting this HelmOp makes Fleet delete its Bundles and their BundleDeployments, which uninstalls the chart from every target cluster unless spec.keepResources is true",
+		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+	},
+	{
 		Key: "bundle", Name: "bundle", Aliases: []string{"bundles"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundles"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Bundle", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
@@ -586,6 +594,13 @@ var table = []Kind{
 		NoDeleteReason:     "a controller creates and manages it; delete the object it was created from",
 		Binding:            safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns:            []Column{{Header: "LAST-SEEN", Path: []string{"status", "agent", "lastSeen"}}},
+	},
+	{
+		Key: "fleetworkspace", Name: "fleet-workspace", Aliases: []string{"fleetworkspaces", "fleet-workspaces"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "fleetworkspaces"},
+		Policy: NSNone, K8sKind: "FleetWorkspace", Scope: Management, Deletable: false, Sensitive: true,
+		NoDeleteReason: "this CLI does not delete fleet workspaces; deleting one removes its namespace and every Fleet and provisioning object in it, unless the workspace has the annotation provisioning.cattle.io/managed: \"false\"",
+		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 
 	{

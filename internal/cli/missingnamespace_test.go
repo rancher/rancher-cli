@@ -100,6 +100,7 @@ var missingKinds = []missingKind{
 	{"event", true, "api/v1", "events", "gp", reasonWorkload},
 	{"k3k-cluster", true, "apis/k3k.io/v1beta1", "clusters", "gpd", reasonK3k},
 	{"gitrepo", false, "apis/fleet.cattle.io/v1alpha1", "gitrepos", "gpd", reasonFleet},
+	{"helmop", false, "apis/fleet.cattle.io/v1alpha1", "helmops", "gpd", reasonFleet},
 	{"bundle", false, "apis/fleet.cattle.io/v1alpha1", "bundles", "gp", reasonFleet},
 	{"bundledeployment", false, "apis/fleet.cattle.io/v1alpha1", "bundledeployments", "gp", reasonFleet},
 	{"clustergroup", false, "apis/fleet.cattle.io/v1alpha1", "clustergroups", "gp", reasonFleet},
@@ -409,8 +410,8 @@ func TestEveryNamespaceCommandHasAMissingNamespaceRow(t *testing.T) {
 			"add its row to "+table+" in this file, saying what it does with a namespace that does not exist")
 	}
 	commands, rowCount := len(declaring), len(rows)
-	assert.Equal(t, 100, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
-	assert.Equal(t, 132, rowCount, "the rows; uncovered commands: %v", uncovered)
+	assert.Equal(t, 103, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
+	assert.Equal(t, 136, rowCount, "the rows; uncovered commands: %v", uncovered)
 
 	h := newMissingHarness(t)
 	for _, row := range rows {

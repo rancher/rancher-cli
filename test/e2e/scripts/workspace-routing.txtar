@@ -1,5 +1,7 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+env HELM_PATCH='[{"op":"replace","path":"/spec/helm/chart","value":"nginx"}]'
+env WS_PATCH='[{"op":"add","path":"/metadata/labels","value":{"team":"platform"}}]'
 
 # no --namespace on create → the kind's default (fleet-default)
 exec rancher create resource -f gitrepo-default.yaml --apply
@@ -10,6 +12,29 @@ jsonquery stdout data.metadata.namespace fleet-default
 exec rancher create resource -f gitrepo-team-a.yaml --namespace team-a --apply
 exec rancher get gitrepo routed-team-a --namespace team-a -o json
 jsonquery stdout data.metadata.namespace team-a
+
+# a helmop routes to fleet-default and takes patch and delete
+exec rancher create resource -f helmop-default.yaml --apply
+exec rancher get helmop routed-helm -o json
+jsonquery stdout data.metadata.namespace fleet-default
+exec rancher patch helmop routed-helm --patch $HELM_PATCH --apply -o json
+exec rancher get helmop routed-helm -o json
+jsonquery stdout data.spec.helm.chart nginx
+exec rancher delete helmop routed-helm --apply --yes
+! exec rancher get helmop routed-helm
+
+# a fleet workspace is cluster-scoped: get and patch work, delete is not offered
+exec rancher create resource -f workspace.yaml --apply --yes
+exec rancher get fleet-workspace routed-ws -o json
+jsonquery stdout data.metadata.name routed-ws
+exec rancher patch fleet-workspace routed-ws --patch $WS_PATCH --apply --yes -o json
+exec rancher get fleet-workspace routed-ws -o json
+jsonquery stdout data.metadata.labels.team platform
+! exec rancher delete fleet-workspace routed-ws --apply --yes
+stderr 'unknown command "fleet-workspace"'
+exec rancher schema fleet-workspace -o json
+jsonquery stdout data.verbs.delete.state absent
+jsonquery stdout data.verbs.patch.state available
 
 -- gitrepo-default.yaml --
 apiVersion: fleet.cattle.io/v1alpha1
@@ -26,3 +51,19 @@ metadata:
   name: routed-team-a
 spec:
   repo: https://example.com/team-a.git
+
+-- helmop-default.yaml --
+apiVersion: fleet.cattle.io/v1alpha1
+kind: HelmOp
+metadata:
+  name: routed-helm
+spec:
+  helm:
+    repo: https://charts.example.com
+    chart: redis
+
+-- workspace.yaml --
+apiVersion: management.cattle.io/v3
+kind: FleetWorkspace
+metadata:
+  name: routed-ws

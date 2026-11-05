@@ -265,6 +265,8 @@ func TestKindClaimsMatchTable(t *testing.T) {
 		"kubeconfig":                 true,
 		"cluster":                    false,
 		"clustergroup":               false,
+		"fleet-workspace":            false,
+		"helmop":                     true,
 		"setting":                    false,
 		"feature":                    false,
 		"nodedriver":                 false,

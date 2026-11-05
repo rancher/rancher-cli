@@ -343,6 +343,15 @@ func TestDeleteCarriesRowCascadeWarning(t *testing.T) {
 	assert.Equal(t, []string{gitrepo.DeleteCascadeWarning}, eff.Warnings)
 	assert.Contains(t, gitrepo.DeleteCascadeWarning, "makes Fleet delete")
 
+	helmop := mustKind(t, "helmop")
+	require.NotEmpty(t, helmop.DeleteCascadeWarning, "helmop row must declare the cascade warning")
+	hclient := &delClient{obj: objWithRV("chart-1", "3")}
+	heff, hexec, err := planDelete(t, NewDelete(helmop, &recFactory{client: hclient}), input{args: []string{"chart-1"}})
+	require.NoError(t, err)
+	require.NotNil(t, hexec)
+	assert.Equal(t, []string{helmop.DeleteCascadeWarning}, heff.Warnings)
+	assert.Contains(t, helmop.DeleteCascadeWarning, "uninstalls the chart from every target cluster")
+
 	plain := &delClient{obj: objWithRV("web", "1")}
 	eff2, _, err := planDelete(t, NewDelete(mustKind(t, "pod"), &recFactory{client: plain, resolve: map[string]string{"prod": "c-abc"}}),
 		input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
