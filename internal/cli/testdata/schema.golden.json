@@ -5173,7 +5173,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "The columns are Rancher's, with two differences: COMMAND shows the command's words joined with commas, and TARGET-NAMESPACE is the namespace of the pod that ran the command, where the Rancher UI's \"Tgt Namespace\" is the release's namespace.",
+      "desc": "The columns follow the table the Rancher server returns. COMMAND shows the command's arguments joined with commas, and TARGET-NAMESPACE is the namespace of the pod that ran the command, where the Rancher UI's \"Tgt Namespace\" is the release's namespace.",
       "flags": [
         {
           "desc": "target cluster `id|name`",
@@ -6735,7 +6735,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Always refused before any request: Rancher writes app objects from the Helm release; the CLI does not change them.",
+      "desc": "Always refused before any request: Rancher creates and manages app objects from the Helm release; this CLI does not change them.",
       "destructive": "false",
       "flags": [
         {
@@ -8890,7 +8890,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Always refused before any request: Rancher writes operation objects; the CLI does not change them.",
+      "desc": "Always refused before any request: Rancher creates and manages operation objects; this CLI does not change them.",
       "destructive": "false",
       "flags": [
         {
@@ -11972,7 +11972,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "this CLI does not delete fleet workspaces; deleting one removes its namespace and every Fleet and provisioning object in it, unless the workspace has the annotation provisioning.cattle.io/managed: \"false\"",
+          "note": "this CLI does not delete Fleet workspaces; deleting one deletes its namespace and every Fleet and provisioning object in it; a workspace with the annotation provisioning.cattle.io/managed: \"false\" is the exception",
           "state": "absent"
         },
         "get": {
@@ -12508,7 +12508,7 @@
         },
         "patch": {
           "contract": "internal",
-          "note": "Rancher writes app objects from the Helm release; the CLI does not change them",
+          "note": "Rancher creates and manages app objects from the Helm release; this CLI does not change them",
           "stability": "beta",
           "state": "refused"
         }
@@ -12544,7 +12544,7 @@
         },
         "patch": {
           "contract": "internal",
-          "note": "Rancher writes operation objects; the CLI does not change them",
+          "note": "Rancher creates and manages operation objects; this CLI does not change them",
           "stability": "beta",
           "state": "refused"
         }

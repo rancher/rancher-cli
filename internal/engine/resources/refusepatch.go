@@ -15,8 +15,8 @@ type refusePatchCmd struct {
 
 // NewRefusePatch builds the patch command of a row that sets NoPatchReason: a
 // VALIDATION refusal that comes before any request. Its descriptor is the
-// generic patch's, so the flags and aliases of the row do not change, with a
-// usage line and a description that say the verb is always refused.
+// generic patch's, except for the usage line and the description, which say
+// the verb is always refused.
 func NewRefusePatch(k kinds.Kind) runtime.Command {
 	return &refusePatchCmd{k: k}
 }
@@ -33,9 +33,11 @@ func (c *refusePatchCmd) Plan(_ context.Context, in runtime.Input) (safety.Effec
 		c.k.Name+": patch is not supported - "+c.k.NoPatchReason+"; read it with "+clierr.Rancher+" get"+c.readFlags(in))
 }
 
-// readFlags writes the name of the row and the routing flags the read of it
-// needs, taking the values the caller typed so the command works as printed.
-// A downstream row with no typed --cluster names the flag with a placeholder.
+// readFlags returns what follows `get` in the read command: the row's name,
+// --cluster for a downstream row, and --namespace for a row with an ordinary
+// namespace when the user typed one, with the typed values shell-quoted so the
+// command works as printed. A downstream row with no typed --cluster gets
+// <cluster> as a placeholder.
 func (c *refusePatchCmd) readFlags(in runtime.Input) string {
 	var flags string
 	if c.k.Scope == kinds.Downstream {

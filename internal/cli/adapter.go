@@ -494,8 +494,9 @@ var notFoundHints = []hintEntry[notFoundInput]{
 		detail: constText[notFoundInput]("management clusters cannot be deleted directly; to delete a provisioning cluster (<name> is its name), run this and add --apply --yes after reading the preview: " + clierr.Rancher + " delete provisioning-cluster <name> --dry-run"),
 	},
 	{
-		// The catalog rows say why they have no delete, using the row's own
-		// reason; the typed word may be the name or a plural alias.
+		// For `delete` of a clusterrepo, app or operation, the message gives
+		// the row's NoDeleteReason; the typed name may be the kind name or a
+		// plural alias.
 		match: func(in notFoundInput) bool {
 			k, ok := catalogDeleteRow(in)
 			return ok && k.NoDeleteReason != ""
@@ -514,8 +515,8 @@ var notFoundHints = []hintEntry[notFoundInput]{
 	},
 }
 
-// catalogDeleteRow returns the clusterrepo, app or operation row the word
-// typed under the delete group resolves to.
+// catalogDeleteRow returns the clusterrepo, app or operation row that the name
+// typed after `delete` resolves to.
 func catalogDeleteRow(in notFoundInput) (kinds.Kind, bool) {
 	if in.c.Name != "delete" {
 		return kinds.Kind{}, false

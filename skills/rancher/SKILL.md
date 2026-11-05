@@ -754,11 +754,11 @@ Never present a role list as permissions.
   account automatically - never delete a system account by hand.
 - `rancher get clusterrepo`, `rancher get app` and `rancher get operation` read
   the Helm repositories, installed apps and Helm operations of one cluster; each
-  cluster keeps its own, so pass `--cluster <id|name>` (`local` for Rancher's own
+  cluster has its own, so pass `--cluster <id|name>` (`local` for the local
   cluster), and `--namespace` for one app or operation. They are read-only:
-  patch, create and delete are refused with `VALIDATION` before any request. An
-  app's Helm values, chart default values and install notes, and an operation's
-  `status.token`, are not shown.
+  patch, create and delete are refused with `VALIDATION` before any request. The
+  CLI hides an app's Helm values, chart default values and install notes, and
+  an operation's `status.token`, from every output.
 - `rancher create user <username> --password-stdin` creates a local user (a
   `v3 User`, its password secret, and a `v3 GlobalRoleBinding` for each global
   role the server marks `newUserDefault`, `user` on a default install) - the

@@ -25,9 +25,9 @@ func TestRefusePatchKeepsTheFlagsAndSaysItIsRefused(t *testing.T) {
 }
 
 // TestRefusePatchRefusesBeforeAnyRequestAndNamesTheRead asserts that Plan
-// answers VALIDATION with the row's reason and a read command that uses the
-// cluster and namespace the caller typed, shell-quoted, and names --cluster
-// with a placeholder when none was typed. It uses no client.
+// returns a VALIDATION error with the row's reason and a read command that
+// uses the cluster and namespace the user typed, shell-quoted, and has
+// <cluster> as a placeholder when none was typed. It uses no client.
 func TestRefusePatchRefusesBeforeAnyRequestAndNamesTheRead(t *testing.T) {
 	t.Parallel()
 	app := catalogRow(t, "app")

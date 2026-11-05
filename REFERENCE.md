@@ -685,27 +685,30 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   `get clusterregistrationtoken` reads through the Steve API and applies the
   selector itself to the list it gets back.
 - The catalog kinds `clusterrepo`, `app` and `operation` (catalog.cattle.io)
-  are read-only. Each cluster keeps its own, so they take `--cluster` (`local`
-  for Rancher's own cluster); `app` and `operation` take `--namespace`, and a
-  `clusterrepo` has none. `patch` of each is refused with `VALIDATION` and the
+  are read-only. Each cluster has its own repositories, apps and operations,
+  so they take `--cluster` (`local` for the local cluster); `app` and
+  `operation` take `--namespace`; a `clusterrepo` is not namespaced and takes
+  no `--namespace`. `patch` of each is refused with `VALIDATION` and the
   reason, before any request; `create resource` refuses a manifest of each;
-  `delete` is not generated, and `rancher delete app` (or `apps`) says why. The
+  `delete` does not exist for them, and `rancher delete app` (or `apps`) fails
+  with the reason. The
   CLI hides an app's `spec.values`, `spec.chart.values` and `spec.info.notes`
-  and an operation's `status.token` from every output. The columns copy
-  Rancher's own table, with two differences for `operation`: COMMAND shows the
-  command's words joined with commas, and TARGET-NAMESPACE is the namespace of
-  the pod that ran the command, where the Rancher UI's "Tgt Namespace" is the
-  release's namespace.
+  and an operation's `status.token` from every output. The columns follow the
+  table the Rancher server returns. For `operation`, COMMAND shows the
+  command's arguments joined with commas, and TARGET-NAMESPACE is the namespace
+  of the pod that ran the command, where the Rancher UI's "Tgt Namespace" is
+  the release's namespace.
 - `delete` exists only for kinds where deleting an object makes sense. Rancher
   settings and feature flags (`setting`, `feature`), role templates and global
   roles (`roletemplate`, `globalrole`), and objects a controller creates and
   manages (Fleet bundle deployments, CAPI machines) are not deletable. Deleting
   a GitRepo or a HelmOp deletes its bundles and their bundle deployments, which
-  uninstalls the deployed workloads or chart from every target cluster; lowering a machine
+  uninstalls what they deployed (the workloads of a GitRepo, the chart of a
+  HelmOp) from every target cluster; lowering a machine
   pool's node count with `cluster scale` deletes machines; deleting a
   provisioning cluster deletes its Fleet cluster and CAPI cluster. Fleet bundles
   and cluster groups have no `delete` in this CLI either, and neither do Fleet
-  workspaces (`fleet-workspace`): deleting one removes its namespace and
+  workspaces (`fleet-workspace`): deleting one deletes its namespace and
   everything in it. The `cluster` kind
   (management.cattle.io) cannot be deleted either; to delete a cluster, use
   `delete provisioning-cluster`. `delete user` is destructive (requires

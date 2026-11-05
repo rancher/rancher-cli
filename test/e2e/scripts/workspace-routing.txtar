@@ -23,7 +23,7 @@ jsonquery stdout data.spec.helm.chart nginx
 exec rancher delete helmop routed-helm --apply --yes
 ! exec rancher get helmop routed-helm
 
-# a fleet workspace is cluster-scoped: get and patch work, delete is not offered
+# a Fleet workspace is cluster-scoped: get and patch work, delete is not offered
 exec rancher create resource -f workspace.yaml --apply --yes
 exec rancher get fleet-workspace routed-ws -o json
 jsonquery stdout data.metadata.name routed-ws

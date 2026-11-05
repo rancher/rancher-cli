@@ -809,7 +809,7 @@ func checkKindTable(validate func() error) error {
 }
 
 // checkPatchRefusals rejects a row that sets NoPatchReason and also has a
-// patch override: two sources would decide what patch does for the row.
+// patch override, because patch would then have two definitions.
 func checkPatchRefusals(rows []kinds.Kind, overrides map[string]kindOverride) error {
 	for _, k := range rows {
 		if k.NoPatchReason != "" && overrides[k.Key].patch != nil {

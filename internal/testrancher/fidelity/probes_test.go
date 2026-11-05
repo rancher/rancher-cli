@@ -396,8 +396,8 @@ func TestAccessProbesAreRegistered(t *testing.T) {
 // admin reads of an ext token right after its create or delete do the
 // same. Rancher reads tokens from informer caches, so without the wait such
 // an observation can record the cache delay instead of the behavior. It also
-// covers the catalog reads that wait until Rancher serves a CRD after a boot
-// or import, and asserts that no other observation waits.
+// covers the catalog reads, which wait for Rancher to serve the catalog CRDs
+// after a boot or import, and asserts that no other observation waits.
 func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing.T) {
 	t.Parallel()
 	type key struct{ probe, observation string }

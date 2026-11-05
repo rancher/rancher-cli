@@ -168,7 +168,8 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 }
 
 // anArticleKeys lists the keys of the rows whose name takes "an" in the
-// refusal message of a manifest create; every other row takes "a". A row
+// message `create resource` prints when it refuses a manifest; every other
+// row takes "a". A row
 // whose name starts with a vowel sound adds its key here.
 var anArticleKeys = map[string]bool{"app": true, "operation": true}
 

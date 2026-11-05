@@ -466,7 +466,7 @@ func callerRows(t *testing.T) map[string]callerRow {
 		taking++
 		if k, ok := kindForDescriptor(d); ok && isGeneratedVerb(d.Name) {
 			if k.NoPatchReason != "" && d.CommandType == runtime.Mutating {
-				// A refused patch resolves no cluster: it refuses before any request.
+				// A refused patch does not look up the target cluster; it refuses before any request.
 				continue
 			}
 			rows[d.Name] = generatedRow(d, k)

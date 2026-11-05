@@ -602,8 +602,10 @@ for `schema`), and a local one declares its own; the contract line shows it as
 MCP-vocabulary key - `managementcluster`, `project`, `pod`, …), `Name` (CLI-facing
 singular - `cluster`, `project`, `pod`), `Aliases`, `GVR`, `Namespaced`, `Scope`
 (`management` | `downstream`), `Deletable` (with `NoDeleteReason`), `NoPatchReason` (a non-empty
-value makes the generated patch a refusal that keeps its flags, states the refusal in its
-usage and description, and completes no names), `NoCreateViaManifest`, `GetDesc` (the
+value makes the generated patch a refusal that keeps its flags, says in its usage and
+description that it is refused, and offers no candidates when completing),
+`NoCreateViaManifest` (a non-empty value makes `create resource` refuse a manifest of the
+kind, with this text as the reason), `GetDesc` (the
 description of the generated `get`; a row with a `SystemFilter` gets the filter's sentence
 first and `GetDesc` after it), `Binding` (contract/stability for the generated generic
 ops), and the table: `Columns` for a kind with its own, or `ServerTable` for a
@@ -1188,7 +1190,7 @@ rejected at `BuildRoot`.
 
 Verb reservation. get/create/patch/delete are reserved for kind-table resources - a GVR, a name, stored server state, and the full contract those verbs imply (list/named duality, --wait on get, -o name, generated siblings, schema kind vocabulary). Computed or derived views get dedicated verbs (inspect, top, usage, images). This mirrors kubectl's own get vs top/describe split and is deliberate: a hypothetical get usage could not be named, waited on, or deleted without breaking get's own contract. New surface work follows this rule.
 
-**Rancher's Helm catalog is read-only.** The clusterrepo, app and operation rows (`catalog.cattle.io`) are read with `get` on every cluster through `--cluster`, the local cluster included, and use the Kubernetes names. Patch, delete and create from a manifest are refused, and each refusal and its reason sit in the kind table (`NoPatchReason`, `NoDeleteReason`, `NoCreateViaManifest`) next to the row, not in bespoke code. Rancher creates and updates app and operation objects itself, and deleting an app object leaves the release installed, so changes to Helm releases wait for their own design of install, upgrade and uninstall. App values, chart default values and release notes are hidden from every output by default (`RedactPaths`), and the operation row hides `status.token`. The tables copy the columns of Rancher's server table. Charts are not a stored object and get their own read command later, not a row.
+**Rancher's Helm catalog is read-only.** The clusterrepo, app and operation rows (`catalog.cattle.io`) are read with `get` on every cluster through `--cluster`, the local cluster included, and use the Kubernetes names. Patch, delete and create from a manifest are refused, and each refusal and its reason sit in the kind table (`NoPatchReason`, `NoDeleteReason`, `NoCreateViaManifest`) next to the row, not in bespoke code. Rancher creates and updates app and operation objects itself, and deleting an app object leaves the release installed, so changes to Helm releases wait for their own design of install, upgrade and uninstall. App values, chart default values and install notes are hidden from every output by default (`RedactPaths`), and the operation row hides `status.token`. The columns follow the table the Rancher server returns. Charts are not a stored object and get their own read command later, not a row.
 
 **Two layers over one substrate.** Generic verbs are the exact, declarative substrate,
 generated from the kind table: `get`/`patch` for every row (`patch` is a refusal for a row

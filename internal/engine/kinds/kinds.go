@@ -114,12 +114,12 @@ type Kind struct {
 	// is absent - surfaced by `rancher schema`. "" renders a plain
 	// "not available". Meaningless on Deletable: true rows; leave empty.
 	NoDeleteReason string
-	// NoPatchReason, when non-empty, makes the generated patch a refusal: the
-	// command keeps its flags, states the refusal in its usage and
-	// description, completes no names, and answers VALIDATION
-	// before any request with this text as the reason, surfaced by `rancher
-	// schema` as the verb's note. "" generates the ordinary patch. A row that
-	// also has a patch override is refused at startup.
+	// NoPatchReason, when non-empty, makes the generated patch always fail
+	// with a VALIDATION error before any request, with this text as the
+	// reason; `rancher schema` shows it as the verb's note. The command keeps
+	// its flags, says in its usage and description that it is refused, and
+	// offers no candidates when completing. "" generates the ordinary patch.
+	// A row that also has a patch override makes the CLI fail at startup.
 	NoPatchReason string
 	Sensitive     bool // patch on this kind is Destructive (parity branch 2)
 	// WaitDefault is the --for expression --wait or --timeout alone applies;
@@ -610,7 +610,7 @@ var table = []Kind{
 		Key: "fleetworkspace", Name: "fleet-workspace", Aliases: []string{"fleetworkspaces", "fleet-workspaces"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "fleetworkspaces"},
 		Policy: NSNone, K8sKind: "FleetWorkspace", Scope: Management, Deletable: false, Sensitive: true,
-		NoDeleteReason: "this CLI does not delete fleet workspaces; deleting one removes its namespace and every Fleet and provisioning object in it, unless the workspace has the annotation provisioning.cattle.io/managed: \"false\"",
+		NoDeleteReason: "this CLI does not delete Fleet workspaces; deleting one deletes its namespace and every Fleet and provisioning object in it; a workspace with the annotation provisioning.cattle.io/managed: \"false\" is the exception",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 
@@ -856,9 +856,10 @@ var table = []Kind{
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
-		// The catalog rows read Rancher's own catalog objects, which every
-		// cluster keeps for itself (hence Downstream). The columns copy the
-		// server's table for each CRD, header for header and path for path.
+		// The catalog rows read the catalog objects of a cluster. Every
+		// cluster has its own, hence Scope Downstream. The columns follow the
+		// server's table for each CRD: the same field paths, and its headers
+		// in capitals with a hyphen in place of each space.
 		Key: "clusterrepo", Name: "clusterrepo", Aliases: []string{"clusterrepos"},
 		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "clusterrepos"},
 		Policy: NSNone, K8sKind: "ClusterRepo", Scope: Downstream, Deletable: false, Completable: true,
@@ -879,7 +880,7 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "apps"},
 		Policy: NSPlain, K8sKind: "App", Scope: Downstream, Deletable: false, Completable: true,
 		NoDeleteReason:      "deleting an app object leaves its Helm release installed; this CLI does not uninstall apps",
-		NoPatchReason:       "Rancher writes app objects from the Helm release; the CLI does not change them",
+		NoPatchReason:       "Rancher creates and manages app objects from the Helm release; this CLI does not change them",
 		NoCreateViaManifest: "Rancher creates an app when it installs a chart; this CLI does not install charts",
 		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
@@ -896,14 +897,14 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "operations"},
 		Policy: NSPlain, K8sKind: "Operation", Scope: Downstream, Deletable: false, Completable: true,
 		NoDeleteReason:      "this CLI does not delete operations",
-		NoPatchReason:       "Rancher writes operation objects; the CLI does not change them",
+		NoPatchReason:       "Rancher creates and manages operation objects; this CLI does not change them",
 		NoCreateViaManifest: "Rancher creates an operation for each Helm command it runs",
 		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			{Header: "TARGET-NAMESPACE", Path: []string{"status", "podNamespace"}},
 			{Header: "COMMAND", Path: []string{"status", "command"}, Join: true},
 		},
-		GetDesc:     "The columns are Rancher's, with two differences: COMMAND shows the command's words joined with commas, and TARGET-NAMESPACE is the namespace of the pod that ran the command, where the Rancher UI's \"Tgt Namespace\" is the release's namespace.",
+		GetDesc:     "The columns follow the table the Rancher server returns. COMMAND shows the command's arguments joined with commas, and TARGET-NAMESPACE is the namespace of the pod that ran the command, where the Rancher UI's \"Tgt Namespace\" is the release's namespace.",
 		RedactPaths: [][]string{{"status", "token"}},
 	},
 	{

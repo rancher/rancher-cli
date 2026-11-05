@@ -27,37 +27,37 @@ const (
 type refusalCase struct {
 	key  string
 	verb string
-	// word is the row's Name, the word the surface offers for the kind.
-	word string
+	// name is the row's Name, the name the command line takes for the kind.
+	name string
 	// args is the command line after --config <dir>. A patch line carries a
-	// valid inline patch and a create line a manifest of the kind, so no other
-	// check can refuse it first.
+	// valid inline patch and a create line carries a manifest of the kind; no
+	// other check can refuse it first.
 	args []string
 	// manifest, when set, is the manifest file the create line reads; the
 	// token {file} in args names it.
 	manifest string
-	// want is the whole message of the refusal, as a literal.
+	// want is the whole message of the refusal, written out in full.
 	want string
 }
 
 const refusalPatchBody = `[{"op":"add","path":"/metadata/labels/x","value":"y"}]`
 
-func patchRefusal(key, word, want string, flags ...string) refusalCase {
-	args := append([]string{verbPatch, word, "x", "--patch", refusalPatchBody}, flags...)
-	return refusalCase{key: key, verb: verbPatch, word: word, args: args, want: want}
+func patchRefusal(key, name, want string, flags ...string) refusalCase {
+	args := append([]string{verbPatch, name, "x", "--patch", refusalPatchBody}, flags...)
+	return refusalCase{key: key, verb: verbPatch, name: name, args: args, want: want}
 }
 
-func createRefusal(key, word, manifest, want string) refusalCase {
+func createRefusal(key, name, manifest, want string) refusalCase {
 	return refusalCase{
-		key: key, verb: verbCreate, word: word, manifest: manifest, want: want,
+		key: key, verb: verbCreate, name: name, manifest: manifest, want: want,
 		args: []string{"create", "resource", "-f", "{file}", "--cluster", "local", "--namespace", "default"},
 	}
 }
 
-func deleteRefusal(key, word, want string) refusalCase {
+func deleteRefusal(key, name, want string) refusalCase {
 	return refusalCase{
-		key: key, verb: verbDelete, word: word, want: want,
-		args: []string{"delete", word, "x"},
+		key: key, verb: verbDelete, name: name, want: want,
+		args: []string{"delete", name, "x"},
 	}
 }
 
@@ -69,13 +69,14 @@ func manifestOf(apiVersion, kind string, namespaced bool) string {
 	return m
 }
 
-func unknownDelete(word string) string {
-	return `unknown command "` + word + `"`
+func unknownDelete(name string) string {
+	return `unknown command "` + name + `"`
 }
 
-// refusalCases lists every refused verb of every row, by key. Each entry types
-// the row's Name, the word the surface offers, and carries the whole message
-// as a literal, never built from the row's fields.
+// refusalCases lists every refused verb of every row, by key. Each entry uses
+// the row's Name, the name the command line takes for the kind, and holds the
+// whole expected message written out in full, never built from the row's
+// fields.
 func refusalCases() []refusalCase {
 	return []refusalCase{
 		patchRefusal("clusterregistrationtoken", "clusterregistrationtoken",
@@ -88,10 +89,10 @@ func refusalCases() []refusalCase {
 			"clusterrepo: patch is not supported - this CLI does not change repositories; read it with "+clierr.Rancher+" get 'clusterrepo' --cluster 'local'",
 			"--cluster", "local"),
 		patchRefusal("app", "app",
-			"app: patch is not supported - Rancher writes app objects from the Helm release; the CLI does not change them; read it with "+clierr.Rancher+" get 'app' --cluster 'local' --namespace 'default'",
+			"app: patch is not supported - Rancher creates and manages app objects from the Helm release; this CLI does not change them; read it with "+clierr.Rancher+" get 'app' --cluster 'local' --namespace 'default'",
 			"--cluster", "local", "--namespace", "default"),
 		patchRefusal("operation", "operation",
-			"operation: patch is not supported - Rancher writes operation objects; the CLI does not change them; read it with "+clierr.Rancher+" get 'operation' --cluster 'local' --namespace 'default'",
+			"operation: patch is not supported - Rancher creates and manages operation objects; this CLI does not change them; read it with "+clierr.Rancher+" get 'operation' --cluster 'local' --namespace 'default'",
 			"--cluster", "local", "--namespace", "default"),
 
 		createRefusal("clusterrepo", "clusterrepo", manifestOf("catalog.cattle.io/v1", "ClusterRepo", false),
@@ -139,7 +140,10 @@ func refusalCases() []refusalCase {
 }
 
 // expectedRefusals derives, from the row table and the override table, the
-// set of (key, verb) pairs a row refuses.
+// (key, verb) pairs that are refused: patch when the row sets NoPatchReason or
+// the override lists a patch refusal, create when the row sets
+// NoCreateViaManifest, delete when the row is not deletable and the override
+// has no delete.
 func expectedRefusals() map[string]bool {
 	out := map[string]bool{}
 	ov := kindOverrides()
@@ -159,8 +163,9 @@ func expectedRefusals() map[string]bool {
 }
 
 // TestRefusalListMatchesTheTables asserts that the list of refused verbs
-// equals, both ways, the verbs the row table and the override table refuse: a
-// row that gains or loses a refusal fails until the list changes.
+// equals, both ways, the verbs expectedRefusals derives from the two tables:
+// the test fails when a kind gains or loses a refusal until the list is
+// updated.
 func TestRefusalListMatchesTheTables(t *testing.T) {
 	listed := map[string]bool{}
 	for _, c := range refusalCases() {
@@ -169,16 +174,16 @@ func TestRefusalListMatchesTheTables(t *testing.T) {
 		listed[id] = true
 		row, ok := kinds.ByKey(c.key)
 		require.True(t, ok, "%s is not a row key", c.key)
-		assert.Equal(t, row.Name, c.word, "%s types the row's Name", id)
+		assert.Equal(t, row.Name, c.name, "%s uses the row's Name", id)
 	}
 	assert.Equal(t, expectedRefusals(), listed)
 }
 
 // TestEveryRefusedVerbIsATypedValidationError asserts that each refused verb of
-// each row, run as a complete command line through run, ends with a VALIDATION
-// error whose whole message is the entry's literal, and that no request
-// reaches the server. Not parallel: run sets the captured argv and the test
-// sets the process environment.
+// each row, run as a complete command line, ends with a VALIDATION error whose
+// message equals the entry's expected message, and that no request reaches the
+// server. Not parallel: run sets the captured command line and the test sets
+// the process environment.
 func TestEveryRefusedVerbIsATypedValidationError(t *testing.T) {
 	exitEnv(t)
 	var requests atomic.Int64

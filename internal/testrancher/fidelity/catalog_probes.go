@@ -5,19 +5,21 @@ import "net/http"
 // catalogProbes records what the CLI's clusterrepo, app and operation rows
 // read: the catalog.cattle.io/v1 discovery document a cluster serves, the
 // admin list of each kind and the server's Table (the column names and
-// types the CLI's own columns copy), the answers a standard user gets, and
+// types the CLI's own columns follow), the responses a standard user gets, and
 // the shape of one installed app. Every cluster serves its own catalog
 // objects, so the downstream cluster and the local cluster are recorded
 // separately. The probes only read: they create no fixture. The first read
-// of each probe waits until the server answers 200, so a catalog that is not
-// served yet fails the run instead of recording a 404; the wait ends after
-// the executor's status timeout.
+// of each probe waits until the server responds with 200; this stops the probe
+// from recording the 404 of a catalog the server does not serve yet. If no 200
+// arrives within the executor's status timeout, the probe fails; a drift run
+// keeps the last response instead.
 //
-// Lists carry names, versions, URLs and timestamps the instance chose, so a
-// list keeps its kind and API version, replaces its items and metadata with
-// "<scrubbed>" and drops the Table's rows and descriptions. Items are
-// replaced whole because a per-item key set would tie a golden to the number
-// of repositories and apps the instance has. Operation items are never
+// Lists hold names, versions, URLs and timestamps that differ between
+// instances. The recorded list keeps its kind and API version, replaces its
+// items and metadata with "<scrubbed>" and drops the Table's rows and column
+// descriptions. Items are replaced whole, because recording the keys of each
+// item would make the golden depend on the number of repositories and apps the
+// instance has. Operation items are never
 // recorded, and the probes cannot make the operation list non-empty without
 // a write.
 //
@@ -31,7 +33,8 @@ import "net/http"
 //     (200) and of apps (an error status), each with its items, metadata and
 //     message replaced.
 //   - catalog/webhook-app-local: the rancher-webhook app the oracle installs,
-//     with the key sets of spec, spec.chart and spec.chart.metadata fixed.
+//     recorded with only the keys its KeepKeys rules list under spec,
+//     spec.chart and spec.chart.metadata.
 func catalogProbes() []Probe {
 	const (
 		tableAccept = "application/json;as=Table;v=v1;g=meta.k8s.io,application/json;as=Table;v=v1beta1;g=meta.k8s.io,application/json"
@@ -104,18 +107,20 @@ func catalogProbes() []Probe {
 			},
 		},
 		{
-			// The app Rancher installs on every cluster. KeepKeys fixes the
-			// key sets of spec, spec.chart and spec.chart.metadata to the
-			// ones the CLI reads and every value under them is replaced, so
-			// the golden asserts that spec.chart.metadata.name and
-			// .version, spec.name, spec.version and spec.info.status are
-			// served at those paths. A key the server adds outside the lists
-			// is dropped; a listed key it stops serving disappears from the
-			// answer and fails the verify. The values the CLI hides
-			// (spec.values, spec.chart.values, spec.info.notes) may be
-			// absent on this app; their hiding is asserted by the kinds and
-			// CLI tests, not by this golden. The replacement hides the JSON
-			// type of each value.
+			// The app Rancher installs on every cluster. KeepKeys limits the
+			// keys recorded under spec, spec.chart and spec.chart.metadata to
+			// the ones listed (the ones the CLI reads or hides, plus
+			// helmVersion, namespace and resources), and every value under
+			// them is replaced. The golden therefore asserts that
+			// spec.chart.metadata.name and .version, spec.name, spec.version
+			// and spec.info.status are served at those paths. A key the
+			// server adds outside the lists is dropped; a listed key it stops
+			// serving disappears from the response and fails verification.
+			// The values the CLI hides (spec.values, spec.chart.values,
+			// spec.info.notes) may be absent on this app; the tests of the cli
+			// package assert that they are hidden, not this golden. Every
+			// value is replaced by the same placeholder, which hides its JSON
+			// type.
 			Name:       "catalog/webhook-app-local",
 			OracleOnly: true,
 			Observations: []Observation{

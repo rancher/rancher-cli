@@ -753,9 +753,9 @@ func TestOIDCClientRowTexts(t *testing.T) {
 }
 
 // TestFleetHelmOpAndWorkspaceRows asserts the helmop row waits on Ready and
-// fails on Stalled, warns about the uninstall on delete and carries no
-// redaction, and that the fleet-workspace row is cluster-scoped, cannot be
-// deleted, waits on nothing and asks for --yes on patch.
+// fails on Stalled, warns about the uninstall on delete and has no redacted
+// paths, and that the fleet-workspace row is cluster-scoped, cannot be
+// deleted, has no default wait condition and requires --yes on patch.
 func TestFleetHelmOpAndWorkspaceRows(t *testing.T) {
 	t.Parallel()
 	op, ok := Lookup("helmops")

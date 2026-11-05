@@ -508,8 +508,9 @@ func TestProjectContract(t *testing.T) {
 			declaring++
 			args := append(h.contractArgs(d, true), "--project", "web")
 			if verb, _, _ := strings.Cut(d.Name, " "); verb == "patch" && kind.NoPatchReason != "" {
-				// A refused patch declares --project and refuses before it reads
-				// the project: the refusal guard asserts the whole message.
+				// A refused patch has a --project flag and refuses before it reads
+				// the project; TestEveryRefusedVerbIsATypedValidationError asserts
+				// the whole message.
 				for _, argv := range [][]string{args, before(args, words)} {
 					r := h.run(t, argv...)
 					assert.Empty(t, r.requests, "%v: refused before any request", argv)

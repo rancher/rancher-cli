@@ -15,8 +15,8 @@ import (
 )
 
 // TestFullCallbackCatalogNames asserts, through the real completion callback,
-// that the names of the catalog kinds complete live from the target cluster
-// for get: an app under --namespace, a clusterrepo with no namespace, and no
+// that for get the names of the catalog kinds are fetched live from the target
+// cluster: an app under --namespace, a clusterrepo with no namespace, and no
 // names once --project is typed; and that the always-refused patch of each
 // offers no names. Not parallel: it sets the process environment
 // and the captured command line.
@@ -68,7 +68,7 @@ func TestFullCallbackCatalogNames(t *testing.T) {
 	assert.Contains(t, complete(t, "get", "operation", "--cluster", "c-abc", "--namespace", "cattle-system"), "helm-operation-x")
 	assert.Contains(t, complete(t, "get", "clusterrepo", "--cluster", "c-abc"), "rancher-charts")
 
-	// The fake answers the names of the typed namespace, so a completer that
+	// The fake returns the names of the typed namespace, so a completer that
 	// offered names under a project would show them here.
 	assert.NotContains(t, complete(t, "get", "app", "--cluster", "c-abc", "--namespace", "cattle-system", "--project", "p-abc"), "rancher-webhook",
 		"a typed project offers no names")

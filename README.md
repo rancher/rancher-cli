@@ -175,7 +175,7 @@ Composite reads (`inspect *`, `images`, `usage`) return what you can
 see: each section you cannot read in full is named in the `data.degraded`
 field, and each entry has one warning. The command still exits 0.
 
-Generated `get`/`patch`/`delete` commands cover the 52 kinds that
+Generated `get`/`patch`/`delete` commands cover the 54 kinds that
 `rancher schema` lists (`delete` only for the kinds that can be deleted).
 The full catalog is [COMMANDS.md](COMMANDS.md), and `rancher schema` lists
 the same for the version you have installed. Per-kind verb rules:

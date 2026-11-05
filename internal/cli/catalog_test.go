@@ -18,23 +18,23 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// TestDeleteHintNamesTheReasonForEveryTypedWord asserts the message of a
-// delete of a catalog kind, typed as the name or as the plural alias, with the
-// row's reason in it. Not parallel: it sets the process environment and the
-// captured command line.
-func TestDeleteHintNamesTheReasonForEveryTypedWord(t *testing.T) {
+// TestDeleteHintNamesTheReasonForEveryTypedName asserts that `delete` of a
+// catalog kind, typed as the kind name or as its plural alias, fails with a
+// message that holds the kind's NoDeleteReason. Not parallel: it sets the
+// process environment and the captured command line.
+func TestDeleteHintNamesTheReasonForEveryTypedName(t *testing.T) {
 	exitEnv(t)
-	for word, want := range map[string]string{
+	for typed, want := range map[string]string{
 		"apps":         `unknown command "apps"; app cannot be deleted - deleting an app object leaves its Helm release installed; this CLI does not uninstall apps`,
 		"operations":   `unknown command "operations"; operation cannot be deleted - this CLI does not delete operations`,
 		"clusterrepos": `unknown command "clusterrepos"; clusterrepo cannot be deleted - this CLI does not delete repositories`,
 	} {
-		t.Run(word, func(t *testing.T) {
+		t.Run(typed, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
 			require.NoError(t, err)
 			var out, errOut bytes.Buffer
 			root.Writer, root.ErrWriter = &out, &errOut
-			got := run(t.Context(), root, []string{"rancher", "delete", word, "x", "-o", "json"})
+			got := run(t.Context(), root, []string{"rancher", "delete", typed, "x", "-o", "json"})
 			require.NotNil(t, got.err)
 
 			var env errEnvelope
@@ -66,8 +66,7 @@ func TestNoPatchReasonAndAPatchOverrideAreRefused(t *testing.T) {
 
 // TestNoPatchReasonRowsShowPatchAsARefusal asserts that the schema manifest
 // lists patch of each catalog kind as refused with the row's reason, and that
-// the patch binding of the row is kept and resolves to the registered
-// refusal command.
+// the row keeps its patch binding and has a registered patch command.
 func TestNoPatchReasonRowsShowPatchAsARefusal(t *testing.T) {
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -99,7 +98,8 @@ func TestNoPatchReasonRowsShowPatchAsARefusal(t *testing.T) {
 }
 
 // TestGetOperationDescriptionStatesTheDifferences asserts that the schema
-// description of get operation names both differences from Rancher's table.
+// description of get operation says how COMMAND is shown and how
+// TARGET-NAMESPACE differs from the Rancher UI's "Tgt Namespace".
 func TestGetOperationDescriptionStatesTheDifferences(t *testing.T) {
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)
@@ -109,11 +109,11 @@ func TestGetOperationDescriptionStatesTheDifferences(t *testing.T) {
 			desc = c.Desc
 		}
 	}
-	assert.Contains(t, desc, "COMMAND shows the command's words joined with commas")
+	assert.Contains(t, desc, "COMMAND shows the command's arguments joined with commas")
 	assert.Contains(t, desc, `TARGET-NAMESPACE is the namespace of the pod that ran the command, where the Rancher UI's "Tgt Namespace" is the release's namespace`)
 }
 
-// catalogServer answers the reads of the catalog tests.
+// catalogServer responds to the reads of the catalog tests.
 type catalogServer struct{}
 
 func (s *catalogServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -143,9 +143,9 @@ func (s *catalogServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // TestGetOfAnAppAndAnOperationHidesTheRedactedPaths asserts that get -o json
-// and -o yaml of an app lack its three redacted paths and of an operation lack
-// status.token, while the other fields stay. Not parallel: it sets the
-// process environment and the captured command line.
+// and -o yaml hide an app's three redacted paths and an operation's
+// status.token, and keep the other fields. Not parallel: it sets the process
+// environment and the captured command line.
 func TestGetOfAnAppAndAnOperationHidesTheRedactedPaths(t *testing.T) {
 	exitEnv(t)
 	srv := httptest.NewTLSServer(&catalogServer{})
@@ -193,10 +193,10 @@ func TestGetOfAnAppAndAnOperationHidesTheRedactedPaths(t *testing.T) {
 }
 
 // TestGetAppUnderAProjectIsLimitedToItsNamespaces asserts that get app with
-// --project shows the apps of the project's namespaces only, and that a named
-// get in a namespace outside the project is refused before it reads the
+// --project shows the apps of the project's namespaces only, and that a `get`
+// of one app in a namespace outside the project is refused before it reads the
 // app. The fake puts the namespace default in the project p-xyz of c-abc, and
-// answers a list of apps with one app in default and one in another namespace.
+// returns a list of apps with one app in default and one in another namespace.
 func TestGetAppUnderAProjectIsLimitedToItsNamespaces(t *testing.T) {
 	h := newContractHarness(t)
 	apps := "/k8s/clusters/c-abc/apis/catalog.cattle.io/v1/apps"
