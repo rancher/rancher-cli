@@ -42,3 +42,18 @@ func HangUntilReleased(r *http.Request, release <-chan struct{}) {
 func WaitUntilGone(r *http.Request) {
 	<-r.Context().Done()
 }
+
+// HoldStreamAndAbort is a handler body for a server that opens a stream and
+// then goes silent, as a watch does when the server stops sending. It flushes
+// what the handler has written, so the client has the response headers (and
+// any events written before the call), waits until the context of r ends, and
+// aborts the connection as HangAndAbort does. It works whether or not the
+// handler wrote the headers or events first: Flush sends the status line, 200
+// when none was written, so the helper never writes a second header.
+func HoldStreamAndAbort(w http.ResponseWriter, r *http.Request) {
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	<-r.Context().Done()
+	panic(http.ErrAbortHandler)
+}

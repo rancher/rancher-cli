@@ -1,0 +1,71 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+env RANCHER_CLI_EXPERIMENT=waitwatch
+
+# a role that grants get on GitRepos and nothing else: no list, no watch
+seedobj rbac.authorization.k8s.io/v1/roles fleet-default role.yaml
+seedobj rbac.authorization.k8s.io/v1/rolebindings fleet-default binding.yaml
+seedobj fleet.cattle.io/v1alpha1/gitrepos fleet-default satisfied.yaml
+seedobj fleet.cattle.io/v1alpha1/gitrepos fleet-default failed.yaml
+flipstatus local fleet.cattle.io/v1alpha1/gitrepos fleet-default waitget-satisfied {"conditions":[{"type":"Ready","status":"True"}]}
+flipstatus local fleet.cattle.io/v1alpha1/gitrepos fleet-default waitget-failed '{"transitioning":"error","transitioningMessage":"quota exceeded"}'
+
+# the user can get the object and cannot list or watch it, so the wait polls.
+# A satisfied object returns from the first cycle: the timeout is shorter than
+# one polling interval.
+env RANCHER_CLI_TOKEN=e2e-getter:secret
+exec rancher get gitrepo waitget-satisfied --wait --timeout 3s
+stdout 'wait: condition=Ready satisfied after'
+# the advisory a young object gets with or without the experiment is the only line
+stderr '\A# warning: wait satisfied [^\n]* after creation[^\n]*\n\z'
+# the List by name was refused and no watch was sent: the wait polled
+shimwaits waitget-satisfied 1 0 403
+
+# a fail-fast state ends the wait at once, as it does without the experiment
+! exec rancher get gitrepo waitget-failed --wait --timeout 3s -o json
+stderr 'quota exceeded'
+cp stderr getonly-stderr.json
+jsonvalue getonly-stderr.json
+jsonquery getonly-stderr.json data.error.retryable false
+shimwaits waitget-failed 1 0 403
+
+-- role.yaml --
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: waitget-getter
+  namespace: fleet-default
+rules:
+- apiGroups: ["fleet.cattle.io"]
+  resources: ["gitrepos"]
+  verbs: ["get"]
+-- binding.yaml --
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: waitget-getter
+  namespace: fleet-default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: waitget-getter
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: e2e-getter
+-- satisfied.yaml --
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: waitget-satisfied
+  namespace: fleet-default
+spec:
+  repo: https://example.com/repo.git
+-- failed.yaml --
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: waitget-failed
+  namespace: fleet-default
+spec:
+  repo: https://example.com/repo.git

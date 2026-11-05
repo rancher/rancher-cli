@@ -13,11 +13,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -62,6 +65,86 @@ func cmdJSONQuery(ts *testscript.TestScript, neg bool, args []string) {
 			ts.Fatalf("jsonquery %s %q: got %q, want anything but %q", file, path, got, want)
 		}
 		ts.Fatalf("jsonquery %s %q: got %q, want %q", file, path, got, want)
+	}
+}
+
+// singleJSONValue returns an error unless doc decodes as exactly one JSON
+// value and then ends: nothing but white space may come before or after it.
+func singleJSONValue(doc string) error {
+	dec := json.NewDecoder(strings.NewReader(doc))
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return fmt.Errorf("not a JSON value: %w", err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("more than one JSON value, or text after it")
+	}
+	return nil
+}
+
+// cmdJSONValue asserts a file decodes as exactly one JSON value, then end of
+// input: jsonvalue <file>.
+func cmdJSONValue(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: jsonvalue <file>")
+	}
+	err := singleJSONValue(ts.ReadFile(args[0]))
+	if neg && err == nil {
+		ts.Fatalf("jsonvalue %s: the file is one JSON value", args[0])
+	}
+	if !neg && err != nil {
+		ts.Fatalf("jsonvalue %s: %v", args[0], err)
+	}
+}
+
+// cmdWaitWatchOpen waits until the shim has seen a watch open for the object:
+// waitwatchopen <name>. A scenario runs it before it changes the object a
+// background wait watches, so the wait ends by an event and not by its first
+// List. It fails after 30 seconds, a bound on a correct wait and never the
+// wait itself.
+func cmdWaitWatchOpen(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 {
+		ts.Fatalf("usage: waitwatchopen <name>")
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, watches, _, _ := waitRequestCounts(args[0]); watches > 0 {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	ts.Fatalf("waitwatchopen %s: no watch open reached the shim in 30 seconds", args[0])
+}
+
+// cmdShimWaits asserts how many Lists by name and watch opens of an object
+// the shim has seen, and optionally the status of every List and of every
+// watch open: shimwaits <name> <lists> <watches> [<list-status> [<watch-status>]].
+func cmdShimWaits(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) < 3 || len(args) > 5 {
+		ts.Fatalf("usage: shimwaits <name> <lists> <watches> [<list-status> [<watch-status>]]")
+	}
+	wantLists, err1 := strconv.Atoi(args[1])
+	wantWatches, err2 := strconv.Atoi(args[2])
+	if err1 != nil || err2 != nil {
+		ts.Fatalf("shimwaits: <lists> and <watches> are numbers")
+	}
+	lists, watches, statuses, watchStatuses := waitRequestCounts(args[0])
+	if lists != wantLists || watches != wantWatches {
+		ts.Fatalf("shimwaits %s: the shim saw %d Lists and %d watch opens, want %d and %d", args[0], lists, watches, wantLists, wantWatches)
+	}
+	if len(args) >= 4 {
+		for _, got := range statuses {
+			if strconv.Itoa(got) != args[3] {
+				ts.Fatalf("shimwaits %s: List statuses %v, want every one %s", args[0], statuses, args[3])
+			}
+		}
+	}
+	if len(args) == 5 {
+		for _, got := range watchStatuses {
+			if strconv.Itoa(got) != args[4] {
+				ts.Fatalf("shimwaits %s: watch statuses %v, want every one %s", args[0], watchStatuses, args[4])
+			}
+		}
 	}
 }
 
@@ -671,4 +754,87 @@ func cmdSeedObj(ts *testscript.TestScript, neg bool, args []string) {
 			ts.Fatalf("seedobj: %v", err)
 		}
 	}
+}
+
+// TestSingleJSONValue asserts the check of the jsonvalue command: one value
+// with white space around it passes; text before or after it, a second value
+// and an empty document fail.
+func TestSingleJSONValue(t *testing.T) {
+	t.Parallel()
+	require.NoError(t, singleJSONValue(`{"data":{"error":{"retryable":false}}}`))
+	require.NoError(t, singleJSONValue("\n  {\"a\":1}\n\n"))
+	require.NoError(t, singleJSONValue(`"text"`))
+	require.Error(t, singleJSONValue(`{"a":1} {"b":2}`), "two values")
+	require.Error(t, singleJSONValue("warning: x\n{\"a\":1}"), "text before")
+	require.Error(t, singleJSONValue("{\"a\":1}\nwarning: x"), "text after")
+	require.Error(t, singleJSONValue(""), "empty")
+}
+
+// TestWaitRequestViolation asserts the rules of the shim's request hook for a
+// wait: a watch carries timeoutSeconds from 1 to 60, a resourceVersion, the
+// name field selector and allowWatchBookmarks; a List by name carries no
+// resourceVersion; any other request is not a wait request.
+func TestWaitRequestViolation(t *testing.T) {
+	t.Parallel()
+	const ok = "/apis/g/v1/things?watch=true&fieldSelector=metadata.name%3Dx&resourceVersion=7&allowWatchBookmarks=true&timeoutSeconds="
+	for target, wantViolation := range map[string]bool{
+		ok + "55": false,
+		ok + "1":  false,
+		ok + "60": false,
+		ok + "0":  true,
+		ok + "61": true,
+		ok:        true,
+		"/apis/g/v1/things?watch=true&fieldSelector=metadata.name%3Dx&allowWatchBookmarks=true&timeoutSeconds=5":                  true,
+		"/apis/g/v1/things?watch=true&resourceVersion=7&allowWatchBookmarks=true&timeoutSeconds=5":                                true,
+		"/apis/g/v1/things?watch=true&fieldSelector=metadata.name%3D&resourceVersion=7&allowWatchBookmarks=true&timeoutSeconds=5": true,
+		"/apis/g/v1/things?watch=true&fieldSelector=metadata.name%3Dx&resourceVersion=7&timeoutSeconds=5":                         true,
+		"/apis/g/v1/things?fieldSelector=metadata.name%3Dx":                                                                       false,
+		"/apis/g/v1/things?fieldSelector=metadata.name%3Dx&resourceVersion=7":                                                     true,
+		"/apis/g/v1/things?labelSelector=a%3Db&resourceVersion=7":                                                                 false,
+		"/apis/g/v1/things/x": false,
+	} {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
+		require.NoError(t, err)
+		assert.Equal(t, wantViolation, waitRequestViolation(req) != "", target)
+	}
+}
+
+// TestWaitRequestOfAndCounts asserts the shim's record of wait requests: a
+// request with the name field selector is a List, or a watch with watch=true;
+// others are not recorded; counts and List statuses are per object.
+func TestWaitRequestOfAndCounts(t *testing.T) {
+	for target, want := range map[string]string{
+		"/apis/g/v1/things?fieldSelector=metadata.name%3Dx":            "list x",
+		"/apis/g/v1/things?watch=true&fieldSelector=metadata.name%3Dy": "watch y",
+		"/apis/g/v1/things?fieldSelector=metadata.name%3D":             "",
+		"/apis/g/v1/things?labelSelector=a%3Db":                        "",
+		"/apis/g/v1/things/x":                                          "",
+		"/apis/g/v1/things?fieldSelector=metadata.namespace%3Dx":       "",
+	} {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
+		require.NoError(t, err)
+		kind, name, ok := waitRequestOf(req)
+		got := ""
+		if ok {
+			got = kind + " " + name
+		}
+		assert.Equal(t, want, got, target)
+	}
+
+	resetWaitRequests()
+	const name = "counts-unit-test-object"
+	rec := recordWaitRequest("list", name)
+	rw := &statusRecorder{ResponseWriter: httptest.NewRecorder(), rec: rec}
+	rw.WriteHeader(http.StatusForbidden)
+	rw.WriteHeader(http.StatusOK)
+	watchRec := recordWaitRequest("watch", name)
+	watchWriter := &statusRecorder{ResponseWriter: httptest.NewRecorder(), rec: watchRec}
+	watchWriter.Flush()
+	lists, watches, statuses, watchStatuses := waitRequestCounts(name)
+	assert.Equal(t, 1, lists)
+	assert.Equal(t, 1, watches)
+	assert.Equal(t, []int{http.StatusForbidden}, statuses, "the first status written is the one kept")
+	assert.Equal(t, []int{http.StatusOK}, watchStatuses, "a flush before any write is a 200")
+	lists, watches, _, _ = waitRequestCounts("another-object")
+	assert.Zero(t, lists+watches)
 }

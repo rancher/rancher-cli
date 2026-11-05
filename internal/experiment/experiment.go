@@ -15,6 +15,10 @@ const EnvVar = "RANCHER_CLI_EXPERIMENT"
 // plugin.
 const TelemetryUpload = "telemetryupload"
 
+// WaitWatch is the name of the experiment that makes a wait watch the object
+// instead of polling it.
+const WaitWatch = "waitwatch"
+
 // Experiment describes one experimental setting.
 type Experiment struct {
 	// Name matches [a-z][a-z0-9]*.
@@ -36,6 +40,13 @@ func Table() []Experiment {
 			Description: "the endpoint for uploading usage data: a development build sends the stored events of " +
 				"finished hours to it at most once an hour, after a recorded run, never from the kubectl exec plugin",
 			ValueForm: "scheme://host[:port] with path empty or /; https, or http to localhost, ::1 or 127.0.0.0/8; a host that is an IP address or a DNS name in ASCII (write an international name in its xn-- form); a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); no user name, password, query or fragment",
+			DevOnly:   true,
+		},
+		{
+			Name: WaitWatch,
+			Description: "development builds only: get --wait watches the object instead of polling it; " +
+				"it polls when the server refuses a List or a watch",
+			ValueForm: "none: write the bare name",
 			DevOnly:   true,
 		},
 	}

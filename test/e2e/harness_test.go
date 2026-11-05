@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -537,8 +538,10 @@ type shimIdentity struct {
 // shimIdentities are the fixed bearers every router knows: the harness admin
 // and the two named callers the access scenarios log in as.
 var shimIdentities = map[string]shimIdentity{
-	testToken:              {user: "e2e-admin", groups: []string{"system:authenticated", "system:cattle:authenticated"}, canImpersonate: true},
-	"e2e-std:secret":       {user: "e2e-std", groups: []string{"system:authenticated", "system:cattle:authenticated"}},
+	testToken:        {user: "e2e-admin", groups: []string{"system:authenticated", "system:cattle:authenticated"}, canImpersonate: true},
+	"e2e-std:secret": {user: "e2e-std", groups: []string{"system:authenticated", "system:cattle:authenticated"}},
+	// A user the scenarios give a role that grants get and nothing else.
+	"e2e-getter:secret":    {user: "e2e-getter", groups: []string{"system:authenticated", "system:cattle:authenticated"}},
 	"e2e-nocluster:secret": {user: "e2e-nocluster", groups: []string{"system:authenticated", "system:cattle:authenticated"}, clusters: []string{"local"}},
 	// A project member: steve shows it its one project and that project's
 	// namespaces, and the management bindings are refused to it.
@@ -741,8 +744,177 @@ func newRecordingRouter(resolve shimIdentityResolver, rec *shimRecorder) http.Ha
 			r.Header.Add("Impersonate-Group", g)
 		}
 		rec.record(acting, trimmed)
+		if kind, name, ok := waitRequestOf(r); ok {
+			w = &statusRecorder{ResponseWriter: w, rec: recordWaitRequest(kind, name)}
+		}
+		if rule := waitRequestViolation(r); rule != "" {
+			recordWaitViolation(rule + ": " + r.Method + " " + r.URL.String())
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "BadRequest", "code": http.StatusBadRequest,
+				"message": "the shim refuses a wait request that breaks a rule: " + rule,
+			})
+			return
+		}
 		proxy.ServeHTTP(w, r)
 	})
+}
+
+// waitRequestRecord is one wait request that reached the shim: a List by
+// name or a watch open for one object, with the status the shim answered
+// (0 until it answered).
+type waitRequestRecord struct {
+	kind   string // "list" or "watch"
+	name   string
+	status int
+}
+
+var (
+	waitRequestsMu sync.Mutex
+	waitRequests   []*waitRequestRecord
+)
+
+// waitRequestOf returns the kind and the object name of a wait request: a
+// request that carries fieldSelector=metadata.name=<name>, a watch when it
+// has watch=true and a List otherwise.
+func waitRequestOf(r *http.Request) (kind, name string, ok bool) {
+	q := r.URL.Query()
+	name, named := strings.CutPrefix(q.Get("fieldSelector"), waitNameSelector)
+	if !named || name == "" {
+		return "", "", false
+	}
+	if q.Get("watch") == "true" {
+		return "watch", name, true
+	}
+	return "list", name, true
+}
+
+// recordWaitRequest keeps a wait request when it arrives, so a script can
+// wait for a watch before it changes the object, and returns its record.
+func recordWaitRequest(kind, name string) *waitRequestRecord {
+	rec := &waitRequestRecord{kind: kind, name: name}
+	waitRequestsMu.Lock()
+	defer waitRequestsMu.Unlock()
+	waitRequests = append(waitRequests, rec)
+	return rec
+}
+
+// waitRequestCounts returns how many Lists and watch opens of the object the
+// shim has seen, and the status of each, in the order they came.
+func waitRequestCounts(name string) (lists, watches int, listStatuses, watchStatuses []int) {
+	waitRequestsMu.Lock()
+	defer waitRequestsMu.Unlock()
+	for _, rec := range waitRequests {
+		switch {
+		case rec.name != name:
+		case rec.kind == "watch":
+			watches++
+			watchStatuses = append(watchStatuses, rec.status)
+		default:
+			lists++
+			listStatuses = append(listStatuses, rec.status)
+		}
+	}
+	return lists, watches, listStatuses, watchStatuses
+}
+
+// resetWaitRequests forgets the wait requests seen so far, so a second run in
+// one process counts from zero.
+func resetWaitRequests() {
+	waitRequestsMu.Lock()
+	defer waitRequestsMu.Unlock()
+	waitRequests = nil
+}
+
+// statusRecorder keeps the status a response was written with. It passes
+// flushes through, so a stream still reaches the client at once.
+type statusRecorder struct {
+	http.ResponseWriter
+	rec *waitRequestRecord
+}
+
+func (s *statusRecorder) setStatus(code int) {
+	waitRequestsMu.Lock()
+	defer waitRequestsMu.Unlock()
+	if s.rec.status == 0 {
+		s.rec.status = code
+	}
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.setStatus(code)
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	s.setStatus(http.StatusOK)
+	return s.ResponseWriter.Write(b)
+}
+
+func (s *statusRecorder) Flush() {
+	s.setStatus(http.StatusOK)
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+var (
+	waitViolationsMu sync.Mutex
+	waitViolations   []string
+)
+
+// recordWaitViolation keeps a wait request that broke a rule of the request
+// hook. The record is package level: the per-script routers and the global
+// router are built with no recorder, and a scenario's request reaches any of
+// them.
+func recordWaitViolation(text string) {
+	waitViolationsMu.Lock()
+	defer waitViolationsMu.Unlock()
+	waitViolations = append(waitViolations, text)
+}
+
+// recordedWaitViolations returns a copy of the record.
+func recordedWaitViolations() []string {
+	waitViolationsMu.Lock()
+	defer waitViolationsMu.Unlock()
+	return slices.Clone(waitViolations)
+}
+
+// waitNameSelector is the field selector prefix of a request that names one
+// object.
+const waitNameSelector = "metadata.name="
+
+// waitRequestViolation returns the rule a wait request breaks, or "" when it
+// breaks none or is not a wait request. A request with watch=true carries
+// timeoutSeconds from 1 to 60, a non-empty resourceVersion,
+// fieldSelector=metadata.name=<name> and allowWatchBookmarks=true. A request
+// with fieldSelector=metadata.name=<name> and no watch is the List of a wait
+// and carries no resourceVersion.
+func waitRequestViolation(r *http.Request) string {
+	q := r.URL.Query()
+	selector := q.Get("fieldSelector")
+	named := strings.HasPrefix(selector, waitNameSelector) && len(selector) > len(waitNameSelector)
+	if q.Get("watch") == "true" {
+		secs, err := strconv.Atoi(q.Get("timeoutSeconds"))
+		switch {
+		case err != nil || secs < 1 || secs > 60:
+			return "a watch carries timeoutSeconds from 1 to 60"
+		case q.Get("resourceVersion") == "":
+			return "a watch carries a resourceVersion"
+		case !named:
+			return "a watch carries fieldSelector=metadata.name=<name>"
+		case q.Get("allowWatchBookmarks") != "true":
+			return "a watch carries allowWatchBookmarks=true"
+		}
+		return ""
+	}
+	if named && q.Get("resourceVersion") != "" {
+		return "a List by name carries no resourceVersion"
+	}
+	return ""
 }
 
 func TestMain(m *testing.M) {
@@ -1092,6 +1264,12 @@ func TestSeedBearerHasOneOwner(t *testing.T) {
 }
 
 func TestScenarios(t *testing.T) {
+	resetWaitRequests()
+	// Registered before testscript.Run: a cleanup runs after the parallel
+	// subtests end, so every wait request of the scripts has been checked.
+	t.Cleanup(func() {
+		assert.Empty(t, recordedWaitViolations(), "a wait request broke a rule of the shim's request hook")
+	})
 	testscript.Run(t, testscript.Params{
 		Dir: "scripts",
 		Setup: func(e *testscript.Env) error {
@@ -1208,6 +1386,9 @@ func TestScenarios(t *testing.T) {
 		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 			"jsonquery":     cmdJSONQuery,
+			"jsonvalue":     cmdJSONValue,
+			"waitwatchopen": cmdWaitWatchOpen,
+			"shimwaits":     cmdShimWaits,
 			"pathmatch":     cmdPathmatch,
 			"flipstatus":    cmdFlipStatus,
 			"rawget":        cmdRawGet,

@@ -317,6 +317,7 @@ jobs:
       - run: go test -count=1 -v -run 'TestRenameOverAnOpenTarget|TestRemoveOfAnOpenFile|TestReadsRetryASharingViolation|TestShareRetryLeavesOtherErrorsAlone|TestConcurrentWritersOfOneFile|TestReadsDuringReplace|TestRootReadsDuringRootReplace' ./internal/config/
       - run: go test -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
       - run: go test -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
+      - run: go test -count=1 -run '^Test(WatchObject|ListObject|WaitObject)' ./internal/client/provider/
       - run: bash scripts/e2e
       - run: go test -count=1 -v -run TestPwsh ./internal/cli/completions/
       - name: Fault check
@@ -471,6 +472,7 @@ jobs:
       # calls: the directory as spelled, volumes, both separators and ~\ in
       # --exec-command, and the remedies naming a quoted Windows path.
       - run: go test -race -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
+      - run: go test -race -count=1 -run '^Test(WatchObject|ListObject|WaitObject)' ./internal/client/provider/
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
         with:

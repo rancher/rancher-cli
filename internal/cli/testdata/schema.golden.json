@@ -10433,6 +10433,12 @@
       "devOnly": true,
       "name": "telemetryupload",
       "valueForm": "scheme://host[:port] with path empty or /; https, or http to localhost, ::1 or 127.0.0.0/8; a host that is an IP address or a DNS name in ASCII (write an international name in its xn-- form); a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); no user name, password, query or fragment"
+    },
+    {
+      "desc": "development builds only: get --wait watches the object instead of polling it; it polls when the server refuses a List or a watch",
+      "devOnly": true,
+      "name": "waitwatch",
+      "valueForm": "none: write the bare name"
     }
   ],
   "globalFlags": [

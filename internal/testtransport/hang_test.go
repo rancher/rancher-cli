@@ -140,3 +140,56 @@ func TestHangAndAbortSendsNoResponseToAClosedClient(t *testing.T) {
 		require.Fail(t, "the handler never saw its request's context end")
 	}
 }
+
+// TestHoldStreamAndAbortFlushesTheHeadersThenAbortsOnceTheContextEnds asserts
+// that the helper sends the response headers at once, holds while the
+// request's context is live, and then panics with http.ErrAbortHandler.
+func TestHoldStreamAndAbortFlushesTheHeadersThenAbortsOnceTheContextEnds(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	rec := httptest.NewRecorder()
+	out := holdOutcome(func() { HoldStreamAndAbort(rec, requestWithContext(ctx, t)) })
+	requireHeld(t, out)
+	cancel()
+	assert.Equal(t, http.ErrAbortHandler, requireOutcome(t, out))
+	assert.True(t, rec.Flushed)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// TestHoldStreamAndAbortKeepsWhatTheHandlerWrote asserts, through a real
+// connection, that a client reads the status and the event the handler wrote
+// before the call while the handler is held, and that its read then fails
+// once the client gives up and the handler sees its context end.
+func TestHoldStreamAndAbortKeepsWhatTheHandlerWrote(t *testing.T) {
+	gone := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(gone)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, "event\n")
+		HoldStreamAndAbort(w, r)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+	resp, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	line := make([]byte, len("event\n"))
+	_, err = io.ReadFull(resp.Body, line)
+	require.NoError(t, err)
+	assert.Equal(t, "event\n", string(line))
+
+	cancel()
+	select {
+	case <-gone:
+	case <-time.After(hangTestWait):
+		require.Fail(t, "the handler never saw its request's context end")
+	}
+	_, err = io.ReadAll(resp.Body)
+	assert.Error(t, err)
+}

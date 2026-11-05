@@ -9,11 +9,36 @@ wait waitcmd
 stderr 'quota exceeded'
 jsonquery stderr data.error.retryable false
 
+# the same wait with the waitwatch experiment on: the object is watched, and
+# stderr holds the error envelope and nothing else
+env RANCHER_CLI_EXPERIMENT=waitwatch
+
+exec rancher create resource -f gitrepo-watched.yaml --apply
+
+! exec rancher get gitrepo failer-watched --wait --timeout 30s -o json &watchedcmd&
+waitwatchopen failer-watched
+flipstatus local fleet.cattle.io/v1alpha1/gitrepos fleet-default failer-watched '{"transitioning":"error","transitioningMessage":"quota exceeded"}'
+wait watchedcmd
+stderr 'quota exceeded'
+# one List, one watch whose event closed the stream, and the List a cycle later that decided
+shimwaits failer-watched 2 1 200 200
+cp stderr watched-stderr.json
+jsonvalue watched-stderr.json
+jsonquery watched-stderr.json data.error.retryable false
+
 -- gitrepo.yaml --
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
   name: failer
+  namespace: fleet-default
+spec:
+  repo: https://example.com/repo.git
+-- gitrepo-watched.yaml --
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: failer-watched
   namespace: fleet-default
 spec:
   repo: https://example.com/repo.git

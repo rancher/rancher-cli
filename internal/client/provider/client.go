@@ -23,8 +23,9 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// requestTimeout bounds every non-streaming API operation. Watch/stream
-// calls (none yet) must exempt themselves at the call site. A package var
+// requestTimeout bounds every non-streaming API operation. WatchObject is the
+// one exemption: its stream lasts as long as the server keeps it open, and
+// only its open, until the response headers, is bounded by this value. A package var
 // (rather than a constant) so tests can shrink it via
 // SetRequestTimeoutForTest - the keyringProbeTimeout test-shrinkable
 // pattern in internal/config/credstore.go.
@@ -98,7 +99,14 @@ type dynamicClient struct {
 // from. The discovery client is built from the bounded config copy
 // (discoveryConfig) so an empty-version resolution has the same request
 // timeout as every other call, on top of the caller's context.
-func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, error) {
+//
+// Without WithWatch the client is the *dynamicClient, which has no ListObject
+// or WatchObject method; with it, a *watchClient that adds them.
+func NewClusterClient(rc *rest.Config, clusterID string, opts ...Option) (engine.ClusterClient, error) {
+	var o clientOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	dyn, err := kube.Dynamic(rc)
 	if err != nil {
 		return nil, err
@@ -119,13 +127,17 @@ func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, 
 	if err != nil {
 		return nil, err
 	}
-	return &dynamicClient{
+	dc := &dynamicClient{
 		dyn: dyn, cs: cs, hc: hc, tbl: tbl, host: strings.TrimRight(rc.Host, "/"),
 		groups: func(ctx context.Context) (*metav1.APIGroupList, error) {
 			return serverGroups(ctx, disc)
 		},
 		clusterID: clusterID, versions: map[string]string{},
-	}, nil
+	}
+	if o.watch {
+		return &watchClient{dynamicClient: dc}, nil
+	}
+	return dc, nil
 }
 
 func (r *dynamicClient) ri(gvr schema.GroupVersionResource, ns string) dynamic.ResourceInterface {

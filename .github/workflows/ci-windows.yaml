@@ -101,6 +101,7 @@ jobs:
       - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
       - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
       - run: go test -race -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
+      - run: go test -race -count=1 -run '^Test(WatchObject|ListObject|WaitObject)' ./internal/client/provider/
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
         with:

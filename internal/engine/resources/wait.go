@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -67,43 +66,30 @@ func invalidForErr(forExpr string) *clierr.Error {
 			"JSONPath is not supported - for that, use kubectl wait with a kubeconfig from this command, where <cluster> is the cluster: ", forExpr)+clierr.Rancher+" kubeconfig --cluster <cluster>")
 }
 
-// waitFor polls client.Get every pollInterval until cond is satisfied, the
-// object reports a Rancher fail-fast (status.transitioning == "error"), or
-// timeout elapses. A NOT_FOUND Get error fails immediately (the target is
+// waitFor waits until cond is satisfied, the object reports a Rancher
+// fail-fast (status.transitioning == "error"), or timeout elapses. A client
+// that can list and watch one object (engine.ObjectWatcher) is watched; any
+// other client is polled with Get every pollInterval, and a watched wait polls
+// the same way when the server refuses the List or the watch (see
+// engine.WaitObject). A NOT_FOUND Get error fails immediately (the target is
 // gone, not slow), and so does an error engine.WaitShouldStop accepts (an
 // authentication or certificate failure does not pass on a retry); it is
-// returned as is. Any other Get error is treated as transient and retried,
-// with the last-observed object and the last Get error carried into the
+// returned as is. Any other List or Get error is treated as transient and
+// retried, with the last-observed object and the last error carried into the
 // eventual timeout message. Fail-fast returns immediately with a
 // non-retryable error; a timeout always returns a retryable error carrying
-// the last-observed state and the last Get error, never a raw Get error; a
+// the last-observed state and the last error, never a raw request error; a
 // cancelled context returns its own error.
 func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource, ns, name string, cond waitCond, timeout time.Duration, failOnStalled bool) (*unstructured.Unstructured, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	var last *unstructured.Unstructured
-	var lastErr *clierr.Error
-	for {
-		obj, err := client.Get(ctx, gvr, ns, name)
-		switch {
-		case err != nil && clierr.IsNotFound(err):
-			return nil, err
-		case err != nil && engine.WaitShouldStop(err):
-			return nil, err
-		case err != nil:
-			// Transient error: fall through to the poll-or-timeout select below,
-			// carrying whatever state was last observed into the eventual message.
-			// A Get cut by the wait's own deadline or by a cancel, with no
-			// answer, says nothing about the server. One that ended with the
-			// context still live is recorded, and so is one that names a status
-			// the server answered.
-			if _, answered := clierr.HTTPStatus(err); ctx.Err() == nil || answered {
-				lastErr = clierr.From(err)
-			}
-		default:
-			last = obj
-			lastErr = nil
+	var result *unstructured.Unstructured
+	err := engine.WaitObject(ctx, client, engine.WaitParams{
+		GVR:         gvr,
+		Namespace:   ns,
+		Name:        name,
+		Timeout:     timeout,
+		Interval:    pollInterval,
+		SpacingFrom: engine.SpacingFromReturn,
+		Observe: func(_ context.Context, obj *unstructured.Unstructured, source engine.WaitSource) (engine.WaitOutcome, error) {
 			// The generation staleness gate applies only to kstatus-opted
 			// kinds (failOnStalled=true). A controller that has not
 			// reconciled the object's current generation yet has written
@@ -111,53 +97,76 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// created object can carry a default Ready=True before its
 			// controller ever runs. When the object tracks
 			// observedGeneration and it lags, nothing on it is meaningful:
-			// keep polling. Objects without the field (no generation
+			// keep waiting. Objects without the field (no generation
 			// tracking) are always considered settled.
 			//
 			// Non-opted kinds (failOnStalled=false) keep pre-branch
 			// behaviour: transitioning=error and waitSatisfied are checked
-			// on every poll regardless of generation bookkeeping.
+			// on every observation regardless of generation bookkeeping.
 			// TestWaitForSkipsUnsettledGenerations and
 			// TestWaitForUnsettledUnstalledSucceedsImmediately assert the two
 			// sides of this invariant.
-			if !failOnStalled || settled(obj) {
-				if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {
-					msg, _, _ := unstructured.NestedString(obj.Object, "status", "transitioningMessage")
-					return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s failed: %s", name, msg))
+			if failOnStalled && !settled(obj) {
+				return engine.WaitContinue, nil
+			}
+			// A watch event that shows a fail-fast state closes the stream and
+			// does not end the wait: a controller may clear the state within
+			// seconds, and a poll would usually not have seen it. The List
+			// that follows, no sooner than one interval later, runs every
+			// check on a fresh object.
+			if transitioning, _, _ := unstructured.NestedString(obj.Object, "status", "transitioning"); transitioning == "error" {
+				if source == engine.SourceEvent {
+					return engine.WaitClose, nil
 				}
-				// Stalled=True is the kstatus abort convention (Fleet sets it on a
-				// failed GitRepo clone while still reporting Ready=True), so it
-				// fails the wait even when the target condition reads satisfied -
-				// unless Stalled itself is what the caller is waiting for. Opt-in
-				// per kind row (WaitFailsOnStalled): not every controller treats
-				// Stalled as terminal, so a kind must be known-kstatus to abort.
-				if failOnStalled && !cond.isStalledTarget() {
-					if status, msg, ok := conditionStatus(obj.Object, "Stalled"); ok && status == "True" {
-						if msg == "" {
-							msg = "condition Stalled=True"
-						}
-						return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, output.Printable(msg)))
+				msg, _, _ := unstructured.NestedString(obj.Object, "status", "transitioningMessage")
+				return engine.WaitContinue, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s failed: %s", name, msg))
+			}
+			// Stalled=True is the kstatus abort convention (Fleet sets it on a
+			// failed GitRepo clone while still reporting Ready=True), so it
+			// fails the wait even when the target condition reads satisfied -
+			// unless Stalled itself is what the caller is waiting for. Opt-in
+			// per kind row (WaitFailsOnStalled): not every controller treats
+			// Stalled as terminal, so a kind must be known-kstatus to abort.
+			if failOnStalled && !cond.isStalledTarget() {
+				if status, msg, ok := conditionStatus(obj.Object, "Stalled"); ok && status == "True" {
+					if source == engine.SourceEvent {
+						return engine.WaitClose, nil
 					}
-				}
-				if waitSatisfied(obj, cond) {
-					return obj, nil
+					if msg == "" {
+						msg = "condition Stalled=True"
+					}
+					return engine.WaitContinue, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, output.Printable(msg)))
 				}
 			}
-		}
-
-		select {
-		case <-ctx.Done():
-			// The caller's cancellation is not a timeout: the operator ended
-			// the wait, and a "retry with a longer --timeout" message would
-			// be wrong. The context's own error passes through for the
-			// runtime to classify.
-			if errors.Is(ctx.Err(), context.Canceled) {
-				return nil, ctx.Err()
+			if waitSatisfied(obj, cond) {
+				result = obj
+				return engine.WaitDone, nil
 			}
-			return nil, waitTimeoutErr(name, last, lastErr, cond, failOnStalled)
-		case <-time.After(pollInterval):
-		}
+			return engine.WaitContinue, nil
+		},
+		// A request cut by the wait's own deadline or by a cancel, with no
+		// answer, says nothing about the server. One that ended with the
+		// context still live is recorded, and so is one that names a status
+		// the server answered.
+		RecordErr: func(ctx context.Context, err error) bool {
+			_, answered := clierr.HTTPStatus(err)
+			return ctx.Err() == nil || answered
+		},
+		OnAbort: func(err error) error { return err },
+		// The caller's cancellation is not a timeout: the operator ended the
+		// wait, and a "retry with a longer --timeout" message would be wrong.
+		// The context's own error passes through for the runtime to classify.
+		OnCancel: func(ctx context.Context, _ *unstructured.Unstructured, _ *clierr.Error) error {
+			return ctx.Err()
+		},
+		OnTimeout: func(last *unstructured.Unstructured, lastErr *clierr.Error) error {
+			return waitTimeoutErr(name, last, lastErr, cond, failOnStalled)
+		},
+	})
+	if err != nil {
+		return nil, err
 	}
+	return result, nil
 }
 
 func waitTimeoutErr(name string, last *unstructured.Unstructured, lastErr *clierr.Error, cond waitCond, failOnStalled bool) *clierr.Error {
