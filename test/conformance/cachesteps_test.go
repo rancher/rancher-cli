@@ -54,8 +54,8 @@ var goCacheReaders = map[string]goCacheReader{
 	"test-2":                  {"test-1", "the race shards share the dependency builds of internal/cli; each shard builds its own test variants"},
 	"test-3":                  {"test-1", "the race shards share the dependency builds of internal/cli; each shard builds its own test variants"},
 	"cachemodel":              {"e2e", "the package imports the standard library, slices and testify only, which the entry of e2e holds"},
-	"cross-compile":           {"e2e", "builds one platform without cgo; the entry of e2e holds the modules and the standard library"},
-	"fault-check":             {"e2e", "runs tests without the race detector on the build of e2e, and builds its own test variants"},
+	"cross-compile":           {"e2e", "builds one platform without cgo; the entry of e2e holds the modules, the standard library and, for linux/amd64, the packages built without cgo"},
+	"fault-check":             {"e2e", "runs tests without the race detector on the build of e2e, and builds its own test variants; the entry also holds the packages the CLI needs built without cgo"},
 	"install-windows-install": {"install-windows-cli", "both run on the Windows runner with the default checkout, so go.sum hashes the same and the entry fits"},
 }
 
