@@ -39,15 +39,20 @@ func checkKnownFile(name string, raw []byte, probes []Probe, oracleDir, downstre
 }
 
 // TestKnownDifferencesFiles asserts that every tracked known-differences
-// file passes every rule: strict decode, the minor against its name, every
-// probe in All(), want equal to the current golden's value, and the format.
-// It passes with no file.
+// file, of an upcoming minor and of the helm-check, passes every rule: strict
+// decode, the minor against its name, every probe in All(), want equal to the
+// current golden's value, and the format. The helm-check's file for v2.15
+// exists.
 func TestKnownDifferencesFiles(t *testing.T) {
 	testdata := filepath.Join("testdata")
 	files, err := filepath.Glob(filepath.Join(testdata, "upcoming", "*.json"))
 	require.NoError(t, err)
+	install, err := filepath.Glob(filepath.Join(testdata, "install", "*.json"))
+	require.NoError(t, err)
+	require.Contains(t, install, filepath.Join(testdata, "install", "v2.15.json"))
+	files = append(files, install...)
 	for _, path := range files {
-		t.Run(filepath.Base(path), func(t *testing.T) {
+		t.Run(filepath.Base(filepath.Dir(path))+"-"+filepath.Base(path), func(t *testing.T) {
 			raw, err := os.ReadFile(path)
 			require.NoError(t, err)
 			require.NoError(t, checkKnownFile(filepath.Base(path), raw, All(),
@@ -110,7 +115,7 @@ func TestKnownDifferencesFixtures(t *testing.T) {
 		"bad-want-differs":           "want 201 differs from the golden's 200; update the entry's want or remove the entry",
 		"bad-absent-want":            "want nothing differs from the golden's 200",
 		"bad-got-and-varies":         "got and gotVaries are both set",
-		"bad-cause":                  `cause "kubernetes-ish" is not rancher, kubernetes or undetermined`,
+		"bad-cause":                  `cause "kubernetes-ish" is not rancher, kubernetes, install or undetermined`,
 		"bad-ruling":                 `ruling "later" is not fake-follows, cli-change, expected-at-ga, newer-patch, rancher-defect or empty`,
 		"bad-defect-no-url":          "ruling rancher-defect needs a url",
 		"bad-url-unlisted":           `url "https://github.com/rancher/not-listed/issues/1" is not an issue or pull request of an allowed repository`,

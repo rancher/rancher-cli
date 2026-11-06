@@ -226,16 +226,29 @@ const (
 	RulingRancherDefect = "rancher-defect"
 )
 
-// Causes of a known difference.
+// Causes of a known difference. Install is the cause of a difference that
+// comes from running the Rancher chart in a cluster instead of the single
+// container image; a helm-check run gives it to every new difference that the
+// downstream k3s version does not explain.
 const (
 	CauseRancher      = "rancher"
 	CauseKubernetes   = "kubernetes"
+	CauseInstall      = "install"
 	CauseUndetermined = "undetermined"
+)
+
+// Profiles of a drift run: an upcoming minor compared with the community
+// goldens, or the helm-check, which boots the community pin's image with the
+// Rancher chart and compares it with the goldens recorded from the same
+// image.
+const (
+	ProfileUpcoming  = "upcoming"
+	ProfileHelmCheck = "helm-check"
 )
 
 var (
 	knownRulings = []string{RulingFakeFollows, RulingCLIChange, RulingExpectedAtGA, RulingNewerPatch, RulingRancherDefect}
-	knownCauses  = []string{CauseRancher, CauseKubernetes, CauseUndetermined}
+	knownCauses  = []string{CauseRancher, CauseKubernetes, CauseInstall, CauseUndetermined}
 )
 
 // oneOf writes a list for a message: "a, b or c".
@@ -494,8 +507,10 @@ func LoadKnownFile(path string) KnownFileLoad {
 	return KnownFileLoad{File: k, Exists: true}
 }
 
-// The six drift variables scripts/e2e-fidelity sets for a drift run.
+// The six drift variables scripts/e2e-fidelity sets for a drift run, and the
+// profile variable it also sets for the test binary.
 const (
+	EnvDriftProfile     = "E2E_FIDELITY_DRIFT_PROFILE"
 	EnvDriftReport      = "E2E_FIDELITY_DRIFT_REPORT"
 	EnvDriftKnown       = "E2E_FIDELITY_DRIFT_KNOWN"
 	EnvDriftStarted     = "E2E_FIDELITY_DRIFT_STARTED"
@@ -523,12 +538,25 @@ type DriftConfig struct {
 	GoldenK3sImage  string
 	DownstreamImage string
 	OracleImage     string
+	// Profile is ProfileUpcoming, ProfileHelmCheck or empty, which means
+	// ProfileUpcoming.
+	Profile string
+}
+
+// reportProfile is the profile the report names.
+func (c DriftConfig) reportProfile() string {
+	if c.Profile == "" {
+		return ProfileUpcoming
+	}
+	return c.Profile
 }
 
 // DriftConfigFromEnv reads the six drift variables. None set means drift
 // mode is off. All set means on. Some but not all, or any set while goldens
 // are being recorded (update), is an error, and so is a missing
-// E2E_FIDELITY_MINOR.
+// E2E_FIDELITY_MINOR. The profile variable is read only in drift mode: empty
+// means the upcoming profile, and a value other than upcoming or helm-check
+// is an error.
 func DriftConfigFromEnv(getenv func(string) string, update bool) (DriftConfig, bool, error) {
 	var missing []string
 	for _, name := range driftVariables {
@@ -549,8 +577,13 @@ func DriftConfigFromEnv(getenv func(string) string, update bool) (DriftConfig, b
 	if minor == "" {
 		return DriftConfig{}, false, errors.New("drift mode needs E2E_FIDELITY_MINOR")
 	}
+	profile := getenv(EnvDriftProfile)
+	if profile != "" && profile != ProfileUpcoming && profile != ProfileHelmCheck {
+		return DriftConfig{}, false, fmt.Errorf("%s=%s is not %s or %s", EnvDriftProfile, profile, ProfileUpcoming, ProfileHelmCheck)
+	}
 	return DriftConfig{
 		Minor:           minor,
+		Profile:         profile,
 		ReportPath:      getenv(EnvDriftReport),
 		KnownPath:       getenv(EnvDriftKnown),
 		StartedAt:       getenv(EnvDriftStarted),
@@ -738,6 +771,7 @@ type DriftCounts struct {
 // Report is the drift run's result file.
 type Report struct {
 	Minor             string            `json:"minor"`
+	Profile           string            `json:"profile"`
 	StartedAt         string            `json:"startedAt"`
 	OracleImage       string            `json:"oracleImage"`
 	DownstreamImage   string            `json:"downstreamImage"`
@@ -826,8 +860,18 @@ func Compare(known KnownFile, header Report, probes []ProbeRun, cliTests []CLITe
 				matched[idx] = true
 				continue
 			}
+			// A difference in a downstream probe whose downstream k3s differs
+			// from the goldens' comes from the k3s version: kubernetes in a
+			// helm-check run, undetermined in an upcoming run. Any other new
+			// difference is install in a helm-check run and rancher in an
+			// upcoming run.
 			cause := CauseRancher
-			if pr.Downstream && r.DownstreamImage != r.GoldenK3sImage {
+			switch {
+			case r.Profile == ProfileHelmCheck && pr.Downstream && r.DownstreamImage != r.GoldenK3sImage:
+				cause = CauseKubernetes
+			case r.Profile == ProfileHelmCheck:
+				cause = CauseInstall
+			case pr.Downstream && r.DownstreamImage != r.GoldenK3sImage:
 				cause = CauseUndetermined
 			}
 			r.New = append(r.New, NewDifference{
@@ -975,6 +1019,7 @@ func FinishDriftRun(in DriftInputs) (Report, int) {
 
 	report := Compare(known, Report{
 		Minor:             in.Config.Minor,
+		Profile:           in.Config.reportProfile(),
 		StartedAt:         in.Config.StartedAt,
 		OracleImage:       in.Config.OracleImage,
 		DownstreamImage:   in.Config.DownstreamImage,

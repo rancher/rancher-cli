@@ -12,9 +12,27 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # it has no goldens; the suite boots it with the same downstream, smoke-checks
 # it, and leaves a kept pair for hand runs and fact probes against Prime. The
 # upcoming-minor oracle (E2E_FIDELITY_MINOR=<major>.<minor>) is the third
-# opt-in oracle, described below.
+# opt-in oracle, described below. The helm-check (E2E_FIDELITY_HELM_CHECK=1) is
+# the fourth: it boots the community pin's image with the Rancher chart.
+#
+# Every pin names its boot on the line after it. container is one docker run
+# of the single-container image. helm is a k3s container with the Rancher
+# chart installed into it; a helm pin also names <PREFIX>_CHART (archive URL
+# and sha256) and <PREFIX>_LOCAL_K3S_IMAGE (the k3s image of the node
+# container), and an image of the rancher-server repository is always helm.
 ORACLE_IMAGE="rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea"
+ORACLE_BOOT="container"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
+PRIME_ORACLE_BOOT="container"
+# The helm-check (E2E_FIDELITY_HELM_CHECK=1) boots ORACLE_IMAGE with helm and
+# compares it with the goldens recorded from the same image under container.
+# Its chart is the Rancher chart of the same version as ORACLE_IMAGE's tag; its
+# node container runs the k3s the image embeds.
+HELMCHECK_CHART="https://releases.rancher.com/server-charts/latest/rancher-2.15.2.tgz@sha256:855cb9be954f65a31b9a8c77f7aebce125c2d7797425257d21d35e3380816ac8"
+HELMCHECK_LOCAL_K3S_IMAGE="rancher/k3s:v1.36.2-k3s1@sha256:6a47cea22c4b834d4ba72c89d291696b79ebe406251f90b446e4dff03513dd87"
+# CERT_MANAGER_MANIFEST is the cert-manager release every helm boot applies
+# before the chart; bumped through a reviewed change like the pins above.
+CERT_MANAGER_MANIFEST="https://github.com/cert-manager/cert-manager/releases/download/v1.15.3/cert-manager.yaml@sha256:10b0b5ea875cd62c8ce39b4b6b488f032788cc6aa7d1c5437c4ff38d8304c2c0"
 # K3S_IMAGE is the downstream cluster the oracle imports on every boot, so
 # the fidelity facts that need a downstream (the access-downstream family)
 # record against the pinned oracle rather than an external server. One
@@ -87,6 +105,31 @@ if [ -n "${E2E_FIDELITY_HEAD:-}" ]; then
   echo "error: E2E_FIDELITY_HEAD is no longer read; set E2E_FIDELITY_MINOR=<major>.<minor> (for example 2.16)" >&2
   exit 1
 fi
+# The helm-check profile boots ORACLE_IMAGE with helm and compares it with the
+# community goldens; it has no minor, no Prime pin and never records.
+HELM_CHECK="${E2E_FIDELITY_HELM_CHECK:-}"
+if [ -n "${HELM_CHECK}" ]; then
+  if [ "${HELM_CHECK}" != "1" ]; then
+    echo "error: E2E_FIDELITY_HELM_CHECK=${HELM_CHECK} is not 1; set E2E_FIDELITY_HELM_CHECK=1 or unset it" >&2
+    exit 1
+  fi
+  if [ "${E2E_FIDELITY_PRIME:-}" = "1" ]; then
+    echo "error: E2E_FIDELITY_HELM_CHECK and E2E_FIDELITY_PRIME select different oracles; set one" >&2
+    exit 1
+  fi
+  if [ -n "${MINOR}" ]; then
+    echo "error: E2E_FIDELITY_HELM_CHECK and E2E_FIDELITY_MINOR select different oracles; set one" >&2
+    exit 1
+  fi
+  if [ -n "${E2E_FIDELITY_UPDATE_FLAG:-}" ]; then
+    echo "error: E2E_FIDELITY_HELM_CHECK cannot record goldens; it only compares a run with them" >&2
+    exit 1
+  fi
+  if [ "${ORACLE_BOOT}" = "helm" ]; then
+    echo "error: E2E_FIDELITY_HELM_CHECK compares a helm boot with goldens recorded under the container boot, but ORACLE_BOOT is helm" >&2
+    exit 1
+  fi
+fi
 if [ -n "${MINOR}" ] && [ "${E2E_FIDELITY_PRIME:-}" = "1" ]; then
   echo "error: E2E_FIDELITY_PRIME and E2E_FIDELITY_MINOR select different oracles; set one" >&2
   exit 1
@@ -113,8 +156,10 @@ DRIFT=0
 DRIFT_REPORTED=0
 DRIFT_REPORT_ABS=""
 DRIFT_KNOWN=""
+DRIFT_PROFILE=""
+DRIFT_LABEL=""
 if [ "${DRIFT}" = 1 ]; then
-  if [ -z "${MINOR}" ]; then
+  if [ -z "${MINOR}" ] && [ -z "${HELM_CHECK}" ]; then
     echo "error: E2E_FIDELITY_DRIFT needs E2E_FIDELITY_MINOR=<major>.<minor>; the drift run compares an upcoming minor with the community goldens" >&2
     exit 1
   fi
@@ -134,9 +179,32 @@ if [ "${DRIFT}" = 1 ]; then
       exit 1
     fi
   fi
-  DRIFT_KNOWN="${REPO_ROOT}/internal/testrancher/fidelity/testdata/upcoming/v${MINOR}.json"
+  if [ -n "${E2E_FIDELITY_DRIFT_PROFILE:-}" ]; then
+    echo "error: E2E_FIDELITY_DRIFT_PROFILE is set by scripts/e2e-fidelity; unset it" >&2
+    exit 1
+  fi
+  if [ -n "${HELM_CHECK}" ]; then
+    # The helm-check drift run names the minor of ORACLE_IMAGE's tag, for the
+    # test binary only; this script's own MINOR stays empty.
+    helm_check_tag="${ORACLE_IMAGE%%@*}"
+    helm_check_tag="${helm_check_tag##*:}"
+    helm_check_pattern='^v([1-9][0-9]*\.(0|[1-9][0-9]*))\.'
+    if ! [[ "${helm_check_tag}" =~ ${helm_check_pattern} ]]; then
+      echo "error: ORACLE_IMAGE tag ${helm_check_tag} does not start with v<major>.<minor>.; the helm-check drift run cannot tell which minor the image is" >&2
+      exit 1
+    fi
+    DRIFT_MINOR="${BASH_REMATCH[1]}"
+    DRIFT_PROFILE="helm-check"
+    DRIFT_LABEL="helm-check (${DRIFT_MINOR})"
+    DRIFT_KNOWN="${REPO_ROOT}/internal/testrancher/fidelity/testdata/install/v${DRIFT_MINOR}.json"
+  else
+    DRIFT_MINOR="${MINOR}"
+    DRIFT_PROFILE="upcoming"
+    DRIFT_LABEL="${MINOR}"
+    DRIFT_KNOWN="${REPO_ROOT}/internal/testrancher/fidelity/testdata/upcoming/v${MINOR}.json"
+  fi
 else
-  for var in E2E_FIDELITY_DRIFT_REPORT E2E_FIDELITY_DRIFT_KNOWN E2E_FIDELITY_DRIFT_STARTED E2E_FIDELITY_GOLDEN_IMAGE E2E_FIDELITY_GOLDEN_K3S_IMAGE E2E_FIDELITY_DOWNSTREAM_IMAGE; do
+  for var in E2E_FIDELITY_DRIFT_PROFILE E2E_FIDELITY_DRIFT_REPORT E2E_FIDELITY_DRIFT_KNOWN E2E_FIDELITY_DRIFT_STARTED E2E_FIDELITY_GOLDEN_IMAGE E2E_FIDELITY_GOLDEN_K3S_IMAGE E2E_FIDELITY_DOWNSTREAM_IMAGE; do
     if [ -n "${!var:-}" ]; then
       echo "error: ${var} is set without E2E_FIDELITY_DRIFT=1; unset it" >&2
       exit 1
@@ -171,8 +239,17 @@ check_image_format() {
 # SMOKE_PROFILE names the opt-in oracle that gets the boot smoke instead of
 # the golden suite; empty for the community pin.
 SMOKE_PROFILE=""
+# BOOT, CHART_PIN and LOCAL_K3S_PIN are the profile's boot and its helm pins;
+# SLOT_LABEL names the profile in a slot refusal.
+BOOT="container"
+CHART_PIN=""
+LOCAL_K3S_PIN=""
+SLOT_LABEL="${MINOR}"
 if [ "${E2E_FIDELITY_PRIME:-}" = "1" ]; then
   ORACLE_IMAGE="${PRIME_ORACLE_IMAGE}"
+  BOOT="${PRIME_ORACLE_BOOT}"
+  CHART_PIN="${PRIME_ORACLE_CHART:-}"
+  LOCAL_K3S_PIN="${PRIME_ORACLE_LOCAL_K3S_IMAGE:-}"
   SMOKE_PROFILE="prime"
   CONTAINER="rancher-cli-e2e-fidelity-prime"
   HOST_PORT="8444"
@@ -194,7 +271,22 @@ elif [ -n "${MINOR}" ]; then
   CONTAINER="rancher-cli-e2e-fidelity-v${MINOR}"
   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity-v${MINOR}"
   SMOKE_PROFILE="v${MINOR}"
+elif [ -n "${HELM_CHECK}" ]; then
+  # Slot 8447 and 172.30.5.0/24 belong to the helm-check beside the
+  # upcoming-minor slots.
+  BOOT="helm"
+  CHART_PIN="${HELMCHECK_CHART}"
+  LOCAL_K3S_PIN="${HELMCHECK_LOCAL_K3S_IMAGE}"
+  SLOT_LABEL="helm-check"
+  HOST_PORT="8447"
+  SUBNET="172.30.5.0/24"
+  CONTAINER="rancher-cli-e2e-fidelity-helm-check"
+  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity-helm-check"
+  SMOKE_PROFILE="helm-check"
 else
+  BOOT="${ORACLE_BOOT}"
+  CHART_PIN="${ORACLE_CHART:-}"
+  LOCAL_K3S_PIN="${ORACLE_LOCAL_K3S_IMAGE:-}"
   CONTAINER="rancher-cli-e2e-fidelity"
   HOST_PORT="8443"
   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity"
@@ -226,6 +318,39 @@ UPDATE_FLAG="${E2E_FIDELITY_UPDATE_FLAG:-}"
 if [ -z "${ORACLE_IMAGE}" ]; then
   echo "error: ORACLE_IMAGE is not pinned yet; set the literal tag+digest in scripts/e2e-fidelity" >&2
   exit 1
+fi
+
+if [ "${BOOT}" != "container" ] && [ "${BOOT}" != "helm" ]; then
+  echo "error: the boot of this profile is ${BOOT}, not container or helm; fix its boot setting in scripts/e2e-fidelity" >&2
+  exit 1
+fi
+HELM_COMPUTED=""
+HELM_ASSETS_IMAGE=""
+LOCAL_K3S_SOURCE=""
+CERT_MANAGER_IMAGES="[]"
+DL_DIR=""
+if [ "${BOOT}" = "helm" ]; then
+  if [ -z "${CHART_PIN}" ] || [ -z "${LOCAL_K3S_PIN}" ]; then
+    echo "error: a helm boot needs a chart pin and a pin for the k3s image of the node container in the profile's lines of scripts/e2e-fidelity" >&2
+    exit 1
+  fi
+  # Split the server image into the parts the chart values and the checks use.
+  IMAGE_NAME="${ORACLE_IMAGE%%@*}"
+  IMAGE_DIGEST="${ORACLE_IMAGE#*@}"
+  IMAGE_TAG="${IMAGE_NAME##*:}"
+  IMAGE_PATH="${IMAGE_NAME%:*}"
+  # The chart writes the registry host itself: the repository value has none.
+  # The registry host refusal below leaves no host in IMAGE_PATH, so
+  # IMAGE_REPOSITORY equals IMAGE_PATH.
+  IMAGE_REPOSITORY="${IMAGE_PATH}"
+  case "${IMAGE_PATH%%/*}" in
+    *.* | *:* | localhost)
+      # The registry reads of a helm boot (the image's environment, the
+      # assets image digest) go to one registry, Docker Hub.
+      echo "error: a helm boot reads images only from Docker Hub; ${ORACLE_IMAGE} includes a registry host" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 for tool in docker curl openssl python3 go; do
@@ -421,6 +546,7 @@ holder_note() {
   case "${name}" in
     rancher-cli-e2e-fidelity | rancher-cli-e2e-fidelity-k3s | rancher-cli-e2e-fidelity-net) printf ', the community pair' ;;
     rancher-cli-e2e-fidelity-prime | rancher-cli-e2e-fidelity-prime-k3s | rancher-cli-e2e-fidelity-prime-net) printf ', the Prime pair' ;;
+    rancher-cli-e2e-fidelity-helm-check | rancher-cli-e2e-fidelity-helm-check-k3s | rancher-cli-e2e-fidelity-helm-check-net) printf ', the helm-check pair' ;;
   esac
 }
 
@@ -475,11 +601,11 @@ check_slot() {
     done
   done <<<"${container_ports}"
   if [ -n "${holder}" ]; then
-    echo "error: port ${HOST_PORT} for ${MINOR} is held by container ${holder}$(holder_note "${holder}")" >&2
+    echo "error: port ${HOST_PORT} for ${SLOT_LABEL} is held by container ${holder}$(holder_note "${holder}")" >&2
     exit 1
   fi
   if [ -z "${own_port}" ] && ! port_is_free; then
-    echo "error: port ${HOST_PORT} for ${MINOR} is in use on ${BIND_ADDR} outside Docker (checked twice, 2 s apart); a pair removed in the last minute can leave the port in TIME_WAIT" >&2
+    echo "error: port ${HOST_PORT} for ${SLOT_LABEL} is in use on ${BIND_ADDR} outside Docker (checked twice, 2 s apart); a pair removed in the last minute can leave the port in TIME_WAIT" >&2
     exit 1
   fi
   networks="$(docker network ls -q | xargs -r docker network inspect -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}')" ||
@@ -503,8 +629,190 @@ for line in sys.stdin.read().splitlines():
 ' "${SUBNET}" "${NETWORK}" <<<"${networks}")"
   if [ -n "${subnet_holder}" ]; then
     read -r name p <<<"${subnet_holder}"
-    echo "error: subnet ${SUBNET} for ${MINOR} overlaps network ${name} (${p})$(holder_note "${name}")" >&2
+    echo "error: subnet ${SUBNET} for ${SLOT_LABEL} overlaps network ${name} (${p})$(holder_note "${name}")" >&2
     exit 1
+  fi
+}
+
+# remove_download_dir removes the directory the helm boot's downloads go to.
+remove_download_dir() {
+  [ -z "${DL_DIR}" ] || rm -rf "${DL_DIR}"
+}
+
+# state_value prints one field of the state file; a dotted name reads inside
+# an object. A missing field prints nothing; a list or object prints as JSON.
+state_value() {
+  python3 -I -c '
+import json
+import sys
+
+value = json.load(open(sys.argv[1]))
+for key in sys.argv[2].split("."):
+    if not isinstance(value, dict) or key not in value:
+        sys.exit(0)
+    value = value[key]
+print(value if isinstance(value, str) else json.dumps(value))
+' "${STATE_FILE}" "$1"
+}
+
+# load_helm_state reads what a kept helm pair recorded that a run which
+# skipped the steps before the lock does not compute again.
+load_helm_state() {
+  HELM_ASSETS_IMAGE="$(state_value assetsImage)"
+  LOCAL_K3S_SOURCE="$(state_value localK3sSource)"
+  CERT_MANAGER_IMAGES="$(state_value certManager.images)"
+  [ -n "${CERT_MANAGER_IMAGES}" ] || CERT_MANAGER_IMAGES="[]"
+}
+
+# read_kept_state reports whether the state file describes a kept helm pair
+# for the current pins and whether the node container it names still exists.
+# It reads the file only when it exists and creates nothing. A kept pair skips
+# the pulls, downloads and registry reads of helm_prepare.
+read_kept_state() {
+  local recorded running
+  [ -f "${STATE_FILE}" ] || return 1
+  recorded="$(state_value containerId 2>/dev/null)" || return 1
+  running="$(docker inspect --format '{{.Id}}' "${CONTAINER}" 2>/dev/null)" || return 1
+  [ -n "${recorded}" ] && [ "${recorded}" = "${running}" ] || return 1
+  [ "$(state_value boot)" = "helm" ] || return 1
+  [ "$(state_value oracleImage)" = "${ORACLE_IMAGE}" ] || return 1
+  [ "$(state_value chart)" = "${CHART_PIN}" ] || return 1
+  [ "$(state_value localK3sImage)" = "${LOCAL_K3S_PIN}" ] || return 1
+  [ "$(state_value certManager.manifest)" = "${CERT_MANAGER_MANIFEST}" ] || return 1
+  load_helm_state
+}
+
+# pull_or_stop pulls an image that Docker does not hold, before the lock.
+pull_or_stop() {
+  docker image inspect "$1" >/dev/null 2>&1 ||
+    docker pull -q "$1" >/dev/null ||
+    { echo "error: could not pull $1; nothing was removed" >&2; exit 1; }
+}
+
+# fetch_pinned downloads a <URL>@sha256:<64 hex> pin to a file and stops when
+# the file's sha256 does not match the pin: <what it is called> <pin> <file>.
+fetch_pinned() {
+  local label="$1" pin="$2" file="$3" url sha got
+  url="${pin%@sha256:*}"
+  sha="${pin##*@sha256:}"
+  curl --fail --location --proto-redir =https --silent --show-error --max-time 60 --output "${file}" "${url}" ||
+    { echo "error: could not download the ${label} ${url}; nothing was removed" >&2; exit 1; }
+  got="$(python3 -I -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "${file}")"
+  [ "${got}" = "${sha}" ] ||
+    { echo "error: the ${label} ${url} has sha256 ${got}, not the pinned ${sha}; nothing was removed" >&2; exit 1; }
+}
+
+# read_chart_archive prints the chart's appVersion and, when its values name
+# an assets image, that image's repository and tag, as one JSON line. The
+# appVersion is the Chart.yaml line at column 0; the assets image is read from
+# the lines indented under the top-level assetsImage key of values.yaml.
+read_chart_archive() {
+  python3 -I - "$1" <<'PY'
+import json
+import re
+import sys
+import tarfile
+
+
+def member(tar, name):
+    for entry in tar.getmembers():
+        parts = entry.name.split("/")
+        if entry.isfile() and len(parts) == 2 and parts[1] == name:
+            return tar.extractfile(entry).read().decode("utf-8")
+    return None
+
+
+def scalar(text):
+    return re.sub(r"\s+#.*$", "", text).strip().strip("\"'")
+
+
+try:
+    with tarfile.open(sys.argv[1], "r:gz") as tar:
+        chart = member(tar, "Chart.yaml")
+        values = member(tar, "values.yaml")
+except (OSError, tarfile.TarError, UnicodeDecodeError) as err:
+    print("error: the chart archive is not a readable .tgz (%s); nothing was removed" % err, file=sys.stderr)
+    sys.exit(1)
+match = re.search(r"^appVersion:(.*)$", chart or "", re.M)
+if not match or not scalar(match.group(1)):
+    print("error: the chart archive has no appVersion in its Chart.yaml; nothing was removed", file=sys.stderr)
+    sys.exit(1)
+found = {"repository": "", "tag": ""}
+block = re.search(r"^assetsImage:[ \t]*\n((?:[ \t]+.*\n|[ \t]*\n)*)", (values or "") + "\n", re.M)
+if block:
+    indent = None
+    for line in block.group(1).splitlines():
+        if not line.strip():
+            continue
+        lead = len(line) - len(line.lstrip())
+        indent = lead if indent is None else indent
+        key = re.match(r"([a-z]+):(.*)$", line.strip())
+        if lead == indent and key and key.group(1) in found:
+            found[key.group(1)] = scalar(key.group(2))
+if re.search(r"^assetsImage:", values or "", re.M) and not found["tag"]:
+    print("error: the chart's values.yaml names assetsImage in a form this script cannot read; nothing was removed", file=sys.stderr)
+    sys.exit(1)
+print(json.dumps({"appVersion": scalar(match.group(1)), "assetsRepository": found["repository"], "assetsTag": found["tag"]}))
+PY
+}
+
+# helm_prepare runs every step of a helm boot that can fail before anything
+# is removed: the pulls, the chart archive and cert-manager manifest
+# downloads with their sha256 checks, the archive's appVersion against the
+# server image's version, the assets image digest and the check of the k3s
+# image of the node container.
+# It sets HELM_COMPUTED, HELM_ASSETS_IMAGE and LOCAL_K3S_SOURCE.
+helm_prepare() {
+  local info server_version k3s_version app_version assets_repository assets_tag want_tag version_line embedded
+  local version_pattern='v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+'
+  HELM_COMPUTED=1
+  platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" ||
+    { echo "error: could not read the Docker server platform" >&2; exit 1; }
+  pull_or_stop "${LOCAL_K3S_PIN}"
+  pull_or_stop "${K3S_IMAGE}"
+  [ "${IMAGE_REPOSITORY##*/}" = "rancher-server" ] || pull_or_stop "${ORACLE_IMAGE}"
+  DL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/e2e-fidelity.XXXXXX")"
+  fetch_pinned "chart archive" "${CHART_PIN}" "${DL_DIR}/chart.tgz"
+  fetch_pinned "cert-manager manifest" "${CERT_MANAGER_MANIFEST}" "${DL_DIR}/cert-manager.yaml"
+  info="$(read_chart_archive "${DL_DIR}/chart.tgz")" || exit 1
+  image_info_or_stop "${IMAGE_REPOSITORY}" "${IMAGE_DIGEST}" env "${ORACLE_IMAGE} is not published"
+  server_version="$(json_field "${IMAGE_INFO}" serverVersion)"
+  k3s_version="$(json_field "${IMAGE_INFO}" k3sVersion)"
+  app_version="$(json_field "${info}" appVersion)"
+  if [ "${app_version}" != "${server_version}" ]; then
+    echo "error: the chart archive's appVersion is ${app_version}, but the CATTLE_SERVER_VERSION of ${ORACLE_IMAGE} is ${server_version}; nothing was removed" >&2
+    exit 1
+  fi
+  assets_repository="$(json_field "${info}" assetsRepository)"
+  assets_tag="$(json_field "${info}" assetsTag)"
+  HELM_ASSETS_IMAGE=""
+  if [ -n "${assets_tag}" ]; then
+    image_info_or_stop "${assets_repository}" "${assets_tag}" digest "${assets_repository}:${assets_tag} is not published"
+    HELM_ASSETS_IMAGE="${assets_tag}@$(json_field "${IMAGE_INFO}" digest)"
+  fi
+  want_tag="${LOCAL_K3S_PIN%%@*}"
+  want_tag="${want_tag##*:}"
+  if [ "${IMAGE_REPOSITORY##*/}" = "rancher-server" ]; then
+    LOCAL_K3S_SOURCE="CATTLE_K3S_VERSION"
+    embedded="${k3s_version//+/-}"
+    if [ "${embedded}" != "${want_tag}" ]; then
+      echo "error: ${ORACLE_IMAGE} names CATTLE_K3S_VERSION ${k3s_version}, but the k3s image of the node container is tagged ${want_tag}; nothing was removed" >&2
+      exit 1
+    fi
+  else
+    LOCAL_K3S_SOURCE="embedded"
+    version_line="$(docker run --rm --entrypoint k3s "${ORACLE_IMAGE}" --version 2>/dev/null)" ||
+      { echo "error: could not read the k3s version of ${ORACLE_IMAGE}; nothing was removed" >&2; exit 1; }
+    version_line="${version_line%%$'\n'*}"
+    if ! [[ "${version_line}" =~ ${version_pattern} ]]; then
+      echo "error: the first line of the k3s --version output of ${ORACLE_IMAGE} shows no k3s version (\"${version_line}\"); nothing was removed" >&2
+      exit 1
+    fi
+    embedded="${BASH_REMATCH[0]//+/-}"
+    if [ "${embedded}" != "${want_tag}" ]; then
+      echo "error: ${ORACLE_IMAGE} embeds k3s ${embedded}, but the k3s image of the node container is tagged ${want_tag}; nothing was removed" >&2
+      exit 1
+    fi
   fi
 }
 
@@ -624,6 +932,18 @@ if [ -n "${MINOR}" ]; then
   done
 fi
 
+# A helm boot checks and downloads everything before the lock, so a failure
+# removes nothing. A kept pair whose state file records the current pins
+# skips that work; when it then fails to be reused, the work runs before
+# anything is removed (see the fresh boot below).
+if [ "${BOOT}" = "helm" ]; then
+  trap remove_download_dir EXIT
+  check_slot
+  if [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || ! read_kept_state; then
+    helm_prepare
+  fi
+fi
+
 mkdir -p "${STATE_ROOT}"
 chmod 700 "${STATE_ROOT}"
 if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
@@ -675,12 +995,27 @@ cleanup() {
     docker logs --tail 200 "${CONTAINER}" 2>&1 | sed 's/^/[rancher] /' || true
     echo "==> downstream agent log lines:"
     docker exec "${K3S_CONTAINER}" kubectl -n cattle-system logs deploy/cattle-cluster-agent --tail 50 2>&1 | sed 's/^/[agent] /' || true
+    if [ "${BOOT:-}" = "helm" ]; then
+      # In a helm boot the container log above is the node container's;
+      # Rancher's own log, its restarts and the chart install job are in the
+      # cluster.
+      echo "==> Rancher chart install job log:"
+      docker exec "${CONTAINER}" kubectl -n kube-system logs job/helm-install-rancher --tail 200 2>&1 | sed 's/^/[helm] /' || true
+      echo "==> Rancher pod log:"
+      docker exec "${CONTAINER}" kubectl -n cattle-system logs deploy/rancher --tail 200 2>&1 | sed 's/^/[rancher] /' || true
+      echo "==> Rancher pod restarts and last state:"
+      docker exec "${CONTAINER}" kubectl -n cattle-system get pods -l app=rancher \
+        -o jsonpath='{range .items[*]}{.metadata.name} restarts={.status.containerStatuses[*].restartCount} last={.status.containerStatuses[*].lastState}{"\n"}{end}' 2>&1 | sed 's/^/[rancher] /' || true
+      echo "==> cert-manager pods:"
+      docker exec "${CONTAINER}" kubectl -n cert-manager get pods -o wide 2>&1 | sed 's/^/[cert-manager] /' || true
+    fi
   fi
   if [ "${E2E_FIDELITY_KEEP:-}" != "1" ]; then
     docker rm -f -v "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
     docker network rm "${NETWORK}" >/dev/null 2>&1 || true
     rm -f "${STATE_FILE}"
   fi
+  [ -z "${DL_DIR:-}" ] || rm -rf "${DL_DIR}"
   rm -rf "${LOCK_DIR}"
   exit ${status}
 }
@@ -721,8 +1056,8 @@ try:
         print("failed: " + "; ".join(str(f["name"]) + ": " + "; ".join(str(f["reason"]).splitlines()) for f in failures))
         sys.exit(0)
     c = r["counts"]
-    summary = "drift v%s: new %d (wait ran out %d), known %d, known no ruling %d, no longer seen %d, entries not checked %d, probes not checked %d, errored %d, failed CLI tests %d, suites with no probe %d; report %s" % (
-        r["minor"], c["new"], c["waitRanOut"], c["known"], c["knownNoRuling"], c["noLongerSeen"],
+    summary = "drift v%s%s: new %d (wait ran out %d), known %d, known no ruling %d, no longer seen %d, entries not checked %d, probes not checked %d, errored %d, failed CLI tests %d, suites with no probe %d; report %s" % (
+        r["minor"], " (helm-check)" if r.get("profile") == "helm-check" else "", c["new"], c["waitRanOut"], c["known"], c["knownNoRuling"], c["noLongerSeen"],
         c["notChecked"], c["notCheckedProbes"], c["errored"], c["failedCLITests"], c["suitesWithNoProbe"], path)
     print("clean" if r["clean"] is True else "drift")
     print(summary)
@@ -822,9 +1157,12 @@ wait_for_ping() {
 # An upcoming-minor oracle installs its system charts noticeably slower than
 # the pinned releases (its chart branch is fetched fresh and its aggregation
 # check restarts the server when the embedded k3s is slow), so it gets
-# twice the webhook window.
+# twice the webhook window. A helm boot installs the chart in a pod and is
+# slower than a container boot, so the helm-check also gets 60 tries.
 WEBHOOK_WAIT_TRIES=30
 [ -z "${MINOR}" ] || WEBHOOK_WAIT_TRIES=60
+[ -z "${HELM_CHECK}" ] || WEBHOOK_WAIT_TRIES=60
+echo "==> rancher-webhook wait: ${WEBHOOK_WAIT_TRIES} tries, 10 s apart"
 
 wait_for_webhook() {
   echo "==> waiting for rancher-webhook readiness"
@@ -1000,6 +1338,37 @@ reuse_state() {
     echo "==> kept container was created from a different oracle image; recreating"
     return 1
   }
+  # A state file written before the boot was recorded describes a container
+  # boot. The helm fields are compared only for a helm pair; the assets image
+  # and the source of the k3s version only in a run that computed them,
+  # otherwise the script reads them from the state file.
+  saved_boot="$(state_value boot)"
+  [ -n "${saved_boot}" ] || saved_boot="container"
+  [ "${saved_boot}" = "${BOOT}" ] || {
+    echo "==> kept pair was created with a different boot; recreating"
+    return 1
+  }
+  if [ "${BOOT}" = "helm" ]; then
+    if [ "$(state_value chart)" != "${CHART_PIN}" ] ||
+      [ "$(state_value localK3sImage)" != "${LOCAL_K3S_PIN}" ] ||
+      [ "$(state_value certManager.manifest)" != "${CERT_MANAGER_MANIFEST}" ]; then
+      echo "==> kept pair was created from different chart, k3s or cert-manager pins; recreating"
+      return 1
+    fi
+    # The branch handles a state file that changes between the reads of
+    # read_kept_state and reuse_state. A run does not otherwise reach it:
+    # helm_prepare sets HELM_COMPUTED only after read_kept_state failed, and
+    # reuse_state returns on the same fields before this line.
+    if [ -n "${HELM_COMPUTED}" ]; then
+      if [ "$(state_value assetsImage)" != "${HELM_ASSETS_IMAGE}" ] ||
+        [ "$(state_value localK3sSource)" != "${LOCAL_K3S_SOURCE}" ]; then
+        echo "==> kept pair has a different assets image or a different source of its k3s version (the server image or CATTLE_K3S_VERSION); recreating"
+        return 1
+      fi
+    else
+      load_helm_state
+    fi
+  fi
   # The kept container must be bound to the currently requested address: a
   # reused oracle published wider than asked (or narrower, missing a
   # requested LAN bind) would silently change the exposure the caller opted
@@ -1065,9 +1434,193 @@ write_state() {
   k3s_cid="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}")"
   (
     umask 177
-    python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2],"oracleImage":sys.argv[3],"k3sContainerId":sys.argv[4],"k3sImage":sys.argv[5],"downstream":sys.argv[6]},open(sys.argv[7],"w"))' \
-      "${cid}" "${ADMIN_TOKEN}" "${ORACLE_IMAGE}" "${k3s_cid}" "${K3S_IMAGE}" "${DOWNSTREAM_ID}" "${STATE_FILE}"
+    python3 -c '
+import json
+import sys
+
+keys = ("containerId", "adminToken", "oracleImage", "k3sContainerId", "k3sImage", "downstream")
+state = dict(zip(keys, sys.argv[1:7]))
+state["boot"] = sys.argv[8]
+if sys.argv[8] == "helm":
+    state["chart"] = sys.argv[9]
+    state["localK3sImage"] = sys.argv[10]
+    state["localK3sSource"] = sys.argv[11]
+    state["certManager"] = {"manifest": sys.argv[12], "images": json.loads(sys.argv[13])}
+    state["assetsImage"] = sys.argv[14]
+json.dump(state, open(sys.argv[7], "w"))
+' \
+      "${cid}" "${ADMIN_TOKEN}" "${ORACLE_IMAGE}" "${k3s_cid}" "${K3S_IMAGE}" "${DOWNSTREAM_ID}" "${STATE_FILE}" \
+      "${BOOT}" "${CHART_PIN}" "${LOCAL_K3S_PIN}" "${LOCAL_K3S_SOURCE}" "${CERT_MANAGER_MANIFEST}" "${CERT_MANAGER_IMAGES}" "${HELM_ASSETS_IMAGE}"
   )
+}
+
+# boot_helm_node starts the node container: the k3s image of the profile with
+# the arguments the Rancher image gives its own embedded k3s, under the
+# oracle's name, address and published port. A kept node container gets the
+# oracle's restart policy, as the container boot does.
+boot_helm_node() {
+  local restart_args="" nodes
+  [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || restart_args="--restart unless-stopped"
+  echo "==> booting the node container from ${LOCAL_K3S_PIN}"
+  # shellcheck disable=SC2086
+  docker run -d --name "${CONTAINER}" --privileged ${restart_args} \
+    --network "${NETWORK}" --ip "${ORACLE_IP}" \
+    -p "${BIND_ADDR}:${HOST_PORT}:443" --tmpfs /run --tmpfs /var/run \
+    "${LOCAL_K3S_PIN}" server --cluster-init \
+    --disable=traefik,servicelb,metrics-server,local-storage --node-name=local-node >/dev/null
+  echo "==> waiting for the node container"
+  for _ in $(seq 1 100); do
+    nodes="$(docker exec "${CONTAINER}" kubectl get nodes 2>/dev/null)" || nodes=""
+    if [[ "${nodes}" == *' Ready '* ]]; then
+      return 0
+    fi
+    # A container Docker is restarting still reports Running true: only the
+    # status tells a running node container from a stopped or restarting one.
+    if [ "$(docker inspect --format '{{.State.Status}}' "${CONTAINER}" 2>/dev/null)" != "running" ]; then
+      echo "error: the node container stopped (exit code $(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER}" 2>/dev/null)); its last log lines:" >&2
+      docker logs --tail 20 "${CONTAINER}" >&2 2>&1 || true
+      return 1
+    fi
+    sleep 3
+  done
+  echo "error: the node container was not Ready within 5 minutes" >&2
+  return 1
+}
+
+# install_cert_manager applies the checked manifest in the node container,
+# waits for its three deployments and records the image digests its pods ran.
+install_cert_manager() {
+  local name ca_bundle
+  echo "==> installing cert-manager"
+  docker exec -i "${CONTAINER}" kubectl apply -f - <"${DL_DIR}/cert-manager.yaml" >/dev/null
+  for name in cert-manager cert-manager-cainjector cert-manager-webhook; do
+    docker exec "${CONTAINER}" kubectl -n cert-manager rollout status "deploy/${name}" --timeout=300s >/dev/null ||
+      { echo "error: deploy/${name} did not roll out within 5 minutes" >&2; return 1; }
+  done
+  # The chart creates a cert-manager Issuer even without an Ingress, and the
+  # webhook that admits it needs the CA bundle the cainjector writes into its
+  # configuration and the Issuer CRD to be established: ready pods do not
+  # show either one.
+  for _ in $(seq 1 60); do
+    ca_bundle="$(docker exec "${CONTAINER}" kubectl get validatingwebhookconfiguration cert-manager-webhook \
+      -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null)" || ca_bundle=""
+    [ -z "${ca_bundle}" ] || break
+    sleep 2
+  done
+  [ -n "${ca_bundle}" ] ||
+    { echo "error: the cert-manager webhook configuration still had no CA bundle after 2 minutes" >&2; return 1; }
+  docker exec "${CONTAINER}" kubectl wait --for=condition=Established crd/issuers.cert-manager.io --timeout=60s >/dev/null ||
+    { echo "error: the cert-manager Issuer CRD was not established within 1 minute" >&2; return 1; }
+  CERT_MANAGER_IMAGES="$(docker exec "${CONTAINER}" kubectl -n cert-manager get pods \
+    -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.imageID}{"\n"}{end}{end}' |
+    python3 -I -c 'import json,sys; print(json.dumps(sorted({line.strip() for line in sys.stdin if line.strip()})))')"
+}
+
+# create_bootstrap_secret creates the cattle-system namespace and the secret
+# Rancher reads its bootstrap password from. The password goes through a
+# here-document to the stdin of kubectl: never an argument, an environment
+# variable of the container, a file or a chart value. kubectl create leaves no
+# last-applied annotation, which would hold the password a second time.
+create_bootstrap_secret() {
+  echo "==> creating the bootstrap secret"
+  docker exec -i "${CONTAINER}" kubectl create -f - >/dev/null <<MANIFEST
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cattle-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bootstrap-secret
+  namespace: cattle-system
+type: Opaque
+stringData:
+  bootstrapPassword: "${BOOTSTRAP_PW}"
+MANIFEST
+}
+
+# helm_chart_manifest prints the HelmChart object the k3s Helm controller
+# installs: the checked archive as chartContent and the chart values. The
+# image is the pinned repository and tag@digest; rancherImage,
+# rancherImageTag and bootstrapPassword are never set. The failure policy is
+# abort: by default the controller uninstalls a failed release and installs it
+# again, and the uninstall deletes the bootstrap secret.
+helm_chart_manifest() {
+  python3 -I - "${DL_DIR}/chart.tgz" "${IMAGE_REPOSITORY}" "${IMAGE_TAG}@${IMAGE_DIGEST}" "${HELM_ASSETS_IMAGE}" <<'PY'
+import base64
+import json
+import sys
+
+archive, repository, tag, assets = sys.argv[1:5]
+values = {
+    "replicas": 1,
+    "hostNetwork": True,
+    "networkExposure": {"type": "none"},
+    "image": {"repository": repository, "tag": tag},
+    "startupProbe": {"failureThreshold": 30},
+}
+if assets:
+    values["assetsImage"] = {"tag": assets}
+with open(archive, "rb") as f:
+    content = base64.b64encode(f.read()).decode("ascii")
+print(json.dumps({
+    "apiVersion": "helm.cattle.io/v1",
+    "kind": "HelmChart",
+    "metadata": {"name": "rancher", "namespace": "kube-system"},
+    "spec": {
+        "targetNamespace": "cattle-system",
+        "failurePolicy": "abort",
+        "chartContent": content,
+        "valuesContent": json.dumps(values, sort_keys=True),
+    },
+}))
+PY
+}
+
+# check_rancher_pod stops the run unless every Rancher pod runs the pinned
+# image reference and reports the pinned digest as its imageID. The chart's
+# rancherImage and rancherImageTag values take precedence over image.*, so
+# this check catches a value set by mistake.
+check_rancher_pod() {
+  local pods line image image_id seen=""
+  pods="$(docker exec "${CONTAINER}" kubectl -n cattle-system get pods -l app=rancher \
+    -o jsonpath='{range .items[*]}image={.spec.containers[?(@.name=="rancher")].image} id={.status.containerStatuses[?(@.name=="rancher")].imageID}{"\n"}{end}')" ||
+    { echo "error: could not read the Rancher pod from the node container" >&2; return 1; }
+  while read -r line; do
+    [ -n "${line}" ] || continue
+    seen=1
+    image="${line#image=}"
+    image="${image%% id=*}"
+    image_id="${line##* id=}"
+    [ -n "${image}" ] || { echo "error: the Rancher pod has no container named rancher" >&2; return 1; }
+    [ "${image}" = "${ORACLE_IMAGE}" ] ||
+      { echo "error: the Rancher pod runs ${image}, not the pinned ${ORACLE_IMAGE}" >&2; return 1; }
+    [[ "${image_id}" == *"${IMAGE_DIGEST}" ]] ||
+      { echo "error: the Rancher pod's imageID ${image_id:-<empty>} does not end in the pinned digest ${IMAGE_DIGEST}" >&2; return 1; }
+  done <<<"${pods}"
+  [ -n "${seen}" ] || { echo "error: the cluster in the node container has no Rancher pod" >&2; return 1; }
+}
+
+# boot_helm starts the node container, installs cert-manager, creates the
+# bootstrap secret, installs the chart and checks the running pod against the
+# pin.
+boot_helm() {
+  boot_helm_node
+  install_cert_manager
+  create_bootstrap_secret
+  echo "==> installing the Rancher chart"
+  helm_chart_manifest | docker exec -i "${CONTAINER}" kubectl apply -f - >/dev/null
+  echo "==> waiting for deploy/rancher"
+  for _ in $(seq 1 120); do
+    docker exec "${CONTAINER}" kubectl -n cattle-system get deploy rancher -o name >/dev/null 2>&1 && break
+    sleep 5
+  done
+  docker exec "${CONTAINER}" kubectl -n cattle-system get deploy rancher -o name >/dev/null 2>&1 ||
+    { echo "error: the chart install created no deploy/rancher within 10 minutes" >&2; return 1; }
+  docker exec "${CONTAINER}" kubectl -n cattle-system rollout status deploy/rancher --timeout=600s >/dev/null ||
+    { echo "error: deploy/rancher did not roll out within 10 minutes" >&2; return 1; }
+  check_rancher_pod
 }
 
 # login_admin prints the token of the bootstrap admin login. A failed or
@@ -1117,37 +1670,45 @@ if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && reuse_state; then
   # and the CA is unchanged by it, so re-prime unconditionally.
   [ -z "${EXTRA_SANS}" ] || prime_extra_sans
 else
+  # A kept pair that was not reused skipped the steps before the lock of a
+  # helm boot; they run now, before anything is removed.
+  [ "${BOOT}" != "helm" ] || [ -n "${HELM_COMPUTED}" ] || helm_prepare
   refuse_pre_rename_leftovers
   docker rm -f -v "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
   docker network rm "${NETWORK}" >/dev/null 2>&1 || true
   rm -f "${STATE_FILE}"
   ensure_network
-  BOOTSTRAP_PW="$(head -c 18 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
-  # Keep the bootstrap password out of argv (visible via `ps` and
-  # `docker inspect`): write it to a 0600 env file under the 0700 state dir,
-  # pass it with --env-file, and remove it as soon as docker run returns.
-  ENV_FILE="${STATE_ROOT}/bootstrap.env"
-  ( umask 177; printf 'CATTLE_BOOTSTRAP_PASSWORD=%s\n' "${BOOTSTRAP_PW}" >"${ENV_FILE}" )
-  require_disk
-  echo "==> booting ${ORACLE_IMAGE}"
-  # --privileged is required: the image runs an embedded k3s (containerd, CNI,
-  # kernel mounts) that will not start unprivileged. It is an accepted tradeoff
-  # here - the image is digest-pinned, the port is loopback-bound by default
-  # (BIND_ADDR), and the container is ephemeral (removed unless
-  # E2E_FIDELITY_KEEP=1).
-  # A kept container self-heals: patching a non-dynamic Feature makes the
-  # single-node server exit to apply it, and without a restart policy the
-  # kept oracle stays down until someone notices. Suite mode stays
-  # policy-free so a crash fails loudly instead of masking itself.
-  RESTART_ARGS=""
-  [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || RESTART_ARGS="--restart unless-stopped"
-  # shellcheck disable=SC2086
-  docker run -d --name "${CONTAINER}" --privileged ${RESTART_ARGS} \
-    --network "${NETWORK}" --ip "${ORACLE_IP}" \
-    -p "${BIND_ADDR}:${HOST_PORT}:443" \
-    --env-file "${ENV_FILE}" \
-    "${ORACLE_IMAGE}" >/dev/null
-  rm -f "${ENV_FILE}"
+  BOOTSTRAP_PW="$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
+  if [ "${BOOT}" = "helm" ]; then
+    require_disk
+    boot_helm
+  else
+    # Keep the bootstrap password out of argv (visible via `ps` and
+    # `docker inspect`): write it to a 0600 env file under the 0700 state dir,
+    # pass it with --env-file, and remove it as soon as docker run returns.
+    ENV_FILE="${STATE_ROOT}/bootstrap.env"
+    ( umask 177; printf 'CATTLE_BOOTSTRAP_PASSWORD=%s\n' "${BOOTSTRAP_PW}" >"${ENV_FILE}" )
+    require_disk
+    echo "==> booting ${ORACLE_IMAGE}"
+    # --privileged is required: the image runs an embedded k3s (containerd, CNI,
+    # kernel mounts) that will not start unprivileged. It is an accepted tradeoff
+    # here - the image is digest-pinned, the port is loopback-bound by default
+    # (BIND_ADDR), and the container is ephemeral (removed unless
+    # E2E_FIDELITY_KEEP=1).
+    # A kept container self-heals: patching a non-dynamic Feature makes the
+    # single-node server exit to apply it, and without a restart policy the
+    # kept oracle stays down until someone notices. Suite mode stays
+    # policy-free so a crash fails loudly instead of masking itself.
+    RESTART_ARGS=""
+    [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || RESTART_ARGS="--restart unless-stopped"
+    # shellcheck disable=SC2086
+    docker run -d --name "${CONTAINER}" --privileged ${RESTART_ARGS} \
+      --network "${NETWORK}" --ip "${ORACLE_IP}" \
+      -p "${BIND_ADDR}:${HOST_PORT}:443" \
+      --env-file "${ENV_FILE}" \
+      "${ORACLE_IMAGE}" >/dev/null
+    rm -f "${ENV_FILE}"
+  fi
   wait_for_ping
   wait_for_webhook
   [ -z "${EXTRA_SANS}" ] || prime_extra_sans
@@ -1180,7 +1741,7 @@ export E2E_FIDELITY_ORACLE_IMAGE="${ORACLE_IMAGE}"
 export E2E_FIDELITY_DOWNSTREAM="${DOWNSTREAM_ID}"
 
 if [ -n "${SMOKE_PROFILE}" ]; then
-  # No goldens for the Prime or upcoming-minor oracle: golden verification
+  # No goldens for the Prime, upcoming-minor or helm-check oracle: golden verification
   # runs only against the community pin. This is boot, bootstrap, and
   # downstream-proxy verification; the kept pair then serves hand runs and
   # fact probes with the same downstream shape as the community pair.
@@ -1198,7 +1759,7 @@ if [ -n "${SMOKE_PROFILE}" ]; then
   [ "${code}" = "200" ] || { echo "error: downstream proxy smoke check failed (http ${code})" >&2; exit 1; }
   echo "==> ${SMOKE_PROFILE} oracle bootstrap smoke passed"
   if [ "${DRIFT}" = 1 ]; then
-    echo "==> drift run of ${MINOR} against the community goldens"
+    echo "==> drift run of ${DRIFT_LABEL} against the community goldens"
     suite_status=0
     REPORT="${DRIFT_REPORT_ABS:-${STATE_ROOT}/drift-$(date -u +%Y%m%dT%H%M%SZ).json}"
     [ ! -f "${REPORT}" ] || rm -f "${REPORT}"
@@ -1206,6 +1767,9 @@ if [ -n "${SMOKE_PROFILE}" ]; then
     export E2E_FIDELITY_DRIFT_REPORT="${REPORT}"
     export E2E_FIDELITY_DRIFT_STARTED="${STARTED}"
     export E2E_FIDELITY_DRIFT_KNOWN="${DRIFT_KNOWN}"
+    export E2E_FIDELITY_DRIFT_PROFILE="${DRIFT_PROFILE}"
+    # The helm-check names the minor of its image for the test binary only.
+    [ -z "${HELM_CHECK}" ] || export E2E_FIDELITY_MINOR="${DRIFT_MINOR}"
     export E2E_FIDELITY_GOLDEN_IMAGE="${GOLDEN_ORACLE_IMAGE}"
     export E2E_FIDELITY_GOLDEN_K3S_IMAGE="${GOLDEN_K3S_IMAGE}"
     export E2E_FIDELITY_DOWNSTREAM_IMAGE="${K3S_IMAGE}"

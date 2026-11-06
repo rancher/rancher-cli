@@ -1233,6 +1233,22 @@ reverse-proxy transport, so deterministic per-instance token names and secrets s
 collision-free across parallel scripts. `internal/testrancher` is test-only by
 convention - `test/conformance/architecture_test.go` asserts no production package imports it.
 
+**The fidelity oracle boots each Rancher pin the way that release ships.**
+`scripts/e2e-fidelity` names a boot for every pin (`ORACLE_BOOT`,
+`PRIME_ORACLE_BOOT`). `container` runs the single-container `rancher/rancher`
+image, which the v2.14 and v2.15 pins keep. `helm` is for v2.16 and later,
+whose server image runs only inside Kubernetes: the script starts a k3s node
+container of its own, never a developer's k3d cluster, and installs the
+Rancher Helm chart into it from an archive pinned by sha256. Rancher runs
+with one replica on the node's host network and serves TLS itself, so the
+published port, the CA, the bootstrap login and the downstream import work
+as with the single container. This is the production image and chart, not
+the production network path (Ingress, three replicas). A difference in an
+answer that comes from the install mode gets its own known-difference cause,
+`install`. The opt-in helm-check profile boots the community pin with `helm`
+and compares it with the goldens recorded under `container`; it never
+records goldens.
+
 **Dynamic client, not typed Rancher structs.** Every resource flows through
 the Kubernetes dynamic client and unstructured objects; the CLI imports no
 rancher/rancher code. One binary serves many server versions - the CLI

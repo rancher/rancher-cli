@@ -1,0 +1,23 @@
+{
+  "minor": "2.15",
+  "entries": [
+    {
+      "probe": "access/impersonate-user-dropped-on-local",
+      "pointer": "/whoami-with-header/body/status/userInfo/extra/requesthost/0",
+      "want": "127.0.0.1:8443",
+      "got": "127.0.0.1:8447",
+      "firstSeen": "272e65580ca92b9dc51e0f0f0f9ae9d6d356e3b8",
+      "cause": "rancher",
+      "ruling": ""
+    },
+    {
+      "probe": "access/whoami-through-proxy",
+      "pointer": "/whoami/body/status/userInfo/extra/requesthost/0",
+      "want": "127.0.0.1:8443",
+      "got": "127.0.0.1:8447",
+      "firstSeen": "272e65580ca92b9dc51e0f0f0f9ae9d6d356e3b8",
+      "cause": "rancher",
+      "ruling": ""
+    }
+  ]
+}

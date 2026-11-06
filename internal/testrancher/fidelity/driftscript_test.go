@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,6 +24,12 @@ var driftVariableNames = []string{
 	"E2E_FIDELITY_DRIFT_REPORT", "E2E_FIDELITY_DRIFT_KNOWN", "E2E_FIDELITY_DRIFT_STARTED",
 	"E2E_FIDELITY_GOLDEN_IMAGE", "E2E_FIDELITY_GOLDEN_K3S_IMAGE", "E2E_FIDELITY_DOWNSTREAM_IMAGE",
 }
+
+// driftRefusedNames are the seven variables the scripts refuse without
+// E2E_FIDELITY_DRIFT=1: the six of driftVariableNames and
+// E2E_FIDELITY_DRIFT_PROFILE, which the script sets for every drift run and
+// the test binary reads separately from the six.
+var driftRefusedNames = append(slices.Clone(driftVariableNames), "E2E_FIDELITY_DRIFT_PROFILE")
 
 // scriptLiteral reads the value of a top-level variable assignment of
 // scripts/e2e-fidelity, such as ORACLE_IMAGE="...".
@@ -59,7 +66,7 @@ func TestDriftRefusesBeforeDocker(t *testing.T) {
 		{"report with a trailing slash", map[string]string{"E2E_FIDELITY_DRIFT": "1", "E2E_FIDELITY_MINOR": "2.16", "E2E_FIDELITY_DRIFT_REPORT": "/nonexistent-dir/"},
 			"is not a file path in an existing writable directory"},
 	}
-	for _, name := range driftVariableNames {
+	for _, name := range driftRefusedNames {
 		want := "error: " + name + " is set without E2E_FIDELITY_DRIFT=1; unset it"
 		cases = append(cases,
 			tc{name + " alone", map[string]string{name: "x"}, want},
@@ -240,7 +247,7 @@ func TestDriftDownstreamScriptRefusesTheDriftVariables(t *testing.T) {
 	require.Len(t, calls, 1, "without a drift variable the script runs go test")
 	assert.Contains(t, calls[0], "test -tags e2e_fidelity")
 
-	for _, name := range driftVariableNames {
+	for _, name := range driftRefusedNames {
 		t.Run(name, func(t *testing.T) {
 			stderr, code, calls := run(t, map[string]string{name: "x"})
 			assert.Equal(t, 1, code)
@@ -424,6 +431,16 @@ func TestDriftResult(t *testing.T) {
 			"the summary line is the last and only line, with disjoint counts")
 		assert.Contains(t, stderr, "DRIFT_REPORTED=1")
 		assert.False(t, dumped(calls), "no diagnostics dump for a reported result")
+	})
+
+	t.Run("a helm-check report names its profile on the summary line", func(t *testing.T) {
+		path := stubReport(t, func(r *Report) {
+			notClean(r)
+			r.Profile = ProfileHelmCheck
+		})
+		stdout, _, code, _ := run(t, 1, path)
+		assert.Equal(t, 3, code)
+		assert.Equal(t, "drift v2.16 (helm-check): new 2 (wait ran out 1), known 3, known no ruling 4, no longer seen 5, entries not checked 6, probes not checked 10, errored 7, failed CLI tests 8, suites with no probe 9; report "+path+"\n", stdout)
 	})
 
 	t.Run("a report with differences exits 3 whatever go test's status", func(t *testing.T) {

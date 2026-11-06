@@ -344,6 +344,15 @@ type scenario struct {
 	present []string
 	// k3sRef is the k3s image reference publishDefaults served.
 	k3sRef string
+	// tmpDir is the TMPDIR of the run; the script removes what it makes there.
+	tmpDir string
+	// pinRewrites replaces the named top-level pin lines in the copy that
+	// slotScript writes.
+	pinRewrites map[string]string
+	// copyRoot is the repository root of the script copy slotScript writes.
+	copyRoot string
+	// helm is set by newHelmCheckScenario and carries what the helm rows use.
+	helm *helmFixture
 }
 
 type runResult struct {
@@ -380,13 +389,22 @@ func newScenario(t *testing.T) *scenario {
 		platform:  "linux/arm64",
 		minor:     "2.16",
 	}
-	for _, dir := range []string{s.home, s.stateHome, s.stubDir, s.repoDir} {
+	s.tmpDir = filepath.Join(root, "tmp")
+	for _, dir := range []string{s.home, s.stateHome, s.stubDir, s.repoDir, s.tmpDir} {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 	}
 	require.NoError(t, os.WriteFile(s.gitConfig, nil, 0o600))
 	require.NoError(t, os.WriteFile(s.logPath, nil, 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(s.stubDir, "docker"), []byte(dockerStubScript), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(s.stubDir, "xargs"), []byte(xargsStubScript), 0o755))
+	for name, script := range map[string]string{
+		"curl": curlStubScript, "go": goStubScript, "sleep": sleepStubScript, "openssl": opensslStubScript, "df": dfStubScript,
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(s.stubDir, name), []byte(script), 0o755))
+	}
+	for _, name := range []string{"curl.log", "curl.table", "curl.argv", "go.log"} {
+		require.NoError(t, os.WriteFile(filepath.Join(s.stubDir, name), nil, 0o600))
+	}
 	s.repoURL = "file://" + s.repoDir
 	s.git("init", "-q")
 	s.git("commit", "-q", "--allow-empty", "-m", "initial")
@@ -437,7 +455,13 @@ func (s *scenario) environ() []string {
 		"STUB_LOG=" + s.logPath,
 		"STUB_PLATFORM=" + s.platform,
 		"STUB_PRESENT=" + strings.Join(s.present, " "),
+		"TMPDIR=" + s.tmpDir,
+		"STUB_CURL_LOG=" + filepath.Join(s.stubDir, "curl.log"),
+		"STUB_CURL_TABLE=" + filepath.Join(s.stubDir, "curl.table"),
+		"STUB_CURL_ARGV=" + filepath.Join(s.stubDir, "curl.argv"),
+		"STUB_GO_LOG=" + filepath.Join(s.stubDir, "go.log"),
 	}
+	env = append(env, s.helmEnviron()...)
 	if s.slot != nil {
 		dir := s.t.TempDir()
 		for _, f := range []struct{ name, key, content string }{
@@ -457,18 +481,31 @@ func (s *scenario) environ() []string {
 	return env
 }
 
-// run executes the script after checking that docker resolves to the stub, so
-// a harness slip fails before the script can reach a real docker.
+// stubbedTools are the commands every run stubs: nothing the script runs can
+// reach a real Docker daemon, a real server or the host's disk and clock.
+var stubbedTools = []string{"docker", "curl", "go", "sleep", "openssl", "df"}
+
+// run executes the script after checking that every stubbed tool resolves to
+// its stub, so a harness slip fails before the script can reach a real one.
+// After the run it asserts that the script removed what it made under TMPDIR
+// and that the curl stub denied no request.
 func (s *scenario) run() runResult {
 	s.t.Helper()
+	if s.helm != nil {
+		require.NotEmpty(s.t, s.copyRoot, "a helm row runs a copy of the script: call slotScript")
+	}
 	env := s.environ()
-	probe := exec.CommandContext(s.t.Context(), "bash", "-c", "command -v docker")
+	probe := exec.CommandContext(s.t.Context(), "bash", "-c", "command -v "+strings.Join(stubbedTools, " "))
 	probe.Env = env
 	probe.Dir = s.home
 	found, err := probe.Output()
 	require.NoError(s.t, err)
-	require.Equal(s.t, filepath.Join(s.stubDir, "docker"), strings.TrimSpace(string(found)),
-		"docker must resolve to the stub before the script runs")
+	var want []string
+	for _, name := range stubbedTools {
+		want = append(want, filepath.Join(s.stubDir, name))
+	}
+	require.Equal(s.t, want, strings.Fields(string(found)),
+		"every stubbed tool must resolve to its stub before the script runs")
 
 	cmd := exec.CommandContext(s.t.Context(), "bash", s.script)
 	cmd.Env = env
@@ -489,6 +526,12 @@ func (s *scenario) run() runResult {
 		if line != "" {
 			log = append(log, line)
 		}
+	}
+	left, err := os.ReadDir(s.tmpDir)
+	require.NoError(s.t, err)
+	require.Empty(s.t, left, "the script must remove what it made under TMPDIR")
+	for _, line := range s.curlLog() {
+		require.NotContains(s.t, line, "denied ", "the curl stub denied a request: %v", s.curlLog())
 	}
 	return runResult{stdout: stdout.String(), stderr: stderr.String(), code: code, log: log}
 }
@@ -918,9 +961,13 @@ func (s *scenario) armConfigDigest(repo, tag string) string {
 	return manifest.Config.Digest
 }
 
-// slotScript copies the script with the case minor's row port replaced by one
-// the test chose free, so the check never binds the real slot port and a kept
-// pair on the developer's host cannot fail it.
+// slotScript copies the script to <tmp>/scripts/e2e-fidelity, so the copy's
+// repository root is <tmp>, with every slot port row it can reach replaced by
+// one port the test chose free: the check never binds a real slot port, and a
+// kept pair on the developer's host cannot fail it. It also rewrites the pin
+// lines named in pinRewrites. Each rewrite asserts it replaced exactly one
+// line, and no non-comment line of the copy names the port of the community
+// or helm-check slot.
 func (s *scenario) slotScript() int {
 	s.t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -930,12 +977,33 @@ func (s *scenario) slotScript() int {
 
 	raw, err := os.ReadFile(realScriptPath(s.t))
 	require.NoError(s.t, err)
-	row := map[string]string{"2.16": `HOST_PORT="8445"`, "2.17": `HOST_PORT="8446"`}[s.minor]
-	require.NotEmpty(s.t, row, "no slot row known for %s", s.minor)
-	require.Equal(s.t, 1, strings.Count(string(raw), row), "the %s slot row changed shape; update the replacement", s.minor)
-	copyPath := filepath.Join(s.t.TempDir(), "e2e-fidelity")
-	require.NoError(s.t, os.WriteFile(copyPath,
-		[]byte(strings.Replace(string(raw), row, fmt.Sprintf(`HOST_PORT="%d"`, port), 1)), 0o755))
+	text := string(raw)
+	rows := []string{`HOST_PORT="8443"`, `HOST_PORT="8447"`}
+	if s.minor != "" {
+		row := map[string]string{"2.16": `HOST_PORT="8445"`, "2.17": `HOST_PORT="8446"`}[s.minor]
+		require.NotEmpty(s.t, row, "no slot row known for %s", s.minor)
+		rows = append(rows, row)
+	}
+	for _, row := range rows {
+		require.Equal(s.t, 1, strings.Count(text, row), "the %s row changed shape; update the replacement", row)
+		text = strings.Replace(text, row, fmt.Sprintf(`HOST_PORT="%d"`, port), 1)
+	}
+	for name, value := range s.pinRewrites {
+		line := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + `="[^"]*"$`)
+		require.Len(s.t, line.FindAllStringIndex(text, -1), 1, "the %s line changed shape; update the replacement", name)
+		text = line.ReplaceAllLiteralString(text, name+`="`+value+`"`)
+	}
+	literal := regexp.MustCompile(`\b844[37]\b`)
+	for i, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		require.Falsef(s.t, literal.MatchString(line), "line %d of the copy names a real slot port: %s", i+1, line)
+	}
+	s.copyRoot = s.t.TempDir()
+	copyPath := filepath.Join(s.copyRoot, "scripts", "e2e-fidelity")
+	require.NoError(s.t, os.MkdirAll(filepath.Dir(copyPath), 0o755))
+	require.NoError(s.t, os.WriteFile(copyPath, []byte(text), 0o755))
 	s.script = copyPath
 	return port
 }

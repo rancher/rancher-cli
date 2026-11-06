@@ -65,7 +65,29 @@ Gotchas:
   `internal/testrancher/fidelity/testdata/upcoming/v<minor>.json`.
   `E2E_FIDELITY_UPCOMING_IMAGE`, `E2E_FIDELITY_K3S_IMAGE`,
   `E2E_FIDELITY_PRINT_IMAGES=1` and `E2E_FIDELITY_DRIFT` are refused
-  without `E2E_FIDELITY_MINOR`.
+  without `E2E_FIDELITY_MINOR` (`E2E_FIDELITY_DRIFT` is also accepted with
+  `E2E_FIDELITY_HELM_CHECK=1`).
+- **Every pin in `scripts/e2e-fidelity` names its boot.** `ORACLE_BOOT` and
+  `PRIME_ORACLE_BOOT` sit beside their image lines; each is set to `container`
+  (one `docker run` of the single-container image) or `helm` (a k3s container
+  with the Rancher chart installed). A `helm` pin also names `<PREFIX>_CHART`
+  (archive URL and sha256) and `<PREFIX>_LOCAL_K3S_IMAGE` (the k3s image of the
+  node container), and an image of the `rancher-server` repository is always
+  `helm`; a guard test in `internal/testrancher/fidelity` fails on any pin that
+  breaks a rule.
+- **The helm-check boots the community pin's image with the Rancher chart.**
+  `E2E_FIDELITY_HELM_CHECK=1` boots `ORACLE_IMAGE` with `helm`,
+  `HELMCHECK_CHART` and `HELMCHECK_LOCAL_K3S_IMAGE` (the k3s image of the node
+  container) on slot 8447 (172.30.5.0/24, containers
+  `rancher-cli-e2e-fidelity-helm-check` and its `-k3s`, own state root), runs
+  the boot smoke and, with `E2E_FIDELITY_DRIFT=1`, a drift run against the
+  community goldens recorded from the same image, with the known differences
+  in `testdata/install/v<minor>.json`; a new difference gets the cause
+  `install`.
+  It is refused with `E2E_FIDELITY_PRIME`, `E2E_FIDELITY_MINOR`, an override
+  (`E2E_FIDELITY_UPCOMING_IMAGE`, `E2E_FIDELITY_K3S_IMAGE`,
+  `E2E_FIDELITY_PRINT_IMAGES=1`), `E2E_FIDELITY_UPDATE_FLAG` (it never records)
+  and while `ORACLE_BOOT` is `helm`. Never on PRs.
 - **The downstream fidelity axis rides on `make e2e-fidelity`.** The oracle
   imports a pinned `rancher/k3s` container on every boot and exports
   `E2E_FIDELITY_DOWNSTREAM`, so probes marked `Downstream: true` (family
