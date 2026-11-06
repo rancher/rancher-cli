@@ -97,10 +97,11 @@ func (o ServerURLOrigin) Refusal(reason error) *clierr.Error {
 
 // recordServerText is the text for the server recorded for the token ref when
 // that server cannot be used and is not an entry's current URL: the token
-// stays on the server that issued it, and the delete runs there.
-func recordServerText(ref clierr.TokenRef, reason error) string {
+// stays on the server that issued it, and the delete runs there, as the
+// token's owner (owner, when known) or an administrator.
+func recordServerText(ref clierr.TokenRef, reason error, owner string) string {
 	return "the server recorded for token " + clierr.ShellQuote(ref.Name) + " cannot be used: " + reason.Error() +
-		"; the token stays on the server that issued it; delete it there while signed in to that server: " +
+		"; the token stays on the server that issued it; delete it there as " + recordPerson(owner) + " while signed in to that server: " +
 		clierr.Rancher + " delete token" + clierr.ShellQuoteArgs(" --apply --yes", ref.Name)
 }
 
@@ -118,6 +119,21 @@ func identityProblem(identity string) error {
 	return err
 }
 
+// RecordOwnerOrAdministrator names who can delete an ext token whose owner is
+// not known: the token's owner and an administrator are the only users Rancher
+// lets read or delete it. A text about a record with no known owner uses these
+// words.
+const RecordOwnerOrAdministrator = "its owner or an administrator"
+
+// recordPerson is who runs the delete of a token owned by owner: the user, or
+// RecordOwnerOrAdministrator when the owner is not known.
+func recordPerson(owner string) string {
+	if owner == "" {
+		return RecordOwnerOrAdministrator
+	}
+	return "user " + clierr.ShellQuote(owner)
+}
+
 // RecordAdvice is what to say about the server a token record names: the
 // recovery sequence that revokes the token, or, when no command can name the
 // server, the text that says what to do instead. Exactly one is set.
@@ -131,10 +147,11 @@ type RecordAdvice struct {
 }
 
 // noServerText is the text for a token record that names no server: no
-// command can reach the server, and the token stays on it.
-func noServerText(ref clierr.TokenRef) string {
+// command can reach the server, and the token stays on it. The delete runs as
+// the token's owner (owner, when known) or an administrator.
+func noServerText(ref clierr.TokenRef, owner string) string {
 	return "no server is recorded for token " + clierr.ShellQuote(ref.Name) +
-		"; delete it while signed in to the server that issued it: " +
+		"; delete it as " + recordPerson(owner) + ", signed in to the server that issued it: " +
 		clierr.Rancher + " delete token" + clierr.ShellQuoteArgs(" --apply --yes", ref.Name)
 }
 
@@ -175,8 +192,9 @@ func holdsUserinfo(raw string) bool {
 //   - otherwise the recovery sequence, built from the identity and never from
 //     the text as stored.
 func AdviseRecord(site RecordSite, recordServer, userID string, ref clierr.TokenRef) RecordAdvice {
+	owner := withoutControl(userID)
 	if recordServer == "" {
-		return RecordAdvice{Text: noServerText(ref)}
+		return RecordAdvice{Text: noServerText(ref, owner)}
 	}
 	id := CanonicalServerIdentity(recordServer)
 	atEntry := site.EntryURL != "" && id == CanonicalServerIdentity(site.EntryURL)
@@ -188,22 +206,22 @@ func AdviseRecord(site RecordSite, recordServer, userID string, ref clierr.Token
 		if site.Entry != "" {
 			return RecordAdvice{Text: EntryOrigin(site.Entry).Text(entryProblem)}
 		}
-		return RecordAdvice{Text: recordServerText(ref, entryProblem)}
+		return RecordAdvice{Text: recordServerText(ref, entryProblem, owner)}
 	}
 	if err := identityProblem(id); err != nil {
 		if entryProblem != nil {
 			err = entryProblem
 		}
-		return RecordAdvice{Text: recordServerText(ref, err)}
+		return RecordAdvice{Text: recordServerText(ref, err, owner)}
 	}
 	if (holdsUserinfo(recordServer) || (atEntry && holdsUserinfo(site.EntryURL))) && !IsSupportedScheme(id) {
 		reason := ErrServerURLScheme
 		if entryProblem != nil {
 			reason = entryProblem
 		}
-		return RecordAdvice{Text: recordServerText(ref, reason)}
+		return RecordAdvice{Text: recordServerText(ref, reason, owner)}
 	}
-	return RecordAdvice{Sequence: clierr.RecoverySequence(id, ref), LoginAs: withoutControl(userID)}
+	return RecordAdvice{Sequence: clierr.RecoverySequence(id, ref), LoginAs: owner}
 }
 
 // withoutControl is s with every control character removed: an owner id

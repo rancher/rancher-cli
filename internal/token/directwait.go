@@ -321,7 +321,6 @@ func (d directWaitDetails) TextDetails() []string {
 // cause. A failed delete ends with the token's leftover text, which names
 // the token, who can delete it and the command.
 func directWaitCancelled(cause error, fresh *freshToken, cleanup RevokeOutcome) error {
-	fate := &clierr.TokenFate{Outcome: fresh.create.Outcome, Kind: fresh.create.Kind, Ref: fresh.create.Ref, Marked: fresh.create.Marked, CreatedAt: fresh.create.CreatedAt, Cleanup: &cleanup}
 	msg := "cancelled while waiting for the direct endpoint to accept the new credential"
 	switch cleanup.Result {
 	case ResultRevoked, ResultAlreadyGone:
@@ -334,5 +333,5 @@ func directWaitCancelled(cause error, fresh *freshToken, cleanup RevokeOutcome) 
 			msg += "; " + leftover
 		}
 	}
-	return clierr.New(clierr.CodeGeneric, msg).WithCause(cause).WithDetails(directWaitDetails{Fate: fate})
+	return clierr.New(clierr.CodeGeneric, msg).WithCause(cause).WithDetails(fateDetails(fresh, cleanup))
 }

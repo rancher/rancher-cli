@@ -181,7 +181,7 @@ func TestAdviseRecord(t *testing.T) {
 	execName := ExecLoginPrefix + "abc"
 	stays := func(reason string) string {
 		return "the server recorded for token 'token-abc12' cannot be used: " + reason + "; the token stays on the server that issued it; " +
-			"delete it there while signed in to that server: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes"
+			"delete it there as user 'u-abc12' while signed in to that server: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes"
 	}
 	sequence := func(server string) []string { return clierr.RecoverySequence(server, ref) }
 	const userinfo = "it holds a user name or password"
@@ -218,7 +218,7 @@ func TestAdviseRecord(t *testing.T) {
 		{"an entry whose own URL has userinfo on another scheme", RecordSite{Entry: "prod", EntryURL: "ftp://u:pwzq7@hostzq7:21"}, "ftp://u:pwzq7@hostzq7:21",
 			EntryOrigin("prod").Text(mustProblem(t, "ftp://u:pwzq7@hostzq7:21")), ""},
 		{"a record that names no server", RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}, "",
-			"no server is recorded for token 'token-abc12'; delete it while signed in to the server that issued it: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes", ""},
+			"no server is recorded for token 'token-abc12'; delete it as user 'u-abc12', signed in to the server that issued it: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

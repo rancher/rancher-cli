@@ -1611,8 +1611,9 @@ moved session tokens to the new API, a `token`; the failure details say
 which (`sessionToken.ref.kind`, or `sessionToken.kind` when the name is
 unknown). When the sign-in response of a password or OAuth login was
 lost, the kind is unknown too and `recovery` names both collections, so
-the marker search cannot miss the token. A pasted or piped token is yours
-and is never revoked.
+the marker search cannot miss the token. The management-token list and
+delete commands are an administrator's to run. A pasted or piped token is
+yours and is never revoked.
 
 A browser (SAML) sign-in is different: Rancher creates a kubeconfig
 token from the browser, with its own description, so it carries no marker.
@@ -1707,16 +1708,16 @@ The data of each command gains two lists, `[]` when empty, never null:
   transport error behind `failed`, `recovery` a command sequence; for a v3
   token it is the administrator's delete alone. `loginAs` is the user the
   first command of `recovery` logs in as, the token's owner; it is omitted
-  when the recovery needs no login. `code` is `TLS_TRUST` when
-  the delete failed because the server's certificate failed verification
-  (it is absent for any other failure), `error` then says how to fix the
-  certificate problem for what revokes the token, and `certificate` holds the
-  certificate's facts: `kind`, `fingerprint`, `subject`, `issuer`,
+  when the recovery needs no login or the token's owner is unknown. `code` is
+  `TLS_TRUST` when the delete failed because the server's certificate failed
+  verification (it is absent for any other failure), `error` then says how to
+  fix the certificate problem for what revokes the token, and `certificate`
+  holds the certificate's facts: `kind`, `fingerprint`, `subject`, `issuer`,
   `notBefore`, `notAfter`. When the config directory's path has characters a
-  terminal cannot show, no command names it: each `recovery` item of
-  `config delete-server` and `config update-server` holds the sentence that
-  says so, and each `recovery` item of the details of a failed `auth logout`
-  or `auth delete-token` is an empty string, so the list keeps its length.
+  terminal cannot show, no command names it: each `recovery` item of `config
+  delete-server` and `config update-server` holds the sentence that says so,
+  and each `recovery` item of the details of a failed `auth logout` or `auth
+  delete-token` is an empty string, so the list keeps its length.
 
 The text output lists one line per token under `tokens on <server>:`, for
 example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
@@ -2125,8 +2126,8 @@ tokens are still live on a server: its provenance, the token's owner and
 expiry, and, for the entry's current token and for each superseded record
 it still names, a four-command recovery sequence that logs in as a
 throwaway entry, selects it, revokes the token by name, and logs out again.
-When the token's owner is known, a line before the commands says which user to
-log in as.
+A line before the commands says who logs in: the token's owner when the CLI
+knows it, else the token's owner or an administrator.
 A superseded record whose server the entry no longer names has the state
 `otherServer`, and its sequence runs against that server.
 Every text rendering of the sequence ends with what it assumes:

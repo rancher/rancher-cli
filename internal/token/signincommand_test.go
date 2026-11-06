@@ -298,7 +298,9 @@ func TestSignInCancelledDuringTheDirectWait(t *testing.T) {
 // wait's details as they were: the cluster token's fate under clusterToken.
 // The failed-delete text names the token, who can delete it and the command
 // that person runs: the owner of an ext token from a directory signed in as
-// that owner, an administrator for a v3 token.
+// that owner, an administrator for a v3 token. The details line says "cluster
+// token cleanup:" when the create named a cluster and "token cleanup:" when it
+// named none (the shim's token is the login's own, with no cluster).
 func TestOtherProducersKeepTheirCancelledWaitDetails(t *testing.T) {
 	const lead = "cancelled while waiting for the direct endpoint to accept the new credential; the token it created could not be revoked; "
 	for _, tc := range []struct {
@@ -345,6 +347,14 @@ func TestOtherProducersKeepTheirCancelledWaitDetails(t *testing.T) {
 				require.NotNil(t, details.Fate)
 				assert.Equal(t, ResultFailed, details.Fate.Cleanup.Result)
 				require.NotNil(t, details.Fate.Ref)
+				require.Equal(t, tc.shim, details.unscoped, "the create names a cluster for every producer but the shim")
+				label := "cluster token cleanup: "
+				if tc.shim {
+					label = "token cleanup: "
+				}
+				lines := details.TextDetails()
+				require.Len(t, lines, 1)
+				assert.True(t, strings.HasPrefix(lines[0], label+"failed ("+details.Fate.Ref.String()+")"), "got %q", lines[0])
 				msg := clierr.ExpandRemedies(ce.Message, "")
 				require.True(t, strings.HasPrefix(msg, lead), "got %q", msg)
 				_, remove := clierr.RecoveryCommands(*details.Fate.Ref)

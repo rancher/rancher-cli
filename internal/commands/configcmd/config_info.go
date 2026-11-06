@@ -317,9 +317,10 @@ func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresA
 
 // recoveryField is a recovery sequence with the assumption its commands
 // depend on as a trailing line, the same sentence delete-server and
-// set-token-reuse print; for a v3 token it is the administrator's delete
-// alone. Text only: the JSON side is entryReport, whose recovery value
-// stays the commands alone.
+// set-token-reuse print, and a leading line that says who logs in (the
+// token's owner when known, else its owner or an administrator); for a v3
+// token it is the administrator's delete alone. Text only: the JSON side is
+// entryReport, whose recovery value stays the commands alone.
 func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) field {
 	ref.Name = output.Printable(ref.Name)
 	userID = output.Printable(userID)
@@ -331,9 +332,11 @@ func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRe
 		return field{"recovery", []string{advice.Text}}
 	}
 	lines := append(advice.Sequence, "("+clierr.RecoverySequenceAssumption+")")
+	login := "log in as the token's owner or an administrator, then run:"
 	if advice.LoginAs != "" {
-		lines = append([]string{"log in as user " + clierr.ShellQuote(advice.LoginAs) + " (the token's owner), then run:"}, lines...)
+		login = "log in as user " + clierr.ShellQuote(advice.LoginAs) + " (the token's owner), then run:"
 	}
+	lines = append([]string{login}, lines...)
 	return field{"recovery", lines}
 }
 

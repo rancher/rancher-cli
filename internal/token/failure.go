@@ -241,21 +241,27 @@ func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool)
 		// A nameless marked token of known kind is listed in its collection;
 		// of unknown kind (a lost or unrecognizable login response) it may be
 		// in either, and both are named so the marker search cannot miss it.
-		kinds := []clierr.TokenKind{f.Kind}
-		if f.Kind == "" {
-			kinds = []clierr.TokenKind{clierr.TokenKindV3, clierr.TokenKindExt}
+		// The management-token list and delete commands are an administrator's to run:
+		// Rancher grants a standard user no rule on management.cattle.io tokens.
+		extList, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
+		v3List, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindV3})
+		carries := fmt.Sprintf("a leftover token created by this login carries %q in its description", "[op:"+marker+"]")
+		var then, steps string
+		switch f.Kind {
+		case clierr.TokenKindV3:
+			steps = "an administrator can list tokens with: " + v3List + "; " + carries + "; an administrator can revoke it with the found name"
+		case "":
+			then = "then "
+			steps = "list tokens with: " + extList + "; an administrator can also list management tokens with: " + v3List + "; " + carries +
+				"; revoke it with the found name; an administrator can revoke one from the management-token list"
+		default:
+			then = "then "
+			steps = "list tokens with: " + extList + "; " + carries + "; revoke it with the found name"
 		}
-		var lists []string
-		for _, k := range kinds {
-			list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: k})
-			lists = append(lists, list)
-		}
-		prefix := ""
 		if !persisted {
-			prefix = "no credential was stored; " + login + "; then "
+			return "no credential was stored; " + login + "; " + then + steps, ""
 		}
-		return fmt.Sprintf("%slist tokens with: %s; a leftover token created by this login carries %q in its description; revoke it with the found name",
-			prefix, strings.Join(lists, "; and with: "), "[op:"+marker+"]"), ""
+		return steps, ""
 	case f.Search != nil:
 		// A SAML sign-in carries no description to mark, so only the provider
 		// and the client-side window of the browser handoff are known. They
@@ -371,18 +377,28 @@ func FinishUnsupportedStore(cred LoginCredential, server string, st *LoginStates
 		"credential helper is read-only and the token was not persisted; future commands re-acquire it through the helper")
 	dClean := cred.Revoke()
 	st.CredentialCleanup = &dClean
-	add := func(f *clierr.TokenFate) {
-		if f != nil && f.Cleanup != nil && f.Cleanup.Result == clierr.ResultFailed {
-			residual = append(residual, *f)
+	// A cleanup that failed always has a Ref: a credential with no Ref is not
+	// attempted, so the warning builders never see a failed fate with no name.
+	add := func(f *clierr.TokenFate, derived bool) {
+		if f == nil || f.Cleanup == nil || f.Cleanup.Result != clierr.ResultFailed {
+			return
+		}
+		residual = append(residual, *f)
+		recovery := func(f clierr.TokenFate) string {
+			text, _ := ResidualRecovery(f, server, cred.Marker, false)
+			return text
+		}
+		if derived {
+			st.Warnings = append(st.Warnings, fmt.Sprintf("the derived token %s created by this login could not be revoked (%s); %s",
+				f.Ref.String(), f.Cleanup.Error, recovery(*f)))
+			return
+		}
+		if text, ok := LoginTokenWarning(f, recovery); ok {
+			st.Warnings = append(st.Warnings, text)
 		}
 	}
 	session, derived := tokenFatesFrom(cred, dClean)
-	add(session)
-	add(derived)
-	for _, r := range residual {
-		text, _ := ResidualRecovery(r, server, cred.Marker, false)
-		st.Warnings = append(st.Warnings, fmt.Sprintf("the token %s created by this login could not be revoked (%s); %s",
-			r.Ref.String(), r.Cleanup.Error, text))
-	}
+	add(session, false)
+	add(derived, true)
 	return residual
 }

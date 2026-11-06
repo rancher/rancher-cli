@@ -150,10 +150,11 @@ func recordState(s config.Server, rec config.SupersededToken) string {
 }
 
 // sequenceLines renders the recovery sequence, one command per line, then
-// its assumption. loginAs is the user the first command logs in as, empty when
-// the owner is unknown.
+// its assumption, after a line that says who logs in: loginAs, the user the
+// first command logs in as, or, when it is empty because the owner is unknown,
+// the token's owner or an administrator.
 func sequenceLines(indent, loginAs string, seq []string) []string {
-	lines := []string{indent + "revoke it with:"}
+	lines := []string{indent + "log in as the token's owner or an administrator, then revoke it with:"}
 	if loginAs != "" {
 		lines = []string{indent + "log in as user " + clierr.ShellQuote(loginAs) + " (the token's owner), then revoke it with:"}
 	}

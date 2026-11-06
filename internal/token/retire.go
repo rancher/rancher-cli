@@ -172,8 +172,8 @@ func v3AdminDelete(subject string, ref TokenRef, expiresAt string) string {
 }
 
 // keptWarning names one unretired token, why, and what revokes it: the
-// sequence that logs in as its owner, or for a v3 token the administrator's
-// delete.
+// sequence that logs in as its owner (its owner or an administrator when the
+// owner is not known), or for a v3 token the administrator's delete.
 func keptWarning(rec config.SupersededToken, serverURL, why string) string {
 	if rec.Ref.Kind == TokenKindV3 {
 		// No login of the owner deletes a v3 token for a standard user.
@@ -183,7 +183,7 @@ func keptWarning(rec config.SupersededToken, serverURL, why string) string {
 	if advice.Text != "" {
 		return unusableServerKept(rec, advice.Text, why)
 	}
-	revoke := "revoke it with: "
+	revoke := "revoke it as " + config.RecordOwnerOrAdministrator + " with: "
 	if advice.LoginAs != "" {
 		revoke = "revoke it as user " + clierr.ShellQuote(advice.LoginAs) + " with: "
 	}

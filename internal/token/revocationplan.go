@@ -842,7 +842,7 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	if advice.Text != "" {
 		return fmt.Sprintf("the %s was not revoked (%s); %s", what, reasonText(it), advice.Text)
 	}
-	revoke := "revoke it with: "
+	revoke := "revoke it as " + config.RecordOwnerOrAdministrator + " with: "
 	if advice.LoginAs != "" {
 		revoke = "revoke it as user " + clierr.ShellQuote(advice.LoginAs) + " with: "
 	}

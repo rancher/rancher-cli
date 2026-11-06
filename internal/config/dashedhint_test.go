@@ -26,9 +26,9 @@ func TestLoginAndLogoutHintsPutDoubleDashBeforeADashedName(t *testing.T) {
 func TestRemedyTextsPutDoubleDashBeforeADashedName(t *testing.T) {
 	t.Parallel()
 	ref := clierr.TokenRef{Name: "-x"}
-	assert.Equal(t, "no server is recorded for token '-x'; delete it while signed in to the server that issued it: "+
-		clierr.Rancher+" delete token --apply --yes -- '-x'", noServerText(ref))
-	assert.Contains(t, recordServerText(ref, errors.New("bad")), "delete it there while signed in to that server: "+
+	assert.Equal(t, "no server is recorded for token '-x'; delete it as its owner or an administrator, signed in to the server that issued it: "+
+		clierr.Rancher+" delete token --apply --yes -- '-x'", noServerText(ref, ""))
+	assert.Contains(t, recordServerText(ref, errors.New("bad"), ""), "delete it there as its owner or an administrator while signed in to that server: "+
 		clierr.Rancher+" delete token --apply --yes -- '-x'")
 	assert.Contains(t, EntryOrigin("-x").Text(ErrServerURLScheme), "change the entry's URL with "+
 		clierr.Rancher+" config update-server --url <url> -- '-x'")

@@ -674,20 +674,25 @@ func TestGetTokenMalformedExecInfoWarnsOnAWarmCache(t *testing.T) {
 }
 
 // TestDirectWaitCancelledReportsTheFate asserts the cancellation error's
-// details for a revoked, a failed, and a never-attempted cleanup.
+// details for a revoked, a failed, and a never-attempted cleanup, with the
+// label "cluster token" when the create named a cluster and "token" when it
+// named none.
 func TestDirectWaitCancelledReportsTheFate(t *testing.T) {
 	t.Parallel()
 	ref := &TokenRef{Kind: TokenKindExt, Name: "token-x"}
-	fresh := &freshToken{create: CreateResult{Outcome: CreateKnown, Kind: TokenKindExt, Ref: ref, Bearer: "b"}}
 	for _, tc := range []struct {
+		name    string
+		cluster string
 		cleanup RevokeOutcome
 		message string
 		detail  string
 	}{
-		{RevokeOutcome{Ref: ref, Result: ResultRevoked}, "was revoked", "cluster token cleanup: revoked (ext/token-x)"},
-		{RevokeOutcome{Ref: ref, Result: ResultFailed, Error: "500 Internal Server Error"}, "could not be revoked", "cluster token cleanup: failed (ext/token-x): 500 Internal Server Error"},
-		{RevokeOutcome{Result: ResultNotAttempted}, "nothing was revoked", "cluster token cleanup: notAttempted (ext/token-x)"},
+		{"revoked, with a cluster", "c-1", RevokeOutcome{Ref: ref, Result: ResultRevoked}, "was revoked", "cluster token cleanup: revoked (ext/token-x)"},
+		{"failed, with a cluster", "c-1", RevokeOutcome{Ref: ref, Result: ResultFailed, Error: "500 Internal Server Error"}, "could not be revoked", "cluster token cleanup: failed (ext/token-x): 500 Internal Server Error"},
+		{"not attempted, with a cluster", "c-1", RevokeOutcome{Result: ResultNotAttempted}, "nothing was revoked", "cluster token cleanup: notAttempted (ext/token-x)"},
+		{"failed, with no cluster", "", RevokeOutcome{Ref: ref, Result: ResultFailed, Error: "500 Internal Server Error"}, "could not be revoked", "token cleanup: failed (ext/token-x): 500 Internal Server Error"},
 	} {
+		fresh := &freshToken{create: CreateResult{Outcome: CreateKnown, Kind: TokenKindExt, Ref: ref, Bearer: "b", ClusterName: tc.cluster}}
 		err := directWaitCancelled(context.Canceled, fresh, tc.cleanup)
 		require.ErrorIs(t, err, context.Canceled)
 		require.ErrorContains(t, err, tc.message)
@@ -695,6 +700,6 @@ func TestDirectWaitCancelledReportsTheFate(t *testing.T) {
 		require.True(t, ok)
 		details, ok := ce.Details.(clierr.TextDetails)
 		require.True(t, ok)
-		assert.Equal(t, []string{tc.detail}, details.TextDetails())
+		assert.Equal(t, []string{tc.detail}, details.TextDetails(), tc.name)
 	}
 }
