@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -395,12 +396,12 @@ func newScenario(t *testing.T) *scenario {
 	}
 	require.NoError(t, os.WriteFile(s.gitConfig, nil, 0o600))
 	require.NoError(t, os.WriteFile(s.logPath, nil, 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(s.stubDir, "docker"), []byte(dockerStubScript), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(s.stubDir, "xargs"), []byte(xargsStubScript), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(s.stubDir, "docker"), []byte(dockerStubScript))
+	testfs.WriteExecutable(t, filepath.Join(s.stubDir, "xargs"), []byte(xargsStubScript))
 	for name, script := range map[string]string{
 		"curl": curlStubScript, "go": goStubScript, "sleep": sleepStubScript, "openssl": opensslStubScript, "df": dfStubScript,
 	} {
-		require.NoError(t, os.WriteFile(filepath.Join(s.stubDir, name), []byte(script), 0o755))
+		testfs.WriteExecutable(t, filepath.Join(s.stubDir, name), []byte(script))
 	}
 	for _, name := range []string{"curl.log", "curl.table", "curl.argv", "go.log"} {
 		require.NoError(t, os.WriteFile(filepath.Join(s.stubDir, name), nil, 0o600))
@@ -1003,7 +1004,7 @@ func (s *scenario) slotScript() int {
 	s.copyRoot = s.t.TempDir()
 	copyPath := filepath.Join(s.copyRoot, "scripts", "e2e-fidelity")
 	require.NoError(s.t, os.MkdirAll(filepath.Dir(copyPath), 0o755))
-	require.NoError(s.t, os.WriteFile(copyPath, []byte(text), 0o755))
+	testfs.WriteExecutable(s.t, copyPath, []byte(text))
 	s.script = copyPath
 	return port
 }
@@ -1280,7 +1281,7 @@ printf '%s\n' "$*" >> "$STUB_DIR/argv"
 cat > "$STUB_DIR/stdin.$n"
 if [ -f "$STUB_DIR/resp.$n" ]; then cat "$STUB_DIR/resp.$n"; else cat "$STUB_DIR/resp.default"; fi
 `
-	require.NoError(t, os.WriteFile(filepath.Join(h.dir, "curl"), []byte(stub), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(h.dir, "curl"), []byte(stub))
 	for name, body := range responses {
 		require.NoError(t, os.WriteFile(filepath.Join(h.dir, "resp."+name), []byte(body), 0o600))
 	}
@@ -1718,7 +1719,7 @@ func TestOracleMinorRemovesContainersWithVolumes(t *testing.T) {
 			dir := t.TempDir()
 			logPath := filepath.Join(dir, "docker.log")
 			require.NoError(t, os.WriteFile(logPath, nil, 0o600))
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "docker"), []byte(dockerStubScript), 0o755))
+			testfs.WriteExecutable(t, filepath.Join(dir, "docker"), []byte(dockerStubScript))
 			program := "set -euo pipefail\n" +
 				"K3S_CONTAINER=k3s-case NETWORK=net-case K3S_IP=10.0.0.3 K3S_IMAGE=k3s-image BASE_URL=http://127.0.0.1:1 DOWNSTREAM_NAME=downstream\n" +
 				"api() { echo 404; }\nprime_ip_san() { :; }\nboot_k3s() { :; }\nimport_downstream() { :; }\nwrite_state() { :; }\n" +

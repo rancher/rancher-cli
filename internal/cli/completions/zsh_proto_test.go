@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // zshProtoArgv runs the zsh script with the given words array and returns
@@ -25,9 +27,7 @@ func zshProtoArgv(t *testing.T, words []string) []string {
 	binDir := t.TempDir()
 	argvFile := filepath.Join(binDir, "argv")
 	fake := fmt.Sprintf("#!/bin/sh\nfor a in \"$@\"; do printf '%%s\\n' \"$a\" >> %q; done\necho pod\n", argvFile)
-	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fake), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(binDir, "rancher"), []byte(fake))
 
 	quoted := make([]string, len(words))
 	for i, w := range words {
@@ -71,9 +71,7 @@ func TestZshStderrNotLeakedToTerminal(t *testing.T) {
 	}
 	binDir := t.TempDir()
 	fake := "#!/bin/sh\necho 'boom: stale binary rejects completion flags' >&2\necho pod\n"
-	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fake), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(binDir, "rancher"), []byte(fake))
 
 	driver := fmt.Sprintf(`
 export PATH=%q:"$PATH"

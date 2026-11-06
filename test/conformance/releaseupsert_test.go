@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,7 +70,7 @@ func upsertTools(t *testing.T) (dir, sh string) {
 		}
 		require.NoError(t, os.Symlink(target, filepath.Join(dir, name)))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(upsertStubGH), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "gh"), []byte(upsertStubGH))
 	return dir, sh
 }
 

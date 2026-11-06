@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -30,11 +31,12 @@ func (n noLiveSource) LiveSource() completion.Source {
 func writeExecutables(t *testing.T, dir string, names []string, plain ...string) {
 	t.Helper()
 	for _, n := range names {
-		mode := os.FileMode(0o755)
+		path := filepath.Join(dir, n)
 		if slices.Contains(plain, n) {
-			mode = 0o644
+			require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\n"), 0o644))
+			continue
 		}
-		require.NoError(t, os.WriteFile(filepath.Join(dir, n), []byte("#!/bin/sh\n"), mode))
+		testfs.WriteExecutable(t, path, []byte("#!/bin/sh\n"))
 	}
 }
 

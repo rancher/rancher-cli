@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +68,7 @@ func TestMigrationTakesOverRegularFilesWithNotice(t *testing.T) {
 	home := t.TempDir()
 	bin := filepath.Join(home, ".local", "bin")
 	require.NoError(t, os.MkdirAll(bin, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "rancher"), []byte("old"), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(bin, "rancher"), []byte("old"))
 	// partial pair: only one prior file
 	out, errOut, code := runInstall(t, s, envHome(home))
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
@@ -264,7 +265,7 @@ func TestCorruptVersionDirIsReplaced(t *testing.T) {
 	require.Equal(t, 0, code)
 
 	vdir := filepath.Join(home, ".local", "share", "rancher-cli", "versions", "v1.2.3")
-	require.NoError(t, os.WriteFile(filepath.Join(vdir, "rancher"), []byte("#!/bin/sh\necho corrupted\n"), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(vdir, "rancher"), []byte("#!/bin/sh\necho corrupted\n"))
 
 	out, errOut, code := runInstall(t, s, envHome(home))
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
@@ -282,7 +283,7 @@ func TestMigrationRefusalOnSecondPathMutatesNothing(t *testing.T) {
 	home := t.TempDir()
 	bin := filepath.Join(home, ".local", "bin")
 	require.NoError(t, os.MkdirAll(filepath.Join(bin, "rancher-credential-vault"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "rancher"), []byte("old"), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(bin, "rancher"), []byte("old"))
 	_, errOut, code := runInstall(t, s, envHome(home))
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "refusing to replace")
@@ -323,8 +324,8 @@ func TestMigrationTakesOverFullLegacyPair(t *testing.T) {
 	home := t.TempDir()
 	bin := filepath.Join(home, ".local", "bin")
 	require.NoError(t, os.MkdirAll(bin, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "rancher"), []byte("old-cli"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "rancher-credential-vault"), []byte("old-helper"), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(bin, "rancher"), []byte("old-cli"))
+	testfs.WriteExecutable(t, filepath.Join(bin, "rancher-credential-vault"), []byte("old-helper"))
 	out, errOut, code := runInstall(t, s, envHome(home))
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
 	assert.Equal(t, 2, strings.Count(out, "notice: replacing existing file"),
@@ -396,7 +397,7 @@ func TestCapableGhAttestationRuns(t *testing.T) {
 		"  'auth status') exit 0 ;;\n" +
 		"  'attestation verify') if [ \"$3\" = --help ] || [ \"$3\" = '' ]; then echo '--signer-workflow'; fi; exit 0 ;;\n" +
 		"esac\nexit 0\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(fake), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "gh"), []byte(fake))
 	home := t.TempDir()
 	out, errOut, code := runInstall(t, s, append(envHome(home),
 		"PATH="+dir+":"+toolPath(t, baseTools...),

@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // TestPwshCompletesFilesForAnExecCommandPath asserts PowerShell answers
@@ -32,9 +34,7 @@ func TestPwshCompletesFilesForAnExecCommandPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	work := t.TempDir()
-	if err := os.WriteFile(filepath.Join(work, "myrancher"), []byte("x"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(work, "myrancher"), []byte("x"))
 	driver := fmt.Sprintf(`
 $ErrorActionPreference = 'Stop'
 $env:PATH = %s + [System.IO.Path]::PathSeparator + $env:PATH

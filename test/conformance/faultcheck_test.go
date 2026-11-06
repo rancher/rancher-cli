@@ -95,7 +95,7 @@ func runFaultCheck(t *testing.T, dir, allowlist string) (int, string) {
 	script, err := filepath.Abs(faultCheckScript)
 	require.NoError(t, err)
 	list := filepath.Join(t.TempDir(), "allowlist")
-	writeTestFile(t, list, allowlist, 0o644)
+	writeTestFile(t, list, allowlist)
 	cmd := exec.CommandContext(t.Context(), script)
 	cmd.Env = append(os.Environ(), "FAULT_LOG_DIR="+dir, "FAULT_ALLOWLIST="+list)
 	out, err := cmd.CombinedOutput()
@@ -107,9 +107,9 @@ func writeFaultLogs(t *testing.T, logs []faultLog) string {
 	dir := t.TempDir()
 	for i, l := range logs {
 		name := filepath.Join(dir, "run."+strconv.Itoa(i))
-		writeTestFile(t, name+".log", strings.Join(l.lines, "\n")+"\n", 0o644)
+		writeTestFile(t, name+".log", strings.Join(l.lines, "\n")+"\n")
 		if l.pkg != "" {
-			writeTestFile(t, name+".pkg", l.pkg+"\n", 0o644)
+			writeTestFile(t, name+".pkg", l.pkg+"\n")
 		}
 	}
 	return dir
@@ -191,7 +191,7 @@ func TestFaultCheckBehaviour(t *testing.T) {
 			t.Parallel()
 			dir := writeFaultLogs(t, c.logs)
 			for name, content := range c.extraFiles {
-				writeTestFile(t, filepath.Join(dir, name), content, 0o644)
+				writeTestFile(t, filepath.Join(dir, name), content)
 			}
 			code, out := runFaultCheck(t, dir, c.allowlist)
 			assert.Equal(t, c.wantExit, code, out)
@@ -231,11 +231,11 @@ func TestFaultCheckFailsWhenAwkFails(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			tools := toolWrappers(t, "dirname", "mktemp", "cat", "rm")
-			writeTestFile(t, filepath.Join(tools, "awk"),
-				"#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in "+c.failOn+") exit 2;; esac; done\nexec '"+realAwk+"' \"$@\"\n", 0o755)
+			writeTestScript(t, filepath.Join(tools, "awk"),
+				"#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in "+c.failOn+") exit 2;; esac; done\nexec '"+realAwk+"' \"$@\"\n")
 			dir := writeFaultLogs(t, []faultLog{providerRun(1)})
 			list := filepath.Join(t.TempDir(), "allowlist")
-			writeTestFile(t, list, "internal/client/provider|provider.test|any|a recovered fault\n", 0o644)
+			writeTestFile(t, list, "internal/client/provider|provider.test|any|a recovered fault\n")
 			cmd := exec.CommandContext(t.Context(), script)
 			cmd.Env = []string{"PATH=" + tools, "FAULT_LOG_DIR=" + dir, "FAULT_ALLOWLIST=" + list}
 			out, err := cmd.CombinedOutput()
@@ -254,7 +254,7 @@ func toolWrappers(t *testing.T, tools ...string) string {
 	for _, tool := range tools {
 		found, err := exec.LookPath(tool)
 		require.NoError(t, err)
-		writeTestFile(t, filepath.Join(dir, tool), "#!/bin/sh\nexec '"+found+"' \"$@\"\n", 0o755)
+		writeTestScript(t, filepath.Join(dir, tool), "#!/bin/sh\nexec '"+found+"' \"$@\"\n")
 	}
 	return dir
 }
@@ -290,7 +290,7 @@ func TestFaultTraceRefusals(t *testing.T) {
 	stubStrace := func(t *testing.T) string {
 		t.Helper()
 		dir := toolWrappers(t, "uname", "awk", "dirname", "mktemp")
-		writeTestFile(t, filepath.Join(dir, "strace"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n", 0o755)
+		writeTestScript(t, filepath.Join(dir, "strace"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n")
 		return dir
 	}
 
@@ -312,7 +312,7 @@ func TestFaultTraceRefusals(t *testing.T) {
 				logDir = ""
 			case "file":
 				logDir = filepath.Join(dir, "file")
-				writeTestFile(t, logDir, "x", 0o644)
+				writeTestFile(t, logDir, "x")
 			case "missing":
 				logDir = filepath.Join(dir, "missing")
 			}
@@ -349,8 +349,8 @@ func TestFaultTraceRefusals(t *testing.T) {
 			t.Skip("the script refuses before it creates a log file")
 		}
 		tools := toolWrappers(t, "uname", "awk", "dirname")
-		writeTestFile(t, filepath.Join(tools, "mktemp"), "#!/bin/sh\nexit 1\n", 0o755)
-		writeTestFile(t, filepath.Join(tools, "strace"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n", 0o755)
+		writeTestScript(t, filepath.Join(tools, "mktemp"), "#!/bin/sh\nexit 1\n")
+		writeTestScript(t, filepath.Join(tools, "strace"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n")
 		work := t.TempDir()
 		marker := filepath.Join(t.TempDir(), "started")
 		code, out := run(t, tools, t.TempDir(), work, sh, "-c", "echo started > '"+marker+"'")
@@ -372,9 +372,9 @@ func TestFaultTraceRefusals(t *testing.T) {
 		realMkdir, err := exec.LookPath("mkdir")
 		require.NoError(t, err)
 		tools := toolWrappers(t, "uname", "awk", "dirname")
-		writeTestFile(t, filepath.Join(tools, "mktemp"),
-			"#!/bin/sh\nf=$('"+realMktemp+"' \"$@\") || exit 1\n'"+realMkdir+"' \"$f.pkg\" || exit 1\nprintf '%s\n' \"$f\"\n", 0o755)
-		writeTestFile(t, filepath.Join(tools, "strace"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n", 0o755)
+		writeTestScript(t, filepath.Join(tools, "mktemp"),
+			"#!/bin/sh\nf=$('"+realMktemp+"' \"$@\") || exit 1\n'"+realMkdir+"' \"$f.pkg\" || exit 1\nprintf '%s\n' \"$f\"\n")
+		writeTestScript(t, filepath.Join(tools, "strace"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n")
 		marker := filepath.Join(t.TempDir(), "started")
 		code, out := run(t, tools, t.TempDir(), t.TempDir(), sh, "-c", "echo started > '"+marker+"'")
 		assert.Equal(t, 2, code, out)
@@ -400,8 +400,8 @@ func TestFaultTraceRefusals(t *testing.T) {
 				t.Skip("the script refuses before it reads the tracer")
 			}
 			tools := toolWrappers(t, "uname", "dirname", "mktemp")
-			writeTestFile(t, filepath.Join(tools, "awk"), "#!/bin/sh\n"+c.awkScript+"\n", 0o755)
-			writeTestFile(t, filepath.Join(tools, "strace"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n", 0o755)
+			writeTestScript(t, filepath.Join(tools, "awk"), "#!/bin/sh\n"+c.awkScript+"\n")
+			writeTestScript(t, filepath.Join(tools, "strace"), "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n")
 			marker := filepath.Join(t.TempDir(), "started")
 			logDir := t.TempDir()
 			code, out := run(t, tools, logDir, t.TempDir(), sh, "-c", "echo started > '"+marker+"'")

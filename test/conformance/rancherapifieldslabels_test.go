@@ -78,7 +78,7 @@ func runAPIFieldsScript(t *testing.T, hook map[string]any, extraEnv ...string) a
 	hookFile := filepath.Join(t.TempDir(), "labels.json")
 	require.NoError(t, os.WriteFile(hookFile, raw, 0o644))
 	stubs := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(stubs, "docker"), []byte(apiFieldsStubDocker), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(stubs, "docker"), []byte(apiFieldsStubDocker))
 	marker := filepath.Join(t.TempDir(), "docker-calls")
 
 	cmd := exec.CommandContext(t.Context(), "bash", apiFieldsScript)

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -271,7 +272,7 @@ func fakeUname(t *testing.T, kernel, machine string) string {
 	t.Helper()
 	dir := t.TempDir()
 	script := "#!/bin/sh\ncase \"$1\" in\n  -s) echo \"" + kernel + "\" ;;\n  -m) echo \"" + machine + "\" ;;\nesac\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "uname"), []byte(script), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "uname"), []byte(script))
 	return dir
 }
 
@@ -447,7 +448,7 @@ func mvWithoutNoFollow(t *testing.T) (string, []string) {
 	require.NoError(t, err)
 	dir := t.TempDir()
 	script := "#!/bin/sh\ncase \"${1:-}\" in\n  -T|-h) exit 1 ;;\nesac\nexec \"$REAL_MV\" \"$@\"\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "mv"), []byte(script), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "mv"), []byte(script))
 	return dir, []string{"REAL_MV=" + realMv}
 }
 
@@ -464,7 +465,7 @@ func withParser(t *testing.T) []string {
 func ghStub(t *testing.T, script string) string {
 	t.Helper()
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "gh"), []byte(script))
 	return dir
 }
 
@@ -484,7 +485,7 @@ func recordingCurlWrapper(t *testing.T) (dir, argvLog string, env []string) {
 	wrapper := "#!/bin/sh\n" +
 		"printf '%s\\n' \"$@\" >> \"$RANCHER_TEST_ARGV_LOG\"\n" +
 		"exec \"$RANCHER_TEST_REAL_CURL\" \"$@\"\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "curl"), []byte(wrapper), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "curl"), []byte(wrapper))
 	env = []string{
 		"RANCHER_TEST_ARGV_LOG=" + argvLog,
 		"RANCHER_TEST_REAL_CURL=" + realCurl,
@@ -509,7 +510,7 @@ func curlFailingReleaseTag(t *testing.T) (dir string, env []string) {
 		"  esac\n" +
 		"done\n" +
 		"exec \"$RANCHER_TEST_REAL_CURL\" \"$@\"\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "curl"), []byte(wrapper), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "curl"), []byte(wrapper))
 	return dir, []string{"RANCHER_TEST_REAL_CURL=" + realCurl}
 }
 

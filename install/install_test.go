@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -654,8 +655,8 @@ func TestEpilogueWarnsWhenAnotherBinaryShadowsInstall(t *testing.T) {
 	home := t.TempDir()
 
 	shadowDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(shadowDir, "rancher"),
-		[]byte("#!/bin/sh\nexit 0\n"), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(shadowDir, "rancher"),
+		[]byte("#!/bin/sh\nexit 0\n"))
 
 	env := append(envHome(home),
 		"PATH="+shadowDir+":"+toolPath(t, baseTools...))

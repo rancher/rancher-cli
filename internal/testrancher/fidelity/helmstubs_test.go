@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -276,7 +277,7 @@ func (s *scenario) installHelmDocker() *helmFixture {
 	s.t.Helper()
 	f := &helmFixture{dir: filepath.Join(s.stubDir, "helm"), files: map[string]string{}}
 	require.NoError(s.t, os.MkdirAll(f.dir, 0o755))
-	require.NoError(s.t, os.WriteFile(filepath.Join(s.stubDir, "docker"), []byte(helmDockerStubScript), 0o755))
+	testfs.WriteExecutable(s.t, filepath.Join(s.stubDir, "docker"), []byte(helmDockerStubScript))
 	f.files["ids"] = ""
 	f.files["pull_fail"] = ""
 	f.files["k3s_version"] = "k3s version v1.36.2+k3s1 (0000000)\ngo version go1.24.0\n"

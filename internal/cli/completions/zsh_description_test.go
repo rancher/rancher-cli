@@ -2,8 +2,8 @@
 
 package completions
 
-// Deliberately plain-stdlib (no testify): these tests execute under a real
-// external zsh and are kept dependency-light on purpose.
+// The assertions in these tests use the standard library only (no testify). These tests execute
+// under a real external zsh. The stub writer comes from internal/testfs.
 
 import (
 	"fmt"
@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // TestZshHandsTheWholeLineToDescribe asserts the script passes every
@@ -46,9 +48,7 @@ func TestZshHandsTheWholeLineToDescribe(t *testing.T) {
 	for _, l := range lines {
 		fmt.Fprintf(&fake, "printf '%%s\\n' '%s'\n", strings.ReplaceAll(l, "'", "'\\''"))
 	}
-	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fake.String()), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(binDir, "rancher"), []byte(fake.String()))
 
 	// The stub prints which call it is (continuation when the suffix flag is
 	// present) and the whole of each array element it was given.

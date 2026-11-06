@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // TestBashExecCommandCompletion drives bash's completion callback with the
@@ -30,9 +32,7 @@ func TestBashExecCommandCompletion(t *testing.T) {
 	}
 	tools := t.TempDir()
 	for _, n := range []string{"zzrancher-a", "zzrancher-b"} {
-		if err := os.WriteFile(filepath.Join(tools, n), []byte("#!/bin/sh\n"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		testfs.WriteExecutable(t, filepath.Join(tools, n), []byte("#!/bin/sh\n"))
 	}
 	scriptPath := filepath.Join(t.TempDir(), "bash.sh")
 	if err := os.WriteFile(scriptPath, bashScript, 0o644); err != nil {

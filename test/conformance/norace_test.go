@@ -7,7 +7,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -411,9 +410,9 @@ func runPassScriptWith(t *testing.T, packages, names, extraEnv []string, args ..
 	logPath := filepath.Join(root, "go.log")
 	listPath := filepath.Join(root, "packages.txt")
 	namesPath := filepath.Join(root, "names.txt")
-	writeTestFile(t, listPath, strings.Join(packages, "\n")+"\n", 0o644)
-	writeTestFile(t, namesPath, strings.Join(names, "\n")+"\n", 0o644)
-	writeTestFile(t, filepath.Join(stubs, "go"), `#!/bin/bash
+	writeTestFile(t, listPath, strings.Join(packages, "\n")+"\n")
+	writeTestFile(t, namesPath, strings.Join(names, "\n")+"\n")
+	writeTestScript(t, filepath.Join(stubs, "go"), `#!/bin/bash
 printf 'go %s\n' "$*" >> "$STUB_LOG"
 if [ "$1" = list ]; then
   if [ "$2" = -m ]; then
@@ -444,14 +443,14 @@ for arg in "$@"; do
       ;;
   esac
 done
-`, 0o755)
+`)
 	env := append([]string{
 		"PATH=" + stubs + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"STUB_LOG=" + logPath,
 		"STUB_PACKAGES=" + listPath,
 		"STUB_NAMES=" + namesPath,
 	}, extraEnv...)
-	cmd := exec.CommandContext(t.Context(), filepath.Join(root, noRaceScriptPath), args...)
+	cmd := scriptCommand(t.Context(), filepath.Join(root, noRaceScriptPath), args...)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), env...)
 	var stdout, stderr bytes.Buffer

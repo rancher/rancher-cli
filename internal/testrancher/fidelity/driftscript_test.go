@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -189,7 +190,7 @@ func TestDriftPrintMode(t *testing.T) {
 		raw, err := os.ReadFile(realScriptPath(t))
 		require.NoError(t, err)
 		s.script = filepath.Join(root, "scripts", "e2e-fidelity")
-		require.NoError(t, os.WriteFile(s.script, raw, 0o755))
+		testfs.WriteExecutable(t, s.script, raw)
 		got := printMode(t, s, map[string]string{"E2E_FIDELITY_DRIFT": "1"})
 		assert.Equal(t, filepath.Join(resolved(t, root), "internal", "testrancher", "fidelity", "testdata", "upcoming", "v2.16.json"), got["driftKnown"])
 	})
@@ -209,7 +210,7 @@ func TestDriftDownstreamScriptRefusesTheDriftVariables(t *testing.T) {
 		dir := t.TempDir()
 		logPath := filepath.Join(dir, "go.log")
 		require.NoError(t, os.WriteFile(logPath, nil, 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "go"), []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$STUB_LOG\"\n"), 0o755))
+		testfs.WriteExecutable(t, filepath.Join(dir, "go"), []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$STUB_LOG\"\n"))
 		env := []string{
 			"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"), "HOME=" + dir, "STUB_LOG=" + logPath,
 			"E2E_FIDELITY_URL=https://127.0.0.1:1", "E2E_FIDELITY_ADMIN_TOKEN=t", "E2E_FIDELITY_CACERT=pem", "E2E_FIDELITY_DOWNSTREAM=c-x",
@@ -274,8 +275,8 @@ func newShellEnv(t *testing.T) *shellEnv {
 	e := &shellEnv{t: t, dir: t.TempDir()}
 	e.logPath = filepath.Join(e.dir, "docker.log")
 	require.NoError(t, os.WriteFile(e.logPath, nil, 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(e.dir, "docker"), []byte(dockerStubScript), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(e.dir, "df"), []byte("#!/bin/sh\necho df-stub\n"), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(e.dir, "docker"), []byte(dockerStubScript))
+	testfs.WriteExecutable(t, filepath.Join(e.dir, "df"), []byte("#!/bin/sh\necho df-stub\n"))
 	return e
 }
 

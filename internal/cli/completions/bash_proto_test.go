@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // bashProtoArgv runs the bash script with the given COMP_WORDS and COMP_CWORD
@@ -25,9 +27,7 @@ func bashProtoArgv(t *testing.T, compWords []string, compCword int) []string {
 	binDir := t.TempDir()
 	argvFile := filepath.Join(binDir, "argv")
 	fake := fmt.Sprintf("#!/bin/sh\nfor a in \"$@\"; do printf '%%s\\n' \"$a\" >> %q; done\necho pod\n", argvFile)
-	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fake), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(binDir, "rancher"), []byte(fake))
 
 	// Build COMP_WORDS array literal for bash.
 	quoted := make([]string, len(compWords))

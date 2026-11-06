@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -834,30 +836,83 @@ func exitCodeOf(t *testing.T, err error) int {
 	return exit.ExitCode()
 }
 
-func writeTestFile(t *testing.T, path, content string, mode os.FileMode) {
+// writeTestFile writes a data file, with its parent directories, that no test
+// runs.
+func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-	require.NoError(t, os.WriteFile(path, []byte(content), mode))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+// writeTestScript writes an executable file, with its parent directories,
+// through the writer in internal/testfs.
+func writeTestScript(t *testing.T, path, content string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	testfs.WriteExecutable(t, path, []byte(content))
 }
 
 func copyRepositoryFile(t *testing.T, rel, destRoot string) {
 	t.Helper()
 	data, err := os.ReadFile(rel)
 	require.NoError(t, err)
-	writeTestFile(t, filepath.Join(destRoot, rel), string(data), 0o755)
+	writeTestScript(t, filepath.Join(destRoot, rel), string(data))
 }
 
-// runScript runs path with args, with env added to the process
-// environment, and returns its exit code and stderr.
+// scriptCommand returns the command that runs the script at path with args
+// through /bin/bash, the interpreter every repository script names on its
+// first line. Bash reads the script, so the operating system never starts the
+// file as a program and a copy that was just written cannot fail with "text
+// file busy".
+func scriptCommand(ctx context.Context, path string, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, "/bin/bash", append([]string{path}, args...)...)
+}
+
+// runScript runs the script at path as a program: its first line names the
+// interpreter and the file must have the execute bit. It passes args and adds
+// env to the process environment, and returns the exit code and stderr. Use it
+// only for the repository's own scripts; use runCopiedScript for a copy a test
+// wrote.
 func runScript(t *testing.T, dir, path string, env []string, args ...string) (int, string) {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), path, args...)
+	return runCommandStderr(t, exec.CommandContext(t.Context(), path, args...), dir, env)
+}
+
+// runCopiedScript runs the script at path, a copy a test just wrote, through
+// scriptCommand, with args and with env added to the process environment. It
+// returns the exit code and stderr.
+func runCopiedScript(t *testing.T, dir, path string, env []string, args ...string) (int, string) {
+	t.Helper()
+	return runCommandStderr(t, scriptCommand(t.Context(), path, args...), dir, env)
+}
+
+func runCommandStderr(t *testing.T, cmd *exec.Cmd, dir string, env []string) (int, string) {
+	t.Helper()
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return exitCodeOf(t, err), stderr.String()
+}
+
+// TestScriptCommandRunsThroughBash asserts scriptCommand builds a bash
+// command line and that a copy written without the execute bit runs through
+// runCopiedScript and exits with the status it sets.
+func TestScriptCommandRunsThroughBash(t *testing.T) {
+	t.Parallel()
+	testfs.SkipOnWindows(t, posixOnlyReason)
+	cmd := scriptCommand(t.Context(), "/tmp/a script", "-x", "y")
+	assert.Equal(t, []string{"/bin/bash", "/tmp/a script", "-x", "y"}, cmd.Args)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plain")
+	require.NoError(t, os.WriteFile(path, []byte("#!/bin/bash\necho \"$1\" >&2\nexit 7\n"), 0o644))
+
+	code, stderr := runCopiedScript(t, dir, path, nil, "seen")
+
+	assert.Equal(t, 7, code)
+	assert.Equal(t, "seen\n", stderr)
 }
 
 // stubScript is a command that appends its name and arguments to the file
@@ -882,11 +937,11 @@ func dispatchLayout(t *testing.T) (root string, env []string, logPath string) {
 	const pin = "v1.2.3"
 	copyRepositoryFile(t, validateScript, root)
 	copyRepositoryFile(t, versionScript, root)
-	writeTestFile(t, filepath.Join(root, setupToolsFile), "run: "+installPathPrefix+pin+"\n", 0o644)
-	writeTestFile(t, filepath.Join(root, "install.sh"), "#!/bin/sh\n:\n", 0o755)
-	writeTestFile(t, filepath.Join(root, "scripts/test"), stubScript("scripts/test", ""), 0o755)
-	writeTestFile(t, filepath.Join(root, "scripts/build"), stubScript("scripts/build",
-		"mkdir -p bin\ntouch bin/rancher bin/rancher-credential-vault\nchmod +x bin/rancher bin/rancher-credential-vault"), 0o755)
+	writeTestFile(t, filepath.Join(root, setupToolsFile), "run: "+installPathPrefix+pin+"\n")
+	writeTestScript(t, filepath.Join(root, "install.sh"), "#!/bin/sh\n:\n")
+	writeTestScript(t, filepath.Join(root, "scripts/test"), stubScript("scripts/test", ""))
+	writeTestScript(t, filepath.Join(root, "scripts/build"), stubScript("scripts/build",
+		"mkdir -p bin\ntouch bin/rancher bin/rancher-credential-vault\nchmod +x bin/rancher bin/rancher-credential-vault"))
 
 	stubs := filepath.Join(root, "stubs")
 	bodies := map[string]string{
@@ -900,7 +955,7 @@ fi`,
 		"actionlint": "",
 	}
 	for name, body := range bodies {
-		writeTestFile(t, filepath.Join(stubs, name), stubScript(name, body), 0o755)
+		writeTestScript(t, filepath.Join(stubs, name), stubScript(name, body))
 	}
 	logPath = filepath.Join(root, "stub.log")
 	env = []string{
@@ -964,7 +1019,7 @@ func TestValidateRunsThePartsInOrder(t *testing.T) {
 		run := func(extraEnv []string, args ...string) (int, string, []string) {
 			_ = os.Remove(logPath)
 			full := append(append(slices.Clone(env), ci), extraEnv...)
-			code, stderr := runScript(t, root, filepath.Join(root, validateScript), full, args...)
+			code, stderr := runCopiedScript(t, root, filepath.Join(root, validateScript), full, args...)
 			return code, stderr, readLog(t, logPath)
 		}
 		index := func(log []string, line string) int {
@@ -1111,7 +1166,7 @@ func versionPath(t *testing.T, versionOutput string) (env []string, dir string) 
 	require.NoError(t, err)
 	require.NoError(t, os.Symlink(dirname, filepath.Join(bin, "dirname")))
 	if versionOutput != "" {
-		writeTestFile(t, filepath.Join(bin, "golangci-lint"), "#!/bin/bash\nprintf '%s\\n' '"+versionOutput+"'\n", 0o755)
+		writeTestScript(t, filepath.Join(bin, "golangci-lint"), "#!/bin/bash\nprintf '%s\\n' '"+versionOutput+"'\n")
 	}
 	return []string{"PATH=" + bin}, bin
 }
@@ -1181,10 +1236,10 @@ func TestGolangciLintVersionCheck(t *testing.T) {
 		root := t.TempDir()
 		copyRepositoryFile(t, versionScript, root)
 		if c.hasFile {
-			writeTestFile(t, filepath.Join(root, setupToolsFile), c.action, 0o644)
+			writeTestFile(t, filepath.Join(root, setupToolsFile), c.action)
 		}
 		env, _ := versionPath(t, releaseShape(bare))
-		code, stderr := runScript(t, "", filepath.Join(root, versionScript), env)
+		code, stderr := runCopiedScript(t, "", filepath.Join(root, versionScript), env)
 		assert.Equal(t, 1, code, c.name)
 		assert.Contains(t, stderr, setupToolsFile, c.name)
 		assert.Equal(t, 1, strings.Count(stderr, "\n"), "%s: want one line on stderr, got %q", c.name, stderr)

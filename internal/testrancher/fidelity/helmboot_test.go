@@ -733,7 +733,7 @@ func stateProgram(t *testing.T, body string) (stateFile string, stdout string) {
 	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
 	dir := t.TempDir()
 	stateFile = filepath.Join(dir, "state.json")
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "docker"), []byte(helmDockerStubScript), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "docker"), []byte(helmDockerStubScript))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "ids"), []byte("pair oracle-id\npair-k3s k3s-id\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "log"), nil, 0o600))
 	program := "set -euo pipefail\n" +
@@ -869,7 +869,7 @@ func reuseProgram(t *testing.T, state map[string]any, computed bool) string {
 	raw, err := json.Marshal(state)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(stateFile, raw, 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "docker"), []byte(helmDockerStubScript), 0o755))
+	testfs.WriteExecutable(t, filepath.Join(dir, "docker"), []byte(helmDockerStubScript))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "ids"), []byte("pair oracle-id\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "log"), nil, 0o600))
 	program := "set -uo pipefail\n" +

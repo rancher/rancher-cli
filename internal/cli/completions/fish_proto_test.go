@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // fishProtoArgv runs the fish script with the given simulated commandline
@@ -25,9 +27,7 @@ func fishProtoArgv(t *testing.T, opcWords []string, ctWord string) []string {
 	binDir := t.TempDir()
 	argvFile := filepath.Join(binDir, "argv")
 	fake := fmt.Sprintf("#!/bin/sh\nfor a in \"$@\"; do printf '%%s\\n' \"$a\" >> %q; done\necho pod\n", argvFile)
-	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fake), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(binDir, "rancher"), []byte(fake))
 
 	// Build one "printf '%s\n' 'word'" line per opc token so that fish command
 	// substitution (which splits on newlines) yields one element per word.
@@ -161,9 +161,7 @@ func fishScriptOutput(t *testing.T, opcWords []string, ctWord string, candidateL
 	for _, line := range candidateLines {
 		fmt.Fprintf(&fakeBody, "printf '%%s\\n' %s\n", "'"+strings.ReplaceAll(line, "'", "'\\''"+"'")+"'")
 	}
-	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fakeBody.String()), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(binDir, "rancher"), []byte(fakeBody.String()))
 
 	var opcLines strings.Builder
 	for _, w := range opcWords {

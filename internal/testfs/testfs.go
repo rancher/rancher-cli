@@ -4,6 +4,8 @@
 // one grant as two entries. A test calls these helpers instead of
 // runtime.GOOS, os.Symlink, os.Chmod, os.Geteuid, a modification time read
 // or the raw access list calls. Each difference is then handled in one place.
+// It also writes a file a test then runs, because Linux refuses to run a file
+// that a forked child still has open for writing.
 // Tests only; no production package imports it.
 package testfs
 

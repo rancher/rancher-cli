@@ -2,8 +2,8 @@
 
 package completions
 
-// Deliberately plain-stdlib (no testify): this test executes under a real
-// external bash and is kept dependency-light on purpose.
+// The assertions in this test use the standard library only (no testify). This test executes
+// under a real external bash. The stub writer comes from internal/testfs.
 
 import (
 	"fmt"
@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // TestBashCompletionScriptExecutesSafely drives the FULL production callback
@@ -48,9 +50,7 @@ func TestBashCompletionScriptExecutesSafely(t *testing.T) {
 	// argvFile, then emits candidates so completion still returns something.
 	fakeDir := t.TempDir()
 	fake := fmt.Sprintf("#!/bin/sh\nfor a in \"$@\"; do printf '%%s\\n' \"$a\" >> %q; done\nprintf '%%s\\n' 'pod' 'pods'\n", argvFile)
-	if err := os.WriteFile(filepath.Join(fakeDir, "rancher"), []byte(fake), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(fakeDir, "rancher"), []byte(fake))
 
 	driver := fmt.Sprintf(`
 set +e
@@ -139,9 +139,7 @@ func TestBashCompletionDoesNotExecuteServerCandidates(t *testing.T) {
 
 	fakeDir := t.TempDir()
 	fake := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' '$(touch %s)' 'foo'\n", evil)
-	if err := os.WriteFile(filepath.Join(fakeDir, "rancher"), []byte(fake), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(fakeDir, "rancher"), []byte(fake))
 
 	driver := fmt.Sprintf(`
 set +e

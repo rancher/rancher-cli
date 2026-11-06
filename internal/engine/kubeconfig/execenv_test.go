@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -34,7 +35,7 @@ func TestExecEntryEnvWinsOverKubectlsEnvironment(t *testing.T) {
 	plugin := filepath.Join(t.TempDir(), "plugin")
 	script := "#!/bin/sh\nprintf '%s\\n%s\\n' \"$RANCHER_CLI_CONFIG_DIR\" \"${RANCHER_CLI_CREDENTIAL_STORE-unset}\" > " + out + "\n" +
 		`echo '{"apiVersion":"client.authentication.k8s.io/v1beta1","kind":"ExecCredential","status":{"token":"t"}}'` + "\n"
-	require.NoError(t, os.WriteFile(plugin, []byte(script), 0o755))
+	testfs.WriteExecutable(t, plugin, []byte(script))
 
 	res, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
 		Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1", "exec-command": plugin}}, nil)

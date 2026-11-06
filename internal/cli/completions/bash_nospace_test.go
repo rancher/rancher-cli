@@ -2,8 +2,8 @@
 
 package completions
 
-// Deliberately plain-stdlib (no testify): these tests execute under a real
-// external bash and are kept dependency-light on purpose.
+// The assertions in these tests use the standard library only (no testify). These tests execute
+// under a real external bash. The stub writer comes from internal/testfs.
 
 import (
 	"fmt"
@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // nospaceBashes returns every distinct bash to exercise: the PATH one plus
@@ -82,9 +84,7 @@ func bashCompletionEntries(t *testing.T, bashBin string, compWords []string, com
 	for _, line := range candidateLines {
 		fmt.Fprintf(&fake, "printf '%%s\\n' '%s'\n", strings.ReplaceAll(line, "'", "'\\''"))
 	}
-	if err := os.WriteFile(filepath.Join(binDir, "rancher"), []byte(fake.String()), 0o755); err != nil {
-		t.Fatalf("writing fake rancher: %v", err)
-	}
+	testfs.WriteExecutable(t, filepath.Join(binDir, "rancher"), []byte(fake.String()))
 
 	quoted := make([]string, len(compWords))
 	for i, w := range compWords {

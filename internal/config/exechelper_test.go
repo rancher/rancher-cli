@@ -14,6 +14,7 @@ import (
 	"time"
 
 	_ "github.com/gofrs/flock" // keep go.mod aware of flock; testdata/fakehelper imports it
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,7 +55,7 @@ func buildFakeHelper(t *testing.T) string {
 			return
 		}
 		bin2 := filepath.Join(dir, "rancher-credential-fake2"+ext)
-		if err := os.WriteFile(bin2, src, 0o755); err != nil {
+		if err := testfs.WriteExecutableFile(bin2, src); err != nil {
 			fakeHelperErr = err
 			return
 		}

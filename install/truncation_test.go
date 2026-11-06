@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,7 +44,7 @@ func TestTruncatedScriptMidFunctionExecutesNothing(t *testing.T) {
 		"cut must be inside a function body, not past its closing brace")
 
 	truncPath := filepath.Join(t.TempDir(), "install-truncated.sh")
-	require.NoError(t, os.WriteFile(truncPath, content[:cutAt], 0o755))
+	testfs.WriteExecutable(t, truncPath, content[:cutAt])
 
 	home := t.TempDir()
 	tmp := t.TempDir()
@@ -96,7 +97,7 @@ func TestTruncatedScriptAtFunctionBoundaryIsSilentNoOp(t *testing.T) {
 	truncated := []byte(strings.Join(lines[:len(lines)-2], "\n") + "\n")
 
 	truncPath := filepath.Join(t.TempDir(), "install-truncated.sh")
-	require.NoError(t, os.WriteFile(truncPath, truncated, 0o755))
+	testfs.WriteExecutable(t, truncPath, truncated)
 
 	home := t.TempDir()
 	tmp := t.TempDir()
