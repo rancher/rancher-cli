@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -140,8 +139,10 @@ func recordPerson(owner string) string {
 type RecordAdvice struct {
 	Sequence []string
 	// LoginAs is the user the sequence's first command logs in as: the
-	// token's owner with control characters removed, empty when the owner
-	// is unknown. Set only with Sequence.
+	// token's owner with control characters, invisible format characters
+	// (bidi overrides and isolates among them) and the line and paragraph
+	// separators removed, empty when the owner is unknown or the id is empty
+	// once those are removed. Set only with Sequence.
 	LoginAs string
 	Text    string
 }
@@ -192,7 +193,7 @@ func holdsUserinfo(raw string) bool {
 //   - otherwise the recovery sequence, built from the identity and never from
 //     the text as stored.
 func AdviseRecord(site RecordSite, recordServer, userID string, ref clierr.TokenRef) RecordAdvice {
-	owner := withoutControl(userID)
+	owner := clierr.WithoutUnsafeToDisplay(userID)
 	if recordServer == "" {
 		return RecordAdvice{Text: noServerText(ref, owner)}
 	}
@@ -222,17 +223,6 @@ func AdviseRecord(site RecordSite, recordServer, userID string, ref clierr.Token
 		return RecordAdvice{Text: recordServerText(ref, reason, owner)}
 	}
 	return RecordAdvice{Sequence: clierr.RecoverySequence(id, ref), LoginAs: owner}
-}
-
-// withoutControl is s with every control character removed: an owner id
-// from persisted or server data cannot carry a newline into display text.
-func withoutControl(s string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, s)
 }
 
 // stripURLUserinfo is steps 1 to 3 of the identity of a URL that does not

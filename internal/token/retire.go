@@ -96,7 +96,11 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 		switch config.RecordOwnerState(rec, cred.UserID) {
 		case config.OwnerDifferent:
 			rep.Kept = append(rep.Kept, rec)
-			rep.Warnings = append(rep.Warnings, keptWarning(rec, serverURL, "a different user ("+rec.UserID+") owns it"))
+			who := "a different user"
+			if owner := clierr.WithoutUnsafeToDisplay(rec.UserID); owner != "" {
+				who += " (" + owner + ")"
+			}
+			rep.Warnings = append(rep.Warnings, keptWarning(rec, serverURL, who+" owns it"))
 			continue
 		case config.OwnerUnknown:
 			rep.Kept = append(rep.Kept, rec)

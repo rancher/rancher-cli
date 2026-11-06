@@ -198,10 +198,11 @@ func TestRevocationReportJSONAndYAMLKeepStoredValuesAsTheyAre(t *testing.T) {
 	}
 }
 
-// TestRevocationWarningsKeepStoredValuesAsTheyAre asserts that the warnings
-// of a delete carry the token name, the revoke error and the owner of an
-// entry as they are in json and yaml, for a user's entry and a plugin's.
-func TestRevocationWarningsKeepStoredValuesAsTheyAre(t *testing.T) {
+// TestRevocationWarningsKeepStoredNamesAndStripTheOwner asserts that the
+// warnings of a delete carry the token name and the revoke error as they are
+// in json and yaml, and the owner of an entry with its control, invisible
+// format and separator runes removed, for a user's entry and a plugin's.
+func TestRevocationWarningsKeepStoredNamesAndStripTheOwner(t *testing.T) {
 	d := textSafetyDeletion(hostileValue)
 	env := output.NewEnvelope("LogoutResult", map[string]any{})
 	env.Warnings = d.Warnings()
@@ -216,9 +217,10 @@ func TestRevocationWarningsKeepStoredValuesAsTheyAre(t *testing.T) {
 				}
 				return false
 			}
+			strippedOwner := "<TokenUserID>[2J2Jforged line"
 			assert.True(t, holding(hostileValue("supersededRef"), hostileValue("revokeError")), "a warning holds the ref and the revoke error as they are: %q", got.Warnings)
-			assert.True(t, holding("recorded on prod", "the next login of prod as "+hostileValue("TokenUserID")), "a warning holds the owner of the user's entry as it is: %q", got.Warnings)
-			assert.True(t, holding("recorded on plugin", "the next kubectl sign-in through plugin as "+hostileValue("TokenUserID")), "a warning holds the owner of the plugin's entry as it is: %q", got.Warnings)
+			assert.True(t, holding("recorded on prod", "the next login of prod as "+strippedOwner), "a warning holds the stripped owner of the user's entry: %q", got.Warnings)
+			assert.True(t, holding("recorded on plugin", "the next kubectl sign-in through plugin as "+strippedOwner), "a warning holds the stripped owner of the plugin's entry: %q", got.Warnings)
 		})
 	}
 }

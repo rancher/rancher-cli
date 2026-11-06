@@ -22,8 +22,8 @@ import (
 // every text it prints agree: for every code point the name "a", the code
 // point, "b" has a problem exactly when the printer changes it, and a name
 // with a byte that is not valid UTF-8 has one and the printer changes it.
-// internal/config cannot import internal/output, so it holds its own copy of
-// the rule, and the test fails when either rule changes alone.
+// Both call clierr.IsUnsafeToDisplay; the test fails when the two rules differ
+// for any code point.
 func TestEntryNameRuleAgreesWithThePrinterForEveryCodePoint(t *testing.T) {
 	t.Parallel()
 	var disagree []string

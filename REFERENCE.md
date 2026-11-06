@@ -1714,10 +1714,14 @@ The data of each command gains two lists, `[]` when empty, never null:
   transport error behind `failed`, `recovery` a command sequence; for a v3
   token it is the administrator's delete alone. `loginAs` is the user the
   first command of `recovery` logs in as, the token's owner; it is omitted
-  when the recovery needs no login or the token's owner is unknown. `code` is
-  `TLS_TRUST` when the delete failed because the server's certificate failed
-  verification (it is absent for any other failure), `error` then says how to
-  fix the certificate problem for what revokes the token, and `certificate`
+  when the recovery needs no login or the token's owner is unknown. The owner's
+  id has control characters, invisible format characters (bidi overrides and
+  isolates among them) and the line and paragraph separators removed; an id
+  that is empty after that is treated as an unknown owner, so `loginAs` is
+  omitted. `code` is `TLS_TRUST` when the delete failed because the server's
+  certificate failed verification (it is absent for any other failure),
+  `error` then says how to fix the certificate problem for what revokes the
+  token, and `certificate`
   holds the certificate's facts: `kind`, `fingerprint`, `subject`, `issuer`,
   `notBefore`, `notAfter`. When the config directory's path has characters a
   terminal cannot show, no command names it: each `recovery` item of `config
@@ -1729,7 +1733,11 @@ The text output lists one line per token under `tokens on <server>:`, for
 example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
 (unconfirmed; recorded on prod: the next login of prod as u-1 revokes it)`.
 A token whose `code` is `TLS_TRUST` is followed by the message and the
-certificate's lines, indented under its line.
+certificate's lines, indented under its line. A user id in these lines and in
+the warnings that name the next login has control characters, invisible
+format characters (bidi overrides and isolates among them) and the line and
+paragraph separators removed; when nothing of the id remains, the text leaves
+out `as <id>`.
 
 | `reason` | Meaning |
 |---|---|

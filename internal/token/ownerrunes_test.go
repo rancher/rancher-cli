@@ -1,0 +1,120 @@
+package token
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/output"
+)
+
+// TestRevocationOwnerLosesUnsafeRunesInReportAndWarning asserts an owner id
+// that holds a direction override, a line separator and a paragraph separator
+// reaches neither the loginAs field of the JSON report nor the warning text
+// that names the user the sequence logs in as.
+func TestRevocationOwnerLosesUnsafeRunesInReportAndWarning(t *testing.T) {
+	t.Parallel()
+	const url = "https://r.example.com"
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: url}}}
+	ref := &TokenRef{Kind: TokenKindExt, Name: "token-abc"}
+	it := &revocationItem{source: sourceCache, ref: ref, server: config.CanonicalServerIdentity(url),
+		owner: "u-a\u202eb\u2028c\u2029d", entry: "prod", reason: reasonFailed}
+	d := &Deletion{cfg: cfg, view: cfg, removed: map[string]bool{"prod": true}, items: []*revocationItem{it}}
+
+	rep := d.Report()
+	env := output.NewEnvelope("LogoutResult", map[string]any{"revoked": rep.Revoked, "notRevoked": rep.NotRevoked})
+	got := renderAndRead(t, "json", env)
+	items, ok := got.Data["notRevoked"].([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	failed, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "u-abcd", failed["loginAs"])
+
+	warning := clierr.ExpandRemedies(d.manualWarning(it), "")
+	assert.Contains(t, warning, "revoke it as user 'u-abcd' with: ")
+	assert.Equal(t, warning, output.Printable(warning), "the warning holds no rune the printer removes")
+}
+
+// TestRevocationOwnerOfOnlyUnsafeRunesIsAnUnknownOwner asserts an owner id made
+// only of format runes leaves the loginAs field out of the JSON report and
+// makes the warning say the token's owner or an administrator revokes it,
+// never an empty user name.
+func TestRevocationOwnerOfOnlyUnsafeRunesIsAnUnknownOwner(t *testing.T) {
+	t.Parallel()
+	const url = "https://r.example.com"
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: url}}}
+	ref := &TokenRef{Kind: TokenKindExt, Name: "token-abc"}
+	it := &revocationItem{source: sourceCache, ref: ref, server: config.CanonicalServerIdentity(url),
+		owner: "\u202e\u2063", entry: "prod", reason: reasonFailed}
+	d := &Deletion{cfg: cfg, view: cfg, removed: map[string]bool{"prod": true}, items: []*revocationItem{it}}
+
+	rep := d.Report()
+	env := output.NewEnvelope("LogoutResult", map[string]any{"revoked": rep.Revoked, "notRevoked": rep.NotRevoked})
+	got := renderAndRead(t, "json", env)
+	items, ok := got.Data["notRevoked"].([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	failed, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	assert.NotContains(t, failed, "loginAs")
+	assert.NotEmpty(t, failed["recovery"])
+
+	warning := clierr.ExpandRemedies(d.manualWarning(it), "")
+	assert.Contains(t, warning, "revoke it as "+config.RecordOwnerOrAdministrator+" with: ")
+	assert.NotContains(t, warning, "user '")
+}
+
+// TestNextLoginWarningStripsTheEntryOwner asserts the warning that names the
+// login revoking an entry's tokens, in the login form and the kubectl
+// sign-in form, carries the entry's owner id without direction-changing,
+// invisible or separator runes in the JSON envelope, and leaves "as <id>" out
+// when nothing of the id remains.
+func TestNextLoginWarningStripsTheEntryOwner(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, owner, login, signIn string
+		noName                     bool
+	}{
+		{"stripped", "u-a\u202eb\u2028c",
+			"the next login of prod as u-abc; run it with: ",
+			"the next kubectl sign-in through plugin as u-abc", false},
+		{"nothing left", "\u202e\u2063",
+			"the next login of prod; run it with: ",
+			"the next kubectl sign-in through plugin", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := textSafetyDeletion(func(p string) string {
+				if p == "TokenUserID" {
+					return tc.owner
+				}
+				return "<" + p + ">"
+			})
+			env := output.NewEnvelope("LogoutResult", map[string]any{})
+			env.Warnings = d.Warnings()
+			got := renderAndRead(t, "json", env)
+			var login, signIn string
+			for _, w := range got.Warnings {
+				switch {
+				case strings.Contains(w, "recorded on prod"):
+					login = w
+				case strings.Contains(w, "recorded on plugin"):
+					signIn = w
+				}
+			}
+			assert.Contains(t, login, tc.login)
+			assert.Contains(t, signIn, tc.signIn)
+			assert.NotContains(t, login+signIn, "\u202e")
+			assert.NotContains(t, login+signIn, "\u2028")
+			if tc.noName {
+				assert.NotContains(t, login, "prod as")
+				assert.NotContains(t, signIn, "plugin as")
+			}
+		})
+	}
+}

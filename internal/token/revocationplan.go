@@ -864,10 +864,14 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 // with the command that makes it when withCommand is set.
 func (d *Deletion) nextLoginText(entry string, withCommand bool) string {
 	e := d.view.Servers[entry]
-	if e.Provenance == clierr.ProvenanceExecLogin || config.IsExecLoginEntryName(entry) {
-		return fmt.Sprintf("the next kubectl sign-in through %s as %s", entry, e.TokenUserID)
+	as := ""
+	if owner := clierr.WithoutUnsafeToDisplay(e.TokenUserID); owner != "" {
+		as = " as " + owner
 	}
-	text := fmt.Sprintf("the next login of %s as %s", entry, e.TokenUserID)
+	if e.Provenance == clierr.ProvenanceExecLogin || config.IsExecLoginEntryName(entry) {
+		return "the next kubectl sign-in through " + entry + as
+	}
+	text := "the next login of " + entry + as
 	if withCommand {
 		text += "; run it with: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", entry)
 	}

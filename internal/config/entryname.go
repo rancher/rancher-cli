@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -24,17 +23,15 @@ type NameProblem struct {
 // characters and the direction controls), the line or paragraph separator,
 // or a byte that is not valid UTF-8.
 //
-// This is the rule output.Printable applies to every text it prints. It is
-// written here again because this package does not import internal/output;
-// a test compares the two rules for every code point, and a change to one
-// needs the same change to the other.
+// The rule is clierr.IsUnsafeToDisplay, the one output.Printable applies to
+// every text it prints.
 func EntryNameProblem(name string) (NameProblem, bool) {
 	for i := 0; i < len(name); {
 		r, size := utf8.DecodeRuneInString(name[i:])
 		if r == utf8.RuneError && size == 1 {
 			return NameProblem{InvalidUTF8: true}, true
 		}
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' {
+		if clierr.IsUnsafeToDisplay(r) {
 			return NameProblem{Rune: r}, true
 		}
 		i += size

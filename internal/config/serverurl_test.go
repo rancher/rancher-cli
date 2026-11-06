@@ -237,16 +237,38 @@ func TestAdviseRecord(t *testing.T) {
 	}
 }
 
-// TestAdviseRecordNamesTheOwnerWithoutControlCharacters asserts LoginAs is the
-// owner id with every control character removed: a newline in a stored id
-// cannot end a line of the text that names it, and is empty for an unknown
-// owner.
-func TestAdviseRecordNamesTheOwnerWithoutControlCharacters(t *testing.T) {
+// TestAdviseRecordNamesTheOwnerWithoutUnsafeRunes asserts LoginAs is the owner
+// id with every control character, invisible format character and line or
+// paragraph separator removed: a newline in a stored id cannot end a line of
+// the text that names it, a direction override cannot make it read as another
+// id, and LoginAs is empty for an unknown owner.
+func TestAdviseRecordNamesTheOwnerWithoutUnsafeRunes(t *testing.T) {
 	t.Parallel()
 	ref := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc12"}
 	site := RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}
 	assert.Equal(t, "u-a$(id)bc", AdviseRecord(site, "https://hostzq7", "u-a\n$(id)\x1bbc", ref).LoginAs)
+	assert.Equal(t, "u-abc", AdviseRecord(site, "https://hostzq7", "u-a\u202eb\u2028c", ref).LoginAs)
 	assert.Empty(t, AdviseRecord(site, "https://hostzq7", "", ref).LoginAs)
+}
+
+// TestAdviseRecordNamesNoUserForAnOwnerOfOnlyUnsafeRunes asserts an owner id
+// made only of invisible format characters is treated as an unknown owner:
+// LoginAs is empty, and a text that names who runs the delete says its owner
+// or an administrator, never an empty user name.
+func TestAdviseRecordNamesNoUserForAnOwnerOfOnlyUnsafeRunes(t *testing.T) {
+	t.Parallel()
+	ref := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc12"}
+	const owner = "\u202e\u2063"
+	site := RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}
+	advice := AdviseRecord(site, "https://hostzq7", owner, ref)
+	assert.Empty(t, advice.LoginAs)
+	assert.Empty(t, advice.Text)
+	assert.NotEmpty(t, advice.Sequence)
+
+	noServer := AdviseRecord(site, "", owner, ref)
+	assert.Empty(t, noServer.LoginAs)
+	assert.Contains(t, noServer.Text, "delete it as "+RecordOwnerOrAdministrator+", signed in")
+	assert.NotContains(t, noServer.Text, "user ")
 }
 
 // mustProblem is the reason the check gives for raw.

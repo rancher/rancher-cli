@@ -2,17 +2,16 @@ package output
 
 import (
 	"strings"
-	"unicode"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // Printable is the terminal-safety boundary for server-sourced text. It
-// strips control characters (U+0000-U+001F, including the ANSI escape
-// introducer, newline and tab; DEL; and U+0080-U+009F, including the
-// control sequence introducer U+009B), Unicode format characters
-// (category Cf: bidi overrides, zero-width marks, the invisible
-// separator) and the line and paragraph
+// removes the runes clierr.IsUnsafeToDisplay reports: control characters
+// (U+0000-U+001F, including the ANSI escape introducer, newline and tab;
+// DEL; and U+0080-U+009F, including the control sequence introducer
+// U+009B), Unicode format characters (category Cf: bidi overrides,
+// zero-width marks, the invisible separator) and the line and paragraph
 // separators U+2028 and U+2029, so a string that originates from IdP
 // claims, condition messages, object descriptions, or any other server
 // data can neither drive the terminal nor forge, reorder, or hide what a
@@ -29,19 +28,7 @@ import (
 // and stays: strings.Map writes it for each invalid byte, so no byte a
 // terminal in an 8-bit mode reads as a control reaches the terminal.
 func Printable(s string) string {
-	return strings.Map(func(r rune) rune {
-		if removed(r) {
-			return -1
-		}
-		return r
-	}, s)
-}
-
-// removed reports whether Printable removes r: a control rune, a format
-// rune, or the line or paragraph separator. Printable and PrintableLines
-// both use it, so the text print and the one-line channels cannot differ.
-func removed(r rune) bool {
-	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029'
+	return clierr.WithoutUnsafeToDisplay(s)
 }
 
 // PrintableLines applies Printable to each line of s. It keeps every "\n"
@@ -78,7 +65,7 @@ func PrintableLines(s string) string {
 // lines.
 func printableKeepingNewlines(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r != '\n' && removed(r) {
+		if r != '\n' && clierr.IsUnsafeToDisplay(r) {
 			return -1
 		}
 		return r
