@@ -1,0 +1,21 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "list",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "data": [
+          {
+            "id": "local",
+            "logoutAllEnabled": false,
+            "logoutAllForced": false,
+            "logoutAllSupported": false,
+            "type": "localProvider"
+          }
+        ]
+      }
+    }
+  ]
+}

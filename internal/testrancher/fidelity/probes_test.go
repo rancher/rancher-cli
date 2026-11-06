@@ -76,6 +76,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"catalog/discovery-downstream", "catalog/clusterrepos-downstream", "catalog/apps-downstream",
 		"catalog/operations-downstream", "catalog/clusterrepos-local", "catalog/standard-user-local",
 		"catalog/webhook-app-local",
+		"authproviders/only-local-enabled", "authproviders/external-providers-enabled",
 	}
 	var got []string
 	for _, p := range All() {

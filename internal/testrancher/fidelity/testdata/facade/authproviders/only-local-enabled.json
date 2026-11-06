@@ -1,0 +1,18 @@
+{
+  "oracleImage": "",
+  "observations": [
+    {
+      "name": "list",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "data": [
+          {
+            "id": "local",
+            "type": "localProvider"
+          }
+        ]
+      }
+    }
+  ]
+}

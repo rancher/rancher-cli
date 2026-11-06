@@ -535,6 +535,11 @@ var teardownAllowlist = map[stepKey]string{
 	{"revoke/standard-user-login-token-logout-deletes-itself", "owner user"}:                                  "owneruid is stored by the owner user setup step; the step deletes that user",
 	{"serverfacts/install-uuid-no-global-role", "role-less user's login token"}:                               "rolelesslogin is stored by the role-less user setup step; the step deletes that login token",
 	{"serverfacts/install-uuid-no-global-role", "role-less user"}:                                             "rolelessuid is stored by the role-less user setup step; the step deletes that user",
+	{"authproviders/external-providers-enabled", "restore auth config azuread"}:                               "the marker unrecorded.authconfig.azuread.wrote is stored by the step that enables it and the original by the step that reads the originals; the guard seeds none; the step restores that config",
+	{"authproviders/external-providers-enabled", "restore auth config okta"}:                                  "the marker unrecorded.authconfig.okta.wrote is stored by the step that enables it and the original by the step that reads the originals; the guard seeds none; the step restores that config",
+	{"authproviders/external-providers-enabled", "restore auth config openldap"}:                              "the marker unrecorded.authconfig.openldap.wrote is stored by the step that enables it and the original by the step that reads the originals; the guard seeds none; the step restores that config",
+	{"authproviders/external-providers-enabled", "read back the auth configs"}:                                "the markers unrecorded.authconfig.<name>.wrote are stored by the steps that enable the configs; the guard seeds none; the step reads the written configs back",
+	{"authproviders/external-providers-enabled", "wait for the auth provider list to hold local alone"}:       "the markers unrecorded.authconfig.<name>.wrote are stored by the steps that enable the configs; the guard seeds none; the step waits for the list after the restores",
 }
 
 // assertGuardTotals asserts the project delete count the probes' teardowns

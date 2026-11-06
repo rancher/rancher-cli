@@ -1,0 +1,54 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "list",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "data": [
+          {
+            "authUrl": "https://e2e-fid-azure.invalid/e2e-fid-tenant/oauth2/v2.0/authorize",
+            "clientId": "e2e-fid-app",
+            "deviceAuthUrl": "https://e2e-fid-azure.invalid/e2e-fid-tenant/oauth2/v2.0/devicecode",
+            "id": "azuread",
+            "logoutAllEnabled": false,
+            "logoutAllForced": false,
+            "logoutAllSupported": true,
+            "redirectUrl": "https://e2e-fid-azure.invalid/e2e-fid-tenant/oauth2/v2.0/authorize?client_id=e2e-fid-app\u0026redirect_uri=https://e2e-fid-rancher.invalid\u0026response_type=code\u0026scope=openid",
+            "scopes": [
+              "openid",
+              "profile",
+              "email"
+            ],
+            "tenantId": "e2e-fid-tenant",
+            "tokenUrl": "https://e2e-fid-azure.invalid/e2e-fid-tenant/oauth2/v2.0/token",
+            "type": "azureADProvider"
+          },
+          {
+            "id": "local",
+            "logoutAllEnabled": false,
+            "logoutAllForced": false,
+            "logoutAllSupported": false,
+            "type": "localProvider"
+          },
+          {
+            "id": "okta",
+            "logoutAllEnabled": false,
+            "logoutAllForced": false,
+            "logoutAllSupported": true,
+            "redirectUrl": "https://e2e-fid-okta.invalid/v1-saml/okta/login",
+            "type": "oktaProvider"
+          },
+          {
+            "id": "openldap",
+            "logoutAllEnabled": false,
+            "logoutAllForced": false,
+            "logoutAllSupported": false,
+            "type": "openLdapProvider"
+          }
+        ]
+      }
+    }
+  ]
+}
