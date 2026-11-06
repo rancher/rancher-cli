@@ -1101,3 +1101,53 @@ func TestExternalProvidersProbeRunsAgainstRancher215Builds(t *testing.T) {
 		})
 	}
 }
+
+// TestAuthProvidersProbeRestoresWhenTheCallerContextIsCancelled asserts the
+// probe that enables the three auth configs puts every one back when the
+// caller's context is cancelled right after each enable step and after the
+// step that waits for the list: the end state equals the start state, Rancher's
+// controller finds nothing to act on, only the three configs are written, the
+// error carries the cancellation, and no restore or other teardown step fails.
+func TestAuthProvidersProbeRestoresWhenTheCallerContextIsCancelled(t *testing.T) {
+	t.Parallel()
+	const enablePrefix = "enable auth config "
+	const listStep = "wait for the enabled auth providers to be listed"
+	p := authProbe(t, "authproviders/external-providers-enabled")
+	var points []string
+	for _, s := range p.Setup {
+		if strings.HasPrefix(s.Name, enablePrefix) || s.Name == listStep {
+			points = append(points, s.Name)
+		}
+	}
+	require.Len(t, points, len(authFakeConfigs)+1, "three enable steps and the wait for the list")
+
+	for _, point := range points {
+		for _, seed := range authFakeSeeds {
+			t.Run(point+" "+seed, func(t *testing.T) {
+				t.Parallel()
+				f := newAuthFake(t, seed)
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				cancelling := p
+				cancelling.Setup = slices.Clone(p.Setup)
+				for i, s := range cancelling.Setup {
+					if s.Name != point {
+						continue
+					}
+					cancelling.Setup[i] = Step{Name: s.Name, Do: func(ctx context.Context, tgt Target, captured map[string]string) error {
+						err := s.Do(ctx, tgt, captured)
+						cancel()
+						return err
+					}}
+				}
+				_, err := runProbe(ctx, f.target(), f.phased(cancelling), 5*time.Second)
+				require.ErrorIs(t, err, context.Canceled)
+				assert.NotContains(t, err.Error(), ": teardown ", "no teardown step failed")
+				assert.NotContains(t, err.Error(), "restore auth config")
+				assert.Equal(t, f.start, f.endState(), "every config is back where it started")
+				assertNoControllerEvent(t, f, "Rancher never unlocks, resets or cleans up a config")
+				assertWritesStayWithinTheThreeConfigs(t, f)
+			})
+		}
+	}
+}

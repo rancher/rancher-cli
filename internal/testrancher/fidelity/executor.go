@@ -51,7 +51,8 @@ func RunProbe(ctx context.Context, tgt Target, p Probe) ([]ObservationResult, er
 }
 
 // RunProbeWith is RunProbe with options. A cancelled context still fails the
-// probe whatever the options say.
+// probe whatever the options say. Teardown steps run on their own context and
+// time limit, so the caller's context ending does not skip them.
 func RunProbeWith(ctx context.Context, tgt Target, p Probe, opts RunOptions) ([]ObservationResult, error) {
 	return runProbeWith(ctx, tgt, p, defaultStepTimeout, opts)
 }
@@ -66,7 +67,8 @@ func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (
 // installed BEFORE setup runs and always executes - after a partial setup
 // failure, an observation failure, a capture failure, or success - with the
 // captures resolved so far. Every teardown error is collected and joined
-// with the primary error; none is dropped.
+// with the primary error; none is dropped. Teardown steps run on their own
+// context and time limit, so the caller's context ending does not skip them.
 func runProbeWith(ctx context.Context, tgt Target, p Probe, timeout time.Duration, opts RunOptions) (results []ObservationResult, err error) {
 	if verr := p.Validate(); verr != nil {
 		return nil, verr
@@ -88,13 +90,7 @@ func runProbeWith(ctx context.Context, tgt Target, p Probe, timeout time.Duratio
 		return s.Do(sctx, tgt, captured)
 	}
 	defer func() {
-		errs := []error{err}
-		for _, s := range p.Teardown {
-			if terr := runStep(s); terr != nil {
-				errs = append(errs, fmt.Errorf("probe %s: teardown %s: %w", p.Name, s.Name, terr))
-			}
-		}
-		err = errors.Join(errs...)
+		err = errors.Join(err, runTeardown(ctx, tgt, p, captured, timeout))
 	}()
 	for _, s := range p.Setup {
 		if serr := runStep(s); serr != nil {
@@ -142,6 +138,24 @@ func runProbeWith(ctx context.Context, tgt Target, p Probe, timeout time.Duratio
 		}
 	}
 	return results, nil
+}
+
+// runTeardown runs every step of p.Teardown, in order, and returns every step
+// error joined (nil when none failed). A step that fails does not stop the
+// ones after it. Each step runs on a context that keeps the values of ctx but
+// neither its cancellation nor its deadline, and ends after timeout. Every
+// restore and delete is sent even when the caller's context has ended.
+func runTeardown(ctx context.Context, tgt Target, p Probe, captured map[string]string, timeout time.Duration) error {
+	var errs []error
+	for _, s := range p.Teardown {
+		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+		terr := s.Do(sctx, tgt, captured)
+		cancel()
+		if terr != nil {
+			errs = append(errs, fmt.Errorf("probe %s: teardown %s: %w", p.Name, s.Name, terr))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func resolveCapture(raw map[string]any, c Capture) (string, error) {

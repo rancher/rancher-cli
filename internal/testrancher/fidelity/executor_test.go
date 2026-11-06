@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -889,4 +891,213 @@ func TestWaitForStatusEndsWithTheStepDeadline(t *testing.T) {
 	require.ErrorContains(t, err, "want status 401, last 200 after 1 attempts")
 	assert.Less(t, time.Since(start), 3*time.Second, "the wait ends with the step deadline, not the interval")
 	assert.Equal(t, int32(1), n.Load())
+}
+
+// requestLog records the method and path of every request a test server gets.
+type requestLog struct {
+	mu      sync.Mutex
+	entries []string
+}
+
+func (l *requestLog) add(r *http.Request) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries = append(l.entries, r.Method+" "+r.URL.Path)
+}
+
+func (l *requestLog) all() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.entries...)
+}
+
+// withMethod returns the recorded entries that start with method.
+func (l *requestLog) withMethod(method string) []string {
+	var out []string
+	for _, e := range l.all() {
+		if strings.HasPrefix(e, method+" ") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// callerValueKey is the key of a value a test stores in the caller's context.
+type callerValueKey struct{}
+
+// TestRunProbeTeardownRunsAfterTheCallerContextEnds asserts every teardown step
+// reaches the server, in order, when the caller's context was cancelled before
+// the call, by the last setup step, or by the observation, or had already
+// passed its deadline. The returned error carries the caller's context error
+// and no teardown error, a teardown step sees a context that has not ended,
+// and the values of the caller's context stay visible to it. When the caller's
+// context ended before the setup started, the setup and observation requests
+// never reach the server.
+func TestRunProbeTeardownRunsAfterTheCallerContextEnds(t *testing.T) {
+	t.Parallel()
+	rows := []struct {
+		name            string
+		start           func(parent context.Context) (context.Context, context.CancelFunc)
+		cancelInSetup   bool
+		cancelInObserve bool
+		want            error
+		endedBeforeRun  bool
+	}{
+		{
+			name: "cancelled before the call",
+			start: func(parent context.Context) (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(parent)
+				cancel()
+				return ctx, cancel
+			},
+			want:           context.Canceled,
+			endedBeforeRun: true,
+		},
+		{
+			name:          "cancelled by the last setup step",
+			start:         func(parent context.Context) (context.Context, context.CancelFunc) { return context.WithCancel(parent) },
+			cancelInSetup: true,
+			want:          context.Canceled,
+		},
+		{
+			name:            "cancelled during the observation",
+			start:           func(parent context.Context) (context.Context, context.CancelFunc) { return context.WithCancel(parent) },
+			cancelInObserve: true,
+			want:            context.Canceled,
+		},
+		{
+			name: "deadline in the past",
+			start: func(parent context.Context) (context.Context, context.CancelFunc) {
+				return context.WithDeadline(parent, time.Now().Add(-time.Second))
+			},
+			want:           context.DeadlineExceeded,
+			endedBeforeRun: true,
+		},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := row.start(t.Context())
+			defer cancel()
+			ctx = context.WithValue(ctx, callerValueKey{}, "from the caller")
+
+			var log requestLog
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				log.add(r)
+				if row.cancelInObserve && r.URL.Path == "/observe" {
+					cancel()
+					testtransport.HangAndAbort(r)
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+			tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+			var sawErr error
+			var sawValue any
+			p := Probe{
+				Name: "fam/teardown-context",
+				Setup: []Step{{
+					Name: "create",
+					Do: func(ctx context.Context, tgt Target, _ map[string]string) error {
+						if _, err := adminDo(ctx, tgt, http.MethodPost, "/setup", ""); err != nil {
+							return err
+						}
+						if row.cancelInSetup {
+							cancel()
+						}
+						return nil
+					},
+				}},
+				Observations: []Observation{
+					{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: "/observe", Identity: IdentityAdmin}},
+				},
+				Teardown: []Step{
+					{Name: "record", Do: func(ctx context.Context, _ Target, _ map[string]string) error {
+						sawErr = ctx.Err()
+						sawValue = ctx.Value(callerValueKey{})
+						return nil
+					}},
+					deleteFixture("delete-a", "/del/a"),
+					deleteFixture("delete-b", "/del/b"),
+					deleteFixture("delete-c", "/del/c"),
+				},
+			}
+			_, err := runProbe(ctx, tgt, p, 5*time.Second)
+			require.Error(t, err)
+			require.ErrorIs(t, err, row.want)
+			assert.NotContains(t, err.Error(), ": teardown ", "no teardown step failed")
+			assert.Equal(t, []string{"DELETE /del/a", "DELETE /del/b", "DELETE /del/c"}, log.withMethod(http.MethodDelete),
+				"every teardown request reached the server, in order")
+			require.NoError(t, sawErr, "a teardown step runs on a context that has not ended")
+			assert.Equal(t, "from the caller", sawValue, "the caller's context values reach the teardown step")
+			if row.endedBeforeRun {
+				require.ErrorContains(t, err, "setup create")
+				assert.NotContains(t, log.all(), "POST /setup", "the setup step sent nothing on an ended context")
+				assert.NotContains(t, log.all(), "GET /observe", "the observation sent nothing on an ended context")
+			}
+		})
+	}
+}
+
+// TestRunProbeTeardownStepsAreEachBounded asserts a teardown step that waits
+// for its context ends at the per-step time limit with a deadline error, not
+// the cancellation of the caller's context, and that the steps after it still
+// send their requests.
+func TestRunProbeTeardownStepsAreEachBounded(t *testing.T) {
+	t.Parallel()
+	var log requestLog
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.add(r)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+	var blockedErr error
+	p := Probe{
+		Name: "fam/teardown-bound",
+		Observations: []Observation{
+			{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: "/observe", Identity: IdentityAdmin}},
+		},
+		Teardown: []Step{
+			{Name: "block", Do: func(ctx context.Context, _ Target, _ map[string]string) error {
+				select {
+				case <-ctx.Done():
+					blockedErr = ctx.Err()
+				case <-time.After(2 * time.Second):
+					blockedErr = errors.New("step context has no deadline")
+				}
+				return blockedErr
+			}},
+			deleteFixture("delete-a", "/del/a"),
+			deleteFixture("delete-b", "/del/b"),
+		},
+	}
+	caller, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	type outcome struct {
+		err     error
+		elapsed time.Duration
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		start := time.Now()
+		_, err := runProbe(caller, tgt, p, 50*time.Millisecond)
+		done <- outcome{err, time.Since(start)}
+	}()
+	var got outcome
+	select {
+	case got = <-done:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "the probe did not return within the watchdog")
+	}
+	require.ErrorIs(t, blockedErr, context.DeadlineExceeded, "the step ends at its own time limit")
+	require.NotErrorIs(t, blockedErr, context.Canceled)
+	assert.Less(t, got.elapsed, time.Second, "each step is bounded by the per-step limit")
+	assert.Equal(t, []string{"DELETE /del/a", "DELETE /del/b"}, log.withMethod(http.MethodDelete),
+		"the steps after a step that ran out of time still send their requests")
+	require.ErrorContains(t, got.err, "teardown block")
+	assert.NotContains(t, got.err.Error(), "teardown delete-")
 }
