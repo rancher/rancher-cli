@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -187,7 +188,18 @@ type Probe struct {
 	// the next boot reproduces. Captures whose name starts with
 	// unrecordedPrefix are the exception: they are never substituted.
 	SubstituteCaptures bool
+	// MaxMinor, when set, is the newest Rancher minor the probe runs on,
+	// written major.minor (for example "2.15"). A server of that minor is
+	// still checked. Against a newer server the probe does not run: it
+	// sends only the request for the server version and runs no setup or
+	// teardown step. Only an OracleOnly or a Downstream probe can set it,
+	// because the facade has no Rancher version.
+	MaxMinor string
 }
+
+// maxMinorPattern is the form of Probe.MaxMinor: major.minor, no leading v, no
+// leading zeros.
+var maxMinorPattern = regexp.MustCompile(`^([1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 // Validate enforces the probe-definition invariants.
 func (p Probe) Validate() error {
@@ -229,6 +241,14 @@ func (p Probe) Validate() error {
 	}
 	if p.Downstream && p.FacadeDivergence != "" {
 		return fmt.Errorf("probe %s: Downstream and FacadeDivergence are mutually exclusive", p.Name)
+	}
+	if p.MaxMinor != "" {
+		if !maxMinorPattern.MatchString(p.MaxMinor) {
+			return fmt.Errorf("probe %s: MaxMinor %q is not in the form major.minor, for example 2.15", p.Name, p.MaxMinor)
+		}
+		if !p.OracleOnly && !p.Downstream {
+			return fmt.Errorf("probe %s: MaxMinor can be set only on an OracleOnly or a Downstream probe, because the facade has no Rancher version", p.Name)
+		}
 	}
 	for _, r := range p.Normalize {
 		if r.Replace != "" && r.KeepPrefix != "" {

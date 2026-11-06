@@ -19,12 +19,13 @@ import (
 )
 
 // TestDownstream records or verifies the goldens for every probe marked
-// Downstream: true, against the downstream cluster named by
-// E2E_FIDELITY_DOWNSTREAM. scripts/e2e-fidelity imports a pinned k3s cluster into
-// the oracle and sets the variable, so the goldens carry the oracle image
-// pin; an external Rancher with its own downstream can be probed by hand
-// through scripts/e2e-fidelity-downstream. Unset, the suite skips entirely, and
-// TestOracle never covers these probes.
+// Downstream: true that the server's minor allows, against the downstream
+// cluster named by E2E_FIDELITY_DOWNSTREAM. A probe whose MaxMinor is older
+// than the server's minor is skipped as not checked. scripts/e2e-fidelity
+// imports a pinned k3s cluster into the oracle and sets the variable. The
+// goldens carry the oracle image pin. An external Rancher with its own
+// downstream can be probed by hand through scripts/e2e-fidelity-downstream.
+// Unset, the suite skips entirely, and TestOracle never covers these probes.
 func TestDownstream(t *testing.T) {
 	recordDriftTest(t)
 	downstream := os.Getenv("E2E_FIDELITY_DOWNSTREAM")
@@ -47,7 +48,7 @@ func TestDownstream(t *testing.T) {
 				runDriftProbe(t, fidelity.SuiteDownstream, tgt, p, dir)
 				return
 			}
-			results, err := fidelity.RunProbe(t.Context(), tgt, p)
+			results, err := runProbeOrSkip(t, fidelity.SuiteDownstream, tgt, p, fidelity.RunOptions{})
 			require.NoError(t, err)
 			got := fidelity.Golden{OracleImage: image, Observations: results}
 			path := fidelity.GoldenPath(dir, p.Name)

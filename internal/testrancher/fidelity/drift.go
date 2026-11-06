@@ -20,9 +20,10 @@ import (
 )
 
 // The drift run compares an upcoming Rancher minor with the community
-// goldens. Nothing here asserts per probe: every probe runs, every place its
-// answer differs from its golden is a Difference, and the differences are
-// matched against a tracked file of known ones and written as one report.
+// goldens. Nothing here asserts per probe: every probe whose MaxMinor allows
+// the minor runs, every place its answer differs from its golden is a
+// Difference, and the differences are matched against a tracked file of known
+// ones and written as one report.
 
 // Difference is one place where a probe's answer differs from its golden,
 // after both went through the goldens' own normalization.
@@ -598,13 +599,15 @@ func FetchRancherVersion(ctx context.Context, tgt Target) (RancherVersion, error
 
 // ProbeRun is one probe's drift result: its differences and the error it
 // returned, if any (the differences then cover only the observations that
-// completed).
+// completed). A probe is not checked when the server's minor is newer than its
+// MaxMinor: NotCheckedReason says why, and there are no differences or error.
 type ProbeRun struct {
-	Suite       string
-	Probe       string
-	Downstream  bool
-	Differences []Difference
-	Err         string
+	Suite            string
+	Probe            string
+	Downstream       bool
+	Differences      []Difference
+	Err              string
+	NotCheckedReason string
 }
 
 // CLITestRun is one CLI test's result. Started is true once the CLI command
@@ -647,6 +650,14 @@ func (c *DriftCollector) Probe(suite, probe string, downstream bool, diffs []Dif
 	c.probes = append(c.probes, run)
 }
 
+// AddNotCheckedProbe records a probe that is not checked in a suite, because
+// the server's minor is newer than its MaxMinor. reason says why.
+func (c *DriftCollector) AddNotCheckedProbe(suite, probe string, downstream bool, reason string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.probes = append(c.probes, ProbeRun{Suite: suite, Probe: probe, Downstream: downstream, NotCheckedReason: reason})
+}
+
 // cliTest returns the record of a CLI test, adding it on first use. The
 // caller holds the lock.
 func (c *DriftCollector) cliTest(name string) *CLITestRun {
@@ -686,6 +697,13 @@ type ErroredProbe struct {
 	Error string `json:"error"`
 }
 
+// NotCheckedProbe is a probe that is not checked, because the server's minor
+// is newer than its MaxMinor.
+type NotCheckedProbe struct {
+	Probe  string `json:"probe"`
+	Reason string `json:"reason"`
+}
+
 // SuiteResult is how many probes a suite ran.
 type SuiteResult struct {
 	Name   string `json:"name"`
@@ -700,7 +718,9 @@ type NewDifference struct {
 }
 
 // DriftCounts are the report's counts, in the order the script's summary
-// line prints them (harness failures are not part of it).
+// line prints them (harness failures are not part of it). NotChecked counts
+// the known entries that are not checked; NotCheckedProbes counts the probes
+// that are not checked.
 type DriftCounts struct {
 	New               int `json:"new"`
 	WaitRanOut        int `json:"waitRanOut"`
@@ -708,6 +728,7 @@ type DriftCounts struct {
 	KnownNoRuling     int `json:"knownNoRuling"`
 	NoLongerSeen      int `json:"noLongerSeen"`
 	NotChecked        int `json:"notChecked"`
+	NotCheckedProbes  int `json:"notCheckedProbes"`
 	Errored           int `json:"errored"`
 	FailedCLITests    int `json:"failedCLITests"`
 	SuitesWithNoProbe int `json:"suitesWithNoProbe"`
@@ -716,28 +737,29 @@ type DriftCounts struct {
 
 // Report is the drift run's result file.
 type Report struct {
-	Minor             string           `json:"minor"`
-	StartedAt         string           `json:"startedAt"`
-	OracleImage       string           `json:"oracleImage"`
-	DownstreamImage   string           `json:"downstreamImage"`
-	GoldenOracleImage string           `json:"goldenOracleImage"`
-	GoldenK3sImage    string           `json:"goldenK3sImage"`
-	RancherVersion    string           `json:"rancherVersion"`
-	GitCommit         string           `json:"gitCommit"`
-	KnownFile         string           `json:"knownFile"`
-	KnownFileExists   bool             `json:"knownFileExists"`
-	New               []NewDifference  `json:"new"`
-	Known             []KnownEntry     `json:"known"`
-	KnownNoRuling     []KnownEntry     `json:"knownNoRuling"`
-	NoLongerSeen      []KnownEntry     `json:"noLongerSeen"`
-	NotChecked        []KnownEntry     `json:"notChecked"`
-	Errored           []ErroredProbe   `json:"errored"`
-	CLITests          []CLITestRun     `json:"cliTests"`
-	Suites            []SuiteResult    `json:"suites"`
-	HarnessFailures   []HarnessFailure `json:"harnessFailures"`
-	Counts            DriftCounts      `json:"counts"`
-	Clean             bool             `json:"clean"`
-	Complete          bool             `json:"complete"`
+	Minor             string            `json:"minor"`
+	StartedAt         string            `json:"startedAt"`
+	OracleImage       string            `json:"oracleImage"`
+	DownstreamImage   string            `json:"downstreamImage"`
+	GoldenOracleImage string            `json:"goldenOracleImage"`
+	GoldenK3sImage    string            `json:"goldenK3sImage"`
+	RancherVersion    string            `json:"rancherVersion"`
+	GitCommit         string            `json:"gitCommit"`
+	KnownFile         string            `json:"knownFile"`
+	KnownFileExists   bool              `json:"knownFileExists"`
+	New               []NewDifference   `json:"new"`
+	Known             []KnownEntry      `json:"known"`
+	KnownNoRuling     []KnownEntry      `json:"knownNoRuling"`
+	NoLongerSeen      []KnownEntry      `json:"noLongerSeen"`
+	NotChecked        []KnownEntry      `json:"notChecked"`
+	NotCheckedProbes  []NotCheckedProbe `json:"notCheckedProbes"`
+	Errored           []ErroredProbe    `json:"errored"`
+	CLITests          []CLITestRun      `json:"cliTests"`
+	Suites            []SuiteResult     `json:"suites"`
+	HarnessFailures   []HarnessFailure  `json:"harnessFailures"`
+	Counts            DriftCounts       `json:"counts"`
+	Clean             bool              `json:"clean"`
+	Complete          bool              `json:"complete"`
 }
 
 // Compare matches the run's differences against the known entries and
@@ -746,8 +768,11 @@ type Report struct {
 // run has a value at the pointer; otherwise it is new. An entry no
 // difference matches is no longer seen, except when its probe errored or did
 // not run: then it is not checked. The errored probe's completed
-// observations are compared like any other. A difference whose observation's
-// wait ran out is matched like any other and, when new, carries the flag.
+// observations are compared like any other. A probe that is not checked because
+// of its MaxMinor is listed in NotCheckedProbes. It is not an error. Its known
+// entries are listed in NotChecked. A suite whose every probe was not checked
+// is not counted in SuitesWithNoProbe. A difference whose observation's wait
+// ran out is matched like any other and, when new, carries the flag.
 // header is a report with the identity fields filled (images, versions, the
 // known file's path and whether it exists); Compare adds the rest. The
 // entries of known are in canonical form, as ParseKnownFile returns them.
@@ -758,6 +783,7 @@ func Compare(known KnownFile, header Report, probes []ProbeRun, cliTests []CLITe
 	r.KnownNoRuling = []KnownEntry{}
 	r.NoLongerSeen = []KnownEntry{}
 	r.NotChecked = []KnownEntry{}
+	r.NotCheckedProbes = []NotCheckedProbe{}
 	r.Errored = []ErroredProbe{}
 	r.CLITests = []CLITestRun{}
 	r.Suites = []SuiteResult{}
@@ -766,8 +792,14 @@ func Compare(known KnownFile, header Report, probes []ProbeRun, cliTests []CLITe
 	ran := map[string]bool{}
 	errored := map[string]bool{}
 	suiteProbes := map[string]int{}
+	suiteNotChecked := map[string]int{}
 
 	for _, pr := range probes {
+		if pr.NotCheckedReason != "" {
+			suiteNotChecked[pr.Suite]++
+			r.NotCheckedProbes = append(r.NotCheckedProbes, NotCheckedProbe{Probe: pr.Probe, Reason: pr.NotCheckedReason})
+			continue
+		}
 		ran[pr.Probe] = true
 		suiteProbes[pr.Suite]++
 		if pr.Err != "" {
@@ -841,6 +873,7 @@ func Compare(known KnownFile, header Report, probes []ProbeRun, cliTests []CLITe
 	slices.SortFunc(r.New, func(a, b NewDifference) int {
 		return cmp.Or(strings.Compare(a.Entry.Probe, b.Entry.Probe), strings.Compare(a.Entry.Pointer, b.Entry.Pointer))
 	})
+	slices.SortFunc(r.NotCheckedProbes, func(a, b NotCheckedProbe) int { return strings.Compare(a.Probe, b.Probe) })
 	slices.SortFunc(r.Errored, func(a, b ErroredProbe) int { return strings.Compare(a.Probe, b.Probe) })
 	slices.SortFunc(r.CLITests, func(a, b CLITestRun) int { return strings.Compare(a.Name, b.Name) })
 	slices.SortFunc(r.HarnessFailures, func(a, b HarnessFailure) int {
@@ -858,6 +891,7 @@ func Compare(known KnownFile, header Report, probes []ProbeRun, cliTests []CLITe
 	c.KnownNoRuling = len(r.KnownNoRuling)
 	c.NoLongerSeen = len(r.NoLongerSeen)
 	c.NotChecked = len(r.NotChecked)
+	c.NotCheckedProbes = len(r.NotCheckedProbes)
 	c.Errored = len(r.Errored)
 	for _, t := range r.CLITests {
 		if t.Started && !t.Passed {
@@ -865,7 +899,7 @@ func Compare(known KnownFile, header Report, probes []ProbeRun, cliTests []CLITe
 		}
 	}
 	for _, s := range r.Suites {
-		if s.Probes == 0 {
+		if s.Probes == 0 && suiteNotChecked[s.Name] == 0 {
 			c.SuitesWithNoProbe++
 		}
 	}

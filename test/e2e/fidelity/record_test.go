@@ -37,7 +37,7 @@ func TestOracle(t *testing.T) {
 				runDriftProbe(t, fidelity.SuiteOracle, tgt, p, dir)
 				return
 			}
-			results, err := fidelity.RunProbe(t.Context(), tgt, p)
+			results, err := runProbeOrSkip(t, fidelity.SuiteOracle, tgt, p, fidelity.RunOptions{})
 			require.NoError(t, err)
 			got := fidelity.Golden{OracleImage: oracleImage, Observations: results}
 			path := fidelity.GoldenPath(dir, p.Name)

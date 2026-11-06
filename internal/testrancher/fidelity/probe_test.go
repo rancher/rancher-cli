@@ -21,6 +21,25 @@ func TestValidateAcceptsMinimalProbe(t *testing.T) {
 	require.NoError(t, validProbe().Validate())
 }
 
+// TestValidateAcceptsMaxMinor asserts that major.minor with no leading zero
+// is accepted on an OracleOnly probe and on a Downstream probe, and that an
+// empty MaxMinor is accepted on a facade probe.
+func TestValidateAcceptsMaxMinor(t *testing.T) {
+	t.Parallel()
+	for _, maxMinor := range []string{"2.15", "2.0", "2.9", "10.100", "3.0"} {
+		for name, mutate := range map[string]func(*Probe){
+			"oracle only": func(p *Probe) { p.OracleOnly = true },
+			"downstream":  func(p *Probe) { p.Downstream = true },
+		} {
+			p := validProbe()
+			mutate(&p)
+			p.MaxMinor = maxMinor
+			require.NoError(t, p.Validate(), "%s with MaxMinor %s", name, maxMinor)
+		}
+	}
+	assert.NoError(t, validProbe().Validate(), "no MaxMinor on a facade probe")
+}
+
 // TestValidateAcceptsWaitForStatus asserts that 0 (unset) and every HTTP
 // status from 100 to 599 are accepted on an observation without captures.
 func TestValidateAcceptsWaitForStatus(t *testing.T) {
@@ -96,6 +115,14 @@ func TestValidateRejectsInvalidProbes(t *testing.T) {
 		{"keep-keys rule with an empty entry", func(p *Probe) {
 			p.Normalize = []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"a", ""}}}
 		}, "KeepKeys has an empty entry"},
+		{"MaxMinor with only a major", func(p *Probe) { p.OracleOnly = true; p.MaxMinor = "2" }, "MaxMinor"},
+		{"max minor with a letter", func(p *Probe) { p.OracleOnly = true; p.MaxMinor = "2.x" }, "MaxMinor"},
+		{"max minor with a leading v", func(p *Probe) { p.OracleOnly = true; p.MaxMinor = "v2.15" }, "MaxMinor"},
+		{"max minor with a leading zero", func(p *Probe) { p.OracleOnly = true; p.MaxMinor = "2.015" }, "MaxMinor"},
+		{"max minor with a patch", func(p *Probe) { p.Downstream = true; p.MaxMinor = "2.15.1" }, "MaxMinor"},
+		{"max minor with a blank", func(p *Probe) { p.Downstream = true; p.MaxMinor = " 2.15" }, "MaxMinor"},
+		{"max minor on a probe that runs on the facade", func(p *Probe) { p.MaxMinor = "2.15" }, "only on an OracleOnly or a Downstream probe"},
+		{"max minor on a facade divergence", func(p *Probe) { p.FacadeDivergence = "reason"; p.MaxMinor = "2.15" }, "only on an OracleOnly or a Downstream probe"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

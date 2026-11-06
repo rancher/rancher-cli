@@ -41,9 +41,10 @@ GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # E2E_FIDELITY_UPCOMING_IMAGE and E2E_FIDELITY_K3S_IMAGE override the two
 # images; E2E_FIDELITY_PRINT_IMAGES=1 prints the choice and boots nothing.
 # Boot, bootstrap, and downstream-proxy smoke; with E2E_FIDELITY_DRIFT=1 the
-# smoke is followed by a drift run: every probe runs against the minor and is
-# compared with the community goldens and the minor's known-differences file,
-# and the test binary writes one JSON report (E2E_FIDELITY_DRIFT_REPORT names
+# smoke is followed by a drift run: every probe that runs on the minor is
+# compared with the community goldens and the minor's known-differences file.
+# A probe whose MaxMinor is older than the minor is listed as not checked.
+# The test binary writes one JSON report (E2E_FIDELITY_DRIFT_REPORT names
 # it; the default is under the state root). The exit is 0 when the report is
 # clean, 3 when it holds a new difference, an errored probe, a failed CLI
 # test or a suite that ran no probe, and 1 for a boot or harness failure; the
@@ -720,9 +721,9 @@ try:
         print("failed: " + "; ".join(str(f["name"]) + ": " + "; ".join(str(f["reason"]).splitlines()) for f in failures))
         sys.exit(0)
     c = r["counts"]
-    summary = "drift v%s: new %d (wait ran out %d), known %d, known no ruling %d, no longer seen %d, not checked %d, errored %d, failed CLI tests %d, suites with no probe %d; report %s" % (
+    summary = "drift v%s: new %d (wait ran out %d), known %d, known no ruling %d, no longer seen %d, entries not checked %d, probes not checked %d, errored %d, failed CLI tests %d, suites with no probe %d; report %s" % (
         r["minor"], c["new"], c["waitRanOut"], c["known"], c["knownNoRuling"], c["noLongerSeen"],
-        c["notChecked"], c["errored"], c["failedCLITests"], c["suitesWithNoProbe"], path)
+        c["notChecked"], c["notCheckedProbes"], c["errored"], c["failedCLITests"], c["suitesWithNoProbe"], path)
     print("clean" if r["clean"] is True else "drift")
     print(summary)
 except (KeyError, TypeError, ValueError) as e:

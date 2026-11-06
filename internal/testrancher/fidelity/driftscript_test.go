@@ -403,7 +403,7 @@ func TestDriftResult(t *testing.T) {
 		r.Clean = false
 		r.Counts = DriftCounts{
 			New: 2, WaitRanOut: 1, Known: 3, KnownNoRuling: 4, NoLongerSeen: 5,
-			NotChecked: 6, Errored: 7, FailedCLITests: 8, SuitesWithNoProbe: 9,
+			NotChecked: 6, NotCheckedProbes: 10, Errored: 7, FailedCLITests: 8, SuitesWithNoProbe: 9,
 		}
 	}
 
@@ -411,7 +411,7 @@ func TestDriftResult(t *testing.T) {
 		path := stubReport(t, nil)
 		stdout, stderr, code, calls := run(t, 0, path)
 		assert.Equal(t, 0, code, "stderr: %s", stderr)
-		assert.Equal(t, "drift v2.16: new 0 (wait ran out 0), known 0, known no ruling 0, no longer seen 0, not checked 0, errored 0, failed CLI tests 0, suites with no probe 0; report "+path+"\n", stdout)
+		assert.Equal(t, "drift v2.16: new 0 (wait ran out 0), known 0, known no ruling 0, no longer seen 0, entries not checked 0, probes not checked 0, errored 0, failed CLI tests 0, suites with no probe 0; report "+path+"\n", stdout)
 		assert.False(t, dumped(calls))
 		assert.Contains(t, stderr, "DRIFT_REPORTED=0")
 	})
@@ -420,7 +420,7 @@ func TestDriftResult(t *testing.T) {
 		path := stubReport(t, notClean)
 		stdout, stderr, code, calls := run(t, 1, path)
 		assert.Equal(t, 3, code, "stderr: %s", stderr)
-		assert.Equal(t, "drift v2.16: new 2 (wait ran out 1), known 3, known no ruling 4, no longer seen 5, not checked 6, errored 7, failed CLI tests 8, suites with no probe 9; report "+path+"\n", stdout,
+		assert.Equal(t, "drift v2.16: new 2 (wait ran out 1), known 3, known no ruling 4, no longer seen 5, entries not checked 6, probes not checked 10, errored 7, failed CLI tests 8, suites with no probe 9; report "+path+"\n", stdout,
 			"the summary line is the last and only line, with disjoint counts")
 		assert.Contains(t, stderr, "DRIFT_REPORTED=1")
 		assert.False(t, dumped(calls), "no diagnostics dump for a reported result")

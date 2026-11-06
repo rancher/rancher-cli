@@ -26,14 +26,16 @@ func recordDriftTest(t *testing.T) {
 // the golden under dir, and its error, to the collector. Nothing is asserted
 // about the answer: a difference or a probe error is data for the report. A
 // missing golden, or one recorded against another image than the community
-// goldens', fails the test.
+// goldens', fails the test, even for a probe whose MaxMinor is older than the
+// server's minor. A probe that passes those checks and whose MaxMinor is
+// older than the server's minor then skips the test as not checked.
 func runDriftProbe(t *testing.T, suite string, tgt fidelity.Target, p fidelity.Probe, dir string) {
 	t.Helper()
 	want, err := fidelity.LoadGolden(fidelity.GoldenPath(dir, p.Name))
 	require.NoError(t, err, "no golden for %s", p.Name)
 	require.Equal(t, driftConfig.GoldenImage, want.OracleImage,
 		"golden was recorded against a different image than the community goldens' image")
-	results, runErr := fidelity.RunProbeWith(t.Context(), tgt, p, fidelity.RunOptions{KeepLastAnswer: true})
+	results, runErr := runProbeOrSkip(t, suite, tgt, p, fidelity.RunOptions{KeepLastAnswer: true})
 	got := fidelity.Golden{OracleImage: driftConfig.OracleImage, Observations: results}
 	diffs := fidelity.Differences(p.Name, want, got, runErr == nil)
 	driftCollector.Probe(suite, p.Name, p.Downstream, diffs, runErr)

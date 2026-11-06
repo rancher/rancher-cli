@@ -525,6 +525,48 @@ func TestCompare(t *testing.T) {
 		assert.False(t, r.Clean)
 	})
 
+	t.Run("a probe whose MaxMinor is older than the server's minor is listed in NotCheckedProbes and is not an error", func(t *testing.T) {
+		run := cleanRun()
+		run.probes = append(run.probes, ProbeRun{Suite: SuiteOracle, Probe: "fam/maxminor", NotCheckedReason: "probe fam/maxminor: reason"})
+		known := KnownFile{Entries: []KnownEntry{
+			entry("fam/maxminor", "/read/status", "200", "404"),
+			entry("fam/a", "/read/status", "200", "403"),
+		}}
+		r := compareRun(known, run)
+		assert.Equal(t, []NotCheckedProbe{{Probe: "fam/maxminor", Reason: "probe fam/maxminor: reason"}}, r.NotCheckedProbes)
+		assert.Empty(t, r.Errored, "a probe that is not checked is not an error")
+		assert.True(t, r.Clean, "the report stays clean when a probe is not checked")
+		assert.Equal(t, []string{"fam/maxminor/read/status"}, entryPointers(r.NotChecked), "its known entry is not checked")
+		assert.Equal(t, []string{"fam/a/read/status"}, entryPointers(r.NoLongerSeen), "an entry of a probe that ran is still no longer seen")
+		assert.Equal(t, []SuiteResult{{Name: SuiteOracle, Probes: 1}, {Name: SuiteDownstream, Probes: 1}}, r.Suites,
+			"the suite's probe count has only the probes that ran")
+		assert.Equal(t, DriftCounts{NoLongerSeen: 1, NotChecked: 1, NotCheckedProbes: 1}, r.Counts)
+	})
+
+	t.Run("a suite whose probes were all not checked is not counted in SuitesWithNoProbe", func(t *testing.T) {
+		run := cleanRun()
+		run.probes[1] = ProbeRun{Suite: SuiteDownstream, Probe: "fam/down", Downstream: true, NotCheckedReason: "reason"}
+		r := compareRun(KnownFile{}, run)
+		assert.Equal(t, []SuiteResult{{Name: SuiteOracle, Probes: 1}, {Name: SuiteDownstream, Probes: 0}}, r.Suites)
+		assert.Zero(t, r.Counts.SuitesWithNoProbe)
+		assert.Equal(t, 1, r.Counts.NotCheckedProbes)
+		assert.True(t, r.Clean)
+
+		run.probes = run.probes[:1]
+		r = compareRun(KnownFile{}, run)
+		assert.Equal(t, 1, r.Counts.SuitesWithNoProbe, "a suite with no probe record is counted in SuitesWithNoProbe")
+		assert.False(t, r.Clean)
+	})
+
+	t.Run("probes not checked are sorted by name", func(t *testing.T) {
+		run := cleanRun()
+		run.probes = append(run.probes,
+			ProbeRun{Suite: SuiteOracle, Probe: "fam/z", NotCheckedReason: "r"},
+			ProbeRun{Suite: SuiteOracle, Probe: "fam/b", NotCheckedReason: "r"})
+		r := compareRun(KnownFile{}, run)
+		assert.Equal(t, []NotCheckedProbe{{Probe: "fam/b", Reason: "r"}, {Probe: "fam/z", Reason: "r"}}, r.NotCheckedProbes)
+	})
+
 	t.Run("an entry of a probe that did not run is not checked", func(t *testing.T) {
 		r := compareRun(KnownFile{Entries: []KnownEntry{entry("fam/other", "/read/status", "200", "403")}}, cleanRun())
 		assert.Len(t, r.NotChecked, 1)
@@ -635,6 +677,35 @@ func TestCompare(t *testing.T) {
 			{Name: "TestLate", Started: true},
 		}, r.CLITests)
 	})
+}
+
+// TestAddNotCheckedProbe asserts that the collector records a probe
+// that is not checked with its reason and no error or difference, that it
+// reaches the report through FinishDriftRun, and that a probe recorded
+// through Probe with an error is an error instead.
+func TestAddNotCheckedProbe(t *testing.T) {
+	c := &DriftCollector{}
+	c.AddNotCheckedProbe(SuiteOracle, "fam/maxminor", false, "the reason")
+	require.Len(t, c.probes, 1)
+	assert.Equal(t, ProbeRun{Suite: SuiteOracle, Probe: "fam/maxminor", NotCheckedReason: "the reason"}, c.probes[0])
+
+	in := finishInputs(t)
+	in.Collector.AddNotCheckedProbe(SuiteOracle, "fam/maxminor", false, "the reason")
+	in.Collector.AddNotCheckedProbe(SuiteDownstream, "fam/down", true, "another reason")
+	r, code := FinishDriftRun(in)
+	assert.Equal(t, []NotCheckedProbe{{Probe: "fam/down", Reason: "another reason"}, {Probe: "fam/maxminor", Reason: "the reason"}}, r.NotCheckedProbes)
+	assert.Empty(t, r.Errored)
+	assert.Equal(t, 2, r.Counts.NotCheckedProbes)
+	assert.Zero(t, r.Counts.SuitesWithNoProbe)
+	assert.True(t, r.Clean)
+	assert.Equal(t, 0, code)
+
+	in = finishInputs(t)
+	in.Collector.Probe(SuiteOracle, "fam/maxminor", false, nil, errors.New("the reason"))
+	r, _ = FinishDriftRun(in)
+	assert.Empty(t, r.NotCheckedProbes)
+	assert.Len(t, r.Errored, 1)
+	assert.False(t, r.Clean)
 }
 
 // TestCompareFillsTheCause asserts that a difference of a probe that is not
@@ -946,7 +1017,7 @@ func TestWriteReport(t *testing.T) {
 		require.NoError(t, err)
 		var generic map[string]any
 		require.NoError(t, json.Unmarshal(raw, &generic))
-		for _, k := range []string{"new", "known", "knownNoRuling", "noLongerSeen", "notChecked", "errored", "cliTests", "suites", "harnessFailures"} {
+		for _, k := range []string{"new", "known", "knownNoRuling", "noLongerSeen", "notChecked", "notCheckedProbes", "errored", "cliTests", "suites", "harnessFailures"} {
 			assert.IsTypef(t, []any{}, generic[k], "%s", k)
 		}
 	})

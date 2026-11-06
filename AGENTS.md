@@ -58,9 +58,10 @@ Gotchas:
   nothing. Each minor has its own port, subnet, containers and state
   root from the slot table in `scripts/e2e-fidelity`; a minor with no
   row is refused. It runs the boot smoke; with `E2E_FIDELITY_DRIFT=1` it
-  also compares every probe with the community goldens and writes a
-  report (exit 0 clean, 3 differences, any other code a boot or harness
-  failure), matching differences against
+  also compares every probe that runs on that minor with the community
+  goldens, lists the probes whose `MaxMinor` is older than that minor as not
+  checked, and writes a report (exit 0 clean, 3 differences, any other code
+  a boot or harness failure), matching differences against
   `internal/testrancher/fidelity/testdata/upcoming/v<minor>.json`.
   `E2E_FIDELITY_UPCOMING_IMAGE`, `E2E_FIDELITY_K3S_IMAGE`,
   `E2E_FIDELITY_PRINT_IMAGES=1` and `E2E_FIDELITY_DRIFT` are refused

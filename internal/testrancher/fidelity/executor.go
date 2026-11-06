@@ -60,7 +60,9 @@ func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (
 	return runProbeWith(ctx, tgt, p, timeout, RunOptions{})
 }
 
-// runProbeWith is RunProbeWith with an injectable per-step deadline. Teardown is
+// runProbeWith is RunProbeWith with an injectable per-step deadline. When the
+// server's minor is newer than the probe's MaxMinor it returns an error that
+// wraps ErrNotForMinor before any other request, setup or teardown. Teardown is
 // installed BEFORE setup runs and always executes - after a partial setup
 // failure, an observation failure, a capture failure, or success - with the
 // captures resolved so far. Every teardown error is collected and joined
@@ -68,6 +70,9 @@ func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (
 func runProbeWith(ctx context.Context, tgt Target, p Probe, timeout time.Duration, opts RunOptions) (results []ObservationResult, err error) {
 	if verr := p.Validate(); verr != nil {
 		return nil, verr
+	}
+	if merr := checkMaxMinor(ctx, tgt, p, timeout); merr != nil {
+		return nil, merr
 	}
 	captured := map[string]string{}
 	if p.Downstream {
