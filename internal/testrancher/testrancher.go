@@ -910,13 +910,17 @@ var scopesProviderTypes = []string{"cognitoProvider", "keyCloakOIDCProvider", "g
 
 // codeExchangeRedirect is the redirectUrl of a code-exchange provider's list
 // entry in the form Rancher builds for the type: the GitHub types go to
-// GitHub's authorize URL with the client id, Google to its consent URL, and
-// the OIDC types to the identity provider's authorize URL with the client id,
-// the response type and the Rancher URL as the redirect. The OIDC ones point
-// at the facade's own authorize path, with a client id of the facade; that
-// path is served only with EnableIdP, and no test follows these URLs. Google's
-// carries no scope and no state: Rancher builds it from a config with no
-// scopes and an empty state.
+// GitHub's authorize URL with the client id, Google to its consent URL, and the
+// OIDC types to the identity provider's authorize URL with the client id, the
+// response type and the Rancher URL as the redirect. That is the OIDC form
+// Rancher builds for a config with no rancherApiHost; for a config with one,
+// Rancher's entry is <rancherApiHost>/v1-oidc/<name>, which the facade does not
+// serve. For a genericOIDCProvider config with an acrValue, Rancher also
+// appends acr_values to the redirect URL in either form; the facade sets none.
+// The OIDC ones point at the facade's own authorize path, with a client id of
+// the facade; that path is served only with EnableIdP, and no test follows
+// these URLs. Google's carries no scope and no state: Rancher builds it from a
+// config with no scopes and an empty state.
 func codeExchangeRedirect(server, typ string) string {
 	switch typ {
 	case "githubProvider", "githubAppProvider":
