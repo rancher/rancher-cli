@@ -413,7 +413,6 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 		{"revoke-downstream/cluster-scoped-v3-token-logout-401", "delete-with-its-own-bearer-after-the-logout"}: "cluster-scoped token refused outside its cluster; never deleted",
 		{"owner-downstream/scoped-creates-and-reviews", "review-local-with-the-scoped-v3-token"}:                "cluster-scoped token refused outside its cluster; never deleted",
 		{"revoke/ext-token-deleted-by-another-token-of-its-user", "second-delete-with-the-other-token"}:         "bearer already accepted on the previous request; the object is read by a direct get",
-		{"access-downstream/member-cluster-token", "downstream-read-with-the-cluster-token"}:                    "token created in a setup step; its failures belong to the access-downstream investigation",
 		{"serverfacts/install-uuid-no-global-role", "read"}:                                                     "login bearer right after the login",
 		{"login/user-base-user-creates-an-ext-token", "ext-create-with-the-login-bearer"}:                       "login bearer right after the login",
 		{"login/clusters-create-user-cannot-create-an-ext-token", "ext-create-with-the-login-bearer"}:           "login bearer right after the login",
