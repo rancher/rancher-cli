@@ -31,7 +31,7 @@ func signInThroughTheBrowser(t *testing.T, opts testrancher.Options, authProvide
 		f := testrancher.New(opts)
 		srv := httptest.NewTestServer(t, f)
 		client := hostTransport{hostOf(rancherOrigin): srv.Client().Transport}.client()
-		p := newHandoffPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
+		p := newHandoffPrompter(t, func(id, pub string) { f.DepositAuthToken(id, pub) })
 		input := samlInput(rancherOrigin)
 		input.authProvider = authProvider
 		res, err := loginAndGenerateCred(t.Context(), client, input, p)

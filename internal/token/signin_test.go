@@ -661,10 +661,11 @@ func TestSignInFailedLoginTokenDeleteIsAWarningNotAFailure(t *testing.T) {
 }
 
 // TestSignInOverSAMLUsesTheKubeconfigTokenAsTheLoginToken asserts the SAML
-// sign-in: the login URL asks for responseType json, the kubeconfig token the
-// browser sign-in creates is the login token (unmarked), it creates the
-// cluster token with its bearer and is deleted by its own logout. With
-// forced single logout its failed delete is worded as a kubeconfig token.
+// sign-in: the sign-in URL has responseType=kubeconfig, the only value the
+// dashboard sign-in page accepts, and the kubeconfig token the browser sign-in
+// creates is the login token (unmarked), it creates the cluster token with
+// its bearer and is deleted by its own logout. With forced single logout its
+// failed delete is worded as a kubeconfig token.
 func TestSignInOverSAMLUsesTheKubeconfigTokenAsTheLoginToken(t *testing.T) {
 	run := func(t *testing.T, opts testrancher.Options, cluster string) (*testrancher.Facade, *requestLog, clusterSignIn, string, error) {
 		t.Helper()
@@ -675,7 +676,7 @@ func TestSignInOverSAMLUsesTheKubeconfigTokenAsTheLoginToken(t *testing.T) {
 		f := testrancher.New(opts)
 		srv := httptest.NewTestServer(t, f)
 		rt := hostTransport{hostOf(rancherOrigin): srv.Client().Transport}
-		p := &urlRecorder{handoffPrompter: newHandoffPrompter(func(id, key string) { f.DepositAuthToken(id, key) })}
+		p := &urlRecorder{handoffPrompter: newHandoffPrompter(t, func(id, key string) { f.DepositAuthToken(id, key) })}
 		input := &loginInput{caFlag: "--cacert", server: rancherOrigin, authProvider: "oktaProvider"}
 		si, err := signInForClusterToken(t.Context(), rt.client(), input, cluster, p)
 		return f, log, si, p.loginURL(), err
@@ -684,8 +685,7 @@ func TestSignInOverSAMLUsesTheKubeconfigTokenAsTheLoginToken(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			f, log, si, loginURL, err := run(t, testrancher.Options{}, "local")
 			require.NoError(t, err)
-			assert.Contains(t, loginURL, "responseType=json")
-			assert.NotContains(t, loginURL, "kubeconfig")
+			assert.Contains(t, loginURL, "responseType=kubeconfig")
 			require.NotNil(t, si.Login)
 			assert.False(t, si.Login.Marked, "the SAML login token carries no marker")
 			require.NotNil(t, si.Login.Search, "the browser handoff narrows it")

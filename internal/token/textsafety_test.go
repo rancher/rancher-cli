@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
@@ -297,12 +297,12 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 				http.Error(w, "login url not published yet", http.StatusInternalServerError)
 				return
 			}
-			loginURL, err := url.Parse(m[1])
+			_, publicKey, err := testrancher.ParseCLISignInURL(m[1])
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			raw, err := base64.StdEncoding.DecodeString(loginURL.Query().Get("publicKey"))
+			raw, err := base64.StdEncoding.DecodeString(publicKey)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

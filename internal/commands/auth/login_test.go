@@ -1711,25 +1711,34 @@ func (k *commitThenErrorKeyring) Delete(service, user string) error {
 // gate refuses a NoInput prompter before any browser handoff.
 type depositingPrompter struct {
 	runtime.Prompter
+	tb testing.TB
+	// signInURL is the sign-in URL the command printed.
+	signInURL string
 	onHandoff func(requestID, publicKey string)
 }
 
+// Notice reads the sign-in URL the way the dashboard sign-in page does and
+// fails the test when that page would refuse it.
 func (h *depositingPrompter) Notice(msg string) {
-	before, _, found := strings.Cut(msg, "/dashboard/auth/login?")
+	before, _, found := strings.Cut(msg, "/dashboard/auth/login")
 	if !found {
 		return
 	}
-	u, err := neturl.Parse(strings.TrimSpace(msg[strings.LastIndex(before, " ")+1:]))
+	raw := strings.TrimSpace(msg[strings.LastIndex(before, " ")+1:])
+	id, key, err := testrancher.ParseCLISignInURL(raw)
 	if err != nil {
+		h.tb.Errorf("the printed sign-in URL is one the dashboard sign-in page would refuse: %v", err)
 		return
 	}
+	h.signInURL = raw
 	if h.onHandoff != nil {
-		h.onHandoff(u.Query().Get("requestId"), u.Query().Get("publicKey"))
+		h.onHandoff(id, key)
 	}
 }
 
-func newDepositingPrompter(onHandoff func(requestID, publicKey string)) *depositingPrompter {
-	return &depositingPrompter{Prompter: ui.New(io.Discard, strings.NewReader(""), false, false), onHandoff: onHandoff}
+func newDepositingPrompter(tb testing.TB, onHandoff func(requestID, publicKey string)) *depositingPrompter {
+	tb.Helper()
+	return &depositingPrompter{Prompter: ui.New(io.Discard, strings.NewReader(""), false, false), tb: tb, onHandoff: onHandoff}
 }
 
 func countOf(lines []string, s string) int {
@@ -1941,7 +1950,7 @@ func TestLoginSuccessWithFailedSAMLTokenCleanupNamesAKubeconfigToken(t *testing.
 	dir, store := cmdtest.FilePolicyDir(t)
 	seedServer(t, dir, "prod", srv.URL, "", false)
 	in := cmdtest.Input{Str: map[string]string{"auth-provider": "oktaProvider"}, Pos: []string{"prod"}}
-	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) }))
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(t, func(id, pub string) { f.DepositAuthToken(id, pub) }))
 	require.NoError(t, err)
 	residual := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
 	require.Len(t, residual, 1)
@@ -1953,6 +1962,27 @@ func TestLoginSuccessWithFailedSAMLTokenCleanupNamesAKubeconfigToken(t *testing.
 	assert.Contains(t, res.Warnings[0], "the transient kubeconfig token "+ref.String()+" created by this login could not be revoked (logout 500; delete 500 Internal Server Error); ")
 	assert.Contains(t, res.Warnings[0], "an administrator can delete it sooner with: "+clierr.MarkRemedy("rancher delete management-token '"+ref.Name+"' --apply --yes --allow-deprecated"))
 	assert.NotContains(t, res.Warnings[0], "session token")
+}
+
+// TestLoginPrintsASignInURLTheDashboardSignInPageAccepts asserts the login
+// command prints a sign-in URL the dashboard sign-in page accepts, although it
+// sends responseType json to Rancher's login endpoint. Not parallel: it
+// shrinks the token package's poll timing.
+func TestLoginPrintsASignInURLTheDashboardSignInPageAccepts(t *testing.T) {
+	restore := token.SetSAMLTimingForTest(2*time.Second, 10*time.Millisecond)
+	defer restore()
+	f := testrancher.New(testrancher.Options{EnableSAMLAuthTokens: true, ExtraProviders: []string{"oktaProvider"}})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := cmdtest.FilePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := cmdtest.Input{Str: map[string]string{"auth-provider": "oktaProvider"}, Pos: []string{"prod"}}
+	p := newDepositingPrompter(t, func(id, pub string) { f.DepositAuthToken(id, pub) })
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	require.NoError(t, err)
+	// The prompter fails the test on a sign-in URL the dashboard sign-in page
+	// would refuse, so a printed sign-in URL is an accepted one.
+	require.NotEmpty(t, p.signInURL, "no sign-in URL was printed")
 }
 
 // TestLoginSignsInWithAGenericSAMLConfigName asserts --auth-provider takes
@@ -1973,7 +2003,7 @@ func TestLoginSignsInWithAGenericSAMLConfigName(t *testing.T) {
 	dir, store := cmdtest.FilePolicyDir(t)
 	seedServer(t, dir, "prod", srv.URL, "", false)
 	in := cmdtest.Input{Str: map[string]string{"auth-provider": "corp-saml"}, Pos: []string{"prod"}}
-	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) }))
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(t, func(id, pub string) { f.DepositAuthToken(id, pub) }))
 	require.NoError(t, err)
 	assert.Equal(t, "LoginResult", res.Kind)
 	stored, err := store.GetToken(config.ServerRef{Name: "prod"})
@@ -2023,7 +2053,7 @@ func TestLoginReadOnlyHelperRecoveryMatrix(t *testing.T) {
 				opts.EnableSAMLAuthTokens = true
 				opts.ExtraProviders = []string{"oktaProvider"}
 				f = testrancher.New(opts)
-				p = newDepositingPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
+				p = newDepositingPrompter(t, func(id, pub string) { f.DepositAuthToken(id, pub) })
 			} else {
 				f = testrancher.New(opts)
 				p = ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
@@ -2193,7 +2223,7 @@ func TestLoginSAMLTimeoutRecoveryNamesHandoffFacts(t *testing.T) {
 	dir, store := cmdtest.FilePolicyDir(t)
 	seedServer(t, dir, "prod", srv.URL, "", false)
 	in := cmdtest.Input{Str: map[string]string{"auth-provider": "oktaProvider"}, Pos: []string{"prod"}}
-	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(nil))
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(t, nil))
 	_, d := decodeLoginFailure(t, err)
 	assert.Equal(t, clierr.StageAuthentication, d.Stage)
 	assert.Empty(t, d.OperationMarker, "no marked create was attempted")

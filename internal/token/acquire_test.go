@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -206,7 +205,7 @@ func TestAcquireLegacyFallbackTransfersSession(t *testing.T) {
 func TestAcquireLegacyFallbackNoticeCallsASAMLTokenAKubeconfigToken(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f, client := samlProviderFacadeInMemory(t, testrancher.Options{Legacy: true})
-		p := newHandoffPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
+		p := newHandoffPrompter(t, func(id, pub string) { f.DepositAuthToken(id, pub) })
 		cred, err := AcquireLoginCredential(t.Context(), client, LoginRequest{CAFlag: "--cacert", Server: rancherOrigin, AuthProvider: "oktaProvider", ResponseType: "json"}, 0, p)
 		require.NoError(t, err)
 		assert.Equal(t, ProvenanceLegacySession, cred.Provenance)
@@ -226,7 +225,7 @@ func TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
 		start := time.Now()
-		_, err := AcquireLoginCredential(t.Context(), client, LoginRequest{CAFlag: "--cacert", Server: rancherOrigin, AuthProvider: "oktaProvider", ResponseType: "json"}, 0, newHandoffPrompter(nil))
+		_, err := AcquireLoginCredential(t.Context(), client, LoginRequest{CAFlag: "--cacert", Server: rancherOrigin, AuthProvider: "oktaProvider", ResponseType: "json"}, 0, newHandoffPrompter(t, nil))
 		ae, ok := errors.AsType[*AcquireError](err)
 		require.True(t, ok, "got %v", err)
 		assert.Equal(t, samlAuthTimeout, time.Since(start), "the whole SAML timeout elapsed on the fake clock")
@@ -352,31 +351,40 @@ type handoffPrompter struct {
 	// The embedded prompter is silent and non-TTY with NoInput false: the
 	// SAML gate refuses a NoInput prompter before the SAML handoff.
 	runtime.Prompter
+	tb        testing.TB
 	requestID string
 	publicKey string
+	// signInURL is the sign-in URL the CLI printed.
+	signInURL string
 	onHandoff func(requestID, publicKey string)
 	// notices is every notice the CLI printed, the login URL's included.
 	notices []string
 }
 
+// Notice reads the sign-in URL the way the dashboard sign-in page does and
+// fails the test when that page would refuse it: the page offers no sign-in
+// button then, so the user could never finish the browser sign-in.
 func (h *handoffPrompter) Notice(msg string) {
 	h.notices = append(h.notices, msg)
-	before, _, found := strings.Cut(msg, "/dashboard/auth/login?")
+	before, _, found := strings.Cut(msg, "/dashboard/auth/login")
 	if !found {
 		return
 	}
-	u, err := url.Parse(strings.TrimSpace(msg[strings.LastIndex(before, " ")+1:]))
+	raw := strings.TrimSpace(msg[strings.LastIndex(before, " ")+1:])
+	id, key, err := testrancher.ParseCLISignInURL(raw)
 	if err != nil {
+		h.tb.Errorf("the printed sign-in URL is one the dashboard sign-in page would refuse: %v", err)
 		return
 	}
-	h.requestID, h.publicKey = u.Query().Get("requestId"), u.Query().Get("publicKey")
+	h.signInURL, h.requestID, h.publicKey = raw, id, key
 	if h.onHandoff != nil {
 		h.onHandoff(h.requestID, h.publicKey)
 	}
 }
 
-func newHandoffPrompter(onHandoff func(requestID, publicKey string)) *handoffPrompter {
-	return &handoffPrompter{Prompter: ui.New(io.Discard, strings.NewReader(""), false, false), onHandoff: onHandoff}
+func newHandoffPrompter(tb testing.TB, onHandoff func(requestID, publicKey string)) *handoffPrompter {
+	tb.Helper()
+	return &handoffPrompter{Prompter: ui.New(io.Discard, strings.NewReader(""), false, false), tb: tb, onHandoff: onHandoff}
 }
 
 func samlInput(server string) *loginInput {
@@ -405,7 +413,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			// Synchronous: after the SAML handoff is recorded, before the first
 			// poll, so no timer race decides the outcome.
-			p := newHandoffPrompter(func(string, string) { cancel() })
+			p := newHandoffPrompter(t, func(string, string) { cancel() })
 			res, err := loginAndGenerateCred(ctx, client, samlInput(rancherOrigin), p)
 			require.ErrorIs(t, err, context.Canceled)
 			require.NotNil(t, res.Handoff)
@@ -421,7 +429,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 	t.Run("timeout while callback in flight", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
-			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), newHandoffPrompter(nil))
+			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), newHandoffPrompter(t, nil))
 			require.Error(t, err)
 			assert.Equal(t, CreateUnknown, res.Create.Outcome)
 			require.NotNil(t, res.Handoff)
@@ -431,7 +439,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 	t.Run("deposit after timeout is still findable", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
-			p := newHandoffPrompter(nil)
+			p := newHandoffPrompter(t, nil)
 			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), p)
 			require.Error(t, err)
 			f.DepositAuthToken(p.requestID, p.publicKey) // the browser completes after the CLI stopped waiting
@@ -443,7 +451,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 	t.Run("valid deposit is known", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
-			p := newHandoffPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
+			p := newHandoffPrompter(t, func(id, pub string) { f.DepositAuthToken(id, pub) })
 			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), p)
 			require.NoError(t, err)
 			assert.Equal(t, CreateKnown, res.Create.Outcome)
@@ -459,7 +467,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 	t.Run("undecodable payload is unknown", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
-			p := newHandoffPrompter(func(id, _ string) { f.DepositAuthTokenRaw(id, "!!not-base64") })
+			p := newHandoffPrompter(t, func(id, _ string) { f.DepositAuthTokenRaw(id, "!!not-base64") })
 			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), p)
 			require.Error(t, err)
 			assert.Equal(t, CreateUnknown, res.Create.Outcome)
@@ -469,7 +477,7 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 	t.Run("decrypted bearer failing validation is unidentified", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
-			p := newHandoffPrompter(func(id, pub string) { f.DepositAuthTokenPlaintext(id, pub, "no-colon-here") })
+			p := newHandoffPrompter(t, func(id, pub string) { f.DepositAuthTokenPlaintext(id, pub, "no-colon-here") })
 			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), p)
 			require.Error(t, err)
 			assert.Equal(t, CreateUnidentified, res.Create.Outcome)

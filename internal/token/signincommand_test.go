@@ -62,16 +62,17 @@ func TestExecPluginSignInWithTokenReuseOffReturnsAnExtClusterToken(t *testing.T)
 
 // TestExecPluginSignInOverSAMLWithAClusterWorks asserts a SAML sign-in with
 // a cluster ends in an ext cluster token: the login token is the SAML
-// kubeconfig token, deleted by its own logout. The login URL asks for json.
+// kubeconfig token, deleted by its own logout. The sign-in URL has
+// responseType=kubeconfig, the only value the dashboard sign-in page accepts.
 func TestExecPluginSignInOverSAMLWithAClusterWorks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		x := newInMemoryPluginFixture(t, false, testrancher.Options{EnableSAMLAuthTokens: true, ExtraProviders: []string{"oktaProvider"}})
-		p := &urlRecorder{handoffPrompter: newHandoffPrompter(func(id, key string) { x.f.DepositAuthToken(id, key) })}
+		p := &urlRecorder{handoffPrompter: newHandoffPrompter(t, func(id, key string) { x.f.DepositAuthToken(id, key) })}
 		in := x.input("local", "kc")
 		in.s["auth-provider"] = "oktaProvider"
 		res, err := x.command(x.store).Execute(t.Context(), in, p)
 		require.NoError(t, err)
-		assert.Contains(t, p.loginURL(), "responseType=json")
+		assert.Contains(t, p.loginURL(), "responseType=kubeconfig")
 		assert.Equal(t, []string{res.Data.(*execCredential).Status.Token}, x.f.BearersOfKind("ext"))
 		assert.Empty(t, x.f.BearersOfKind("v3"), "the kubeconfig token was deleted")
 		creates := x.f.CreateRequests()
@@ -124,7 +125,7 @@ func TestExecPluginWarnsOfALoginTokenItCouldNotDelete(t *testing.T) {
 		for _, reuse := range []bool{false, true} {
 			synctest.Test(t, func(t *testing.T) {
 				x := newInMemoryPluginFixture(t, reuse, forcedSingleLogout(testrancher.Options{EnableSAMLAuthTokens: true, ExtraProviders: []string{"oktaProvider"}}))
-				p := &urlRecorder{handoffPrompter: newHandoffPrompter(func(id, key string) { x.f.DepositAuthToken(id, key) })}
+				p := &urlRecorder{handoffPrompter: newHandoffPrompter(t, func(id, key string) { x.f.DepositAuthToken(id, key) })}
 				in := x.input("local", "kc")
 				in.s["auth-provider"] = "oktaProvider"
 				res, err := x.command(x.store).Execute(t.Context(), in, p)

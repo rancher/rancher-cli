@@ -1198,6 +1198,16 @@ func loginCreateResult(resp *http.Response, body []byte, err error, createdAt st
 	return classifyCreate(resp, body, err, createdAt, marked, kind)
 }
 
+// samlPageResponseType is the responseType of the sign-in URL the browser
+// opens. The dashboard sign-in page of current Rancher releases accepts only
+// this value and otherwise shows an "invalid parameters" message with no
+// sign-in button; the dashboard on Rancher main also accepts
+// kubeconfig_<cluster id>, which no released dashboard accepts. Rancher
+// creates the same kubeconfig token for json and kubeconfig, so the sign-in
+// URL does not use the responseType a sign-in path sends to Rancher's login
+// endpoint.
+const samlPageResponseType = "kubeconfig"
+
 // samlAuthTimeout and samlPollInterval are package vars so tests can shrink
 // the poll interval to exercise the ctx.Done() case deterministically without
 // waiting out a real 10s tick.
@@ -1268,7 +1278,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	q.Set("cli", "true")
 	q.Set("requestId", id)
 	q.Set("publicKey", encodedKey)
-	q.Set("responseType", loginResponseType(input))
+	q.Set("responseType", samlPageResponseType)
 	loginURL.RawQuery = q.Encode()
 
 	// The SAML handoff is recorded before the URL reaches the operator: from

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"regexp"
 	"sync"
 	"testing"
@@ -138,12 +137,12 @@ func TestSAMLDeleteRefusalNoticeIsWorded(t *testing.T) {
 			http.Error(w, "login url not published yet", http.StatusInternalServerError)
 			return
 		}
-		loginURL, err := url.Parse(m[1])
+		_, publicKey, err := testrancher.ParseCLISignInURL(m[1])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		raw, err := base64.StdEncoding.DecodeString(loginURL.Query().Get("publicKey"))
+		raw, err := base64.StdEncoding.DecodeString(publicKey)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
