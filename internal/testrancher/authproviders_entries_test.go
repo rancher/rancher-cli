@@ -153,3 +153,13 @@ func TestExtraProvidersRefusesAzureAD(t *testing.T) {
 		New(Options{ExtraProviders: []string{"githubProvider", "azureADProvider"}})
 	})
 }
+
+// TestSAMLProviderTypesReturnsACopy asserts a caller cannot change the types
+// the facade lists as SAML providers through the slice it gets.
+func TestSAMLProviderTypesReturnsACopy(t *testing.T) {
+	t.Parallel()
+	got := SAMLProviderTypes()
+	want := slices.Clone(got)
+	got[0] = "changed"
+	assert.Equal(t, want, SAMLProviderTypes())
+}

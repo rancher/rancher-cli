@@ -36,10 +36,11 @@ func TestAuthConfigSourceOffersTheNamesOfSupportedConfigs(t *testing.T) {
 		{"id":"eu-ldap","type":"openLdapProvider"},
 		{"id":"github","type":"githubProvider"},
 		{"type":"oktaProvider"},
-		{"id":"okta","type":"oktaProvider"}]}`})
+		{"id":"okta","type":"oktaProvider"},
+		{"id":"corp-saml","type":"genericSAMLProvider"}]}`})
 	conn := completion.NewConnection(srv.HTTP.Client(), "", srv.HTTP.URL, false, 1)
 	got := AuthConfigSource().Complete(t.Context(), conn, completion.Request{Flag: "auth-provider"})
-	assert.Equal(t, []string{"local", "corp-ldap", "eu-ldap", "okta"}, got.Names)
+	assert.Equal(t, []string{"local", "corp-ldap", "eu-ldap", "okta", "corp-saml"}, got.Names)
 	assert.Equal(t, []string{"/v1-public/authproviders"}, srv.Requested())
 }
 

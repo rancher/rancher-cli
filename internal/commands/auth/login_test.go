@@ -1955,6 +1955,40 @@ func TestLoginSuccessWithFailedSAMLTokenCleanupNamesAKubeconfigToken(t *testing.
 	assert.NotContains(t, res.Warnings[0], "session token")
 }
 
+// TestLoginSignsInWithAGenericSAMLConfigName asserts --auth-provider takes
+// the name of a Generic SAML auth config: the sign-in goes through the
+// browser handoff, stores the derived token, and the CLI reads and then
+// deletes the copy the browser deposited. The server lists one SAML config,
+// so the test does not assert which entry was picked; the token package's
+// tests do. Not parallel: it shrinks the token package's poll timing.
+func TestLoginSignsInWithAGenericSAMLConfigName(t *testing.T) {
+	restore := token.SetSAMLTimingForTest(2*time.Second, 10*time.Millisecond)
+	defer restore()
+	f := testrancher.New(testrancher.Options{
+		EnableSAMLAuthTokens: true,
+		AuthConfigs:          []testrancher.AuthConfig{{Name: "corp-saml", Type: "genericSAMLProvider"}},
+	})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := cmdtest.FilePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := cmdtest.Input{Str: map[string]string{"auth-provider": "corp-saml"}, Pos: []string{"prod"}}
+	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, newDepositingPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) }))
+	require.NoError(t, err)
+	assert.Equal(t, "LoginResult", res.Kind)
+	stored, err := store.GetToken(config.ServerRef{Name: "prod"})
+	require.NoError(t, err)
+	name, secret, found := strings.Cut(stored, ":")
+	require.True(t, found, "the stored token is a bearer: <name>:<secret>")
+	assert.True(t, strings.HasPrefix(name, "ext/"), "the stored token is the derived token, not the one the browser deposited")
+	assert.NotEmpty(t, secret)
+	assert.Equal(t, 1, f.DerivedCreateRequests())
+	reqs := f.AuthTokensRequests()
+	require.NotEmpty(t, reqs)
+	assert.Equal(t, "GET", reqs[0].Method)
+	assert.Equal(t, "DELETE", reqs[len(reqs)-1].Method)
+}
+
 // TestLoginReadOnlyHelperRecoveryMatrix asserts finishUnsupportedStore's
 // aggregate rule across credential shapes. Every residual here has a known
 // name (S's name arrives with its bearer, D's with the derived token create response), so

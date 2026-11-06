@@ -894,6 +894,12 @@ func (f *Facade) fallthroughTo(w http.ResponseWriter, r *http.Request) {
 // their sign-in starts at, which Rancher forms from the auth config's name.
 var samlProviderTypes = []string{"pingProvider", "adfsProvider", "keyCloakProvider", "oktaProvider", "shibbolethProvider", "genericSAMLProvider"}
 
+// SAMLProviderTypes returns the provider types the facade lists as SAML
+// providers, in the order the facade holds them. It returns a new slice.
+func SAMLProviderTypes() []string {
+	return slices.Clone(samlProviderTypes)
+}
+
 // codeExchangeProviderTypes are the provider types whose list entry carries a
 // redirectUrl that starts the sign-in at the identity provider.
 var codeExchangeProviderTypes = []string{"githubProvider", "githubAppProvider", "googleOAuthProvider", "oidcProvider", "cognitoProvider", "keyCloakOIDCProvider", "genericOIDCProvider"}

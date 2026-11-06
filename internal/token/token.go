@@ -55,11 +55,12 @@ func AuthFlowValues() []string {
 }
 
 var samlProviders = map[string]bool{
-	"pingProvider":       true,
-	"adfsProvider":       true,
-	"keyCloakProvider":   true,
-	"oktaProvider":       true,
-	"shibbolethProvider": true,
+	"pingProvider":        true,
+	"adfsProvider":        true,
+	"keyCloakProvider":    true,
+	"oktaProvider":        true,
+	"shibbolethProvider":  true,
+	"genericSAMLProvider": true,
 }
 
 var oauthProviders = map[string]bool{
@@ -76,6 +77,7 @@ var supportedAuthProviders = map[string]bool{
 	"keyCloakProvider":        true,
 	"oktaProvider":            true,
 	"shibbolethProvider":      true,
+	"genericSAMLProvider":     true,
 	"azureADProvider":         true,
 }
 

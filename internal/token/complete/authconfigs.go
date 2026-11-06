@@ -21,6 +21,7 @@ var supportedTypes = []string{
 	"keyCloakProvider",
 	"oktaProvider",
 	"shibbolethProvider",
+	"genericSAMLProvider",
 	"azureADProvider",
 }
 

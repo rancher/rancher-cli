@@ -309,6 +309,33 @@ func TestASAMLConfigOfSeveralSaysTheBrowserPageChoosesItself(t *testing.T) {
 	assert.Zero(t, under.count(notice), "no notice before a --no-input refusal; events %q", under.events)
 }
 
+// TestAGenericSAMLConfigCountsAmongTheSAMLConfigsTheBrowserPageOffers asserts
+// that a SAML sign-in through an okta config says the browser page offers its
+// own choice when a Generic SAML config is also listed, and the same for a
+// sign-in through the Generic SAML config: the page offers every SAML config
+// of the server, whatever its type.
+func TestAGenericSAMLConfigCountsAmongTheSAMLConfigsTheBrowserPageOffers(t *testing.T) {
+	isolateSignIn(t)
+	restore := SetSAMLTimingForTest(50*time.Millisecond, 10*time.Millisecond)
+	t.Cleanup(restore)
+	const notice = "The Rancher sign-in page in your browser offers its own choice of auth config; the CLI cannot pass yours to it."
+
+	srv := configsServer(t, [2]string{"okta", "oktaProvider"}, [2]string{"corp-saml", "genericSAMLProvider"}, [2]string{"local", "localProvider"})
+	for _, chosen := range []string{"okta", "corp-saml"} {
+		p := newEventPrompter(noTerminal())
+		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: chosen, ResponseType: "json"}, 0, p)
+		require.ErrorContains(t, err, "timed out", chosen)
+		require.GreaterOrEqual(t, p.at(notice), 0, "%s: events %q", chosen, p.events)
+		assert.Less(t, p.at(notice), p.at("Login Request Id"), "%s: events %q", chosen, p.events)
+	}
+
+	one := configsServer(t, [2]string{"corp-saml", "genericSAMLProvider"}, [2]string{"local", "localProvider"})
+	p := newEventPrompter(noTerminal())
+	_, err := AcquireLoginCredential(t.Context(), one.Client(), LoginRequest{CAFlag: "--cacert", Server: one.URL, AuthProvider: "corp-saml", ResponseType: "json"}, 0, p)
+	require.ErrorContains(t, err, "timed out")
+	assert.Zero(t, p.count(notice), "one SAML config: nothing to say; events %q", p.events)
+}
+
 // loginBodies is a Rancher whose provider list is configs and whose login
 // records every request body and answers 401.
 type loginBodies struct {

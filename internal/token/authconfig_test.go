@@ -38,6 +38,7 @@ func TestProviderNameFollowsRancher(t *testing.T) {
 		"azureADProvider":         "azuread",
 		"keyCloakProvider":        "keycloak",
 		"shibbolethProvider":      "shibboleth",
+		"genericSAMLProvider":     "genericsaml",
 	} {
 		assert.Equal(t, want, providerName(typ), typ)
 	}
