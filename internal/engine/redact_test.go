@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -140,6 +142,89 @@ func TestRedactDiffLeavesAnUnaffectedAncestorEntryAlone(t *testing.T) {
 	labels := map[string]any{"app": "web"}
 	got := RedactDiff([]safety.DiffEntry{{Path: "/metadata/labels", To: labels}}, secretRedaction)
 	assert.Equal(t, labels, got[0].To)
+}
+
+// fleetHelm is a Helm options map with values, template values and the
+// fields beside them that stay visible.
+func fleetHelm(n string) map[string]any {
+	return map[string]any{
+		"chart":          "c" + n,
+		"values":         map[string]any{"password": "s3cret" + n},
+		"templateValues": map[string]any{"token": "t0ken" + n},
+		"valuesFrom":     []any{map[string]any{"secretKeyRef": map[string]any{"name": "vals" + n}}},
+	}
+}
+
+// redactedFleetHelm is fleetHelm with the values and template values hidden.
+func redactedFleetHelm(n string) map[string]any {
+	h := fleetHelm(n)
+	h["values"] = Redacted
+	h["templateValues"] = Redacted
+	return h
+}
+
+// TestRedactDiffHidesFleetHelmValuesInLists asserts the helmop and bundle
+// rows hide the values and template values of each target in a diff: an
+// entry whose path is a hidden path, an entry whose value is the whole
+// targets list (a merge patch that sets spec.targets), an entry for one added
+// target, and an entry for an added helm map. An entry with no From or no To
+// keeps it nil, the values outside the hidden paths stay, and the list in the
+// input entry, which the patch and the fetched object may share, is not
+// modified.
+func TestRedactDiffHidesFleetHelmValuesInLists(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"helmop", "bundle"} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			r := rowRedaction(t, key)
+			targets := []any{
+				map[string]any{"name": "a", "helm": fleetHelm("0")},
+				map[string]any{"name": "b", "helm": fleetHelm("1")},
+			}
+			before := runtime.DeepCopyJSONValue(targets)
+			got := RedactDiff([]safety.DiffEntry{
+				{Path: "/spec/targets/0/helm/values", From: map[string]any{"password": "old"}, To: map[string]any{"password": "new"}},
+				{Path: "/spec/targets/0/helm/templateValues", To: map[string]any{"token": "new"}},
+				{Path: "/spec/targets", From: nil, To: targets},
+				{Path: "/spec/targets/1", To: map[string]any{"name": "b", "helm": fleetHelm("1")}},
+				{Path: "/spec/targets/0/helm", To: fleetHelm("0")},
+				{Path: "/spec/targets/0/name", From: "a", To: "c"},
+			}, r)
+			assert.Equal(t, []safety.DiffEntry{
+				{Path: "/spec/targets/0/helm/values", From: Redacted, To: Redacted},
+				{Path: "/spec/targets/0/helm/templateValues", To: Redacted},
+				{Path: "/spec/targets", To: []any{
+					map[string]any{"name": "a", "helm": redactedFleetHelm("0")},
+					map[string]any{"name": "b", "helm": redactedFleetHelm("1")},
+				}},
+				{Path: "/spec/targets/1", To: map[string]any{"name": "b", "helm": redactedFleetHelm("1")}},
+				{Path: "/spec/targets/0/helm", To: redactedFleetHelm("0")},
+				{Path: "/spec/targets/0/name", From: "a", To: "c"},
+			}, got)
+			assert.Equal(t, before, targets, "the original list and its items are unchanged")
+			assert.NotEqual(t, reflect.ValueOf(targets).Pointer(), reflect.ValueOf(got[2].To).Pointer(), "the entry holds a copy of the list")
+		})
+	}
+}
+
+// TestRedactDiffHidesBundleDeploymentHelmValues asserts the bundledeployment
+// row hides the values and template values of its options and staged options
+// in a diff: an entry whose path is a hidden path, an entry for an added helm
+// map and an entry for the whole options map.
+func TestRedactDiffHidesBundleDeploymentHelmValues(t *testing.T) {
+	t.Parallel()
+	got := RedactDiff([]safety.DiffEntry{
+		{Path: "/spec/options/helm/values", From: map[string]any{"password": "old"}, To: nil},
+		{Path: "/spec/stagedOptions/helm/templateValues/token", To: "new"},
+		{Path: "/spec/stagedOptions/helm", To: fleetHelm("0")},
+		{Path: "/spec/options", To: map[string]any{"helm": fleetHelm("1"), "namespace": "ns"}},
+	}, rowRedaction(t, "bundledeployment"))
+	assert.Equal(t, []safety.DiffEntry{
+		{Path: "/spec/options/helm/values", From: Redacted},
+		{Path: "/spec/stagedOptions/helm/templateValues/token", To: Redacted},
+		{Path: "/spec/stagedOptions/helm", To: redactedFleetHelm("0")},
+		{Path: "/spec/options", To: map[string]any{"helm": redactedFleetHelm("1"), "namespace": "ns"}},
+	}, got)
 }
 
 // machineConfigRow is the kind row of a machine config kind.

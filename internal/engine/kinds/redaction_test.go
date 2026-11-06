@@ -138,6 +138,42 @@ func TestRedactionCovers(t *testing.T) {
 	}
 }
 
+// TestRedactionCoversAWildcardSegment asserts a "*" segment of a hidden path
+// matches exactly one segment of the object path, whatever it is (an index,
+// the "-" of an append, any name), with the other segments compared ignoring
+// case, and that a "*" in the object path is compared as a name.
+func TestRedactionCoversAWildcardSegment(t *testing.T) {
+	t.Parallel()
+	helmop, _ := Lookup("helmop")
+	bundledeployment, _ := Lookup("bundledeployment")
+	for _, tc := range []struct {
+		name string
+		k    Kind
+		keys []string
+		want bool
+	}{
+		{"index 0", helmop, []string{"spec", "targets", "0", "helm", "values"}, true},
+		{"index 7", helmop, []string{"spec", "targets", "7", "helm", "templateValues"}, true},
+		{"append", helmop, []string{"spec", "targets", "-", "helm", "values"}, true},
+		{"folded case", helmop, []string{"Spec", "TARGETS", "0", "Helm", "VALUES"}, true},
+		{"a key below values", helmop, []string{"spec", "targets", "0", "helm", "values", "password"}, true},
+		{"literal * where the hidden path has *", helmop, []string{"spec", "targets", "*", "helm", "values"}, true},
+		{"shorter path", helmop, []string{"spec", "targets", "0", "helm"}, false},
+		{"the targets list itself", helmop, []string{"spec", "targets"}, false},
+		{"valuesFrom is not values", helmop, []string{"spec", "targets", "0", "helm", "valuesFrom"}, false},
+		{"two segments for one wildcard", helmop, []string{"spec", "targets", "0", "1", "helm", "values"}, false},
+		{"no segment for the wildcard", helmop, []string{"spec", "targets", "helm", "values", "x"}, false},
+		{"literal * where the hidden path has a name", helmop, []string{"spec", "*", "values"}, false},
+		{"top-level values", helmop, []string{"spec", "helm", "values"}, true},
+		{"options values", bundledeployment, []string{"spec", "options", "helm", "values"}, true},
+		{"a key below staged templateValues", bundledeployment, []string{"spec", "stagedOptions", "helm", "templateValues", "k"}, true},
+		{"options valuesFrom is not options values", bundledeployment, []string{"spec", "options", "helm", "valuesFrom"}, false},
+		{"literal * in place of options", bundledeployment, []string{"spec", "*", "helm", "values"}, false},
+	} {
+		assert.Equal(t, tc.want, tc.k.Redaction().Covers(tc.keys), tc.name)
+	}
+}
+
 // TestExtTokenAndKubeconfigHideTheirValue asserts the two ext rows hide the
 // value the server returns once on create: a token's status.bearerToken and
 // status.value, and a kubeconfig's status.value, in any letter case.

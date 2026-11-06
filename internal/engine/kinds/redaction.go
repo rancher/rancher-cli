@@ -35,7 +35,8 @@ type Redaction struct {
 	// read marks a redaction built by Kind.ReadRedaction.
 	read bool
 	// paths are key sequences below the object root, each hiding the value
-	// at the path and everything under it.
+	// at the path and everything under it. A "*" segment is a wildcard: it
+	// matches any one segment of an object path (a list index or a map key).
 	paths [][]string
 	// secretNames are top-level field names of a machine config kind, each
 	// hiding the field and everything under it.
@@ -115,9 +116,13 @@ func (r Redaction) Hides() bool {
 }
 
 // Covers reports whether the value at the object path keys is hidden: the
-// path is a hidden path or lies under one, each name compared with case
-// folded. The last-applied annotation is hidden for every kind whose
-// redaction hides anything, because it holds a copy of the applied object.
+// path is a hidden path or lies under one. Names are compared ignoring case.
+// A "*" segment of a hidden path is a wildcard: it matches any one segment
+// of keys, such as a list index "0", the "-" of a JSON patch append, or a
+// map key. A "*" in keys is an ordinary name: it matches only a "*" segment
+// of the hidden path. The last-applied annotation is hidden for every kind
+// whose redaction hides anything, because it holds a copy of the applied
+// object.
 func (r Redaction) Covers(keys []string) bool {
 	if len(keys) == 0 || !r.Hides() {
 		return false
@@ -141,11 +146,19 @@ func (r Redaction) Covers(keys []string) bool {
 // lastAppliedPath is the path of the last-applied annotation.
 var lastAppliedPath = []string{"metadata", "annotations", LastAppliedAnnotation}
 
+// wildcardSegment is the segment of a hidden path that matches any one
+// segment of an object path: a list index or a map key.
+const wildcardSegment = "*"
+
 // hasFoldedPrefix reports whether keys equals prefix or lies under it, each
-// segment compared with case folded. An empty prefix matches nothing.
+// segment compared ignoring case. A "*" segment of prefix matches exactly one
+// segment of keys, whatever it is; a "*" in keys is compared as a name. An
+// empty prefix matches nothing.
 func hasFoldedPrefix(keys, prefix []string) bool {
 	if len(prefix) == 0 || len(keys) < len(prefix) {
 		return false
 	}
-	return slices.EqualFunc(keys[:len(prefix)], prefix, strings.EqualFold)
+	return slices.EqualFunc(keys[:len(prefix)], prefix, func(key, segment string) bool {
+		return segment == wildcardSegment || strings.EqualFold(key, segment)
+	})
 }

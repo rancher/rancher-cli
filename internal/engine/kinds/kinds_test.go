@@ -753,9 +753,10 @@ func TestOIDCClientRowTexts(t *testing.T) {
 }
 
 // TestFleetHelmOpAndWorkspaceRows asserts the helmop row waits on Ready and
-// fails on Stalled, warns about the uninstall on delete and has no redacted
-// paths, and that the fleet-workspace row is cluster-scoped, cannot be
-// deleted, has no default wait condition and requires --yes on patch.
+// fails on Stalled, warns about the uninstall on delete and hides the Helm
+// values and template values of the HelmOp and of each target, and that the
+// fleet-workspace row is cluster-scoped, cannot be deleted, has no default
+// wait condition and requires --yes on patch.
 func TestFleetHelmOpAndWorkspaceRows(t *testing.T) {
 	t.Parallel()
 	op, ok := Lookup("helmops")
@@ -772,7 +773,10 @@ func TestFleetHelmOpAndWorkspaceRows(t *testing.T) {
 	assert.True(t, op.WaitFailsOnStalled)
 	assert.True(t, op.Deletable)
 	assert.False(t, op.Sensitive)
-	assert.Empty(t, op.RedactPaths)
+	assert.Equal(t, [][]string{
+		{"spec", "helm", "values"}, {"spec", "helm", "templateValues"},
+		{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},
+	}, op.RedactPaths)
 	assert.Contains(t, op.DeleteCascadeWarning, "keepResources")
 
 	ws, ok := Lookup("fleet-workspaces")

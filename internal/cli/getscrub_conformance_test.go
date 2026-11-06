@@ -540,7 +540,9 @@ func TestGetColumnCountAllowlistHasNoStaleEntry(t *testing.T) {
 // every answer for the row's kind each value the kind's redaction hides
 // (each name also in a second letter case) beside values the redaction
 // leaves alone. The output must hold none of the hidden values and every
-// outside value. The secret kind shows its data and stringData.
+// outside value. The secret kind shows its data and stringData. A kind that
+// hides a path with a wildcard segment runs with lists of one item and of
+// two.
 func TestGetOutputHidesWhatThePreviewHides(t *testing.T) {
 	wr, err := buildWiredRegistry("v-test", nil)
 	require.NoError(t, err)
@@ -549,17 +551,20 @@ func TestGetOutputHidesWhatThePreviewHides(t *testing.T) {
 		entries[e.make(runDeps{}).Describe().Name] = e
 	}
 	for _, row := range getScrubRows() {
-		for _, format := range row.formats {
-			t.Run(row.name()+" "+format, func(t *testing.T) {
-				run := runScrubRow(t, wr.reg, entries, row.scrubRow, format)
-				requireScrubbed(t, row.scrubRow, format, run)
-				if strings.HasPrefix(format, output.TemplatePrefix) {
-					for _, v := range newPlantSet(scrubKindRow(t, row.kind)).outside {
-						assert.Contains(t, run.stdout, v, "%s: a value outside the redaction is missing from the output", row.name())
+		counts := plantItemCounts(row.kind)
+		for _, items := range counts {
+			for _, format := range row.formats {
+				t.Run(scrubSubtestName(row.name(), format, items, counts), func(t *testing.T) {
+					run := runScrubRow(t, wr.reg, entries, row.scrubRow, format, items)
+					requireScrubbed(t, row.scrubRow, format, run)
+					if strings.HasPrefix(format, output.TemplatePrefix) {
+						for _, v := range run.fake.plant.outside {
+							assert.Contains(t, run.stdout, v, "%s: a value outside the redaction is missing from the output", row.name())
+						}
 					}
-				}
-				requireSelectorReached(t, row, run)
-			})
+					requireSelectorReached(t, row, run)
+				})
+			}
 		}
 	}
 }

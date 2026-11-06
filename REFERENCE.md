@@ -698,6 +698,12 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   command's arguments joined with commas, and TARGET-NAMESPACE is the namespace
   of the pod that ran the command, where the Rancher UI's "Tgt Namespace" is
   the release's namespace.
+- The CLI hides the Helm `values` and `templateValues` of HelmOps, bundles
+  and bundle deployments from every output. For a HelmOp or a bundle it also
+  hides them in each item of `targets`. For a bundle deployment it hides them
+  in `options` and `stagedOptions`. A HelmOp can take values from a Secret
+  through `valuesFrom`. Those values are in the Secret, not in the HelmOp. The
+  HelmOp output shows only the `valuesFrom` reference.
 - `delete` exists only for kinds where deleting an object makes sense. Rancher
   settings and feature flags (`setting`, `feature`), role templates and global
   roles (`roletemplate`, `globalrole`), and objects a controller creates and

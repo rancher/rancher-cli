@@ -34,13 +34,27 @@ const (
 
 // scrubRequiredPaths are the paths a kind's redaction must hide, named here
 // apart from the kind row so a row that loses a path fails the table: the
-// value an ext token or kubeconfig create returns once, and the credential
-// fields of the v3 token and the user.
+// value an ext token or kubeconfig create returns once, the credential
+// fields of the v3 token and the user, and the Helm values and template
+// values of the helmop, bundle and bundledeployment kinds (in the helmop and
+// bundle paths, a "*" wildcard segment stands for every target).
 var scrubRequiredPaths = map[string][][]string{
 	"token":           {{"status", "bearerToken"}, {"status", "value"}},
 	"kubeconfig":      {{"status", "value"}},
 	"managementtoken": {{"token"}},
 	"user":            {{"password"}},
+	"helmop": {
+		{"spec", "helm", "values"}, {"spec", "helm", "templateValues"},
+		{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},
+	},
+	"bundle": {
+		{"spec", "helm", "values"}, {"spec", "helm", "templateValues"},
+		{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},
+	},
+	"bundledeployment": {
+		{"spec", "options", "helm", "values"}, {"spec", "options", "helm", "templateValues"},
+		{"spec", "stagedOptions", "helm", "values"}, {"spec", "stagedOptions", "helm", "templateValues"},
+	},
 }
 
 // plantSet is what the fake plants in its answers for one row: every value
@@ -53,8 +67,14 @@ type plantSet struct {
 	values []string
 	// outside are the values the redaction leaves alone.
 	outside []string
-	// pathValues maps a dotted path of the first-case planting to its value.
+	// pathValues maps a dotted path of the first-case planting to its value,
+	// for a path with no wildcard segment.
 	pathValues map[string]string
+	// items is the length of the list planted at each wildcard segment.
+	items int
+	// itemValues[i] maps the dotted path of the first-case planting ("*" for
+	// the wildcard segment) to the value planted in list item i.
+	itemValues []map[string]string
 	// payload is the Secret payload of a Sensitive row, in the form each
 	// value is planted; the values are also in values.
 	payload []payloadValue
@@ -83,7 +103,33 @@ func (p *plantSet) value() string {
 }
 
 func setNested(m map[string]any, path []string, v any) {
-	for _, k := range path[:len(path)-1] {
+	setNestedItem(m, path, 0, v)
+}
+
+// setNestedItem sets v at path in m, building the maps along it. At a "*"
+// segment it builds a list of maps long enough to have an item at index
+// `item` and continues in that item. It panics if path ends in "*".
+func setNestedItem(m map[string]any, path []string, item int, v any) {
+	if path[len(path)-1] == "*" {
+		panic(fmt.Sprintf("setNestedItem: path %v ends in a wildcard segment", path))
+	}
+	for i := 0; i < len(path)-1; i++ {
+		k := path[i]
+		if path[i+1] == "*" {
+			list, _ := m[k].([]any)
+			for len(list) <= item {
+				list = append(list, map[string]any{})
+			}
+			m[k] = list
+			child, ok := list[item].(map[string]any)
+			if !ok {
+				child = map[string]any{}
+				list[item] = child
+			}
+			m = child
+			i++
+			continue
+		}
 		child, ok := m[k].(map[string]any)
 		if !ok {
 			child = map[string]any{}
@@ -103,7 +149,21 @@ func upperPath(path []string) []string {
 }
 
 // plantValue plants one value at path and another at the upper-case path.
+// A path with a wildcard segment plants a list whose length is p.items; each
+// item gets its own values.
 func (p *plantSet) plantValue(path []string) {
+	if slices.Contains(path, "*") {
+		dotted := strings.Join(path, ".")
+		for i := range p.items {
+			v := p.value()
+			setNestedItem(p.fragment, path, i, v)
+			p.itemValues[i][dotted] = v
+			v2 := p.value()
+			setNestedItem(p.fragment, upperPath(path), i, v2)
+			p.values = append(p.values, v, v2)
+		}
+		return
+	}
 	v := p.value()
 	setNested(p.fragment, path, v)
 	p.pathValues[strings.Join(path, ".")] = v
@@ -113,10 +173,39 @@ func (p *plantSet) plantValue(path []string) {
 	p.values = append(p.values, v2)
 }
 
-// newPlantSet plants what the redaction of kind k hides. A nil k plants only
-// the outside values.
-func newPlantSet(k *kinds.Kind) *plantSet {
-	p := &plantSet{fragment: map[string]any{}, pathValues: map[string]string{}}
+// plantOutsideItems plants a value the redaction leaves alone in each list
+// item that the first wildcard segment of a path matches: outsideList, the
+// list's number, Item and the item's index, at the name scrubOutsideSpec,
+// beside the hidden values of the item.
+func (p *plantSet) plantOutsideItems(paths [][]string) {
+	var done []string
+	for _, path := range paths {
+		i := slices.Index(path, "*")
+		if i < 0 {
+			continue
+		}
+		prefix := append(slices.Clone(path[:i+1]), scrubOutsideSpec)
+		dotted := strings.Join(prefix, ".")
+		if slices.Contains(done, dotted) {
+			continue
+		}
+		done = append(done, dotted)
+		for item := range p.items {
+			v := fmt.Sprintf("outsideList%dItem%d", len(done)-1, item)
+			setNestedItem(p.fragment, prefix, item, v)
+			p.outside = append(p.outside, v)
+		}
+	}
+}
+
+// newPlantSet plants what the redaction of kind k hides, with a list of
+// length `items` at each wildcard segment. A nil k plants only the outside
+// values.
+func newPlantSet(k *kinds.Kind, items int) *plantSet {
+	p := &plantSet{fragment: map[string]any{}, pathValues: map[string]string{}, items: items}
+	for range items {
+		p.itemValues = append(p.itemValues, map[string]string{})
+	}
 	hides := false
 	if k != nil {
 		r := k.Redaction()
@@ -140,6 +229,7 @@ func newPlantSet(k *kinds.Kind) *plantSet {
 		for _, path := range paths {
 			p.plantValue(path)
 		}
+		p.plantOutsideItems(paths)
 		if k.GVR.Group == kinds.MachineConfigGroup {
 			if f, ok := kinds.MachineConfigFieldsFor(k.Name); ok {
 				for _, name := range f.Secret {
@@ -160,6 +250,30 @@ func newPlantSet(k *kinds.Kind) *plantSet {
 		p.outside = append(p.outside, "appliedC")
 	}
 	return p
+}
+
+// plantItemCounts returns the list lengths the rows of kind key run with: 1
+// and 2 when a path the kind must hide has a wildcard segment (code that
+// handles only the first item fails with 2), and 1 otherwise.
+func plantItemCounts(key string) []int {
+	k, ok := kinds.ByKey(key)
+	if !ok {
+		return []int{1}
+	}
+	paths := append(slices.Clone(k.RedactPaths), scrubRequiredPaths[k.Key]...)
+	if slices.ContainsFunc(paths, func(p []string) bool { return slices.Contains(p, "*") }) {
+		return []int{1, 2}
+	}
+	return []int{1}
+}
+
+// scrubSubtestName is the subtest name of a row in a format, with `items=N`
+// added when the row runs with more than one list length.
+func scrubSubtestName(name, format string, items int, counts []int) string {
+	if len(counts) > 1 {
+		return fmt.Sprintf("%s %s items=%d", name, format, items)
+	}
+	return name + " " + format
 }
 
 // needles are the forms of a planted value the fake's answers are scanned
@@ -220,7 +334,11 @@ type scrubFake struct {
 	updates  int
 	oidc     *oidcFixture
 	decorate func(obj *unstructured.Unstructured)
-	list     func(gvr schema.GroupVersionResource) []unstructured.Unstructured
+	// firstGet changes the response to the first Get of the row's kind only.
+	firstGet func(obj *unstructured.Unstructured)
+	// sent are copies of the objects the real (not dry-run) updates received.
+	sent []map[string]any
+	list func(gvr schema.GroupVersionResource) []unstructured.Unstructured
 	// lists are the List calls received, in order.
 	lists []scrubListCall
 }
@@ -336,7 +454,17 @@ func (f *scrubFake) Get(_ context.Context, gvr schema.GroupVersionResource, ns, 
 	if gvr.Resource == "roletemplates" {
 		obj.Object["context"] = "project"
 	}
-	return f.answer(gvr, obj), nil
+	out := f.answer(gvr, obj)
+	if f.isKind(gvr) {
+		f.mu.Lock()
+		hook := f.firstGet
+		f.firstGet = nil
+		f.mu.Unlock()
+		if hook != nil {
+			hook(out)
+		}
+	}
+	return out, nil
 }
 
 func (f *scrubFake) oidcClient(name string) *unstructured.Unstructured {
@@ -416,6 +544,7 @@ func (f *scrubFake) Update(_ context.Context, gvr schema.GroupVersionResource, _
 	if !dryRun {
 		f.mu.Lock()
 		f.updates++
+		f.sent = append(f.sent, obj.DeepCopy().Object)
 		f.mu.Unlock()
 	}
 	return f.answer(gvr, obj.DeepCopy()), nil
@@ -525,6 +654,12 @@ type scrubRow struct {
 	// purpose in a format; the row must show them and the other planted
 	// values stay hidden. nil for a row that shows none.
 	shown func(ps *plantSet, format string) []payloadValue
+	// dryRun runs the row as a dry run, which prints the Effect and its diff
+	// instead of the result of the apply.
+	dryRun bool
+	// check makes extra assertions for the row, beyond the scan for hidden
+	// values; nil for none.
+	check func(t *testing.T, format string, run scrubRun)
 }
 
 func (r scrubRow) name() string {
@@ -636,11 +771,106 @@ func manifestRow(variant, kind, body string, refused string) scrubRow {
 	return row
 }
 
+// plantedTargets returns a copy of the targets list the plant set holds.
+func plantedTargets(ps *plantSet) []any {
+	targets, _ := ps.fragment["spec"].(map[string]any)["targets"].([]any)
+	return deepCopyValue(targets).([]any)
+}
+
+// helmOpTargetsPatch is the input of a merge patch that sets spec.targets of
+// a HelmOp to the planted targets.
+func helmOpTargetsPatch(ps *plantSet) fieldCoverageInput {
+	body, err := json.Marshal(map[string]any{"spec": map[string]any{"targets": plantedTargets(ps)}})
+	if err != nil {
+		panic(err)
+	}
+	return fieldCoverageInput{
+		args:   []string{scrubObjectName},
+		values: map[string]string{"cluster": scrubCluster, "namespace": "ns1", "type": "merge", "patch": string(body)},
+	}
+}
+
+// helmOpTargetsManifest is a HelmOp manifest whose targets are the planted
+// targets.
+func helmOpTargetsManifest(ps *plantSet) string {
+	body, err := json.Marshal(map[string]any{
+		"apiVersion": "fleet.cattle.io/v1alpha1", "kind": "HelmOp",
+		"metadata": map[string]any{"name": "op", "namespace": "fleet-default"},
+		"spec":     map[string]any{"targets": plantedTargets(ps)},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return string(body)
+}
+
+// withoutTargetsAtFirstGet removes spec.targets from the response to the
+// first Get of the HelmOp; the patch then adds the list. Later responses
+// hold the planted targets.
+func withoutTargetsAtFirstGet(f *scrubFake, _ *plantSet) {
+	f.firstGet = func(obj *unstructured.Unstructured) { unstructured.RemoveNestedField(obj.Object, "spec", "targets") }
+}
+
+// requireTargetsDiffEntry asserts the dry run's diff has one entry at
+// /spec/targets, and that its `to` is a list with one item for each planted
+// target.
+func requireTargetsDiffEntry(t *testing.T, format string, run scrubRun) {
+	t.Helper()
+	env := decodeEnvelope(t, format, run.stdout)
+	data, _ := env["data"].(map[string]any)
+	diff, _ := data["diff"].([]any)
+	var entries []map[string]any
+	for _, e := range diff {
+		if m, _ := e.(map[string]any); m["path"] == "/spec/targets" {
+			entries = append(entries, m)
+		}
+	}
+	require.Len(t, entries, 1, "expected one /spec/targets entry in the diff, found %d: %v", len(entries), diff)
+	entry := entries[0]
+	to, ok := entry["to"].([]any)
+	require.True(t, ok, "the `to` of the /spec/targets entry is not a list: %v", entry["to"])
+	assert.Len(t, to, run.fake.plant.items)
+	assert.Positive(t, run.fake.served)
+}
+
+// requireTargetsSentIntact asserts the real update sent every planted value
+// of the targets as it was planted: the redaction of the preview must not
+// change the object the command sends.
+func requireTargetsSentIntact(t *testing.T, _ string, run scrubRun) {
+	t.Helper()
+	run.fake.mu.Lock()
+	defer run.fake.mu.Unlock()
+	require.Len(t, run.fake.sent, 1, "expected one real update")
+	targets, found, err := unstructured.NestedSlice(run.fake.sent[0], "spec", "targets")
+	require.NoError(t, err)
+	require.True(t, found, "the update sent no spec.targets")
+	ps := run.fake.plant
+	require.Len(t, targets, ps.items)
+	for i, target := range targets {
+		for _, field := range []string{"values", "templateValues"} {
+			got, _, _ := unstructured.NestedString(target.(map[string]any), "helm", field)
+			assert.Equal(t, ps.itemValues[i]["spec.targets.*.helm."+field], got, "target %d helm.%s changed in the update", i, field)
+		}
+	}
+}
+
+// dryRunReason is the reason of a dry-run row.
+const dryRunReason = "the result is the Effect of a dry run: its diff, never the object the server returns"
+
 // handWrittenScrubRows are the rows of the mutating commands that are not
 // generated from the kind table.
 func handWrittenScrubRows() []scrubRow {
 	oidcSecret := "oidcIntended1"
+	createHelmOp := in(nil, map[string]string{"filename": "m.yaml", "cluster": scrubCluster})
 	rows := []scrubRow{
+		{command: "patch helmop", variant: "targets dry run", kind: "helmop", class: classNames, reason: dryRunReason, dryRun: true,
+			input: helmOpTargetsPatch, setup: withoutTargetsAtFirstGet, check: requireTargetsDiffEntry},
+		{command: "patch helmop", variant: "targets apply", kind: "helmop", class: classEcho,
+			input: helmOpTargetsPatch, setup: withoutTargetsAtFirstGet, check: requireTargetsSentIntact},
+		{command: "create resource", variant: "helmop targets apply", kind: "helmop", class: classEcho,
+			input: createHelmOp, manifest: helmOpTargetsManifest},
+		{command: "create resource", variant: "helmop targets dry run", kind: "helmop", class: classNames, reason: dryRunReason, dryRun: true,
+			input: createHelmOp, manifest: helmOpTargetsManifest},
 		{command: "create project", kind: "project", class: classEcho, input: in([]string{"web"}, map[string]string{"cluster": scrubCluster})},
 		{command: "create namespace", kind: "namespace", class: classEcho, input: in([]string{"team-b"}, map[string]string{"cluster": scrubCluster})},
 		{command: "create secret", variant: "namespace", kind: "secret", class: classEcho,
@@ -789,11 +1019,12 @@ type scrubRun struct {
 }
 
 // runScrubRow runs one row through the pipeline with --apply and every gate
-// confirmed, against its own fake, and returns what it wrote.
-func runScrubRow(t *testing.T, reg *runtime.Registry, entries map[string]entry, row scrubRow, format string) scrubRun {
+// confirmed (as a dry run when the row says so), against its own fake that
+// plants lists whose length is `items`, and returns what it wrote.
+func runScrubRow(t *testing.T, reg *runtime.Registry, entries map[string]entry, row scrubRow, format string, items int) scrubRun {
 	t.Helper()
 	k := scrubKindRow(t, row.kind)
-	ps := newPlantSet(k)
+	ps := newPlantSet(k, items)
 	f := &scrubFake{kind: k, plant: ps}
 	if row.setup != nil {
 		row.setup(f, ps)
@@ -835,7 +1066,7 @@ func runScrubRow(t *testing.T, reg *runtime.Registry, entries map[string]entry, 
 	var out, errOut bytes.Buffer
 	status, ce := runtime.Run(t.Context(), cmd, input, runtime.IO{
 		Out: &out, Err: &errOut, Format: format,
-		Apply: true, Yes: true, AllowDeprecated: true,
+		Apply: true, Yes: true, AllowDeprecated: true, DryRun: row.dryRun,
 		Capability: scrubAllowAll{}, Projects: scrubProjects{},
 	}, reg.Binding(row.command))
 	return scrubRun{stdout: out.String(), stderr: errOut.String(), status: status, ce: ce, fake: f, absent: absent, intended: intended, shown: shown}
@@ -916,7 +1147,7 @@ func requireScrubbed(t *testing.T, row scrubRow, format string, run scrubRun) {
 			assert.Contains(t, leaves, p.served, "%s: a value the row shows on purpose is missing from data", row.name())
 		}
 		if row.class == classEcho {
-			for _, v := range newPlantSet(scrubKindRow(t, row.kind)).outside {
+			for _, v := range run.fake.plant.outside {
 				assert.Contains(t, leaves, v, "%s: a value outside the redaction is missing from data", row.name())
 			}
 		}
@@ -975,7 +1206,8 @@ func TestResultScrubRowsCoverEveryMutatingCommand(t *testing.T) {
 // that plants, in every answer for the row's kind, each value the kind's
 // redaction hides (each name also in a second letter case) beside values the
 // redaction leaves alone. The result and everything else written must hold
-// none of the hidden values and every outside value.
+// none of the hidden values and every outside value. A kind that hides a
+// path with a wildcard segment runs with lists of one item and of two.
 func TestApplyResultHidesWhatThePreviewHides(t *testing.T) {
 	wr, err := buildWiredRegistry("v-test", nil)
 	require.NoError(t, err)
@@ -988,11 +1220,17 @@ func TestApplyResultHidesWhatThePreviewHides(t *testing.T) {
 		if formats == nil {
 			formats = []string{"json", "yaml"}
 		}
-		for _, format := range formats {
-			t.Run(row.name()+" "+format, func(t *testing.T) {
-				run := runScrubRow(t, wr.reg, entries, row, format)
-				requireScrubbed(t, row, format, run)
-			})
+		counts := plantItemCounts(row.kind)
+		for _, items := range counts {
+			for _, format := range formats {
+				t.Run(scrubSubtestName(row.name(), format, items, counts), func(t *testing.T) {
+					run := runScrubRow(t, wr.reg, entries, row, format, items)
+					requireScrubbed(t, row, format, run)
+					if row.check != nil {
+						row.check(t, format, run)
+					}
+				})
+			}
 		}
 	}
 }

@@ -169,7 +169,9 @@ type Kind struct {
 	// carry live credentials. The root-level token field on
 	// management.cattle.io/v3 Token is the canonical example. Hiding is removal
 	// in JSON/YAML output (get and mutation results) and "<redacted>" in diff
-	// entries.
+	// entries. A "*" segment is a wildcard: it matches any one segment of
+	// an object path. {"spec", "targets", "*", "helm", "values"} hides the
+	// values of every target.
 	RedactPaths [][]string
 	// NoCreateViaManifest, when non-empty, prevents `create resource` from
 	// accepting a manifest whose resolved kind matches this row. The value is
@@ -571,7 +573,11 @@ var table = []Kind{
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "HelmOp", Scope: Management, Deletable: true, WaitDefault: "condition=Ready",
 		WaitFailsOnStalled:   true,
 		DeleteCascadeWarning: "deleting this HelmOp makes Fleet delete its Bundles and their BundleDeployments, which uninstalls the chart from every target cluster unless spec.keepResources is true",
-		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		RedactPaths: [][]string{
+			{"spec", "helm", "values"}, {"spec", "helm", "templateValues"},
+			{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},
+		},
+		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "bundle", Name: "bundle", Aliases: []string{"bundles"},
@@ -579,14 +585,22 @@ var table = []Kind{
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Bundle", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
 		WaitFailsOnStalled: true,
 		NoDeleteReason:     "this CLI does not delete bundles; deleting a GitRepo deletes the bundles Fleet created from it",
-		Binding:            safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		RedactPaths: [][]string{
+			{"spec", "helm", "values"}, {"spec", "helm", "templateValues"},
+			{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},
+		},
+		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "bundledeployment", Name: "bundledeployment", Aliases: []string{"bundledeployments"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundledeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "BundleDeployment", Scope: Management, Deletable: false,
 		NoDeleteReason: "Fleet creates and manages it from a bundle; deleting a GitRepo deletes its bundles and their bundle deployments",
-		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		RedactPaths: [][]string{
+			{"spec", "options", "helm", "values"}, {"spec", "options", "helm", "templateValues"},
+			{"spec", "stagedOptions", "helm", "values"}, {"spec", "stagedOptions", "helm", "templateValues"},
+		},
+		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "clustergroup", Name: "clustergroup", Aliases: []string{"clustergroups"},

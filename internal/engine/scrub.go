@@ -3,6 +3,7 @@ package engine
 import (
 	"maps"
 	"slices"
+	"strconv"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 )
@@ -30,13 +31,15 @@ func scrubResult(obj map[string]any, r kinds.Redaction) map[string]any {
 	return ScrubObject(obj, r)
 }
 
-// ScrubObject returns obj without every map entry whose path the redaction
-// covers, so an object a command shows never holds a value the redaction
-// hides. The maps along a removed entry are copied before they change, so
-// obj, which the client may share, is never modified; an object with
-// nothing to remove is returned as it is. A nil value stays and arrays are
-// not entered: a hidden path is a sequence of object keys and never
-// addresses an array item.
+// ScrubObject returns obj without every map entry or list item whose path
+// the redaction covers, so an object a command shows never holds a value the
+// redaction hides. A list item's path segment is its index. The maps and
+// lists on the path to a removed value are copied before they change, so
+// obj, which the client may share, is never modified; an object with nothing
+// to remove is returned as it is. A nil value stays. obj must be JSON-shaped:
+// `map[string]any`, `[]any` and scalars, as JSON decoding produces. A typed
+// Go slice or map, such as `[]map[string]any`, is not searched; a value below
+// one is not removed.
 func ScrubObject(obj map[string]any, r kinds.Redaction) map[string]any {
 	if !r.Hides() {
 		return obj
@@ -47,6 +50,7 @@ func ScrubObject(obj map[string]any, r kinds.Redaction) map[string]any {
 
 // removeCovered returns m with every entry whose path (keys, extended by the
 // entry's key) covered reports true removed, and whether anything changed.
+// It searches the maps and lists below m; m is never modified.
 func removeCovered(keys []string, m map[string]any, covered func([]string) bool) (map[string]any, bool) {
 	var out map[string]any
 	for k, child := range m {
@@ -61,11 +65,7 @@ func removeCovered(keys []string, m map[string]any, covered func([]string) bool)
 			delete(out, k)
 			continue
 		}
-		childMap, ok := child.(map[string]any)
-		if !ok {
-			continue
-		}
-		next, changed := removeCovered(childKeys, childMap, covered)
+		next, changed := removeCoveredIn(childKeys, child, covered)
 		if !changed {
 			continue
 		}
@@ -76,6 +76,50 @@ func removeCovered(keys []string, m map[string]any, covered func([]string) bool)
 	}
 	if out == nil {
 		return m, false
+	}
+	return out, true
+}
+
+// removeCoveredIn calls removeCovered for a map and removeCoveredItems for a
+// list, and returns any other value unchanged.
+func removeCoveredIn(keys []string, v any, covered func([]string) bool) (any, bool) {
+	switch v := v.(type) {
+	case map[string]any:
+		return removeCovered(keys, v, covered)
+	case []any:
+		return removeCoveredItems(keys, v, covered)
+	}
+	return v, false
+}
+
+// removeCoveredItems returns items after two removals: an item is removed
+// when covered reports true for its path (keys, extended by the item's
+// index), and covered values below the other items are removed. It also
+// returns whether anything changed. The items after a removed item get lower
+// indexes. A nil item stays. items is never modified; a list with nothing to
+// remove is returned as it is.
+func removeCoveredItems(keys []string, items []any, covered func([]string) bool) ([]any, bool) {
+	var out []any
+	for i, item := range items {
+		itemKeys := append(slices.Clone(keys), strconv.Itoa(i))
+		removed := item != nil && covered(itemKeys)
+		next, changed := item, false
+		if !removed {
+			next, changed = removeCoveredIn(itemKeys, item, covered)
+		}
+		if out == nil {
+			if !removed && !changed {
+				continue
+			}
+			out = make([]any, i, len(items))
+			copy(out, items[:i])
+		}
+		if !removed {
+			out = append(out, next)
+		}
+	}
+	if out == nil {
+		return items, false
 	}
 	return out, true
 }
@@ -113,39 +157,61 @@ func deletePaths(m map[string]any, paths [][]string) {
 	}
 }
 
-// replaceCovered returns v with every map value whose path (keys, extended
-// by the map keys below v) covered reports true replaced by with, and
-// whether anything was replaced. The maps along a replaced path are copied
-// before they change, so the original value, which a caller may share with
-// the objects a patch fetched, is never modified; an unchanged v is
-// returned as it is. A nil value stays nil. Arrays are not entered: a
-// covered path is a sequence of object keys and never addresses an array
-// item.
+// replaceCovered returns v with every map value or list item whose path
+// (keys, extended by the map keys and list indexes below v) covered reports
+// true replaced by with, and whether anything was replaced. The maps and
+// lists on the path to a replaced value are copied before they change, so the
+// original value, which a caller may share with the objects a patch
+// fetched, is never modified; an unchanged v is returned as it is. A nil
+// value stays nil.
 func replaceCovered(keys []string, v any, covered func([]string) bool, with any) (any, bool) {
-	m, ok := v.(map[string]any)
-	if !ok {
-		return v, false
-	}
-	var out map[string]any
-	for k, child := range m {
-		if child == nil {
-			continue
-		}
-		childKeys := append(slices.Clone(keys), k)
-		next := with
-		if !covered(childKeys) {
-			var changed bool
-			if next, changed = replaceCovered(childKeys, child, covered, with); !changed {
+	switch v := v.(type) {
+	case map[string]any:
+		var out map[string]any
+		for k, child := range v {
+			if child == nil {
 				continue
 			}
+			childKeys := append(slices.Clone(keys), k)
+			next := with
+			if !covered(childKeys) {
+				var changed bool
+				if next, changed = replaceCovered(childKeys, child, covered, with); !changed {
+					continue
+				}
+			}
+			if out == nil {
+				out = maps.Clone(v)
+			}
+			out[k] = next
 		}
 		if out == nil {
-			out = maps.Clone(m)
+			return v, false
 		}
-		out[k] = next
+		return out, true
+	case []any:
+		var out []any
+		for i, item := range v {
+			if item == nil {
+				continue
+			}
+			itemKeys := append(slices.Clone(keys), strconv.Itoa(i))
+			next := with
+			if !covered(itemKeys) {
+				var changed bool
+				if next, changed = replaceCovered(itemKeys, item, covered, with); !changed {
+					continue
+				}
+			}
+			if out == nil {
+				out = slices.Clone(v)
+			}
+			out[i] = next
+		}
+		if out == nil {
+			return v, false
+		}
+		return out, true
 	}
-	if out == nil {
-		return v, false
-	}
-	return out, true
+	return v, false
 }

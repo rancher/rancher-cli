@@ -139,6 +139,8 @@ import (
 //     lost events are refused.
 //   - receiver: an ordinary word (a method receiver); the replaced sense, a
 //     reader of usage events, cannot be told from it by pattern.
+//   - star: an ordinary word; the replaced sense (the "*" of a hidden path)
+//     cannot be told from it by pattern.
 func TestRejectedWordingStaysOut(t *testing.T) {
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -357,6 +359,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"kinds array"}, "kind names"},
 	{[]string{"layout is corrupt"}, "the data directory is damaged"},
 	{[]string{"legacy spelling"}, "older name"},
+	{[]string{"list item segment"}, "wildcard segment"},
 	{[]string{"listing is exhausted"}, "no published release found in the release listing"},
 	{[]string{"lose events", "lost events"}, "dropped events"},
 	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},

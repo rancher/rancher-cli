@@ -758,7 +758,12 @@ Never present a role list as permissions.
   cluster), and `--namespace` for one app or operation. They are read-only:
   patch, create and delete are refused with `VALIDATION` before any request. The
   CLI hides an app's Helm values, chart default values and install notes, and
-  an operation's `status.token`, from every output.
+  an operation's `status.token`, from every output. It also hides the Helm
+  `values` and `templateValues` of HelmOps, bundles and bundle deployments:
+  for a HelmOp or a bundle, in each item of `targets` too; for a bundle
+  deployment, in `options` and `stagedOptions`. A HelmOp can take values from
+  a Secret through `valuesFrom`. Those values are in the Secret, not in the
+  HelmOp. The HelmOp output shows only the `valuesFrom` reference.
 - `rancher create user <username> --password-stdin` creates a local user (a
   `v3 User`, its password secret, and a `v3 GlobalRoleBinding` for each global
   role the server marks `newUserDefault`, `user` on a default install) - the

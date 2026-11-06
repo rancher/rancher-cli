@@ -444,6 +444,16 @@ func TestCreatePreviewHidesSecretValues(t *testing.T) {
 				"apiVersion: rke-machine-config.cattle.io/v1\nkind: Amazonec2Config\nmetadata:\n  name: aws\n  namespace: fleet-default\n  annotations:\n    kubectl.kubernetes.io/last-applied-configuration: 'annot-secret-6'\nsecretKey: key-secret-7\nsshKeyContents: ssh-secret-8\nregion: us-east-1\n"}), in)
 		}, []string{"annot-secret-6", "key-secret-7", "ssh-secret-8"},
 			[]string{"/secretKey", "/sshKeyContents", "/metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration"}},
+		{"helmop manifest", func(t *testing.T) previewResult {
+			t.Helper()
+			in := fieldCoverageInput{values: map[string]string{"filename": "m.yaml"}}
+			return planPreview(t, t.Context(), resources.NewCreate(&fieldRecorder{}, fieldCoverageSource{
+				"apiVersion: fleet.cattle.io/v1alpha1\nkind: HelmOp\nmetadata:\n  name: op\n  namespace: fleet-default\nspec:\n  targets:\n" +
+					"  - name: a\n    helm:\n      values:\n        password: helm-secret-19\n      templateValues:\n        token: helm-secret-20\n" +
+					"  - name: b\n    helm:\n      values:\n        password: helm-secret-21\n      templateValues:\n        token: helm-secret-22\n"}), in)
+		}, []string{"helm-secret-19", "helm-secret-20", "helm-secret-21", "helm-secret-22"},
+			[]string{"/spec/targets/0/helm/values/password", "/spec/targets/0/helm/templateValues/token",
+				"/spec/targets/1/helm/values/password", "/spec/targets/1/helm/templateValues/token"}},
 		{"ssh key", func(t *testing.T) previewResult {
 			t.Helper()
 			return machineConfigCase("", []string{"digitaloceanconfig", "w"}, nil, []string{"sshKeyContents=ssh-secret-9"}, nil).plan(t)

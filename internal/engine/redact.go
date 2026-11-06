@@ -15,8 +15,12 @@ const Redacted = "<redacted>"
 // that has a value becomes Redacted and a missing side stays nil, so an
 // addition still reads as an addition and a removal as a removal. An entry
 // above a hidden path (a whole object or a whole metadata map) carries a
-// copy of its value with the hidden values replaced. The patch preview and
-// every create preview hide values through this one function.
+// copy of its value with the hidden values replaced. The From and To values
+// of each entry must be JSON-shaped: `map[string]any`, `[]any` and scalars,
+// as JSON decoding produces. A typed Go slice or map, such as
+// `[]map[string]any`, is not searched; a value below one is not replaced. The
+// patch preview and every create preview hide values through this one
+// function.
 func RedactDiff(diff []safety.DiffEntry, r kinds.Redaction) []safety.DiffEntry {
 	if !r.Hides() {
 		return diff

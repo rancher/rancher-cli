@@ -2,11 +2,14 @@ package engine
 
 import (
 	"reflect"
+	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // TestScrubResultRemovesWhatTheRedactionCovers asserts the result scrub
@@ -80,9 +83,9 @@ func TestScrubResultRemovesWhatTheRedactionCovers(t *testing.T) {
 	}
 }
 
-// TestScrubResultKeepsNilValuesAndArrays asserts a nil value stays and an
-// array is not entered, so a path below an array item is never reached.
-func TestScrubResultKeepsNilValuesAndArrays(t *testing.T) {
+// TestScrubResultKeepsNilValuesAndLists asserts a nil value stays, and a list
+// is left as it is when no hidden path covers anything in it.
+func TestScrubResultKeepsNilValuesAndLists(t *testing.T) {
 	t.Parallel()
 	obj := map[string]any{
 		"data": nil,
@@ -92,10 +95,121 @@ func TestScrubResultKeepsNilValuesAndArrays(t *testing.T) {
 		"spec": map[string]any{"data": map[string]any{"k": "v"}},
 	}
 	got := scrubResult(obj, rowRedaction(t, "secret"))
-	assert.Equal(t, obj["items"], got["items"], "an array is left alone")
+	assert.Equal(t, obj["items"], got["items"], "a list that holds no hidden value is left alone")
 	assert.Contains(t, got, "data", "a nil value stays")
 	assert.Nil(t, got["data"])
 	assert.Equal(t, obj["spec"], got["spec"], "only a top-level payload is hidden")
+}
+
+// helmOpWithTargets is a HelmOp object whose targets hold Helm values in
+// the items listed in withValues and only a name in the others.
+func helmOpWithTargets(count int, withValues ...int) map[string]any {
+	targets := make([]any, count)
+	for i := range targets {
+		target := map[string]any{"name": "t" + strconv.Itoa(i)}
+		if slices.Contains(withValues, i) {
+			target["helm"] = map[string]any{
+				"values":         map[string]any{"password": "s3cret" + strconv.Itoa(i)},
+				"templateValues": map[string]any{"token": "t0ken" + strconv.Itoa(i)},
+				"valuesFrom":     []any{map[string]any{"secretKeyRef": map[string]any{"name": "vals"}}},
+			}
+		}
+		targets[i] = target
+	}
+	return map[string]any{
+		"metadata": map[string]any{"name": "op"},
+		"spec": map[string]any{
+			"helm":    map[string]any{"chart": "c", "values": map[string]any{"password": "s3cretTop"}},
+			"targets": targets,
+		},
+	}
+}
+
+// TestScrubObjectRemovesHiddenValuesFromListItems asserts a hidden path with
+// a wildcard segment removes the values and template values from each
+// target that has them, keeps every other key and every other item, and
+// leaves the input object, its lists and their items unchanged.
+func TestScrubObjectRemovesHiddenValuesFromListItems(t *testing.T) {
+	t.Parallel()
+	scrubbedTarget := func(i int, hadValues bool) map[string]any {
+		target := map[string]any{"name": "t" + strconv.Itoa(i)}
+		if hadValues {
+			target["helm"] = map[string]any{
+				"valuesFrom": []any{map[string]any{"secretKeyRef": map[string]any{"name": "vals"}}},
+			}
+		}
+		return target
+	}
+	for name, tc := range map[string]struct {
+		obj  map[string]any
+		want []any
+	}{
+		"one item of two":    {helmOpWithTargets(2, 1), []any{scrubbedTarget(0, false), scrubbedTarget(1, true)}},
+		"two items of two":   {helmOpWithTargets(2, 0, 1), []any{scrubbedTarget(0, true), scrubbedTarget(1, true)}},
+		"two items of three": {helmOpWithTargets(3, 0, 2), []any{scrubbedTarget(0, true), scrubbedTarget(1, false), scrubbedTarget(2, true)}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			before := runtime.DeepCopyJSON(tc.obj)
+			got := ScrubObject(tc.obj, rowRedaction(t, "helmop"))
+			assert.Equal(t, map[string]any{
+				"metadata": map[string]any{"name": "op"},
+				"spec": map[string]any{
+					"helm":    map[string]any{"chart": "c"},
+					"targets": tc.want,
+				},
+			}, got)
+			assert.Equal(t, before, tc.obj, "the input object, its lists and their items are unchanged")
+		})
+	}
+}
+
+// TestScrubObjectReturnsAListWithNothingToRemoveAsItIs asserts an object
+// whose targets hold no hidden value is returned as the same map, with the
+// same list.
+func TestScrubObjectReturnsAListWithNothingToRemoveAsItIs(t *testing.T) {
+	t.Parallel()
+	obj := helmOpWithTargets(2)
+	delete(obj["spec"].(map[string]any)["helm"].(map[string]any), "values")
+	got := ScrubObject(obj, rowRedaction(t, "helmop"))
+	assert.Equal(t, reflect.ValueOf(obj).Pointer(), reflect.ValueOf(got).Pointer(), "the same map")
+	targets := obj["spec"].(map[string]any)["targets"]
+	assert.Equal(t, reflect.ValueOf(targets).Pointer(), reflect.ValueOf(got["spec"].(map[string]any)["targets"]).Pointer(), "the same list")
+}
+
+// TestScrubObjectRemovesListItemsAndSearchesNestedLists asserts that a hidden
+// path ending at a list item removes the item and gives the later items
+// lower indexes, that a list inside a list is searched, and that a string
+// item or a nil item stays when no hidden path covers it.
+func TestScrubObjectRemovesListItemsAndSearchesNestedLists(t *testing.T) {
+	t.Parallel()
+	r := kinds.RowlessRedaction(testGVR, "a test resource with no kind row",
+		[]string{"spec", "tokens", "1"},
+		[]string{"spec", "all", "*"},
+		[]string{"spec", "matrix", "*", "*", "secret"},
+		[]string{"spec", "mixed", "*", "secret"},
+	)
+	obj := map[string]any{"spec": map[string]any{
+		"tokens": []any{"a", "b", "c"},
+		"all":    []any{"a", "b"},
+		"matrix": []any{
+			[]any{map[string]any{"secret": "s3cretA", "keep": "k1"}},
+			[]any{map[string]any{"keep": "k2"}, map[string]any{"secret": "s3cretB"}},
+		},
+		"mixed": []any{"plain", nil, map[string]any{"secret": "s3cretC", "keep": "k3"}},
+	}}
+	before := runtime.DeepCopyJSON(obj)
+	got := ScrubObject(obj, r)
+	assert.Equal(t, map[string]any{"spec": map[string]any{
+		"tokens": []any{"a", "c"},
+		"all":    []any{},
+		"matrix": []any{
+			[]any{map[string]any{"keep": "k1"}},
+			[]any{map[string]any{"keep": "k2"}, map[string]any{}},
+		},
+		"mixed": []any{"plain", nil, map[string]any{"keep": "k3"}},
+	}}, got)
+	assert.Equal(t, before, obj, "the input object is unchanged")
 }
 
 // TestScrubResultLeavesTheOriginalObjectUnchanged asserts the scrub copies
