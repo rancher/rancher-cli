@@ -1251,6 +1251,15 @@ answer that comes from the install mode gets its own known-difference cause,
 and compares it with the goldens recorded under `container`; it never
 records goldens.
 
+**An upcoming minor's helm boot uses the chart built from the image's own
+commit.** `E2E_FIDELITY_UPCOMING_BOOT=helm` boots `rancher/rancher-server`
+of the head build and installs the head chart whose name carries the image's
+`org.opencontainers.image.revision` label, because a head build has no chart
+release to pin by sha256 and a chart from another commit can install a
+different server. The node container runs the k3s that the image names in
+`CATTLE_K3S_VERSION`. The default boot of an upcoming minor stays
+`container`.
+
 **Dynamic client, not typed Rancher structs.** Every resource flows through
 the Kubernetes dynamic client and unstructured objects; the CLI imports no
 rancher/rancher code. One binary serves many server versions - the CLI

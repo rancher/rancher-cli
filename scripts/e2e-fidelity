@@ -20,6 +20,9 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # chart installed into it; a helm pin also names <PREFIX>_CHART (archive URL
 # and sha256) and <PREFIX>_LOCAL_K3S_IMAGE (the k3s image of the node
 # container), and an image of the rancher-server repository is always helm.
+# The upcoming-minor oracle uses the container boot unless
+# E2E_FIDELITY_UPCOMING_BOOT=helm, which boots rancher/rancher-server from its
+# chart in a node container.
 ORACLE_IMAGE="rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea"
 ORACLE_BOOT="container"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
@@ -58,6 +61,11 @@ GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # environment is read from the registry API, with no layer pull.
 # E2E_FIDELITY_UPCOMING_IMAGE and E2E_FIDELITY_K3S_IMAGE override the two
 # images; E2E_FIDELITY_PRINT_IMAGES=1 prints the choice and boots nothing.
+# E2E_FIDELITY_UPCOMING_BOOT=helm boots rancher/rancher-server instead (the
+# image follows the same tag rule) from the chart built from the same commit:
+# the node container runs the k3s its CATTLE_K3S_VERSION names, and the
+# downstream keeps the rule above. E2E_FIDELITY_UPCOMING_CHART
+# (<URL>@sha256:<64 hex>, only with helm) names another chart archive.
 # Boot, bootstrap, and downstream-proxy smoke; with E2E_FIDELITY_DRIFT=1 the
 # smoke is followed by a drift run: every probe that runs on the minor is
 # compared with the community goldens and the minor's known-differences file.
@@ -71,7 +79,12 @@ GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # E2E_FIDELITY_RANCHER_REPO and E2E_FIDELITY_REGISTRY_URL exist for the tests,
 # which point them at a local git repository and a local registry stand-in.
 UPCOMING_REPO="rancher/rancher"
+UPCOMING_SERVER_REPO="rancher/rancher-server"
 UPCOMING_K3S_REPO="rancher/k3s"
+# The public name of the bucket Rancher's push workflow writes head charts to.
+# Rancher's source does not name this host; E2E_FIDELITY_UPCOMING_CHART is the
+# way out when it changes.
+UPCOMING_CHART_BASE="https://charts.optimus.rancher.io/server-charts"
 RANCHER_REPO="${E2E_FIDELITY_RANCHER_REPO:-https://github.com/rancher/rancher}"
 REGISTRY_URL="${E2E_FIDELITY_REGISTRY_URL:-https://registry-1.docker.io}"
 
@@ -101,6 +114,8 @@ MINOR="${E2E_FIDELITY_MINOR:-}"
 UPCOMING_IMAGE="${E2E_FIDELITY_UPCOMING_IMAGE:-}"
 K3S_OVERRIDE="${E2E_FIDELITY_K3S_IMAGE:-}"
 PRINT_IMAGES="${E2E_FIDELITY_PRINT_IMAGES:-}"
+UPCOMING_BOOT="${E2E_FIDELITY_UPCOMING_BOOT:-}"
+UPCOMING_CHART="${E2E_FIDELITY_UPCOMING_CHART:-}"
 if [ -n "${E2E_FIDELITY_HEAD:-}" ]; then
   echo "error: E2E_FIDELITY_HEAD is no longer read; set E2E_FIDELITY_MINOR=<major>.<minor> (for example 2.16)" >&2
   exit 1
@@ -135,7 +150,7 @@ if [ -n "${MINOR}" ] && [ "${E2E_FIDELITY_PRIME:-}" = "1" ]; then
   exit 1
 fi
 if [ -z "${MINOR}" ]; then
-  for var in E2E_FIDELITY_UPCOMING_IMAGE E2E_FIDELITY_K3S_IMAGE E2E_FIDELITY_PRINT_IMAGES; do
+  for var in E2E_FIDELITY_UPCOMING_IMAGE E2E_FIDELITY_K3S_IMAGE E2E_FIDELITY_PRINT_IMAGES E2E_FIDELITY_UPCOMING_BOOT E2E_FIDELITY_UPCOMING_CHART; do
     # PRINT_IMAGES counts only as 1, as it does with a minor.
     if [ "${var}" = E2E_FIDELITY_PRINT_IMAGES ] && [ "${!var:-}" != 1 ]; then
       continue
@@ -149,6 +164,10 @@ fi
 minor_pattern='^[1-9][0-9]*\.(0|[1-9][0-9]*)$'
 if [ -n "${MINOR}" ] && ! [[ "${MINOR}" =~ ${minor_pattern} ]]; then
   echo "error: E2E_FIDELITY_MINOR=${MINOR} is not <major>.<minor>; for example 2.16" >&2
+  exit 1
+fi
+if [ -n "${UPCOMING_BOOT}" ] && [ "${UPCOMING_BOOT}" != container ] && [ "${UPCOMING_BOOT}" != helm ]; then
+  echo "error: E2E_FIDELITY_UPCOMING_BOOT=${UPCOMING_BOOT} is not container or helm; set one of them or unset it" >&2
   exit 1
 fi
 DRIFT=0
@@ -236,6 +255,30 @@ check_image_format() {
 }
 [ -z "${K3S_OVERRIDE}" ] || check_image_format E2E_FIDELITY_K3S_IMAGE "${K3S_OVERRIDE}" "${k3s_override_pattern}" 0 '<repo>:<tag>@sha256:<64 hex>'
 [ -z "${UPCOMING_IMAGE}" ] || check_image_format E2E_FIDELITY_UPCOMING_IMAGE "${UPCOMING_IMAGE}" "${upcoming_override_pattern}" 1 '<namespace>/<repo>:<tag>@sha256:<64 hex>'
+# The chart override may be an http URL: the sha256 checks the archive's content.
+upcoming_chart_pattern='^https?://[^[:space:]@]+@sha256:[0-9a-f]{64}$'
+if [ -n "${UPCOMING_CHART}" ]; then
+  if [ "${UPCOMING_BOOT}" != helm ]; then
+    echo "error: E2E_FIDELITY_UPCOMING_CHART is set without E2E_FIDELITY_UPCOMING_BOOT=helm; the container boot installs no chart" >&2
+    exit 1
+  fi
+  if ! [[ "${UPCOMING_CHART}" =~ ${upcoming_chart_pattern} ]]; then
+    echo "error: E2E_FIDELITY_UPCOMING_CHART=${UPCOMING_CHART} is not <URL>@sha256:<64 hex>" >&2
+    exit 1
+  fi
+fi
+if [ -n "${UPCOMING_IMAGE}" ]; then
+  upcoming_image_repo="${UPCOMING_IMAGE%%@*}"
+  upcoming_image_repo="${upcoming_image_repo%:*}"
+  if [ "${upcoming_image_repo##*/}" = rancher-server ] && [ "${UPCOMING_BOOT}" != helm ]; then
+    echo "error: E2E_FIDELITY_UPCOMING_IMAGE=${UPCOMING_IMAGE} names a rancher-server image, which the container boot cannot start; set E2E_FIDELITY_UPCOMING_BOOT=helm" >&2
+    exit 1
+  fi
+  if [ "${upcoming_image_repo##*/}" != rancher-server ] && [ "${UPCOMING_BOOT}" = helm ]; then
+    echo "error: E2E_FIDELITY_UPCOMING_IMAGE=${UPCOMING_IMAGE} is not a rancher-server image; E2E_FIDELITY_UPCOMING_BOOT=helm boots only rancher-server" >&2
+    exit 1
+  fi
+fi
 # SMOKE_PROFILE names the opt-in oracle that gets the boot smoke instead of
 # the golden suite; empty for the community pin.
 SMOKE_PROFILE=""
@@ -268,6 +311,7 @@ elif [ -n "${MINOR}" ]; then
       exit 1
       ;;
   esac
+  BOOT="${UPCOMING_BOOT:-container}"
   CONTAINER="rancher-cli-e2e-fidelity-v${MINOR}"
   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity-v${MINOR}"
   SMOKE_PROFILE="v${MINOR}"
@@ -329,12 +373,16 @@ HELM_ASSETS_IMAGE=""
 LOCAL_K3S_SOURCE=""
 CERT_MANAGER_IMAGES="[]"
 DL_DIR=""
-if [ "${BOOT}" = "helm" ]; then
+platform=""
+# check_helm_profile stops a helm boot that lacks its pins and splits the
+# server image into the parts the chart values and the checks use. The chart
+# and the node container image of an upcoming minor are known only after its
+# server image is read, so its run calls this after that read.
+check_helm_profile() {
   if [ -z "${CHART_PIN}" ] || [ -z "${LOCAL_K3S_PIN}" ]; then
     echo "error: a helm boot needs a chart pin and a pin for the k3s image of the node container in the profile's lines of scripts/e2e-fidelity" >&2
     exit 1
   fi
-  # Split the server image into the parts the chart values and the checks use.
   IMAGE_NAME="${ORACLE_IMAGE%%@*}"
   IMAGE_DIGEST="${ORACLE_IMAGE#*@}"
   IMAGE_TAG="${IMAGE_NAME##*:}"
@@ -351,6 +399,9 @@ if [ "${BOOT}" = "helm" ]; then
       exit 1
       ;;
   esac
+}
+if [ "${BOOT}" = "helm" ] && [ -z "${MINOR}" ]; then
+  check_helm_profile
 fi
 
 for tool in docker curl openssl python3 go; do
@@ -365,7 +416,9 @@ docker info >/dev/null 2>&1 || { echo "error: docker daemon not reachable" >&2; 
 # with no layer pull: <repo> <ref> <platform> <mode>. ref is a tag or a
 # sha256 digest; platform is <os>/<arch>; mode "env" also reads the image
 # environment of that platform's image, "digest" stops at the digest. Exit 0
-# prints one JSON line {"digest","serverVersion","k3sVersion"}; exit 3 means
+# prints one JSON line {"digest","serverVersion","k3sVersion","revision"},
+# where revision is the image's org.opencontainers.image.revision label, empty
+# when the image has none; exit 3 means
 # the tag is not published; exit 1 prints one error line on stderr. Every
 # manifest list, manifest and config blob is checked against the digest it
 # was fetched by.
@@ -428,8 +481,8 @@ def check_digest(label, digest, body):
         raise ReadError("%s %s does not match its digest (got %s)" % (label, digest, got))
 
 
-def emit(digest, server_version, k3s_version):
-    print(json.dumps({"digest": digest, "serverVersion": server_version, "k3sVersion": k3s_version}))
+def emit(digest, server_version, k3s_version, revision=""):
+    print(json.dumps({"digest": digest, "serverVersion": server_version, "k3sVersion": k3s_version, "revision": revision}))
 
 
 def read():
@@ -492,10 +545,12 @@ def read():
     body = get("/v2/%s/blobs/%s" % (repo, config_digest), None, token)
     check_digest("config blob", config_digest, body)
     env = {}
-    for item in (json.loads(body).get("config") or {}).get("Env") or []:
+    config = json.loads(body).get("config") or {}
+    for item in config.get("Env") or []:
         key, _, value = item.partition("=")
         env[key] = value
-    emit(digest, env.get("CATTLE_SERVER_VERSION", ""), env.get("CATTLE_K3S_VERSION", ""))
+    revision = (config.get("Labels") or {}).get("org.opencontainers.image.revision", "")
+    emit(digest, env.get("CATTLE_SERVER_VERSION", ""), env.get("CATTLE_K3S_VERSION", ""), revision)
 
 
 try:
@@ -689,15 +744,25 @@ pull_or_stop() {
     { echo "error: could not pull $1; nothing was removed" >&2; exit 1; }
 }
 
+# CURL_DOWNLOAD_FLAGS are the curl flags of every download of a helm boot:
+# fail on an HTTP error, follow redirects only to https, no certificate checks
+# turned off.
+CURL_DOWNLOAD_FLAGS=(--fail --location --proto-redir "=https" --silent --show-error --max-time 60)
+
+# file_sha256 prints the sha256 of a file as lowercase hex.
+file_sha256() {
+  python3 -I -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"
+}
+
 # fetch_pinned downloads a <URL>@sha256:<64 hex> pin to a file and stops when
 # the file's sha256 does not match the pin: <what it is called> <pin> <file>.
 fetch_pinned() {
   local label="$1" pin="$2" file="$3" url sha got
   url="${pin%@sha256:*}"
   sha="${pin##*@sha256:}"
-  curl --fail --location --proto-redir =https --silent --show-error --max-time 60 --output "${file}" "${url}" ||
+  curl "${CURL_DOWNLOAD_FLAGS[@]}" --output "${file}" "${url}" ||
     { echo "error: could not download the ${label} ${url}; nothing was removed" >&2; exit 1; }
-  got="$(python3 -I -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "${file}")"
+  got="$(file_sha256 "${file}")"
   [ "${got}" = "${sha}" ] ||
     { echo "error: the ${label} ${url} has sha256 ${got}, not the pinned ${sha}; nothing was removed" >&2; exit 1; }
 }
@@ -756,28 +821,23 @@ print(json.dumps({"appVersion": scalar(match.group(1)), "assetsRepository": foun
 PY
 }
 
-# helm_prepare runs every step of a helm boot that can fail before anything
-# is removed: the pulls, the chart archive and cert-manager manifest
-# downloads with their sha256 checks, the archive's appVersion against the
-# server image's version, the assets image digest and the check of the k3s
-# image of the node container.
-# It sets HELM_COMPUTED, HELM_ASSETS_IMAGE and LOCAL_K3S_SOURCE.
-helm_prepare() {
-  local info server_version k3s_version app_version assets_repository assets_tag want_tag version_line embedded
-  local version_pattern='v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+'
-  HELM_COMPUTED=1
-  platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" ||
-    { echo "error: could not read the Docker server platform" >&2; exit 1; }
-  pull_or_stop "${LOCAL_K3S_PIN}"
-  pull_or_stop "${K3S_IMAGE}"
-  [ "${IMAGE_REPOSITORY##*/}" = "rancher-server" ] || pull_or_stop "${ORACLE_IMAGE}"
-  DL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/e2e-fidelity.XXXXXX")"
-  fetch_pinned "chart archive" "${CHART_PIN}" "${DL_DIR}/chart.tgz"
-  fetch_pinned "cert-manager manifest" "${CERT_MANAGER_MANIFEST}" "${DL_DIR}/cert-manager.yaml"
+# ensure_download_dir creates the directory the helm boot's downloads go to
+# unless an earlier step created it.
+ensure_download_dir() {
+  [ -n "${DL_DIR}" ] || DL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/e2e-fidelity.XXXXXX")"
+}
+
+# helm_check_chart checks the chart archive in ${DL_DIR}/chart.tgz against the
+# server image: its appVersion against the image's CATTLE_SERVER_VERSION, and
+# the digest of the assets image its values name. It pulls nothing.
+# It sets HELM_ASSETS_IMAGE and HELM_SERVER_K3S_VERSION, the image's
+# CATTLE_K3S_VERSION.
+helm_check_chart() {
+  local info server_version app_version assets_repository assets_tag
   info="$(read_chart_archive "${DL_DIR}/chart.tgz")" || exit 1
   image_info_or_stop "${IMAGE_REPOSITORY}" "${IMAGE_DIGEST}" env "${ORACLE_IMAGE} is not published"
   server_version="$(json_field "${IMAGE_INFO}" serverVersion)"
-  k3s_version="$(json_field "${IMAGE_INFO}" k3sVersion)"
+  HELM_SERVER_K3S_VERSION="$(json_field "${IMAGE_INFO}" k3sVersion)"
   app_version="$(json_field "${info}" appVersion)"
   if [ "${app_version}" != "${server_version}" ]; then
     echo "error: the chart archive's appVersion is ${app_version}, but the CATTLE_SERVER_VERSION of ${ORACLE_IMAGE} is ${server_version}; nothing was removed" >&2
@@ -790,6 +850,30 @@ helm_prepare() {
     image_info_or_stop "${assets_repository}" "${assets_tag}" digest "${assets_repository}:${assets_tag} is not published"
     HELM_ASSETS_IMAGE="${assets_tag}@$(json_field "${IMAGE_INFO}" digest)"
   fi
+}
+
+# helm_prepare runs every step of a helm boot that can fail before anything
+# is removed: the pulls, the chart archive and cert-manager manifest
+# downloads with their sha256 checks, the archive's appVersion against the
+# server image's version, the assets image digest and the check of the k3s
+# image of the node container.
+# It sets HELM_COMPUTED, HELM_ASSETS_IMAGE and LOCAL_K3S_SOURCE.
+helm_prepare() {
+  local k3s_version want_tag version_line embedded
+  local version_pattern='v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+'
+  HELM_COMPUTED=1
+  if [ -z "${platform}" ]; then
+    platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" ||
+      { echo "error: could not read the Docker server platform" >&2; exit 1; }
+  fi
+  pull_or_stop "${LOCAL_K3S_PIN}"
+  pull_or_stop "${K3S_IMAGE}"
+  [ "${IMAGE_REPOSITORY##*/}" = "rancher-server" ] || pull_or_stop "${ORACLE_IMAGE}"
+  ensure_download_dir
+  fetch_pinned "chart archive" "${CHART_PIN}" "${DL_DIR}/chart.tgz"
+  fetch_pinned "cert-manager manifest" "${CERT_MANAGER_MANIFEST}" "${DL_DIR}/cert-manager.yaml"
+  helm_check_chart
+  k3s_version="${HELM_SERVER_K3S_VERSION}"
   want_tag="${LOCAL_K3S_PIN%%@*}"
   want_tag="${want_tag##*:}"
   if [ "${IMAGE_REPOSITORY##*/}" = "rancher-server" ]; then
@@ -816,7 +900,75 @@ helm_prepare() {
   fi
 }
 
+# resolve_upcoming_chart sets CHART_PIN for an upcoming helm boot and, when no
+# chart override names one, downloads the chart built from the same commit as
+# the server image: <revision> is the image's
+# org.opencontainers.image.revision label. The archive goes to
+# ${DL_DIR}/chart.tgz and CHART_DOWNLOADED is set.
+# The sha256 in CHART_PIN is computed from this download. The second download
+# of this run is checked against it, and a kept pair is reused only for the
+# same archive; the appVersion check ties the chart to the image. No published
+# digest is checked, so HTTPS is the only protection of the download.
+# The chart version is <minor>-<revision>-head, 50 characters for a minor like
+# 2.16, under the 55-character limit of Rancher's chart version.
+# Only head builds have a chart on the head chart host, so an image override
+# whose tag does not end in -head needs E2E_FIDELITY_UPCOMING_CHART.
+resolve_upcoming_chart() {
+  local revision="$1" revision_pattern='^[0-9a-f]{40}$' url code status=0 tag
+  if [ -n "${UPCOMING_CHART}" ]; then
+    CHART_PIN="${UPCOMING_CHART}"
+    return 0
+  fi
+  tag="${ORACLE_IMAGE%%@*}"
+  tag="${tag##*:}"
+  if [ -n "${UPCOMING_IMAGE}" ] && [[ "${tag}" != *-head ]]; then
+    echo "error: ${ORACLE_IMAGE} is not a head build; the chart of a tagged build is not on the head chart host; set E2E_FIDELITY_UPCOMING_CHART" >&2
+    exit 1
+  fi
+  if ! [[ "${revision}" =~ ${revision_pattern} ]]; then
+    echo "error: ${ORACLE_IMAGE} has no org.opencontainers.image.revision label of 40 hex digits, which names the chart; set E2E_FIDELITY_UPCOMING_CHART to the chart archive" >&2
+    exit 1
+  fi
+  url="${UPCOMING_CHART_BASE}/release-${MINOR}/rancher-${MINOR}-${revision}-head.tgz"
+  code="$(curl "${CURL_DOWNLOAD_FLAGS[@]}" --write-out '%{http_code}' --output "${DL_DIR}/chart.tgz" "${url}")" || status=$?
+  if [ "${status}" != 0 ]; then
+    if [ "${code}" = 404 ]; then
+      echo "error: the chart for ${revision} is not published yet at ${url}; retry in a few minutes, or once a newer head build is published, or set E2E_FIDELITY_UPCOMING_CHART" >&2
+    else
+      echo "error: could not download the chart archive ${url} (HTTP ${code}); nothing was removed" >&2
+    fi
+    exit 1
+  fi
+  CHART_PIN="${url}@sha256:$(file_sha256 "${DL_DIR}/chart.tgz")"
+  CHART_DOWNLOADED=1
+}
+
+# compare_head_images reads rancher/rancher:<tag>, the combined image built
+# with the rancher-server image of the same tag, and stops unless both carry
+# the same revision label. Arguments: the tag and the revision of the
+# rancher-server image. It sets HEAD_CONTAINER_IMAGE and
+# HEAD_CONTAINER_REVISION.
+compare_head_images() {
+  local tag="$1" server_revision="$2"
+  image_info_or_stop "${UPCOMING_REPO}" "${tag}" env "${UPCOMING_REPO}:${tag} is not published; the head images cannot be compared"
+  HEAD_CONTAINER_IMAGE="${UPCOMING_REPO}:${tag}@$(json_field "${IMAGE_INFO}" digest)"
+  HEAD_CONTAINER_REVISION="$(json_field "${IMAGE_INFO}" revision)"
+  if [ -z "${server_revision}" ]; then
+    echo "error: ${UPCOMING_SERVER_REPO}:${tag} has no org.opencontainers.image.revision label; the head images cannot be compared" >&2
+    exit 1
+  fi
+  if [ -z "${HEAD_CONTAINER_REVISION}" ]; then
+    echo "error: ${UPCOMING_REPO}:${tag} has no org.opencontainers.image.revision label; the head images cannot be compared" >&2
+    exit 1
+  fi
+  if [ "${HEAD_CONTAINER_REVISION}" != "${server_revision}" ]; then
+    echo "error: ${UPCOMING_REPO}:${tag} is built from commit ${HEAD_CONTAINER_REVISION} but ${UPCOMING_SERVER_REPO}:${tag} from commit ${server_revision}; the head images are not of one commit; try again later, or set E2E_FIDELITY_UPCOMING_IMAGE and E2E_FIDELITY_UPCOMING_CHART to builds of one commit" >&2
+    exit 1
+  fi
+}
+
 if [ -n "${MINOR}" ]; then
+  k3s_version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+$'
   # One read decides between the release branch's image and the main
   # branch's: a failed read stops the run instead of being taken as no branch.
   ls_status=0
@@ -851,6 +1003,7 @@ if [ -n "${MINOR}" ]; then
     not_published="${UPCOMING_IMAGE} is not published"
   else
     image_repo="${UPCOMING_REPO}"
+    [ "${BOOT}" != helm ] || image_repo="${UPCOMING_SERVER_REPO}"
     if [ -n "${has_branch}" ]; then
       UPCOMING_SOURCE="release-branch"
       image_ref="v${MINOR}-head"
@@ -887,6 +1040,21 @@ if [ -n "${MINOR}" ]; then
   fi
   echo "==> ${MINOR} oracle image ${ORACLE_IMAGE} (CATTLE_SERVER_VERSION ${SERVER_VERSION})" >&2
 
+  # The node container of a helm boot runs the k3s the server image names,
+  # whether or not E2E_FIDELITY_K3S_IMAGE sets the downstream.
+  if [ "${BOOT}" = "helm" ]; then
+    node_k3s_version="$(json_field "${image_info}" k3sVersion)"
+    if ! [[ "${node_k3s_version}" =~ ${k3s_version_pattern} ]]; then
+      echo "error: ${ORACLE_IMAGE} has no usable CATTLE_K3S_VERSION (\"${node_k3s_version}\"); the node container of a helm boot runs that k3s" >&2
+      exit 1
+    fi
+    node_k3s_tag="${node_k3s_version//+/-}"
+    image_info_or_stop "${UPCOMING_K3S_REPO}" "${node_k3s_tag}" digest \
+      "${UPCOMING_K3S_REPO}:${node_k3s_tag} (from CATTLE_K3S_VERSION ${node_k3s_version}) is not published; the node container of a helm boot runs that k3s"
+    LOCAL_K3S_PIN="${UPCOMING_K3S_REPO}:${node_k3s_tag}@$(json_field "${IMAGE_INFO}" digest)"
+    echo "==> ${MINOR} node container image ${LOCAL_K3S_PIN} (from CATTLE_K3S_VERSION ${node_k3s_version})" >&2
+  fi
+
   K3S_VERSION=""
   if [ -n "${K3S_OVERRIDE}" ]; then
     K3S_SOURCE="override"
@@ -895,16 +1063,29 @@ if [ -n "${MINOR}" ]; then
   else
     K3S_SOURCE="image"
     K3S_VERSION="$(json_field "${image_info}" k3sVersion)"
-    k3s_version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+$'
-    if ! [[ "${K3S_VERSION}" =~ ${k3s_version_pattern} ]]; then
-      echo "error: ${ORACLE_IMAGE} has no usable CATTLE_K3S_VERSION (\"${K3S_VERSION}\"); set E2E_FIDELITY_K3S_IMAGE" >&2
-      exit 1
+    if [ "${BOOT}" = "helm" ]; then
+      # The node container's check above read this version and its digest.
+      K3S_IMAGE="${LOCAL_K3S_PIN}"
+    else
+      if ! [[ "${K3S_VERSION}" =~ ${k3s_version_pattern} ]]; then
+        echo "error: ${ORACLE_IMAGE} has no usable CATTLE_K3S_VERSION (\"${K3S_VERSION}\"); set E2E_FIDELITY_K3S_IMAGE" >&2
+        exit 1
+      fi
+      k3s_tag="${K3S_VERSION//+/-}"
+      image_info_or_stop "${UPCOMING_K3S_REPO}" "${k3s_tag}" digest \
+        "${UPCOMING_K3S_REPO}:${k3s_tag} (from CATTLE_K3S_VERSION ${K3S_VERSION}) is not published; set E2E_FIDELITY_K3S_IMAGE"
+      K3S_IMAGE="${UPCOMING_K3S_REPO}:${k3s_tag}@$(json_field "${IMAGE_INFO}" digest)"
     fi
-    k3s_tag="${K3S_VERSION//+/-}"
-    image_info_or_stop "${UPCOMING_K3S_REPO}" "${k3s_tag}" digest \
-      "${UPCOMING_K3S_REPO}:${k3s_tag} (from CATTLE_K3S_VERSION ${K3S_VERSION}) is not published; set E2E_FIDELITY_K3S_IMAGE"
-    K3S_IMAGE="${UPCOMING_K3S_REPO}:${k3s_tag}@$(json_field "${IMAGE_INFO}" digest)"
     echo "==> ${MINOR} downstream image ${K3S_IMAGE} (from CATTLE_K3S_VERSION ${K3S_VERSION})" >&2
+  fi
+
+  if [ "${BOOT}" = "helm" ]; then
+    UPCOMING_REVISION="$(json_field "${image_info}" revision)"
+    CHART_DOWNLOADED=""
+    ensure_download_dir
+    trap remove_download_dir EXIT
+    resolve_upcoming_chart "${UPCOMING_REVISION}"
+    check_helm_profile
   fi
 
   if [ "${PRINT_IMAGES}" = "1" ]; then
@@ -916,20 +1097,38 @@ if [ -n "${MINOR}" ]; then
       print_keys="${print_keys},driftReport,driftKnown"
       print_values+=("${DRIFT_REPORT_ABS}" "${DRIFT_KNOWN}")
     fi
+    if [ "${BOOT}" = "helm" ]; then
+      # The print reads the chart and the registry only: it pulls nothing,
+      # downloads no cert-manager manifest and creates nothing under the state
+      # root.
+      [ -n "${CHART_DOWNLOADED}" ] || fetch_pinned "chart archive" "${CHART_PIN}" "${DL_DIR}/chart.tgz"
+      helm_check_chart
+      print_keys="${print_keys},boot,chart,chartSha256,localK3sImage,assetsImage,certManager,revision"
+      print_values+=("${BOOT}" "${CHART_PIN}" "${CHART_PIN##*@sha256:}" "${LOCAL_K3S_PIN}" "${HELM_ASSETS_IMAGE}" "${CERT_MANAGER_MANIFEST}" "${UPCOMING_REVISION}")
+      if [ -z "${UPCOMING_IMAGE}" ]; then
+        compare_head_images "${image_ref}" "${UPCOMING_REVISION}"
+        print_keys="${print_keys},containerImage,containerRevision"
+        print_values+=("${HEAD_CONTAINER_IMAGE}" "${HEAD_CONTAINER_REVISION}")
+      fi
+    fi
     python3 -I -c 'import json,sys; print(json.dumps(dict(zip(sys.argv[1].split(","), sys.argv[2:]))))' \
       "${print_keys}" "${print_values[@]}"
     exit 0
   fi
 
-  check_slot
+  # A helm boot checks its slot and pulls its images in the steps before the
+  # lock below, which read the kept pair first.
+  if [ "${BOOT}" != "helm" ]; then
+    check_slot
 
-  # Both images are pulled before the lock, so a failed pull stops the run
-  # before a kept pair is removed or its downstream rebuilt.
-  for image_ref in "${ORACLE_IMAGE}" "${K3S_IMAGE}"; do
-    docker image inspect "${image_ref}" >/dev/null 2>&1 ||
-      docker pull -q "${image_ref}" >/dev/null ||
-      { echo "error: could not pull ${image_ref}; nothing was removed" >&2; exit 1; }
-  done
+    # Both images are pulled before the lock, so a failed pull stops the run
+    # before a kept pair is removed or its downstream rebuilt.
+    for image_ref in "${ORACLE_IMAGE}" "${K3S_IMAGE}"; do
+      docker image inspect "${image_ref}" >/dev/null 2>&1 ||
+        docker pull -q "${image_ref}" >/dev/null ||
+        { echo "error: could not pull ${image_ref}; nothing was removed" >&2; exit 1; }
+    done
+  fi
 fi
 
 # A helm boot checks and downloads everything before the lock, so a failure

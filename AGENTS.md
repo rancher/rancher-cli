@@ -55,8 +55,19 @@ Gotchas:
   digests and recorded in the state file. `E2E_FIDELITY_UPCOMING_IMAGE`
   and `E2E_FIDELITY_K3S_IMAGE` (each `repo:tag@sha256:<hex>`) override
   them; `E2E_FIDELITY_PRINT_IMAGES=1` prints the choice and boots
-  nothing. Each minor has its own port, subnet, containers and state
-  root from the slot table in `scripts/e2e-fidelity`; a minor with no
+  nothing. `E2E_FIDELITY_UPCOMING_BOOT` is `container` (the default) or
+  `helm`. With `helm` the run boots `rancher/rancher-server` (same tag rule)
+  from the Rancher chart built from the same commit as the image, taken from
+  the image's `org.opencontainers.image.revision` label, in a node container
+  that runs the k3s `CATTLE_K3S_VERSION` names. An image override must then
+  name a `rancher-server` image. The derived chart exists for head builds
+  only: an override whose tag does not end in `-head` needs
+  `E2E_FIDELITY_UPCOMING_CHART` (`<URL>@sha256:<hex>`, only with `helm`),
+  which names another chart archive. A print with `helm`, without an image
+  override, also stops when `rancher/rancher` and `rancher/rancher-server`
+  of that tag are built from different commits. Each minor has its own port,
+  subnet, containers and state root from the slot table in
+  `scripts/e2e-fidelity`; a minor with no
   row is refused. It runs the boot smoke; with `E2E_FIDELITY_DRIFT=1` it
   also compares every probe that runs on that minor with the community
   goldens, lists the probes whose `MaxMinor` is older than that minor as not
@@ -64,7 +75,8 @@ Gotchas:
   a boot or harness failure), matching differences against
   `internal/testrancher/fidelity/testdata/upcoming/v<minor>.json`.
   `E2E_FIDELITY_UPCOMING_IMAGE`, `E2E_FIDELITY_K3S_IMAGE`,
-  `E2E_FIDELITY_PRINT_IMAGES=1` and `E2E_FIDELITY_DRIFT` are refused
+  `E2E_FIDELITY_PRINT_IMAGES=1`, `E2E_FIDELITY_UPCOMING_BOOT`,
+  `E2E_FIDELITY_UPCOMING_CHART` and `E2E_FIDELITY_DRIFT` are refused
   without `E2E_FIDELITY_MINOR` (`E2E_FIDELITY_DRIFT` is also accepted with
   `E2E_FIDELITY_HELM_CHECK=1`).
 - **Every pin in `scripts/e2e-fidelity` names its boot.** `ORACLE_BOOT` and
@@ -86,7 +98,8 @@ Gotchas:
   `install`.
   It is refused with `E2E_FIDELITY_PRIME`, `E2E_FIDELITY_MINOR`, an override
   (`E2E_FIDELITY_UPCOMING_IMAGE`, `E2E_FIDELITY_K3S_IMAGE`,
-  `E2E_FIDELITY_PRINT_IMAGES=1`), `E2E_FIDELITY_UPDATE_FLAG` (it never records)
+  `E2E_FIDELITY_PRINT_IMAGES=1`, `E2E_FIDELITY_UPCOMING_BOOT`,
+  `E2E_FIDELITY_UPCOMING_CHART`), `E2E_FIDELITY_UPDATE_FLAG` (it never records)
   and while `ORACLE_BOOT` is `helm`. Never on PRs.
 - **The downstream fidelity axis rides on `make e2e-fidelity`.** The oracle
   imports a pinned `rancher/k3s` container on every boot and exports

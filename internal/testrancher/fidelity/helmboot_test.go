@@ -926,11 +926,12 @@ func TestReuseStateComparesWhatARunComputed(t *testing.T) {
 	})
 }
 
-// TestFetchPinnedChecksCertificates asserts that the download function of the
-// helm boot never turns off certificate checks: no -k, -sk or --insecure.
+// TestFetchPinnedChecksCertificates asserts that the download functions of the
+// helm boot never turn off certificate checks: no -k, -sk or --insecure.
 func TestFetchPinnedChecksCertificates(t *testing.T) {
-	insecure := regexp.MustCompile(`(^|\s)(-[a-zA-Z]*k[a-zA-Z]*|--insecure)(\s|$)`)
+	insecure := curlInsecure
 	assert.False(t, insecure.MatchString(shellFunction(t, "fetch_pinned")))
+	assert.False(t, insecure.MatchString(shellFunction(t, "resolve_upcoming_chart")))
 	for _, bad := range []string{"curl -sk http://x", "curl -k http://x", "curl --insecure http://x", "curl -fsSk http://x"} {
 		assert.Truef(t, insecure.MatchString(bad), "%s", bad)
 	}
