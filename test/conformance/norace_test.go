@@ -25,64 +25,83 @@ import (
 // without the race detector.
 const noRaceScriptPath = "scripts/test"
 
-// noRaceListRE finds the list line in scripts/test: norace=(dir dir ...).
-var noRaceListRE = regexp.MustCompile(`(?m)^norace=\(([^()\n]*)\)[ \t]*$`)
-
-// noRaceAssignREs find every command in the script that sets, extends or
-// removes the list, in any form and anywhere on a line (after `&&`, inside
-// an `if` or an `eval` string), so a second assignment (norace+=(dir),
-// norace[1]=dir, unset norace) cannot change the list behind the one line
-// the check reads. They run on the script with its comments removed.
-var noRaceAssignREs = []*regexp.Regexp{
-	regexp.MustCompile(`(?:^|[^A-Za-z0-9_])norace(?:\[[^\]\n]*\])?\+?=`),
-	regexp.MustCompile(`(?m)\b(?:unset|read|mapfile|readarray)\b[^\n]*\bnorace\b`),
+// scriptListRE returns the expression that finds the list line in
+// scripts/test: name=(dir dir ...).
+func scriptListRE(name string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + `=\(([^()\n]*)\)[ \t]*$`)
 }
 
-// noRaceCommentRE matches a shell comment: a "#" at the start of a line or
-// after a space or tab, to the end of the line.
-var noRaceCommentRE = regexp.MustCompile(`(?m)(?:^|[ \t])#.*$`)
+// scriptListAssignREs return the expressions that find every command in the
+// script that sets, extends or removes the list name, in any form and
+// anywhere on a line (after `&&`, inside an `if` or an `eval` string), so a
+// second assignment (name+=(dir), name[1]=dir, unset name) cannot change the
+// list behind the one line the check reads. They run on the script with its
+// comments removed.
+func scriptListAssignREs(name string) []*regexp.Regexp {
+	quoted := regexp.QuoteMeta(name)
+	return []*regexp.Regexp{
+		regexp.MustCompile(`(?:^|[^A-Za-z0-9_])` + quoted + `(?:\[[^\]\n]*\])?\+?=`),
+		regexp.MustCompile(`(?m)\b(?:unset|read|mapfile|readarray)\b[^\n]*\b` + quoted + `\b`),
+	}
+}
 
-// noRaceEntryRE is the form of a listed directory: module-relative words
+// scriptCommentRE matches a shell comment: a "#" at the start of a line or
+// after a space or tab, to the end of the line.
+var scriptCommentRE = regexp.MustCompile(`(?m)(?:^|[ \t])#.*$`)
+
+// scriptListEntryRE is the form of a listed directory: module-relative words
 // joined by "/", the form the script compares with a package's import
 // path after the module path.
-var noRaceEntryRE = regexp.MustCompile(`^[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*$`)
+var scriptListEntryRE = regexp.MustCompile(`^[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*$`)
 
-// noRacePackages reads the module-relative directories listed on the
-// norace line of script. It fails when the line is missing, appears more
+// scriptListPackages reads the module-relative directories listed on the
+// name line of script. It fails when the line is missing, appears more
 // than once, lists nothing, or is not the only command that sets the
 // list; and when an entry is spelled with a leading "./" or a trailing
-// "/", or in any form but noRaceEntryRE, because the script matches the
+// "/", or in any form but scriptListEntryRE, because the script matches the
 // whole import path and would run the package in both passes or neither.
 // Each failure keeps a reworded script from turning the check below into
-// a pass over the wrong packages.
-func noRacePackages(script string) ([]string, error) {
-	code := noRaceCommentRE.ReplaceAllString(script, "")
+// a pass over the wrong packages. The errors name the list.
+func scriptListPackages(script, name string) ([]string, error) {
+	code := scriptCommentRE.ReplaceAllString(script, "")
 	assigns := 0
-	for _, re := range noRaceAssignREs {
+	for _, re := range scriptListAssignREs(name) {
 		assigns += len(re.FindAllString(code, -1))
 	}
 	if assigns != 1 {
-		return nil, errors.New("want exactly one command that sets norace, found " + strconv.Itoa(assigns))
+		return nil, errors.New("want exactly one command that sets " + name + ", found " + strconv.Itoa(assigns))
 	}
-	found := noRaceListRE.FindAllStringSubmatch(script, -1)
+	found := scriptListRE(name).FindAllStringSubmatch(script, -1)
 	if len(found) != 1 {
-		return nil, errors.New("want exactly one line of the form norace=(dir dir ...), found " + strconv.Itoa(len(found)))
+		return nil, errors.New("want exactly one line of the form " + name + "=(dir dir ...), found " + strconv.Itoa(len(found)))
 	}
 	dirs := strings.Fields(found[0][1])
 	if len(dirs) == 0 {
-		return nil, errors.New("the norace list is empty")
+		return nil, errors.New("the " + name + " list is empty")
 	}
 	for _, dir := range dirs {
 		switch {
 		case strings.HasPrefix(dir, "./"):
-			return nil, errors.New("norace entry " + strconv.Quote(dir) + " must not start with ./")
+			return nil, errors.New(name + " entry " + strconv.Quote(dir) + " must not start with ./")
 		case strings.HasSuffix(dir, "/"):
-			return nil, errors.New("norace entry " + strconv.Quote(dir) + " must not end with /")
-		case !noRaceEntryRE.MatchString(dir):
-			return nil, errors.New("norace entry " + strconv.Quote(dir) + " must be directory names joined by /")
+			return nil, errors.New(name + " entry " + strconv.Quote(dir) + " must not end with /")
+		case !scriptListEntryRE.MatchString(dir):
+			return nil, errors.New(name + " entry " + strconv.Quote(dir) + " must be directory names joined by /")
 		}
 	}
 	return dirs, nil
+}
+
+// noRacePackages reads the module-relative directories on the norace line of
+// script (see scriptListPackages).
+func noRacePackages(script string) ([]string, error) {
+	return scriptListPackages(script, "norace")
+}
+
+// shellPackages reads the module-relative directories on the shellpkgs line
+// of script (see scriptListPackages).
+func shellPackages(script string) ([]string, error) {
+	return scriptListPackages(script, "shellpkgs")
 }
 
 // concurrencyUses lists what in file starts or coordinates a goroutine:
@@ -222,6 +241,43 @@ func TestNoRaceListReading(t *testing.T) {
 		_, err := noRacePackages(bad)
 		assert.Error(t, err, "must reject %q", bad)
 	}
+}
+
+// TestShellListReading asserts the list reader accepts the shellpkgs form
+// of the script, fails on a missing, repeated, empty or misspelled list and
+// on any other command that sets it, names the list in each error, and does
+// not read the norace list as the shellpkgs list.
+func TestShellListReading(t *testing.T) {
+	t.Parallel()
+	dirs, err := shellPackages("set -e\n\nnorace=(test/a)\nshellpkgs=(x/a  x/b)\nflags=(x)\n")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"x/a", "x/b"}, dirs)
+	for _, bad := range []string{
+		"",
+		"norace=(test/a)\n",
+		"# shellpkgs=(x/a)\n",
+		"  shellpkgs=(x/a)\n",
+		"shellpkgs=()\n",
+		"shellpkgs=(x/a)\nshellpkgs=(x/b)\n",
+		"shellpkgs=(x/a) # why\n",
+		"shellpkgs=(x/a)\nshellpkgs+=(x/b)\n",
+		"shellpkgs=(x/a)\nshellpkgs[1]=x/b\n",
+		"shellpkgs=(x/a)\nunset shellpkgs\n",
+		"shellpkgs=(x/a)\nread -ra shellpkgs <<<\"x/b\"\n",
+		"shellpkgs=(x/a)\nmapfile -t shellpkgs <list\n",
+		"shellpkgs=(x/a)\ntrue && shellpkgs+=(x/b)\n",
+		"shellpkgs=(x/a)\nif true; then unset shellpkgs; fi\n",
+		"shellpkgs=(./x/a)\n",
+		"shellpkgs=(x/a/)\n",
+		"shellpkgs=(/x/a)\n",
+		"shellpkgs=(x//a)\n",
+		"shellpkgs=(../a)\n",
+	} {
+		_, err := shellPackages(bad)
+		require.ErrorContains(t, err, "shellpkgs", "must reject %q with an error that names the list", bad)
+	}
+	_, err = noRacePackages("shellpkgs=(x/a)\n")
+	assert.ErrorContains(t, err, "norace", "the shellpkgs list is not the norace list")
 }
 
 // TestNoRaceScanSeesConcurrency asserts the scan reports each construct it
@@ -601,8 +657,9 @@ func TestTestPassesSplitTheRun(t *testing.T) {
 	}
 }
 
-// shardOf returns the items of the sorted list that belong to shard i (1, 2
-// or 3): item k, counting from 0, goes to shard k mod 3 + 1.
+// shardOf returns the items of the sorted list that are assigned to shard i
+// (1, 2 or 3): item k, counting from 0, goes to shard k mod 3 + 1. The go
+// test call of the shard leaves out the shellpkgs packages (shardCall).
 func shardOf(items []string, i int) []string {
 	sorted := slices.Clone(items)
 	slices.Sort(sorted)
@@ -615,9 +672,30 @@ func shardOf(items []string, i int) []string {
 	return mine
 }
 
+// shellStubPackages returns the import paths, under the stub module, of the
+// packages the script lists in shellpkgs.
+func shellStubPackages(t *testing.T) []string {
+	t.Helper()
+	var pkgs []string
+	for _, dir := range shellPackageDirs(t) {
+		pkgs = append(pkgs, passStubModule+"/"+dir)
+	}
+	return pkgs
+}
+
+// shardCall returns the packages the go test call of shard i (1, 2 or 3)
+// runs: the items shardOf gives the shard, without the shellpkgs packages.
+func shardCall(t *testing.T, items []string, i int) []string {
+	t.Helper()
+	shell := shellStubPackages(t)
+	return slices.DeleteFunc(shardOf(items, i), func(pkg string) bool { return slices.Contains(shell, pkg) })
+}
+
 // shardStubPackages returns the package list the go stub prints for the
-// shard tests: the norace packages the script lists, the module root, five
-// packages and the sharded one, in no order.
+// shard tests: the norace packages the script lists, the module root, six
+// packages (one of them the completions package, which scripts/test lists in
+// shellpkgs) and the sharded one, in no order. shardable holds every package
+// the shards are assigned from, the completions package included.
 func shardStubPackages(t *testing.T) (listed, shardable []string) {
 	t.Helper()
 	script, err := os.ReadFile(noRaceScriptPath)
@@ -627,7 +705,7 @@ func shardStubPackages(t *testing.T) (listed, shardable []string) {
 	for _, dir := range noRaceDirs {
 		listed = append(listed, passStubModule+"/"+dir)
 	}
-	for _, name := range []string{"/internal/e", "", "/internal/b", "/internal/a", "/internal/d", "/internal/c"} {
+	for _, name := range []string{"/internal/e", "", "/internal/b", "/internal/a", "/internal/d", "/internal/c", "/internal/cli/completions"} {
 		listed = append(listed, passStubModule+name)
 		shardable = append(shardable, passStubModule+name)
 	}
@@ -638,16 +716,22 @@ func shardStubPackages(t *testing.T) (listed, shardable []string) {
 // TestTestShardsSplitTheRacePass asserts that scripts/test with
 // -pass=race and -shard=I/3 lists the tests of internal/cli once, with no
 // script flag, and makes two go test calls with the race detector: the
-// shard's packages (every race package except internal/cli, sorted bytewise
-// and assigned by position, item k to shard k mod 3 + 1) and internal/cli
-// with -run set to the shard's names (every name go test -list prints, tests,
-// fuzz tests, examples and benchmarks, the summary line dropped, assigned the
-// same way); that the call for internal/cli is skipped when the shard has no
-// name; that no norace call is made; that the three shards together make each
-// package and each name appear exactly once; that -shard takes its value in
-// the four spellings; that every call carries the flags the script was given;
-// and that a failing list, an empty list or a name that is not a Go
-// identifier ends the run with a non-zero status before any go test call.
+// shard's packages and internal/cli with -run set to the shard's names.
+// The shard's packages are every race package except internal/cli, sorted
+// bytewise and assigned by position (item k to shard k mod 3 + 1) over the
+// full list; a shard's call then leaves out the shellpkgs packages, so the
+// list moves no other package to another shard. The names are every name go test -list
+// prints (tests, fuzz tests, examples and benchmarks, the summary line
+// dropped), assigned the same way. The call for internal/cli is skipped when
+// the shard has no name, and no norace call is made.
+//
+// It also asserts that the three shards together make each package other than
+// the shellpkgs packages and each name appear exactly once, and that no shard
+// makes a shellpkgs package appear, while the race pass without -shard runs
+// every shellpkgs package; that -shard takes its value in the four spellings; that every call
+// carries the flags the script was given; and that a failing list, an empty
+// list or a name that is not a Go identifier ends the run with a non-zero
+// status before any go test call.
 func TestTestShardsSplitTheRacePass(t *testing.T) {
 	t.Parallel()
 	testfs.SkipOnWindows(t, posixOnlyReason)
@@ -667,7 +751,7 @@ func TestTestShardsSplitTheRacePass(t *testing.T) {
 			assert.Equal(t, []string{"-vet=off"}, call.flags, "shard %d call %d carries the script's flags", i, j+1)
 			assert.Empty(t, call.timeout, "shard %d call %d keeps go test's default timeout", i, j+1)
 		}
-		assert.Equal(t, shardOf(shardable, i), r.calls[0].pkgs, "shard %d packages", i)
+		assert.Equal(t, shardCall(t, shardable, i), r.calls[0].pkgs, "shard %d packages", i)
 		assert.Empty(t, r.calls[0].run, "the package call of shard %d sets no -run", i)
 		assert.Equal(t, []string{passStubCLI}, r.calls[1].pkgs, "shard %d runs internal/cli in a call of its own", i)
 		assert.Equal(t, pattern(shardOf(names, i)), r.calls[1].run, "shard %d names", i)
@@ -678,10 +762,23 @@ func TestTestShardsSplitTheRacePass(t *testing.T) {
 			nameCounts[name]++
 		}
 	}
-	for _, pkg := range shardable {
-		assert.Equal(t, 1, pkgCounts[pkg], "%s is in exactly one shard", pkg)
+	shell := shellStubPackages(t)
+	for _, pkg := range shell {
+		require.Contains(t, shardable, pkg, "the stub package list holds the shellpkgs package %s", pkg)
+		assert.Zero(t, pkgCounts[pkg], "%s is in shellpkgs and in no shard's call", pkg)
 	}
-	assert.Len(t, pkgCounts, len(shardable), "no norace package and not internal/cli is in a package call")
+	for _, pkg := range shardable {
+		if !slices.Contains(shell, pkg) {
+			assert.Equal(t, 1, pkgCounts[pkg], "%s is in exactly one shard", pkg)
+		}
+	}
+	assert.Len(t, pkgCounts, len(shardable)-len(shell), "no norace package, not internal/cli and no shellpkgs package is in a package call")
+	unsharded := runPassScriptWith(t, listed, passStubNames, nil, "-vet=off", "-pass=race")
+	require.Zero(t, unsharded.code, unsharded.stderr)
+	require.Len(t, unsharded.calls, 1, "the race pass without -shard makes one call, got %q", unsharded.goLog)
+	for _, pkg := range shell {
+		assert.Contains(t, unsharded.calls[0].pkgs, pkg, "the race pass without -shard runs the shellpkgs package %s", pkg)
+	}
 	for _, name := range names {
 		assert.Equal(t, 1, nameCounts[name], "%s is in exactly one shard", name)
 	}
@@ -691,7 +788,7 @@ func TestTestShardsSplitTheRacePass(t *testing.T) {
 		r := runPassScriptWith(t, listed, passStubNames, nil, append([]string{"-pass=race"}, spelling...)...)
 		require.Zero(t, r.code, "%q: %s", spelling, r.stderr)
 		require.Len(t, r.calls, 2, "%q", spelling)
-		assert.Equal(t, shardOf(shardable, 2), r.calls[0].pkgs, "%q", spelling)
+		assert.Equal(t, shardCall(t, shardable, 2), r.calls[0].pkgs, "%q", spelling)
 		assert.Equal(t, pattern(shardOf(names, 2)), r.calls[1].run, "%q", spelling)
 		assert.Equal(t, []string{"-cover"}, r.calls[0].flags, "%q: a run with no flags carries the default -cover", spelling)
 	}
@@ -699,7 +796,7 @@ func TestTestShardsSplitTheRacePass(t *testing.T) {
 	few := runPassScriptWith(t, listed, []string{"TestA", "TestB"}, nil, "-pass=race", "-shard=3/3")
 	require.Zero(t, few.code, few.stderr)
 	require.Len(t, few.calls, 1, "a shard with no internal/cli name makes only the package call, got %q", few.goLog)
-	assert.Equal(t, shardOf(shardable, 3), few.calls[0].pkgs)
+	assert.Equal(t, shardCall(t, shardable, 3), few.calls[0].pkgs)
 	assert.Empty(t, few.calls[0].run)
 
 	one := runPassScriptWith(t, listed, []string{"TestA"}, nil, "-pass=race", "-shard=1/3")
@@ -741,19 +838,24 @@ func TestTestShardsSplitTheRacePass(t *testing.T) {
 		for _, line := range got[1:] {
 			profiled = append(profiled, strings.TrimSuffix(strings.Fields(line)[0], "/file.go:1.1,2.1"))
 		}
-		want := append(shardOf(shardable, 1), passStubCLI)
+		want := append(shardCall(t, shardable, 1), passStubCLI)
 		assert.ElementsMatch(t, want, profiled, "the merged profile holds the packages of both calls of the shard")
 	})
 }
 
 // TestTestShardCheck asserts that scripts/test -shard-check lists the tests
 // of internal/cli once, makes no go test call, prints one size line per shard
-// and kind (six lines and the final line, no list of items) and succeeds when
-// every race package and name is in exactly one shard; that a failing list,
-// an empty list and a name that is not a Go identifier fail it; and that a
-// name listed twice, a package listed twice and a package list without
-// internal/cli reach the comparison and fail it, with the item named on
-// stderr and the three lists printed there.
+// and kind (six lines and the final line, no list of items; the package size
+// is that of the shard's go test call, without the shellpkgs packages) and
+// succeeds when every race package other than the shellpkgs packages and
+// every name is in exactly one shard; that a failing list, an empty list and
+// a name that is not a Go identifier fail it; and that a name listed twice, a
+// package listed twice, a package list without internal/cli and a package
+// list without a shellpkgs package reach the comparison and fail it, with
+// the item named on stderr and the three lists printed there. A shard call
+// that keeps a shellpkgs package cannot be built from the stub, because the
+// real script is copied: TestTestShardsSplitTheRacePass, which shares the
+// call function with the check, and the check on the real tree guard it.
 func TestTestShardCheck(t *testing.T) {
 	t.Parallel()
 	testfs.SkipOnWindows(t, posixOnlyReason)
@@ -768,12 +870,12 @@ func TestTestShardCheck(t *testing.T) {
 	out := strings.Split(strings.TrimSpace(r.stdout), "\n")
 	require.Len(t, out, 7, "six size lines and the final line, got %q", r.stdout)
 	for i, kind := range []string{"packages", "names"} {
-		items := shardable
+		items, sizeOf := shardable, func(items []string, j int) []string { return shardCall(t, items, j) }
 		if kind == "names" {
-			items = stubNames
+			items, sizeOf = stubNames, shardOf
 		}
 		for j := 1; j <= 3; j++ {
-			assert.Equal(t, "shard "+strconv.Itoa(j)+"/3: "+strconv.Itoa(len(shardOf(items, j)))+" "+kind, out[i*3+j-1])
+			assert.Equal(t, "shard "+strconv.Itoa(j)+"/3: "+strconv.Itoa(len(sizeOf(items, j)))+" "+kind, out[i*3+j-1])
 		}
 	}
 	assert.True(t, strings.HasPrefix(out[6], "ok: "), out[6])
@@ -791,14 +893,17 @@ func TestTestShardCheck(t *testing.T) {
 	}
 
 	withoutCLI := slices.DeleteFunc(slices.Clone(listed), func(pkg string) bool { return pkg == passStubCLI })
+	shell := shellStubPackages(t)
+	withoutShell := slices.DeleteFunc(slices.Clone(listed), func(pkg string) bool { return slices.Contains(shell, pkg) })
 	twice := passStubModule + "/internal/a"
 	for name, c := range map[string]struct {
 		packages, names []string
 		wantStderr      string
 	}{
-		"a name listed twice":                 {listed, []string{"TestA", "TestA", "TestB"}, "repeated: TestA\n"},
-		"a package listed twice":              {append(slices.Clone(listed), twice), passStubNames, "repeated: " + twice + "\n"},
-		"a package list without internal/cli": {withoutCLI, passStubNames, "unexpected: " + passStubCLI + "\n"},
+		"a name listed twice":                   {listed, []string{"TestA", "TestA", "TestB"}, "repeated: TestA\n"},
+		"a package listed twice":                {append(slices.Clone(listed), twice), passStubNames, "repeated: " + twice + "\n"},
+		"a package list without internal/cli":   {withoutCLI, passStubNames, "unexpected: " + passStubCLI + "\n"},
+		"a listed package not in the race pass": {withoutShell, passStubNames, "unexpected: " + shell[0] + "\n"},
 	} {
 		r := runPassScriptWith(t, c.packages, c.names, nil, "-shard-check")
 		assert.Equal(t, 1, r.code, "%s must fail the check", name)

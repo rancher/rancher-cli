@@ -178,10 +178,12 @@ func isCacheSaveUses(uses string) bool {
 	return name == "actions/cache/save"
 }
 
-// completionStepBody is the exact body of the step of the first race shard
-// job that runs the completion script tests under every shell.
+// completionStepBody is the exact body of the step of the third race shard
+// job that runs the completion script tests under every shell, with the race
+// detector. The race shards leave that package out, so this step is its race
+// run.
 const completionStepBody = `log="${RUNNER_TEMP}/completions.log"
-if ! go test -count=1 -v ./internal/cli/completions/ > "$log" 2>&1; then
+if ! go test -race -count=1 -v ./internal/cli/completions/ > "$log" 2>&1; then
   cat "$log"
   exit 1
 fi
@@ -249,10 +251,26 @@ func partJobKeyProblems(jobID string, job map[string]any) []string {
 	return out
 }
 
+// completionStep is the whole completion shell tests step.
+var completionStep = map[string]any{"name": "Completion shell tests", "run": completionStepBody}
+
+// completionStepCount returns how many of the steps are the completion shell
+// tests step, matched whole.
+func completionStepCount(steps []map[string]any) int {
+	n := 0
+	for _, step := range steps {
+		if reflect.DeepEqual(step, completionStep) {
+			n++
+		}
+	}
+	return n
+}
+
 // allowedPartSteps lists every step a part job may have, each as the whole
 // step: checkout, setup-go, go-cache and the cache save with the commits
-// recorded in cacheUsesPins, the tools install the part needs, the
-// completion shell tests step of the tests-race-1 part, and the part step.
+// recorded in cacheUsesPins, the tools install the part needs (the shells
+// only for the tests-race-3 part, which also has the completion shell tests
+// step), and the part step.
 // The part jobs goCacheReaders lists (test-2, test-3, cachemodel) have
 // go-cache with restore-from in place of go-cache without it, and no cache
 // save. Any other step in a part job can change what the part runs.
@@ -276,21 +294,25 @@ func allowedPartSteps(jobID, part string) []map[string]any {
 	switch part {
 	case staticStepBody:
 		steps = append(steps, map[string]any{"uses": setupToolsAction, "with": map[string]any{"shells": "false"}})
-	case testsRace1StepBody:
+	case testsRace1StepBody, testsRace2StepBody:
+		steps = append(steps,
+			map[string]any{"uses": setupToolsAction, "with": map[string]any{"lint-tools": "false", "shells": "false"}})
+	case testsRace3StepBody:
 		steps = append(steps,
 			map[string]any{"uses": setupToolsAction, "with": map[string]any{"lint-tools": "false"}},
-			map[string]any{"name": "Completion shell tests", "run": completionStepBody})
-	case testsRace2StepBody, testsRace3StepBody:
-		steps = append(steps,
-			map[string]any{"uses": setupToolsAction, "with": map[string]any{"lint-tools": "false"}})
+			completionStep)
 	}
 	return steps
 }
 
 // partStepProblems returns the steps of a part job that are none of the
-// allowed steps of its part.
+// allowed steps of its part, and a missing or repeated completion shell tests
+// step in the job of the tests-race-3 part.
 func partStepProblems(jobID, part string, steps []map[string]any) []string {
 	var out []string
+	if n := completionStepCount(steps); part == testsRace3StepBody && n != 1 {
+		out = append(out, fmt.Sprintf("job %s has the completion shell tests step %d times and must have it exactly once, the race shards leave that package out", jobID, n))
+	}
 	allowed := allowedPartSteps(jobID, part)
 	for i, step := range steps {
 		if !slices.ContainsFunc(allowed, func(a map[string]any) bool { return reflect.DeepEqual(a, step) }) {
@@ -313,12 +335,14 @@ func partStepProblems(jobID, part string, steps []map[string]any) []string {
 // jobs set no defaults, which could change the shell that runs a part; that
 // no other run body writes the environment file, the path file or the go env
 // file; that every step of the six part jobs is one of the listed steps,
-// each matched whole (the completion shell tests step only in the job of
-// tests-race-1; go-cache with restore-from and no cache save in test-2,
-// test-3 and cachemodel, which restore the entry of another job, go-cache
-// without it and the cache save in the other part jobs); that each part job
-// has exactly the keys runs-on (ubuntu-latest), timeout-minutes and steps;
-// and that each job installs only the tools its part uses.
+// each matched whole (the completion shell tests step exactly once, in the
+// job of tests-race-3, and in no other part job; go-cache with restore-from
+// and no cache save in test-2, test-3 and cachemodel, which restore the entry
+// of another job, go-cache without it and the cache save in the other part
+// jobs); that each part job has exactly the keys runs-on (ubuntu-latest),
+// timeout-minutes and steps; and that each job installs only the tools its
+// part uses (the shells only in the job of tests-race-3, whose completion
+// shell tests step is the only one that starts them in the race shards' jobs).
 // TestSharedActionsHoldNoEnvWrites holds the two local actions the part jobs
 // call (go-cache and setup-tools) to the same environment-write rule.
 //
@@ -367,15 +391,16 @@ func TestCIRunsEveryValidatePartOnce(t *testing.T) {
 	}
 
 	for _, c := range []struct {
-		part, needs, drops string
-		setups             int
+		part, needs string
+		drops       []string
+		setups      int
 	}{
-		{staticStepBody, "lint-tools", "shells", 1},
-		{testsRace1StepBody, "shells", "lint-tools", 1},
-		{testsRace2StepBody, "shells", "lint-tools", 1},
-		{testsRace3StepBody, "shells", "lint-tools", 1},
-		{testsConformanceStepBody, "", "", 0},
-		{testsCacheModelStepBody, "", "", 0},
+		{staticStepBody, "lint-tools", []string{"shells"}, 1},
+		{testsRace1StepBody, "", []string{"lint-tools", "shells"}, 1},
+		{testsRace2StepBody, "", []string{"lint-tools", "shells"}, 1},
+		{testsRace3StepBody, "shells", []string{"lint-tools"}, 1},
+		{testsConformanceStepBody, "", nil, 0},
+		{testsCacheModelStepBody, "", nil, 0},
 	} {
 		name := jobOf[c.part]
 		job := wf.Jobs[name]
@@ -393,13 +418,12 @@ func TestCIRunsEveryValidatePartOnce(t *testing.T) {
 				continue
 			}
 			setups++
-			if c.needs == "" {
-				continue
-			}
-			if v, ok := step.With[c.needs]; ok {
+			if v, ok := step.With[c.needs]; c.needs != "" && ok {
 				assert.Equal(t, "true", v, "job %s runs the %s part and needs %s installed", name, c.part, c.needs)
 			}
-			assert.Equal(t, "false", step.With[c.drops], "job %s does not use %s and must not install it", name, c.drops)
+			for _, drop := range c.drops {
+				assert.Equal(t, "false", step.With[drop], "job %s does not use %s and must not install it", name, drop)
+			}
 		}
 		assert.Equal(t, c.setups, setups, "job %s must use %s %d times for the %s part", name, setupToolsAction, c.setups, c.part)
 	}
@@ -512,12 +536,16 @@ func TestPartJobStepRules(t *testing.T) {
 	assert.Empty(t, partStepProblems(job, testsConformanceStepBody, good()), "the listed steps")
 	cacheModel := allowedPartSteps("cachemodel", testsCacheModelStepBody)
 	assert.Empty(t, partStepProblems("cachemodel", testsCacheModelStepBody, cacheModel), "the steps of the tests-cachemodel part")
-	race1 := allowedPartSteps("test-1", testsRace1StepBody)
-	assert.Empty(t, partStepProblems("test-1", testsRace1StepBody, race1), "the steps of the tests-race-1 part, with its tools and completion steps")
-	for i, part := range []string{testsRace2StepBody, testsRace3StepBody} {
-		id := "test-" + strconv.Itoa(i+2)
-		assert.Empty(t, partStepProblems(id, part, allowedPartSteps(id, part)), "the steps of %s, with its tools step and no completion step", part)
+	for i, part := range []string{testsRace1StepBody, testsRace2StepBody} {
+		id := "test-" + strconv.Itoa(i+1)
+		assert.Empty(t, partStepProblems(id, part, allowedPartSteps(id, part)), "the steps of %s, with its tools step without the shells and no completion step", part)
 	}
+	race3 := allowedPartSteps("test-3", testsRace3StepBody)
+	assert.Empty(t, partStepProblems("test-3", testsRace3StepBody, race3), "the steps of the tests-race-3 part, with its tools and completion steps")
+	assert.NotEmpty(t, partStepProblems("test-3", testsRace3StepBody, slices.DeleteFunc(slices.Clone(race3), func(step map[string]any) bool {
+		return reflect.DeepEqual(step, completionStep)
+	})), "a tests-race-3 job without the completion step")
+	assert.NotEmpty(t, partStepProblems("test-3", testsRace3StepBody, append(slices.Clone(race3), completionStep)), "a tests-race-3 job with the completion step twice")
 	static := allowedPartSteps("lint", staticStepBody)
 	assert.Empty(t, partStepProblems("lint", staticStepBody, static), "the steps of the static part")
 
@@ -589,11 +617,22 @@ func TestPartJobStepRules(t *testing.T) {
 		edit(j)
 		assert.NotEmpty(t, partJobKeyProblems(job, j), "must refuse: %s", name)
 	}
-	assert.NotEmpty(t, partStepProblems("test-1", testsRace1StepBody, []map[string]any{{"name": "Completion shell tests", "run": completionStepBody + "true\n"}}), "a completion step with another body")
-	completion := map[string]any{"name": "Completion shell tests", "run": completionStepBody}
-	for i, part := range []string{testsRace2StepBody, testsRace3StepBody, testsConformanceStepBody, testsCacheModelStepBody} {
-		assert.NotEmpty(t, partStepProblems("job", part, []map[string]any{completion}), "the completion step runs only in the job of tests-race-1, not for %s (case %d)", part, i)
+	assert.NotEmpty(t, partStepProblems("test-3", testsRace3StepBody, []map[string]any{{"name": "Completion shell tests", "run": completionStepBody + "true\n"}}), "a completion step with another body")
+	assert.NotEmpty(t, partStepProblems("test-3", testsRace3StepBody, []map[string]any{{"name": "Completion shell tests", "run": strings.Replace(completionStepBody, " -race", "", 1)}}), "a completion step without -race")
+	assert.Empty(t, partStepProblems("test-3", testsRace3StepBody, []map[string]any{completionStep}), "the completion step in the job of tests-race-3")
+	for i, part := range []string{testsRace1StepBody, testsRace2StepBody, testsConformanceStepBody, testsCacheModelStepBody} {
+		assert.NotEmpty(t, partStepProblems("job", part, []map[string]any{completionStep}), "the completion step runs only in the job of tests-race-3, not for %s (case %d)", part, i)
 	}
+	toolsWith := func(with map[string]any) []map[string]any {
+		return []map[string]any{{"uses": setupToolsAction, "with": with}}
+	}
+	for _, part := range []string{testsRace1StepBody, testsRace2StepBody} {
+		assert.Empty(t, partStepProblems("job", part, toolsWith(map[string]any{"lint-tools": "false", "shells": "false"})), "tools without the lint tools and the shells")
+		assert.NotEmpty(t, partStepProblems("job", part, toolsWith(map[string]any{"lint-tools": "false"})), "tools with the shells, the default")
+		assert.NotEmpty(t, partStepProblems("job", part, toolsWith(map[string]any{"lint-tools": "false", "shells": "true"})), "tools with the shells set to true")
+	}
+	assert.Empty(t, partStepProblems("job", testsRace3StepBody, append(toolsWith(map[string]any{"lint-tools": "false"}), completionStep)), "tools with the shells and the completion step")
+	assert.NotEmpty(t, partStepProblems("job", testsRace3StepBody, append(toolsWith(map[string]any{"lint-tools": "false", "shells": "false"}), completionStep)), "tools without the shells in the job of tests-race-3")
 	assert.NotEmpty(t, partStepProblems(job, testsConformanceStepBody, []map[string]any{{"uses": setupToolsAction, "with": map[string]any{"shells": "false"}}}), "tools the conformance part does not use")
 }
 

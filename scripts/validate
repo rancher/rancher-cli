@@ -36,7 +36,9 @@ static() {
   go vet ./...
 
   # Every race package and every internal/cli test is in exactly one of the
-  # three race shards CI runs. It runs here, once per run of this script.
+  # three race shards CI runs, except the shellpkgs packages, which are in
+  # none (the unsharded race pass runs them). It runs here, once per run of
+  # this script.
   ./scripts/test -shard-check
 
   # go.mod/go.sum tidiness: go mod tidy -diff exits non-zero when go.mod or

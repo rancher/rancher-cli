@@ -27,11 +27,17 @@
 # internal/cli process. -shard is refused with any spelling of -run.
 # Without -shard, the race pass is one go test call over every package.
 #
+# The packages listed in shellpkgs below are assigned by position like the
+# others, but the shard's go test call leaves them out, because CI runs
+# them in a job of their own. The race pass without -shard runs them.
+#
 # -shard-check takes no other flag. It computes the three assignments with
-# the code a shard uses, prints the size of each shard, and fails unless every
-# race package other than internal/cli and every internal/cli name is in
-# exactly one shard and both lists are not empty. On failure it names each
-# missing, unexpected and repeated item and prints the three lists. It sees the
+# the code a shard uses, prints the size of each shard's go test call, and
+# fails unless every race package other than internal/cli is in exactly one
+# shard's call or is a shellpkgs package that is in none, every shellpkgs
+# package is a race package, every internal/cli name is in exactly one
+# shard, and both lists are not empty. On failure it names each missing,
+# unexpected and repeated item and prints the three lists. It sees the
 # files of the host OS only.
 #
 # -coverprofile=FILE is the one flag that writes a file. Each go test call
@@ -66,10 +72,14 @@
 # second. Keep the list as the one assignment of the form
 # norace=(dir dir ...), one module-relative directory per word, no leading
 # ./ and no trailing /. A package is matched by its whole import path.
+# The shellpkgs list below has the same form and the same rules.
 set -e
 cd "$(dirname "$0")/.."
 
 norace=(test/conformance test/cachemodel)
+# Packages whose tests start shells that CI installs in one job only. A
+# shard's go test call leaves them out; the job that has the shells runs them.
+shellpkgs=(internal/cli/completions)
 fresh=(test/conformance)
 for f in "${fresh[@]}"; do
   listed=
@@ -265,7 +275,8 @@ fi
 
 # The package whose tests are assigned to the shards one by one: the others
 # are assigned as packages. A shard runs it in a call of its own because -run
-# applies to every package of a call.
+# applies to every package of a call. The packages in shellpkgs are assigned
+# like the others and then left out of the shard's package call.
 sharded_pkg=internal/cli
 
 # lines prints its argument with a newline after each line, and nothing for
@@ -324,11 +335,25 @@ shard_pkgs() {
   lines "$out" | LC_ALL=C sort
 }
 
+# shard_call prints the packages the go test call of shard $1 (1, 2 or 3)
+# runs: the shard's items of the sorted list in pkgs, without the packages in
+# shellpkgs.
+shard_call() {
+  local part dir
+  part=$(lines "$pkgs" | shard_items "$1")
+  for dir in "${shellpkgs[@]}"; do
+    part=$(lines "$part" | LC_ALL=C grep -vxF "$module/$dir" || true)
+  done
+  lines "$part"
+}
+
 if [ -n "$shard_check" ]; then
-  # The sorted union of the three shards must equal the sorted list the
-  # shards were made from, which must have no repeated item; the packages
-  # must also add up, with the norace packages and the sharded one, to
-  # everything go list prints. Each item is then in exactly one shard.
+  # The sorted union of the three shards' calls must equal the sorted list
+  # they were made from, which must have no repeated item; the packages
+  # must also add up, with the norace packages, the shellpkgs packages and
+  # the sharded one, to everything go list prints. Each item is then in
+  # exactly one call, and a shellpkgs package that is not a race package
+  # is reported as unexpected.
   list_cli
   if ! pkgs=$(shard_pkgs); then
     exit 1
@@ -340,7 +365,7 @@ if [ -n "$shard_check" ]; then
   for kind in packages names; do
     if [ "$kind" = packages ]; then
       all=$pkgs
-      others=$(printf '%s\n' "${norace_pkgs[@]}" "${fresh_pkgs[@]}" "$module/$sharded_pkg")
+      others=$(printf '%s\n' "${norace_pkgs[@]}" "${fresh_pkgs[@]}" "$module/$sharded_pkg" "${shellpkgs[@]/#/$module/}")
       expected=$(lines "$all_pkgs" | LC_ALL=C sort)
     else
       all=$names
@@ -352,7 +377,11 @@ if [ -n "$shard_check" ]; then
     union=$others
     parts=()
     for i in 1 2 3; do
-      part=$(lines "$all" | shard_items "$i")
+      if [ "$kind" = packages ]; then
+        part=$(shard_call "$i")
+      else
+        part=$(lines "$all" | shard_items "$i")
+      fi
       parts+=("$part")
       echo "shard $i/3: $(lines "$part" | wc -l | tr -d ' ') $kind"
       union=$(printf '%s\n%s' "$union" "$part")
@@ -379,7 +408,7 @@ if [ -n "$shard_check" ]; then
   if [ "$problems" -ne 0 ]; then
     exit 1
   fi
-  echo "ok: every race package other than $sharded_pkg and every $sharded_pkg name is in exactly one shard"
+  echo "ok: every race package is in exactly one shard, except $sharded_pkg (by name) and the shellpkgs packages (in none)"
   exit 0
 fi
 
@@ -411,7 +440,7 @@ if [ -n "$run_race" ]; then
     mine=()
     while IFS= read -r pkg; do
       mine+=("$pkg")
-    done <<<"$(lines "$pkgs" | shard_items "$shard")"
+    done <<<"$(shard_call "$shard")"
     if [ ${#mine[@]} -gt 0 ] && [ -n "${mine[0]}" ]; then
       go test -race "${race_flags[@]}" "${mine[@]}" || status=1
     fi

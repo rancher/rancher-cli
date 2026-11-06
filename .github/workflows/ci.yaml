@@ -32,7 +32,9 @@ jobs:
   # tests, which runs the same go test calls in one process, so the hook and
   # CI share one definition. The static part includes the shell gate (syntax
   # and shellcheck over install.sh and scripts/*) and the check that the
-  # three shards hold every race package and every internal/cli test once.
+  # three shards hold every race package and every internal/cli test once,
+  # except the packages whose tests start shells (shellpkgs in
+  # scripts/test), which no shard runs.
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -76,33 +78,7 @@ jobs:
       - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
-      # The completion script tests run each script under its real shell
-      # (bash, zsh, fish, pwsh). With CI set a missing shell fails its
-      # test, so this step asserts the other half: no test skipped, and
-      # every one of the four shells used by at least one test. It prints
-      # which shell binary each test used.
-      - name: Completion shell tests
-        run: |
-          log="${RUNNER_TEMP}/completions.log"
-          if ! go test -count=1 -v ./internal/cli/completions/ > "$log" 2>&1; then
-            cat "$log"
-            exit 1
-          fi
-          grep -E '^(--- |ok)' "$log"
-          echo "shells used:"
-          grep -ho 'shell [a-z]*: .*' "$log" | sort | uniq -c
-          status=0
-          for shell in bash zsh fish pwsh; do
-            if ! grep -q "shell ${shell}: " "$log"; then
-              echo "no completion test used ${shell}" >&2
-              status=1
-            fi
-          done
-          if grep -E '^\s*--- SKIP' "$log"; then
-            echo "a completion shell test skipped" >&2
-            status=1
-          fi
-          exit "$status"
+          shells: "false"
       - run: ./scripts/validate tests-race-1
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
@@ -129,6 +105,7 @@ jobs:
       - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
+          shells: "false"
       - run: ./scripts/validate tests-race-2
 
   test-3:
@@ -150,6 +127,34 @@ jobs:
       - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
+      # The completion script tests run each script under its real shell
+      # (bash, zsh, fish, pwsh). With CI set a missing shell fails its
+      # test, so this step asserts the other half: no test skipped, and
+      # every one of the four shells used by at least one test. It prints
+      # which shell binary each test used. It is also the package's race run:
+      # the race shards leave the package out (shellpkgs in scripts/test).
+      - name: Completion shell tests
+        run: |
+          log="${RUNNER_TEMP}/completions.log"
+          if ! go test -race -count=1 -v ./internal/cli/completions/ > "$log" 2>&1; then
+            cat "$log"
+            exit 1
+          fi
+          grep -E '^(--- |ok)' "$log"
+          echo "shells used:"
+          grep -ho 'shell [a-z]*: .*' "$log" | sort | uniq -c
+          status=0
+          for shell in bash zsh fish pwsh; do
+            if ! grep -q "shell ${shell}: " "$log"; then
+              echo "no completion test used ${shell}" >&2
+              status=1
+            fi
+          done
+          if grep -E '^\s*--- SKIP' "$log"; then
+            echo "a completion shell test skipped" >&2
+            status=1
+          fi
+          exit "$status"
       - run: ./scripts/validate tests-race-3
 
   conformance:
