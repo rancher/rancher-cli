@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
@@ -24,9 +25,13 @@ const keepToken = "keep-token-4f9c2a71"
 // (saved as docker-helm). It fails the host address read when STUB_NO_HOSTIP is
 // set, which the helm stub never does, and fails every docker run -d when
 // STUB_FAIL_RUN is set, so a run that boots a new pair ends right after the
-// call. Everything else goes to the stub it wraps.
+// call. It also answers a docker container inspect with success, as a
+// container that exists, when STUB_PRE_RENAME is set. Everything else goes to
+// the stub it wraps.
 const keepDockerWrapper = `#!/bin/sh
 case "$*" in
+"container inspect "*)
+  if [ -n "$STUB_PRE_RENAME" ]; then printf '%s\n' "$*" >> "$STUB_LOG"; exit 0; fi ;;
 *HostIp*)
   if [ -n "$STUB_NO_HOSTIP" ]; then printf '%s\n' "$*" >> "$STUB_LOG"; exit 1; fi ;;
 "run -d "*)
@@ -522,6 +527,7 @@ func TestKeepRunStopsOnAFailedPairCheck(t *testing.T) {
 	for _, slot := range keepSlots {
 		for _, row := range keepStopRows() {
 			t.Run(slot.name+"/"+row.name, func(t *testing.T) {
+				t.Parallel()
 				k := newKeepRun(t, slot)
 				row.setup(k)
 				res := k.run()
@@ -700,6 +706,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 					continue
 				}
 				t.Run(slot.name+"/"+pin.name, func(t *testing.T) {
+					t.Parallel()
 					k := newKeepRun(t, slot)
 					pin.change(k)
 					res := k.run()
@@ -713,6 +720,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 	t.Run("no state file creates a new pair", func(t *testing.T) {
 		for _, slot := range keepSlots {
 			t.Run(slot.name, func(t *testing.T) {
+				t.Parallel()
 				k := newKeepRun(t, slot)
 				k.noState = true
 				res := k.run()
@@ -732,6 +740,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 					continue
 				}
 				t.Run(slot.name+"/"+row.name, func(t *testing.T) {
+					t.Parallel()
 					k := newKeepRun(t, slot)
 					row.setup(k)
 					k.state["oracleImage"] = k.oldImage
@@ -750,6 +759,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 					continue
 				}
 				t.Run(slot.name+"/"+pin.name, func(t *testing.T) {
+					t.Parallel()
 					k := newKeepRun(t, slot)
 					pin.change(k)
 					k.ids = ""
@@ -767,6 +777,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 				continue
 			}
 			t.Run(slot.name, func(t *testing.T) {
+				t.Parallel()
 				k := newKeepRun(t, slot)
 				delete(k.state, "oracleImage")
 				k.state["boot"] = map[string]string{"community": "helm", "helm-check": "container"}[slot.name]
@@ -839,6 +850,7 @@ func TestKeepRunReusesAHealthyPairWithoutRemoval(t *testing.T) {
 	requireKeepSlotsMatchTheScript(t)
 	for _, slot := range keepSlots {
 		t.Run(slot.name, func(t *testing.T) {
+			t.Parallel()
 			k := newKeepRun(t, slot)
 			res := k.run()
 
@@ -1079,4 +1091,130 @@ func TestPairRemovalsHappenOnlyAtTheKnownSites(t *testing.T) {
 	}
 	assert.Equal(t, 2, bootCalls, "boot_k3s has two call sites")
 	assert.Equal(t, 1, rebuildCalls, "rebuild_downstream has one call site")
+}
+
+// fleetAgentReady is the body the Deployment read of the fleet agent answers
+// when the agent is ready.
+const fleetAgentReady = `{"spec":{"replicas":1},"status":{"readyReplicas":1}}`
+
+// cannedImport adds the rows an import of the downstream cluster c-m-abc
+// reads, and the two fleet agent reads answering ready: the pair's downstream is
+// rebuilt and imported against the stubs.
+func (k *keepRun) cannedImport() {
+	k.t.Helper()
+	k.canned("/v1/provisioning.cattle.io.clusters", "200", "{}")
+	k.canned("/v1/provisioning.cattle.io.clusters/fleet-default/downstream", "404", `{"status":{"clusterName":"c-m-abc"}}`)
+	k.canned("/v3/clusterregistrationtokens?clusterId=c-m-abc", "200", `{"data":[{"token":"regtoken"}]}`)
+	k.canned("/v3/import/regtoken_c-m-abc.yaml", "200", "apiVersion: v1")
+	k.canned("/k8s/clusters/c-m-abc/api/v1/namespaces/cattle-fleet-system", "200", "{}")
+	k.canned("/k8s/clusters/c-m-abc/apis/apps/v1/namespaces/cattle-fleet-system/deployments/fleet-agent", "200", fleetAgentReady)
+}
+
+// moveK3sImage makes the kept downstream come from another k3s image than the
+// run's, so the run rebuilds and imports the downstream, and lets docker run
+// and the TLS name check succeed.
+func (k *keepRun) moveK3sImage() {
+	k.t.Helper()
+	k.state["k3sImage"] = "rancher/k3s:v0.0.1@sha256:" + strings.Repeat("0", 64)
+	delete(k.s.env, "STUB_FAIL_RUN")
+	testfs.WriteExecutable(k.t, filepath.Join(k.s.stubDir, "openssl"),
+		[]byte("#!/bin/sh\nprintf 'IP Address:172.30.%d.2\\n' 1 2 3 4 5 6 7 8 9\n"))
+}
+
+// TestEverySlotWaitsForTheFleetAgentAfterAnImport asserts, on every slot of
+// the script, that the import of the downstream cluster that a moved k3s image
+// causes reads the cattle-fleet-system namespace and then the fleet-agent
+// Deployment, after the proxy path has answered steadily and before the smoke
+// check of the slot. The fleet paths are the only rows that make the run
+// wait: a path without a row would spin on the real clock.
+func TestEverySlotWaitsForTheFleetAgentAfterAnImport(t *testing.T) {
+	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
+	requireKeepSlotsMatchTheScript(t)
+	for _, slot := range keepSlots {
+		t.Run(slot.name, func(t *testing.T) {
+			t.Parallel()
+			k := newKeepRun(t, slot)
+			k.moveK3sImage()
+			k.cannedImport()
+			start := time.Now()
+			res := k.run()
+			require.Equalf(t, 0, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+			assert.Less(t, time.Since(start), 60*time.Second, "a fleet path without a canned row spins on the real clock")
+			assert.Contains(t, res.stdout, "==> waiting for the fleet agent on the downstream cluster c-m-abc")
+
+			namespace, agent, versions, smoke := -1, -1, 0, -1
+			for i, line := range k.s.curlLog() {
+				switch {
+				case strings.HasSuffix(line, "/k8s/clusters/c-m-abc/api/v1/namespaces/cattle-fleet-system"):
+					namespace = i
+				case strings.HasSuffix(line, "/k8s/clusters/c-m-abc/apis/apps/v1/namespaces/cattle-fleet-system/deployments/fleet-agent"):
+					agent = i
+				case strings.HasSuffix(line, "/k8s/clusters/c-m-abc/version") && namespace < 0:
+					versions++
+				case strings.HasSuffix(line, "/rancherversion") && smoke < 0:
+					smoke = i
+				}
+			}
+			require.GreaterOrEqual(t, namespace, 0, "the namespace is read")
+			assert.Greater(t, agent, namespace, "the Deployment is read after the namespace")
+			assert.GreaterOrEqual(t, versions, 6, "the proxy path answered steadily before the fleet reads")
+			if smoke >= 0 {
+				assert.Less(t, agent, smoke, "the fleet reads come before the smoke check")
+			}
+		})
+	}
+}
+
+// TestKeepRunStoppedOracleExitsFive asserts that a run that fails after it
+// reached its own oracle container, whose container Docker reports as exited,
+// exits 5 with the container state first in the diagnostics: a reused pair
+// whose downstream rebuild fails, and a new pair whose server never answers.
+// A run that fails before it reached the container keeps its exit code and
+// still prints the state.
+func TestKeepRunStoppedOracleExitsFive(t *testing.T) {
+	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
+	requireKeepSlotsMatchTheScript(t)
+
+	t.Run("a reused pair", func(t *testing.T) {
+		t.Parallel()
+		k := newKeepRun(t, keepSlots[0])
+		k.state["k3sImage"] = "rancher/k3s:v0.0.1@sha256:" + strings.Repeat("0", 64)
+		k.canned("/v1/provisioning.cattle.io.clusters/fleet-default/downstream", "404", "{}")
+		k.s.helm.files["node_state"] = "exited"
+		res := k.run()
+		require.Equalf(t, 5, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+		assert.Contains(t, res.stderr, "error: the oracle container "+k.slot.container+" is not running (status exited, exit code 0, OOMKilled false)")
+		assert.Contains(t, res.stderr, "the oracle's certificate did not gain the SAN")
+		assert.Contains(t, res.stdout, "==> container state:\n[rancher] status=exited exitCode=0 oomKilled=false finishedAt=")
+		assert.Contains(t, res.stdout, "\n[k3s] status=running exitCode=0 oomKilled=false finishedAt=")
+	})
+
+	t.Run("a new pair that never answers", func(t *testing.T) {
+		t.Parallel()
+		k := newKeepRun(t, keepSlots[0])
+		k.noState = true
+		k.ping = "no reply"
+		delete(k.s.env, "STUB_FAIL_RUN")
+		k.s.helm.files["node_state"] = "exited"
+		k.s.helm.files["exit_code"] = "137"
+		k.s.helm.files["oom"] = "true"
+		res := k.run()
+		require.Equalf(t, 5, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+		assert.True(t, hasCall(res.log, "run -d --name "+k.slot.container), "the run reached its container: %v", res.log)
+		assert.Contains(t, res.stderr, "(status exited, exit code 137, OOMKilled true)")
+		assert.Contains(t, res.stdout, "[rancher] status=exited exitCode=137 oomKilled=true")
+	})
+
+	t.Run("a failure before the run reached its container", func(t *testing.T) {
+		t.Parallel()
+		k := newKeepRun(t, keepSlots[0])
+		k.noState = true
+		k.s.env["STUB_PRE_RENAME"] = "1"
+		k.s.helm.files["node_state"] = "exited"
+		res := k.run()
+		require.Equalf(t, 1, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+		assert.Contains(t, res.stderr, "a pre-rename oracle pair is still present")
+		assert.NotContains(t, res.stderr, "is not running")
+		assert.Contains(t, res.stdout, "[rancher] status=exited exitCode=0 oomKilled=false")
+	})
 }

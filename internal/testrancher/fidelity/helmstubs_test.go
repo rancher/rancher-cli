@@ -82,6 +82,13 @@ const sleepStubScript = "#!/bin/sh\nexit 0\n"
 // output.
 const opensslStubScript = "#!/bin/sh\nexit 0\n"
 
+// memoryPressureStubScript stands in for memory_pressure -Q with a fixed
+// reading.
+const memoryPressureStubScript = `#!/bin/sh
+echo "The system has 1 (1 pages with a page size of 16384)."
+echo "System-wide memory free percentage: 37%"
+`
+
 // dfStubScript stands in for df with ample free space, so no run depends on
 // the host's disk.
 const dfStubScript = `#!/bin/sh
@@ -97,7 +104,12 @@ echo "stub 999999999 1 999999999 1% /"
 // state is the file node_state (running, restarting or exited; running when
 // absent), returned as Docker returns it: State.Status is the value,
 // State.Running is true unless exited and State.Restarting is true only while
-// restarting.
+// restarting. A state read of the form docker inspect -f '<template naming
+// State.OOMKilled>' <name> answers status=<state> exitCode=<n> oomKilled=<b>
+// finishedAt=<time>: the state is node_state for the node container and the
+// file k3s_state for a name ending in -k3s (running when absent), the exit code
+// is the file exit_code (0 when absent) and oomKilled the file oom (false when
+// absent).
 const helmDockerStubScript = `#!/bin/sh
 printf '%s\n' "$*" >> "$STUB_LOG"
 node_state() {
@@ -110,6 +122,19 @@ version)
 ps)
   if [ "$*" = "ps -aq" ] && [ -n "$STUB_PS" ]; then cat "$STUB_PS"; exit 0; fi ;;
 inspect)
+  if [ "$2" = "-f" ] && [ "$#" -ge 4 ]; then
+    case "$3" in
+    *State.OOMKilled*)
+      case "$4" in
+      *-k3s) if [ -s "$STUB_DIR/k3s_state" ]; then st=$(cat "$STUB_DIR/k3s_state"); else st=running; fi ;;
+      *) st=$(node_state) ;;
+      esac
+      if [ -s "$STUB_DIR/exit_code" ]; then code=$(cat "$STUB_DIR/exit_code"); else code=0; fi
+      if [ -s "$STUB_DIR/oom" ]; then oom=$(cat "$STUB_DIR/oom"); else oom=false; fi
+      printf 'status=%s exitCode=%s oomKilled=%s finishedAt=0001-01-01T00:00:00Z\n' "$st" "$code" "$oom"
+      exit 0 ;;
+    esac
+  fi
   if [ "$2" = "-f" ] && [ "$#" -ge 4 ] && [ -n "$STUB_INSPECT" ]; then cat "$STUB_INSPECT"; exit 0; fi
   if [ "$2" = "--format" ]; then
     case "$3" in

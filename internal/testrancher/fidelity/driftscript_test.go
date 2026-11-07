@@ -277,6 +277,7 @@ func newShellEnv(t *testing.T) *shellEnv {
 	require.NoError(t, os.WriteFile(e.logPath, nil, 0o600))
 	testfs.WriteExecutable(t, filepath.Join(e.dir, "docker"), []byte(dockerStubScript))
 	testfs.WriteExecutable(t, filepath.Join(e.dir, "df"), []byte("#!/bin/sh\necho df-stub\n"))
+	testfs.WriteExecutable(t, filepath.Join(e.dir, "memory_pressure"), []byte(memoryPressureStubScript))
 	return e
 }
 
@@ -315,10 +316,11 @@ func (e *shellEnv) run(program string) (stdout, stderr string, code int, dockerC
 	return out.String(), errOut.String(), code, dockerCalls
 }
 
-// cleanupProgram sets what cleanup reads, installs it as the exit trap behind
-// a probe that prints DRIFT_REPORTED, and runs body. DRIFT_REPORTED is set
-// first because the script runs under set -u.
-func (e *shellEnv) cleanupProgram(drift int, reported int, body string) string {
+// cleanupDefinitions sets what cleanup reads and defines cleanup with the
+// functions and variables it uses, under set -euo pipefail. DRIFT_REPORTED is
+// set first because the script runs under set -u. The memory reading has no
+// meminfo file and reads the memory_pressure stub of the environment.
+func (e *shellEnv) cleanupDefinitions(drift int, reported int) string {
 	e.t.Helper()
 	state := filepath.Join(e.dir, "state.json")
 	lock := filepath.Join(e.dir, "lock")
@@ -327,7 +329,17 @@ func (e *shellEnv) cleanupProgram(drift int, reported int, body string) string {
 	return "set -euo pipefail\n" +
 		"DRIFT=" + strconv.Itoa(drift) + "\nDRIFT_REPORTED=" + strconv.Itoa(reported) + "\n" +
 		"STATE_FILE=" + state + " LOCK_DIR=" + lock + " CONTAINER=c K3S_CONTAINER=c-k3s NETWORK=c-net\n" +
-		shellFunction(e.t, "cleanup") +
+		"MEMINFO_FILE=" + filepath.Join(e.dir, "no-meminfo") + " MEMORY_PRESSURE_CMD=memory_pressure MEMORY_READ_LIMIT_SECONDS=5\n" +
+		shellFunction(e.t, "redact_log") +
+		shellFunction(e.t, "host_memory_free") +
+		shellFunction(e.t, "cleanup")
+}
+
+// cleanupProgram sets what cleanup reads, installs it as the exit trap behind
+// a probe that prints DRIFT_REPORTED, and runs body.
+func (e *shellEnv) cleanupProgram(drift int, reported int, body string) string {
+	e.t.Helper()
+	return e.cleanupDefinitions(drift, reported) +
 		"report_flag() { echo \"DRIFT_REPORTED=${DRIFT_REPORTED}\" >&2; }\n" +
 		"trap 'rc=$?; set +e; report_flag; (exit ${rc}); cleanup' EXIT\n" +
 		body + "\n"

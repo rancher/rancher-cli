@@ -944,10 +944,10 @@ func TestFetchPinnedChecksCertificates(t *testing.T) {
 
 // TestHelmCheckBootFailures asserts the failures of the boot after the lock:
 // a node container that stopped or that Docker is restarting is reported at
-// once with its exit code and log, a cert-manager webhook with no CA bundle or
-// an Issuer CRD that is not established stops the run before the secret and
-// the chart, and a chart install that creates no deploy/rancher is named as
-// that.
+// once with its exit code and log and ends the run with exit 5, a
+// cert-manager webhook with no CA bundle or an Issuer CRD that is not
+// established stops the run before the secret and the chart, and a chart
+// install that creates no deploy/rancher is named as that.
 func TestHelmCheckBootFailures(t *testing.T) {
 	t.Run("a node container that stopped", func(t *testing.T) {
 		s := newHelmCheckScenario(t, helmRowOptions{})
@@ -955,7 +955,7 @@ func TestHelmCheckBootFailures(t *testing.T) {
 		s.helm.files["node_state"] = "exited"
 		s.slotScript()
 		res := s.run()
-		require.Equalf(t, 1, res.code, "stderr: %s", res.stderr)
+		require.Equalf(t, 5, res.code, "stderr: %s", res.stderr)
 		assert.Contains(t, res.stderr, "error: the node container stopped (exit code 3); its last log lines:")
 		assert.Contains(t, res.stderr, "stub node container log line")
 		assert.Empty(t, s.stdins(), "nothing is applied to a node container that stopped")
@@ -966,7 +966,7 @@ func TestHelmCheckBootFailures(t *testing.T) {
 		s.helm.files["node_state"] = "restarting"
 		s.slotScript()
 		res := s.run()
-		require.Equalf(t, 1, res.code, "stderr: %s", res.stderr)
+		require.Equalf(t, 5, res.code, "stderr: %s", res.stderr)
 		assert.Contains(t, res.stderr, "error: the node container stopped (exit code 3); its last log lines:")
 		assert.Contains(t, res.stderr, "stub node container log line")
 		assert.Empty(t, s.stdins(), "nothing is applied to a node container that is restarting")

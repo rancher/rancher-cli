@@ -73,8 +73,9 @@ GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # The test binary writes one JSON report (E2E_FIDELITY_DRIFT_REPORT names
 # it; the default is under the state root). The exit is 0 when the report is
 # clean, 3 when it holds a new difference, an errored probe, a failed CLI
-# test or a suite that ran no probe, and 1 for a boot or harness failure; the
-# last line on stdout gives the counts.
+# test or a suite that ran no probe, and 1 for any other boot or harness
+# failure, 5 when the oracle container stopped; the last line on stdout gives
+# the counts.
 #
 # On every slot, with E2E_FIDELITY_KEEP=1, a kept pair that fails its container,
 # container id, bind address, /ping, admin token or state file check is never
@@ -82,6 +83,14 @@ GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # pair. A changed pin, a missing state file and a failed downstream check keep
 # their behavior: the first two create a new pair, the third rebuilds the
 # downstream.
+#
+# Exit codes: 0 the run passed (a clean drift run, print mode); 1 a boot or
+# harness failure; 3 a drift run that found differences; 4 a kept pair that
+# failed a check and was left in place; 5 the oracle container was not running
+# when the run failed (the diagnostics dump starts with its state and exit
+# code, and holds the host's free memory). Any other code is the status of
+# the command that failed: go test's, curl's, docker's, 128 plus the number of
+# a signal. A command that itself exits 5 is reported as 1.
 #
 # E2E_FIDELITY_RANCHER_REPO and E2E_FIDELITY_REGISTRY_URL exist for the tests,
 # which point them at a local git repository and a local registry stand-in.
@@ -180,6 +189,7 @@ fi
 DRIFT=0
 [ "${E2E_FIDELITY_DRIFT:-}" != "1" ] || DRIFT=1
 DRIFT_REPORTED=0
+ORACLE_BOOTED=0
 DRIFT_REPORT_ABS=""
 DRIFT_KNOWN=""
 DRIFT_PROFILE=""
@@ -1169,8 +1179,176 @@ if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
 fi
 echo $$ >"${LOCK_DIR}/pid"
 
+# redact_log copies a log from stdin to stdout, each line behind the prefix in
+# $1, with the values a log can hold that must not reach the diagnostics
+# dump replaced by [redacted]; the rest of the line stays. It redacts, in this
+# order and ignoring case: everything after "Authorization:" or "Bearer"; the
+# word after "Bootstrap Password:"; the value of "setup="; the word after
+# "token starting with" (the agent's first line); the value after
+# password, token or secret followed by : or =; a run of exactly 54 characters
+# of the alphabet Rancher builds token values from; and the three secrets this
+# script holds (BOOTSTRAP_PW, LOGIN_TOKEN, ADMIN_TOKEN) wherever they occur,
+# a bearer's text after its colon included. It reads all of its input and
+# writes only when every line is redacted; when the filter fails it writes the
+# single line "<prefix>[log lines left out: the redaction filter failed]" and
+# never a raw line. The secrets are passed in the environment of the filter, not
+# in its arguments. A value split across two lines by the log reader can escape
+# the filter.
+redact_log() {
+  local prefix="${1:-}" program out input
+  read -r -d '' program <<'PY' || true
+import os, re, sys
+
+try:
+    prefix = sys.argv[1]
+    mark = "[redacted]"
+    rules = [
+        (re.compile(r"(authorization:|bearer)[^\n]*", re.I), r"\1 " + mark),
+        (re.compile(r"(bootstrap password:\s*)\S+", re.I), r"\1" + mark),
+        (re.compile(r"(setup=)[^\s&\"']+", re.I), r"\1" + mark),
+        (re.compile(r"(token starting with\s+)[^\s\"']+", re.I), r"\1" + mark),
+        (re.compile(r"((?:password|token|secret)[\"']?\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|\S+)", re.I), r"\1" + mark),
+        (re.compile(r"(?<![A-Za-z0-9])[bcdfghjklmnpqrstvwxz2456789]{54}(?![A-Za-z0-9])"), mark),
+    ]
+    secrets = set()
+    for name in ("BOOTSTRAP_PW", "LOGIN_TOKEN", "ADMIN_TOKEN"):
+        value = os.environ.get(name, "")
+        if value:
+            secrets.add(value)
+            after = value.split(":", 1)[1] if ":" in value else ""
+            if after:
+                secrets.add(after)
+    ordered = sorted(secrets, key=len, reverse=True)
+    text = sys.stdin.buffer.read().decode("utf-8", errors="replace").replace("\x00", "\ufffd")
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    out = []
+    for line in lines:
+        for pattern, replacement in rules:
+            line = pattern.sub(replacement, line)
+        for secret in ordered:
+            line = line.replace(secret, mark)
+        out.append(prefix + line)
+    data = "\n".join(out).encode("utf-8", errors="replace")
+except BaseException:
+    sys.exit(1)
+sys.stdout.buffer.write(data)
+PY
+  # An empty log needs no filter. The input reaches the filter through a pipe:
+  # a here-string larger than the pipe buffer is written to a temporary file,
+  # which would hold the unfiltered log and can fail on a full disk.
+  input="$(cat)"
+  [ -n "${input}" ] || return 0
+  printf '%s\n' "${input}" | {
+    if out="$(BOOTSTRAP_PW="${BOOTSTRAP_PW:-}" LOGIN_TOKEN="${LOGIN_TOKEN:-}" ADMIN_TOKEN="${ADMIN_TOKEN:-}" python3 -I -c "${program}" "${prefix}")"; then
+      [ -z "${out}" ] || printf '%s\n' "${out}"
+    else
+      printf '%s[log lines left out: the redaction filter failed]\n' "${prefix}"
+    fi
+  } || true
+}
+
+# host_memory_free prints one line with the host's free memory: from
+# MemAvailable and MemTotal in MEMINFO_FILE when it holds both, else from
+# `memory_pressure -Q` (macOS), else "unknown". The reading never fails the
+# caller. memory_pressure writes to a temporary file, never a pipe, and is
+# stopped with its process group after MEMORY_READ_LIMIT_SECONDS. On macOS the
+# oracle runs in Docker Desktop's VM: this is the host's memory, and
+# `docker stats` is the containers'.
+MEMINFO_FILE=/proc/meminfo
+MEMORY_PRESSURE_CMD=memory_pressure
+MEMORY_READ_LIMIT_SECONDS=5
+host_memory_free() {
+  local program
+  read -r -d '' program <<'PY' || true
+import os, re, shutil, signal, subprocess, sys, tempfile, time
+
+unknown = "[host] memory free: unknown"
+
+
+def from_meminfo(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return None
+    values = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key in ("MemTotal", "MemAvailable"):
+            values[key] = value
+    if len(values) < 2:
+        return None
+    try:
+        total = int(values["MemTotal"].split()[0])
+        available = int(values["MemAvailable"].split()[0])
+    except (ValueError, IndexError):
+        return unknown
+    if total <= 0 or available < 0 or available > total:
+        return unknown
+    return "[host] memory free: %d%% (MemAvailable of MemTotal)" % (available * 100 // total)
+
+
+def stop(proc):
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        if proc.poll() is not None:
+            break
+        try:
+            os.killpg(proc.pid, sig)
+        except OSError:
+            pass
+        end = time.monotonic() + 1
+        while proc.poll() is None and time.monotonic() < end:
+            time.sleep(0.02)
+    proc.wait()
+
+
+def from_memory_pressure(command, limit):
+    exe = shutil.which(command)
+    if exe is None:
+        return unknown
+    fd, path = tempfile.mkstemp(prefix="memory-free-")
+    proc = None
+    try:
+        try:
+            proc = subprocess.Popen([exe, "-Q"], stdin=subprocess.DEVNULL, stdout=fd,
+                                    stderr=subprocess.DEVNULL, start_new_session=True)
+        finally:
+            os.close(fd)
+        end = time.monotonic() + limit
+        while proc.poll() is None and time.monotonic() < end:
+            time.sleep(0.005)
+        if proc.poll() is None:
+            return unknown
+        if proc.returncode != 0:
+            return unknown
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m = re.fullmatch(r"System-wide memory free percentage: (0|[1-9][0-9]{0,2})%\s*", line)
+                if m and int(m.group(1)) <= 100:
+                    return "[host] memory free: %s%% (memory_pressure)" % m.group(1)
+        return unknown
+    finally:
+        if proc is not None:
+            stop(proc)
+        os.unlink(path)
+
+
+try:
+    result = from_meminfo(sys.argv[1])
+    if result is None:
+        result = from_memory_pressure(sys.argv[2], float(sys.argv[3]))
+except Exception:
+    result = unknown
+print(result)
+PY
+  python3 -I -c "${program}" "${MEMINFO_FILE}" "${MEMORY_PRESSURE_CMD}" "${MEMORY_READ_LIMIT_SECONDS}" || echo "[host] memory free: unknown"
+}
+
 cleanup() {
   status=$?
+  local oracle_state="" k3s_state="" oracle_status="" exit_code="" oom="" state_pattern
   # A drift run exits 3 only through drift_result, which sets
   # DRIFT_REPORTED=1 once the report holds differences and the summary line
   # is printed; any other 3 (a command that happens to exit 3) is a failure.
@@ -1182,9 +1360,43 @@ cleanup() {
       status=1
     fi
   fi
+  # Exit 5 means the oracle container stopped and comes only from the check
+  # below; a command that exits 5 on its own is a failure like any other.
+  [ ${status} -ne 5 ] || status=1
+  # Every command here is guarded: the trap runs under set -e, and a failing
+  # read must not end the dump. The state is read with named State fields
+  # only: the container's environment holds the bootstrap password.
+  if [ ${status} -ne 0 ]; then
+    oracle_state="$(docker inspect -f 'status={{.State.Status}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} finishedAt={{.State.FinishedAt}}' "${CONTAINER}" 2>/dev/null)" || oracle_state=""
+    k3s_state="$(docker inspect -f 'status={{.State.Status}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} finishedAt={{.State.FinishedAt}}' "${K3S_CONTAINER}" 2>/dev/null)" || k3s_state=""
+    case "${oracle_state}" in status=*) ;; *) oracle_state="" ;; esac
+    case "${k3s_state}" in status=*) ;; *) k3s_state="" ;; esac
+    state_pattern='^status=([a-z]+) exitCode=(-?[0-9]+) oomKilled=(true|false)( |$)'
+    if [[ "${oracle_state}" =~ ${state_pattern} ]]; then
+      oracle_status="${BASH_REMATCH[1]}"
+      exit_code="${BASH_REMATCH[2]}"
+      oom="${BASH_REMATCH[3]}"
+    fi
+  fi
+  # The oracle counts as stopped only once this run reached its own container
+  # (ORACLE_BOOTED), so a stopped container another run left behind cannot
+  # turn an earlier failure into this one. A kept pair runs with
+  # --restart unless-stopped, so a restarting container is stopped too.
+  if [ ${status} -ne 0 ] && [ ${status} -ne 4 ] && [ "${ORACLE_BOOTED:-}" = 1 ]; then
+    case "${oracle_status}" in
+      exited | dead | restarting)
+        echo "error: the oracle container ${CONTAINER} is not running (status ${oracle_status}, exit code ${exit_code}, OOMKilled ${oom}); its state and last log lines follow" >&2
+        status=5
+        report_only=0
+        ;;
+    esac
+  fi
   # Diagnostics fire on EVERY failure - kept runs (recording, reconciling)
   # are exactly the ones that need them. Only removal is gated on keep mode.
   if [ ${status} -ne 0 ] && [ ${report_only} -eq 0 ]; then
+    echo "==> container state:"
+    printf '[rancher] %s\n' "${oracle_state:-state unknown}"
+    printf '[k3s] %s\n' "${k3s_state:-state unknown}"
     # Host and node state first: a suite that fails with webhook endpoints
     # gone or pods rescheduled mid-run is a starved node until the
     # conditions, the pod list, and the host's disk and memory say
@@ -1192,6 +1404,7 @@ cleanup() {
     echo "==> host resources:"
     df -h / 2>&1 | sed 's/^/[host] /' || true
     if command -v free >/dev/null 2>&1; then free -m 2>&1 | sed 's/^/[host] /' || true; fi
+    host_memory_free || true
     docker stats --no-stream 2>&1 | sed 's/^/[host] /' || true
     echo "==> oracle node conditions, pods, and last events:"
     docker exec "${CONTAINER}" kubectl get nodes -o wide 2>&1 | sed 's/^/[rancher] /' || true
@@ -1203,20 +1416,22 @@ cleanup() {
     docker exec "${K3S_CONTAINER}" kubectl describe nodes 2>&1 | sed -n '/^Conditions:/,/^Addresses:/p' | sed 's/^/[k3s] /' || true
     docker exec "${K3S_CONTAINER}" kubectl get pods -A -o wide 2>&1 | sed 's/^/[k3s] /' || true
     echo "==> last 200 container log lines:"
-    docker logs --tail 200 "${CONTAINER}" 2>&1 | sed 's/^/[rancher] /' || true
+    docker logs --tail 200 "${CONTAINER}" 2>&1 | redact_log "[rancher] " || true
+    echo "==> last 50 downstream container log lines:"
+    docker logs --tail 50 "${K3S_CONTAINER}" 2>&1 | redact_log "[k3s] " || true
     echo "==> downstream agent log lines:"
-    docker exec "${K3S_CONTAINER}" kubectl -n cattle-system logs deploy/cattle-cluster-agent --tail 50 2>&1 | sed 's/^/[agent] /' || true
+    docker exec "${K3S_CONTAINER}" kubectl -n cattle-system logs deploy/cattle-cluster-agent --tail 50 2>&1 | redact_log "[agent] " || true
     if [ "${BOOT:-}" = "helm" ]; then
       # In a helm boot the container log above is the node container's;
       # Rancher's own log, its restarts and the chart install job are in the
       # cluster.
       echo "==> Rancher chart install job log:"
-      docker exec "${CONTAINER}" kubectl -n kube-system logs job/helm-install-rancher --tail 200 2>&1 | sed 's/^/[helm] /' || true
+      docker exec "${CONTAINER}" kubectl -n kube-system logs job/helm-install-rancher --tail 200 2>&1 | redact_log "[helm] " || true
       echo "==> Rancher pod log:"
-      docker exec "${CONTAINER}" kubectl -n cattle-system logs deploy/rancher --tail 200 2>&1 | sed 's/^/[rancher] /' || true
+      docker exec "${CONTAINER}" kubectl -n cattle-system logs deploy/rancher --tail 200 2>&1 | redact_log "[rancher] " || true
       echo "==> Rancher pod restarts and last state:"
       docker exec "${CONTAINER}" kubectl -n cattle-system get pods -l app=rancher \
-        -o jsonpath='{range .items[*]}{.metadata.name} restarts={.status.containerStatuses[*].restartCount} last={.status.containerStatuses[*].lastState}{"\n"}{end}' 2>&1 | sed 's/^/[rancher] /' || true
+        -o jsonpath='{range .items[*]}{.metadata.name} restarts={.status.containerStatuses[*].restartCount} last={.status.containerStatuses[*].lastState}{"\n"}{end}' 2>&1 | redact_log "[rancher] " || true
       echo "==> cert-manager pods:"
       docker exec "${CONTAINER}" kubectl -n cert-manager get pods -o wide 2>&1 | sed 's/^/[cert-manager] /' || true
     fi
@@ -1506,7 +1721,7 @@ wait_for_downstream_active() {
   for _ in $(seq 1 100); do
     state="$(api "${BASE_URL}/v3/clusters/${DOWNSTREAM_ID}" \
       | python3 -c 'import json,sys; print(json.load(sys.stdin).get("state",""))' 2>/dev/null || true)"
-    [ "${state}" = "active" ] && { wait_for_downstream_proxy; return; }
+    [ "${state}" = "active" ] && { wait_for_downstream_proxy && wait_for_fleet_agent; return; }
     sleep 6
   done
   echo "error: the downstream cluster did not become active within 10 minutes" >&2
@@ -1534,6 +1749,54 @@ wait_for_downstream_proxy() {
   done
   echo "error: the proxy path to the downstream did not settle within 3 minutes" >&2
   return 1
+}
+
+# wait_for_fleet_agent waits until the fleet agent runs on the downstream
+# cluster: the cattle-fleet-system namespace exists and the fleet-agent
+# Deployment there has all its wanted replicas ready (at least one). Rancher
+# installs the agent after the cluster turns active; a probe that lists the
+# downstream's namespaces before that sees a partial list. The reads go through
+# the proxy path the probes use. The deadline is FLEET_LIMIT_SECONDS from the
+# call, counted on bash's SECONDS like fetch_ca's.
+FLEET_LIMIT_SECONDS=600
+FLEET_WAIT_SECONDS=5
+wait_for_fleet_agent() {
+  local deadline=$((SECONDS + FLEET_LIMIT_SECONDS)) phase=namespace out status="" body last ready="" have=0 wanted=1
+  local base="${BASE_URL}/k8s/clusters/${DOWNSTREAM_ID}"
+  echo "==> waiting for the fleet agent on the downstream cluster ${DOWNSTREAM_ID}"
+  while :; do
+    if [ "${phase}" = namespace ]; then
+      out="$(api -w '\n%{http_code}' "${base}/api/v1/namespaces/cattle-fleet-system" || true)"
+    else
+      out="$(api -w '\n%{http_code}' "${base}/apis/apps/v1/namespaces/cattle-fleet-system/deployments/fleet-agent" || true)"
+    fi
+    status="${out##*$'\n'}"
+    body="${out%$'\n'*}"
+    if [ "${phase}" = namespace ]; then
+      if [ "${status}" = "200" ]; then
+        phase=deployment
+        sleep "${FLEET_WAIT_SECONDS}"
+        continue
+      fi
+    elif [ "${status}" = "200" ]; then
+      ready="$(printf '%s' "${body}" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); s=d.get("spec") or {}; t=d.get("status") or {}; print(int(t.get("readyReplicas", 0)), max(int(s.get("replicas", 1)), 1))' 2>/dev/null)" || ready="0 1"
+      read -r have wanted <<<"${ready}"
+      [ "${have}" -ge "${wanted}" ] && return 0
+    fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      last="last HTTP status ${status}"
+      [ "${status}" != "000" ] || last="no HTTP answer"
+      if [ "${phase}" = namespace ]; then
+        echo "error: namespace cattle-fleet-system did not appear on the downstream cluster ${DOWNSTREAM_ID} within ${FLEET_LIMIT_SECONDS} s (${last})" >&2
+      elif [ "${status}" = "200" ]; then
+        echo "error: deployment cattle-fleet-system/fleet-agent on the downstream cluster ${DOWNSTREAM_ID} was not ready within ${FLEET_LIMIT_SECONDS} s (${have} of ${wanted} replicas ready)" >&2
+      else
+        echo "error: deployment cattle-fleet-system/fleet-agent did not appear on the downstream cluster ${DOWNSTREAM_ID} within ${FLEET_LIMIT_SECONDS} s (${last})" >&2
+      fi
+      return 1
+    fi
+    sleep "${FLEET_WAIT_SECONDS}"
+  done
 }
 
 # reuse_state reports whether the kept pair can be used as it is; it runs only
@@ -1785,7 +2048,7 @@ boot_helm_node() {
     # status tells a running node container from a stopped or restarting one.
     if [ "$(docker inspect --format '{{.State.Status}}' "${CONTAINER}" 2>/dev/null)" != "running" ]; then
       echo "error: the node container stopped (exit code $(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER}" 2>/dev/null)); its last log lines:" >&2
-      docker logs --tail 20 "${CONTAINER}" >&2 2>&1 || true
+      docker logs --tail 20 "${CONTAINER}" 2>&1 | redact_log "" >&2 || true
       return 1
     fi
     sleep 3
@@ -1968,6 +2231,7 @@ JSON
 }
 
 if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && reuse_state; then
+  ORACLE_BOOTED=1
   require_disk
   echo "==> reusing healthy kept container"
   reuse_downstream || rebuild_downstream
@@ -1989,6 +2253,7 @@ else
   docker rm -f -v "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
   docker network rm "${NETWORK}" >/dev/null 2>&1 || true
   rm -f "${STATE_FILE}"
+  ORACLE_BOOTED=1
   ensure_network
   BOOTSTRAP_PW="$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
   if [ "${BOOT}" = "helm" ]; then

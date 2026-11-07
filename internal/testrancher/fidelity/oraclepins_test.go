@@ -250,13 +250,16 @@ func TestPinGuardToleratesACarriageReturn(t *testing.T) {
 
 // bootstrapPasswordForms are the only lines of scripts/e2e-fidelity that may
 // name BOOTSTRAP_PW: its generation, the environment file of the container
-// boot, the secret manifest here-document and the login body here-document.
-// The password reaches no argument of an external command.
+// boot, the secret manifest here-document, the login body here-document, and
+// the two lines of the log filter that read the secrets it redacts from its
+// environment. The password reaches no argument of an external command.
 var bootstrapPasswordForms = []*regexp.Regexp{
 	regexp.MustCompile(`^\s*BOOTSTRAP_PW="\$\(head -c 24 /dev/urandom \| base64 \| tr -dc 'a-zA-Z0-9' \| head -c 20\)"$`),
 	regexp.MustCompile(`^\s*\( umask 177; printf 'CATTLE_BOOTSTRAP_PASSWORD=%s\\n' "\$\{BOOTSTRAP_PW\}" >"\$\{ENV_FILE\}" \)$`),
 	regexp.MustCompile(`^\s*bootstrapPassword: "\$\{BOOTSTRAP_PW\}"$`),
 	regexp.MustCompile(`^\{"username":"admin","password":"\$\{BOOTSTRAP_PW\}"\}$`),
+	regexp.MustCompile(`^\s+for name in \("BOOTSTRAP_PW", "LOGIN_TOKEN", "ADMIN_TOKEN"\):$`),
+	regexp.MustCompile(`^\s*if out="\$\(BOOTSTRAP_PW="\$\{BOOTSTRAP_PW:-\}" LOGIN_TOKEN="\$\{LOGIN_TOKEN:-\}" ADMIN_TOKEN="\$\{ADMIN_TOKEN:-\}" python3 -I -c "\$\{program\}" "\$\{prefix\}"\)"; then$`),
 }
 
 // unlistedPasswordLines returns the lines of a script that name BOOTSTRAP_PW

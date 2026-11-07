@@ -400,6 +400,7 @@ func newScenario(t *testing.T) *scenario {
 	testfs.WriteExecutable(t, filepath.Join(s.stubDir, "xargs"), []byte(xargsStubScript))
 	for name, script := range map[string]string{
 		"curl": curlStubScript, "go": goStubScript, "sleep": sleepStubScript, "openssl": opensslStubScript, "df": dfStubScript,
+		"memory_pressure": memoryPressureStubScript,
 	} {
 		testfs.WriteExecutable(t, filepath.Join(s.stubDir, name), []byte(script))
 	}
@@ -484,7 +485,7 @@ func (s *scenario) environ() []string {
 
 // stubbedTools are the commands every run stubs: nothing the script runs can
 // reach a real Docker daemon, a real server or the host's disk and clock.
-var stubbedTools = []string{"docker", "curl", "go", "sleep", "openssl", "df"}
+var stubbedTools = []string{"docker", "curl", "go", "sleep", "openssl", "df", "memory_pressure"}
 
 // run executes the script after checking that every stubbed tool resolves to
 // its stub, so a harness slip fails before the script can reach a real one.
@@ -1304,8 +1305,9 @@ func (h *fnHarness) run(t *testing.T, limit, wait int) (stdout, stderr string, c
 
 	program := "set -euo pipefail\n" +
 		fakeClock +
-		"BASE_URL=http://127.0.0.1:1 BOOTSTRAP_PW=bootstrap-secret-pw\n" +
+		"BASE_URL=http://127.0.0.1:1 BOOTSTRAP_PW=bootstrap-secret-pw ADMIN_TOKEN=stub-admin-token DOWNSTREAM_ID=c-m-stub\n" +
 		"CA_FILE=" + filepath.Join(h.dir, "ca.pem") + "\n" +
+		shellFunction(t, "api") +
 		extracted +
 		fmt.Sprintf("%s=%d\n%s=%d\n", h.limitVar, limit, h.waitVar, wait) +
 		h.fn + "\n"
@@ -1476,6 +1478,7 @@ func TestOracleMinorLoginNoAnswer(t *testing.T) {
 var clockFunctions = []struct{ fn, limitVar, waitVar string }{
 	{"login_admin", "LOGIN_LIMIT_SECONDS", "LOGIN_WAIT_SECONDS"},
 	{"fetch_ca", "CA_LIMIT_SECONDS", "CA_WAIT_SECONDS"},
+	{"wait_for_fleet_agent", "FLEET_LIMIT_SECONDS", "FLEET_WAIT_SECONDS"},
 }
 
 // TestOracleMinorRetryClockIgnoresSlowCalls asserts that the number of
@@ -1495,6 +1498,162 @@ func TestOracleMinorRetryClockIgnoresSlowCalls(t *testing.T) {
 			assert.Equal(t, 3, h.calls(t), "the slow first call must not use up the limit")
 		})
 	}
+}
+
+// TestFleetAgentWait asserts what wait_for_fleet_agent waits for and says: the
+// downstream's cattle-fleet-system namespace first, then the fleet-agent
+// Deployment with all its wanted replicas (at least one) ready, through the
+// proxy path with the admin token; and, at its deadline, which of the three
+// states it last saw. The limit is 6 s and the wait 2 s on the fake clock.
+func TestFleetAgentWait(t *testing.T) {
+	const (
+		namespaceBody = `{"kind":"Namespace","metadata":{"name":"cattle-fleet-system"}}` + "\n200"
+		notFound      = `{"kind":"Status","code":404}` + "\n404"
+		namespaceURL  = "/k8s/clusters/c-m-stub/api/v1/namespaces/cattle-fleet-system"
+		agentURL      = "/k8s/clusters/c-m-stub/apis/apps/v1/namespaces/cattle-fleet-system/deployments/fleet-agent"
+		prefix        = "error: "
+	)
+	agent := func(replicas, ready string) string {
+		return `{"spec":{"replicas":` + replicas + `},"status":{"readyReplicas":` + ready + `}}` + "\n200"
+	}
+	notReady := func(ready, wanted string) string {
+		return prefix + "deployment cattle-fleet-system/fleet-agent on the downstream cluster c-m-stub was not ready within 6 s (" +
+			ready + " of " + wanted + " replicas ready)\n"
+	}
+	missingAgent := prefix + "deployment cattle-fleet-system/fleet-agent did not appear on the downstream cluster c-m-stub within 6 s (last HTTP status 404)\n"
+	cases := []struct {
+		name      string
+		responses map[string]string
+		code      int
+		stderr    string
+		calls     int
+	}{
+		{"ready", map[string]string{"1": namespaceBody, "2": agent("1", "1")}, 0, "", 2},
+		{"ready after two reads that are not", map[string]string{"1": namespaceBody, "2": agent("1", "0"), "3": agent("1", "0"), "4": agent("1", "1")}, 0, "", 4},
+		{"ready with three of three", map[string]string{"1": namespaceBody, "2": agent("3", "3")}, 0, "", 2},
+		{"a namespace that appears late", map[string]string{"1": notFound, "2": notFound, "3": namespaceBody, "4": agent("1", "1")}, 0, "", 4},
+		{"namespace missing", map[string]string{"default": notFound}, 1,
+			prefix + "namespace cattle-fleet-system did not appear on the downstream cluster c-m-stub within 6 s (last HTTP status 404)\n", 4},
+		{"no answer", map[string]string{"default": "000"}, 1,
+			prefix + "namespace cattle-fleet-system did not appear on the downstream cluster c-m-stub within 6 s (no HTTP answer)\n", 4},
+		{"deployment missing", map[string]string{"1": namespaceBody, "default": notFound}, 1, missingAgent, 4},
+		{"not ready", map[string]string{"1": namespaceBody, "default": agent("1", "0")}, 1, notReady("0", "1"), 4},
+		{"two of three ready", map[string]string{"1": namespaceBody, "default": agent("3", "2")}, 1, notReady("2", "3"), 4},
+		{"scaled to zero", map[string]string{"1": namespaceBody, "default": `{"spec":{"replicas":0},"status":{}}` + "\n200"}, 1, notReady("0", "1"), 4},
+		{"a body that is not JSON", map[string]string{"1": namespaceBody, "default": "not json\n200"}, 1, notReady("0", "1"), 4},
+		{"a body with no status", map[string]string{"1": namespaceBody, "default": "{}\n200"}, 1, notReady("0", "1"), 4},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h := newFnHarness(t, "FLEET_LIMIT_SECONDS", "FLEET_WAIT_SECONDS", "wait_for_fleet_agent", c.responses)
+			stdout, stderr, code := h.run(t, 6, 2)
+			assert.Equal(t, c.code, code, "stderr: %s", stderr)
+			assert.Equal(t, c.stderr, stderr)
+			assert.Equal(t, "==> waiting for the fleet agent on the downstream cluster c-m-stub\n", stdout)
+			assert.Equal(t, c.calls, h.calls(t))
+		})
+	}
+
+	t.Run("the reads go through the proxy path with the admin token, the namespace first", func(t *testing.T) {
+		h := newFnHarness(t, "FLEET_LIMIT_SECONDS", "FLEET_WAIT_SECONDS", "wait_for_fleet_agent",
+			map[string]string{"1": namespaceBody, "2": agent("1", "1")})
+		_, stderr, code := h.run(t, 6, 2)
+		require.Equal(t, 0, code, "stderr: %s", stderr)
+		raw, err := os.ReadFile(filepath.Join(h.dir, "argv"))
+		require.NoError(t, err)
+		argv := strings.Split(strings.TrimSpace(string(raw)), "\n")
+		require.Len(t, argv, 2)
+		for i, url := range []string{"http://127.0.0.1:1" + namespaceURL, "http://127.0.0.1:1" + agentURL} {
+			assert.True(t, strings.HasSuffix(argv[i], " "+url), "request %d: %s", i+1, argv[i])
+			assert.Contains(t, argv[i], "-H Authorization: Bearer stub-admin-token")
+		}
+	})
+}
+
+// TestEverySlotWaitsForTheFleetAgentSourceScan asserts, from the text of the
+// script, that every import of a downstream cluster ends in the wait for the
+// fleet agent whatever the slot: both boot_k3s calls are followed by
+// import_downstream, import_downstream ends in wait_for_downstream_active, the
+// line of wait_for_downstream_active that sees the cluster active passes on the
+// status of both waits, the wait is called there only, and neither that line nor
+// the wait names a slot, a boot or a drift run.
+func TestEverySlotWaitsForTheFleetAgentSourceScan(t *testing.T) {
+	lines := scriptLines(t)
+	const wait = "wait_for_fleet_agent"
+	const activeLine = `[ "${state}" = "active" ] && { wait_for_downstream_proxy && ` + wait + `; return; }`
+	selectors := []string{"MINOR", "HELM_CHECK", "SMOKE_PROFILE", "E2E_FIDELITY_PRIME", "BOOT", "DRIFT"}
+
+	owner, calls, activeLines := "", 0, 0
+	for _, line := range lines {
+		if name, _, ok := strings.Cut(line, "() {"); ok && !strings.ContainsAny(name, " \t") {
+			owner = name
+		} else if line == "}" {
+			owner = ""
+		}
+		text := strings.TrimSpace(line)
+		if strings.HasPrefix(text, "#") {
+			continue
+		}
+		if strings.Contains(text, wait) && text != wait+"() {" {
+			calls++
+			assert.Equal(t, "wait_for_downstream_active", owner, "the wait is called from wait_for_downstream_active only: %s", text)
+			assert.Equal(t, activeLine, text)
+		}
+		if owner == "wait_for_downstream_active" && strings.Contains(text, `"${state}" = "active"`) {
+			activeLines++
+			assert.Equal(t, activeLine, text)
+			for _, name := range selectors {
+				assert.NotContains(t, text, name, "the wait does not depend on the slot")
+			}
+		}
+	}
+	assert.Equal(t, 1, calls, "the wait has one call")
+	assert.Equal(t, 1, activeLines, "wait_for_downstream_active has one line that sees the cluster active")
+
+	inWait := false
+	waitLines := 0
+	for _, line := range lines {
+		if line == wait+"() {" {
+			inWait = true
+			continue
+		}
+		if !inWait {
+			continue
+		}
+		if line == "}" {
+			inWait = false
+			break
+		}
+		waitLines++
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		for _, name := range selectors {
+			assert.NotContains(t, line, name, "the wait does not depend on the slot")
+		}
+	}
+	assert.False(t, inWait, "the end of the wait was not found")
+	assert.Greater(t, waitLines, 10, "the body of the wait was not found")
+
+	importBody := functionBody(t, "import_downstream")
+	last := ""
+	for _, line := range importBody[1 : len(importBody)-1] {
+		if strings.TrimSpace(line) != "" {
+			last = strings.TrimSpace(line)
+		}
+	}
+	assert.Equal(t, "wait_for_downstream_active", last, "an import ends in the wait for the cluster to be active")
+
+	boots := 0
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "boot_k3s" {
+			boots++
+			require.Less(t, i+1, len(lines))
+			assert.Equal(t, "import_downstream", strings.TrimSpace(lines[i+1]), "boot_k3s is followed by import_downstream")
+		}
+	}
+	assert.Equal(t, 2, boots, "boot_k3s has two call sites")
 }
 
 var (

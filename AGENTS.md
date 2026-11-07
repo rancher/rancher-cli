@@ -71,8 +71,9 @@ Gotchas:
   row is refused. It runs the boot smoke; with `E2E_FIDELITY_DRIFT=1` it
   also compares every probe that runs on that minor with the community
   goldens, lists the probes whose `MaxMinor` is older than that minor as not
-  checked, and writes a report (exit 0 clean, 3 differences, any other code
-  a boot or harness failure), matching differences against
+  checked, and writes a report (exit 0 clean, 3 differences, 5 the oracle
+  container stopped, any other code a boot or harness failure), matching
+  differences against
   `internal/testrancher/fidelity/testdata/upcoming/v<minor>.json`.
   `E2E_FIDELITY_UPCOMING_IMAGE`, `E2E_FIDELITY_K3S_IMAGE`,
   `E2E_FIDELITY_PRINT_IMAGES=1`, `E2E_FIDELITY_UPCOMING_BOOT`,
