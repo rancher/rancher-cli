@@ -20,6 +20,21 @@ if [ -z "${FAULT_LOG_DIR:-}" ] || [ ! -d "$FAULT_LOG_DIR" ] || [ $# -eq 0 ]; the
   echo "usage: FAULT_LOG_DIR=<existing directory> scripts/fault-trace <program> [args...]" >&2
   exit 2
 fi
+# strace stops a thread on every signal it receives. The Go runtime sends
+# SIGURG to preempt running code, often while the collector runs, which slows
+# an allocating benchmark many times over. A benchmark's timings under the
+# trace are not read, so a test binary started with a -test.bench= argument
+# turns async preemption off; any other binary keeps it. go test passes the
+# flag as one argument, -test.bench=<regex>. The setting goes last, so it wins
+# over the caller's.
+for arg in "$@"; do
+  case "$arg" in
+    -test.bench=*)
+      export GODEBUG="${GODEBUG:+$GODEBUG,}asyncpreemptoff=1"
+      break
+      ;;
+  esac
+done
 # A traced process cannot be traced again: a test that runs go test itself
 # starts a child that inherits the -exec flag, and the outer strace already
 # follows it.

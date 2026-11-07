@@ -266,7 +266,10 @@ func toolWrappers(t *testing.T, tools ...string) string {
 // without starting the program when it cannot read the tracer or reads a
 // value that is empty, not a number or has a leading zero. It runs the
 // program directly when an outer strace follows the process, and returns the
-// program's own exit status and output.
+// program's own exit status and output. It also asserts that a traced
+// benchmark run (an argument that starts with -test.bench=) gets
+// asyncpreemptoff=1 appended to its GODEBUG, with or without an outer strace,
+// and that any other program gets GODEBUG unchanged.
 func TestFaultTraceRefusals(t *testing.T) {
 	t.Parallel()
 	testfs.SkipOnWindows(t, posixOnlyReason)
@@ -284,6 +287,14 @@ func TestFaultTraceRefusals(t *testing.T) {
 		if logDir != "" {
 			cmd.Env = append(cmd.Env, "FAULT_LOG_DIR="+logDir)
 		}
+		out, err := cmd.CombinedOutput()
+		return exitCodeOf(t, err), string(out)
+	}
+	runWithEnv := func(t *testing.T, pathDir, logDir, workDir string, extraEnv []string, args ...string) (int, string) {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), script, args...)
+		cmd.Dir = workDir
+		cmd.Env = append([]string{"PATH=" + pathDir, "FAULT_LOG_DIR=" + logDir}, extraEnv...)
 		out, err := cmd.CombinedOutput()
 		return exitCodeOf(t, err), string(out)
 	}
@@ -454,4 +465,39 @@ func TestFaultTraceRefusals(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "internal/client/provider\n", string(data))
 	})
+
+	const printGODEBUG = `printf '%s\n' "$GODEBUG"`
+	for _, c := range []struct {
+		name       string
+		args       []string
+		env        []string
+		outerTrace bool
+		want       string
+	}{
+		{"a benchmark run turns async preemption off", []string{"-test.bench=BenchmarkX$"}, nil, false, "asyncpreemptoff=1"},
+		{"a benchmark run keeps the caller's GODEBUG", []string{"-test.bench=BenchmarkX$"}, []string{"GODEBUG=foo=1"}, false, "foo=1,asyncpreemptoff=1"},
+		{"a benchmark run overrides the caller's asyncpreemptoff", []string{"-test.bench=BenchmarkX$"}, []string{"GODEBUG=asyncpreemptoff=0"}, false, "asyncpreemptoff=0,asyncpreemptoff=1"},
+		{"a benchmark run with an empty GODEBUG", []string{"-test.bench=BenchmarkX$"}, []string{"GODEBUG="}, false, "asyncpreemptoff=1"},
+		{"a benchmark argument between other test arguments", []string{"-test.run=^$", "-test.bench=.", "-test.count=10"}, nil, false, "asyncpreemptoff=1"},
+		{"a test run leaves GODEBUG unchanged", []string{"-test.run=TestX", "-test.count=1"}, nil, false, ""},
+		{"a test run keeps the caller's GODEBUG", []string{"-test.run=TestX"}, []string{"GODEBUG=foo=1"}, false, "foo=1"},
+		{"a benchtime without a benchmark leaves GODEBUG unchanged", []string{"-test.benchtime=200x", "-test.benchmem"}, nil, false, ""},
+		{"a benchmark run under an outer strace", []string{"-test.bench=."}, nil, true, "asyncpreemptoff=1"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if runtime.GOOS != "linux" {
+				t.Skip("the script refuses before it runs strace")
+			}
+			pathDir := stubStrace(t)
+			if c.outerTrace {
+				pathDir = toolWrappers(t, "uname", "dirname", "mktemp")
+				writeTestScript(t, filepath.Join(pathDir, "awk"), "#!/bin/sh\necho 4242\n")
+			}
+			args := append([]string{sh, "-c", printGODEBUG, "sh"}, c.args...)
+			code, out := runWithEnv(t, pathDir, t.TempDir(), t.TempDir(), c.env, args...)
+			assert.Equal(t, 0, code, out)
+			assert.Equal(t, c.want+"\n", out)
+		})
+	}
 }
