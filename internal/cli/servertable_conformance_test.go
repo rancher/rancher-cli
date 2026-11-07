@@ -4,9 +4,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/testrancher/fidelity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,6 +44,13 @@ var serverTableInventory = map[string]string{
 	"persistentvolumeclaim": serverTableReason,
 	"serviceaccount":        serverTableReason,
 	"event":                 serverTableReason,
+
+	"horizontalpodautoscaler": serverTableReason,
+	"limitrange":              serverTableReason,
+	"networkpolicy":           serverTableReason,
+	"poddisruptionbudget":     serverTableReason,
+	"resourcequota":           serverTableReason,
+	"storageclass":            serverTableReason,
 }
 
 // TestServerTableKindsConformance asserts the kinds marked ServerTable are
@@ -64,6 +75,120 @@ func TestServerTableKindsConformance(t *testing.T) {
 		_, ok := kinds.ByKey(key)
 		require.True(t, ok, "serverTableInventory entry %q names no kind - remove it or check the spelling", key)
 		assert.True(t, marked[key], "serverTableInventory entry %q is not marked ServerTable in the kind table", key)
+	}
+}
+
+// serverTableProbeName is the recorded probe whose responses are the
+// evidence for every ServerTable kind. The probe sends list requests
+// through Rancher's cluster proxy with the Accept header that asks for a
+// Table.
+const serverTableProbeName = "server-table-downstream/nodes-and-pods"
+
+// serverTableProbeRef names a recorded probe and the observation in it that
+// is the evidence for one ServerTable kind.
+type serverTableProbeRef struct {
+	probe       string
+	observation string
+}
+
+var (
+	// serverTableNamespaced is the observation for a namespaced kind: a list of
+	// pods across all namespaces.
+	serverTableNamespaced = serverTableProbeRef{serverTableProbeName, "pods"}
+	// serverTableClusterScoped is the observation for a cluster-scoped kind: a
+	// list of nodes.
+	serverTableClusterScoped = serverTableProbeRef{serverTableProbeName, "nodes"}
+)
+
+// serverTableProbes maps each ServerTable kind to the recorded observation
+// that is its evidence. TestEveryServerTableKindHasAProbe asserts that every
+// ServerTable kind has an entry and that every entry names a ServerTable
+// kind.
+var serverTableProbes = map[string]serverTableProbeRef{
+	"node":                    serverTableClusterScoped,
+	"namespace":               serverTableClusterScoped,
+	"persistentvolume":        serverTableClusterScoped,
+	"storageclass":            serverTableClusterScoped,
+	"pod":                     serverTableNamespaced,
+	"deployment":              serverTableNamespaced,
+	"service":                 serverTableNamespaced,
+	"configmap":               serverTableNamespaced,
+	"secret":                  serverTableNamespaced,
+	"statefulset":             serverTableNamespaced,
+	"daemonset":               serverTableNamespaced,
+	"replicaset":              serverTableNamespaced,
+	"job":                     serverTableNamespaced,
+	"cronjob":                 serverTableNamespaced,
+	"ingress":                 serverTableNamespaced,
+	"persistentvolumeclaim":   serverTableNamespaced,
+	"serviceaccount":          serverTableNamespaced,
+	"event":                   serverTableNamespaced,
+	"horizontalpodautoscaler": serverTableNamespaced,
+	"limitrange":              serverTableNamespaced,
+	"networkpolicy":           serverTableNamespaced,
+	"poddisruptionbudget":     serverTableNamespaced,
+	"resourcequota":           serverTableNamespaced,
+}
+
+// TestEveryServerTableKindHasAProbe asserts that every kind marked
+// ServerTable has an entry in serverTableProbes and that every entry names a
+// ServerTable kind. It also asserts that each entry's probe is recorded on
+// every Rancher minor against a downstream cluster, has the named
+// observation, and sends a GET through the cluster proxy with the Accept
+// header that asks for a Table. The observation must fit the kind's namespace
+// policy: it is named pods and its request path ends in /pods for a
+// namespaced kind, and it is named nodes and its request path ends in /nodes
+// for a cluster-scoped kind.
+//
+// It does not check the columns of any kind. The recorded response shows that
+// Rancher's proxy returns a Table when the request has the Accept header that
+// asks for one; the columns of each kind come from kube-apiserver.
+func TestEveryServerTableKindHasAProbe(t *testing.T) {
+	t.Parallel()
+	probes := map[string]fidelity.Probe{}
+	for _, p := range fidelity.All() {
+		probes[p.Name] = p
+	}
+	marked := map[string]kinds.Kind{}
+	for _, k := range kinds.All() {
+		if !k.ServerTable {
+			continue
+		}
+		marked[k.Key] = k
+		_, ok := serverTableProbes[k.Key]
+		assert.True(t, ok, "kind %q is marked ServerTable but has no entry in serverTableProbes - add an entry with the recorded observation that is its evidence", k.Key)
+	}
+	for key, ref := range serverTableProbes {
+		k, ok := marked[key]
+		if !ok {
+			assert.Fail(t, "serverTableProbes entry names no ServerTable kind", "entry %q: remove it or check the spelling", key)
+			continue
+		}
+		p, ok := probes[ref.probe]
+		if !assert.True(t, ok, "kind %q names probe %q, which fidelity.All() does not list", key, ref.probe) {
+			continue
+		}
+		assert.True(t, p.Downstream, "probe %q of kind %q must run against a downstream cluster", p.Name, key)
+		assert.False(t, p.OracleOnly, "probe %q of kind %q must not be marked OracleOnly", p.Name, key)
+		assert.Empty(t, p.MaxMinor, "probe %q of kind %q must run on every Rancher minor", p.Name, key)
+
+		i := slices.IndexFunc(p.Observations, func(o fidelity.Observation) bool { return o.Name == ref.observation })
+		require.GreaterOrEqual(t, i, 0, "probe %q has no observation %q named by kind %q", p.Name, ref.observation, key)
+		req := p.Observations[i].Request
+		assert.Equal(t, http.MethodGet, req.Method, "observation %q of kind %q must be a GET", ref.observation, key)
+		assert.True(t, strings.HasPrefix(req.Path, "/k8s/clusters/{downstream}/"), "observation %q of kind %q must go through the cluster proxy, got %q", ref.observation, key, req.Path)
+		assert.Contains(t, req.Headers["Accept"], "as=Table", "observation %q of kind %q must ask for a Table", ref.observation, key)
+
+		want := "pods"
+		switch k.Policy {
+		case kinds.NSPlain:
+		case kinds.NSNone:
+			want = "nodes"
+		default:
+			assert.Fail(t, "ServerTable kind has a namespace policy other than NSPlain and NSNone", "kind %q has policy %q", key, k.Policy)
+		}
+		assert.Equal(t, want, ref.observation, "kind %q (%s) must name the observation that fits its namespace policy", key, k.Policy)
+		assert.True(t, strings.HasSuffix(req.Path, "/"+want), "observation %q of kind %q must request a path that ends in /%s, got %q", ref.observation, key, want, req.Path)
 	}
 }
 

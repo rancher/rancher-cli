@@ -477,7 +477,7 @@ func callerRows(t *testing.T) map[string]callerRow {
 			rows[d.Name] = row
 		}
 	}
-	assert.Equal(t, 88, taking, "the commands that take a cluster or clusters flag")
+	assert.Equal(t, 106, taking, "the commands that take a cluster or clusters flag")
 	for name, row := range callerBespokeRows {
 		if _, ok := rows[name]; !ok {
 			rows[name] = row

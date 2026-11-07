@@ -32,6 +32,13 @@ var cliOnlyKinds = map[string]bool{
 	"clusterrepo":              true, // no rancher-ai-mcp tool counterpart
 	"app":                      true, // no rancher-ai-mcp tool counterpart
 	"operation":                true, // no rancher-ai-mcp tool counterpart
+
+	"horizontalpodautoscaler": true, // no rancher-ai-mcp tool counterpart
+	"limitrange":              true, // no rancher-ai-mcp tool counterpart
+	"networkpolicy":           true, // no rancher-ai-mcp tool counterpart
+	"poddisruptionbudget":     true, // no rancher-ai-mcp tool counterpart
+	"resourcequota":           true, // no rancher-ai-mcp tool counterpart
+	"storageclass":            true, // no rancher-ai-mcp tool counterpart
 }
 
 func TestConformsToMCPVocabulary(t *testing.T) {
@@ -794,4 +801,80 @@ func TestFleetHelmOpAndWorkspaceRows(t *testing.T) {
 	assert.True(t, ws.Sensitive)
 	assert.Empty(t, ws.WaitDefault)
 	assert.False(t, ws.WaitFailsOnStalled)
+}
+
+// TestBuiltInKubernetesKindRows asserts, for each of the six kinds, that its
+// name, plural, kubectl short name and key all resolve to the same row, and
+// that the row has the group, version, resource, namespace policy, sensitivity
+// and server-table setting listed in this test. It also asserts that a
+// manifest with the kind's apiVersion and kind resolves to the row and that a
+// manifest with another apiVersion of the kind does not.
+func TestBuiltInKubernetesKindRows(t *testing.T) {
+	t.Parallel()
+	binding := safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta}
+	tests := []struct {
+		name       string
+		plural     string
+		short      string
+		gvr        schema.GroupVersionResource
+		k8sKind    string
+		policy     NamespacePolicy
+		sensitive  bool
+		apiVersion string
+		otherAPI   string
+	}{
+		{"horizontalpodautoscaler", "horizontalpodautoscalers", "hpa",
+			schema.GroupVersionResource{Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"},
+			"HorizontalPodAutoscaler", NSPlain, false, "autoscaling/v2", "autoscaling/v1"},
+		{"limitrange", "limitranges", "limits",
+			schema.GroupVersionResource{Group: "", Version: "v1", Resource: "limitranges"},
+			"LimitRange", NSPlain, false, "v1", "v2"},
+		{"networkpolicy", "networkpolicies", "netpol",
+			schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"},
+			"NetworkPolicy", NSPlain, true, "networking.k8s.io/v1", "networking.k8s.io/v1beta1"},
+		{"poddisruptionbudget", "poddisruptionbudgets", "pdb",
+			schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"},
+			"PodDisruptionBudget", NSPlain, false, "policy/v1", "policy/v1beta1"},
+		{"resourcequota", "resourcequotas", "quota",
+			schema.GroupVersionResource{Group: "", Version: "v1", Resource: "resourcequotas"},
+			"ResourceQuota", NSPlain, true, "v1", "v2"},
+		{"storageclass", "storageclasses", "sc",
+			schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"},
+			"StorageClass", NSNone, true, "storage.k8s.io/v1", "storage.k8s.io/v1beta1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			row, ok := Lookup(tt.name)
+			require.True(t, ok)
+			for _, q := range []string{tt.plural, tt.short, tt.name} {
+				got, ok := Lookup(q)
+				require.True(t, ok, q)
+				assert.Equal(t, row, got, q)
+			}
+			assert.Equal(t, tt.name, row.Key)
+			assert.Equal(t, tt.name, row.Name)
+			assert.Equal(t, []string{tt.plural, tt.short}, row.Aliases)
+			assert.Equal(t, tt.gvr, row.GVR)
+			assert.Equal(t, tt.k8sKind, row.K8sKind)
+			assert.Equal(t, tt.policy, row.Policy)
+			assert.Equal(t, Downstream, row.Scope)
+			assert.True(t, row.Deletable)
+			assert.Empty(t, row.NoDeleteReason)
+			assert.Equal(t, tt.sensitive, row.Sensitive)
+			assert.True(t, row.ServerTable)
+			assert.Equal(t, binding, row.Binding)
+			assert.Empty(t, row.WaitDefault)
+			assert.False(t, row.Completable)
+
+			byGVR, ok := ByGVR(tt.gvr)
+			require.True(t, ok)
+			assert.Equal(t, row, byGVR)
+			byGVK, ok := LookupGVK(tt.apiVersion, tt.k8sKind)
+			require.True(t, ok)
+			assert.Equal(t, row, byGVK)
+			_, ok = LookupGVK(tt.otherAPI, tt.k8sKind)
+			assert.False(t, ok, "a manifest with another apiVersion of the kind finds no row")
+		})
+	}
 }

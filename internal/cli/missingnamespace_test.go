@@ -61,6 +61,7 @@ type missingRow struct {
 }
 
 const (
+	reasonBuiltIn    = "a list of an autoscaling, core, networking or policy kind in a missing namespace is empty, as kubectl get -n prints it"
 	reasonWorkload   = "a list of a core, apps, batch or networking kind in a missing namespace is empty, as kubectl get -n prints it"
 	reasonFleet      = "a list of a Fleet kind in a missing namespace is empty, as kubectl get -n prints it"
 	reasonManagement = "a list of a Rancher management kind in a missing namespace is empty, as kubectl get -n prints it"
@@ -99,6 +100,11 @@ var missingKinds = []missingKind{
 	{"persistentvolumeclaim", true, "api/v1", "persistentvolumeclaims", "gpd", reasonWorkload},
 	{"serviceaccount", true, "api/v1", "serviceaccounts", "gpd", reasonWorkload},
 	{"event", true, "api/v1", "events", "gp", reasonWorkload},
+	{"horizontalpodautoscaler", true, "apis/autoscaling/v2", "horizontalpodautoscalers", "gpd", reasonBuiltIn},
+	{"limitrange", true, "api/v1", "limitranges", "gpd", reasonBuiltIn},
+	{"networkpolicy", true, "apis/networking.k8s.io/v1", "networkpolicies", "gpd", reasonBuiltIn},
+	{"poddisruptionbudget", true, "apis/policy/v1", "poddisruptionbudgets", "gpd", reasonBuiltIn},
+	{"resourcequota", true, "api/v1", "resourcequotas", "gpd", reasonBuiltIn},
 	{"k3k-cluster", true, "apis/k3k.io/v1beta1", "clusters", "gpd", reasonK3k},
 	{"app", true, "apis/catalog.cattle.io/v1", "apps", "g", reasonCatalog},
 	{"operation", true, "apis/catalog.cattle.io/v1", "operations", "g", reasonCatalog},
@@ -419,8 +425,8 @@ func TestEveryNamespaceCommandHasAMissingNamespaceRow(t *testing.T) {
 			"add its row to "+table+" in this file, saying what it does with a namespace that does not exist")
 	}
 	commands, rowCount := len(declaring), len(rows)
-	assert.Equal(t, 107, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
-	assert.Equal(t, 142, rowCount, "the rows; uncovered commands: %v", uncovered)
+	assert.Equal(t, 122, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
+	assert.Equal(t, 162, rowCount, "the rows; uncovered commands: %v", uncovered)
 
 	h := newMissingHarness(t)
 	for _, row := range rows {

@@ -191,6 +191,35 @@ func TestPatchSensitiveKindIsDestructive(t *testing.T) {
 	assert.True(t, found, "diff must contain the value change, got %+v", eff.Diff)
 }
 
+// builtInKubernetesKinds lists the keys of six built-in Kubernetes kinds:
+// HorizontalPodAutoscaler, LimitRange, NetworkPolicy, PodDisruptionBudget,
+// ResourceQuota and StorageClass. The patch and delete tests of this package
+// run for each of them.
+var builtInKubernetesKinds = []string{
+	"horizontalpodautoscaler", "limitrange", "networkpolicy",
+	"poddisruptionbudget", "resourcequota", "storageclass",
+}
+
+// TestPatchDescriptorOfBuiltInKubernetesKindsFollowsSensitive asserts that the
+// generated patch command of each of the six kinds is destructive exactly when
+// the row is Sensitive. A destructive command requires --yes: a patch of a
+// NetworkPolicy, a ResourceQuota or a StorageClass does, and a patch of the
+// other three requires only --apply.
+func TestPatchDescriptorOfBuiltInKubernetesKindsFollowsSensitive(t *testing.T) {
+	t.Parallel()
+	for _, name := range builtInKubernetesKinds {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			k := mustKind(t, name)
+			want := "false"
+			if k.Sensitive {
+				want = "true"
+			}
+			assert.Equal(t, want, NewPatch(k, nil, nil).Describe().Destructive)
+		})
+	}
+}
+
 func TestPatchSecretDiffIsRedacted(t *testing.T) {
 	t.Parallel()
 	orig := objFromJSON(t, `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"db-creds","namespace":"default","resourceVersion":"5"},"data":{"password":"b2xk"}}`)

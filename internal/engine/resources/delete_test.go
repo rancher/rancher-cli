@@ -399,6 +399,21 @@ func TestWaitFlagWiredFromKindRow(t *testing.T) {
 	}
 }
 
+// TestDeleteDescriptorOfBuiltInKubernetesKindsIsDestructive asserts that each
+// of the six kinds is deletable and that its generated delete command is
+// destructive. A destructive command requires --yes.
+func TestDeleteDescriptorOfBuiltInKubernetesKindsIsDestructive(t *testing.T) {
+	t.Parallel()
+	for _, name := range builtInKubernetesKinds {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			k := mustKind(t, name)
+			require.True(t, k.Deletable)
+			assert.Equal(t, "true", NewDelete(k, nil).Describe().Destructive)
+		})
+	}
+}
+
 // TestDeleteDescribeInheritsCapability asserts the requirement-inheritance
 // rule: a kind row's Capability flows unchanged into the generated delete
 // command's Descriptor.

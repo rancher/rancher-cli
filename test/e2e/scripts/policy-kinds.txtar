@@ -1,0 +1,202 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+env LABEL_PATCH='[{"op":"add","path":"/metadata/labels/patched","value":"yes"}]'
+
+# The scenario does not delete its namespace: the test kube-apiserver runs no
+# Kubernetes namespace controller. A deleted namespace would stay Terminating.
+exec rancher create namespace policy-kinds --cluster testcluster --apply
+
+exec rancher create resource -f hpa.yaml --cluster testcluster --apply
+exec rancher create resource -f limitrange.yaml --cluster testcluster --apply
+exec rancher create resource -f networkpolicy.yaml --cluster testcluster --apply --yes
+exec rancher create resource -f pdb.yaml --cluster testcluster --apply
+exec rancher create resource -f resourcequota.yaml --cluster testcluster --apply --yes
+exec rancher create resource -f storageclass.yaml --cluster testcluster --apply --yes
+
+# A Sensitive kind's create is refused without --yes.
+! exec rancher create resource -f networkpolicy-second.yaml --cluster testcluster --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+! exec rancher get networkpolicy policy-kinds-netpol-second --cluster testcluster --namespace policy-kinds -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+# A get of each kind by its kubectl short name prints the server's table.
+exec rancher get hpa --cluster testcluster --namespace policy-kinds
+stdout 'NAME\s+REFERENCE\s+TARGETS\s+MINPODS\s+MAXPODS\s+REPLICAS\s+AGE'
+stdout 'policy-kinds-hpa\s+'
+exec rancher get limits --cluster testcluster --namespace policy-kinds
+stdout 'NAME\s+CREATED AT'
+stdout 'policy-kinds-limits\s+'
+exec rancher get netpol --cluster testcluster --namespace policy-kinds
+stdout 'NAME\s+POD-SELECTOR\s+AGE'
+stdout 'policy-kinds-netpol\s+'
+exec rancher get pdb --cluster testcluster --namespace policy-kinds
+stdout 'NAME\s+MIN AVAILABLE\s+MAX UNAVAILABLE\s+ALLOWED DISRUPTIONS\s+AGE'
+stdout 'policy-kinds-pdb\s+'
+exec rancher get quota --cluster testcluster --namespace policy-kinds
+stdout 'NAME\s+REQUEST\s+LIMIT\s+AGE'
+stdout 'policy-kinds-quota\s+'
+exec rancher get sc --cluster testcluster
+stdout 'NAME\s+PROVISIONER\s+RECLAIMPOLICY\s+VOLUMEBINDINGMODE\s+ALLOWVOLUMEEXPANSION\s+AGE'
+stdout 'policy-kinds-sc\s+'
+
+# A get of one object with -o json prints the object.
+exec rancher get horizontalpodautoscaler policy-kinds-hpa --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.name policy-kinds-hpa
+exec rancher get limitrange policy-kinds-limits --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.name policy-kinds-limits
+exec rancher get networkpolicy policy-kinds-netpol --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.name policy-kinds-netpol
+exec rancher get poddisruptionbudget policy-kinds-pdb --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.name policy-kinds-pdb
+exec rancher get resourcequota policy-kinds-quota --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.name policy-kinds-quota
+exec rancher get storageclass policy-kinds-sc --cluster testcluster -o json
+jsonquery stdout data.metadata.name policy-kinds-sc
+
+# A patch of a Sensitive kind requires --yes. A patch of each of the other
+# three does not. A refused patch leaves the object unchanged.
+! exec rancher patch networkpolicy policy-kinds-netpol --cluster testcluster --namespace policy-kinds --patch $LABEL_PATCH --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+exec rancher get networkpolicy policy-kinds-netpol --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.labels.patched ''
+! exec rancher patch resourcequota policy-kinds-quota --cluster testcluster --namespace policy-kinds --patch $LABEL_PATCH --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+exec rancher get resourcequota policy-kinds-quota --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.labels.patched ''
+! exec rancher patch storageclass policy-kinds-sc --cluster testcluster --patch $LABEL_PATCH --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+exec rancher get storageclass policy-kinds-sc --cluster testcluster -o json
+jsonquery stdout data.metadata.labels.patched ''
+exec rancher patch horizontalpodautoscaler policy-kinds-hpa --cluster testcluster --namespace policy-kinds --patch $LABEL_PATCH --apply
+! stderr 'CONFIRMATION_REQUIRED'
+exec rancher patch limitrange policy-kinds-limits --cluster testcluster --namespace policy-kinds --patch $LABEL_PATCH --apply
+! stderr 'CONFIRMATION_REQUIRED'
+exec rancher patch poddisruptionbudget policy-kinds-pdb --cluster testcluster --namespace policy-kinds --patch $LABEL_PATCH --apply
+! stderr 'CONFIRMATION_REQUIRED'
+exec rancher patch networkpolicy policy-kinds-netpol --cluster testcluster --namespace policy-kinds --patch $LABEL_PATCH --apply --yes
+exec rancher patch resourcequota policy-kinds-quota --cluster testcluster --namespace policy-kinds --patch $LABEL_PATCH --apply --yes
+exec rancher patch storageclass policy-kinds-sc --cluster testcluster --patch $LABEL_PATCH --apply --yes
+
+exec rancher get horizontalpodautoscaler policy-kinds-hpa --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.labels.patched yes
+exec rancher get limitrange policy-kinds-limits --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.labels.patched yes
+exec rancher get networkpolicy policy-kinds-netpol --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.labels.patched yes
+exec rancher get poddisruptionbudget policy-kinds-pdb --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.labels.patched yes
+exec rancher get resourcequota policy-kinds-quota --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.labels.patched yes
+exec rancher get storageclass policy-kinds-sc --cluster testcluster -o json
+jsonquery stdout data.metadata.labels.patched yes
+
+# A delete of a HorizontalPodAutoscaler with --apply but without --yes is
+# refused. A delete of each kind with --apply and --yes deletes the object, and
+# a get of it afterwards finds no object.
+! exec rancher delete horizontalpodautoscaler policy-kinds-hpa --cluster testcluster --namespace policy-kinds --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+exec rancher get horizontalpodautoscaler policy-kinds-hpa --cluster testcluster --namespace policy-kinds -o json
+jsonquery stdout data.metadata.name policy-kinds-hpa
+exec rancher delete horizontalpodautoscaler policy-kinds-hpa --cluster testcluster --namespace policy-kinds --apply --yes
+! exec rancher get horizontalpodautoscaler policy-kinds-hpa --cluster testcluster --namespace policy-kinds -o json
+jsonquery stderr data.error.code NOT_FOUND
+exec rancher delete limitrange policy-kinds-limits --cluster testcluster --namespace policy-kinds --apply --yes
+! exec rancher get limitrange policy-kinds-limits --cluster testcluster --namespace policy-kinds -o json
+jsonquery stderr data.error.code NOT_FOUND
+exec rancher delete networkpolicy policy-kinds-netpol --cluster testcluster --namespace policy-kinds --apply --yes
+! exec rancher get networkpolicy policy-kinds-netpol --cluster testcluster --namespace policy-kinds -o json
+jsonquery stderr data.error.code NOT_FOUND
+exec rancher delete poddisruptionbudget policy-kinds-pdb --cluster testcluster --namespace policy-kinds --apply --yes
+! exec rancher get poddisruptionbudget policy-kinds-pdb --cluster testcluster --namespace policy-kinds -o json
+jsonquery stderr data.error.code NOT_FOUND
+exec rancher delete resourcequota policy-kinds-quota --cluster testcluster --namespace policy-kinds --apply --yes
+! exec rancher get resourcequota policy-kinds-quota --cluster testcluster --namespace policy-kinds -o json
+jsonquery stderr data.error.code NOT_FOUND
+exec rancher delete storageclass policy-kinds-sc --cluster testcluster --apply --yes
+! exec rancher get storageclass policy-kinds-sc --cluster testcluster -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+-- hpa.yaml --
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: policy-kinds-hpa
+  namespace: policy-kinds
+  labels:
+    app: policy-kinds
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: policy-kinds-web
+  minReplicas: 1
+  maxReplicas: 3
+-- limitrange.yaml --
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: policy-kinds-limits
+  namespace: policy-kinds
+  labels:
+    app: policy-kinds
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 10m
+-- networkpolicy.yaml --
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: policy-kinds-netpol
+  namespace: policy-kinds
+  labels:
+    app: policy-kinds
+spec:
+  podSelector:
+    matchLabels:
+      app: policy-kinds
+  policyTypes:
+    - Ingress
+-- networkpolicy-second.yaml --
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: policy-kinds-netpol-second
+  namespace: policy-kinds
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+-- pdb.yaml --
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: policy-kinds-pdb
+  namespace: policy-kinds
+  labels:
+    app: policy-kinds
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: policy-kinds
+-- resourcequota.yaml --
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: policy-kinds-quota
+  namespace: policy-kinds
+  labels:
+    app: policy-kinds
+spec:
+  hard:
+    pods: "50"
+-- storageclass.yaml --
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: policy-kinds-sc
+  labels:
+    app: policy-kinds
+provisioner: example.com/none

@@ -2269,6 +2269,56 @@
     },
     {
       "aliases": [
+        "horizontalpodautoscalers",
+        "hpa"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete horizontalpodautoscaler",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the horizontalpodautoscaler"
+    },
+    {
+      "aliases": [
         "ingresses",
         "ing"
       ],
@@ -2445,6 +2495,56 @@
     },
     {
       "aliases": [
+        "limitranges",
+        "limits"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete limitrange",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the limitrange"
+    },
+    {
+      "aliases": [
         "managementtokens",
         "management-tokens",
         "v3token",
@@ -2514,6 +2614,56 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Delete the namespace"
+    },
+    {
+      "aliases": [
+        "networkpolicies",
+        "netpol"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete networkpolicy",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the networkpolicy"
     },
     {
       "aliases": [
@@ -2643,6 +2793,56 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Delete the pod"
+    },
+    {
+      "aliases": [
+        "poddisruptionbudgets",
+        "pdb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete poddisruptionbudget",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the poddisruptionbudget"
     },
     {
       "aliases": [
@@ -2811,6 +3011,56 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Delete the replicaset"
+    },
+    {
+      "aliases": [
+        "resourcequotas",
+        "quota"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete resourcequota",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the resourcequota"
     },
     {
       "aliases": [
@@ -3010,6 +3260,42 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Delete the statefulset"
+    },
+    {
+      "aliases": [
+        "storageclasses",
+        "sc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete storageclass",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the storageclass"
     },
     {
       "aliases": [
@@ -4490,6 +4776,72 @@
     },
     {
       "aliases": [
+        "horizontalpodautoscalers",
+        "hpa"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get horizontalpodautoscaler",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List horizontalpodautoscalers or show one"
+    },
+    {
+      "aliases": [
         "ingresses",
         "ing"
       ],
@@ -4743,6 +5095,72 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List available Kubernetes versions (rke2/k3s)"
+    },
+    {
+      "aliases": [
+        "limitranges",
+        "limits"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get limitrange",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List limitranges or show one"
     },
     {
       "aliases": [
@@ -5012,6 +5430,72 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List namespaces or show one"
+    },
+    {
+      "aliases": [
+        "networkpolicies",
+        "netpol"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get networkpolicy",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List networkpolicies or show one"
     },
     {
       "aliases": [
@@ -5413,6 +5897,72 @@
     },
     {
       "aliases": [
+        "poddisruptionbudgets",
+        "pdb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get poddisruptionbudget",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List poddisruptionbudgets or show one"
+    },
+    {
+      "aliases": [
         "projects"
       ],
       "args": [
@@ -5638,6 +6188,72 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List replicasets or show one"
+    },
+    {
+      "aliases": [
+        "resourcequotas",
+        "quota"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get resourcequota",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List resourcequotas or show one"
     },
     {
       "aliases": [
@@ -5994,6 +6610,59 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List statefulsets or show one"
+    },
+    {
+      "aliases": [
+        "storageclasses",
+        "sc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get storageclass",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List storageclasses or show one"
     },
     {
       "aliases": [
@@ -8163,6 +8832,77 @@
     },
     {
       "aliases": [
+        "horizontalpodautoscalers",
+        "hpa"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "false",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch horizontalpodautoscaler",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the horizontalpodautoscaler"
+    },
+    {
+      "aliases": [
         "ingresses",
         "ing"
       ],
@@ -8423,6 +9163,77 @@
       "stability": "stable",
       "toolset": "core",
       "usage": "Patch the kubeconfig"
+    },
+    {
+      "aliases": [
+        "limitranges",
+        "limits"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "false",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch limitrange",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the limitrange"
     },
     {
       "aliases": [
@@ -8714,6 +9525,78 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Patch the namespace"
+    },
+    {
+      "aliases": [
+        "networkpolicies",
+        "netpol"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch networkpolicy",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the networkpolicy"
     },
     {
       "aliases": [
@@ -9148,6 +10031,77 @@
     },
     {
       "aliases": [
+        "poddisruptionbudgets",
+        "pdb"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "false",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch poddisruptionbudget",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the poddisruptionbudget"
+    },
+    {
+      "aliases": [
         "projects"
       ],
       "args": [
@@ -9394,6 +10348,78 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Patch the replicaset"
+    },
+    {
+      "aliases": [
+        "resourcequotas",
+        "quota"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch resourcequota",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the resourcequota"
     },
     {
       "aliases": [
@@ -9781,6 +10807,64 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Patch the statefulset"
+    },
+    {
+      "aliases": [
+        "storageclasses",
+        "sc"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch storageclass",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the storageclass"
     },
     {
       "aliases": [
@@ -11062,6 +12146,12 @@
         "get persistentvolumeclaim",
         "get serviceaccount",
         "get event",
+        "get horizontalpodautoscaler",
+        "get limitrange",
+        "get networkpolicy",
+        "get poddisruptionbudget",
+        "get resourcequota",
+        "get storageclass",
         "get gitrepo",
         "get helmop",
         "get bundle",
@@ -11135,6 +12225,12 @@
         "patch persistentvolumeclaim",
         "patch serviceaccount",
         "patch event",
+        "patch horizontalpodautoscaler",
+        "patch limitrange",
+        "patch networkpolicy",
+        "patch poddisruptionbudget",
+        "patch resourcequota",
+        "patch storageclass",
         "patch gitrepo",
         "patch helmop",
         "patch bundle",
@@ -11191,6 +12287,12 @@
         "delete ingress",
         "delete persistentvolumeclaim",
         "delete serviceaccount",
+        "delete horizontalpodautoscaler",
+        "delete limitrange",
+        "delete networkpolicy",
+        "delete poddisruptionbudget",
+        "delete resourcequota",
+        "delete storageclass",
         "delete gitrepo",
         "delete helmop",
         "delete user",
@@ -11762,6 +12864,187 @@
         "delete": {
           "note": "an event is deleted when its TTL runs out",
           "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "horizontalpodautoscalers",
+        "hpa"
+      ],
+      "group": "autoscaling",
+      "key": "horizontalpodautoscaler",
+      "name": "horizontalpodautoscaler",
+      "namespacePolicy": "plain",
+      "resource": "horizontalpodautoscalers",
+      "scope": "downstream",
+      "verbs": {
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v2"
+    },
+    {
+      "aliases": [
+        "limitranges",
+        "limits"
+      ],
+      "key": "limitrange",
+      "name": "limitrange",
+      "namespacePolicy": "plain",
+      "resource": "limitranges",
+      "scope": "downstream",
+      "verbs": {
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "networkpolicies",
+        "netpol"
+      ],
+      "group": "networking.k8s.io",
+      "key": "networkpolicy",
+      "name": "networkpolicy",
+      "namespacePolicy": "plain",
+      "resource": "networkpolicies",
+      "scope": "downstream",
+      "sensitive": true,
+      "verbs": {
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "poddisruptionbudgets",
+        "pdb"
+      ],
+      "group": "policy",
+      "key": "poddisruptionbudget",
+      "name": "poddisruptionbudget",
+      "namespacePolicy": "plain",
+      "resource": "poddisruptionbudgets",
+      "scope": "downstream",
+      "verbs": {
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "resourcequotas",
+        "quota"
+      ],
+      "key": "resourcequota",
+      "name": "resourcequota",
+      "namespacePolicy": "plain",
+      "resource": "resourcequotas",
+      "scope": "downstream",
+      "sensitive": true,
+      "verbs": {
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "storageclasses",
+        "sc"
+      ],
+      "group": "storage.k8s.io",
+      "key": "storageclass",
+      "name": "storageclass",
+      "namespacePolicy": "none",
+      "resource": "storageclasses",
+      "scope": "downstream",
+      "sensitive": true,
+      "verbs": {
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
         },
         "get": {
           "contract": "internal",

@@ -1301,9 +1301,11 @@ silently dumping JSON, so use `-o json` for the versioned envelope.
 
 The table of a built-in Kubernetes kind (node, namespace, pod, deployment,
 service, configmap, secret, statefulset, daemonset, replicaset, job, cronjob,
-ingress, persistentvolume, persistentvolumeclaim, serviceaccount, event) comes
-from the cluster's API server, as kubectl's does: the server's column names
-and cells, the same as `kubectl get` shows, and with `-o wide` the columns the
+ingress, persistentvolume, persistentvolumeclaim, serviceaccount, event,
+horizontalpodautoscaler, limitrange, networkpolicy, poddisruptionbudget,
+resourcequota, storageclass) comes from the cluster's API server, as
+kubectl's does: the server's column names and cells, the same as
+`kubectl get` shows, and with `-o wide` the columns the
 server marks as wide. The columns follow the cluster's Kubernetes version.
 `json`, `yaml`, `name` and `template=` ask for the object as before. A
 namespaced kind listed without `--namespace` has a NAMESPACE column first, and

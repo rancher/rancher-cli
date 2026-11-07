@@ -558,6 +558,48 @@ var table = []Kind{
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable:    true,
 	},
+	{
+		Key: "horizontalpodautoscaler", Name: "horizontalpodautoscaler", Aliases: []string{"horizontalpodautoscalers", "hpa"},
+		GVR:    schema.GroupVersionResource{Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"},
+		Policy: NSPlain, K8sKind: "HorizontalPodAutoscaler", Scope: Downstream, Deletable: true,
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
+	},
+	{
+		Key: "limitrange", Name: "limitrange", Aliases: []string{"limitranges", "limits"},
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "limitranges"},
+		Policy: NSPlain, K8sKind: "LimitRange", Scope: Downstream, Deletable: true,
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
+	},
+	{
+		Key: "networkpolicy", Name: "networkpolicy", Aliases: []string{"networkpolicies", "netpol"},
+		GVR:    schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"},
+		Policy: NSPlain, K8sKind: "NetworkPolicy", Scope: Downstream, Deletable: true, Sensitive: true,
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
+	},
+	{
+		Key: "poddisruptionbudget", Name: "poddisruptionbudget", Aliases: []string{"poddisruptionbudgets", "pdb"},
+		GVR:    schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"},
+		Policy: NSPlain, K8sKind: "PodDisruptionBudget", Scope: Downstream, Deletable: true,
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
+	},
+	{
+		Key: "resourcequota", Name: "resourcequota", Aliases: []string{"resourcequotas", "quota"},
+		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "resourcequotas"},
+		Policy: NSPlain, K8sKind: "ResourceQuota", Scope: Downstream, Deletable: true, Sensitive: true,
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
+	},
+	{
+		Key: "storageclass", Name: "storageclass", Aliases: []string{"storageclasses", "sc"},
+		GVR:    schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"},
+		Policy: NSNone, K8sKind: "StorageClass", Scope: Downstream, Deletable: true, Sensitive: true,
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
+	},
 
 	{
 		Key: "gitrepo", Name: "gitrepo", Aliases: []string{"gitrepos"},
