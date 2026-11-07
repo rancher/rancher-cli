@@ -133,7 +133,7 @@ func toSecretCandidates(names []string) []clierr.Candidate {
 // resolveSecretName validates a requested secret name against the Plan-time
 // status.clientSecrets set. An explicitly named secret must exist - the
 // controller SILENTLY SKIPS an unknown name while still consuming the
-// annotation, which would poll to a timeout that misblames the controller,
+// annotation, which would wait to a timeout that misblames the controller,
 // so this check runs strictly before any write, listing the actual names
 // as candidates. Omission is legal only when allowOmit is true AND exactly
 // one secret exists; an implicit pick would kill a live credential the

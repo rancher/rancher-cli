@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -220,9 +221,9 @@ func TestRotateSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t 
 
 // hangingSecretAfterFirstRead's secrets-GVR Get returns normally the first
 // time (Plan's correlation read), then blocks on its context until it is
-// canceled - proves rotate's per-tick correlation read inside check() is
-// bound by waitForOIDCClient's own deadline, not the command's outer
-// (test-lifetime, effectively unbounded) context.
+// canceled - proves rotate's read of the client Secret inside check() is
+// bound by the wait's own deadline, not the command's outer (test-lifetime,
+// unbounded) context.
 type hangingSecretAfterFirstRead struct {
 	*fakeOIDCClient
 	secretGetCalls int
@@ -277,7 +278,7 @@ func TestRotateSecretExecPerTickReadHonorsTimeout(t *testing.T) {
 	case execErr := <-done:
 		require.Error(t, execErr, "exec must fail once the deadline-bound read is canceled")
 	case <-time.After(2 * time.Second):
-		t.Fatal("exec did not return within --timeout; the per-tick Secret read is not bound by the deadline")
+		t.Fatal("exec did not return within --timeout; the read of the client Secret is not bound by the deadline")
 	}
 }
 
@@ -327,10 +328,11 @@ func (f *alwaysErrSecretRead) Get(ctx context.Context, gvr schema.GroupVersionRe
 }
 
 // TestRotateSecretExecTransientSecretReadRetriesUntilSuccess asserts that
-// check()'s per-tick Secret read must tolerate a transient error and keep
-// polling, mirroring waitForOIDCClient's own contract for its OIDCClient
-// Get - both a clierr.Error explicitly classified Retryable and a raw
-// (unclassified) transport error count as transient.
+// check()'s read of the client Secret must tolerate a transient error and
+// keep waiting, as the wait does for a failed request for the OIDCClient -
+// both a clierr.Error explicitly classified Retryable and a raw
+// (unclassified) transport error count as transient. This client cannot
+// watch, so the wait polls.
 func TestRotateSecretExecTransientSecretReadRetriesUntilSuccess(t *testing.T) {
 	cases := []struct {
 		name string
@@ -485,4 +487,120 @@ func TestTransientSecretReadErrorIgnoresWrappedTerminalError(t *testing.T) {
 	t.Parallel()
 	err := fmt.Errorf("x: %w", clierr.New(clierr.CodeRBAC, "no"))
 	assert.False(t, isTransientSecretReadError(err))
+}
+
+// timedSecretReads wraps the watching client and answers the reads of the
+// client Secret after the Plan's own: errs[i] for the read after the first
+// that has an entry, then okValue. It records when each read after the first
+// started, from the start of the run.
+type timedSecretReads struct {
+	*scriptedWatchClient
+	errs    []error
+	okValue string
+	n       int
+	reads   []time.Duration
+}
+
+func (c *timedSecretReads) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	if gvr.Resource != "secrets" {
+		return c.scriptedWatchClient.Get(ctx, gvr, ns, name)
+	}
+	c.n++
+	if c.n == 1 {
+		return c.scriptedWatchClient.Get(ctx, gvr, ns, name)
+	}
+	c.reads = append(c.reads, time.Since(c.base))
+	if i := c.n - 2; i < len(c.errs) {
+		return nil, c.errs[i]
+	}
+	return &unstructured.Unstructured{Object: map[string]any{"data": map[string]any{"client-secret-1": b64(c.okValue)}}}, nil
+}
+
+// TestRotateSecretWatchedChecksAgainEveryIntervalOnATransientSecretRead
+// asserts that when the event that clears the regenerate annotation arrives
+// 3 seconds into a watched wait, a transient error reading the client Secret
+// makes the wait read it again every 2 seconds while the stream is open, with
+// no other request for the OIDCClient than its one List and one watch; that a
+// terminal read error and an unchanged value end the wait on the first read;
+// and that a transient error that lasts to the timeout times out with the
+// verb's retryable committed details.
+func TestRotateSecretWatchedChecksAgainEveryIntervalOnATransientSecretRead(t *testing.T) {
+	transient := func(n int) []error {
+		errs := make([]error, n)
+		for i := range errs {
+			errs[i] = clierr.Retryable(clierr.CodeGeneric, "temporary blip")
+		}
+		return errs
+	}
+	seconds := func(secs ...int) []time.Duration {
+		var out []time.Duration
+		for _, s := range secs {
+			out = append(out, time.Duration(s)*time.Second)
+		}
+		return out
+	}
+	tests := []struct {
+		name      string
+		timeout   string
+		errs      []error
+		okValue   string
+		wantReads []time.Duration
+		check     func(t *testing.T, v waitVerb, r waitRun)
+	}{
+		{"two transient errors then the new value", "60s", []error{clierr.Retryable(clierr.CodeGeneric, "temporary blip"), errors.New("connection reset")}, "new-value",
+			seconds(3, 5, 7), func(t *testing.T, _ waitVerb, r waitRun) {
+				t.Helper()
+				require.NoError(t, r.err)
+				data, ok := r.res.Data.(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, "new-value", data["clientSecret"])
+			}},
+		{"a terminal read error ends the wait on the first read", "60s", []error{clierr.New(clierr.CodeRBAC, "forbidden")}, "new-value",
+			seconds(3), func(t *testing.T, v waitVerb, r waitRun) {
+				t.Helper()
+				ce := assertCommitted(t, v, r.err)
+				assert.Equal(t, clierr.CodeRBAC, ce.Code)
+				assert.False(t, ce.Retryable)
+			}},
+		{"an unchanged value ends the wait on the first read", "60s", nil, "old-value",
+			seconds(3), func(t *testing.T, v waitVerb, r waitRun) {
+				t.Helper()
+				ce := assertCommitted(t, v, r.err)
+				assert.False(t, ce.Retryable)
+				assert.Contains(t, ce.Message, "did not change")
+			}},
+		{"a transient error to the timeout", "12s", transient(20), "new-value",
+			seconds(3, 5, 7, 9, 11), func(t *testing.T, v waitVerb, r waitRun) {
+				t.Helper()
+				ce := assertCommitted(t, v, r.err)
+				assert.Equal(t, clierr.CodeGeneric, ce.Code)
+				assert.True(t, ce.Retryable)
+				assert.Contains(t, ce.Message, "timed out waiting for oidc-client my-app to regenerate secret client-secret-1")
+				details, _ := ce.Details.(clierr.CommittedContextDetails)
+				assert.Equal(t, "client-secret-1", details.SecretName)
+				assert.Equal(t, rotateAgainRecovery("my-app", "client-secret-1"), details.Recovery)
+			}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				setPollInterval(t, 2*time.Second)
+				v := waitVerbsWithTimeout(tt.timeout)[3]
+				require.Equal(t, "rotate-secret", v.name)
+				consumed := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
+				var secrets *timedSecretReads
+				r := v.exec(t.Context(), t, watchMode, waitSetup{
+					script: []pollStep{{obj: v.unfinished}, {obj: consumed}},
+					watch:  func(w *scriptedWatchClient) { w.eventDelay = 3 * time.Second },
+					wrap: func(w *scriptedWatchClient) engine.ClusterClient {
+						secrets = &timedSecretReads{scriptedWatchClient: w, errs: tt.errs, okValue: tt.okValue}
+						return secrets
+					},
+				})
+				tt.check(t, v, r)
+				assert.Equal(t, tt.wantReads, secrets.reads)
+				assert.Equal(t, []string{"list@0", "watch@0"}, r.client.log, "one List and one watch, no other request for the OIDCClient")
+			})
+		})
+	}
 }

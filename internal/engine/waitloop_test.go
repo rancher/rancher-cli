@@ -66,9 +66,12 @@ type fakeLoop struct {
 	lists   []answer
 	gets    []answer
 	streams []streamScript
-	// getTakes is how long a Get takes.
-	getTakes time.Duration
-	opened   []context.Context
+	// getTakes, listTakes and watchTakes are how long a Get, a List and a watch
+	// open take.
+	getTakes   time.Duration
+	listTakes  time.Duration
+	watchTakes time.Duration
+	opened     []context.Context
 }
 
 func newFakeLoop(t *testing.T) *fakeLoop {
@@ -103,6 +106,9 @@ func (f *fakeLoop) ListObject(_ context.Context, _ schema.GroupVersionResource, 
 	a := f.lists[min(n, len(f.lists)-1)]
 	rv := fmt.Sprintf("list-%d", n)
 	f.calls = append(f.calls, loopCall{kind: "list", at: f.since(), rv: rv, unsent: errors.Is(a.err, ErrWatchUnavailable)})
+	if f.listTakes > 0 {
+		time.Sleep(f.listTakes)
+	}
 	switch {
 	case a.err != nil:
 		return nil, "", a.err
@@ -117,6 +123,9 @@ func (f *fakeLoop) WatchObject(ctx context.Context, _ schema.GroupVersionResourc
 	f.calls = append(f.calls, loopCall{kind: "watch", at: f.since(), rv: rv, timeout: timeout, unsent: errors.Is(sc.err, ErrWatchUnavailable)})
 	for i, c := range f.opened {
 		require.Error(f.t, c.Err(), "stream %d is still open when the next stream opens", i)
+	}
+	if f.watchTakes > 0 {
+		time.Sleep(f.watchTakes)
 	}
 	if sc.err != nil {
 		return nil, sc.err
@@ -373,86 +382,174 @@ func TestWaitObjectTerminalErrorFromAnObjectEndsTheWait(t *testing.T) {
 	})
 }
 
+// loopSpacing is one set of the loop's timing parameters: the interval and
+// where its cycles are measured from.
+type loopSpacing struct {
+	name     string
+	interval time.Duration
+	from     SpacingFrom
+	// timeout is the whole wait. With 2 second cycles it is 37 seconds, not 38:
+	// a call due at the deadline instant races the cancellation of the
+	// wait's context, so the calls would differ from run to run.
+	timeout time.Duration
+}
+
+// loopSpacings are the parameters of the generated wait and of the OIDC client
+// waits.
+var loopSpacings = []loopSpacing{
+	{"5 seconds from the return", loopInterval, SpacingFromReturn, 38 * time.Second},
+	{"2 seconds from the start", 2 * time.Second, SpacingFromStart, 37 * time.Second},
+}
+
+func (s loopSpacing) apply(p *WaitParams) {
+	p.Interval, p.SpacingFrom = s.interval, s.from
+}
+
+// callsEvery is "kind@from kind@from+step ..." up to and including to, in seconds.
+func callsEvery(kind string, from, step, to int) string {
+	var out []string
+	for at := from; at <= to; at += step {
+		out = append(out, fmt.Sprintf("%s@%d", kind, at))
+	}
+	return strings.Join(out, " ")
+}
+
+// cycles is a list and a watch at each of from, from+step ... up to to.
+func cycles(from, step, to int) string {
+	var out []string
+	for at := from; at <= to; at += step {
+		out = append(out, fmt.Sprintf("list@%d watch@%d", at, at))
+	}
+	return strings.Join(out, " ")
+}
+
 // TestWaitObjectStreamEndings asserts the calls of a watched wait against the
-// ways a stream or an open can end, each with a 38 second timeout: the
-// request budget keeps the calls within the bound, and the third failed
-// watch in a row makes the wait poll.
+// ways a stream or an open can end, each with both sets of timing parameters
+// and a timeout of 38 seconds, or 37 for the 2 second interval: the request
+// budget keeps the calls within the bound, and the third failed watch in a row
+// makes the wait poll.
+// The expected sequences follow from the budget rule: the next cycle starts
+// the interval times the calls of the previous cycle after the first call of
+// that cycle returned or started.
 func TestWaitObjectStreamEndings(t *testing.T) {
-	const threeShort = "list@0 watch@0 list@10 watch@10 list@20 watch@20 get@30 get@35"
+	const (
+		threeShort5 = "list@0 watch@0 list@10 watch@10 list@20 watch@20 get@30 get@35"
+		threeShort2 = "list@0 watch@0 list@4 watch@4 list@8 watch@8 get@12 get@14 get@16 get@18 get@20 get@22 get@24 get@26 get@28 get@30 get@32 get@34 get@36"
+	)
+	openRefused5 := "list@0 watch@0 get@10 get@15 get@20 get@25 get@30 get@35"
+	openRefused2 := "list@0 watch@0 " + callsEvery("get", 4, 2, 36)
+	listRefused5 := "list@0 get@0 get@10 get@15 get@20 get@25 get@30 get@35"
+	listRefused2 := "list@0 get@0 " + callsEvery("get", 4, 2, 36)
 	tests := []struct {
-		name   string
-		client func(f *fakeLoop)
-		want   string
+		name         string
+		client       func(f *fakeLoop)
+		want5, want2 string
 	}{
 		{"200, one ERROR, close", func(f *fakeLoop) {
 			f.streams = []streamScript{{steps: []streamStep{{ev: failedEvent(statusErr(http.StatusGone))}}, hold: true}}
-		}, threeShort},
+		}, threeShort5, threeShort2},
 		{"200, one bookmark, close", func(f *fakeLoop) {
 			f.streams = []streamScript{{steps: []streamStep{{ev: ObjectEvent{Type: ObjectBookmark}}}}}
-		}, threeShort},
+		}, threeShort5, threeShort2},
 		{"200, close at once", func(f *fakeLoop) {
 			f.streams = []streamScript{{}}
-		}, threeShort},
+		}, threeShort5, threeShort2},
 		{"open 500", func(f *fakeLoop) {
 			f.streams = []streamScript{{err: statusErr(http.StatusInternalServerError)}}
-		}, threeShort},
+		}, threeShort5, threeShort2},
 		{"open with no answer", func(f *fakeLoop) {
 			f.streams = []streamScript{{err: clierr.Retryable(clierr.CodeGeneric, "context deadline exceeded")}}
-		}, threeShort},
+		}, threeShort5, threeShort2},
 		{"open 403", func(f *fakeLoop) {
 			f.streams = []streamScript{{err: rbacErr()}}
-		}, "list@0 watch@0 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, openRefused5, openRefused2},
 		{"open 405", func(f *fakeLoop) {
 			f.streams = []streamScript{{err: statusErr(http.StatusMethodNotAllowed)}}
-		}, "list@0 watch@0 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, openRefused5, openRefused2},
 		{"open 400", func(f *fakeLoop) {
 			f.streams = []streamScript{{err: statusErr(http.StatusBadRequest)}}
-		}, "list@0 watch@0 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, openRefused5, openRefused2},
 		{"open unavailable", func(f *fakeLoop) {
 			f.streams = []streamScript{{err: ErrWatchUnavailable}}
-		}, "list@0 watch@0 get@5 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, "list@0 watch@0 get@5 get@10 get@15 get@20 get@25 get@30 get@35", "list@0 watch@0 " + callsEvery("get", 2, 2, 36)},
 		{"List unavailable", func(f *fakeLoop) {
 			f.lists = []answer{{err: ErrWatchUnavailable}}
-		}, "list@0 get@0 get@5 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, "list@0 get@0 get@5 get@10 get@15 get@20 get@25 get@30 get@35", "list@0 get@0 " + callsEvery("get", 2, 2, 36)},
 		{"List 400, the server refused the field selector", func(f *fakeLoop) {
 			f.lists = []answer{{err: statusErr(http.StatusBadRequest)}}
-		}, "list@0 get@0 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, listRefused5, listRefused2},
 		{"List unusable (no resourceVersion or several items)", func(f *fakeLoop) {
 			f.lists = []answer{{err: fmt.Errorf("%w: the server listed 2 objects", ErrListUnusable)}}
-		}, "list@0 get@0 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, listRefused5, listRefused2},
 		{"List 405", func(f *fakeLoop) {
 			f.lists = []answer{{err: statusErr(http.StatusMethodNotAllowed)}}
-		}, "list@0 get@0 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, listRefused5, listRefused2},
 		{"List 403, the Get follows at once", func(f *fakeLoop) {
 			f.lists = []answer{{err: rbacErr()}}
-		}, "list@0 get@0 get@10 get@15 get@20 get@25 get@30 get@35"},
+		}, listRefused5, listRefused2},
 		{"List 500", func(f *fakeLoop) {
 			f.lists = []answer{{err: statusErr(http.StatusInternalServerError)}}
-		}, "list@0 list@5 list@10 list@15 list@20 list@25 list@30 list@35"},
+		}, "list@0 list@5 list@10 list@15 list@20 list@25 list@30 list@35", callsEvery("list", 0, 2, 36)},
 		{"empty List, the Get finds the object", func(f *fakeLoop) {
 			f.lists = []answer{{none: true}, {state: "pending"}}
-		}, "list@0 get@0 list@10 watch@10"},
+		}, "list@0 get@0 list@10 watch@10", "list@0 get@0 list@4 watch@4"},
 		{"List 404, the Get finds the object", func(f *fakeLoop) {
 			f.lists = []answer{{err: clierr.New(clierr.CodeNotFound, "gone")}, {state: "pending"}}
-		}, "list@0 get@0 list@10 watch@10"},
+		}, "list@0 get@0 list@10 watch@10", "list@0 get@0 list@4 watch@4"},
 		{"events, then close", func(f *fakeLoop) {
 			f.streams = []streamScript{{steps: []streamStep{{wait: time.Second, ev: changed("pending")}}, length: time.Second}}
-		}, "list@0 watch@0 list@10 watch@10 list@20 watch@20 list@30 watch@30"},
+		}, "list@0 watch@0 list@10 watch@10 list@20 watch@20 list@30 watch@30", cycles(0, 4, 36)},
 		{"Deleted, then the object comes back", func(f *fakeLoop) {
 			f.streams = []streamScript{{steps: []streamStep{{ev: ObjectEvent{Type: ObjectDeleted, Object: loopObject("pending", "event-rv")}}}, hold: true}}
-		}, "list@0 watch@0 list@10 watch@10 list@20 watch@20 list@30 watch@30"},
+		}, "list@0 watch@0 list@10 watch@10 list@20 watch@20 list@30 watch@30", cycles(0, 4, 36)},
 	}
-	for _, tt := range tests {
+	for _, sp := range loopSpacings {
+		for _, tt := range tests {
+			t.Run(sp.name+"/"+tt.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					withStreamSeconds(t, 55)
+					f := newFakeLoop(t)
+					tt.client(f)
+					res := runLoop(t.Context(), f, sp.timeout, sp.apply)
+					var to *timedOut
+					require.ErrorAs(t, res.err, &to)
+					want := tt.want5
+					if sp.interval != loopInterval {
+						want = tt.want2
+					}
+					assert.Equal(t, want, f.sequence())
+					f.requireInvariants(sp.interval)
+				})
+			})
+		}
+	}
+}
+
+// TestWaitObjectSpacesWatchedCyclesFromTheReturnOrTheStart asserts that with a
+// List that takes 1.5 seconds and a watch that cannot open, a watched wait
+// with a 2 second interval measures its cycles from the start of the List or
+// from its return: the next cycle starts 4 seconds after the first call
+// started, or 4 seconds after it returned.
+func TestWaitObjectSpacesWatchedCyclesFromTheReturnOrTheStart(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		from SpacingFrom
+		want string
+	}{
+		{"from the start", SpacingFromStart, "list@0 watch@1.5 list@4 watch@5.5 list@8 watch@9.5"},
+		{"from the return", SpacingFromReturn, "list@0 watch@1.5 list@5.5 watch@7"},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				withStreamSeconds(t, 55)
 				f := newFakeLoop(t)
-				tt.client(f)
-				res := runLoop(t.Context(), f, 38*time.Second, nil)
+				f.listTakes = 1500 * time.Millisecond
+				f.streams = []streamScript{{err: statusErr(http.StatusInternalServerError)}}
+				res := runLoop(t.Context(), f, 10*time.Second, func(p *WaitParams) {
+					p.Interval, p.SpacingFrom = 2*time.Second, tt.from
+				})
 				var to *timedOut
 				require.ErrorAs(t, res.err, &to)
 				assert.Equal(t, tt.want, f.sequence())
-				f.requireInvariants(loopInterval)
 			})
 		})
 	}
@@ -599,7 +696,8 @@ func TestWaitObjectAnEventWithAFailFastStateClosesTheStream(t *testing.T) {
 
 // TestWaitObjectAbortsAtOnceOnAuthAndTLSFailures asserts a 401 or a
 // certificate failure from a List, a Get, a watch open and an ERROR event
-// ends the wait at once through OnAbort, with no further call.
+// ends the wait at once through OnAbort, with no further call, with both sets
+// of timing parameters.
 func TestWaitObjectAbortsAtOnceOnAuthAndTLSFailures(t *testing.T) {
 	for _, bad := range []error{authErr(), clierr.New(clierr.CodeTLSTrust, "the server certificate is not trusted")} {
 		tests := []struct {
@@ -619,21 +717,24 @@ func TestWaitObjectAbortsAtOnceOnAuthAndTLSFailures(t *testing.T) {
 				return f
 			}, "list@0 watch@0"},
 		}
-		for _, tt := range tests {
-			t.Run(clierr.From(bad).Code+" "+tt.name, func(t *testing.T) {
-				synctest.Test(t, func(t *testing.T) {
-					f := newFakeLoop(t)
-					c := tt.client(f)
-					aborted := false
-					res := runLoop(t.Context(), c, time.Minute, func(p *WaitParams) {
-						p.OnAbort = func(err error) error { aborted = true; return err }
+		for _, sp := range loopSpacings {
+			for _, tt := range tests {
+				t.Run(sp.name+"/"+clierr.From(bad).Code+" "+tt.name, func(t *testing.T) {
+					synctest.Test(t, func(t *testing.T) {
+						f := newFakeLoop(t)
+						c := tt.client(f)
+						aborted := false
+						res := runLoop(t.Context(), c, time.Minute, func(p *WaitParams) {
+							sp.apply(p)
+							p.OnAbort = func(err error) error { aborted = true; return err }
+						})
+						assert.Same(t, bad, res.err)
+						assert.True(t, aborted)
+						assert.Equal(t, tt.want, f.sequence())
+						assert.Zero(t, res.elapsed, "the wait ends at once")
 					})
-					assert.Same(t, bad, res.err)
-					assert.True(t, aborted)
-					assert.Equal(t, tt.want, f.sequence())
-					assert.Zero(t, res.elapsed, "the wait ends at once")
 				})
-			})
+			}
 		}
 	}
 }
@@ -755,4 +856,246 @@ func TestWaitObjectForbiddenListThenSatisfiedGetReturnsAtOnce(t *testing.T) {
 			})
 		})
 	}
+}
+
+// observation is one call of Observe: where the object came from and when the
+// call started.
+type observation struct {
+	source WaitSource
+	at     time.Duration
+}
+
+func (o observation) String() string {
+	name := map[WaitSource]string{SourceList: "list", SourceGet: "get", SourceEvent: "event", SourceCheckAgain: "again"}[o.source]
+	return fmt.Sprintf("%s@%g", name, o.at.Seconds())
+}
+
+// checkAgainCase is one wait whose Observe asks to be called again. The
+// object's state decides what a List item, a Get answer and an event give:
+// "again" is WaitCheckAgain, "done" is WaitDone, "bad" is an error and
+// anything else WaitContinue. A call with SourceCheckAgain is answered by
+// again; when it is nil the call asks again.
+type checkAgainCase struct {
+	name         string
+	client       func(f *fakeLoop)
+	getOnly      bool
+	timeout      time.Duration
+	again        func(nth int, at time.Duration) (WaitOutcome, error)
+	takes        time.Duration
+	wantObserved string
+	wantCalls    string
+	// wantEnd is "done", "timeout" or "error".
+	wantEnd string
+}
+
+func (c checkAgainCase) run(t *testing.T) {
+	t.Helper()
+	synctest.Test(t, func(t *testing.T) {
+		const interval = 2 * time.Second
+		withStreamSeconds(t, 55)
+		f := newFakeLoop(t)
+		f.lists = []answer{{state: "again"}}
+		if c.client != nil {
+			c.client(f)
+		}
+		var client ClusterClient = f
+		if c.getOnly {
+			client = getOnly{f: f}
+		}
+		var seen []observation
+		nth := 0
+		res := runLoop(t.Context(), client, c.timeout, func(p *WaitParams) {
+			p.Interval, p.SpacingFrom = interval, SpacingFromReturn
+			p.Observe = func(_ context.Context, obj *unstructured.Unstructured, source WaitSource) (WaitOutcome, error) {
+				at := f.since()
+				seen = append(seen, observation{source, at})
+				if source == SourceCheckAgain {
+					nth++
+					if c.takes > 0 {
+						time.Sleep(c.takes)
+					}
+					if c.again != nil {
+						return c.again(nth, at)
+					}
+					return WaitCheckAgain, nil
+				}
+				state, _, _ := unstructured.NestedString(obj.Object, "status", "state")
+				switch state {
+				case "again":
+					return WaitCheckAgain, nil
+				case "done":
+					return WaitDone, nil
+				case "bad":
+					return WaitContinue, errTerminal
+				}
+				return WaitContinue, nil
+			}
+		})
+		var got []string
+		again := 0
+		var previous time.Duration
+		for _, o := range seen {
+			got = append(got, o.String())
+			if o.source == SourceCheckAgain {
+				if again > 0 {
+					assert.GreaterOrEqual(t, o.at-previous, interval, "calls of Observe that check again are at least one interval apart: %v", got)
+				}
+				previous = o.at
+				again++
+			}
+		}
+		assert.Equal(t, c.wantObserved, strings.Join(got, " "))
+		assert.Equal(t, c.wantCalls, f.sequence())
+		assert.LessOrEqual(t, again, int(res.elapsed/interval), "at most one Observe call that checks again per interval")
+		switch c.wantEnd {
+		case "done":
+			require.NoError(t, res.err)
+		case "timeout":
+			var to *timedOut
+			require.ErrorAs(t, res.err, &to)
+			assert.NotNil(t, to.last, "the timeout carries the last object")
+		case "error":
+			require.ErrorIs(t, res.err, errTerminal)
+		}
+		if !c.getOnly {
+			f.requireInvariants(interval)
+		}
+	})
+}
+
+func doneAt(nth int) func(int, time.Duration) (WaitOutcome, error) {
+	return func(n int, _ time.Duration) (WaitOutcome, error) {
+		if n >= nth {
+			return WaitDone, nil
+		}
+		return WaitCheckAgain, nil
+	}
+}
+
+// TestWaitObjectCheckAgain asserts the rules of WaitCheckAgain with a 2 second
+// interval: Observe is called again with the same object once an interval
+// while the stream is open, the call is outside the request budget, and the
+// run of calls ends with the stream, with an event that has its own outcome,
+// with an error or with the deadline.
+func TestWaitObjectCheckAgain(t *testing.T) {
+	for _, c := range []checkAgainCase{
+		{
+			name: "calls every interval while the stream is open and ends with done", timeout: time.Minute,
+			again:        doneAt(3),
+			wantObserved: "list@0 again@2 again@4 again@6", wantCalls: "list@0 watch@0", wantEnd: "done",
+		},
+		{
+			name: "stops when the stream closes", timeout: 12 * time.Second,
+			client: func(f *fakeLoop) {
+				f.lists = []answer{{state: "again"}, {state: "pending"}}
+				f.streams = []streamScript{{length: 5 * time.Second}}
+			},
+			wantObserved: "list@0 again@2 again@4 list@5 list@10",
+			wantCalls:    "list@0 watch@0 list@5 watch@5 list@10 watch@10", wantEnd: "timeout",
+		},
+		{
+			name: "an event that continues ends it and an event that asks again starts a new one", timeout: time.Minute,
+			client: func(f *fakeLoop) {
+				f.streams = []streamScript{{steps: []streamStep{{wait: 3 * time.Second, ev: changed("pending")}, {wait: 4 * time.Second, ev: changed("again")}}, hold: true}}
+			},
+			again: func(_ int, at time.Duration) (WaitOutcome, error) {
+				if at >= 9*time.Second {
+					return WaitDone, nil
+				}
+				return WaitCheckAgain, nil
+			},
+			wantObserved: "list@0 again@2 event@3 event@7 again@9", wantCalls: "list@0 watch@0", wantEnd: "done",
+		},
+		{
+			name: "the outcome of a List item starts it when the stream opens", timeout: time.Minute,
+			client: func(f *fakeLoop) {
+				f.listTakes, f.watchTakes = 1500*time.Millisecond, time.Second
+			},
+			again:        doneAt(1),
+			wantObserved: "list@1.5 again@4.5", wantCalls: "list@0 watch@1.5", wantEnd: "done",
+		},
+		{
+			name: "an error ends the wait with it", timeout: time.Minute,
+			again: func(int, time.Duration) (WaitOutcome, error) {
+				return WaitContinue, errTerminal
+			},
+			wantObserved: "list@0 again@2", wantCalls: "list@0 watch@0", wantEnd: "error",
+		},
+		{
+			name: "a timeout between calls carries the last object", timeout: 5 * time.Second,
+			wantObserved: "list@0 again@2 again@4", wantCalls: "list@0 watch@0", wantEnd: "timeout",
+		},
+		{
+			name: "a client that cannot watch is polled and never called again", timeout: time.Minute, getOnly: true,
+			client: func(f *fakeLoop) {
+				f.gets = []answer{{state: "again"}, {state: "again"}, {state: "done"}}
+			},
+			wantObserved: "get@0 get@2 get@4", wantCalls: "get@0 get@2 get@4", wantEnd: "done",
+		},
+		{
+			name: "a watch the server refuses leaves a wait that polls and never calls again", timeout: 9 * time.Second,
+			client: func(f *fakeLoop) {
+				f.streams = []streamScript{{err: rbacErr()}}
+				f.gets = []answer{{state: "pending"}}
+			},
+			wantObserved: "list@0 get@4 get@6 get@8", wantCalls: "list@0 watch@0 get@4 get@6 get@8", wantEnd: "timeout",
+		},
+		{
+			name: "a bookmark does not end it", timeout: time.Minute,
+			client: func(f *fakeLoop) {
+				f.streams = []streamScript{{steps: []streamStep{{wait: 3 * time.Second, ev: ObjectEvent{Type: ObjectBookmark}}}, hold: true}}
+			},
+			again:        doneAt(3),
+			wantObserved: "list@0 again@2 again@4 again@6", wantCalls: "list@0 watch@0", wantEnd: "done",
+		},
+		{
+			name: "a watch that fails to open starts none and the pending call is dropped at the next cycle", timeout: 10 * time.Second,
+			client: func(f *fakeLoop) {
+				f.lists = []answer{{state: "again"}, {state: "pending"}}
+				f.streams = []streamScript{{err: statusErr(http.StatusInternalServerError)}, {hold: true}}
+			},
+			wantObserved: "list@0 list@4", wantCalls: "list@0 watch@0 list@4 watch@4", wantEnd: "timeout",
+		},
+		{
+			name: "a Get answer starts none, no stream is open", timeout: 10 * time.Second,
+			client: func(f *fakeLoop) {
+				f.lists = []answer{{none: true}, {state: "pending"}}
+				f.gets = []answer{{state: "again"}}
+			},
+			wantObserved: "get@0 list@4", wantCalls: "list@0 get@0 list@4 watch@4", wantEnd: "timeout",
+		},
+		{
+			name: "the interval runs from the return of the previous call", timeout: time.Minute, takes: time.Second,
+			again:        doneAt(2),
+			wantObserved: "list@0 again@2 again@5", wantCalls: "list@0 watch@0", wantEnd: "done",
+		},
+	} {
+		t.Run(c.name, c.run)
+	}
+}
+
+// TestWaitObjectCheckAgainEndsWithTheStreamCancelled asserts that when the
+// wait returns during a run of Observe calls that check again, the stream's
+// context is cancelled.
+func TestWaitObjectCheckAgainEndsWithTheStreamCancelled(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		withStreamSeconds(t, 55)
+		f := newFakeLoop(t)
+		f.lists = []answer{{state: "again"}}
+		n := 0
+		res := runLoop(t.Context(), f, time.Minute, func(p *WaitParams) {
+			p.Interval = 2 * time.Second
+			p.Observe = func(context.Context, *unstructured.Unstructured, WaitSource) (WaitOutcome, error) {
+				n++
+				if n == 3 {
+					return WaitDone, nil
+				}
+				return WaitCheckAgain, nil
+			}
+		})
+		require.NoError(t, res.err)
+		require.Len(t, f.opened, 1)
+		synctest.Wait()
+		require.Error(t, f.opened[0].Err(), "the stream context is cancelled when the wait returns")
+	})
 }

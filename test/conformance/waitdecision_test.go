@@ -42,6 +42,12 @@ import (
 // Type information decides, never a name. Test files are not production code
 // and are skipped.
 //
+// Every such loop in production code is the one shared loop of package
+// engine, engine.WaitObject, so every wait has the same safety rules: no
+// other wait loop may exist, which TestEveryPollWaitRunsOnTheSharedLoop checks
+// with this scan, allowlist-free. The holes below apply to it too: a wait that
+// hides its request behind a helper, a narrower interface or a List is not seen.
+//
 // The shared loop of package engine keeps its calls, its event receive, its
 // timer and its call of engine.WaitShouldStop in the body of its one for
 // statement, with no helper or callback for them: the scan inspects only a
@@ -60,6 +66,8 @@ import (
 const (
 	waitDecisionFixtureDir = "test/conformance/testdata/waitdecision"
 	enginePackagePath      = modulePrefix + "internal/engine"
+	// sharedWaitLoopFile is the file of the one wait loop production code has.
+	sharedWaitLoopFile = "internal/engine/waitloop.go"
 )
 
 // waitDecisionAllowlist maps "<file>:<function>" to the reason a poll loop
@@ -269,6 +277,12 @@ func engineInterface(pkg *packages.Package, name string) *types.Interface {
 	return iface
 }
 
+// loopsOutsideTheSharedLoop returns the loops that are not in the shared loop's
+// file, whether or not they call engine.WaitShouldStop.
+func loopsOutsideTheSharedLoop(loops []pollLoop) []pollLoop {
+	return slices.DeleteFunc(slices.Clone(loops), func(l pollLoop) bool { return l.file == sharedWaitLoopFile })
+}
+
 // loadPollLoops type-checks pattern (production files only) and scans every
 // package.
 func loadPollLoops(t *testing.T, pattern string) []pollLoop {
@@ -290,10 +304,10 @@ func loadPollLoops(t *testing.T, pattern string) []pollLoop {
 
 // TestEveryPollWaitAsksWhetherToStop asserts every wait loop in production
 // code calls engine.WaitShouldStop in its own body or has an allowlist
-// entry, and that the scan sees exactly the two loops the repository has
-// today: the OIDC client wait and the shared loop of package engine, one
-// entry each (a scan that stopped seeing them would pass vacuously, and a
-// loop split into two for statements would add an entry).
+// entry, and that the scan sees exactly the one loop the repository has
+// today, the shared loop of package engine, as one entry (a scan that stopped
+// seeing it would pass vacuously, and a loop split into two for statements
+// would add an entry).
 func TestEveryPollWaitAsksWhetherToStop(t *testing.T) {
 	t.Parallel()
 	loops := loadPollLoops(t, "./...")
@@ -305,11 +319,24 @@ func TestEveryPollWaitAsksWhetherToStop(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []string{
-		"internal/engine/oidcclient/wait.go:waitForOIDCClient",
 		"internal/engine/waitloop.go:WaitObject",
 	}, found)
 	for key := range waitDecisionAllowlist {
 		assert.Contains(t, found, key, "allowlist entry %q matches no poll loop", key)
+	}
+}
+
+// TestEveryPollWaitRunsOnTheSharedLoop asserts the shared loop of package
+// engine is the only wait loop in production code: any loop the scan finds
+// outside internal/engine/waitloop.go fails, with no allowlist, and the scan
+// must find the shared loop itself, so a scan that finds nothing fails too.
+func TestEveryPollWaitRunsOnTheSharedLoop(t *testing.T) {
+	t.Parallel()
+	loops := loadPollLoops(t, "./...")
+	shared := len(loops) - len(loopsOutsideTheSharedLoop(loops))
+	assert.Equal(t, 1, shared, "the scan finds the shared loop in %s", sharedWaitLoopFile)
+	for _, l := range loopsOutsideTheSharedLoop(loops) {
+		t.Errorf("%s:%d: the wait loop in %s is not the shared loop; wait with engine.WaitObject", l.file, l.line, l.fn)
 	}
 }
 

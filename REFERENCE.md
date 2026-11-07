@@ -953,8 +953,10 @@ object always polls, with one refused List first; Rancher's cluster member role
 on the management Cluster is such a user. A change of permission or a revoked
 token is noticed at the next cycle, within about 70 seconds. An `AUTH` error
 from the List or the watch may name `list` or `watch` where an error from a Get
-names `get`. The commands that wait on an OIDC client poll the object with a
-GET; they do not watch it.
+names `get`. The commands that wait on an OIDC client watch the object the same
+way, with a poll interval of 2 seconds instead of 5 and a default timeout of 60
+seconds; with `get` alone they poll every 2 seconds, and the second GET comes 4
+seconds after the first request.
 
 `rancher kubeconfig` prints one context through the Rancher proxy and, when the
 cluster has the Authorized Cluster Endpoint enabled and the

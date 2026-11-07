@@ -73,6 +73,15 @@ func TestFactoryClientsAlwaysOfferObjectWatcher(t *testing.T) {
 				assert.True(t, watches, "ImpersonatedCluster offers the object watcher")
 				_, tables = as.(engine.TableReader)
 				assert.True(t, tables, "ImpersonatedCluster offers the table reader")
+
+				cached, err := f.Cluster(t.Context(), "local")
+				require.NoError(t, err)
+				_, watches = cached.(engine.ObjectWatcher)
+				assert.True(t, watches, "the cached client from a second Cluster call offers the object watcher")
+				cachedAs, err := f.ImpersonatedCluster(t.Context(), "local", engine.Impersonation{User: "u-abc"})
+				require.NoError(t, err)
+				_, watches = cachedAs.(engine.ObjectWatcher)
+				assert.True(t, watches, "the cached client from a second ImpersonatedCluster call offers the object watcher")
 			})
 		}
 	}

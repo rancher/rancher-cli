@@ -61,7 +61,7 @@ what drifted the previous revision of this doc).
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Contract`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
 | `internal/runtime/completion` | The live shell-completion seam: a source's `Claim`/`Complete` contract (`Source`, `Request`, `Requirements`, `Result`, the optional `Completer` interface), the description channel (`Result.Descriptions`, a raw text per bare name) with the sanitizer the surface applies to every description, the request capability the surface builds (`Connection`: private client and bearer, none for a source that needs no credential, counted allowance, sticky refusal), and the opaque `Path` builders that admit user-derived segments only through `ValidSegment`. A leaf of the standard library. |
 | `internal/runtime/completion/completiontest` | Test doubles the live completion sources' tests share: a server answering fixed bodies by path that records every request URI and Accept header, and the fixture documents more than one package asserts against (cloud credentials, the two discovery roots, the subject users). Imported by test code only. |
-| `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, the optional `TableReader` port (the cluster's API server's table, as kubectl asks for it), downstream-cluster resolution, the optional `ObjectWatcher` port (list and watch one named object) and the shared wait loop (`WaitObject`: List and watch by name, with polling as the fallback), and reusable plan/execute helpers, including the diff a create preview lists and the hiding of secret values in every preview diff; depends only on runtime + safety + clierr contracts and the kind table (`kinds`), which supplies the paths a preview hides. |
+| `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, the optional `TableReader` port (the cluster's API server's table, as kubectl asks for it), downstream-cluster resolution, the optional `ObjectWatcher` port (list and watch one named object) and the shared wait loop (`WaitObject`: List and watch by name, with polling as the fallback; the generated wait and the OIDC client waits run on it), and reusable plan/execute helpers, including the diff a create preview lists and the hiding of secret values in every preview diff; depends only on runtime + safety + clierr contracts and the kind table (`kinds`), which supplies the paths a preview hides. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, contract bindings, table columns (or `ServerTable`, for a built-in kind whose table the cluster's API server serves). |
 | `internal/engine/kinds/complete` | The generic live completion source of the kind table: for any Completable kind, its objects' names derived from the row's group, version, resource, namespace policy and scope, each described by the fields of the row's `Handle.Lookup` when it has one (`KindSource`), plus the shared `--namespace` and `--node` sources, which are that derivation for the namespace and node kinds. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (`Route`, given the operation: cluster/namespace, plus the `--project` refusal for a kind or operation it does not apply to and membership validation against the project the pipeline resolved) and table projection: a kind's own columns, or, for a `ServerTable` kind rendered as a text table, the table the API server answered with. |
@@ -1284,11 +1284,16 @@ cycle waits one poll interval for every request the previous cycle sent, so a
 wait never sends more requests than polling, apart from the first watch. A
 refused list or watch (403, 405, 400), a list that cannot start a watch, or
 three failed watches in a row switch the wait to polling for the rest of the
-process. An error or Stalled state seen only on a watch event is confirmed by
-the next list before it fails the wait, which keeps the outcomes polling
-gives. Output is the same in both modes, and so are the errors, except that an
-`AUTH` error from the List or the watch may name `list` or `watch`. The OIDC
-client waits poll with a GET; they do not use the watch.
+process. An error or Stalled state of the generated wait seen only on a watch
+event is confirmed by the next list before it fails the wait, which keeps the
+outcomes polling gives. Output is the same in both modes, and so are the
+errors, except that an `AUTH` error from the List or the watch may name `list`
+or `watch`. The OIDC client waits run on the same loop, with a 2 second
+interval. They end on the verdict of the event itself, with no confirming
+list. rotate-secret reads the client Secret once the controller has removed
+the regenerate annotation, and reads it again every 2 seconds while the stream
+is open if that read failed with a temporary error, because the watch does not
+see the Secret.
 
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or

@@ -117,7 +117,7 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 		v, err := readClientSecret(ctx, c.clients, clientID, secretName)
 		if err != nil {
 			if isTransientSecretReadError(err) {
-				return waitOutcome{} // transient; retry on the next tick
+				return waitOutcome{checkAgain: true} // transient; read the Secret again
 			}
 			return waitOutcome{terminal: committedPartialSuccess(err, "OIDCClient", clientName, secretName, getRecovery)}
 		}
@@ -163,15 +163,16 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 	return res, nil
 }
 
-// isTransientSecretReadError reports whether err should be tolerated and
-// retried on the next poll tick: a *clierr.Error explicitly classified
-// Retryable, or any error that never went through clierr's classification
-// at all (a raw transport error), is transient. A *clierr.Error that is NOT
-// retryable (RBAC, NOT_FOUND, AUTH, TLS_TRUST) is a definitive, terminal
-// failure - waiting for the deadline could never fix it.
+// isTransientSecretReadError reports whether err should be tolerated and the
+// read tried again: while the watch is open the wait runs check again every
+// poll interval, otherwise the next cycle's List does. A *clierr.Error
+// explicitly classified Retryable, or any error that never went through
+// clierr's classification at all (a raw transport error), is transient. A
+// *clierr.Error that is NOT retryable (RBAC, NOT_FOUND, AUTH, TLS_TRUST) is a
+// definitive, terminal failure - waiting for the deadline could never fix it.
 //
-// This differs from the rule waitForOIDCClient applies to its OIDCClient
-// Get (engine.WaitShouldStop: only AUTH and TLS_TRUST end the wait, an RBAC
+// This differs from the rule the wait applies to its OIDCClient requests
+// (engine.WaitShouldStop: only AUTH and TLS_TRUST end the wait, an RBAC
 // error is retried). This is a different request, the read of the client
 // Secret that the verb needs to finish, and a 403 on it means the caller
 // cannot read that Secret.

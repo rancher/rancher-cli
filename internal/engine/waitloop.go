@@ -24,6 +24,9 @@ const (
 	SourceGet
 	// SourceEvent is the object of a watch event.
 	SourceEvent
+	// SourceCheckAgain is the object of an earlier call, given to Observe again
+	// because it returned WaitCheckAgain.
+	SourceCheckAgain
 )
 
 // WaitOutcome is what a wait decided about one object.
@@ -37,6 +40,11 @@ const (
 	// WaitClose is for an event only: it closes the stream without ending the
 	// wait, and the next cycle's List decides with every check.
 	WaitClose
+	// WaitCheckAgain keeps waiting, like WaitContinue, and asks the loop to call
+	// Observe again with the same object every Interval while the current watch
+	// stream is open: for a wait whose verdict depends on a request the watch
+	// does not see.
+	WaitCheckAgain
 )
 
 // SpacingFrom says where the loop measures the spacing of its cycles from.
@@ -149,6 +157,14 @@ const (
 // SpacingFrom says, so by any time T the cycles have sent at most
 // floor(T / Interval) + 2 calls whatever the server does.
 //
+// When Observe returns WaitCheckAgain for a List item or an event, the loop
+// calls Observe again with that object once an Interval after the outcome or
+// after the stream opened, and again after each call that returns
+// WaitCheckAgain, while the stream is open. Those calls send no request of the
+// loop and are outside the bound above. An event, the end of the stream or an
+// outcome other than WaitCheckAgain ends them. A Get answer starts none, and
+// a poll never makes one.
+//
 // The loop keeps every client call, the event receive, the timer and
 // WaitShouldStop in the body of its one for statement, with one select, so the
 // scan in test/conformance that every wait loop asks whether to stop sees
@@ -176,12 +192,19 @@ func WaitObject(ctx context.Context, client ClusterClient, p WaitParams) error {
 		got     bool          // the stream delivered a Changed or Deleted event
 		notNext time.Time     // the next cycle starts no sooner than this
 
+		again      *unstructured.Unstructured // the object Observe asked to be called with again
+		againTimer *time.Timer
+		againC     <-chan time.Time
+
 		streamCancel context.CancelFunc = func() {}
 	)
 	defer func() {
 		streamCancel()
 		if timer != nil {
 			timer.Stop()
+		}
+		if againTimer != nil {
+			againTimer.Stop()
 		}
 	}()
 
@@ -201,7 +224,15 @@ func WaitObject(ctx context.Context, client ClusterClient, p WaitParams) error {
 			}
 		}
 	}
+	dropAgain := func() {
+		again, againC = nil, nil
+		if againTimer != nil {
+			againTimer.Stop()
+			againTimer = nil
+		}
+	}
 	endCycle := func() {
+		dropAgain()
 		if ref.IsZero() {
 			ref = time.Now()
 		}
@@ -255,6 +286,9 @@ func WaitObject(ctx context.Context, client ClusterClient, p WaitParams) error {
 				}
 				if out == WaitDone {
 					return nil
+				}
+				if out == WaitCheckAgain {
+					again = item
 				}
 				phase = phaseOpen
 			case err == nil, clierr.IsNotFound(err):
@@ -330,12 +364,29 @@ func WaitObject(ctx context.Context, client ClusterClient, p WaitParams) error {
 			timer = time.NewTimer(sleep)
 			timerC = timer.C
 		}
+		if phase == phaseStream && again != nil && againC == nil {
+			againTimer = time.NewTimer(p.Interval)
+			againC = againTimer.C
+		}
 		select {
 		case <-ctx.Done():
 			return finish()
 		case <-timerC:
 			timer, timerC = nil, nil
 			beginCycle()
+		case <-againC:
+			againTimer, againC = nil, nil
+			out, oerr := p.Observe(ctx, again, SourceCheckAgain)
+			if oerr != nil {
+				return oerr
+			}
+			switch out {
+			case WaitDone:
+				return nil
+			case WaitCheckAgain:
+			default:
+				again = nil
+			}
 		case ev, ok := <-events:
 			switch {
 			case !ok:
@@ -348,9 +399,12 @@ func WaitObject(ctx context.Context, client ClusterClient, p WaitParams) error {
 				if oerr != nil {
 					return oerr
 				}
+				dropAgain()
 				switch out {
 				case WaitDone:
 					return nil
+				case WaitCheckAgain:
+					again = ev.Object
 				case WaitClose:
 					closeStream()
 					notNext = time.Now().Add(p.Interval)

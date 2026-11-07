@@ -11,48 +11,41 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// pollInterval is the bespoke poll helper's tick - a package var so tests
-// can shrink it (resources.pollInterval's test-shrinkable pattern).
+// pollInterval is the Interval of the wait: the spacing of one request. A
+// package variable so tests can shrink it.
 var pollInterval = 2 * time.Second
 
-// defaultWaitTimeout is the bespoke verbs' default --timeout: a DELIBERATE
-// divergence from the generated wait's 120s defaultWaitTimeout - annotation
-// consumption takes seconds on a real server (both editions), unlike a
-// provisioning wait.
+// defaultWaitTimeout is the verbs' default --timeout. It differs from the
+// generated wait's 120 seconds on purpose: the controller consumes an
+// annotation within seconds on a real server, unlike a provisioning wait.
 const defaultWaitTimeout = 60 * time.Second
 
-// waitOutcome is one poll's classification for waitForOIDCClient's caller-
-// supplied check function.
+// waitOutcome is what a verb's check function decided about one OIDCClient.
 type waitOutcome struct {
-	// done, when true, ends the wait successfully with value (the caller's
-	// extracted result, e.g. a new secret's key name).
+	// done, when true, ends the wait successfully with value (the verb's
+	// result, for example the name of a new client secret).
 	done  bool
 	value string
-	// terminal, when non-nil, ends the wait IMMEDIATELY with this
-	// non-retryable error - an impossible or ambiguous observed shape a
-	// concurrent actor produced must never be misdiagnosed by waiting to
-	// timeout.
+	// terminal, when non-nil, ends the wait at once with this error: a shape
+	// another actor produced that waiting longer cannot fix.
 	terminal *clierr.Error
+	// checkAgain, when true, runs check again on this object every poll
+	// interval while the watch is open: the verdict depends on a request the
+	// watch does not see.
+	checkAgain bool
 }
 
-// waitForOIDCClient mirrors resources.waitFor's poll contract for the
-// bespoke secret-lifecycle verbs - a separate seam because the generated
-// --for grammar expresses only status.state/conditions, not these key-set
-// predicates; it must never diverge from waitFor's
-// semantics: a Get error retries unless it ends the wait, a NOT_FOUND fails
-// fast exactly like waitFor (returned raw, unclassified), check's terminal
-// verdict ends the wait immediately, and an ordinary timeout calls onTimeout
-// with the last-observed object (nil if the client was never successfully
-// observed) to build the caller's per-verb classified error.
-//
-// An error engine.WaitShouldStop accepts (an authentication or certificate
-// failure) ends the wait at once, like waitFor. The verb has already written
-// to the server when the wait starts, so the error goes through onAbort,
-// which wraps it with the verb's committed details. A timeout names the last
-// Get error: "; last error: <CODE>: <message>" ends the message onTimeout
-// built. The last Get error is the one of the most recent Get that ended
-// with the wait's context still live; a later Get that returns an object
-// clears it.
+// waitForOIDCClient waits on the OIDCClient name with engine.WaitObject, so it
+// watches the object, and polls when the server refuses the watch. check
+// decides about each object the wait sees. An error engine.WaitShouldStop
+// accepts (an authentication or certificate failure) ends the wait at once
+// through onAbort, which adds the verb's committed details, because the verb
+// has already written to the server when the wait starts. A NOT_FOUND answer
+// ends the wait with the error as it is. A timeout, and a cancel too, calls
+// onTimeout with the last object seen (nil when none) for the verb's own error
+// and appends "; last error: <CODE>: <message>" when a request failed and no
+// object came after it. A request cut by the deadline or by a cancel is never
+// that last error. check gets the wait's context, which the timeout bounds.
 func waitForOIDCClient(
 	ctx context.Context,
 	client engine.ClusterClient,
@@ -63,54 +56,42 @@ func waitForOIDCClient(
 	onTimeout func(last *unstructured.Unstructured) *clierr.Error,
 	onAbort func(err error) *clierr.Error,
 ) (string, error) {
-	deadline, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-	var last *unstructured.Unstructured
-	var lastErr *clierr.Error
-	for {
-		obj, err := client.Get(deadline, gvr, "", name)
-		switch {
-		case err != nil && clierr.IsNotFound(err):
-			return "", err
-		case err != nil && engine.WaitShouldStop(err):
-			return "", onAbort(err)
-		case err != nil:
-			// A Get cut by the wait's own deadline or by a cancel says nothing
-			// about the server, so only a Get that ended with the context
-			// still live is recorded.
-			if deadline.Err() == nil {
-				lastErr = clierr.From(err)
-			}
-		case err == nil:
-			last = obj
-			lastErr = nil
-			// check is handed the SAME deadline-bound context the poll Get
-			// above used, never the outer ctx: any secret read a check
-			// performs (rotate-secret's per-tick correlation read) must be
-			// bounded by the user's --timeout too, not run unbounded after
-			// it has notionally expired.
-			out := check(deadline, obj)
-			if out.terminal != nil {
-				return "", out.terminal
-			}
-			if out.done {
-				return out.value, nil
-			}
+	var value string
+	timedOut := func(last *unstructured.Unstructured, lastErr *clierr.Error) error {
+		ce := onTimeout(last)
+		if lastErr != nil {
+			ce = ce.WithMessage(fmt.Sprintf("%s; last error: %s: %s", ce.Message, lastErr.Code, lastErr.Message))
 		}
-		// Mirrors resources.waitFor's select exactly: deadline.Done() fires
-		// on EITHER the timeout elapsing or ctx being canceled by the
-		// caller - the two are not distinguished, matching waitFor's own
-		// behavior of always reporting the deadline branch as a timeout.
-		select {
-		case <-deadline.Done():
-			ce := onTimeout(last)
-			if lastErr != nil {
-				ce = ce.WithMessage(fmt.Sprintf("%s; last error: %s: %s", ce.Message, lastErr.Code, lastErr.Message))
-			}
-			return "", ce
-		case <-ticker.C:
-		}
+		return ce
 	}
+	err := engine.WaitObject(ctx, client, engine.WaitParams{
+		GVR:         gvr,
+		Name:        name,
+		Timeout:     timeout,
+		Interval:    pollInterval,
+		SpacingFrom: engine.SpacingFromStart,
+		Observe: func(ctx context.Context, obj *unstructured.Unstructured, _ engine.WaitSource) (engine.WaitOutcome, error) {
+			out := check(ctx, obj)
+			switch {
+			case out.terminal != nil:
+				return engine.WaitContinue, out.terminal
+			case out.done:
+				value = out.value
+				return engine.WaitDone, nil
+			case out.checkAgain:
+				return engine.WaitCheckAgain, nil
+			}
+			return engine.WaitContinue, nil
+		},
+		RecordErr: func(ctx context.Context, _ error) bool { return ctx.Err() == nil },
+		OnAbort:   func(err error) error { return onAbort(err) },
+		OnCancel: func(_ context.Context, last *unstructured.Unstructured, lastErr *clierr.Error) error {
+			return timedOut(last, lastErr)
+		},
+		OnTimeout: timedOut,
+	})
+	if err != nil {
+		return "", err
+	}
+	return value, nil
 }

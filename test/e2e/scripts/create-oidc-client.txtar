@@ -20,14 +20,17 @@ exec rancher create namespace cattle-oidc-client-secrets --cluster local --apply
 # the order Rancher's oidc-client controller makes them (onChange in
 # pkg/controllers/management/oidcprovider/controller.go): the backing
 # Secret, status.clientID, then status.clientSecrets
-# (updateStatusIfNeeded). Each is a separate request, so a poll of the
-# CLI's wait may land between any two of them.
+# (updateStatusIfNeeded). The CLI's wait watches the object and each status
+# write arrives as an event; waitwatchopen holds the writes until the watch is
+# open, so the wait ends by an event and not by its first List.
 exec rancher create oidc-client create-test --description e2e-test --redirect-uri https://example.invalid/callback --scope openid --token-ttl 1h --refresh-ttl 24h --apply --yes -o json &createcmd&
 waitobj management.cattle.io/v3/oidcclients . create-test metadata.uid
+waitwatchopen create-test
 seedobj core/v1/secrets cattle-oidc-client-secrets secret.yaml
 flipstatus local management.cattle.io/v3/oidcclients . create-test {"clientID":"client-e2e-1"}
 flipstatus local management.cattle.io/v3/oidcclients . create-test {"clientSecrets":{"client-secret-1":{"createdAt":"1700000000","lastFiveCharacters":"vXyZ1"}}}
 wait createcmd
+shimwaits create-test 1 1 200 200
 
 jsonquery stdout data.name create-test
 jsonquery stdout data.clientID client-e2e-1
@@ -53,10 +56,12 @@ stderr 'error \(VALIDATION\):'
 # to strip.
 exec rancher create oidc-client create-test-text --description e2e-test --redirect-uri https://example.invalid/callback --scope openid --token-ttl 1h --refresh-ttl 24h --apply --yes &createtextcmd&
 waitobj management.cattle.io/v3/oidcclients . create-test-text metadata.uid
+waitwatchopen create-test-text
 seedobj core/v1/secrets cattle-oidc-client-secrets secret2.yaml
 flipstatus local management.cattle.io/v3/oidcclients . create-test-text {"clientID":"client-e2e-2"}
 flipstatus local management.cattle.io/v3/oidcclients . create-test-text {"clientSecrets":{"client-secret-1":{"createdAt":"1700000000","lastFiveCharacters":"vXyZ2"}}}
 wait createtextcmd
+shimwaits create-test-text 1 1 200 200
 
 stdout 'oidcclient/create-test-text created'
 stdout 'client secret: super-secret-value-2   \(shown once - store it now\)'
@@ -86,6 +91,8 @@ exec rancher patch secret client-lc-1 --namespace cattle-oidc-client-secrets --c
 exec rancher patch oidcclient lifecycle-client --patch '[{"op":"remove","path":"/metadata/annotations/cattle.io~1oidc-client-secret-create"}]' --apply --yes
 flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"clientSecrets":{"client-secret-2":{"createdAt":"1700000100","lastFiveCharacters":"bbbbb"}}}
 wait addcmd
+# The three verbs wait on this name in turn, so each count adds the verb before.
+shimwaits lifecycle-client 1 1 200 200
 jsonquery stdout data.clientID client-lc-1
 jsonquery stdout data.secretName client-secret-2
 jsonquery stdout data.clientSecret new-secret-2-value
@@ -102,6 +109,7 @@ exec rancher patch secret client-lc-1 --namespace cattle-oidc-client-secrets --c
 exec rancher patch oidcclient lifecycle-client --patch '[{"op":"remove","path":"/metadata/annotations/cattle.io~1oidc-client-secret-regenerate"}]' --apply --yes
 flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"clientSecrets":{"client-secret-1":{"lastFiveCharacters":"lue-1"}}}
 wait rotatecmd
+shimwaits lifecycle-client 2 2 200 200
 jsonquery stdout data.clientID client-lc-1
 jsonquery stdout data.secretName client-secret-1
 jsonquery stdout data.clientSecret rotated-value-1
@@ -126,6 +134,7 @@ exec rancher patch secret client-lc-1 --namespace cattle-oidc-client-secrets --c
 exec rancher patch oidcclient lifecycle-client --patch '[{"op":"remove","path":"/metadata/annotations/cattle.io~1oidc-client-secret-remove"}]' --apply --yes
 flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"clientSecrets":{"client-secret-2":null}}
 wait removecmd
+shimwaits lifecycle-client 3 3 200 200
 jsonquery stdout data.clientID client-lc-1
 jsonquery stdout data.secretName client-secret-2
 
