@@ -586,7 +586,7 @@ func resolved(t *testing.T, path string) string {
 // its drift run with the helm-check minor, profile and known file; an
 // upcoming pair's drift run is unchanged apart from its profile; a pair of
 // another chart runs the steps before the lock; a pair that fails its health
-// check runs them after the lock and before any removal.
+// check stops the run with exit 4, removes nothing and downloads nothing.
 func TestHelmCheckKeptPair(t *testing.T) {
 	t.Run("a healthy helm-check pair with a drift run", func(t *testing.T) {
 		s := newHelmCheckScenario(t, helmRowOptions{})
@@ -700,7 +700,7 @@ func TestHelmCheckKeptPair(t *testing.T) {
 		requireOrder(t, res.log, "pull -q ", "rm -f -v", "run -d --name "+helmCheckName)
 	})
 
-	t.Run("a kept pair that fails its health check does the work before any removal", func(t *testing.T) {
+	t.Run("a kept pair that fails its health check stops the run and removes nothing", func(t *testing.T) {
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.setPod("rancher/rancher:v9.9.9", "docker.io/rancher/rancher@"+sampleDigest)
 		port := s.slotScript()
@@ -710,11 +710,13 @@ func TestHelmCheckKeptPair(t *testing.T) {
 		s.env["E2E_FIDELITY_KEEP"] = "1"
 		res := s.run()
 
-		require.Equalf(t, 1, res.code, "stderr: %s", res.stderr)
+		require.Equalf(t, 4, res.code, "stderr: %s", res.stderr)
 		assert.NotContains(t, res.stdout, "==> reusing healthy kept container")
-		assert.Equal(t, []string{"canned https://127.0.0.1:" + fmt.Sprint(port) + "/ping", "locked-real " + s.helm.chartURL, "locked-real " + s.helm.manifestURL}, s.curlLog(), "the work runs after the lock")
-		requireOrder(t, res.log, "pull -q ", "rm -f -v", "run -d --name "+helmCheckName)
-		assert.True(t, slices.IndexFunc(res.log, func(l string) bool { return strings.HasPrefix(l, "rm ") }) > slices.IndexFunc(res.log, func(l string) bool { return strings.HasPrefix(l, "pull ") }))
+		assert.Contains(t, res.stderr, "error: E2E_FIDELITY_KEEP=1: the kept pair "+helmCheckName+" on port "+fmt.Sprint(port)+" failed its ping check: ")
+		assert.Equal(t, []string{"canned https://127.0.0.1:" + fmt.Sprint(port) + "/ping"}, s.curlLog(), "a kept pair that passed read_kept_state downloads nothing")
+		for _, prefix := range []string{"rm ", "run ", "network rm", "network create"} {
+			assert.Falsef(t, hasCall(res.log, prefix), "no %q call: %v", prefix, res.log)
+		}
 	})
 }
 
@@ -798,10 +800,11 @@ func TestWriteStateRecordsTheBoot(t *testing.T) {
 // TestHelmCheckKeptPairFields asserts that a kept pair is recreated, and the
 // checks and downloads of helm_prepare run before the lock, when any one of
 // the state file fields it is compared by differs: the boot, the image, the
-// chart, the k3s image of the node container, the cert-manager manifest, and
-// the container id the state file records against the container Docker holds.
+// chart, the k3s image of the node container and the cert-manager manifest.
 // The pair would otherwise pass every health check, so a comparison that is
-// missing shows as a reused pair or as work done after the lock.
+// missing shows as a reused pair or as work done after the lock. A container
+// id that differs from the state file's stops the run instead; the tests of
+// keepreuse_test.go assert that.
 func TestHelmCheckKeptPairFields(t *testing.T) {
 	zeros := strings.Repeat("0", 64)
 	rows := []struct {
@@ -820,9 +823,6 @@ func TestHelmCheckKeptPairFields(t *testing.T) {
 		}},
 		{"certManager.manifest", func(_ *scenario, state map[string]any) {
 			state["certManager"] = map[string]any{"manifest": "https://example.com/cert-manager.yaml@sha256:" + zeros, "images": []string{}}
-		}},
-		{"containerId", func(s *scenario, _ map[string]any) {
-			s.helm.files["ids"] = helmCheckName + " another-id\n" + helmCheckName + "-k3s k3s-id\n"
 		}},
 	}
 	for _, row := range rows {
@@ -881,7 +881,7 @@ func reuseProgram(t *testing.T, state map[string]any, computed bool) string {
 		program += "HELM_COMPUTED='' HELM_ASSETS_IMAGE='' LOCAL_K3S_SOURCE=''\n"
 	}
 	program += shellFunction(t, "state_value") + shellFunction(t, "load_helm_state") + shellFunction(t, "reuse_state") +
-		"reuse_state\necho \"status=$? assets=${HELM_ASSETS_IMAGE} source=${LOCAL_K3S_SOURCE}\"\n"
+		"reuse_state\necho \"status=$? assets=${HELM_ASSETS_IMAGE} source=${LOCAL_K3S_SOURCE} recreate=${REUSE_RECREATE:-} failed=${REUSE_FAILED_CHECK:-}\"\n"
 	cmd := exec.CommandContext(t.Context(), "bash", "-c", program)
 	cmd.Env = []string{"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"), "STUB_LOG=" + filepath.Join(dir, "log"), "STUB_DIR=" + dir}
 	out, err := cmd.CombinedOutput()
@@ -909,12 +909,14 @@ func TestReuseStateComparesWhatARunComputed(t *testing.T) {
 			out := reuseProgram(t, state, true)
 			assert.Contains(t, out, mismatch, key)
 			assert.Contains(t, out, "status=1", key)
+			assert.Contains(t, out, "recreate=a different assets image or source of the k3s version failed=\n", key)
 		}
 	})
 	t.Run("a run whose values equal the state file's goes on to the next check", func(t *testing.T) {
 		out := reuseProgram(t, base(), true)
 		assert.NotContains(t, out, mismatch)
-		assert.Contains(t, out, "==> kept container bind address changed; recreating", "the stub reports no bind address, which is the next check")
+		assert.Contains(t, out, "recreate= failed=bind-address\n", "the stub reports no bind address, which is the next check; it stops the run and recreates nothing")
+		assert.NotContains(t, out, "recreating")
 	})
 	t.Run("a run that computed nothing reads the values from the state file", func(t *testing.T) {
 		state := base()

@@ -76,6 +76,13 @@ GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # test or a suite that ran no probe, and 1 for a boot or harness failure; the
 # last line on stdout gives the counts.
 #
+# On every slot, with E2E_FIDELITY_KEEP=1, a kept pair that fails its container,
+# container id, bind address, /ping, admin token or state file check is never
+# removed: the run stops with exit 4 and prints the commands that remove the
+# pair. A changed pin, a missing state file and a failed downstream check keep
+# their behavior: the first two create a new pair, the third rebuilds the
+# downstream.
+#
 # E2E_FIDELITY_RANCHER_REPO and E2E_FIDELITY_REGISTRY_URL exist for the tests,
 # which point them at a local git repository and a local registry stand-in.
 UPCOMING_REPO="rancher/rancher"
@@ -177,8 +184,11 @@ DRIFT_REPORT_ABS=""
 DRIFT_KNOWN=""
 DRIFT_PROFILE=""
 DRIFT_LABEL=""
+# DRIFT_SLOT is 1 on the slots where a drift run is allowed.
+DRIFT_SLOT=""
+if [ -n "${MINOR}" ] || [ -n "${HELM_CHECK}" ]; then DRIFT_SLOT=1; fi
 if [ "${DRIFT}" = 1 ]; then
-  if [ -z "${MINOR}" ] && [ -z "${HELM_CHECK}" ]; then
+  if [ -z "${DRIFT_SLOT}" ]; then
     echo "error: E2E_FIDELITY_DRIFT needs E2E_FIDELITY_MINOR=<major>.<minor>; the drift run compares an upcoming minor with the community goldens" >&2
     exit 1
   fi
@@ -1133,8 +1143,10 @@ fi
 
 # A helm boot checks and downloads everything before the lock, so a failure
 # removes nothing. A kept pair whose state file records the current pins
-# skips that work; when it then fails to be reused, the work runs before
-# anything is removed (see the fresh boot below).
+# skips that work. If a check of that pair then fails, the run stops with exit 4
+# and removes nothing (see reuse_state); if the state file changed in between
+# and a pin differs, the work runs before anything is removed (see the fresh
+# boot below).
 if [ "${BOOT}" = "helm" ]; then
   trap remove_download_dir EXIT
   check_slot
@@ -1524,16 +1536,43 @@ wait_for_downstream_proxy() {
   return 1
 }
 
+# reuse_state reports whether the kept pair can be used as it is; it runs only
+# under E2E_FIDELITY_KEEP=1. A kept pair that fails its container, container
+# id, bind address, /ping, admin token or state file check is never removed:
+# it sets REUSE_FAILED_CHECK and REUSE_FAILED_DETAIL, and the run stops with
+# exit 4 (refuse_reuse). A changed pin (a new image, a moved upcoming-minor
+# head, another boot or helm pin) and a missing state file set
+# REUSE_RECREATE: the run creates a new pair in place of the kept one. A moved
+# k3s image is not checked here; reuse_downstream rebuilds the downstream
+# alone.
 reuse_state() {
-  [ -f "${STATE_FILE}" ] || return 1
-  cid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerId"])' "${STATE_FILE}" 2>/dev/null)" || return 1
-  running="$(docker inspect --format '{{.Id}}' "${CONTAINER}" 2>/dev/null)" || return 1
-  [ "${cid}" = "${running}" ] || return 1
+  REUSE_RECREATE=""
+  REUSE_FAILED_CHECK=""
+  REUSE_FAILED_DETAIL=""
+  REUSE_FAILED_HINT=""
+  [ -f "${STATE_FILE}" ] || {
+    REUSE_RECREATE="no state file"
+    echo "==> no state file at ${STATE_FILE}; booting a new pair"
+    return 1
+  }
+  python3 -I -c 'import json,sys; json.load(open(sys.argv[1]))' "${STATE_FILE}" 2>/dev/null || {
+    REUSE_FAILED_CHECK="state-file"
+    REUSE_FAILED_DETAIL="the state file ${STATE_FILE} could not be read"
+    return 1
+  }
   # The kept container must have been created from the CURRENTLY pinned
   # image: reusing across an ORACLE_IMAGE bump would stamp new goldens with
-  # an image that never ran, defeating provenance.
-  saved_image="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["oracleImage"])' "${STATE_FILE}" 2>/dev/null)" || return 1
+  # an image that never ran, defeating provenance. Every pin is compared
+  # before the container, so a changed pin creates a new pair even when the
+  # kept one no longer answers.
+  saved_image="$(python3 -I -c 'import json,sys; v = json.load(open(sys.argv[1])).get("oracleImage"); print(v if isinstance(v, str) else "")' "${STATE_FILE}" 2>/dev/null)"
+  [ -n "${saved_image}" ] || {
+    REUSE_FAILED_CHECK="state-file"
+    REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no oracleImage"
+    return 1
+  }
   [ "${saved_image}" = "${ORACLE_IMAGE}" ] || {
+    REUSE_RECREATE="a different oracle image"
     echo "==> kept container was created from a different oracle image; recreating"
     return 1
   }
@@ -1544,6 +1583,7 @@ reuse_state() {
   saved_boot="$(state_value boot)"
   [ -n "${saved_boot}" ] || saved_boot="container"
   [ "${saved_boot}" = "${BOOT}" ] || {
+    REUSE_RECREATE="a different boot"
     echo "==> kept pair was created with a different boot; recreating"
     return 1
   }
@@ -1551,6 +1591,7 @@ reuse_state() {
     if [ "$(state_value chart)" != "${CHART_PIN}" ] ||
       [ "$(state_value localK3sImage)" != "${LOCAL_K3S_PIN}" ] ||
       [ "$(state_value certManager.manifest)" != "${CERT_MANAGER_MANIFEST}" ]; then
+      REUSE_RECREATE="different chart, k3s or cert-manager pins"
       echo "==> kept pair was created from different chart, k3s or cert-manager pins; recreating"
       return 1
     fi
@@ -1561,6 +1602,7 @@ reuse_state() {
     if [ -n "${HELM_COMPUTED}" ]; then
       if [ "$(state_value assetsImage)" != "${HELM_ASSETS_IMAGE}" ] ||
         [ "$(state_value localK3sSource)" != "${LOCAL_K3S_SOURCE}" ]; then
+        REUSE_RECREATE="a different assets image or source of the k3s version"
         echo "==> kept pair has a different assets image or a different source of its k3s version (the server image or CATTLE_K3S_VERSION); recreating"
         return 1
       fi
@@ -1568,20 +1610,86 @@ reuse_state() {
       load_helm_state
     fi
   fi
+  cid="$(state_value containerId)"
+  [ -n "${cid}" ] || {
+    REUSE_FAILED_CHECK="state-file"
+    REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no containerId"
+    return 1
+  }
+  running="$(docker inspect --format '{{.Id}}' "${CONTAINER}" 2>/dev/null)" || {
+    REUSE_FAILED_CHECK="container"
+    REUSE_FAILED_DETAIL="container ${CONTAINER} does not exist"
+    return 1
+  }
+  [ "${cid}" = "${running}" ] || {
+    REUSE_FAILED_CHECK="container-id"
+    REUSE_FAILED_DETAIL="container ${CONTAINER} has id ${running}, but the state file records ${cid}"
+    return 1
+  }
   # The kept container must be bound to the currently requested address: a
   # reused oracle published wider than asked (or narrower, missing a
   # requested LAN bind) would silently change the exposure the caller opted
   # into.
-  bound_ip="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "443/tcp") 0).HostIp}}' "${CONTAINER}" 2>/dev/null)" || return 1
-  [ "${bound_ip}" = "${BIND_ADDR}" ] || {
-    echo "==> kept container bind address changed; recreating"
+  bound_ip="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "443/tcp") 0).HostIp}}' "${CONTAINER}" 2>/dev/null)" || {
+    REUSE_FAILED_CHECK="bind-address"
+    REUSE_FAILED_DETAIL="container ${CONTAINER} publishes no host address for 443/tcp; it may be stopped or restarting"
     return 1
   }
-  curl -sk --max-time 5 "${BASE_URL}/ping" 2>/dev/null | grep -q pong || return 1
-  ADMIN_TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["adminToken"])' "${STATE_FILE}")" || return 1
+  [ "${bound_ip}" = "${BIND_ADDR}" ] || {
+    REUSE_FAILED_CHECK="bind-address"
+    REUSE_FAILED_DETAIL="container ${CONTAINER} is published on ${bound_ip:-(none)}, but this run asks for ${BIND_ADDR} (E2E_FIDELITY_BIND_ADDR)"
+    [ -z "${bound_ip}" ] || REUSE_FAILED_HINT="to reuse the pair as it is, run with E2E_FIDELITY_BIND_ADDR=${bound_ip}"
+    return 1
+  }
+  if ! curl -sk --max-time 5 "${BASE_URL}/ping" 2>/dev/null | grep -q pong; then
+    REUSE_FAILED_CHECK="ping"
+    REUSE_FAILED_DETAIL="${BASE_URL}/ping did not answer pong within 5 s; a kept server restarts itself after some feature changes and can take a few minutes to answer"
+    return 1
+  fi
+  ADMIN_TOKEN="$(state_value adminToken)"
+  [ -n "${ADMIN_TOKEN}" ] || {
+    REUSE_FAILED_CHECK="state-file"
+    REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no adminToken"
+    return 1
+  }
   code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
-    -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/v3/users?me=true")" || return 1
-  [ "${code}" = "200" ]
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/v3/users?me=true")" || true
+  [ "${code}" = "200" ] || {
+    REUSE_FAILED_CHECK="admin-token"
+    REUSE_FAILED_DETAIL="the admin token in the state file got HTTP ${code:-000} from ${BASE_URL}/v3/users?me=true"
+    [ "${code:-000}" != "000" ] ||
+      REUSE_FAILED_DETAIL="${REUSE_FAILED_DETAIL}; a kept server restarts itself after some feature changes and can take a few minutes to answer"
+    return 1
+  }
+  return 0
+}
+
+# refuse_reuse stops a run under E2E_FIDELITY_KEEP=1 whose kept pair failed a
+# check of its own state, with the failed check, the commands that remove the
+# pair, and exit 4. It removes nothing and never prints the admin token. A
+# failure that names no check is a defect of reuse_state and stops the run too.
+refuse_reuse() {
+  check="${REUSE_FAILED_CHECK:-}"
+  detail="${REUSE_FAILED_DETAIL:-}"
+  if [ -z "${check}" ]; then
+    check="unnamed"
+    detail="reuse_state failed at a check that sets no name; this is a defect in scripts/e2e-fidelity"
+  fi
+  {
+    echo "error: E2E_FIDELITY_KEEP=1: the kept pair ${CONTAINER} on port ${HOST_PORT} failed its ${check} check: ${detail}; nothing was removed"
+    echo "error: with E2E_FIDELITY_KEEP=1 a kept pair whose container, container id, bind address, /ping, admin token or state file check fails is never removed. Find out why (docker ps -a --filter name=${CONTAINER}; docker logs --tail 50 ${CONTAINER}) and run again."
+    [ -z "${REUSE_FAILED_HINT:-}" ] || echo "error: ${REUSE_FAILED_HINT}"
+    if [ "${check}" = "state-file" ]; then
+      echo "error: ${detail}; remove the pair with:"
+    else
+      echo "error: to boot a new pair instead, remove this one first, then run again:"
+    fi
+    printf 'error:   docker rm -f -v %q %q\n' "${CONTAINER}" "${K3S_CONTAINER}"
+    printf 'error:   docker network rm %q\n' "${NETWORK}"
+    printf 'error:   rm -rf %q\n' "${STATE_ROOT}"
+    [ -z "${DRIFT_SLOT}" ] || echo "error: this also deletes drift reports under ${STATE_ROOT}"
+  } >&2
+  exit 4
 }
 
 # reuse_downstream reports whether the kept downstream is the same
@@ -1869,8 +1977,13 @@ if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && reuse_state; then
   # and the CA is unchanged by it, so re-prime unconditionally.
   [ -z "${EXTRA_SANS}" ] || prime_extra_sans
 else
-  # A kept pair that was not reused skipped the steps before the lock of a
-  # helm boot; they run now, before anything is removed.
+  if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && [ -z "${REUSE_RECREATE:-}" ]; then
+    refuse_reuse
+  fi
+  # Under E2E_FIDELITY_KEEP=1 the code below runs only when reuse_state
+  # allowed a new pair: no state file, or a changed pin. A kept pair that was
+  # not reused skipped the steps before the lock of a helm boot; they run
+  # now, before anything is removed.
   [ "${BOOT}" != "helm" ] || [ -n "${HELM_COMPUTED}" ] || helm_prepare
   refuse_pre_rename_leftovers
   docker rm -f -v "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
