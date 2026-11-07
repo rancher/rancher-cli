@@ -59,6 +59,18 @@
 # the timeout-minutes of every workflow job that runs the fresh pass
 # (TestFreshTimeoutFitsEveryJobThatRunsIt).
 #
+# Each go test call of the race pass also runs with -timeout=$race_timeout
+# unless the flags name a timeout. go test's default of 10 minutes is close
+# to the run time of the slowest race package on a loaded machine, so a slow
+# run could fail with no sign of a hung test. The value is twice the slowest
+# race package measured locally (9.3 minutes) and 5 minutes under the 25
+# minutes that the 30-minute CI shard jobs allow, so that a hung test fails
+# with go test's report of the running tests before the runner cancels the
+# job. It bounds one go test call, as the fresh timeout does: a shard makes
+# two calls, each with its own timeout. The value stays at least 5 minutes
+# under the timeout-minutes of every workflow job that runs the race pass
+# through this script (TestRaceTimeoutFitsEveryJobThatRunsIt).
+#
 # The listed norace packages hold the source scans (test/conformance) and
 # the cache model (test/cachemodel). Their tests read files or enumerate
 # states and test no concurrent code, so the race detector has nothing to
@@ -239,6 +251,7 @@ for dir in "${norace[@]}"; do
 done
 
 fresh_timeout=25m
+race_timeout=20m
 count_named=
 timeout_named=
 for f in "${flags[@]}"; do
@@ -256,6 +269,8 @@ if [ -z "$count_named" ]; then
   fresh_flags+=(-count=1)
 fi
 if [ -z "$timeout_named" ]; then
+  race_flags+=("-timeout=$race_timeout")
+  cli_flags+=("-timeout=$race_timeout")
   fresh_flags+=("-timeout=$fresh_timeout")
 fi
 if [ -n "$profile" ]; then

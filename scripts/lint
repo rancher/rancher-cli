@@ -2,4 +2,6 @@
 set -e
 cd "$(dirname "$0")/.."
 ./scripts/golangci-lint-version
-golangci-lint run
+# A second lint run, started while another holds the lint lock on this
+# machine, waits for the other run instead of exiting with an error.
+golangci-lint run --allow-serial-runners

@@ -54,7 +54,9 @@ static() {
   # soft fallback would silently weaken the commit gate, so there it is an error.
   if command -v golangci-lint >/dev/null 2>&1; then
     ./scripts/golangci-lint-version
-    golangci-lint run
+    # A second lint run, started while another holds the lint lock on this
+    # machine, waits for the other run instead of exiting with an error.
+    golangci-lint run --allow-serial-runners
   elif [ -n "${CI:-}" ]; then
     echo "error: golangci-lint is required in CI" >&2
     exit 1

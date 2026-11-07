@@ -32,6 +32,7 @@ const (
 	lintScript        = "scripts/lint"
 	posixOnlyReason   = "runs bash scripts and relies on a POSIX PATH and exec bits"
 	installPathPrefix = "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"
+	lintCall          = "golangci-lint run --allow-serial-runners"
 )
 
 // workflowFile holds the parts of a workflow file the checks below read.
@@ -446,6 +447,332 @@ func TestCIRunsEveryValidatePartOnce(t *testing.T) {
 // validate, which the release workflow runs.
 var freshPassStepBodies = []string{testsConformanceStepBody, "make validate"}
 
+// racePassStepBodies are the step bodies in the workflows that run the race
+// pass of scripts/test: the three ci.yaml race shards and make validate,
+// which the release workflow runs.
+var racePassStepBodies = []string{testsRace1StepBody, testsRace2StepBody, testsRace3StepBody, "make validate"}
+
+// racePassJobCounts is the number of jobs per workflow file that run the
+// race pass through scripts/test. A workflow file not listed has none.
+var racePassJobCounts = map[string]int{"ci.yaml": 3, "release.yaml": 1}
+
+var (
+	// scriptTestWordRE matches a mention of scripts/test or scripts/ci, in any
+	// spelling of the leading ./ and with repeated slashes.
+	scriptTestWordRE = regexp.MustCompile(`(^|[^A-Za-z0-9_])scripts/+(\./+)*(test|ci)([^A-Za-z0-9_-]|$)`)
+	// scriptValidateWordRE finds each mention of scripts/validate; group 3
+	// starts the rest of the command.
+	scriptValidateWordRE = regexp.MustCompile(`(^|[^A-Za-z0-9_])scripts/+(\./+)*validate([^A-Za-z0-9_-]|$)`)
+	// shellRedirectRE matches a redirection, such as 2>&1 or >/dev/null.
+	shellRedirectRE = regexp.MustCompile(`[0-9]*[<>]+&?[^\s;|&]*`)
+	// raceWordRE matches the word validate, test or ci in any path form
+	// (./test, scripts/validate, /x/ci).
+	raceWordRE = regexp.MustCompile(`(^|[^A-Za-z0-9_.-])(validate|test|ci)([^A-Za-z0-9_-]|$)`)
+	// goTestRE matches the go tool's own test command.
+	goTestRE = regexp.MustCompile(`\bgo\s+test\b`)
+	// commandSplitRE splits a run line into commands.
+	commandSplitRE = regexp.MustCompile(`[;&|]+`)
+	// shellAssignmentRE matches a variable assignment before a command.
+	shellAssignmentRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
+	// shellCommandFlagRE matches the -c flag of sh and bash, alone or among others.
+	shellCommandFlagRE = regexp.MustCompile(`^-[A-Za-z]*c[A-Za-z]*$`)
+	// changeDirRE matches a command that changes the working directory.
+	changeDirRE = regexp.MustCompile(`(^|[^A-Za-z0-9_.-])(cd|pushd)([^A-Za-z0-9_-]|$)`)
+)
+
+// validateSafeParts are the only scripts/validate arguments that do not run
+// the race pass. Any other argument, a variable or no argument included,
+// counts as a possible race pass run.
+var validateSafeParts = []string{"static", "tests-norace", "tests-conformance", "tests-cachemodel"}
+
+// makeFlagsWithArgument are the make flags whose value is the next word.
+var makeFlagsWithArgument = []string{"-C", "-f", "-I", "-o", "-W", "--directory", "--file", "--makefile", "--include-dir", "--old-file", "--what-if"}
+
+// makeFlagsWithOptionalNumber are the make flags whose value is the next word
+// only when that word is a number (make -j 4, make -j validate).
+var makeFlagsWithOptionalNumber = []string{"-j", "-l", "--jobs", "--load-average", "--max-load"}
+
+// makeSafeTarget reports whether a make target is a script that does not
+// reach scripts/test: the e2e scripts, the Rancher API field comparison,
+// build and lint. Every other target, a variable included, counts as a
+// possible race pass run, because every file in scripts/ is a make target
+// and ci, test and validate reach scripts/test.
+func makeSafeTarget(target string) bool {
+	return target == "e2e" || strings.HasPrefix(target, "e2e-") || strings.HasPrefix(target, "rancher-api-fields") ||
+		target == "build" || target == "lint"
+}
+
+// commandArguments returns the words of the rest of a command: the redirects
+// removed, up to the first newline, semicolon, pipe, ampersand or comment.
+func commandArguments(rest string) []string {
+	rest = shellRedirectRE.ReplaceAllString(rest, " ")
+	if end := strings.IndexAny(rest, "\n;|&#"); end >= 0 {
+		rest = rest[:end]
+	}
+	return strings.Fields(rest)
+}
+
+// validateRunsRacePass reports whether the body runs scripts/validate with
+// anything other than one of validateSafeParts.
+func validateRunsRacePass(body string) bool {
+	body = strings.ReplaceAll(body, "\\\n", " ")
+	for _, m := range scriptValidateWordRE.FindAllStringSubmatchIndex(body, -1) {
+		args := commandArguments(body[m[6]:])
+		if len(args) == 0 || !slices.Contains(validateSafeParts, strings.Trim(args[0], `"'`)) {
+			return true
+		}
+	}
+	return false
+}
+
+// makeRunsRacePass reports whether a make word of the body has no target
+// (the default target is ci) or a target that makeSafeTarget does not list.
+func makeRunsRacePass(body string) bool {
+	body = strings.ReplaceAll(body, "\\\n", " ")
+	for _, m := range makeWordRE.FindAllStringSubmatchIndex(body, -1) {
+		var targets []string
+		words := commandArguments(body[m[5]:])
+		for i := 0; i < len(words); i++ {
+			word := strings.Trim(words[i], `"'`)
+			switch {
+			case slices.Contains(makeFlagsWithArgument, word):
+				i++
+			case slices.Contains(makeFlagsWithOptionalNumber, word):
+				if i+1 < len(words) {
+					if _, err := strconv.ParseFloat(words[i+1], 64); err == nil {
+						i++
+					}
+				}
+			case strings.HasPrefix(word, "-"), strings.Contains(word, "="), word == "":
+			default:
+				targets = append(targets, word)
+			}
+		}
+		if len(targets) == 0 || slices.ContainsFunc(targets, func(target string) bool { return !makeSafeTarget(target) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// variableCommandAllowlist lists, as the trimmed run line, the lines whose
+// command word is a variable, a command substitution or an expression that
+// variableCommand would refuse, with the reason each cannot run the race
+// pass.
+var variableCommandAllowlist = map[string]string{
+	`"$(go env GOPATH)/bin/golangci-lint" version`: "runs the linter binary the action installed",
+}
+
+// commandWrappers are the words that run the next word as a command.
+var commandWrappers = []string{"sudo", "env", "command", "exec", "nice", "time", "xargs", "if", "then", "do", "else", "elif", "while", "until", "!"}
+
+// variableCommand reports whether a line of the body has a command word that
+// is a variable expansion, a command substitution or a ${{ }} expression
+// ($X/test, ${X}, "$(x)", ${{ matrix.cmd }}), or runs sh or bash with -c and
+// an argument that holds a $. What such a command runs cannot be read from
+// the text, so it counts as a possible race pass run.
+func variableCommand(body string) bool {
+	body = strings.ReplaceAll(body, "\\\n", " ")
+	for line := range strings.SplitSeq(body, "\n") {
+		line = strings.TrimSpace(line)
+		if _, ok := variableCommandAllowlist[line]; ok {
+			continue
+		}
+		for _, command := range commandSplitRE.Split(line, -1) {
+			words := strings.Fields(command)
+			for len(words) > 0 {
+				word := strings.Trim(words[0], "({\"'")
+				if shellAssignmentRE.MatchString(word) || slices.Contains(commandWrappers, word) {
+					words = words[1:]
+					continue
+				}
+				break
+			}
+			if len(words) == 0 {
+				continue
+			}
+			first := strings.Trim(words[0], "({\"'")
+			if strings.HasPrefix(first, "$") {
+				return true
+			}
+			if slices.Contains([]string{"sh", "bash", "zsh", "dash"}, first) &&
+				slices.ContainsFunc(words[1:], shellCommandFlagRE.MatchString) &&
+				strings.Contains(strings.Join(words[1:], " "), "$") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// runsRacePass reports whether a workflow run body can run the race pass of
+// scripts/test: it mentions scripts/test or scripts/ci, runs scripts/validate
+// with anything but a part that does not run it, or runs make with no target
+// or a target that is not known to be safe.
+func runsRacePass(body string) bool {
+	return scriptTestWordRE.MatchString(body) || validateRunsRacePass(body) || makeRunsRacePass(body)
+}
+
+// stepRunsRacePass reports whether a step can run the race pass: its run body
+// or its shell override does (runsRacePass), or its run body has a command
+// word that is a variable (variableCommand, except in a step whose shell is
+// PowerShell, cmd or Python, where a leading $ is not a shell variable), or
+// the step runs in another directory (a working-directory, or a cd or pushd
+// in the body) and the body names validate, test or ci in any path form or a
+// make word, which the directory can turn into scripts/validate,
+// scripts/test or scripts/ci. The go tool's own go test is not counted. A
+// workflow or job working-directory default reaches the step through
+// withDefaultDirectories.
+func stepRunsRacePass(step workflowStep) bool {
+	if runsRacePass(step.Run) || runsRacePass(step.Shell) {
+		return true
+	}
+	shell, _, _ := strings.Cut(strings.TrimSpace(step.Shell), " ")
+	if !slices.Contains([]string{"pwsh", "powershell", "cmd", "python"}, shell) && variableCommand(step.Run) {
+		return true
+	}
+	if step.WorkingDirectory == "" && !changeDirRE.MatchString(step.Run) {
+		return false
+	}
+	body := goTestRE.ReplaceAllString(step.Run+"\n"+step.Shell, " ")
+	return raceWordRE.MatchString(body) || makeWordRE.MatchString(body)
+}
+
+// defaultDirectory returns the run.working-directory of a defaults block, or
+// the empty string.
+func defaultDirectory(defaults yaml.Node) string {
+	var d struct {
+		Run struct {
+			WorkingDirectory string `yaml:"working-directory"`
+		} `yaml:"run"`
+	}
+	if defaults.Kind == 0 || defaults.Decode(&d) != nil {
+		return ""
+	}
+	return d.Run.WorkingDirectory
+}
+
+// withDefaultDirectories returns the workflow with the working-directory
+// default of the workflow, and the one of each job (which takes precedence),
+// set on every step that sets none of its own, so that the step matcher sees
+// that the step runs in another directory.
+func withDefaultDirectories(wf workflowFile) workflowFile {
+	workflowDir := defaultDirectory(wf.Defaults)
+	jobs := map[string]workflowJob{}
+	for id, job := range wf.Jobs {
+		dir := workflowDir
+		if jobDir := defaultDirectory(job.Defaults); jobDir != "" {
+			dir = jobDir
+		}
+		job.Steps = slices.Clone(job.Steps)
+		for i := range job.Steps {
+			if job.Steps[i].WorkingDirectory == "" {
+				job.Steps[i].WorkingDirectory = dir
+			}
+		}
+		jobs[id] = job
+	}
+	wf.Jobs = jobs
+	return wf
+}
+
+// TestRaceTimeoutMatcherRules asserts which steps the matcher for the race
+// pass accepts and refuses. A step it cannot prove safe is refused: an
+// unknown or variable scripts/validate argument or make target, and a step
+// that runs in another directory.
+func TestRaceTimeoutMatcherRules(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{
+		"make", "make ci", "make test", "make validate", "make -j4 validate", "make -C . validate",
+		"make e2e ci", "make e2e validate", "$MAKE validate", "${MAKE} test", "$(MAKE) ci", "gmake validate",
+		"/usr/bin/make validate", "make validate 2>&1", `bash -c "make validate"`, "sudo make test",
+		"make e2e && make", "make e2e \\\nci", "cat <<EOF\nmake validate\nEOF", "make\n",
+		"make -j 4", "make --jobs 4", "make --jobs=4", "make -j 4 validate", "make $TARGET", "make ${{ matrix.target }}",
+		"make unknown", "make e2e unknown", "make -l 2.5",
+		"./scripts/test", "scripts/test -pass=race", "bash scripts/./test", "./scripts/./ci", "bash scripts/ci",
+		"./scripts/validate", "scripts/validate\n", "./scripts/validate tests", "./scripts/validate tests-race",
+		"./scripts/validate tests-race-1", "./scripts/validate tests-race-3 && echo ok", "./scripts/./validate tests-race-2",
+		"cat <<EOF\n./scripts/validate tests-race-1\nEOF",
+		`./scripts/validate "$part"`, "./scripts/validate $PART", "./scripts/validate tests-race-${{ matrix.shard }}",
+		"./scripts/validate ${{ matrix.part }}", "bash -c './scripts/validate'", "./scripts/validate tests-race-1 2>&1 | tee x",
+		"./scripts/validate tests-race-1 >log", "for p in tests-race-1; do ./scripts/validate $p; done",
+		"./scripts/validate static && ./scripts/validate tests-race-1", "./scripts/validate tests-bogus",
+		"./scripts/validate \\\ntests-race-1",
+		"./scripts//test", "./scripts//validate tests-race-1", "scripts/.//ci", "bash scripts///test", "scripts//./validate",
+	} {
+		assert.True(t, runsRacePass(body), "%q must be matched", body)
+		assert.True(t, stepRunsRacePass(workflowStep{Run: body}), "%q must be matched as a step", body)
+	}
+	for _, body := range []string{
+		"./scripts/validate static", "./scripts/validate tests-conformance", "./scripts/validate tests-cachemodel",
+		"./scripts/validate tests-norace", "./scripts/validate static 2>&1 | tee x", "./scripts/validate static >log",
+		"bash -c './scripts/validate static'", `./scripts/validate "static"`, "./scripts/validate \\\nstatic",
+		"./scripts/validate static && ./scripts/validate tests-conformance",
+		"make e2e", "make e2e\n", "make -j4 e2e", "make -j 4 e2e", "make --jobs 4 e2e", "make --jobs=4 e2e",
+		"make --load-average 2 e2e", "make -j e2e", "make -C . e2e", "make build", "make lint",
+		"make e2e-fidelity", "make e2e-fidelity-update", "make rancher-api-fields", "make rancher-api-fields-update",
+		"make e2e && make e2e", "make e2e 2>&1", "scripts/fuzz", "./scripts/fuzz --selftest",
+		"bash scripts/e2e", "go test ./...", "go test -race -count=1 ./internal/cli/completions/", "echo make-it",
+		"echo done", "./scripts/check-release-tag \"$TAG\"", "scripts/release-upsert dist/*", "./scripts/build",
+		"scripts/test-helper", "scripts/testdata", "./scripts/validate-x", "echo invalidate",
+		"(cd dist && sha256sum -- * > SHA256SUMS)", "cd x && go test ./...",
+	} {
+		assert.False(t, runsRacePass(body), "%q must not be matched", body)
+		assert.False(t, stepRunsRacePass(workflowStep{Run: body}), "%q must not be matched as a step", body)
+	}
+
+	for name, step := range map[string]workflowStep{
+		"a variable path":                 {Run: "S=scripts; $S/test"},
+		"a variable command":              {Run: "$CMD"},
+		"a braced variable path":          {Run: "${S}/test"},
+		"a quoted variable path":          {Run: `"$S"/test`},
+		"an expression":                   {Run: "${{ matrix.cmd }}"},
+		"an expression with arguments":    {Run: "${{ matrix.cmd }} tests-race-1"},
+		"sh -c with a variable":           {Run: `sh -c "$CMD"`},
+		"bash -c with a variable":         {Run: `bash -c "$CMD"`},
+		"bash -c with an expression":      {Run: `bash -c "${{ matrix.cmd }}"`},
+		"bash -ec with a variable":        {Run: `bash -ec "$CMD"`},
+		"an assignment then a variable":   {Run: "FOO=1 $CMD"},
+		"sudo then a variable":            {Run: "sudo $CMD"},
+		"a variable after &&":             {Run: "echo x && $CMD"},
+		"a variable after then":           {Run: "if true; then $X/test; fi"},
+		"a variable on the second line":   {Run: "echo x\n$CMD arg"},
+		"a command substitution":          {Run: "$(echo ./scripts/test)"},
+		"a variable in a bash step":       {Shell: "bash", Run: "$CMD"},
+		"a shell that runs scripts/test":  {Shell: "bash scripts/test {0}", Run: "echo hi"},
+		"a shell that runs make validate": {Shell: "make validate --", Run: "echo hi"},
+		"a shell with a path form":        {Shell: "./scripts//validate {0}", Run: "echo hi"},
+		"cd then ./test":                  {Run: "cd scripts && ./test"},
+		"cd then validate":                {Run: "cd scripts && ./validate tests-race-1"},
+		"pushd then ./ci":                 {Run: "pushd scripts; ./ci; popd"},
+		"working-directory ./test":        {WorkingDirectory: "scripts", Run: "./test"},
+		"working-directory validate":      {WorkingDirectory: "scripts", Run: "./validate tests-race-1"},
+		"working-directory make":          {WorkingDirectory: "sub", Run: "gmake"},
+		"working-directory path form":     {WorkingDirectory: "scripts", Run: "bash ./validate"},
+		"cd then an absolute path":        {Run: "cd /x && /x/test"},
+		"cd in a subshell then ./test":    {Run: "(cd scripts; ./test)"},
+	} {
+		assert.True(t, stepRunsRacePass(step), "must be matched: %s", name)
+	}
+	for name, step := range map[string]workflowStep{
+		"an echo of a variable":                 {Run: `echo "${shell}" $HOME`},
+		"an assignment of a variable":           {Run: `status=1; log="${RUNNER_TEMP}/x.log"`},
+		"a variable as an argument":             {Run: `cat "$log"`},
+		"assignments before a command":          {Run: `GOOS="$goos" GOARCH="$goarch" ./scripts/build`},
+		"bash -c with no variable":              {Run: "bash -c 'echo hi'"},
+		"the allowlisted linter line":           {Run: `"$(go env GOPATH)/bin/golangci-lint" version`},
+		"a PowerShell variable":                 {Shell: "pwsh", Run: "$ErrorActionPreference = 'Stop'\n$x = 1"},
+		"a bash shell":                          {Shell: "bash", Run: "go install x"},
+		"a bash shell with a flag":              {Shell: "bash -e {0}", Run: "go install x"},
+		"working-directory with unrelated body": {WorkingDirectory: "dist", Run: "sha256sum -- *"},
+		"working-directory with go test":        {WorkingDirectory: "x", Run: "go test ./..."},
+		"cd with an unrelated body":             {Run: "cd dist && sha256sum -- * > SHA256SUMS"},
+		"a step with no body":                   {Uses: "actions/checkout@x", WorkingDirectory: "x"},
+	} {
+		assert.False(t, stepRunsRacePass(step), "must not be matched: %s", name)
+	}
+}
+
 // TestFreshTimeoutFitsEveryJobThatRunsIt asserts that the timeout scripts/test
 // gives the fresh pass is longer than go test's default of 10 minutes and at
 // least 5 minutes shorter than the timeout-minutes of every job that runs the
@@ -464,43 +791,183 @@ func TestFreshTimeoutFitsEveryJobThatRunsIt(t *testing.T) {
 	}
 }
 
+// TestRaceTimeoutFitsEveryJobThatRunsIt asserts, over every workflow file
+// that runs scripts/test, that the timeout scripts/test gives each go test
+// call of the race pass is longer than go test's default of 10 minutes and at
+// least 5 minutes shorter than the timeout-minutes of every job that runs the
+// race pass, so that a hung test fails with go test's report of the running
+// tests before the runner cancels the job; and that the number of such jobs
+// per file is the one in racePassJobCounts, so that a new job or file that
+// runs the race pass fails here until it is listed. The rule bounds one go
+// test call, as the fresh rule does: a race shard job makes two calls. The
+// Windows jobs run their own go test -race lines, outside scripts/test and
+// outside this rule.
+func TestRaceTimeoutFitsEveryJobThatRunsIt(t *testing.T) {
+	t.Parallel()
+	script, err := os.ReadFile(noRaceScriptPath)
+	require.NoError(t, err)
+	minutes := raceTimeoutOf(t, string(script))
+	paths, err := filepath.Glob(".github/workflows/*.y*ml")
+	require.NoError(t, err)
+	require.NotEmpty(t, paths)
+	for _, path := range paths {
+		assert.Empty(t, raceTimeoutProblems(minutes, readWorkflow(t, path), racePassJobCounts[filepath.Base(path)]), path)
+	}
+	for file := range racePassJobCounts {
+		assert.Contains(t, paths, ".github/workflows/"+file, "racePassJobCounts lists a workflow file that does not exist")
+	}
+}
+
+// compositeAction holds the steps of a composite action file.
+type compositeAction struct {
+	Runs struct {
+		Steps []workflowStep `yaml:"steps"`
+	} `yaml:"runs"`
+}
+
+// actionRacePassProblems returns the steps of a composite action that can
+// run the race pass. An action cannot be tied to the timeout-minutes of the
+// job that calls it, so none may run it. A reusable workflow (uses:
+// ./.github/workflows/x) is a workflow file and is checked on its own with
+// the job counts.
+func actionRacePassProblems(path string, steps []workflowStep) []string {
+	var out []string
+	for i, step := range steps {
+		if stepRunsRacePass(step) {
+			out = append(out, fmt.Sprintf("%s step %d can run the race pass: an action cannot be checked against the timeout-minutes of its job", path, i+1))
+		}
+	}
+	return out
+}
+
+// TestRaceTimeoutActionsRunNoRacePass asserts that no step of a composite
+// action under .github/actions can run the race pass of scripts/test.
+func TestRaceTimeoutActionsRunNoRacePass(t *testing.T) {
+	t.Parallel()
+	paths, err := filepath.Glob(".github/actions/*/action.y*ml")
+	require.NoError(t, err)
+	require.NotEmpty(t, paths)
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		var action compositeAction
+		require.NoError(t, yaml.Unmarshal(data, &action), path)
+		require.NotEmpty(t, action.Runs.Steps, path)
+		assert.Empty(t, actionRacePassProblems(path, action.Runs.Steps), path)
+	}
+}
+
+// TestRaceTimeoutActionRules asserts what actionRacePassProblems accepts and
+// refuses.
+func TestRaceTimeoutActionRules(t *testing.T) {
+	t.Parallel()
+	for name, steps := range map[string][]workflowStep{
+		"scripts/test":            {{Run: "scripts/test -pass=race"}},
+		"make validate":           {{Run: "make validate"}},
+		"a race shard":            {{Run: "./scripts/validate tests-race-1"}},
+		"a variable part":         {{Run: "./scripts/validate $PART"}},
+		"a working directory":     {{WorkingDirectory: "scripts", Run: "./test"}},
+		"the second of two steps": {{Run: "go install x"}, {Run: "make"}},
+	} {
+		assert.NotEmpty(t, actionRacePassProblems("a/action.yml", steps), "must refuse: %s", name)
+	}
+	assert.Empty(t, actionRacePassProblems("a/action.yml", []workflowStep{{Run: "go install x"}, {Run: "./scripts/validate static"}, {Uses: "actions/cache@x"}}))
+}
+
+// passTimeoutProblems checks a timeout of the given minutes, for the named
+// pass of scripts/test, against every job of the workflow with a step that
+// runsPass accepts; the workflow must have wantJobs such jobs.
+func passTimeoutProblems(pass string, minutes int, wf workflowFile, runsPass func(step workflowStep) bool, wantJobs int) []string {
+	var out []string
+	var jobs []string
+	for _, id := range slices.Sorted(maps.Keys(wf.Jobs)) {
+		job := wf.Jobs[id]
+		if !slices.ContainsFunc(job.Steps, runsPass) {
+			continue
+		}
+		jobs = append(jobs, id)
+		if minutes <= 10 {
+			out = append(out, fmt.Sprintf("the %s timeout of %dm is not longer than go test's default of 10m", pass, minutes))
+		}
+		if limit := job.TimeoutMinutes - 5; minutes > limit {
+			out = append(out, fmt.Sprintf("the %s timeout of %dm is more than job %s's timeout-minutes %d minus 5", pass, minutes, id, job.TimeoutMinutes))
+		}
+	}
+	if len(jobs) != wantJobs {
+		out = append(out, fmt.Sprintf("%d jobs run the %s pass %q, want %d", len(jobs), pass, jobs, wantJobs))
+	}
+	return out
+}
+
 // freshTimeoutProblems checks a fresh timeout of the given minutes against
 // every job of the workflow with a step that runs the fresh pass; the
 // workflow must have exactly one such job.
 func freshTimeoutProblems(minutes int, wf workflowFile) []string {
+	return passTimeoutProblems("fresh", minutes, wf, func(step workflowStep) bool {
+		return slices.Contains(freshPassStepBodies, strings.TrimSpace(step.Run))
+	}, 1)
+}
+
+// raceTimeoutProblems checks a race timeout of the given minutes against
+// every job of the workflow with a step that runs the race pass; the
+// workflow must have wantJobs such jobs. A step whose body the matcher takes
+// for a race pass run but that is not one of racePassStepBodies is a problem
+// of its own: its job is not known to fit. A working-directory default of
+// the workflow or the job counts as the step's own.
+func raceTimeoutProblems(minutes int, wf workflowFile, wantJobs int) []string {
+	wf = withDefaultDirectories(wf)
 	var out []string
-	jobs := 0
+	for _, id := range slices.Sorted(maps.Keys(wf.Jobs)) {
+		for i, step := range wf.Jobs[id].Steps {
+			if stepRunsRacePass(step) && !slices.Contains(racePassStepBodies, strings.TrimSpace(step.Run)) {
+				out = append(out, fmt.Sprintf("job %s step %d can run the race pass but is not one of %q", id, i+1, racePassStepBodies))
+			}
+		}
+	}
+	return append(out, passTimeoutProblems("race", minutes, wf, func(step workflowStep) bool {
+		return slices.Contains(racePassStepBodies, strings.TrimSpace(step.Run)) || stepRunsRacePass(step)
+	}, wantJobs)...)
+}
+
+// timeoutRulesWorkflow returns a workflow with one job per limit, each with
+// one step that runs body.
+func timeoutRulesWorkflow(body string, limits ...int) workflowFile {
+	w := workflowFile{Jobs: map[string]workflowJob{}}
+	for i, limit := range limits {
+		w.Jobs["job"+strconv.Itoa(i)] = workflowJob{TimeoutMinutes: limit, Steps: []workflowStep{{Run: body}}}
+	}
+	return w
+}
+
+// withDefaults returns the workflow with a run.working-directory default at
+// the workflow level and at the level of every job; an empty directory sets
+// none.
+func withDefaults(wf workflowFile, workflowDir, jobDir string) workflowFile {
+	node := func(dir string) yaml.Node {
+		var doc yaml.Node
+		if dir == "" {
+			return doc
+		}
+		if err := yaml.Unmarshal([]byte("run:\n  working-directory: "+dir+"\n"), &doc); err != nil {
+			panic(err)
+		}
+		return *doc.Content[0]
+	}
+	wf.Defaults = node(workflowDir)
+	jobs := map[string]workflowJob{}
 	for id, job := range wf.Jobs {
-		if !slices.ContainsFunc(job.Steps, func(s workflowStep) bool {
-			return slices.Contains(freshPassStepBodies, strings.TrimSpace(s.Run))
-		}) {
-			continue
-		}
-		jobs++
-		if minutes <= 10 {
-			out = append(out, fmt.Sprintf("the fresh timeout of %dm is not longer than go test's default of 10m", minutes))
-		}
-		if limit := job.TimeoutMinutes - 5; minutes > limit {
-			out = append(out, fmt.Sprintf("the fresh timeout of %dm is more than job %s's timeout-minutes %d minus 5", minutes, id, job.TimeoutMinutes))
-		}
+		job.Defaults = node(jobDir)
+		jobs[id] = job
 	}
-	if jobs != 1 {
-		out = append(out, fmt.Sprintf("%d jobs run one of %q, want 1", jobs, freshPassStepBodies))
-	}
-	return out
+	wf.Jobs = jobs
+	return wf
 }
 
 // TestFreshTimeoutProblemsRules asserts what freshTimeoutProblems accepts and
 // refuses.
 func TestFreshTimeoutProblemsRules(t *testing.T) {
 	t.Parallel()
-	wf := func(limits ...int) workflowFile {
-		w := workflowFile{Jobs: map[string]workflowJob{}}
-		for i, limit := range limits {
-			w.Jobs["conformance"+strconv.Itoa(i)] = workflowJob{TimeoutMinutes: limit, Steps: []workflowStep{{Run: testsConformanceStepBody}}}
-		}
-		return w
-	}
+	wf := func(limits ...int) workflowFile { return timeoutRulesWorkflow(testsConformanceStepBody, limits...) }
 	for _, c := range []struct {
 		name    string
 		minutes int
@@ -508,9 +975,7 @@ func TestFreshTimeoutProblemsRules(t *testing.T) {
 		want    string
 	}{
 		{name: "fits", minutes: 25, wf: wf(30)},
-		{name: "make validate in a job too short", minutes: 25, wf: workflowFile{Jobs: map[string]workflowJob{
-			"validate": {TimeoutMinutes: 20, Steps: []workflowStep{{Run: "make validate"}}},
-		}}, want: "minus 5"},
+		{name: "make validate in a job too short", minutes: 25, wf: timeoutRulesWorkflow("make validate", 20), want: "minus 5"},
 		{name: "too close to the job limit", minutes: 26, wf: wf(30), want: "minus 5"},
 		{name: "the job limit itself", minutes: 30, wf: wf(30), want: "minus 5"},
 		{name: "go test's default", minutes: 10, wf: wf(30), want: "not longer than go test's default"},
@@ -518,6 +983,50 @@ func TestFreshTimeoutProblemsRules(t *testing.T) {
 		{name: "two jobs run the fresh pass", minutes: 25, wf: wf(30, 30), want: "2 jobs run"},
 	} {
 		problems := freshTimeoutProblems(c.minutes, c.wf)
+		if c.want == "" {
+			assert.Empty(t, problems, c.name)
+			continue
+		}
+		assert.True(t, slices.ContainsFunc(problems, func(p string) bool { return strings.Contains(p, c.want) }), "%s: %q", c.name, problems)
+	}
+}
+
+// TestRaceTimeoutProblemsRules asserts what raceTimeoutProblems accepts and
+// refuses: a race shard job and make validate, a timeout too close to the job
+// limit or not above go test's default, a job count other than the one the
+// file is expected to have, and a run body that can run the race pass but is
+// not listed.
+func TestRaceTimeoutProblemsRules(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name    string
+		minutes int
+		wf      workflowFile
+		jobs    int
+		want    string
+	}{
+		{name: "shards fit", minutes: 20, wf: timeoutRulesWorkflow(testsRace1StepBody, 30, 30, 30), jobs: 3},
+		{name: "make validate fits", minutes: 20, wf: timeoutRulesWorkflow("make validate", 40), jobs: 1},
+		{name: "the limit minus 5", minutes: 25, wf: timeoutRulesWorkflow(testsRace2StepBody, 30), jobs: 1},
+		{name: "too close to the job limit", minutes: 26, wf: timeoutRulesWorkflow(testsRace1StepBody, 30), jobs: 1, want: "minus 5"},
+		{name: "release job too short", minutes: 20, wf: timeoutRulesWorkflow("make validate", 22), jobs: 1, want: "minus 5"},
+		{name: "a shard job with a shorter limit", minutes: 20, wf: timeoutRulesWorkflow(testsRace2StepBody, 24), jobs: 1, want: "minus 5"},
+		{name: "go test's default", minutes: 10, wf: timeoutRulesWorkflow(testsRace1StepBody, 30), jobs: 1, want: "not longer than go test's default"},
+		{name: "fewer jobs than expected", minutes: 20, wf: timeoutRulesWorkflow(testsRace1StepBody, 30, 30), jobs: 3, want: "2 jobs run"},
+		{name: "a job in a file that has none", minutes: 20, wf: timeoutRulesWorkflow(testsRace1StepBody, 30), jobs: 0, want: "1 jobs run"},
+		{name: "make test in a file that has none", minutes: 20, wf: timeoutRulesWorkflow("make test", 10), jobs: 0, want: "1 jobs run"},
+		{name: "make test is not listed", minutes: 20, wf: timeoutRulesWorkflow("make test", 30), jobs: 1, want: "is not one of"},
+		{name: "scripts/test is not listed", minutes: 20, wf: timeoutRulesWorkflow("./scripts/test -pass=race", 30), jobs: 1, want: "is not one of"},
+		{name: "a workflow default directory", minutes: 20, wf: withDefaults(timeoutRulesWorkflow("./test", 30), "scripts", ""), jobs: 1, want: "is not one of"},
+		{name: "a job default directory", minutes: 20, wf: withDefaults(timeoutRulesWorkflow("./validate tests-race-1", 30), "", "scripts"), jobs: 1, want: "is not one of"},
+		{name: "a job default directory with a short limit", minutes: 20, wf: withDefaults(timeoutRulesWorkflow("./test", 22), "", "scripts"), jobs: 0, want: "minus 5"},
+		{name: "a default directory and an unrelated body", minutes: 20, wf: withDefaults(timeoutRulesWorkflow("sha256sum -- *", 10), "dist", "dist"), jobs: 0},
+		{name: "no default directory", minutes: 20, wf: withDefaults(timeoutRulesWorkflow("./test", 10), "", ""), jobs: 0},
+		{name: "static does not run the race pass", minutes: 20, wf: timeoutRulesWorkflow(staticStepBody, 10), jobs: 0},
+		{name: "make e2e does not run the race pass", minutes: 20, wf: timeoutRulesWorkflow("make e2e", 10), jobs: 0},
+		{name: "go test does not run scripts/test", minutes: 20, wf: timeoutRulesWorkflow("go test -race ./...", 10), jobs: 0},
+	} {
+		problems := raceTimeoutProblems(c.minutes, c.wf, c.jobs)
 		if c.want == "" {
 			assert.Empty(t, problems, c.name)
 			continue
@@ -731,17 +1240,18 @@ func TestSetupToolsInputs(t *testing.T) {
 }
 
 // TestLintScriptChecksTheVersion asserts that scripts/lint runs the
-// golangci-lint version check before golangci-lint run.
+// golangci-lint version check before the lint call, and that the call waits
+// for another lint run instead of exiting (--allow-serial-runners).
 func TestLintScriptChecksTheVersion(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile(lintScript)
 	require.NoError(t, err)
 	script := string(data)
 	check := strings.Index(script, versionScript)
-	run := strings.Index(script, "golangci-lint run")
-	require.GreaterOrEqual(t, run, 0, "%s no longer runs golangci-lint", lintScript)
+	run := strings.Index(script, lintCall)
+	require.GreaterOrEqual(t, run, 0, "%s must run %s", lintScript, lintCall)
 	require.GreaterOrEqual(t, check, 0, "%s must call %s", lintScript, versionScript)
-	assert.Less(t, check, run, "%s must check the version before golangci-lint run", lintScript)
+	assert.Less(t, check, run, "%s must check the version before %s", lintScript, lintCall)
 }
 
 // pinRE finds the golangci-lint version the setup-tools action installs;
@@ -823,6 +1333,137 @@ func TestGolangciLintPinHasOneCopy(t *testing.T) {
 	require.Len(t, hits, 1, "want one line naming golangci-lint with a version, got %q", hits)
 	assert.True(t, strings.HasPrefix(hits[0], setupToolsFile+":"), "the pin must live in %s, found %q", setupToolsFile, hits[0])
 	assert.Contains(t, hits[0], installPathPrefix)
+}
+
+// lintCallFlagRE finds the whole word --allow-serial-runners.
+var lintCallFlagRE = regexp.MustCompile(`(^|[\s;&|(])--allow-serial-runners($|[\s;&|)"'])`)
+
+// lintCallRE finds a golangci-lint call that runs the linter: the word run
+// after any other words (golangci-lint -v run, golangci-lint --color never
+// run), with any white space between.
+var lintCallRE = regexp.MustCompile(`golangci-lint(?:\s+\S+)*?\s+run\b`)
+
+// lintActionAllowlist lists, as "file:line text", the lines that use the
+// golangci-lint action, with the reason each is allowed. The action runs the
+// linter without the flag, so none is allowed today.
+var lintActionAllowlist = map[string]string{}
+
+// lintCallWithoutFlag reports whether a line runs the lint call, in code or
+// in a comment, with a call that lacks --allow-serial-runners after it. A
+// line with two calls needs the flag after each.
+func lintCallWithoutFlag(line string) bool {
+	calls := lintCallRE.FindAllStringIndex(line, -1)
+	for i, call := range calls {
+		end := len(line)
+		if i+1 < len(calls) {
+			end = calls[i+1][0]
+		}
+		if !lintCallFlagRE.MatchString(line[call[1]:end]) {
+			return true
+		}
+	}
+	return false
+}
+
+// lintActionUse reports whether a line uses the golangci-lint action.
+func lintActionUse(line string) bool {
+	return strings.Contains(line, "golangci-lint-action")
+}
+
+// TestGolangciLintCallMatcherRules asserts which lines count as a lint call
+// without --allow-serial-runners.
+func TestGolangciLintCallMatcherRules(t *testing.T) {
+	t.Parallel()
+	for _, line := range []string{
+		"golangci-lint run",
+		"    golangci-lint run",
+		"golangci-lint run ./...",
+		"golangci-lint run --fast",
+		"golangci-lint run --allow-serial-runnersX",
+		"golangci-lint run --allow-serial-runners-not",
+		"# golangci-lint run",
+		"# call golangci-lint run to lint",
+		"golangci-lint run --allow-serial-runners && golangci-lint run",
+		"run: golangci-lint run ./internal/...",
+		"golangci-lint  run",
+		"golangci-lint\trun --fast",
+		"golangci-lint -v run",
+		"golangci-lint --color never run ./...",
+		"golangci-lint -v run --allow-serial-runnersX",
+		"golangci-lint -v run --allow-serial-runners && golangci-lint  run",
+	} {
+		assert.True(t, lintCallWithoutFlag(line), "%q must be refused", line)
+	}
+	for _, line := range []string{
+		lintCall,
+		"    " + lintCall,
+		"golangci-lint run --fast --allow-serial-runners",
+		"golangci-lint run --allow-serial-runners --fast",
+		"golangci-lint run --allow-serial-runners ./...",
+		"golangci-lint  run --allow-serial-runners",
+		"golangci-lint -v run --allow-serial-runners",
+		"golangci-lint --color never run --allow-serial-runners ./...",
+		"golangci-lint run --allow-serial-runners; echo done",
+		lintCall + " && " + lintCall,
+		"golangci-lint version",
+		"golangci-lint",
+		"./scripts/golangci-lint-version",
+		"echo run golangci-lint",
+		"",
+	} {
+		assert.False(t, lintCallWithoutFlag(line), "%q must be accepted", line)
+	}
+	for _, line := range []string{
+		"uses: golangci/golangci-lint-action@v8",
+		"      - uses: golangci/golangci-lint-action # x",
+	} {
+		assert.True(t, lintActionUse(line), "%q must count as a use of the action", line)
+	}
+	for _, line := range []string{"golangci-lint run", "./scripts/golangci-lint-version", "uses: actions/checkout@x"} {
+		assert.False(t, lintActionUse(line), "%q must not count as a use of the action", line)
+	}
+}
+
+// TestGolangciLintCallsAllowSerialRunners asserts that every line that runs
+// golangci-lint in scripts/, .githooks/, .github/, the Makefile and
+// install.sh passes --allow-serial-runners (a call with other words before
+// run included, such as golangci-lint -v run, and none uses the golangci-lint
+// action unless lintActionAllowlist lists it), so that a second lint run, from
+// another session or job on the same machine, waits for the first instead of
+// exiting with an error. The test files are outside the scan: they name the
+// call as data. The scan finds at least the calls of scripts/lint and
+// scripts/validate.
+func TestGolangciLintCallsAllowSerialRunners(t *testing.T) {
+	t.Parallel()
+	files, err := repositoryFiles()
+	require.NoError(t, err)
+	found := map[string]int{}
+	for _, file := range files {
+		if !strings.HasPrefix(file, "scripts/") && !strings.HasPrefix(file, ".githooks/") &&
+			!strings.HasPrefix(file, ".github/") && file != "Makefile" && file != "install.sh" {
+			continue
+		}
+		info, err := os.Stat(file)
+		require.NoError(t, err)
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		data, err := os.ReadFile(file)
+		require.NoError(t, err)
+		for n, line := range strings.Split(string(data), "\n") {
+			if lintActionUse(line) {
+				_, allowed := lintActionAllowlist[file+":"+strings.TrimSpace(line)]
+				assert.True(t, allowed, "%s:%d uses the golangci-lint action, which runs the linter without --allow-serial-runners: %s", file, n+1, strings.TrimSpace(line))
+			}
+			if !lintCallRE.MatchString(line) {
+				continue
+			}
+			found[file]++
+			assert.False(t, lintCallWithoutFlag(line), "%s:%d runs golangci-lint without --allow-serial-runners: %s", file, n+1, strings.TrimSpace(line))
+		}
+	}
+	assert.Equal(t, 1, found[lintScript], "%s holds one lint call", lintScript)
+	assert.Equal(t, 1, found[validateScript], "%s holds one lint call", validateScript)
 }
 
 // exitCodeOf returns the exit code of a finished command, 0 for no error.
@@ -1037,7 +1678,7 @@ func TestValidateRunsThePartsInOrder(t *testing.T) {
 		vet := index(all, "go vet ./...")
 		shardCheck := index(all, shardCheckCall)
 		version := index(all, "golangci-lint version")
-		lint := index(all, "golangci-lint run")
+		lint := index(all, lintCall)
 		race := index(all, raceCall)
 		noRace := index(all, noRaceCall)
 		build := index(all, buildCall)
@@ -1053,7 +1694,7 @@ func TestValidateRunsThePartsInOrder(t *testing.T) {
 		code, stderr, static := run(nil, "static")
 		require.Zero(t, code, "%s: %s", ci, stderr)
 		assert.Contains(t, static, "go vet ./...", ci)
-		assert.Contains(t, static, "golangci-lint run", ci)
+		assert.Contains(t, static, lintCall, ci)
 		assert.Equal(t, 1, strings.Count(strings.Join(static, "\n"), shardCheckCall), "%s: the static part runs the shard check once", ci)
 		assert.Less(t, index(static, "go vet ./..."), index(static, shardCheckCall), "%s: the shard check runs after go vet", ci)
 		assert.NotContains(t, static, raceCall, ci)
@@ -1092,7 +1733,7 @@ func TestValidateRunsThePartsInOrder(t *testing.T) {
 		require.Zero(t, code, "%s: %s", ci, stderr)
 		assert.Equal(t, slices.Concat(raceLog, noRaceLog), tests, "%s: tests must log tests-race then tests-norace", ci)
 		assert.NotContains(t, tests, "go vet ./...", ci)
-		assert.NotContains(t, tests, "golangci-lint run", ci)
+		assert.NotContains(t, tests, lintCall, ci)
 		assert.NotContains(t, tests, shardCheckCall, ci)
 
 		assert.Equal(t, slices.Concat(static, tests), all, "%s: no argument must log static then tests", ci)
