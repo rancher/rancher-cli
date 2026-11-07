@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +20,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
-	"github.com/rancher/rancher-cli/internal/experiment"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 	ucli "github.com/urfave/cli/v3"
@@ -94,16 +92,6 @@ func (f *clientFactory) resolve() (config.Effective, error) {
 	return f.eff, f.resolveErr
 }
 
-// clusterClientOptions are the options of every cluster client the factory
-// builds: the client watches an object a wait looks at when the waitwatch
-// experiment is on.
-func clusterClientOptions() []provider.Option {
-	if slices.Contains(currentExperiments().Names, experiment.WaitWatch) {
-		return []provider.Option{provider.WithWatch()}
-	}
-	return nil
-}
-
 func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.ClusterClient, error) {
 	if clusterID == "" {
 		return nil, clierr.New(clierr.CodeValidation, "cluster id must not be empty")
@@ -124,7 +112,7 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 	if err != nil {
 		return nil, err
 	}
-	c, err := provider.NewClusterClient(rc, clusterID, clusterClientOptions()...)
+	c, err := provider.NewClusterClient(rc, clusterID)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +145,7 @@ func (f *clientFactory) ImpersonatedCluster(_ context.Context, clusterID string,
 	if err != nil {
 		return nil, err
 	}
-	c, err := provider.NewClusterClient(rc, clusterID, clusterClientOptions()...)
+	c, err := provider.NewClusterClient(rc, clusterID)
 	if err != nil {
 		return nil, err
 	}

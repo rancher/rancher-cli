@@ -1,6 +1,5 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
-env RANCHER_CLI_EXPERIMENT=waitwatch
 
 # a role that grants get on GitRepos and nothing else: no list, no watch
 seedobj rbac.authorization.k8s.io/v1/roles fleet-default role.yaml
@@ -16,12 +15,12 @@ flipstatus local fleet.cattle.io/v1alpha1/gitrepos fleet-default waitget-failed 
 env RANCHER_CLI_TOKEN=e2e-getter:secret
 exec rancher get gitrepo waitget-satisfied --wait --timeout 3s
 stdout 'wait: condition=Ready satisfied after'
-# the advisory a young object gets with or without the experiment is the only line
+# the only line on stderr is the warning that the wait was satisfied soon after the object was created
 stderr '\A# warning: wait satisfied [^\n]* after creation[^\n]*\n\z'
 # the List by name was refused and no watch was sent: the wait polled
 shimwaits waitget-satisfied 1 0 403
 
-# a fail-fast state ends the wait at once, as it does without the experiment
+# a fail-fast state ends the wait at once
 ! exec rancher get gitrepo waitget-failed --wait --timeout 3s -o json
 stderr 'quota exceeded'
 cp stderr getonly-stderr.json

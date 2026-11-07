@@ -296,7 +296,7 @@ func (s *streamServer) requireInvariants(interval time.Duration) {
 	assert.LessOrEqual(s.t, s.maxOpen, 1, "at most one stream is open at a time")
 }
 
-// watchingClient is a cluster client with the watch option against srv.
+// watchingClient is a cluster client against srv.
 func watchingClient(t *testing.T, srv *httptest.Server, mod func(rc *rest.Config)) engine.ClusterClient {
 	t.Helper()
 	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, Token: "id:secret"}, "local")
@@ -305,7 +305,7 @@ func watchingClient(t *testing.T, srv *httptest.Server, mod func(rc *rest.Config
 	if mod != nil {
 		mod(rc)
 	}
-	c, err := NewClusterClient(rc, "local", WithWatch())
+	c, err := NewClusterClient(rc, "local")
 	require.NoError(t, err)
 	return c
 }
@@ -313,7 +313,7 @@ func watchingClient(t *testing.T, srv *httptest.Server, mod func(rc *rest.Config
 func watcher(t *testing.T, c engine.ClusterClient) engine.ObjectWatcher {
 	t.Helper()
 	w, ok := c.(engine.ObjectWatcher)
-	require.True(t, ok, "a client built with WithWatch offers engine.ObjectWatcher")
+	require.True(t, ok, "the cluster client offers engine.ObjectWatcher")
 	return w
 }
 
@@ -334,52 +334,22 @@ func objectState(obj *unstructured.Unstructured) string {
 	return s
 }
 
-// TestClientWithoutWatchOptionOffersNoObjectWatcher asserts the client
-// NewClusterClient builds without WithWatch has no ListObject or WatchObject
-// method, still has the table reader, and that the client built with it has
-// all three.
-func TestClientWithoutWatchOptionOffersNoObjectWatcher(t *testing.T) {
+// TestNewClusterClientOffersObjectWatcherAndTableReader asserts the client
+// NewClusterClient builds has ListObject and WatchObject as well as the table
+// reader. NewClusterClient returns the interface, so a wrapper that hides a
+// method fails here, beside the compile-time assertions on the concrete type.
+func TestNewClusterClientOffersObjectWatcherAndTableReader(t *testing.T) {
 	srv := newStreamServer(t)
 	rc, err := kube.RESTConfig(config.Effective{URL: srv.srv.URL, Token: "id:secret"}, "local")
 	require.NoError(t, err)
 	rc.Transport = srv.srv.Client().Transport
 
-	bare, err := NewClusterClient(rc, "local")
+	c, err := NewClusterClient(rc, "local")
 	require.NoError(t, err)
-	_, watches := bare.(engine.ObjectWatcher)
-	assert.False(t, watches)
-	_, tables := bare.(engine.TableReader)
-	assert.True(t, tables)
-
-	with, err := NewClusterClient(rc, "local", WithWatch())
-	require.NoError(t, err)
-	_, watches = with.(engine.ObjectWatcher)
+	_, watches := c.(engine.ObjectWatcher)
 	assert.True(t, watches)
-	_, tables = with.(engine.TableReader)
+	_, tables := c.(engine.TableReader)
 	assert.True(t, tables)
-}
-
-// TestWaitObjectWithABareClientPollsWithGetOnly asserts a wait on a client
-// built without WithWatch sends no List by name and no watch: only Gets of
-// the object, as the polling wait always did.
-func TestWaitObjectWithABareClientPollsWithGetOnly(t *testing.T) {
-	srv := newStreamServer(t)
-	rc, err := kube.RESTConfig(config.Effective{URL: srv.srv.URL, Token: "id:secret"}, "local")
-	require.NoError(t, err)
-	rc.Transport = srv.srv.Client().Transport
-	bare, err := NewClusterClient(rc, "local")
-	require.NoError(t, err)
-	srv.onGet = func(n int, w http.ResponseWriter, _ *http.Request) {
-		state := "idle"
-		if n == 1 {
-			state = "done"
-		}
-		b, _ := json.Marshal(clusterJSON(state, "50"))
-		writeAnswer(w, http.StatusOK, "", string(b))
-	}
-	res := waitFor(t, bare, 10*time.Second, 100*time.Millisecond)
-	require.NoError(t, res.err)
-	assert.Equal(t, "get get", srv.sequence())
 }
 
 // waitResult is what one engine.WaitObject run gave.

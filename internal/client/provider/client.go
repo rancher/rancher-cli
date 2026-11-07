@@ -99,14 +99,7 @@ type dynamicClient struct {
 // from. The discovery client is built from the bounded config copy
 // (discoveryConfig) so an empty-version resolution has the same request
 // timeout as every other call, on top of the caller's context.
-//
-// Without WithWatch the client is the *dynamicClient, which has no ListObject
-// or WatchObject method; with it, a *watchClient that adds them.
-func NewClusterClient(rc *rest.Config, clusterID string, opts ...Option) (engine.ClusterClient, error) {
-	var o clientOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
+func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, error) {
 	dyn, err := kube.Dynamic(rc)
 	if err != nil {
 		return nil, err
@@ -133,9 +126,6 @@ func NewClusterClient(rc *rest.Config, clusterID string, opts ...Option) (engine
 			return serverGroups(ctx, disc)
 		},
 		clusterID: clusterID, versions: map[string]string{},
-	}
-	if o.watch {
-		return &watchClient{dynamicClient: dc}, nil
 	}
 	return dc, nil
 }

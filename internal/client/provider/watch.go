@@ -40,24 +40,9 @@ func streamGrace() time.Duration {
 // maxWatchSeconds is the longest timeoutSeconds a watch asks for.
 const maxWatchSeconds = 60
 
-// Option changes what NewClusterClient builds.
-type Option func(*clientOptions)
-
-type clientOptions struct{ watch bool }
-
-// WithWatch makes the client offer engine.ObjectWatcher, so a wait lists and
-// watches the object instead of polling it. Without it the client has no
-// ListObject or WatchObject method and a wait polls.
-func WithWatch() Option { return func(o *clientOptions) { o.watch = true } }
-
-// watchClient is the dynamic client with the watch methods. It embeds the
-// pointer, so it keeps every method of *dynamicClient, TableReader included.
-type watchClient struct{ *dynamicClient }
-
-var (
-	_ engine.ObjectWatcher = (*watchClient)(nil)
-	_ engine.TableReader   = (*watchClient)(nil)
-)
+// The client lists and watches one named object, so a wait sees a change
+// without polling. A build fails when the client loses either method.
+var _ engine.ObjectWatcher = (*dynamicClient)(nil)
 
 // nameSelector is the field selector that names one object.
 func nameSelector(name string) string {
@@ -67,7 +52,7 @@ func nameSelector(name string) string {
 // ListObject lists the objects of the kind named name with a field selector
 // on metadata.name and returns the item, nil for an empty list, and the
 // list's resourceVersion.
-func (r *watchClient) ListObject(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, string, error) {
+func (r *dynamicClient) ListObject(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, string, error) {
 	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
@@ -103,7 +88,7 @@ func (r *watchClient) ListObject(ctx context.Context, gvr schema.GroupVersionRes
 // the stream open. The open, until the response headers, is bounded by
 // requestTimeout and has an answers record of its own, so it has the same 429
 // budget as a Get. The stream is bounded by timeout plus streamGrace.
-func (r *watchClient) WatchObject(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string,
+func (r *dynamicClient) WatchObject(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string,
 	timeout time.Duration) (<-chan engine.ObjectEvent, error) {
 	gvr, err := r.resolveVersion(kube.WithAnswers(ctx), gvr)
 	if err != nil {
@@ -193,7 +178,7 @@ func isCancelWithNoAnswer(err error) bool {
 }
 
 // mapEvent turns a watch event into an engine.ObjectEvent.
-func (r *watchClient) mapEvent(ev watch.Event, gvr schema.GroupVersionResource, ns, name string) engine.ObjectEvent {
+func (r *dynamicClient) mapEvent(ev watch.Event, gvr schema.GroupVersionResource, ns, name string) engine.ObjectEvent {
 	switch ev.Type {
 	case watch.Added, watch.Modified:
 		if obj, ok := ev.Object.(*unstructured.Unstructured); ok {

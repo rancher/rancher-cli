@@ -28,41 +28,52 @@ func setExperimentView(t *testing.T, version, value string) {
 	})
 }
 
-// TestFactoryClientsOfferObjectWatcherExactlyWhenWaitWatchIsOn asserts the
-// clients of both Cluster and ImpersonatedCluster offer engine.ObjectWatcher
-// when a development build has the waitwatch experiment on, and neither does
-// when the variable is empty, names another experiment, or is set in a
-// release build.
-func TestFactoryClientsOfferObjectWatcherExactlyWhenWaitWatchIsOn(t *testing.T) {
-	tests := []struct {
-		name    string
-		version string
-		value   string
-		want    bool
+// TestFactoryClientsAlwaysOfferObjectWatcher asserts the clients of both
+// Cluster and ImpersonatedCluster offer engine.ObjectWatcher and
+// engine.TableReader whatever the build version and the experiment variable
+// hold. The factory reads no version, so "every build" is covered through the
+// experiment view only: the test sets the version only to decide whether the
+// variable is read (a development build reads it, a release build reads
+// nothing). The name waitwatch is in no experiment table, so a development
+// build warns that it is unknown and changes nothing else.
+func TestFactoryClientsAlwaysOfferObjectWatcher(t *testing.T) {
+	const unknownWarning = "RANCHER_CLI_EXPERIMENT: unknown experiment waitwatch ignored"
+	values := []struct {
+		name           string
+		value          string
+		namesWaitwatch bool
 	}{
-		{"on", "dev", "waitwatch", true},
-		{"on with another experiment", "dev", "telemetryupload,waitwatch", true},
-		{"off, variable empty", "dev", "", false},
-		{"off, another experiment", "dev", "telemetryupload=https://example.test", false},
-		{"off, release build", "1.2.3", "waitwatch", false},
+		{"variable empty", "", false},
+		{"an unknown experiment name", "waitwatch", true},
+		{"another experiment", "telemetryupload=https://example.test", false},
+		{"another experiment and an unknown name", "telemetryupload=https://example.test,waitwatch", true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			setExperimentView(t, tt.version, tt.value)
-			f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
+	for _, version := range []string{"dev", "1.2.3"} {
+		for _, v := range values {
+			t.Run(version+", "+v.name, func(t *testing.T) {
+				setExperimentView(t, version, v.value)
+				warnings := currentExperiments().Warnings
+				if version == "dev" && v.namesWaitwatch {
+					assert.Contains(t, warnings, unknownWarning)
+				} else {
+					assert.NotContains(t, warnings, unknownWarning)
+				}
+				f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
 
-			plain, err := f.Cluster(t.Context(), "local")
-			require.NoError(t, err)
-			_, got := plain.(engine.ObjectWatcher)
-			assert.Equal(t, tt.want, got, "Cluster")
+				plain, err := f.Cluster(t.Context(), "local")
+				require.NoError(t, err)
+				_, watches := plain.(engine.ObjectWatcher)
+				assert.True(t, watches, "Cluster offers the object watcher")
+				_, tables := plain.(engine.TableReader)
+				assert.True(t, tables, "Cluster offers the table reader")
 
-			as, err := f.ImpersonatedCluster(t.Context(), "local", engine.Impersonation{User: "u-abc"})
-			require.NoError(t, err)
-			_, got = as.(engine.ObjectWatcher)
-			assert.Equal(t, tt.want, got, "ImpersonatedCluster")
-
-			_, tables := plain.(engine.TableReader)
-			assert.True(t, tables, "the table reader stays")
-		})
+				as, err := f.ImpersonatedCluster(t.Context(), "local", engine.Impersonation{User: "u-abc"})
+				require.NoError(t, err)
+				_, watches = as.(engine.ObjectWatcher)
+				assert.True(t, watches, "ImpersonatedCluster offers the object watcher")
+				_, tables = as.(engine.TableReader)
+				assert.True(t, tables, "ImpersonatedCluster offers the table reader")
+			})
+		}
 	}
 }

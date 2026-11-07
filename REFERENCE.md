@@ -940,16 +940,21 @@ error of a request is retried, and a timeout names the last one (`last error:
 oidc-client` and `oidc-client add-secret|rotate-secret|remove-secret`) follow
 the same rule.
 
-With the `waitwatch` experiment on (a development build, see
-[Experiments](#experiments)) the wait of `get <kind>` watches the object
-instead of polling it, and sees a change within a fraction of a second.
-Each cycle lists the object by name and watches from the list's version for
-about a minute. The wait needs the `list` and `watch` permissions to be fast;
-with `get` alone, when the server refuses a List or a watch, or when a List has
-no resourceVersion or holds more than one item, it polls as it does without the
-experiment. A change of permission or a revoked token is
-noticed at the next cycle, within about 70 seconds. An `AUTH` error from the
-List or the watch may name its verb (`list` or `watch`) where a Get's names `get`.
+The wait of `get <kind>` watches the object and sees a change within a
+fraction of a second. The wait lists the object by name, watches it from the
+list's resourceVersion for about a minute, then lists again. The wait needs the
+`list` and `watch` permissions to be fast; with `get` alone, when the server
+refuses a List or a watch, or when a List has no resourceVersion or holds more
+than one item, it polls with a GET every 5 seconds. A refused List or watch
+counts as one of the requests: when the List is refused, the second GET comes 10
+seconds after the first; when the List works and the watch is refused, the
+first GET comes 10 seconds after the List. A user who has only `get` on the
+object always polls, with one refused List first; Rancher's cluster member role
+on the management Cluster is such a user. A change of permission or a revoked
+token is noticed at the next cycle, within about 70 seconds. An `AUTH` error
+from the List or the watch may name `list` or `watch` where an error from a Get
+names `get`. The commands that wait on an OIDC client poll the object with a
+GET; they do not watch it.
 
 `rancher kubeconfig` prints one context through the Rancher proxy and, when the
 cluster has the Authorized Cluster Endpoint enabled and the
@@ -2302,7 +2307,6 @@ the warnings in every other run, and none in an exec plugin run.
 | Experiment | Value | Effect |
 |---|---|---|
 | `telemetryupload` | `scheme://host[:port]` with a path that is empty or `/`: `https`, or `http` for `localhost`, `::1` and `127.0.0.0/8`; a port from 1 to 65535, read as a number (leading zeros and the default port are dropped); a host that is an IP address or a DNS name in ASCII (write an international name in its `xn--` form); no user name, password, query or fragment | the upload endpoint, shown by `rancher telemetry status` as its canonical origin; a development build sends the stored events of finished hours to it, see below |
-| `waitwatch` | none: write the bare name | `get --wait` and `get --for` watch the object instead of polling it, and poll when the server refuses a List or a watch; see [Cluster provisioning](#cluster-provisioning) |
 
 `telemetryupload` with no value warns that it has no endpoint, and
 `rancher telemetry status` shows `upload endpoint: not set`. There is no

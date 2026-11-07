@@ -3,51 +3,27 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 exec rancher create resource -f gitrepo.yaml --apply
 
-# background the wait, flip the status, then reap
-exec rancher get gitrepo waiter --wait --timeout 30s -o json &waitcmd&
-flipstatus local fleet.cattle.io/v1alpha1/gitrepos fleet-default waiter {"conditions":[{"type":"Ready","status":"True"}]}
-wait waitcmd
-stdout 'Ready'
-
-# text mode: condition already satisfied; summary line must appear before the table row
-exec rancher get gitrepo waiter --wait --timeout 5s
-stdout 'wait: condition=Ready satisfied after'
-
-# the same waits with the waitwatch experiment on: the object is watched, the
-# experiment prints nothing, and the outcome and the output are the same
-env RANCHER_CLI_EXPERIMENT=waitwatch
-
-exec rancher create resource -f gitrepo-watched.yaml --apply
-
 # the shim has seen the watch open before the object changes, so the wait ends by an event
-exec rancher get gitrepo waiter-watched --wait --timeout 30s -o json &watchedcmd&
-waitwatchopen waiter-watched
-flipstatus local fleet.cattle.io/v1alpha1/gitrepos fleet-default waiter-watched {"conditions":[{"type":"Ready","status":"True"}]}
+exec rancher get gitrepo waiter --wait --timeout 30s -o json &watchedcmd&
+waitwatchopen waiter
+flipstatus local fleet.cattle.io/v1alpha1/gitrepos fleet-default waiter {"conditions":[{"type":"Ready","status":"True"}]}
 wait watchedcmd
 stdout 'Ready'
 ! stderr .
-shimwaits waiter-watched 1 1 200 200
+shimwaits waiter 1 1 200 200
 
-# the one line on stderr is the advisory a young object gets with or without the experiment
-exec rancher get gitrepo waiter-watched --wait --timeout 5s
+# the only line on stderr is the warning that the wait was satisfied soon after the object was created
+exec rancher get gitrepo waiter --wait --timeout 5s
 stdout 'wait: condition=Ready satisfied after'
 stderr '\A# warning: wait satisfied [^\n]* after creation[^\n]*\n\z'
 # a List that finds the object satisfied opens no watch
-shimwaits waiter-watched 2 1 200 200
+shimwaits waiter 2 1 200 200
 
 -- gitrepo.yaml --
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
   name: waiter
-  namespace: fleet-default
-spec:
-  repo: https://example.com/repo.git
--- gitrepo-watched.yaml --
-apiVersion: fleet.cattle.io/v1alpha1
-kind: GitRepo
-metadata:
-  name: waiter-watched
   namespace: fleet-default
 spec:
   repo: https://example.com/repo.git
