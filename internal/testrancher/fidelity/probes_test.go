@@ -76,6 +76,8 @@ func TestExpectedProbeSet(t *testing.T) {
 		"catalog/discovery-downstream", "catalog/clusterrepos-downstream", "catalog/apps-downstream",
 		"catalog/operations-downstream", "catalog/clusterrepos-local", "catalog/standard-user-local",
 		"catalog/webhook-app-local",
+		"etcdsnapshot/discovery-local", "etcdsnapshot/list-local", "etcdsnapshot/crd-local",
+		"etcdsnapshot/standard-user-local",
 		"authproviders/only-local-enabled", "authproviders/external-providers-enabled",
 	}
 	var got []string
@@ -398,7 +400,8 @@ func TestAccessProbesAreRegistered(t *testing.T) {
 // same. Rancher reads tokens from informer caches, so without the wait such
 // an observation can record the cache delay instead of the behavior. It also
 // covers the catalog reads, which wait for Rancher to serve the catalog CRDs
-// after a boot or import, and asserts that no other observation waits.
+// after a boot or import, and the etcd snapshot reads that wait for the
+// rke.cattle.io group and CRD, and asserts that no other observation waits.
 func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing.T) {
 	t.Parallel()
 	type key struct{ probe, observation string }
@@ -431,6 +434,14 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 		{"catalog/standard-user-local", "standard-clusterrepos"}: true,
 		{"catalog/webhook-app-local", "admin-webhook-app"}:       true,
 	}
+	// Every value is the reason the observation waits; an entry with an empty
+	// value is not selected.
+	etcdSnapshotReads := map[key]string{
+		{"etcdsnapshot/discovery-local", "group-version"}:        "waits until Rancher serves the rke.cattle.io group after a boot",
+		{"etcdsnapshot/list-local", "list"}:                      "waits until Rancher serves the rke.cattle.io CRD after a boot",
+		{"etcdsnapshot/crd-local", "crd"}:                        "waits until Rancher serves the rke.cattle.io CRD after a boot",
+		{"etcdsnapshot/standard-user-local", "admin-list-ready"}: "waits until Rancher serves the rke.cattle.io CRD after a boot",
+	}
 	capturedBearer := regexp.MustCompile(`^Bearer \{[^}]+\}$`)
 	used := map[key]bool{}
 	seen := map[key]bool{}
@@ -439,7 +450,7 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 			k := key{p.Name, o.Name}
 			seen[k] = true
 			selected := capturedBearer.MatchString(o.Request.Headers["Authorization"]) ||
-				o.Request.Identity == IdentityRevoked || adminReads[k] || catalogReads[k]
+				o.Request.Identity == IdentityRevoked || adminReads[k] || catalogReads[k] || etcdSnapshotReads[k] != ""
 			if !selected {
 				assert.Zero(t, o.WaitForStatus, "%s %s does not use a token right after its create or delete", p.Name, o.Name)
 				continue
@@ -473,5 +484,8 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 	}
 	for k := range catalogReads {
 		assert.True(t, seen[k], "catalogReads entry %s %s matches no observation", k.probe, k.observation)
+	}
+	for k := range etcdSnapshotReads {
+		assert.True(t, seen[k], "etcdSnapshotReads entry %s %s matches no observation", k.probe, k.observation)
 	}
 }

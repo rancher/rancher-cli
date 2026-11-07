@@ -4307,6 +4307,62 @@
     },
     {
       "aliases": [
+        "etcdsnapshots",
+        "etcd-snapshots"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "CREATED-AT is when the snapshot was taken; AGE counts from when Rancher created the object. SIZE-BYTES is in bytes.",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get etcd-snapshot",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List etcd-snapshots or show one"
+    },
+    {
+      "aliases": [
         "events",
         "ev"
       ],
@@ -8321,6 +8377,66 @@
     },
     {
       "aliases": [
+        "etcdsnapshots",
+        "etcd-snapshots"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them.",
+      "destructive": "false",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch etcd-snapshot",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: etcd-snapshot cannot be patched"
+    },
+    {
+      "aliases": [
         "events",
         "ev"
       ],
@@ -12167,6 +12283,7 @@
         "get machine",
         "get machineset",
         "get machinedeployment",
+        "get etcd-snapshot",
         "get k3k-cluster",
         "get clusterrepo",
         "get app",
@@ -12246,6 +12363,7 @@
         "patch machine",
         "patch machineset",
         "patch machinedeployment",
+        "patch etcd-snapshot",
         "patch k3k-cluster",
         "patch clusterrepo",
         "patch app",
@@ -13688,6 +13806,44 @@
         }
       },
       "waitDefault": "condition=Ready"
+    },
+    {
+      "aliases": [
+        "etcdsnapshots",
+        "etcd-snapshots"
+      ],
+      "completable": true,
+      "defaultNamespace": "fleet-default",
+      "group": "rke.cattle.io",
+      "key": "etcdsnapshot",
+      "name": "etcd-snapshot",
+      "namespacePolicy": "workspace",
+      "resource": "etcdsnapshots",
+      "scope": "management",
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "Rancher creates an etcd snapshot object for each snapshot file; this CLI does not take snapshots",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v1"
     },
     {
       "aliases": [

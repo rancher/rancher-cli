@@ -494,15 +494,15 @@ var notFoundHints = []hintEntry[notFoundInput]{
 		detail: constText[notFoundInput]("management clusters cannot be deleted directly; to delete a provisioning cluster (<name> is its name), run this and add --apply --yes after reading the preview: " + clierr.Rancher + " delete provisioning-cluster <name> --dry-run"),
 	},
 	{
-		// For `delete` of a clusterrepo, app or operation, the message gives
-		// the row's NoDeleteReason; the typed name may be the kind name or a
-		// plural alias.
+		// For `delete` of a row whose delete is refused with a reason of its
+		// own, the message gives the row's NoDeleteReason; the typed name may
+		// be the kind name or a plural alias.
 		match: func(in notFoundInput) bool {
-			k, ok := catalogDeleteRow(in)
+			k, ok := refusedDeleteRow(in)
 			return ok && k.NoDeleteReason != ""
 		},
 		detail: func(in notFoundInput) string {
-			k, _ := catalogDeleteRow(in)
+			k, _ := refusedDeleteRow(in)
 			return k.Name + " cannot be deleted - " + k.NoDeleteReason
 		},
 	},
@@ -515,14 +515,14 @@ var notFoundHints = []hintEntry[notFoundInput]{
 	},
 }
 
-// catalogDeleteRow returns the clusterrepo, app or operation row that the name
-// typed after `delete` resolves to.
-func catalogDeleteRow(in notFoundInput) (kinds.Kind, bool) {
+// refusedDeleteRow returns the clusterrepo, app, operation or etcdsnapshot row
+// that the name typed after `delete` resolves to.
+func refusedDeleteRow(in notFoundInput) (kinds.Kind, bool) {
 	if in.c.Name != "delete" {
 		return kinds.Kind{}, false
 	}
 	k, ok := kinds.Lookup(in.name)
-	if !ok || !slices.Contains([]string{"clusterrepo", "app", "operation"}, k.Key) {
+	if !ok || !slices.Contains([]string{"clusterrepo", "app", "operation", "etcdsnapshot"}, k.Key) {
 		return kinds.Kind{}, false
 	}
 	return k, true

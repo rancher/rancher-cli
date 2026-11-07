@@ -49,6 +49,7 @@ func All() []Probe {
 	probes = append(probes, serverTableProbes()...)
 	probes = append(probes, serverFactsProbes()...)
 	probes = append(probes, catalogProbes()...)
+	probes = append(probes, etcdSnapshotProbes()...)
 	probes = append(probes, authProviderProbes()...)
 	return probes
 }

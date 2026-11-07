@@ -141,6 +141,9 @@ import (
 //     reader of usage events, cannot be told from it by pattern.
 //   - star: an ordinary word; the replaced sense (the "*" of a hidden path)
 //     cannot be told from it by pattern.
+//   - snapshot object: a part of the chosen name "etcd snapshot object".
+//   - fleet workspace, the server's table: matching ignores case, so a row
+//     would also refuse "Fleet workspace" and "the server's Table".
 func TestRejectedWordingStaysOut(t *testing.T) {
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -337,6 +340,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"envelope key", "envelope keys"}, "top-level Kubernetes object field"},
 	{[]string{"escalates to", "escalate to"}, "requires"},
 	{[]string{"escape hatch"}, "say what it does and when to use it"},
+	{[]string{"etcd snapshot file", "etcd snapshot files"}, "snapshot file"},
 	{[]string{"exec credential plugin"}, "exec plugin"},
 	{[]string{"exec entry", "exec entries", "exec user entry"}, "exec block"},
 	{[]string{"executable", "executables"}, "binaries"},
@@ -364,6 +368,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"lose events", "lost events"}, "dropped events"},
 	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},
 	{[]string{"main container"}, "the containers and init containers of each pod"},
+	{[]string{"management cluster id", "management cluster ids", "management cluster's name"}, "the cluster's id (c-...)"},
 	{[]string{"manual quantity"}, "number of nodes"},
 	{[]string{"member namespaces", "member namespace"}, "the project's namespaces"},
 	{[]string{"membership set"}, "the project's namespaces"},

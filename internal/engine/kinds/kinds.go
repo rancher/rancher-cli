@@ -906,6 +906,31 @@ var table = []Kind{
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
+		// The CRD declares no printer columns, so the server's Table has only
+		// the columns Name and Created At. The default columns follow the
+		// Rancher UI; the wide columns add STORAGE, LOCATION, SNAPSHOT-NAME and
+		// MESSAGE.
+		Key: "etcdsnapshot", Name: "etcd-snapshot", Aliases: []string{"etcdsnapshots", "etcd-snapshots"},
+		GVR:    schema.GroupVersionResource{Group: "rke.cattle.io", Version: "v1", Resource: "etcdsnapshots"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ETCDSnapshot", Scope: Management, Deletable: false, Completable: true,
+		NoDeleteReason:      "an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place",
+		NoPatchReason:       "Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them",
+		NoCreateViaManifest: "Rancher creates an etcd snapshot object for each snapshot file; this CLI does not take snapshots",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "STATUS", Path: []string{"snapshotFile", "status"}},
+			{Header: "CLUSTER", Path: []string{"spec", "clusterName"}},
+			{Header: "NODE", Path: []string{"snapshotFile", "nodeName"}},
+			{Header: "SIZE-BYTES", Path: []string{"snapshotFile", "size"}},
+			{Header: "CREATED-AT", Path: []string{"snapshotFile", "createdAt"}},
+			{Header: "STORAGE", Path: []string{"metadata", "annotations", "etcdsnapshot.rke.io/storage"}, Wide: true},
+			{Header: "LOCATION", Path: []string{"snapshotFile", "location"}, Wide: true},
+			{Header: "SNAPSHOT-NAME", Path: []string{"snapshotFile", "name"}, Wide: true},
+			{Header: "MESSAGE", Path: []string{"snapshotFile", "message"}, Wide: true},
+		},
+		GetDesc: "CREATED-AT is when the snapshot was taken; AGE counts from when Rancher created the object. SIZE-BYTES is in bytes.",
+	},
+	{
 		Key: "k3kcluster", Name: "k3k-cluster", Aliases: []string{"k3kclusters", "k3k-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "k3k.io", Version: "v1beta1", Resource: "clusters"},
 		Policy: NSPlain, K8sKind: "Cluster", Scope: Downstream, Deletable: true, WaitDefault: "condition=Ready",

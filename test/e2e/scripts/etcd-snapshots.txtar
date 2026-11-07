@@ -1,0 +1,130 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj rke.cattle.io/v1/etcdsnapshots fleet-default snapshot-local.yaml
+seedobj rke.cattle.io/v1/etcdsnapshots fleet-default snapshot-s3.yaml
+seedobj rke.cattle.io/v1/etcdsnapshots team-a snapshot-other.yaml
+
+# list in the default namespace: the headers and the values of the table.
+exec rancher get etcd-snapshot -o table
+stdout 'STATUS'
+stdout 'CLUSTER'
+stdout 'NODE'
+stdout 'SIZE-BYTES'
+stdout 'CREATED-AT'
+stdout 'e2e-local'
+stdout 'successful'
+stdout 'node-1'
+stdout '1048576'
+stdout '2026-01-02T03:04:05Z'
+stdout 'e2e-s3'
+stdout 'failed'
+! stdout 'e2e-other'
+! stdout 'STORAGE'
+! stdout 'MESSAGE'
+
+# wide output adds the storage, the location, the snapshot name and the message.
+exec rancher get etcd-snapshot -o wide
+stdout 'STORAGE'
+stdout 'LOCATION'
+stdout 'SNAPSHOT-NAME'
+stdout 'MESSAGE'
+stdout 'file:///var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-node-1-1'
+stdout 's3://bucket/etcd-snapshot-node-2-2'
+stdout 'the upload failed'
+
+# the selector keeps the snapshots of one cluster.
+exec rancher get etcd-snapshot -l rke.cattle.io/cluster-name=c1 -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.metadata.name e2e-local
+exec rancher get etcd-snapshot --selector rke.cattle.io/cluster-name=c2 -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.metadata.name e2e-s3
+
+# get by name in the default namespace and in another namespace; a name that
+# exists only in another namespace is NOT_FOUND.
+exec rancher get etcd-snapshot e2e-local -o json
+jsonquery stdout data.metadata.namespace fleet-default
+jsonquery stdout data.spec.clusterName c1
+jsonquery stdout data.snapshotFile.status successful
+exec rancher get etcd-snapshot e2e-other --namespace team-a -o json
+jsonquery stdout data.metadata.namespace team-a
+jsonquery stdout data.spec.clusterName c3
+! exec rancher get etcd-snapshot e2e-other -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+# the schema shows patch as a refusal and delete as absent.
+exec rancher schema etcd-snapshot -o json
+jsonquery stdout data.verbs.patch.state refused
+jsonquery stdout data.verbs.delete.state absent
+
+# patch, create and delete fail with VALIDATION.
+! exec rancher patch etcd-snapshot e2e-local --patch '[{"op":"add","path":"/metadata/labels/x","value":"y"}]' --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher create resource -f snapshot-local.yaml --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher delete etcd-snapshot e2e-local --apply --yes -o json
+jsonquery stderr data.error.code VALIDATION
+
+-- snapshot-local.yaml --
+apiVersion: rke.cattle.io/v1
+kind: ETCDSnapshot
+metadata:
+  name: e2e-local
+  namespace: fleet-default
+  labels:
+    rke.cattle.io/cluster-name: c1
+    rke.cattle.io/node-name: node-1
+  annotations:
+    etcdsnapshot.rke.io/storage: local
+spec:
+  clusterName: c1
+snapshotFile:
+  name: etcd-snapshot-node-1-1
+  nodeName: node-1
+  location: file:///var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-node-1-1
+  createdAt: "2026-01-02T03:04:05Z"
+  size: 1048576
+  status: successful
+-- snapshot-s3.yaml --
+apiVersion: rke.cattle.io/v1
+kind: ETCDSnapshot
+metadata:
+  name: e2e-s3
+  namespace: fleet-default
+  labels:
+    rke.cattle.io/cluster-name: c2
+  annotations:
+    etcdsnapshot.rke.io/storage: s3
+spec:
+  clusterName: c2
+snapshotFile:
+  name: etcd-snapshot-node-2-2
+  nodeName: node-2
+  location: s3://bucket/etcd-snapshot-node-2-2
+  createdAt: "2026-01-03T03:04:05Z"
+  status: failed
+  message: the upload failed
+  s3:
+    endpoint: s3.example.test
+    bucket: bucket
+    region: us-east-1
+-- snapshot-other.yaml --
+apiVersion: rke.cattle.io/v1
+kind: ETCDSnapshot
+metadata:
+  name: e2e-other
+  namespace: team-a
+  labels:
+    rke.cattle.io/cluster-name: c3
+  annotations:
+    etcdsnapshot.rke.io/storage: local
+spec:
+  clusterName: c3
+snapshotFile:
+  name: etcd-snapshot-node-3-3
+  nodeName: node-3
+  location: file:///var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-node-3-3
+  createdAt: "2026-01-04T03:04:05Z"
+  size: 2048
+  status: successful

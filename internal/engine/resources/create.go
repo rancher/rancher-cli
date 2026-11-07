@@ -171,7 +171,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 // message `create resource` prints when it refuses a manifest; every other
 // row takes "a". A row
 // whose name starts with a vowel sound adds its key here.
-var anArticleKeys = map[string]bool{"app": true, "operation": true}
+var anArticleKeys = map[string]bool{"app": true, "operation": true, "etcdsnapshot": true}
 
 // createArticle returns the article the refusal message puts before k's name.
 func createArticle(k kinds.Kind) string {

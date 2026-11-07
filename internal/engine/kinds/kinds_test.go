@@ -32,6 +32,7 @@ var cliOnlyKinds = map[string]bool{
 	"clusterrepo":              true, // no rancher-ai-mcp tool counterpart
 	"app":                      true, // no rancher-ai-mcp tool counterpart
 	"operation":                true, // no rancher-ai-mcp tool counterpart
+	"etcdsnapshot":             true, // no rancher-ai-mcp tool counterpart
 
 	"horizontalpodautoscaler": true, // no rancher-ai-mcp tool counterpart
 	"limitrange":              true, // no rancher-ai-mcp tool counterpart

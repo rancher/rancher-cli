@@ -1,0 +1,34 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "admin-list-ready",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rke.cattle.io/v1",
+        "items": "\u003cscrubbed\u003e",
+        "kind": "ETCDSnapshotList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    },
+    {
+      "name": "standard-list",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "details": {
+          "group": "rke.cattle.io",
+          "kind": "etcdsnapshots"
+        },
+        "kind": "Status",
+        "message": "\u003cscrubbed\u003e",
+        "metadata": "\u003cscrubbed\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    }
+  ]
+}

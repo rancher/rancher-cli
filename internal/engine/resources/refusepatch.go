@@ -34,10 +34,10 @@ func (c *refusePatchCmd) Plan(_ context.Context, in runtime.Input) (safety.Effec
 }
 
 // readFlags returns what follows `get` in the read command: the row's name,
-// --cluster for a downstream row, and --namespace for a row with an ordinary
-// namespace when the user typed one, with the typed values shell-quoted so the
-// command works as printed. A downstream row with no typed --cluster gets
-// <cluster> as a placeholder.
+// --cluster for a downstream row, and --namespace for a row whose namespace
+// policy is NSPlain or NSWorkspace (a Fleet workspace), when the user typed
+// one. The typed values are shell-quoted so the command works as printed. A
+// downstream row with no typed --cluster gets <cluster> as a placeholder.
 func (c *refusePatchCmd) readFlags(in runtime.Input) string {
 	var flags string
 	if c.k.Scope == kinds.Downstream {
@@ -47,7 +47,7 @@ func (c *refusePatchCmd) readFlags(in runtime.Input) string {
 		}
 		flags += " --cluster " + cluster
 	}
-	if c.k.Policy == kinds.NSPlain {
+	if c.k.Policy == kinds.NSPlain || c.k.Policy == kinds.NSWorkspace {
 		if ns := in.String(FlagNamespace); ns != "" {
 			flags += " --namespace " + clierr.ShellQuote(ns)
 		}

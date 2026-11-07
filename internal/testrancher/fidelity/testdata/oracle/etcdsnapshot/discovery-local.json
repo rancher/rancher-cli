@@ -1,0 +1,183 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "group-version",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "groupVersion": "rke.cattle.io/v1",
+        "kind": "APIResourceList",
+        "resources": [
+          {
+            "kind": "CustomMachine",
+            "name": "custommachines",
+            "namespaced": true,
+            "singularName": "custommachine",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "CustomMachine",
+            "name": "custommachines/status",
+            "namespaced": true,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          },
+          {
+            "kind": "ETCDSnapshot",
+            "name": "etcdsnapshots",
+            "namespaced": true,
+            "singularName": "etcdsnapshot",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "ETCDSnapshot",
+            "name": "etcdsnapshots/status",
+            "namespaced": true,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          },
+          {
+            "categories": [
+              "cluster-api"
+            ],
+            "kind": "RKEBootstrap",
+            "name": "rkebootstraps",
+            "namespaced": true,
+            "singularName": "rkebootstrap",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "RKEBootstrap",
+            "name": "rkebootstraps/status",
+            "namespaced": true,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          },
+          {
+            "categories": [
+              "cluster-api"
+            ],
+            "kind": "RKEBootstrapTemplate",
+            "name": "rkebootstraptemplates",
+            "namespaced": true,
+            "singularName": "rkebootstraptemplate",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "categories": [
+              "cluster-api"
+            ],
+            "kind": "RKECluster",
+            "name": "rkeclusters",
+            "namespaced": true,
+            "singularName": "rkecluster",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "RKECluster",
+            "name": "rkeclusters/status",
+            "namespaced": true,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          },
+          {
+            "categories": [
+              "cluster-api"
+            ],
+            "kind": "RKEControlPlane",
+            "name": "rkecontrolplanes",
+            "namespaced": true,
+            "shortNames": [
+              "rcp"
+            ],
+            "singularName": "rkecontrolplane",
+            "verbs": [
+              "delete",
+              "deletecollection",
+              "get",
+              "list",
+              "patch",
+              "create",
+              "update",
+              "watch"
+            ]
+          },
+          {
+            "kind": "RKEControlPlane",
+            "name": "rkecontrolplanes/status",
+            "namespaced": true,
+            "singularName": "",
+            "verbs": [
+              "get",
+              "patch",
+              "update"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

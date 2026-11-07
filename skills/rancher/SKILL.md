@@ -766,6 +766,18 @@ Never present a role list as permissions.
   deployment, in `options` and `stagedOptions`. A HelmOp can take values from
   a Secret through `valuesFrom`. Those values are in the Secret, not in the
   HelmOp. The HelmOp output shows only the `valuesFrom` reference.
+- `rancher get etcd-snapshot` lists the etcd snapshots of a cluster that Rancher
+  provisions or imports. `--namespace` defaults to `fleet-default`, the
+  namespace of provisioning clusters in the default Fleet workspace. For a
+  provisioning cluster in another Fleet workspace, pass that workspace's name.
+  For an imported cluster, or a cluster imported through Rancher Turtles, pass
+  the cluster's id: `--namespace <cluster id>`. Rancher v2.15 and later creates
+  etcd snapshot objects for these clusters; Rancher v2.14 creates them only for
+  provisioning clusters. `--selector rke.cattle.io/cluster-name=<name>` lists
+  the snapshots of one cluster. For a provisioning cluster, `<name>` is the
+  cluster's name. For an imported cluster, or a cluster imported through Rancher
+  Turtles, `<name>` is the cluster's id (`c-...`). It is read-only: `patch`,
+  `create resource` and `delete` fail with `VALIDATION`.
 - `rancher create user <username> --password-stdin` creates a local user (a
   `v3 User`, its password secret, and a `v3 GlobalRoleBinding` for each global
   role the server marks `newUserDefault`, `user` on a default install) - the

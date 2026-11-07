@@ -19,15 +19,19 @@ import (
 )
 
 // TestDeleteHintNamesTheReasonForEveryTypedName asserts that `delete` of a
-// catalog kind, typed as the kind name or as its plural alias, fails with a
-// message that holds the kind's NoDeleteReason. Not parallel: it sets the
-// process environment and the captured command line.
+// row whose delete is refused with a reason of its own, typed as the kind
+// name or as a plural alias, fails with a message that contains the kind's
+// NoDeleteReason. Not parallel: it sets the process environment and the
+// captured command line.
 func TestDeleteHintNamesTheReasonForEveryTypedName(t *testing.T) {
 	exitEnv(t)
 	for typed, want := range map[string]string{
-		"apps":         `unknown command "apps"; app cannot be deleted - deleting an app object leaves its Helm release installed; this CLI does not uninstall apps`,
-		"operations":   `unknown command "operations"; operation cannot be deleted - this CLI does not delete operations`,
-		"clusterrepos": `unknown command "clusterrepos"; clusterrepo cannot be deleted - this CLI does not delete repositories`,
+		"apps":           `unknown command "apps"; app cannot be deleted - deleting an app object leaves its Helm release installed; this CLI does not uninstall apps`,
+		"operations":     `unknown command "operations"; operation cannot be deleted - this CLI does not delete operations`,
+		"clusterrepos":   `unknown command "clusterrepos"; clusterrepo cannot be deleted - this CLI does not delete repositories`,
+		"etcd-snapshot":  `unknown command "etcd-snapshot"; etcd-snapshot cannot be deleted - an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place`,
+		"etcdsnapshots":  `unknown command "etcdsnapshots"; etcd-snapshot cannot be deleted - an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place`,
+		"etcd-snapshots": `unknown command "etcd-snapshots"; etcd-snapshot cannot be deleted - an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place`,
 	} {
 		t.Run(typed, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
@@ -65,8 +69,9 @@ func TestNoPatchReasonAndAPatchOverrideAreRefused(t *testing.T) {
 }
 
 // TestNoPatchReasonRowsShowPatchAsARefusal asserts that the schema manifest
-// lists patch of each catalog kind as refused with the row's reason, and that
-// the row keeps its patch binding and has a registered patch command.
+// lists patch of each row that sets NoPatchReason as refused with the row's
+// reason, and that the row keeps its patch binding and has a registered patch
+// command.
 func TestNoPatchReasonRowsShowPatchAsARefusal(t *testing.T) {
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -74,7 +79,7 @@ func TestNoPatchReasonRowsShowPatchAsARefusal(t *testing.T) {
 	require.NotNil(t, patchGroup)
 	bindings := kinds.Bindings()
 
-	for _, key := range []string{"clusterrepo", "app", "operation"} {
+	for _, key := range []string{"clusterrepo", "app", "operation", "etcdsnapshot"} {
 		row, ok := kinds.ByKey(key)
 		require.True(t, ok, key)
 		require.NotEmpty(t, row.NoPatchReason, key)

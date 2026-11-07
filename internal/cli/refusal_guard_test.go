@@ -95,6 +95,10 @@ func refusalCases() []refusalCase {
 			"operation: patch is not supported - Rancher creates and manages operation objects; this CLI does not change them; read it with "+clierr.Rancher+" get 'operation' --cluster 'local' --namespace 'default'",
 			"--cluster", "local", "--namespace", "default"),
 
+		patchRefusal("etcdsnapshot", "etcd-snapshot",
+			"etcd-snapshot: patch is not supported - Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them; read it with "+clierr.Rancher+" get 'etcd-snapshot' --namespace 'default'",
+			"--namespace", "default"),
+
 		createRefusal("clusterrepo", "clusterrepo", manifestOf("catalog.cattle.io/v1", "ClusterRepo", false),
 			"cannot create a clusterrepo from a manifest; this CLI does not add repositories"),
 		createRefusal("app", "app", manifestOf("catalog.cattle.io/v1", "App", true),
@@ -102,12 +106,18 @@ func refusalCases() []refusalCase {
 		createRefusal("operation", "operation", manifestOf("catalog.cattle.io/v1", "Operation", true),
 			"cannot create an operation from a manifest; Rancher creates an operation for each Helm command it runs"),
 
+		createRefusal("etcdsnapshot", "etcd-snapshot", manifestOf("rke.cattle.io/v1", "ETCDSnapshot", true),
+			"cannot create an etcd-snapshot from a manifest; Rancher creates an etcd snapshot object for each snapshot file; this CLI does not take snapshots"),
+
 		deleteRefusal("clusterrepo", "clusterrepo",
 			`unknown command "clusterrepo"; clusterrepo cannot be deleted - this CLI does not delete repositories`),
 		deleteRefusal("app", "app",
 			`unknown command "app"; app cannot be deleted - deleting an app object leaves its Helm release installed; this CLI does not uninstall apps`),
 		deleteRefusal("operation", "operation",
 			`unknown command "operation"; operation cannot be deleted - this CLI does not delete operations`),
+
+		deleteRefusal("etcdsnapshot", "etcd-snapshot",
+			`unknown command "etcd-snapshot"; etcd-snapshot cannot be deleted - an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place`),
 
 		createRefusal("token", "token", manifestOf("ext.cattle.io/v1", "Token", false),
 			"cannot create a token from a manifest; create tokens with '"+clierr.Rancher+" create token --dry-run' and add --apply --yes after reading the preview (the token's value is printed once)"),

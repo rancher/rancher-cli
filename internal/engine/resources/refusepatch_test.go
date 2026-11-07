@@ -25,13 +25,16 @@ func TestRefusePatchKeepsTheFlagsAndSaysItIsRefused(t *testing.T) {
 }
 
 // TestRefusePatchRefusesBeforeAnyRequestAndNamesTheRead asserts that Plan
-// returns a VALIDATION error with the row's reason and a read command that
-// uses the cluster and namespace the user typed, shell-quoted, and has
-// <cluster> as a placeholder when none was typed. It uses no client.
+// returns a VALIDATION error with the row's reason and a read command that uses
+// the cluster and namespace the user typed, shell-quoted, and has <cluster> as
+// a placeholder when none was typed. For a row whose namespace is a Fleet
+// workspace, the read command includes the typed namespace and has no
+// --namespace when none was typed. It uses no client.
 func TestRefusePatchRefusesBeforeAnyRequestAndNamesTheRead(t *testing.T) {
 	t.Parallel()
 	app := catalogRow(t, "app")
 	repo := catalogRow(t, "clusterrepo")
+	snapshot := catalogRow(t, "etcdsnapshot")
 	for _, tc := range []struct {
 		name string
 		cmd  runtime.Command
@@ -44,6 +47,10 @@ func TestRefusePatchRefusesBeforeAnyRequestAndNamesTheRead(t *testing.T) {
 			"app: patch is not supported - " + app.NoPatchReason + "; read it with " + clierr.Rancher + " get 'app' --cluster <cluster>"},
 		{"cluster-scoped row", NewRefusePatch(repo), input{s: map[string]string{"cluster": "c-1", "namespace": "ignored"}},
 			"clusterrepo: patch is not supported - " + repo.NoPatchReason + "; read it with " + clierr.Rancher + " get 'clusterrepo' --cluster 'c-1'"},
+		{"Fleet workspace row, typed namespace", NewRefusePatch(snapshot), input{s: map[string]string{"namespace": "c-m-1"}},
+			"etcd-snapshot: patch is not supported - " + snapshot.NoPatchReason + "; read it with " + clierr.Rancher + " get 'etcd-snapshot' --namespace 'c-m-1'"},
+		{"Fleet workspace row, no namespace typed", NewRefusePatch(snapshot), input{},
+			"etcd-snapshot: patch is not supported - " + snapshot.NoPatchReason + "; read it with " + clierr.Rancher + " get 'etcd-snapshot'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mc, ok := tc.cmd.(runtime.MutatingCommand)

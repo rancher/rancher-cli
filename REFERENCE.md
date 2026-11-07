@@ -704,6 +704,26 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   in `options` and `stagedOptions`. A HelmOp can take values from a Secret
   through `valuesFrom`. Those values are in the Secret, not in the HelmOp. The
   HelmOp output shows only the `valuesFrom` reference.
+- `etcd-snapshot` (`rke.cattle.io`) is read-only: Rancher creates one etcd
+  snapshot object for each snapshot file of a cluster. `--namespace` defaults to
+  `fleet-default`, the namespace of provisioning clusters in the default Fleet
+  workspace. You cannot list the snapshots of all namespaces at once. For a
+  provisioning cluster in another Fleet workspace, pass that workspace's name.
+  For an imported cluster, or a cluster imported through Rancher Turtles, pass
+  the cluster's id: `--namespace <cluster id>`. Rancher v2.15 and later creates
+  etcd snapshot objects for these clusters; Rancher v2.14 creates them only for
+  provisioning clusters. `--selector rke.cattle.io/cluster-name=<name>` lists
+  the snapshots of one cluster. For a provisioning cluster, `<name>` is the
+  cluster's name. For an imported cluster, or a cluster imported through Rancher
+  Turtles, `<name>` is the cluster's id (`c-...`). `STATUS` is the
+  `snapshotFile.status` that Rancher sets: "successful" or "failed". A snapshot
+  that is not ready yet also shows "failed". `snapshotFile.message` gives the
+  reason for "failed"; `-o wide` shows it as MESSAGE. `patch` and `create
+  resource` with an ETCDSnapshot manifest are refused with `VALIDATION` before
+  any request. There is no `delete` for it: `rancher delete etcd-snapshot` fails
+  with `VALIDATION` and an "unknown command" message that gives the reason. The
+  columns follow the Rancher UI, since the server's Table has only the Name and
+  Created At columns.
 - `delete` exists only for kinds where deleting an object makes sense. Rancher
   settings and feature flags (`setting`, `feature`), role templates and global
   roles (`roletemplate`, `globalrole`), and objects a controller creates and

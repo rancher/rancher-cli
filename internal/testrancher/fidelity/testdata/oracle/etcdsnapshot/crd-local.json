@@ -1,0 +1,64 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "crd",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "apiextensions.k8s.io/v1",
+        "kind": "CustomResourceDefinition",
+        "metadata": "\u003cscrubbed\u003e",
+        "spec": {
+          "group": "rke.cattle.io",
+          "scope": "Namespaced",
+          "versions": [
+            {
+              "name": "v1",
+              "schema": {
+                "openAPIV3Schema": {
+                  "properties": {
+                    "snapshotFile": {
+                      "properties": {
+                        "createdAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "location": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "nodeName": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "spec": {
+                      "properties": {
+                        "clusterName": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
