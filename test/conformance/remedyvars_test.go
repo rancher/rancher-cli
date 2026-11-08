@@ -327,7 +327,7 @@ func TestEveryVariableBuiltOnTheMarkerIsReadByTheHintFlattener(t *testing.T) {
 
 // remedyVarsFixtures type-checks the fixture packages once.
 var remedyVarsFixtures = sync.OnceValues(func() ([]*packages.Package, error) {
-	return loadPackages("./" + remedyVarsDir + "/...")
+	return loadPackages("./"+remedyVarsDir+"/...", "")
 })
 
 // TestVarsBuiltOnTheMarkerScanFixtures asserts the scan on type-checked

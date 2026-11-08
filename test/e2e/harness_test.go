@@ -98,6 +98,70 @@ var scriptOptions = map[string]func(*testrancher.Options){
 		execPluginFacts = &factsAnswers{}
 		o.Fallthrough = execPluginFacts.wrap(o.Fallthrough)
 	},
+	// The index link of a ClusterRepo, which the envtest apiserver does not
+	// serve.
+	"charts": func(o *testrancher.Options) { o.Fallthrough = chartIndexRoute(o.Fallthrough) },
+}
+
+// chartIndexes are the Helm repository indexes the charts scenario's Rancher
+// serves, by ClusterRepo name, each chart's versions newest first as Rancher
+// serves them. A ClusterRepo with no entry here has an index with no chart.
+// The shape is the one Rancher writes: a repo.IndexFile as JSON, each
+// version carrying the chart metadata fields flat beside digest and urls
+// (rancher pkg/api/steve/catalog/content.go serveIndex).
+var chartIndexes = map[string]string{
+	"charts-main": `{"apiVersion":"v1","generated":"2026-01-02T03:04:05Z","entries":{
+	  "charts-app":[
+	    {"name":"charts-app","version":"3.0.0-rc.1","appVersion":"30","description":"candidate","digest":"d4","urls":["charts-app-3.0.0-rc.1.tgz"]},
+	    {"name":"charts-app","version":"2.1.0","appVersion":"21","description":"retired build","deprecated":true,"digest":"d7","urls":["charts-app-2.1.0.tgz"]},
+	    {"name":"charts-app","version":"2.0.0","appVersion":"20","description":"the app","digest":"d2","urls":["charts-app-2.0.0.tgz"]},
+	    {"name":"charts-app","version":"1.10.0","appVersion":"10","description":"older","digest":"d3","urls":["charts-app-1.10.0.tgz"]},
+	    {"name":"charts-app","version":"1.9.0","appVersion":"9","description":"older","digest":"d1","urls":["charts-app-1.9.0.tgz"]}],
+	  "charts-hidden":[
+	    {"name":"charts-hidden","version":"0.1.0","description":"not for the UI","annotations":{"catalog.cattle.io/hidden":"true"},"digest":"d5","urls":["charts-hidden-0.1.0.tgz"]}],
+	  "charts-old":[
+	    {"name":"charts-old","version":"1.0.0","description":"no longer maintained","annotations":{"catalog.cattle.io/deprecated":"true"},"digest":"d8","urls":["charts-old-1.0.0.tgz"]}]}}`,
+	"charts-second": `{"apiVersion":"v1","entries":{
+	  "second-app":[{"name":"second-app","version":"0.1.0","description":"second","digest":"d6","urls":["second-app-0.1.0.tgz"]}]}}`,
+}
+
+// chartIndexRoute answers GET
+// <cluster>/v1/catalog.cattle.io.clusterrepos/<name> with link=index for a
+// ClusterRepo the envtest apiserver holds, on the local cluster and on
+// c-test. A ClusterRepo with spec.enabled false answers not found, as Rancher
+// main does, and so does a name no ClusterRepo has.
+func chartIndexRoute(next http.Handler) http.Handler {
+	const typePath = "/v1/catalog.cattle.io.clusterrepos/"
+	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "clusterrepos"}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/k8s/clusters/c-test")
+		name, ok := strings.CutPrefix(path, typePath)
+		if !ok || r.Method != http.MethodGet || r.URL.Query().Get("link") != "index" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+testToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		repo, err := dynCli.Resource(gvr).Get(r.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"error","status":404,"code":"NotFound","message":"clusterrepos.catalog.cattle.io \"` + name + `\" not found"}`))
+			return
+		}
+		if enabled, found, _ := unstructured.NestedBool(repo.Object, "spec", "enabled"); found && !enabled {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"error","status":404,"code":"NotFound","message":"clusterrepo ` + name + ` is disabled: NotFound"}`))
+			return
+		}
+		body, ok := chartIndexes[name]
+		if !ok {
+			body = `{"apiVersion":"v1","entries":{}}`
+		}
+		_, _ = w.Write([]byte(body))
+	})
 }
 
 // execPluginFactsID is the install id the exec-plugin-facts scenario's

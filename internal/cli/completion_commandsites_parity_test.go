@@ -30,6 +30,8 @@ func newCommandSitesServer(t *testing.T) *pathCountingServer {
 		provProdPath:       `{"metadata":{"name":"prod"},"spec":{"rkeConfig":{"machinePools":[{"name":"pool-b"},{"name":"pool-a"}]}}}`,
 		provTeamProdPath:   `{"metadata":{"name":"prod"},"spec":{"rkeConfig":{"machinePools":[{"name":"team-pool"}]}}}`,
 		oidcClientPath:     `{"metadata":{"name":"my-client"},"status":{"clientSecrets":{"secret-2":{},"secret-1":{}}}}`,
+		localRepos:         reposBody,
+		downRepos:          reposBody,
 	}, steveClustersPages)
 }
 
@@ -187,6 +189,13 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "logs --pod of an unknown target", words: []string{"logs", "nope", "--pod"}, hits: map[string]int{}},
 		{name: "logs --pod without a target", words: []string{"logs", "--pod"}, hits: map[string]int{}},
 		{name: "logs --pod with the network off", words: []string{"logs", "webhook", "--pod"}, noNet: true, hits: map[string]int{}},
+		// charts --repo: the enabled ClusterRepos of the typed cluster
+		{name: "charts --repo offers the enabled repositories and not the disabled one", words: []string{"charts", "--cluster", "c-aaa11", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{downRepos: 1}},
+		{name: "charts --repo= equals form", words: []string{"charts", "--cluster", "c-aaa11"}, cur: "--repo=", want: []string{"--repo=no-enabled-field", "--repo=rancher-charts"}, hits: map[string]int{downRepos: 1}},
+		{name: "charts --repo of the local cluster", words: []string{"charts", "--cluster", "local", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{localRepos: 1}},
+		{name: "charts --repo with a display name resolves it first", words: []string{"charts", "--cluster", "prod", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{steveClustersPath: 2, downRepos: 1}},
+		{name: "charts --repo without --cluster offers no names", words: []string{"charts", "--repo"}, hits: map[string]int{}},
+		{name: "charts --repo with the network off", words: []string{"charts", "--cluster", "c-aaa11", "--repo"}, noNet: true, hits: map[string]int{}},
 		// create user --global-role
 		{name: "create user --global-role", words: []string{"create", "user", "alice", "--global-role"}, want: globalRoles, hits: map[string]int{globalRolesPath: 1}},
 		{name: "create user --global-role= equals form", words: []string{"create", "user", "alice"}, cur: "--global-role=", want: []string{"--global-role=admin:Administrator", "--global-role=user-base:User-Base"}, hits: map[string]int{globalRolesPath: 1}},
@@ -233,6 +242,7 @@ func TestCommandSitesUnderAnExecCredentialOnlyToken(t *testing.T) {
 	}{
 		{name: "logs --pod of a local-only target", words: []string{"logs", "webhook", "--pod"}, want: []string{"rancher-webhook-1", "rancher-webhook-2"}, hits: map[string]int{localCattlePods: 1}},
 		{name: "logs --pod of a downstream-only target with a cluster id", words: []string{"logs", "agent", "--cluster", "c-aaa11", "--pod"}, want: []string{"cattle-cluster-agent-1", "cattle-cluster-agent-2"}, hits: map[string]int{downCattlePods: 1}},
+		{name: "charts --repo of a cluster id", words: []string{"charts", "--cluster", "c-aaa11", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{downRepos: 1}},
 		{name: "logs --pod of a downstream-only target with a display name is refused", words: []string{"logs", "agent", "--cluster", "prod", "--pod"}, hits: map[string]int{}},
 		{name: "--machine-config kind prefix is refused", words: []string{"create", "cluster", "node-1", "--machine-config"}, cur: "amazonec2config/", hits: map[string]int{}},
 		{name: "--cloud-credential is refused", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, hits: map[string]int{}},

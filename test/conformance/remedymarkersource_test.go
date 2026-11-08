@@ -233,7 +233,7 @@ func TestRemedyMarkerComesFromTheRuntimeRandomSource(t *testing.T) {
 
 // markerSourceFixtures type-checks the fixture packages once.
 var markerSourceFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + markerSourceDir + "/...")
+	pkgs, err := loadPackages("./"+markerSourceDir+"/...", "")
 	if err != nil {
 		return nil, err
 	}

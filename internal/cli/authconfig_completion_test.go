@@ -482,6 +482,34 @@ func TestACommandNeedingNoCredentialNeedsACompletionTarget(t *testing.T) {
 	require.NoError(t, validateCompletionTargets(leaves, managed, map[string]bool{}), "a source that needs a credential needs no target")
 }
 
+// TestACommandScopedNoCredentialSourceNeedsACompletionTarget asserts the
+// build check sees a source that claims by command name: it refuses the
+// command it claims for when that command has no CompletionTarget, and
+// accepts a command the source does not claim.
+func TestACommandScopedNoCredentialSourceNeedsACompletionTarget(t *testing.T) {
+	t.Parallel()
+	flags := []runtime.ArgSpec{{Name: "region", Type: "string"}}
+	leaves := map[string]runtime.Descriptor{
+		"x scoped": {Name: "x scoped", Flags: flags},
+		"x other":  {Name: "x other", Flags: flags},
+	}
+	src := completion.Source{
+		Claim: func(req completion.Request) (completion.Requirements, bool) {
+			if req.Command == "x scoped" && req.Flag == "region" {
+				return completion.PublicListing(), true
+			}
+			return completion.Requirements{}, false
+		},
+		Complete: tokencomplete.AuthConfigSource().Complete,
+	}
+
+	err := validateCompletionTargets(leaves, map[string]completion.Source{"x scoped": src}, map[string]bool{})
+	require.ErrorContains(t, err, "command x scoped has a completion source that needs no credential")
+	require.NoError(t, validateCompletionTargets(leaves, map[string]completion.Source{"x other": src}, map[string]bool{}),
+		"the source claims nothing for another command")
+	require.NoError(t, validateCompletionTargets(leaves, map[string]completion.Source{"x scoped": src}, map[string]bool{"x scoped": true}))
+}
+
 // TestTheSignInCommandsHaveCompletionTargets asserts the three commands that
 // take --auth-provider own the live source and the target of their
 // completion, so the build, which refuses a command without one, accepts

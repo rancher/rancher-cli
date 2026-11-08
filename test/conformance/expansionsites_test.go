@@ -218,7 +218,7 @@ func TestRemedyExpansionWithNoPrefixIsListed(t *testing.T) {
 
 // expansionFixtures type-checks the fixture packages once.
 var expansionFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + expansionSitesDir + "/...")
+	pkgs, err := loadPackages("./"+expansionSitesDir+"/...", "")
 	if err != nil {
 		return nil, err
 	}

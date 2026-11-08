@@ -522,7 +522,7 @@ func TestLoggerExitScanFixtures(t *testing.T) {
 	always := func(string) bool { return true }
 	keep := func(name string) string { return filepath.Base(name) }
 	load := func(name string) []processExitUse {
-		pkgs, err := loadPackages("./test/conformance/testdata/noprocessexit/" + name)
+		pkgs, err := loadPackages("./test/conformance/testdata/noprocessexit/"+name, "")
 		require.NoError(t, err)
 		require.Len(t, pkgs, 1)
 		return scanLoggerExits(pkgs[0], always, keep)

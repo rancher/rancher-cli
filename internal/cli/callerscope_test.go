@@ -94,6 +94,7 @@ var callerBespokeRows = map[string]callerRow{
 	"create token":             {args: "create token --cluster prod --dry-run -o json", target: targetLocalExt},
 	"grant":                    {args: "grant u-1 --role cluster-member --cluster prod --dry-run -o json", target: targetManagement},
 	"revoke":                   {args: "revoke u-1 --cluster prod --dry-run -o json", target: targetManagement},
+	"charts":                   {args: "charts --cluster prod -o json", target: targetDownstream},
 	"images":                   {args: "images --cluster prod -o json", target: targetDownstream},
 	"inspect deployment":       {args: "inspect deployment x --cluster prod --namespace default -o json", target: targetDownstream},
 	"inspect pod":              {args: "inspect pod x --cluster prod --namespace default -o json", target: targetDownstream},
@@ -477,7 +478,7 @@ func callerRows(t *testing.T) map[string]callerRow {
 			rows[d.Name] = row
 		}
 	}
-	assert.Equal(t, 106, taking, "the commands that take a cluster or clusters flag")
+	assert.Equal(t, 107, taking, "the commands that take a cluster or clusters flag")
 	for name, row := range callerBespokeRows {
 		if _, ok := rows[name]; !ok {
 			rows[name] = row

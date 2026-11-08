@@ -778,6 +778,7 @@ Never present a role list as permissions.
   cluster's name. For an imported cluster, or a cluster imported through Rancher
   Turtles, `<name>` is the cluster's id (`c-...`). It is read-only: `patch`,
   `create resource` and `delete` fail with `VALIDATION`.
+- `rancher charts --cluster <c> --repo <r>` lists what a ClusterRepo offers, one line per chart with its newest version that is not a prerelease (`--all-versions` for every version, `--include-deprecated` for deprecated versions, which are left out by default); without `--repo` it reads every enabled ClusterRepo of the cluster, and one whose index cannot be read is named in a warning.
 - `rancher create user <username> --password-stdin` creates a local user (a
   `v3 User`, its password secret, and a `v3 GlobalRoleBinding` for each global
   role the server marks `newUserDefault`, `user` on a default install) - the

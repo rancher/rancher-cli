@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 229,
+  "commandCount": 230,
   "effectSchema": {
     "actions": [
       "create",
@@ -409,6 +409,10 @@
     },
     {
       "commands": [
+        {
+          "name": "charts",
+          "usage": "List the charts and versions the repositories of a cluster offer"
+        },
         {
           "name": "grant",
           "usage": "Grant a role to a user or group at project, cluster, or global scope"

@@ -358,11 +358,16 @@ func TestRequestAllowlistRules(t *testing.T) {
 // fieldManagerPackages type-checks every package of the module once for the
 // type-resolved rules.
 var fieldManagerPackages = sync.OnceValues(func() ([]*packages.Package, error) {
-	return loadPackages("./...")
+	return loadPackages("./...", "")
 })
 
-func loadPackages(pattern string) ([]*packages.Package, error) {
+// loadPackages type-checks the packages of pattern. goos "" builds them for
+// the host; another value builds them for that GOOS without cgo.
+func loadPackages(pattern, goos string) ([]*packages.Package, error) {
 	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedFiles}
+	if goos != "" {
+		cfg.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=0")
+	}
 	pkgs, err := packages.Load(cfg, pattern)
 	if err != nil {
 		return nil, err
@@ -676,7 +681,7 @@ func TestEveryWriteOptionNamesTheFieldManager(t *testing.T) {
 
 // fieldManagerFixtures type-checks the typed fixture packages once.
 var fieldManagerFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + fieldManagerDir + "/typed/...")
+	pkgs, err := loadPackages("./"+fieldManagerDir+"/typed/...", "")
 	if err != nil {
 		return nil, err
 	}

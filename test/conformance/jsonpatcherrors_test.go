@@ -426,7 +426,7 @@ func TestJSONPatchHitAllowlistRules(t *testing.T) {
 
 // jsonPatchFixtures type-checks the fixture packages once.
 var jsonPatchFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + jsonPatchDir + "/...")
+	pkgs, err := loadPackages("./"+jsonPatchDir+"/...", "")
 	if err != nil {
 		return nil, err
 	}

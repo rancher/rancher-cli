@@ -698,6 +698,44 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   command's arguments joined with commas, and TARGET-NAMESPACE is the namespace
   of the pod that ran the command, where the Rancher UI's "Tgt Namespace" is
   the release's namespace.
+- `rancher charts --cluster <id|name>` lists the charts the ClusterRepos of one
+  cluster offer, with each chart's newest version that is not a prerelease:
+  Rancher serves each chart's versions newest first, and the CLI keeps that
+  order and shows the first version that is not a prerelease (the first version
+  when the chart has only prereleases). A prerelease is a version of the form
+  `N.N.N-<label>`, three numeric parts, a `-` and a label, as in `1.0.0-rc.1`; a
+  build suffix such as `+up1.2-rc` or a shorter version such as `3.1908-rc1` is
+  not one. `--all-versions` lists every version in the order Rancher serves them
+  and `--repo <name>` reads one ClusterRepo. The list is the Helm repository
+  index Rancher serves for each ClusterRepo (the `index` link of the ClusterRepo
+  in the Steve API), as Rancher filters it for the cluster: it drops the
+  versions whose `catalog.cattle.io/rancher-version` or
+  `catalog.cattle.io/kube-version` annotation, or whose `kubeVersion`, does not
+  allow the cluster's Kubernetes version or the server's Rancher version.
+  Release, `-rc` and `-alpha` builds of Rancher always filter; any other build
+  skips the filtering when the `skip-helm-index-filtering` setting is `"true"`,
+  its default, and then lists every version. The filter does not check the
+  `catalog.cattle.io/permits-os` annotation, the
+  `catalog.cattle.io/requires-gvr` annotation or the fixed namespace of a chart,
+  and the CLI sends no parameter that changes the filter. A chart with the
+  `catalog.cattle.io/hidden` annotation (present and not empty, whatever the
+  value) is not listed by the Rancher UI; `charts` lists it, with `hidden: true`
+  in JSON. A version is deprecated when its index entry has `deprecated: true`
+  or the annotation `catalog.cattle.io/deprecated` is `"true"`. The CLI decides
+  per version; the Rancher UI decides per chart from its first served version.
+  Deprecated versions are left out, before the version to show is picked, and so
+  is a chart that has only deprecated versions; `--include-deprecated` lists
+  them, with a DEPRECATED column in the table and `deprecated` in JSON. It only
+  widens the list, unlike `--allow-deprecated` of the commands that change
+  things. A ClusterRepo with `spec.enabled` false is skipped when `--repo` is
+  not given. On Rancher main the index of a disabled ClusterRepo answers not
+  found, so `--repo` of one fails with `NOT_FOUND`; older minors serve it.
+  Without `--repo`, a ClusterRepo whose index cannot be read (for example one
+  that answers 503, or one with no stored index yet, which answers 500) is left
+  out and named in one warning, and the exit code is 0; with `--repo` the same
+  failure is the command's error. A 401 for an index is reported as Rancher
+  refusing to serve it, not as a rejected credential. The repositories are read
+  one after another in name order.
 - The CLI hides the Helm `values` and `templateValues` of HelmOps, bundles
   and bundle deployments from every output. For a HelmOp or a bundle it also
   hides them in each item of `targets`. For a bundle deployment it hides them

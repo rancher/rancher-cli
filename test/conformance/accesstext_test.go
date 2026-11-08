@@ -207,7 +207,7 @@ var accessTextFixtureCases = map[string]int{
 // the line.
 func TestAccessTextScanFindsTheLinesOfRenderTree(t *testing.T) {
 	t.Parallel()
-	pkgs, err := loadPackages("./" + accessTextFixtureDir + "/...")
+	pkgs, err := loadPackages("./"+accessTextFixtureDir+"/...", "")
 	require.NoError(t, err)
 	require.Len(t, pkgs, len(accessTextFixtureCases))
 	for _, pkg := range pkgs {

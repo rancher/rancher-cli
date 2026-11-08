@@ -40,6 +40,8 @@ const (
 	localCattlePods      = "/k8s/clusters/local/api/v1/namespaces/cattle-system/pods"
 	downCattlePods       = "/k8s/clusters/c-aaa11/api/v1/namespaces/cattle-system/pods"
 	provTeamProdPath     = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters/prod"
+	localRepos           = "/k8s/clusters/local/apis/catalog.cattle.io/v1/clusterrepos"
+	downRepos            = "/k8s/clusters/c-aaa11/apis/catalog.cattle.io/v1/clusterrepos"
 )
 
 // usersBody carries one of every user shape the projections must handle:
@@ -147,3 +149,10 @@ func items(rows ...string) string { return `{"items":[` + strings.Join(rows, ","
 
 // plain is an object literal with a name alone.
 func plain(name string) string { return `{"metadata":{"name":"` + name + `"}}` }
+
+// reposBody is a cluster's ClusterRepos as the ClusterRepo collection lists
+// them: one enabled, one with no spec.enabled and one disabled.
+var reposBody = items(
+	`{"metadata":{"name":"rancher-charts"},"spec":{"enabled":true}}`,
+	`{"metadata":{"name":"disabled-charts"},"spec":{"enabled":false}}`,
+	`{"metadata":{"name":"no-enabled-field"},"spec":{"url":"https://charts.example.test"}}`)

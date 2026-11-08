@@ -537,6 +537,7 @@ var testfsAllowlist = []testfsRow{
 	pending("internal/token/shim_test.go", callGOOSWindows, 3),
 	pending("internal/token/storeunavailable_test.go", callGOOSWindows, 1),
 	pending("test/conformance/actionlintignore_test.go", callGOOSWindows, 1),
+	permanent("test/conformance/cataloglinks_test.go", callGOOSValue, 1, "the platform of a package load, skipped when it is the one this machine already loaded"),
 	pending("test/conformance/ciworkflow_test.go", callSymlink, 1),
 	pending("test/conformance/ciworkflow_test.go", callGOOSWindows, 2),
 	pending("test/conformance/releaseupsert_test.go", callSymlink, 1),

@@ -233,7 +233,7 @@ func TestNoProductionFileSpellsTheMarkerCharacters(t *testing.T) {
 
 // markerLiteralsFixtures type-checks the fixture packages once.
 var markerLiteralsFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + markerLiteralsDir + "/...")
+	pkgs, err := loadPackages("./"+markerLiteralsDir+"/...", "")
 	if err != nil {
 		return nil, err
 	}

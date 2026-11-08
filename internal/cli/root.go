@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/access"
+	"github.com/rancher/rancher-cli/internal/engine/catalog"
 	"github.com/rancher/rancher-cli/internal/engine/extres"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -120,6 +121,7 @@ func buildEntries() []entry {
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewProjects(d.clients, d.roots, nil) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetCloudCredential(d.clients) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetKubernetesVersions(d.roots, d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return catalog.NewCharts(d.clients, d.roots) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewGrant(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewRevoke(d.clients) }},
 		// Bare entries are invoked with zero runDeps (adaptEntry never calls

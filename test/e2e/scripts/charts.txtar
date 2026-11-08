@@ -1,0 +1,104 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj catalog.cattle.io/v1/clusterrepos . charts-main.yaml
+seedobj catalog.cattle.io/v1/clusterrepos . charts-second.yaml
+seedobj catalog.cattle.io/v1/clusterrepos . charts-off.yaml
+
+# One ClusterRepo: one line per chart, the newest release as the version,
+# charts in name order, hidden marked in JSON.
+exec rancher charts --cluster testcluster --repo charts-main -o json
+cp stdout main.json
+jsonquery main.json kind ChartList
+jsonquery main.json 'data.#' 2
+jsonquery main.json 'data.0.repository' charts-main
+jsonquery main.json 'data.0.name' charts-app
+jsonquery main.json 'data.0.version' 2.0.0
+jsonquery main.json 'data.0.appVersion' 20
+jsonquery main.json 'data.0.description' 'the app'
+jsonquery main.json 'data.0.hidden' false
+jsonquery main.json 'data.1.name' charts-hidden
+jsonquery main.json 'data.1.hidden' true
+
+# Every version, in the order Rancher serves them: the prerelease first, and
+# the deprecated version and the deprecated chart left out.
+exec rancher charts --cluster testcluster --repo charts-main --all-versions -o json
+cp stdout all.json
+jsonquery all.json 'data.#' 5
+jsonquery all.json 'data.0.version' 3.0.0-rc.1
+jsonquery all.json 'data.1.version' 2.0.0
+jsonquery all.json 'data.2.version' 1.10.0
+jsonquery all.json 'data.3.version' 1.9.0
+jsonquery all.json 'data.4.name' charts-hidden
+jsonquery all.json 'data.0.deprecated' false
+
+# --include-deprecated lists them, marked; the default version is then the first
+# served version that is not a prerelease, the deprecated one.
+exec rancher charts --cluster testcluster --repo charts-main --include-deprecated -o json
+cp stdout dep.json
+jsonquery dep.json 'data.#' 3
+jsonquery dep.json 'data.0.name' charts-app
+jsonquery dep.json 'data.0.version' 2.1.0
+jsonquery dep.json 'data.0.deprecated' true
+jsonquery dep.json 'data.2.name' charts-old
+jsonquery dep.json 'data.2.deprecated' true
+exec rancher charts --cluster testcluster --repo charts-main --include-deprecated --all-versions -o json
+jsonquery stdout 'data.#' 7
+exec rancher charts --cluster testcluster --repo charts-main --include-deprecated -o table
+stdout 'DEPRECATED'
+
+# The text table has the five columns, no hidden column and no deprecated column.
+exec rancher charts --cluster testcluster --repo charts-main -o table
+stdout 'REPOSITORY'
+stdout 'APP VERSION'
+stdout 'charts-app'
+! stdout 'HIDDEN'
+! stdout 'DEPRECATED'
+
+# No --repo: every ClusterRepo that is not disabled, with its charts; the
+# disabled one is not read.
+exec rancher charts --cluster testcluster -o json
+cp stdout list.json
+jsonquery list.json 'data.#(name="charts-app").repository' charts-main
+jsonquery list.json 'data.#(repository="charts-second").name' second-app
+! stdout 'charts-off'
+
+# The local cluster is read at /v1/..., without the cluster prefix.
+exec rancher charts --cluster local --repo charts-second -o json
+jsonquery stdout 'data.0.name' second-app
+
+# A ClusterRepo that does not exist, and one that is disabled, are NOT_FOUND
+# and name the command that lists the repositories.
+! exec rancher charts --cluster testcluster --repo charts-nope -o json
+jsonquery stderr data.error.code NOT_FOUND
+stderr 'get clusterrepos --cluster .testcluster.'
+! exec rancher charts --cluster testcluster --repo charts-off -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+# --cluster is required.
+! exec rancher charts -o json
+jsonquery stderr data.error.code VALIDATION
+
+-- charts-main.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: charts-main
+spec:
+  url: https://charts.example.test/main
+-- charts-second.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: charts-second
+spec:
+  url: https://charts.example.test/second
+  enabled: true
+-- charts-off.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: charts-off
+spec:
+  url: https://charts.example.test/off
+  enabled: false

@@ -2,7 +2,8 @@ package completion
 
 import "context"
 
-// Request is the completion site as the surface parsed it. Flag is empty
+// Request is the completion site as the surface parsed it. Command is the
+// registered name of the command being completed. Flag is empty
 // for a positional; Index is the positional's index. Partial is the value
 // fragment as typed, composite prefix included. Cluster and Project are
 // the --cluster and --project flags as typed on the line and stay empty
@@ -17,6 +18,7 @@ import "context"
 // a client's secret, a log target's pods) reads it here and never
 // re-parses the tail. The word being completed is not among them.
 type Request struct {
+	Command     string
 	Flag        string
 	Index       int
 	Partial     string

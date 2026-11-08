@@ -167,7 +167,7 @@ func TestEveryCreatePlannerCallIsListed(t *testing.T) {
 
 // createPreviewFixtures type-checks the fixture packages once.
 var createPreviewFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + createPreviewDir + "/...")
+	pkgs, err := loadPackages("./"+createPreviewDir+"/...", "")
 	if err != nil {
 		return nil, err
 	}

@@ -229,7 +229,7 @@ func TestNoCutCandidateListWithoutItsTotal(t *testing.T) {
 
 // cutCandidatesFixtures type-checks the fixture packages once.
 var cutCandidatesFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + cutCandidatesDir + "/...")
+	pkgs, err := loadPackages("./"+cutCandidatesDir+"/...", "")
 	if err != nil {
 		return nil, err
 	}

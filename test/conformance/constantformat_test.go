@@ -212,7 +212,7 @@ func TestNoFormatIsBuiltFromTheRemedyMarker(t *testing.T) {
 
 // constantFormatFixtures type-checks the fixture packages once.
 var constantFormatFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + constantFormatDir + "/...")
+	pkgs, err := loadPackages("./"+constantFormatDir+"/...", "")
 	if err != nil {
 		return nil, err
 	}

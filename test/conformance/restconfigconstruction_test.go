@@ -176,7 +176,7 @@ func TestEveryClientGoConfigIsMadeWhereListed(t *testing.T) {
 // loadRESTConfigFixture type-checks one fixture package of the config scan.
 func loadRESTConfigFixture(t *testing.T, name string) *packages.Package {
 	t.Helper()
-	pkgs, err := loadPackages("./test/conformance/testdata/restconfig/" + name)
+	pkgs, err := loadPackages("./test/conformance/testdata/restconfig/"+name, "")
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 	return pkgs[0]

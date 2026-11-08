@@ -385,7 +385,7 @@ func TestNoCandidateIsBuiltFromTheRemedyMarker(t *testing.T) {
 
 // markedCandidateFixtures type-checks the fixture packages once.
 var markedCandidateFixtures = sync.OnceValues(func() (map[string]*packages.Package, error) {
-	pkgs, err := loadPackages("./" + markedCandidateDir + "/...")
+	pkgs, err := loadPackages("./"+markedCandidateDir+"/...", "")
 	if err != nil {
 		return nil, err
 	}

@@ -127,3 +127,49 @@ func listPath(req completion.Request, k kinds.Kind) (completion.Path, bool) {
 func built(p completion.Path, err error) (completion.Path, bool) {
 	return p, err == nil
 }
+
+// ChartsCommand is the registered name of the command ClusterRepoSource
+// answers for.
+const ChartsCommand = "charts"
+
+// ClusterRepoSource is the live source of the --repo flag of the charts
+// command: the names of the typed cluster's ClusterRepos whose spec.enabled is
+// not false (a missing spec.enabled counts as enabled), because Rancher
+// answers a read of a disabled ClusterRepo's index as not found. It claims no
+// other command's --repo and no other site, and a line with no --cluster typed
+// completes nothing.
+func ClusterRepoSource() completion.Source {
+	k, known := kinds.ByKey("clusterrepo")
+	return completion.Source{
+		Claim: func(req completion.Request) (completion.Requirements, bool) {
+			if !known || req.Command != ChartsCommand || req.Flag != "repo" {
+				return completion.Requirements{}, false
+			}
+			return requirements(k)
+		},
+		Complete: func(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
+			if !known || req.ClusterID == "" {
+				return completion.Result{}
+			}
+			p, ok := listPath(req, k)
+			if !ok {
+				return completion.Result{}
+			}
+			var list completion.ItemList
+			if err := conn.GetJSON(ctx, p, "", &list); err != nil {
+				return completion.Result{}
+			}
+			var names []string
+			for _, item := range list.Items {
+				spec, _ := item["spec"].(map[string]any)
+				if enabled, ok := spec["enabled"].(bool); ok && !enabled {
+					continue
+				}
+				if name := completion.ItemName(item); name != "" {
+					names = append(names, name)
+				}
+			}
+			return completion.Result{Names: names}
+		},
+	}
+}

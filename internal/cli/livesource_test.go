@@ -174,7 +174,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		require.NoError(t, checkSourceDeclared("command "+name, lc.LiveSource()))
 	}
 	assert.ElementsMatch(t, []string{
-		"access projects", "grant", "revoke",
+		"access projects", "grant", "revoke", "charts",
 		"create cluster", "create user", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",

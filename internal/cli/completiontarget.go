@@ -85,10 +85,10 @@ func validateCompletionTargets(leaves map[string]runtime.Descriptor, completers 
 func claimsWithoutCredential(d runtime.Descriptor, src completion.Source) bool {
 	sites := make([]completion.Request, 0, len(d.Flags)+len(d.Args))
 	for _, f := range d.Flags {
-		sites = append(sites, completion.Request{Flag: f.Name})
+		sites = append(sites, completion.Request{Command: d.Name, Flag: f.Name})
 	}
 	for i := range d.Args {
-		sites = append(sites, completion.Request{Index: i, Positionals: slices.Repeat([]string{"x"}, i)})
+		sites = append(sites, completion.Request{Command: d.Name, Index: i, Positionals: slices.Repeat([]string{"x"}, i)})
 	}
 	return slices.ContainsFunc(sites, func(req completion.Request) bool {
 		reqs, ok := src.Claim(req)

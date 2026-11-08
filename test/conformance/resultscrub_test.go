@@ -407,7 +407,7 @@ func TestNoCommandPutsAServerObjectInAResult(t *testing.T) {
 // field assignment) is not reported.
 func TestResultDataScanFixtures(t *testing.T) {
 	t.Parallel()
-	pkgs, err := loadPackages("./" + resultScrubDir + "/...")
+	pkgs, err := loadPackages("./"+resultScrubDir+"/...", "")
 	require.NoError(t, err)
 	byName := map[string]*packages.Package{}
 	for _, pkg := range pkgs {

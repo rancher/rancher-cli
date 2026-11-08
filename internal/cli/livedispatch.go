@@ -34,6 +34,7 @@ import (
 func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, lc completion.Completer, tail []string,
 	flags map[string]completion.Source, kindTable map[string]completion.Source, positional map[string]string) ([]string, bool) {
 	req := completion.Request{
+		Command:     d.Name,
 		Flag:        site.FlagName,
 		Index:       site.Index,
 		Partial:     site.Partial,

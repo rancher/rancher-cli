@@ -261,3 +261,50 @@ func TestKindSourceDescribesWithTheLookupFieldsOnly(t *testing.T) {
 		assert.Equal(t, map[string]string{"a": want}, got.Descriptions, key)
 	}
 }
+
+// TestClusterRepoSourceClaim asserts the source claims only the --repo flag
+// of the charts command, as one list read of the typed cluster, and declines
+// every other site, another command's --repo included.
+func TestClusterRepoSourceClaim(t *testing.T) {
+	t.Parallel()
+	reqs, ok := ClusterRepoSource().Claim(completion.Request{Command: ChartsCommand, Flag: "repo"})
+	require.True(t, ok)
+	assert.Equal(t, completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialAny, Allowance: completion.AllowanceOne}, reqs)
+	for _, flag := range []string{"", "cluster", "namespace", "repository"} {
+		_, ok := ClusterRepoSource().Claim(completion.Request{Command: ChartsCommand, Flag: flag})
+		assert.False(t, ok, "flag %q", flag)
+	}
+	for _, command := range []string{"", "get clusterrepo", "install", "chart"} {
+		_, ok := ClusterRepoSource().Claim(completion.Request{Command: command, Flag: "repo"})
+		assert.False(t, ok, "command %q", command)
+	}
+}
+
+// TestClusterRepoSourceOffersTheRepositoriesThatAreNotDisabled asserts a
+// ClusterRepo with spec.enabled false is not offered, one with it true or
+// with no spec.enabled is, and the one list read goes to the typed cluster.
+func TestClusterRepoSourceOffersTheRepositoriesThatAreNotDisabled(t *testing.T) {
+	t.Parallel()
+	body := `{"items":[
+	  {"metadata":{"name":"on"},"spec":{"enabled":true}},
+	  {"metadata":{"name":"off"},"spec":{"enabled":false}},
+	  {"metadata":{"name":"unset"},"spec":{"url":"https://charts.example.test"}},
+	  {"metadata":{"name":"nospec"}}]}`
+	ls := completiontest.NewFixed(t, body)
+	got := ClusterRepoSource().Complete(t.Context(), ls.Conn(1), completion.Request{Command: ChartsCommand, Flag: "repo", ClusterID: "c-x"})
+	assert.Equal(t, []string{"on", "unset", "nospec"}, got.Names)
+	assert.Equal(t, []string{"/k8s/clusters/c-x/apis/catalog.cattle.io/v1/clusterrepos"}, ls.Requested())
+}
+
+// TestClusterRepoSourceAnswersNothingWithoutACluster asserts a line with no
+// resolved cluster sends no request, and neither does a cluster id that
+// cannot be a path segment.
+func TestClusterRepoSourceAnswersNothingWithoutACluster(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"", "a/b"} {
+		ls := completiontest.NewFixed(t, listBody)
+		got := ClusterRepoSource().Complete(t.Context(), ls.Conn(1), completion.Request{Command: ChartsCommand, Flag: "repo", ClusterID: id})
+		assert.Empty(t, got.Names, "cluster %q", id)
+		assert.Empty(t, ls.Requested(), "cluster %q", id)
+	}
+}
