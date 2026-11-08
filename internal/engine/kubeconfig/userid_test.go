@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,8 +15,14 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
+
+// hiddenRunesOwner is a recorded owner that holds a direction override, a
+// zero-width space, a bell, a newline and the start of a remedy marker
+// followed by the word the marker ends with.
+var hiddenRunesOwner = "U/1" + string(rune(0x202e)) + string(rune(0x200b)) + "\a\n" + string(rune(0x2063)) + "rancher-x"
 
 // userIDArg is the --user-id the exec entry's arguments carry right after
 // its --name, "" when none follows it.
@@ -53,6 +60,9 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 		notice func(dir string) string
 		// lines is how many notices the run prints, the machine line included.
 		lines int
+		// planted is an owner with hidden runes the notices must show with
+		// escapes, "" for none.
+		planted string
 	}{
 		{name: "the session's own login", setup: recordsSetup{cfg: prodCurrent(nil), loggedIn: []string{"prod"}}, owner: "u-prod", lines: 1},
 		{name: "an entry named <current>-<id> answers", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod-c-1": {URL: recordsURL}}), loggedIn: []string{"prod", "prod-c-1"}},
@@ -98,6 +108,12 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 			notice: func(string) string {
 				return "this kubeconfig names no Rancher user: the stored login of 'prod' records the owner 'U/1', which --user-id does not accept; the exec plugin does not check the user"
 			}},
+		{name: "an owner with hidden runes is shown as escapes", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod": {URL: recordsURL, TokenUserID: hiddenRunesOwner}}), loggedIn: []string{"prod"}, unowned: true},
+			lines: 2, planted: hiddenRunesOwner,
+			notice: func(string) string {
+				return "this kubeconfig names no Rancher user: the stored login of 'prod' records the owner " + clierr.ShellQuote(strconv.Quote(hiddenRunesOwner)) +
+					", which --user-id does not accept; the exec plugin does not check the user"
+			}},
 		{name: "no stored login answers", setup: recordsSetup{cfg: prodCurrent(nil)}, lines: 2},
 		{name: "the plugin refuses", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod-c-1": {URL: "https://other.example.com"}}), loggedIn: []string{"prod"}}, lines: 2},
 		{name: "the store cannot be read", setup: recordsSetup{cfg: prodCurrent(nil), envToken: true, failRead: errors.New("keychain locked")}, lines: 2},
@@ -109,6 +125,9 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 			assert.Len(t, lines, tc.lines)
 			if tc.notice != nil {
 				assert.Contains(t, lines, tc.notice(dir))
+			}
+			if tc.planted != "" {
+				remedytest.AssertIDShownWithEscapes(t, strings.Join(lines, "\n"), tc.planted)
 			}
 			for _, l := range lines {
 				if tc.notice == nil {

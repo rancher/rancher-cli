@@ -2509,7 +2509,7 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, cluster stri
 			fmt.Sprintf("the stored login credential for %q cannot create tokens: %s; "+grantCluster, sc.name, clierr.From(err).Message, clierr.ShellQuote(cluster))).WithCause(err)
 	case errors.Is(err, errCredentialForbidden):
 		return clierr.New(clierr.CodeRBAC,
-			fmt.Sprintf("the stored login credential for %q cannot create tokens: %s; %s", sc.name, clierr.From(err).Message, noTokenPermissionText(sc.entry.TokenUserID, ext))).WithCause(err)
+			fmt.Sprintf("the stored login credential for %q cannot create tokens: %s; %s", sc.name, clierr.From(err).Message, noTokenPermissionTextOf(sc.entry.TokenUserID, configStatusEntry(sc), ext))).WithCause(err)
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
 		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):

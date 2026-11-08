@@ -99,7 +99,7 @@ func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, i
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation,
-		"refusing to delete user "+args[0]+": it is your own user, and deleting it locks this CLI out"+
+		"refusing to delete user "+clierr.IDText(args[0])+": it is your own user, and deleting it locks this CLI out"+
 			"; log in as a different admin and delete it from there")
 }
 

@@ -334,10 +334,12 @@ type displayRuneRow struct {
 
 // TestEveryCallerAppliesTheSharedDisplayRule asserts, for a sample of every
 // class clierr.IsUnsafeToDisplay covers and of runes it keeps, that
-// IsUnsafeToDisplay, output.Printable, config.EntryNameProblem and the LoginAs
-// of config.AdviseRecord for an owner id holding the rune agree: an unsafe
-// rune is removed, reported and absent from LoginAs, and every other rune is
-// kept by all of them.
+// IsUnsafeToDisplay, output.Printable, config.EntryNameProblem, clierr.IDText
+// and the text of config.AdviseRecord for an owner id holding the rune agree:
+// an unsafe rune is removed by Printable, reported by EntryNameProblem and
+// written as an escape in the owner's text (never removed from it), and every
+// other rune is kept by all of them. LoginAs, the data field, keeps the id
+// exactly.
 func TestEveryCallerAppliesTheSharedDisplayRule(t *testing.T) {
 	t.Parallel()
 	rows := []displayRuneRow{
@@ -377,13 +379,17 @@ func TestEveryCallerAppliesTheSharedDisplayRule(t *testing.T) {
 			assert.Equal(t, row.unsafe, problem, "EntryNameProblem")
 
 			loginAs := config.AdviseRecord(site, "https://hostzq7", "u-"+name, ref).LoginAs
+			assert.Equal(t, "u-"+name, loginAs, "LoginAs keeps the id exactly")
+			text := config.AdviseRecord(site, "", "u-"+name, ref).Text
 			if row.unsafe {
 				assert.Equal(t, "ab", output.Printable(name), "Printable")
-				assert.Equal(t, "u-ab", loginAs, "LoginAs")
+				assert.Equal(t, strconv.Quote("u-"+name), clierr.IDText("u-"+name), "IDText")
+				assert.Contains(t, text, "delete it as user "+clierr.ShellQuote(strconv.Quote("u-"+name)), "the text shows the escaped id")
 				return
 			}
 			assert.Equal(t, name, output.Printable(name), "Printable")
-			assert.Equal(t, "u-"+name, loginAs, "LoginAs")
+			assert.Equal(t, "u-"+name, clierr.IDText("u-"+name), "IDText")
+			assert.Contains(t, text, "delete it as user "+clierr.ShellQuote("u-"+name), "the text shows the id as it is")
 		})
 	}
 }

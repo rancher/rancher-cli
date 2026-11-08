@@ -3,11 +3,13 @@ package config
 import (
 	"errors"
 	"io/fs"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -237,38 +239,63 @@ func TestAdviseRecord(t *testing.T) {
 	}
 }
 
-// TestAdviseRecordNamesTheOwnerWithoutUnsafeRunes asserts LoginAs is the owner
-// id with every control character, invisible format character and line or
-// paragraph separator removed: a newline in a stored id cannot end a line of
-// the text that names it, a direction override cannot make it read as another
-// id, and LoginAs is empty for an unknown owner.
-func TestAdviseRecordNamesTheOwnerWithoutUnsafeRunes(t *testing.T) {
+// TestAdviseRecordKeepsTheOwnerExactAndEscapesItInText asserts LoginAs is the
+// owner id exactly as recorded, empty for an unknown owner, and that a text
+// naming the owner shows every control character, invisible format character
+// and line or paragraph separator of the id as an escape: a newline in a
+// stored id cannot end a line of the text that names it, a direction override
+// cannot make it read as another id, and no rune is removed.
+func TestAdviseRecordKeepsTheOwnerExactAndEscapesItInText(t *testing.T) {
 	t.Parallel()
 	ref := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc12"}
 	site := RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}
-	assert.Equal(t, "u-a$(id)bc", AdviseRecord(site, "https://hostzq7", "u-a\n$(id)\x1bbc", ref).LoginAs)
-	assert.Equal(t, "u-abc", AdviseRecord(site, "https://hostzq7", "u-a\u202eb\u2028c", ref).LoginAs)
+	for _, owner := range []string{"u-a\n$(id)\x1bbc", "u-a\u202eb\u2028c"} {
+		assert.Equal(t, owner, AdviseRecord(site, "https://hostzq7", owner, ref).LoginAs)
+		text := AdviseRecord(site, "", owner, ref).Text
+		assert.Contains(t, text, "delete it as user '"+strconv.Quote(owner)+"', signed in")
+		shown := strings.ReplaceAll(text, clierr.Rancher, "rancher")
+		assert.Equal(t, shown, clierr.WithoutUnsafeToDisplay(shown), "the text holds no rune the printer removes")
+	}
 	assert.Empty(t, AdviseRecord(site, "https://hostzq7", "", ref).LoginAs)
 }
 
-// TestAdviseRecordNamesNoUserForAnOwnerOfOnlyUnsafeRunes asserts an owner id
-// made only of invisible format characters is treated as an unknown owner:
-// LoginAs is empty, and a text that names who runs the delete says its owner
-// or an administrator, never an empty user name.
-func TestAdviseRecordNamesNoUserForAnOwnerOfOnlyUnsafeRunes(t *testing.T) {
+// TestAdviseRecordEscapesTheOwnerWhenTheRecordServerCannotBeUsed asserts the
+// text for a record whose server holds user information, or does not parse,
+// shows an owner with a rune the terminal hides as escapes, never with the
+// runes removed, and keeps the id of a plain owner as it is.
+func TestAdviseRecordEscapesTheOwnerWhenTheRecordServerCannotBeUsed(t *testing.T) {
+	t.Parallel()
+	ref := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc12"}
+	const owner = "u-abc\u200b12"
+	unusableEntry := RecordSite{EntryURL: "https://user:pw@r.example.com"}
+	for name, advice := range map[string]RecordAdvice{
+		"a record server that does not parse": AdviseRecord(RecordSite{}, "not a url", owner, ref),
+		"an entry URL that cannot be used":    AdviseRecord(unusableEntry, unusableEntry.EntryURL, owner, ref),
+	} {
+		assert.Empty(t, advice.Sequence, name)
+		assert.Contains(t, advice.Text, "delete it there as user '"+strconv.Quote(owner)+"' while signed in", name)
+		remedytest.AssertIDShownWithEscapes(t, advice.Text, owner, name)
+	}
+	plain := AdviseRecord(RecordSite{}, "not a url", "u-abc12", ref).Text
+	assert.Contains(t, plain, "delete it there as user 'u-abc12' while signed in")
+}
+
+// TestAdviseRecordEscapesAnOwnerOfOnlyUnsafeRunes asserts an owner id made only
+// of invisible format characters is a known owner: LoginAs holds it exactly and
+// a text that names who runs the delete shows it as escapes, never an empty
+// user name and never another user.
+func TestAdviseRecordEscapesAnOwnerOfOnlyUnsafeRunes(t *testing.T) {
 	t.Parallel()
 	ref := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc12"}
 	const owner = "\u202e\u2063"
 	site := RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}
 	advice := AdviseRecord(site, "https://hostzq7", owner, ref)
-	assert.Empty(t, advice.LoginAs)
+	assert.Equal(t, owner, advice.LoginAs)
 	assert.Empty(t, advice.Text)
 	assert.NotEmpty(t, advice.Sequence)
 
 	noServer := AdviseRecord(site, "", owner, ref)
-	assert.Empty(t, noServer.LoginAs)
-	assert.Contains(t, noServer.Text, "delete it as "+RecordOwnerOrAdministrator+", signed in")
-	assert.NotContains(t, noServer.Text, "user ")
+	assert.Contains(t, noServer.Text, `delete it as user '"\u202e\u2063"', signed in`)
 }
 
 // mustProblem is the reason the check gives for raw.

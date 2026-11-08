@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -198,11 +199,12 @@ func TestRevocationReportJSONAndYAMLKeepStoredValuesAsTheyAre(t *testing.T) {
 	}
 }
 
-// TestRevocationWarningsKeepStoredNamesAndStripTheOwner asserts that the
+// TestRevocationWarningsKeepStoredNamesAndEscapeTheOwner asserts that the
 // warnings of a delete carry the token name and the revoke error as they are
 // in json and yaml, and the owner of an entry with its control, invisible
-// format and separator runes removed, for a user's entry and a plugin's.
-func TestRevocationWarningsKeepStoredNamesAndStripTheOwner(t *testing.T) {
+// format and separator runes written as escapes, for a user's entry and a
+// plugin's.
+func TestRevocationWarningsKeepStoredNamesAndEscapeTheOwner(t *testing.T) {
 	d := textSafetyDeletion(hostileValue)
 	env := output.NewEnvelope("LogoutResult", map[string]any{})
 	env.Warnings = d.Warnings()
@@ -217,10 +219,10 @@ func TestRevocationWarningsKeepStoredNamesAndStripTheOwner(t *testing.T) {
 				}
 				return false
 			}
-			strippedOwner := "<TokenUserID>[2J2Jforged line"
+			escapedOwner := strconv.Quote(hostileValue("TokenUserID"))
 			assert.True(t, holding(hostileValue("supersededRef"), hostileValue("revokeError")), "a warning holds the ref and the revoke error as they are: %q", got.Warnings)
-			assert.True(t, holding("recorded on prod", "the next login of prod as "+strippedOwner), "a warning holds the stripped owner of the user's entry: %q", got.Warnings)
-			assert.True(t, holding("recorded on plugin", "the next kubectl sign-in through plugin as "+strippedOwner), "a warning holds the stripped owner of the plugin's entry: %q", got.Warnings)
+			assert.True(t, holding("recorded on prod", "the next login of prod as "+escapedOwner), "a warning holds the escaped owner of the user's entry: %q", got.Warnings)
+			assert.True(t, holding("recorded on plugin", "the next kubectl sign-in through plugin as "+escapedOwner), "a warning holds the escaped owner of the plugin's entry: %q", got.Warnings)
 		})
 	}
 }

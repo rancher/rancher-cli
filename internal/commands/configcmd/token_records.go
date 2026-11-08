@@ -117,14 +117,14 @@ func recordLines(entry string, s config.Server, indent string) []string {
 		if owner == "" {
 			owner = "unknown owner"
 		}
-		lines = append(lines, fmt.Sprintf("%ssuperseded token %s (%s, superseded %s)", indent, output.Printable(r.Ref.String()), output.Printable(owner), r.SupersededAt))
+		lines = append(lines, fmt.Sprintf("%ssuperseded token %s (%s, superseded %s)", indent, output.Printable(r.Ref.String()), clierr.IDText(owner), r.SupersededAt))
 		lines = append(lines, indent+"  state: "+recordState(s, r))
 		if r.LastAttempt != nil {
 			lines = append(lines, indent+"  last attempt: "+string(r.LastAttempt.Result)+" ("+output.Printable(r.LastAttempt.Error)+")")
 		}
 		ref := r.Ref
 		ref.Name = output.Printable(ref.Name)
-		userID := output.Printable(r.UserID)
+		userID := r.UserID
 		if r.Ref.Kind == clierr.TokenKindV3 {
 			lines = append(lines, indent+"  "+administratorLine(cmp.Or(r.Server, s.URL), ref))
 			continue
@@ -156,7 +156,7 @@ func recordState(s config.Server, rec config.SupersededToken) string {
 func sequenceLines(indent, loginAs string, seq []string) []string {
 	lines := []string{indent + "log in as the token's owner or an administrator, then revoke it with:"}
 	if loginAs != "" {
-		lines = []string{indent + "log in as user " + clierr.ShellQuote(loginAs) + " (the token's owner), then revoke it with:"}
+		lines = []string{indent + "log in as user " + clierr.ShellQuote(clierr.IDText(loginAs)) + " (the token's owner), then revoke it with:"}
 	}
 	for _, c := range seq {
 		lines = append(lines, indent+"  "+c)

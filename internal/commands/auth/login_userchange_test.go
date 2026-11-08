@@ -33,10 +33,15 @@ type userChangeFixture struct {
 
 func newUserChangeFixture(t *testing.T) *userChangeFixture {
 	t.Helper()
-	f := testrancher.New(testrancher.Options{Users: []testrancher.User{
+	return newUserChangeFixtureOn(t, testrancher.New(testrancher.Options{Users: []testrancher.User{
 		{Name: "alice", Password: "pw", UserID: "user-alice"},
 		{Name: "bob", Password: "pw", UserID: "user-bob"},
-	}})
+	}}))
+}
+
+// newUserChangeFixtureOn is the fixture over the Rancher f.
+func newUserChangeFixtureOn(t *testing.T, f *testrancher.Facade) *userChangeFixture {
+	t.Helper()
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	dir, store := cmdtest.FilePolicyDir(t)

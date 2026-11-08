@@ -178,7 +178,7 @@ func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
 	}
 	if recorded != "" {
 		return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose + " records the owner " +
-			clierr.ShellQuote(recorded) + ", which --user-id does not accept; the exec plugin does not check the user")
+			clierr.ShellQuote(clierr.IDText(recorded)) + ", which --user-id does not accept; the exec plugin does not check the user")
 	}
 	var remedy string
 	// auth login refuses a name in the exec plugin's own login entry

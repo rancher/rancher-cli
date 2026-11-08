@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // passwordChangeRequestGVR names the ext.cattle.io PasswordChangeRequest
@@ -106,7 +107,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 		Action:            safety.ActionCreate,
 		Target:            passwordChangeRequestGVR.Resource + "/" + userID,
 		DisplayKind:       "password-change-request",
-		DisplayName:       userID,
+		DisplayName:       clierr.IDText(userID),
 		Cluster:           engine.LocalCluster,
 		Diff:              diff,
 		ConflictDetection: true,
@@ -121,13 +122,13 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 		}
 		if !passwordUpdated(created) {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("the server did not confirm the password change for user %s", userID)).
+				fmt.Sprintf("the server did not confirm the password change for user %s", clierr.IDText(userID))).
 				WithDetails(clierr.CommittedContextDetails{
 					Committed: true, ResourceKind: "User", ResourceName: userID,
-					Recovery: clierr.Rancher + " get user" + clierr.ShellQuoteArgs(" -o json", userID),
+					Recovery: userLookupRecovery(userID),
 				})
 		}
-		res := runtime.MutationText("password-change-request", userID, "completed")
+		res := runtime.MutationText("password-change-request", clierr.IDText(userID), "completed")
 		res.Kind = "PasswordChangeRequestCompleted"
 		// Never the raw created object: its spec.newPassword field echoes
 		// the plaintext value verbatim - Data is a hand-built, deliberately
@@ -137,6 +138,19 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 		return res, nil
 	}
 	return eff, exec, nil
+}
+
+// userLookupRecovery is the command that shows the user a password change was
+// for. It names the id only when the id is a Rancher user id (a Kubernetes
+// object name); any other typed value is shown through clierr.IDText, with
+// the command that lists users and the place the exact id is: the field
+// resourceName of the error's details in the JSON output.
+func userLookupRecovery(userID string) string {
+	if len(validation.IsDNS1123Subdomain(userID)) == 0 {
+		return clierr.Rancher + " get user" + clierr.ShellQuoteArgs(" -o json", userID)
+	}
+	return "the user id " + clierr.ShellQuote(clierr.IDText(userID)) + " is not a Rancher user id, and the CLI prints no command for it; " +
+		"the exact id is in the JSON output (-o json), field details.resourceName; find the user with: " + clierr.Rancher + " get users -o json"
 }
 
 // passwordUpdated reports whether created's status carries a True

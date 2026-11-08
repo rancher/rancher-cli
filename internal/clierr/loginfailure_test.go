@@ -3,6 +3,8 @@ package clierr
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -305,6 +307,37 @@ func TestPriorEntryTextShapes(t *testing.T) {
 	assert.Equal(t, "system roots", (&PriorEntry{}).caShape())
 	assert.Equal(t, "path /etc/ca.pem", (&PriorEntry{CA: "/etc/ca.pem"}).caShape())
 	assert.Equal(t, "inline PEM (8 bytes)", (&PriorEntry{CA: "-----BEG"}).caShape())
+}
+
+// TestPriorEntryTextEscapesAnOwnerWithHiddenRunes asserts the prior entry line
+// writes an owner with a rune the terminal hides as a double-quoted string
+// with escapes, never with the runes removed (which would read as another
+// id), and that the owner of a safe id stays as it is. The data field keeps
+// the exact owner.
+func TestPriorEntryTextEscapesAnOwnerWithHiddenRunes(t *testing.T) {
+	t.Parallel()
+	const hostile = "u-abc\u200b12"
+	for _, tc := range []struct{ owner, want string }{
+		{"u-abc12", "token ext/token-old (user u-abc12)"},
+		{hostile, "token ext/token-old (user " + strconv.Quote(hostile) + ")"},
+	} {
+		d := LoginFailureDetails{
+			Primary: PrimaryFailure{Code: CodeGeneric, Message: "boom"},
+			Stage:   StageClusterToken,
+			ConfigRecovery: &ConfigRecovery{Entry: "prod", Command: "c", Prior: &PriorEntry{
+				URL: "https://r.ex", TokenRef: &TokenRef{Kind: TokenKindExt, Name: "token-old"}, TokenUserID: tc.owner}},
+			Recovery: "r",
+		}
+		var prior string
+		for _, l := range d.TextDetails() {
+			if strings.HasPrefix(l, "  prior entry: ") {
+				prior = l
+			}
+		}
+		assert.Contains(t, prior, tc.want)
+		assert.Equal(t, prior, WithoutUnsafeToDisplay(prior), "the line holds no rune the terminal hides")
+		assert.Equal(t, tc.owner, d.ConfigRecovery.Prior.TokenUserID)
+	}
 }
 
 // TestSupersededRecordServerTravelsInTheFailureDetails asserts the

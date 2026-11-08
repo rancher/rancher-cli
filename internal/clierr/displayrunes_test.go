@@ -2,6 +2,7 @@ package clierr
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"unicode"
 
@@ -67,5 +68,57 @@ func TestWithoutUnsafeToDisplayAgreesWithIsUnsafeToDisplay(t *testing.T) {
 		for _, r := range got {
 			assert.False(t, IsUnsafeToDisplay(r), "%q holds U+%04X", got, r)
 		}
+	}
+}
+
+// TestIDTextEscapesAnIdWithAHiddenRuneAndKeepsEveryOther asserts, for every
+// valid code point inside an id, that IDText returns the id unchanged when the
+// rune is not one IsUnsafeToDisplay reports and the id as a double-quoted Go
+// string otherwise, and that the quoted form holds no such rune and reads back
+// as the exact id: nothing is removed.
+func TestIDTextEscapesAnIdWithAHiddenRuneAndKeepsEveryOther(t *testing.T) {
+	var wrong []string
+	for r := rune(0); r <= unicode.MaxRune && len(wrong) < 20; r++ {
+		if r >= 0xD800 && r <= 0xDFFF {
+			continue
+		}
+		id := "u-a" + string(r) + "b"
+		got := IDText(id)
+		if !IsUnsafeToDisplay(r) {
+			if got != id {
+				wrong = append(wrong, fmt.Sprintf("U+%04X changed: %q", r, got))
+			}
+			continue
+		}
+		unquoted, err := strconv.Unquote(got)
+		if err != nil || unquoted != id || got != strconv.Quote(id) || WithoutUnsafeToDisplay(got) != got {
+			wrong = append(wrong, fmt.Sprintf("U+%04X: %q", r, got))
+		}
+	}
+	assert.Empty(t, wrong)
+}
+
+// TestIDTextRows asserts the rows the callers rely on: a plain id and an
+// email-style name are unchanged, an id of only hidden runes is shown as
+// escapes (never empty), a remedy marker start is shown as an escape, and an
+// invalid UTF-8 byte with no hidden rune is unchanged.
+func TestIDTextRows(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, in, want string }{
+		{"a user id", "u-abc12", "u-abc12"},
+		{"an email name", "alice@example.com", "alice@example.com"},
+		{"a name with a space", "a b", "a b"},
+		{"an empty id", "", ""},
+		{"only hidden runes", "\u202e\u2063", `"\u202e\u2063"`},
+		{"a zero width space inside", "u-abc\u200b12", `"u-abc\u200b12"`},
+		{"a newline", "u-a\nb", `"u-a\nb"`},
+		{"a bell", "u-a\ab", `"u-a\ab"`},
+		{"the start of a remedy marker", "u\u2063rancher", `"u\u2063rancher"`},
+		{"an invalid byte and no hidden rune", "u-a\xffb", "u-a\xffb"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, IDText(tc.in))
+		})
 	}
 }

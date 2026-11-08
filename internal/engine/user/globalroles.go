@@ -228,6 +228,17 @@ func grantUserPreview(username string) string {
 	return clierr.Rancher + " grant" + clierr.ShellQuoteArgs(" --global --role user --dry-run", username)
 }
 
+// grantUserClause is the end of a warning that says how to grant the global
+// role user to the typed username: the preview command, or, for a username that
+// holds a character the terminal hides, the name with escapes and no command,
+// so a command never names another user than the one typed.
+func grantUserClause(username string) string {
+	if clierr.IDText(username) != username {
+		return "the username holds characters the CLI does not show (" + clierr.IDText(username) + "); the CLI prints no command for it"
+	}
+	return "preview the grant with: " + grantUserPreview(username)
+}
+
 // notBoundClauses words, for each role that was not bound, how to grant it
 // to the committed user id. An id that is not an object name gets prose only:
 // the CLI prints no command for an id it cannot quote.
@@ -247,13 +258,13 @@ func notBoundClauses(id string, roles []string) []string {
 // noDefaultWarning is the preview note for an empty role set: the server
 // marks no default role and the new user would have no role to log in with.
 func noDefaultWarning(username string) string {
-	return "the server marks no global role as a default for new users; the user cannot log in until granted one; preview the grant with: " +
-		grantUserPreview(username)
+	return "the server marks no global role as a default for new users; the user cannot log in until granted one; " +
+		grantUserClause(username)
 }
 
 // noTokenRoleWarning is the preview note for typed roles none of which
 // allows creating tokens.
 func noTokenRoleWarning(username string) string {
-	return "none of these global roles allows creating tokens; the user cannot log in with rancher-cli until granted one; preview the grant with: " +
-		grantUserPreview(username)
+	return "none of these global roles allows creating tokens; the user cannot log in with rancher-cli until granted one; " +
+		grantUserClause(username)
 }

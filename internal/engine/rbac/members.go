@@ -7,6 +7,7 @@ import (
 	"maps"
 	"sort"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
@@ -159,7 +160,7 @@ func ResolveMembers(ctx context.Context, mgmt engine.ClusterClient, attrs *steve
 	}
 	sort.Strings(collisions)
 	for _, p := range collisions {
-		warnings = append(warnings, fmt.Sprintf("display name for %s not shown: more than one user has this principal, or userattributes give it different display names", p))
+		warnings = append(warnings, fmt.Sprintf("display name for %s not shown: more than one user has this principal, or userattributes give it different display names", clierr.IDText(p)))
 	}
 
 	sort.Slice(rows, func(i, j int) bool {

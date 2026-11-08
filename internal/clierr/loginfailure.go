@@ -315,7 +315,7 @@ func (p *PriorEntry) text() string {
 		tok := "token " + p.TokenRef.String()
 		var facts []string
 		if p.TokenUserID != "" {
-			facts = append(facts, "user "+p.TokenUserID)
+			facts = append(facts, "user "+IDText(p.TokenUserID))
 		}
 		if p.CredentialExpiresAt != "" {
 			facts = append(facts, "expires "+p.CredentialExpiresAt)

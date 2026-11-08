@@ -1,7 +1,8 @@
-// Package remedytest is test support for the checks that a remedy command
-// names the config directory: which top-level commands read one, from the
-// command tree's own schema manifest golden. Tests only; no production
-// package imports it.
+// Package remedytest is test support for the checks on text the CLI prints:
+// that a remedy command names the config directory (which top-level commands
+// read one, from the command tree's own schema manifest golden), the plants
+// that walk every text field of a type, and the display of a user id the CLI
+// did not validate. Tests only; no production package imports it.
 package remedytest
 
 import (

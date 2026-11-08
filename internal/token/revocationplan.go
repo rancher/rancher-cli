@@ -844,7 +844,7 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	}
 	revoke := "revoke it as " + config.RecordOwnerOrAdministrator + " with: "
 	if advice.LoginAs != "" {
-		revoke = "revoke it as user " + clierr.ShellQuote(advice.LoginAs) + " with: "
+		revoke = "revoke it as user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs)) + " with: "
 	}
 	text := fmt.Sprintf("the %s was not revoked (%s); the sequence %s; %s%s", what, reasonText(it), clierr.RecoverySequenceAssumption, revoke, strings.Join(advice.Sequence, "; "))
 	switch {
@@ -865,8 +865,8 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 func (d *Deletion) nextLoginText(entry string, withCommand bool) string {
 	e := d.view.Servers[entry]
 	as := ""
-	if owner := clierr.WithoutUnsafeToDisplay(e.TokenUserID); owner != "" {
-		as = " as " + owner
+	if e.TokenUserID != "" {
+		as = " as " + clierr.IDText(e.TokenUserID)
 	}
 	if e.Provenance == clierr.ProvenanceExecLogin || config.IsExecLoginEntryName(entry) {
 		return "the next kubectl sign-in through " + entry + as

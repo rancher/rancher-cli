@@ -227,7 +227,28 @@ var anonymousListMessage = "no server operation lists the anonymous identity's r
 
 // groupListMessage is the one wording for the group refusal in list.
 func groupListMessage(raw string) string {
-	return "no server operation lists a group's rules; " + pointQuestionPlaceholders + "; ask a point question with: " + groupAccessCan(raw)
+	return "no server operation lists a group's rules; " + pointQuestionPlaceholders + "; " + groupPointQuestion(raw)
+}
+
+// groupPointQuestion is the clause that suggests the point question about the
+// group raw, or says why none is suggested: a command is built only from a
+// name the terminal shows unchanged, so it never names another group than the
+// one typed.
+func groupPointQuestion(raw string) string {
+	if clierr.IDText(raw) != raw {
+		return "the group name holds characters the CLI does not show (" + clierr.IDText(raw) + "); the CLI prints no command for it"
+	}
+	return "ask a point question with: " + groupAccessCan(raw)
+}
+
+// serviceAccountList is the clause that tells the caller to list one cluster's
+// access of the service account raw, with the command unless raw holds a
+// character the terminal hides.
+func serviceAccountList(raw string) string {
+	if clierr.IDText(raw) != raw {
+		return "the service account name holds characters the CLI does not show (" + clierr.IDText(raw) + "); the CLI prints no command for it"
+	}
+	return "use " + clierr.Rancher + " access list --cluster <cluster> --as " + clierr.ShellQuote(raw)
 }
 
 // pointQuestionPlaceholders names the placeholders of the point question a

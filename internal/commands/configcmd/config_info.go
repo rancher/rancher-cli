@@ -255,7 +255,7 @@ func entrySection(name string, s config.Server) []field {
 		out = append(out, field{"provenance", string(s.Provenance)})
 	}
 	if s.TokenUserID != "" {
-		out = append(out, field{"tokenUserId", output.Printable(s.TokenUserID)})
+		out = append(out, field{"tokenUserId", clierr.IDText(s.TokenUserID)})
 	}
 	if s.TokenAuthConfig != "" {
 		out = append(out, field{"tokenAuthConfig", output.Printable(s.TokenAuthConfig)})
@@ -282,7 +282,7 @@ func entrySection(name string, s config.Server) []field {
 			// do not repeat the ref.
 			var sec []field
 			if r.UserID != "" {
-				sec = append(sec, field{"userId", output.Printable(r.UserID)})
+				sec = append(sec, field{"userId", clierr.IDText(r.UserID)})
 			}
 			if r.Server != "" {
 				sec = append(sec, field{"server", config.DisplayServerURL(r.Server)})
@@ -307,7 +307,7 @@ func entrySection(name string, s config.Server) []field {
 func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresAt string) []field {
 	sec := []field{{"ref", output.Printable(ref.String())}}
 	if userID != "" {
-		sec = append(sec, field{"userId", output.Printable(userID)})
+		sec = append(sec, field{"userId", clierr.IDText(userID)})
 	}
 	if expiresAt != "" {
 		sec = append(sec, field{"expiresAt", output.Printable(expiresAt)})
@@ -323,7 +323,6 @@ func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresA
 // entryReport, whose recovery value stays the commands alone.
 func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) field {
 	ref.Name = output.Printable(ref.Name)
-	userID = output.Printable(userID)
 	if ref.Kind == clierr.TokenKindV3 {
 		return field{"recovery", []string{administratorLine(serverURL, ref)}}
 	}
@@ -334,7 +333,7 @@ func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRe
 	lines := append(advice.Sequence, "("+clierr.RecoverySequenceAssumption+")")
 	login := "log in as the token's owner or an administrator, then run:"
 	if advice.LoginAs != "" {
-		login = "log in as user " + clierr.ShellQuote(advice.LoginAs) + " (the token's owner), then run:"
+		login = "log in as user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs)) + " (the token's owner), then run:"
 	}
 	lines = append([]string{login}, lines...)
 	return field{"recovery", lines}

@@ -286,7 +286,7 @@ func renderAuthCheckText(
 	fmt.Fprintf(&b, "\nIDENTITY\n")
 	if idMap, idOK := identity.(map[string]any); idOK {
 		userID, _ := idMap["userID"].(string)
-		fmt.Fprintf(&b, "  userID: %s\n", output.Printable(userID))
+		fmt.Fprintf(&b, "  userID: %s\n", clierr.IDText(userID))
 	} else {
 		fmt.Fprintf(&b, "  identity: unavailable\n")
 	}
@@ -546,7 +546,7 @@ func credentialReport(s config.Server) (map[string]any, string) {
 	var facts []string
 	if s.TokenUserID != "" {
 		m["userId"] = s.TokenUserID
-		facts = append(facts, "user "+output.Printable(s.TokenUserID))
+		facts = append(facts, "user "+clierr.IDText(s.TokenUserID))
 	}
 	if s.TokenAuthConfig != "" {
 		m["authConfig"] = s.TokenAuthConfig

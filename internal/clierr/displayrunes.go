@@ -1,6 +1,7 @@
 package clierr
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -25,9 +26,9 @@ import (
 // is handled by each caller.
 //
 // The callers' rule: output.Printable removes these runes from displayed
-// text, a new server entry name may not hold them, and the user id in the
-// recovery advice and in the warnings that name an entry's next login or a
-// superseded token's other owner has them removed with WithoutUnsafeToDisplay.
+// text, a new server entry name may not hold them, and a user id the CLI did
+// not validate goes into error, hint, warning and recovery text through
+// IDText, which shows the id with these runes as escapes.
 //
 // The source scan in test/conformance refuses any other test of these classes
 // through the unicode package outside its allowlist, so every caller shares
@@ -37,11 +38,10 @@ func IsUnsafeToDisplay(r rune) bool {
 }
 
 // WithoutUnsafeToDisplay is s with every rune IsUnsafeToDisplay reports
-// removed. The recovery advice of config.AdviseRecord and the warnings that
-// name an entry's next login or a superseded token's other owner pass a user
-// id through it: the id then cannot carry a newline, a direction control or
-// an invisible rune. An id that holds only such runes comes back empty.
-// output.Printable is this function, applied to displayed text.
+// removed. Its only caller is output.Printable, which applies it to
+// displayed text. A user id never goes through it: removing runes could turn
+// one id into another real id, so IDText writes them as escapes. An input
+// that holds only such runes comes back empty.
 func WithoutUnsafeToDisplay(s string) string {
 	return strings.Map(func(r rune) rune {
 		if IsUnsafeToDisplay(r) {
@@ -49,4 +49,18 @@ func WithoutUnsafeToDisplay(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// IDText is id as it goes into error, hint, warning and recovery text. An id
+// none of whose runes IsUnsafeToDisplay reports is returned unchanged. Any
+// other id is returned as a double-quoted Go string with those runes written
+// as escapes, so the text shows the exact id and no rune hides or reorders the
+// text around it. The runes are never removed: removing them could turn one id
+// into another real id. An invalid UTF-8 byte is not a rune IsUnsafeToDisplay
+// matches, so an id with only such a byte comes back unchanged.
+func IDText(id string) string {
+	if strings.IndexFunc(id, IsUnsafeToDisplay) < 0 {
+		return id
+	}
+	return strconv.Quote(id)
 }

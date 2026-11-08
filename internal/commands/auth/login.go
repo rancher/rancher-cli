@@ -197,7 +197,7 @@ func replacedUserWarning(name, was, now string) []string {
 	if was == "" || now == "" || was == now {
 		return nil
 	}
-	return []string{"server entry " + name + " is now logged in as user " + now + "; it was logged in as user " + was}
+	return []string{"server entry " + name + " is now logged in as user " + clierr.IDText(now) + "; it was logged in as user " + clierr.IDText(was)}
 }
 
 // replacedAuthConfigWarning is the warning of a login that leaves a server

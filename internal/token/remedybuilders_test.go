@@ -234,8 +234,9 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			return append(errText(pluginEntriesError(url, names, cfg, "", userCheck{})),
 				append(errText(pluginEntriesError(url, names, cfg, "prod", u)), errText(pluginEntriesError(url, names, cfg, "", u))...)...)
 		},
-		"noTokenPermissionText": func() []string {
-			return []string{noTokenPermissionText("u-abc12", true), noTokenPermissionText("", true), noTokenPermissionText("u-abc12", false), noTokenPermissionText("", false)}
+		"noTokenPermissionTextOf": func() []string {
+			return []string{noTokenPermissionText("u-abc12", true), noTokenPermissionText("", true), noTokenPermissionText("u-abc12", false), noTokenPermissionText("", false),
+				noTokenPermissionTextOf("alice@example.com", name, true), noTokenPermissionTextOf("u-a\u202eb", "", false)}
 		},
 		"reLogin":          func() []string { a, b := reLogin(name); return []string{a, b} },
 		"revokedClause":    func() []string { return []string{revokedClause("the token", ref, RevokeOutcome{Result: ResultFailed})} },

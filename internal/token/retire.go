@@ -97,8 +97,8 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 		case config.OwnerDifferent:
 			rep.Kept = append(rep.Kept, rec)
 			who := "a different user"
-			if owner := clierr.WithoutUnsafeToDisplay(rec.UserID); owner != "" {
-				who += " (" + owner + ")"
+			if rec.UserID != "" {
+				who += " (" + clierr.IDText(rec.UserID) + ")"
 			}
 			rep.Warnings = append(rep.Warnings, keptWarning(rec, serverURL, who+" owns it"))
 			continue
@@ -189,7 +189,7 @@ func keptWarning(rec config.SupersededToken, serverURL, why string) string {
 	}
 	revoke := "revoke it as " + config.RecordOwnerOrAdministrator + " with: "
 	if advice.LoginAs != "" {
-		revoke = "revoke it as user " + clierr.ShellQuote(advice.LoginAs) + " with: "
+		revoke = "revoke it as user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs)) + " with: "
 	}
 	return fmt.Sprintf("the superseded token %s was not retired: %s; the sequence %s; %s%s",
 		rec.Ref.String(), why, clierr.RecoverySequenceAssumption, revoke, strings.Join(advice.Sequence, "; "))

@@ -458,7 +458,7 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 				// emit a false mismatch.
 				if gotID != "" && gotID != wantID {
 					result.Warnings = append(result.Warnings,
-						fmt.Sprintf("the creatorId annotation on the created cluster (%s) differs from your user ID (%s): check that the rancher-webhook mutating webhook runs on create requests", gotID, wantID))
+						fmt.Sprintf("the creatorId annotation on the created cluster (%s) differs from your user ID (%s): check that the rancher-webhook mutating webhook runs on create requests", clierr.IDText(gotID), wantID))
 				}
 			}
 			return result, nil

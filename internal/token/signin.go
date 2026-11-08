@@ -256,7 +256,8 @@ func signInWho(userID string) (who, as string) {
 	if userID == "" {
 		return "the user who signed in", "that user"
 	}
-	return "user " + clierr.ShellQuote(userID), "user " + clierr.ShellQuote(userID)
+	user := "user " + clierr.ShellQuote(clierr.IDText(userID))
+	return user, user
 }
 
 // signInLeftover says how a token the exec plugin's sign-in could not delete

@@ -235,7 +235,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		return runtime.Result{}, err
 	}
 	name := createdUser.GetName()
-	recovery := fmt.Sprintf("the user %s was created without a password; the CLI prints no command for an id it cannot quote", clierr.ShellQuote(name))
+	recovery := fmt.Sprintf("the user %s was created without a password; the CLI prints no command for an id it cannot quote", clierr.ShellQuote(clierr.IDText(name)))
 	if len(validation.IsDNS1123Subdomain(name)) == 0 {
 		recovery = fmt.Sprintf(`the user %s was created without a password; to set one without putting it on the command line or in shell history, set PASSWORD in your shell (a password containing a double quote or backslash must be JSON-escaped in the manifest) and add --apply after reading the preview of: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | `, name, name) +
 			clierr.Rancher + " create resource -f - --cluster local --dry-run"
@@ -273,7 +273,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		bindings = append(bindings, map[string]any{"name": created.GetName(), "globalRoleName": role})
 	}
 	if firstErr != nil {
-		recovery := fmt.Sprintf("the user %s was created; %s", clierr.ShellQuote(name), strings.Join(notBoundClauses(name, notBound), "; "))
+		recovery := fmt.Sprintf("the user %s was created; %s", clierr.ShellQuote(clierr.IDText(name)), strings.Join(notBoundClauses(name, notBound), "; "))
 		return runtime.Result{}, engine.CommittedPartialSuccess(firstErr, clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "User", ResourceName: name, Recovery: recovery,
 		})

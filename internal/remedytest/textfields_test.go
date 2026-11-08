@@ -96,3 +96,42 @@ func TestPlantTextSetsEveryTextFieldToTheValueForItsPath(t *testing.T) {
 	assert.Equal(t, MarkedDetails{Text: clierr.Rancher + " plant Any"}, marked.Any)
 	assert.Equal(t, clierr.Rancher+" plant Err", marked.Err.Message)
 }
+
+// recordedFailures is a testing.TB that records an error instead of failing
+// the test, so a check's failure can itself be asserted.
+type recordedFailures struct {
+	testing.TB
+	failed bool
+}
+
+func (r *recordedFailures) Helper()               {}
+func (r *recordedFailures) Errorf(string, ...any) { r.failed = true }
+
+// TestAssertIDShownWithEscapesFailsForEveryWrongText asserts the check passes
+// for a text that shows the id with escapes and fails for a text that shows
+// it raw, with its hidden runes removed, or in addition to the escaped form,
+// and for an id with no hidden rune.
+func TestAssertIDShownWithEscapesFailsForEveryWrongText(t *testing.T) {
+	t.Parallel()
+	const id = "u-abc\u200b12"
+	escaped := clierr.IDText(id)
+	for _, tc := range []struct {
+		name, text, id string
+		fails          bool
+	}{
+		{"escaped", "the user " + escaped + " is gone", id, false},
+		{"raw", "the user " + id + " is gone", id, true},
+		{"removed", "the user u-abc12 is gone", id, true},
+		{"escaped and removed", "the user " + escaped + " is gone; it reads u-abc12", id, true},
+		{"a hidden rune elsewhere", "the user " + escaped + " is gone\u202e", id, true},
+		{"escaped, on two lines", "the user " + escaped + " is gone\nthe next line", id, false},
+		{"an id with no hidden rune", "the user u-abc12 is gone", "u-abc12", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := &recordedFailures{TB: t}
+			AssertIDShownWithEscapes(r, tc.text, tc.id)
+			assert.Equal(t, tc.fails, r.failed)
+		})
+	}
+}

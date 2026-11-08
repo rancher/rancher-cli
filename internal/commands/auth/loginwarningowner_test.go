@@ -33,15 +33,15 @@ func warningsInJSON(t *testing.T, warnings []string) []string {
 	return got.Warnings
 }
 
-// TestLoginKeptTokenWarningStripsThePriorOwner asserts the warning of a login
-// over a token another user owns names that user without invisible or
-// direction-changing runes in the JSON envelope, and names no user when the
-// stored id holds only such runes.
-func TestLoginKeptTokenWarningStripsThePriorOwner(t *testing.T) {
+// TestLoginKeptTokenWarningEscapesThePriorOwner asserts the warning of a login
+// over a token another user owns names that user with every invisible or
+// direction-changing rune written as an escape in the JSON envelope, never
+// removed, so the text shows the exact id.
+func TestLoginKeptTokenWarningEscapesThePriorOwner(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, owner, want string }{
-		{"stripped", "user-z\u202ex\u2028y", "a different user (user-zxy) owns it"},
-		{"nothing left", "\u202e\u2063", "a different user owns it"},
+		{"escaped", "user-z\u202ex\u2028y", `a different user ("user-z\u202ex\u2028y") owns it`},
+		{"only hidden runes", "\u202e\u2063", `a different user ("\u202e\u2063") owns it`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

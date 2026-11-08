@@ -12,11 +12,12 @@ import (
 	"github.com/rancher/rancher-cli/internal/output"
 )
 
-// TestRevocationOwnerLosesUnsafeRunesInReportAndWarning asserts an owner id
-// that holds a direction override, a line separator and a paragraph separator
-// reaches neither the loginAs field of the JSON report nor the warning text
-// that names the user the sequence logs in as.
-func TestRevocationOwnerLosesUnsafeRunesInReportAndWarning(t *testing.T) {
+// TestRevocationOwnerIsEscapedInTheWarningAndExactInTheReport asserts an owner
+// id that holds a direction override, a line separator and a paragraph
+// separator stays exact in the loginAs field of the JSON report, and the
+// warning text that names the user the sequence logs in as shows it with
+// escapes.
+func TestRevocationOwnerIsEscapedInTheWarningAndExactInTheReport(t *testing.T) {
 	t.Parallel()
 	const url = "https://r.example.com"
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: url}}}
@@ -33,18 +34,18 @@ func TestRevocationOwnerLosesUnsafeRunesInReportAndWarning(t *testing.T) {
 	require.Len(t, items, 1)
 	failed, ok := items[0].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "u-abcd", failed["loginAs"])
+	assert.Equal(t, "u-a\u202eb\u2028c\u2029d", failed["loginAs"])
 
 	warning := clierr.ExpandRemedies(d.manualWarning(it), "")
-	assert.Contains(t, warning, "revoke it as user 'u-abcd' with: ")
+	assert.Contains(t, warning, `revoke it as user '"u-a\u202eb\u2028c\u2029d"' with: `)
 	assert.Equal(t, warning, output.Printable(warning), "the warning holds no rune the printer removes")
 }
 
-// TestRevocationOwnerOfOnlyUnsafeRunesIsAnUnknownOwner asserts an owner id made
-// only of format runes leaves the loginAs field out of the JSON report and
-// makes the warning say the token's owner or an administrator revokes it,
-// never an empty user name.
-func TestRevocationOwnerOfOnlyUnsafeRunesIsAnUnknownOwner(t *testing.T) {
+// TestRevocationOwnerOfOnlyUnsafeRunesIsShownAsEscapes asserts an owner id made
+// only of format runes is a known owner: the loginAs field of the JSON report
+// holds it exactly and the warning shows it with escapes, never an empty user
+// name and never another user.
+func TestRevocationOwnerOfOnlyUnsafeRunesIsShownAsEscapes(t *testing.T) {
 	t.Parallel()
 	const url = "https://r.example.com"
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: url}}}
@@ -61,31 +62,29 @@ func TestRevocationOwnerOfOnlyUnsafeRunesIsAnUnknownOwner(t *testing.T) {
 	require.Len(t, items, 1)
 	failed, ok := items[0].(map[string]any)
 	require.True(t, ok)
-	assert.NotContains(t, failed, "loginAs")
+	assert.Equal(t, "\u202e\u2063", failed["loginAs"])
 	assert.NotEmpty(t, failed["recovery"])
 
 	warning := clierr.ExpandRemedies(d.manualWarning(it), "")
-	assert.Contains(t, warning, "revoke it as "+config.RecordOwnerOrAdministrator+" with: ")
-	assert.NotContains(t, warning, "user '")
+	assert.Contains(t, warning, `revoke it as user '"\u202e\u2063"' with: `)
 }
 
-// TestNextLoginWarningStripsTheEntryOwner asserts the warning that names the
+// TestNextLoginWarningEscapesTheEntryOwner asserts the warning that names the
 // login revoking an entry's tokens, in the login form and the kubectl
-// sign-in form, carries the entry's owner id without direction-changing,
-// invisible or separator runes in the JSON envelope, and leaves "as <id>" out
-// when nothing of the id remains.
-func TestNextLoginWarningStripsTheEntryOwner(t *testing.T) {
+// sign-in form, carries the entry's owner id with every direction-changing,
+// invisible or separator rune as an escape in the JSON envelope, never
+// removed.
+func TestNextLoginWarningEscapesTheEntryOwner(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, owner, login, signIn string
-		noName                     bool
 	}{
-		{"stripped", "u-a\u202eb\u2028c",
-			"the next login of prod as u-abc; run it with: ",
-			"the next kubectl sign-in through plugin as u-abc", false},
-		{"nothing left", "\u202e\u2063",
-			"the next login of prod; run it with: ",
-			"the next kubectl sign-in through plugin", true},
+		{"escaped", "u-a\u202eb\u2028c",
+			`the next login of prod as "u-a\u202eb\u2028c"; run it with: `,
+			`the next kubectl sign-in through plugin as "u-a\u202eb\u2028c"`},
+		{"only hidden runes", "\u202e\u2063",
+			`the next login of prod as "\u202e\u2063"; run it with: `,
+			`the next kubectl sign-in through plugin as "\u202e\u2063"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -111,10 +110,6 @@ func TestNextLoginWarningStripsTheEntryOwner(t *testing.T) {
 			assert.Contains(t, signIn, tc.signIn)
 			assert.NotContains(t, login+signIn, "\u202e")
 			assert.NotContains(t, login+signIn, "\u2028")
-			if tc.noName {
-				assert.NotContains(t, login, "prod as")
-				assert.NotContains(t, signIn, "plugin as")
-			}
 		})
 	}
 }

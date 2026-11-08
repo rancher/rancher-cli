@@ -130,7 +130,7 @@ func recordPerson(owner string) string {
 	if owner == "" {
 		return RecordOwnerOrAdministrator
 	}
-	return "user " + clierr.ShellQuote(owner)
+	return "user " + clierr.ShellQuote(clierr.IDText(owner))
 }
 
 // RecordAdvice is what to say about the server a token record names: the
@@ -139,10 +139,9 @@ func recordPerson(owner string) string {
 type RecordAdvice struct {
 	Sequence []string
 	// LoginAs is the user the sequence's first command logs in as: the
-	// token's owner with control characters, invisible format characters
-	// (bidi overrides and isolates among them) and the line and paragraph
-	// separators removed, empty when the owner is unknown or the id is empty
-	// once those are removed. Set only with Sequence.
+	// token's owner exactly as recorded, empty when the owner is unknown. A
+	// text that names it passes it through clierr.IDText. Set only with
+	// Sequence.
 	LoginAs string
 	Text    string
 }
@@ -193,7 +192,7 @@ func holdsUserinfo(raw string) bool {
 //   - otherwise the recovery sequence, built from the identity and never from
 //     the text as stored.
 func AdviseRecord(site RecordSite, recordServer, userID string, ref clierr.TokenRef) RecordAdvice {
-	owner := clierr.WithoutUnsafeToDisplay(userID)
+	owner := userID
 	if recordServer == "" {
 		return RecordAdvice{Text: noServerText(ref, owner)}
 	}

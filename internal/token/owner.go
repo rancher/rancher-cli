@@ -122,11 +122,11 @@ func (u userCheck) loginOfNewEntry(cfg *config.Config) string {
 // regenerated from an entry that holds that user's login.
 func (u userCheck) entryOwnerRefused(cfg *config.Config, entry, owner string, plugin, holds bool) *clierr.Error {
 	subject := "server entry " + clierr.ShellQuote(entry)
-	state := " holds the login of Rancher user " + clierr.ShellQuote(owner)
+	state := " holds the login of Rancher user " + clierr.ShellQuote(clierr.IDText(owner))
 	if plugin {
 		subject += ", the exec plugin's own login entry,"
 		if !holds {
-			state = " was last logged in as Rancher user " + clierr.ShellQuote(owner)
+			state = " was last logged in as Rancher user " + clierr.ShellQuote(clierr.IDText(owner))
 		}
 	}
 	text, hint := u.relogin(cfg, entry, plugin)
@@ -216,7 +216,7 @@ func (u userCheck) checkCreatedOwner(ctx context.Context, cfg *config.Config, cr
 			revokedClause("the token", created.Ref, out)).WithDetails(fateDetails(fresh, out))
 	}
 	text, hint := u.relogin(cfg, sc.name, sc.entry.Provenance == clierr.ProvenanceExecLogin)
-	return clierr.New(clierr.CodeAuth, "the stored login of server entry "+clierr.ShellQuote(sc.name)+" belongs to Rancher user "+clierr.ShellQuote(created.UserID)+
+	return clierr.New(clierr.CodeAuth, "the stored login of server entry "+clierr.ShellQuote(sc.name)+" belongs to Rancher user "+clierr.ShellQuote(clierr.IDText(created.UserID))+
 		", not to "+clierr.ShellQuote(u.userID)+", which this exec entry names with --user-id; "+
 		revokedClause("the token created from it", created.Ref, out)+"; "+text).WithHint(hint).WithDetails(fateDetails(fresh, out))
 }
@@ -347,7 +347,7 @@ func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, ba
 		return u.checkSignInAuthConfig(ctx, created, fresh)
 	}
 	out := revokeRefused(ctx, fresh)
-	return clierr.New(clierr.CodeAuth, "the sign-in was made as Rancher user "+clierr.ShellQuote(owner)+", and this exec entry names user "+
+	return clierr.New(clierr.CodeAuth, "the sign-in was made as Rancher user "+clierr.ShellQuote(clierr.IDText(owner))+", and this exec entry names user "+
 		clierr.ShellQuote(u.userID)+" with --user-id; "+signInRevokedClause("the token it created", created.Ref, out, fresh.leftover())+"; sign in as "+clierr.ShellQuote(u.userID)).
 		WithDetails(fateDetails(fresh, out))
 }
@@ -381,7 +381,7 @@ func (u userCheck) pluginSignInRefused(owner string) *clierr.Error {
 		return clierr.New(clierr.CodeAuth, "the tokens the sign-in created named no owner; the sign-in cannot be checked against --user-id "+
 			clierr.ShellQuote(u.userID)+"; nothing was stored")
 	}
-	return clierr.New(clierr.CodeAuth, "the sign-in was made as Rancher user "+clierr.ShellQuote(owner)+", and this exec entry names user "+
+	return clierr.New(clierr.CodeAuth, "the sign-in was made as Rancher user "+clierr.ShellQuote(clierr.IDText(owner))+", and this exec entry names user "+
 		clierr.ShellQuote(u.userID)+" with --user-id; nothing was stored")
 }
 

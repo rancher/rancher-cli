@@ -38,8 +38,39 @@ func TestNoTokenPermissionTextNamesTheGrant(t *testing.T) {
 	const grant = "an administrator can grant the global role user: add --apply --yes after reading the preview of: "
 	assert.Equal(t, permissionLead+grant+clierr.Rancher+" grant 'u-abc12'"+grantTail, noTokenPermissionText("u-abc12", true))
 	assert.Equal(t, permissionLead+"find the user's id with: "+clierr.Rancher+" get users; "+grant+clierr.Rancher+" grant <user-id>"+grantTail, noTokenPermissionText("", true))
-	assert.Equal(t, permissionLead+grant+clierr.Rancher+" grant 'a b'"+grantTail, noTokenPermissionText("a b", true), "an id is one quoted argument")
-	assert.True(t, strings.HasSuffix(noTokenPermissionText("-x", true), grantTail+" -- '-x'"), "an id that starts with a dash follows --")
+}
+
+// TestNoTokenPermissionTextLeavesTheCommandOutForAnIdThatIsNotAUserID asserts
+// an id that is not a Rancher user id (not a lowercase Kubernetes object
+// name) gets no grant command naming it: the text shows the id as the
+// terminal shows it, escaped when it holds a character the terminal hides,
+// says the CLI prints no command for it, and keeps the placeholder command and
+// the way to find the id. With a server entry the text also says where the
+// exact id is recorded.
+func TestNoTokenPermissionTextLeavesTheCommandOutForAnIdThatIsNotAUserID(t *testing.T) {
+	t.Parallel()
+	findGrant := "find the user's id with: " + clierr.Rancher + " get users; an administrator can grant the global role user: add --apply --yes after reading the preview of: " +
+		clierr.Rancher + " grant <user-id>" + grantTail
+	for _, tc := range []struct{ name, id, shown string }{
+		{"a space", "a b", `'a b'`},
+		{"a leading dash", "-x", `'-x'`},
+		{"an email", "alice@example.com", `'alice@example.com'`},
+		{"a direction override", "u-a\u202eb", `'"u-a\u202eb"'`},
+		{"a bell and a newline", "u-a\x07\nb", `'"u-a\a\nb"'`},
+		{"a zero width space", "u-abc\u200b12", `'"u-abc\u200b12"'`},
+		{"a marker", "u\u2063rancher", `'"u\u2063rancher"'`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			lead := permissionLead + "the user id " + tc.shown + " is not a Rancher user id, and the CLI prints no command for it; "
+			assert.Equal(t, lead+findGrant, noTokenPermissionText(tc.id, true))
+			assert.Equal(t, lead+"the exact id is the tokenUserId of server entry 'prod' in: "+clierr.Rancher+" config status -o json; "+findGrant,
+				noTokenPermissionTextOf(tc.id, "prod", true))
+			shown := strings.ReplaceAll(noTokenPermissionText(tc.id, true), clierr.Rancher, "rancher")
+			assert.Equal(t, shown, clierr.WithoutUnsafeToDisplay(shown), "no hidden rune but the remedy marker")
+			assert.NotContains(t, shown, "grant "+clierr.ShellQuote(tc.id), "no grant command names the id")
+		})
+	}
 }
 
 // forbiddenAcquire runs a login whose derived token create is answered 403

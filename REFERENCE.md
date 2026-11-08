@@ -1360,7 +1360,10 @@ revoke lines of `auth logout`, `auth delete-token`, `config delete-server` and
 `config update-server`, and in the messages `auth login` and the kubectl plugin
 print, free text such as a display name, description, condition message or
 error text, and timestamps, token names, user ids and auth config names,
-whether read from the server or from config.yaml, lose their newlines too.
+whether read from the server or from config.yaml, lose their newlines too. A
+user id is the exception in these texts: one that holds a control character,
+an invisible format character or a line or paragraph separator is written as a
+double-quoted string with each of them as an escape; no character is removed.
 Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
 `template=` (the bytes are
 the data), `logs` (container output whose newlines are its structure), and the
@@ -1743,11 +1746,11 @@ The data of each command gains two lists, `[]` when empty, never null:
   transport error behind `failed`, `recovery` a command sequence; for a v3
   token it is the administrator's delete alone. `loginAs` is the user the
   first command of `recovery` logs in as, the token's owner; it is omitted
-  when the recovery needs no login or the token's owner is unknown. The owner's
-  id has control characters, invisible format characters (bidi overrides and
-  isolates among them) and the line and paragraph separators removed; an id
-  that is empty after that is treated as an unknown owner, so `loginAs` is
-  omitted. `code` is `TLS_TRUST` when the delete failed because the server's
+  when the recovery needs no login or the token's owner is unknown. `loginAs`
+  holds the owner's id exactly as recorded; a text that names the id writes any
+  control character, invisible format character (bidi overrides and isolates
+  among them) or line or paragraph separator in it as an escape, in a double-quoted
+  string. `code` is `TLS_TRUST` when the delete failed because the server's
   certificate failed verification (it is absent for any other failure),
   `error` then says how to fix the certificate problem for what revokes the
   token, and `certificate`
@@ -1762,11 +1765,11 @@ The text output lists one line per token under `tokens on <server>:`, for
 example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
 (unconfirmed; recorded on prod: the next login of prod as u-1 revokes it)`.
 A token whose `code` is `TLS_TRUST` is followed by the message and the
-certificate's lines, indented under its line. A user id in these lines and in
-the warnings that name the next login has control characters, invisible
-format characters (bidi overrides and isolates among them) and the line and
-paragraph separators removed; when nothing of the id remains, the text leaves
-out `as <id>`.
+certificate's lines, indented under its line. A user id that holds a control
+character, an invisible format character (bidi overrides and isolates among
+them) or a line or paragraph separator is written, in these lines and in the
+warnings that name the next login, as a double-quoted string with each of
+them as an escape; no character is removed.
 
 | `reason` | Meaning |
 |---|---|
