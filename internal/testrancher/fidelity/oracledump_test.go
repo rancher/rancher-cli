@@ -643,8 +643,9 @@ var logWordLines = map[string]string{
 	`echo "==> downstream agent log lines:"`:             "a heading of the diagnostics dump",
 	`echo "==> Rancher chart install job log:"`:          "a heading of the diagnostics dump",
 	`echo "==> Rancher pod log:"`:                        "a heading of the diagnostics dump",
-	`echo "error: the node container stopped (exit code $(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER}" 2>/dev/null)); its last log lines:" >&2`:                                                                                                                "the error line for a stopped node container; its only docker inspect reads one State field",
-	`echo "error: with E2E_FIDELITY_KEEP=1 a kept pair whose container, container id, bind address, /ping, admin token or state file check fails is never removed. Find out why (docker ps -a --filter name=${CONTAINER}; docker logs --tail 50 ${CONTAINER}) and run again."`: "a message that names the command which shows the log",
+	`echo "error: the node container stopped (exit code $(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER}" 2>/dev/null)); its last log lines:" >&2`:                                                                                                                                                                                 "the error line for a stopped node container; its only docker inspect reads one State field",
+	`echo "error: with E2E_FIDELITY_KEEP=1 a kept pair whose container, container id, bind address, /ping, admin token, state file, k3s container, k3s container id or downstream cluster check fails is never removed. Find out why (docker ps -a --filter name=${named_container}; docker logs --tail 50 ${named_container}) and run again."`: "a message that names the command which shows the log",
+	`echo "error: the last read of the downstream cluster got no HTTP answer; also find out why the oracle did not answer (docker ps -a --filter name=${CONTAINER}; docker logs --tail 50 ${CONTAINER})"`:                                                                                                                                       "a message that names the command which shows the log",
 }
 
 // inspectLines are the lines of scripts/e2e-fidelity that hold the word
@@ -663,7 +664,7 @@ var inspectLines = []string{
 	`if [ "$(docker network inspect "${old}-net" -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)" = "${SUBNET}" ]; then`,
 	`running="$(docker inspect --format '{{.Id}}' "${CONTAINER}" 2>/dev/null)" || {`,
 	`bound_ip="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "443/tcp") 0).HostIp}}' "${CONTAINER}" 2>/dev/null)" || {`,
-	`k3s_running="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}" 2>/dev/null)" || return 1`,
+	`k3s_running="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}" 2>/dev/null)" || {`,
 	`cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"`,
 	`k3s_cid="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}")"`,
 	`if [ "$(docker inspect --format '{{.State.Status}}' "${CONTAINER}" 2>/dev/null)" != "running" ]; then`,
@@ -775,6 +776,7 @@ func TestEveryLogReadInTheScriptIsRedacted(t *testing.T) {
 	// printed lists the lines that name a log read in text only.
 	printed := map[string]string{
 		`echo "error: with E2E_FIDELITY_KEEP=1 a kept pair whose container`: "the refusal prints the command that shows the log",
+		`echo "error: the last read of the downstream cluster`:              "the refusal prints the command that shows the log of the oracle container",
 	}
 	violations, unused := unredactedLogReads(lines, printed)
 	assert.Empty(t, violations, "a log read that is not piped into redact_log")

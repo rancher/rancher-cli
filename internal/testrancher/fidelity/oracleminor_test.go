@@ -1479,6 +1479,7 @@ var clockFunctions = []struct{ fn, limitVar, waitVar string }{
 	{"login_admin", "LOGIN_LIMIT_SECONDS", "LOGIN_WAIT_SECONDS"},
 	{"fetch_ca", "CA_LIMIT_SECONDS", "CA_WAIT_SECONDS"},
 	{"wait_for_fleet_agent", "FLEET_LIMIT_SECONDS", "FLEET_WAIT_SECONDS"},
+	{"wait_for_kept_downstream", "DOWNSTREAM_ACTIVE_LIMIT_SECONDS", "DOWNSTREAM_ACTIVE_WAIT_SECONDS"},
 }
 
 // TestOracleMinorRetryClockIgnoresSlowCalls asserts that the number of
@@ -1567,6 +1568,66 @@ func TestFleetAgentWait(t *testing.T) {
 		for i, url := range []string{"http://127.0.0.1:1" + namespaceURL, "http://127.0.0.1:1" + agentURL} {
 			assert.True(t, strings.HasSuffix(argv[i], " "+url), "request %d: %s", i+1, argv[i])
 			assert.Contains(t, argv[i], "-H Authorization: Bearer stub-admin-token")
+		}
+	})
+}
+
+// TestKeptDownstreamWait asserts what wait_for_kept_downstream waits for and
+// says: it returns once the kept downstream cluster's state is active, reading
+// the cluster from the oracle with the admin token, and at its deadline names
+// what the most recent read gave. The limit is 6 s and the wait 2 s on the fake
+// clock, so a cluster that never turns active is read 4 times.
+func TestKeptDownstreamWait(t *testing.T) {
+	const (
+		active       = `{"state":"active"}` + "\n200"
+		provisioning = `{"state":"provisioning"}` + "\n200"
+		clusterURL   = "http://127.0.0.1:1/v3/clusters/c-m-stub"
+		prefix       = "error: the downstream cluster c-m-stub was not active within 6 s ("
+	)
+	cases := []struct {
+		name      string
+		responses map[string]string
+		code      int
+		stderr    string
+		calls     int
+	}{
+		{"active on the first read", map[string]string{"default": active}, 0, "", 1},
+		{"active after two reads that are not", map[string]string{"1": provisioning, "2": `{"state":"unavailable"}` + "\n200", "default": active}, 0, "", 3},
+		{"active after a read with no answer", map[string]string{"1": "\n000", "default": active}, 0, "", 2},
+		{"active on the last read before the limit", map[string]string{"1": provisioning, "2": provisioning, "3": provisioning, "4": active}, 0, "", 4},
+		{"never active", map[string]string{"default": provisioning}, 1, prefix + "last state provisioning)\n", 4},
+		{"the last state is the one of the last read", map[string]string{"1": provisioning, "default": `{"state":"unavailable"}` + "\n200"}, 1, prefix + "last state unavailable)\n", 4},
+		{"no answer", map[string]string{"default": "000"}, 1, prefix + "no HTTP answer)\n", 4},
+		{"no answer with an empty body", map[string]string{"default": "\n000"}, 1, prefix + "no HTTP answer)\n", 4},
+		{"another status", map[string]string{"default": `{"type":"error","code":"NotFound"}` + "\n404"}, 1, prefix + "HTTP 404)\n", 4},
+		{"no state in the answer", map[string]string{"default": "{}\n200"}, 1, prefix + "no state in the answer)\n", 4},
+		{"a state that is not a string", map[string]string{"default": `{"state":5}` + "\n200"}, 1, prefix + "no state in the answer)\n", 4},
+		{"an answer that is not JSON", map[string]string{"default": "not json\n200"}, 1, prefix + "no state in the answer)\n", 4},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h := newFnHarness(t, "DOWNSTREAM_ACTIVE_LIMIT_SECONDS", "DOWNSTREAM_ACTIVE_WAIT_SECONDS", "wait_for_kept_downstream", c.responses)
+			stdout, stderr, code := h.run(t, 6, 2)
+			assert.Equal(t, c.code, code, "stderr: %s", stderr)
+			assert.Equal(t, c.stderr, stderr)
+			assert.Empty(t, stdout)
+			assert.Equal(t, c.calls, h.calls(t))
+		})
+	}
+
+	t.Run("every read goes to the cluster with the admin token", func(t *testing.T) {
+		h := newFnHarness(t, "DOWNSTREAM_ACTIVE_LIMIT_SECONDS", "DOWNSTREAM_ACTIVE_WAIT_SECONDS", "wait_for_kept_downstream",
+			map[string]string{"1": provisioning, "default": active})
+		_, stderr, code := h.run(t, 6, 2)
+		require.Equal(t, 0, code, "stderr: %s", stderr)
+		raw, err := os.ReadFile(filepath.Join(h.dir, "argv"))
+		require.NoError(t, err)
+		argv := strings.Split(strings.TrimSpace(string(raw)), "\n")
+		require.Len(t, argv, 2)
+		for i, line := range argv {
+			assert.True(t, strings.HasSuffix(line, " "+clusterURL), "request %d: %s", i+1, line)
+			assert.Contains(t, line, "-H Authorization: Bearer stub-admin-token")
 		}
 	})
 }

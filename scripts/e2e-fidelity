@@ -80,9 +80,11 @@ GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # On every slot, with E2E_FIDELITY_KEEP=1, a kept pair that fails its container,
 # container id, bind address, /ping, admin token or state file check is never
 # removed: the run stops with exit 4 and prints the commands that remove the
-# pair. A changed pin, a missing state file and a failed downstream check keep
-# their behavior: the first two create a new pair, the third rebuilds the
-# downstream.
+# pair. So is a kept downstream that fails its state file, k3s container, k3s
+# container id or downstream cluster check; a downstream cluster that is not
+# active is waited for first (DOWNSTREAM_ACTIVE_LIMIT_SECONDS). A changed pin
+# and a missing state file keep their behavior and create a new pair; a changed
+# k3s image rebuilds the downstream alone.
 #
 # Exit codes: 0 the run passed (a clean drift run, print mode); 1 a boot or
 # harness failure; 3 a drift run that found differences; 4 a kept pair that
@@ -1805,9 +1807,10 @@ wait_for_fleet_agent() {
 # it sets REUSE_FAILED_CHECK and REUSE_FAILED_DETAIL, and the run stops with
 # exit 4 (refuse_reuse). A changed pin (a new image, a moved upcoming-minor
 # head, another boot or helm pin) and a missing state file set
-# REUSE_RECREATE: the run creates a new pair in place of the kept one. A moved
-# k3s image is not checked here; reuse_downstream rebuilds the downstream
-# alone.
+# REUSE_RECREATE: the run creates a new pair in place of the kept one. The
+# downstream is not checked here: a moved k3s image makes reuse_downstream
+# rebuild the downstream alone, and any other failed downstream check stops the
+# run there.
 reuse_state() {
   REUSE_RECREATE=""
   REUSE_FAILED_CHECK=""
@@ -1928,19 +1931,30 @@ reuse_state() {
 }
 
 # refuse_reuse stops a run under E2E_FIDELITY_KEEP=1 whose kept pair failed a
-# check of its own state, with the failed check, the commands that remove the
-# pair, and exit 4. It removes nothing and never prints the admin token. A
-# failure that names no check is a defect of reuse_state and stops the run too.
+# check of its own state or of its downstream, with the failed check, the
+# commands that remove the pair, and exit 4. It removes nothing and never
+# prints the admin token. A failure that names no check is a defect of
+# reuse_state or reuse_downstream and stops the run too.
 refuse_reuse() {
   check="${REUSE_FAILED_CHECK:-}"
   detail="${REUSE_FAILED_DETAIL:-}"
   if [ -z "${check}" ]; then
     check="unnamed"
-    detail="reuse_state failed at a check that sets no name; this is a defect in scripts/e2e-fidelity"
+    detail="reuse_state or reuse_downstream failed at a check that sets no name; this is a defect in scripts/e2e-fidelity"
   fi
+  # The commands that find out why name the container the failed check read.
+  named_container="${CONTAINER}"
+  case "${check}" in
+    k3s-container | k3s-container-id | downstream) named_container="${K3S_CONTAINER}" ;;
+  esac
   {
     echo "error: E2E_FIDELITY_KEEP=1: the kept pair ${CONTAINER} on port ${HOST_PORT} failed its ${check} check: ${detail}; nothing was removed"
-    echo "error: with E2E_FIDELITY_KEEP=1 a kept pair whose container, container id, bind address, /ping, admin token or state file check fails is never removed. Find out why (docker ps -a --filter name=${CONTAINER}; docker logs --tail 50 ${CONTAINER}) and run again."
+    echo "error: with E2E_FIDELITY_KEEP=1 a kept pair whose container, container id, bind address, /ping, admin token, state file, k3s container, k3s container id or downstream cluster check fails is never removed. Find out why (docker ps -a --filter name=${named_container}; docker logs --tail 50 ${named_container}) and run again."
+    # A downstream read that got no answer at all may mean the oracle stopped
+    # or restarted, so its container is named too.
+    if [ "${check}" = "downstream" ] && [ "${DOWNSTREAM_LAST_STATE:-}" = "no HTTP answer" ]; then
+      echo "error: the last read of the downstream cluster got no HTTP answer; also find out why the oracle did not answer (docker ps -a --filter name=${CONTAINER}; docker logs --tail 50 ${CONTAINER})"
+    fi
     [ -z "${REUSE_FAILED_HINT:-}" ] || echo "error: ${REUSE_FAILED_HINT}"
     if [ "${check}" = "state-file" ]; then
       echo "error: ${detail}; remove the pair with:"
@@ -1955,29 +1969,124 @@ refuse_reuse() {
   exit 4
 }
 
+# The wait for the kept downstream cluster to be active: its deadline is
+# DOWNSTREAM_ACTIVE_LIMIT_SECONDS from the call, counted on bash's SECONDS like
+# fetch_ca's, with DOWNSTREAM_ACTIVE_WAIT_SECONDS between reads.
+DOWNSTREAM_ACTIVE_LIMIT_SECONDS=120
+DOWNSTREAM_ACTIVE_WAIT_SECONDS=5
+
+# read_kept_downstream_state reads the kept downstream cluster from the oracle
+# once and returns 0 when its state is active. It sets DOWNSTREAM_LAST_STATE to
+# what the read gave: no HTTP answer, an HTTP status other than 200, an answer
+# with no state, or the state. It reads no clock.
+read_kept_downstream_state() {
+  local out status body cluster_state
+  out="$(api -w '\n%{http_code}' "${BASE_URL}/v3/clusters/${DOWNSTREAM_ID}" || true)"
+  status="${out##*$'\n'}"
+  body="${out%$'\n'*}"
+  cluster_state="$(printf '%s' "${body}" | python3 -I -c 'import json,sys; v=json.load(sys.stdin).get("state"); print(v if isinstance(v, str) else "")' 2>/dev/null || true)"
+  if [ "${status}" = "000" ] || [ -z "${status}" ]; then
+    DOWNSTREAM_LAST_STATE="no HTTP answer"
+  elif [ "${status}" != "200" ]; then
+    DOWNSTREAM_LAST_STATE="HTTP ${status}"
+  elif [ -z "${cluster_state}" ]; then
+    DOWNSTREAM_LAST_STATE="no state in the answer"
+  else
+    DOWNSTREAM_LAST_STATE="last state ${cluster_state}"
+  fi
+  [ "${cluster_state}" = "active" ]
+}
+
+# wait_for_kept_downstream waits until read_kept_downstream_state finds the
+# kept downstream cluster active; at the deadline it names what the last read
+# gave and returns 1.
+wait_for_kept_downstream() {
+  local deadline=$((SECONDS + DOWNSTREAM_ACTIVE_LIMIT_SECONDS))
+  while :; do
+    if read_kept_downstream_state; then
+      return 0
+    fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      echo "error: the downstream cluster ${DOWNSTREAM_ID} was not active within ${DOWNSTREAM_ACTIVE_LIMIT_SECONDS} s (${DOWNSTREAM_LAST_STATE})" >&2
+      return 1
+    fi
+    sleep "${DOWNSTREAM_ACTIVE_WAIT_SECONDS}"
+  done
+}
+
 # reuse_downstream reports whether the kept downstream is the same
-# container, from the currently pinned k3s image, and still active on the
-# oracle; it sets DOWNSTREAM_ID. A failure rebuilds the downstream alone
-# (rebuild_downstream): the oracle's boot is the expensive part and it just
-# passed its own checks.
+# container, from the currently pinned k3s image, and active on the oracle; it
+# sets DOWNSTREAM_ID. A changed k3s image sets downstream_pin_changed and the
+# caller rebuilds the downstream alone (rebuild_downstream): the oracle's boot
+# is the expensive part and it just passed its own checks. Any other failed
+# check sets REUSE_FAILED_CHECK and REUSE_FAILED_DETAIL, and the caller stops
+# the run with exit 4 (refuse_reuse) without removing anything: a rebuilt
+# downstream gets a new cluster id, and every session that recorded the old id
+# would hold a stale one. A downstream cluster that is not active is waited for
+# first (wait_for_kept_downstream): after the host sleeps it reconnects within
+# minutes. The k3s image is compared first, so a moved image rebuilds the
+# downstream even when its container is gone. The caller runs it inside an
+# if, where errexit is off, so every failure is an explicit group.
 reuse_downstream() {
-  k3s_cid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["k3sContainerId"])' "${STATE_FILE}" 2>/dev/null)" || return 1
-  k3s_running="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}" 2>/dev/null)" || return 1
-  [ "${k3s_cid}" = "${k3s_running}" ] || return 1
-  saved_k3s_image="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["k3sImage"])' "${STATE_FILE}" 2>/dev/null)" || return 1
+  downstream_pin_changed=""
+  REUSE_FAILED_CHECK=""
+  REUSE_FAILED_DETAIL=""
+  REUSE_FAILED_HINT=""
+  saved_k3s_image="$(python3 -I -c 'import json,sys; v = json.load(open(sys.argv[1])).get("k3sImage"); print(v if isinstance(v, str) else "")' "${STATE_FILE}" 2>/dev/null)"
+  [ -n "${saved_k3s_image}" ] || {
+    REUSE_FAILED_CHECK="state-file"
+    REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no k3sImage"
+    return 1
+  }
   [ "${saved_k3s_image}" = "${K3S_IMAGE}" ] || {
+    downstream_pin_changed="a different k3s image"
     echo "==> kept downstream was created from a different k3s image; rebuilding it"
     return 1
   }
-  DOWNSTREAM_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["downstream"])' "${STATE_FILE}" 2>/dev/null)" || return 1
-  state="$(api "${BASE_URL}/v3/clusters/${DOWNSTREAM_ID}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("state",""))' 2>/dev/null || true)"
-  [ "${state}" = "active" ]
+  k3s_cid="$(python3 -I -c 'import json,sys; v = json.load(open(sys.argv[1])).get("k3sContainerId"); print(v if isinstance(v, str) else "")' "${STATE_FILE}" 2>/dev/null)"
+  [ -n "${k3s_cid}" ] || {
+    REUSE_FAILED_CHECK="state-file"
+    REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no k3sContainerId"
+    return 1
+  }
+  k3s_running="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}" 2>/dev/null)" || {
+    REUSE_FAILED_CHECK="k3s-container"
+    REUSE_FAILED_DETAIL="container ${K3S_CONTAINER} does not exist"
+    return 1
+  }
+  [ "${k3s_cid}" = "${k3s_running}" ] || {
+    REUSE_FAILED_CHECK="k3s-container-id"
+    REUSE_FAILED_DETAIL="container ${K3S_CONTAINER} has id ${k3s_running}, but the state file records ${k3s_cid}"
+    return 1
+  }
+  DOWNSTREAM_ID="$(python3 -I -c 'import json,sys; v = json.load(open(sys.argv[1])).get("downstream"); print(v if isinstance(v, str) else "")' "${STATE_FILE}" 2>/dev/null)"
+  [ -n "${DOWNSTREAM_ID}" ] || {
+    REUSE_FAILED_CHECK="state-file"
+    REUSE_FAILED_DETAIL="the state file ${STATE_FILE} has no downstream"
+    return 1
+  }
+  if ! read_kept_downstream_state; then
+    echo "==> waiting up to ${DOWNSTREAM_ACTIVE_LIMIT_SECONDS} s for the kept downstream cluster ${DOWNSTREAM_ID} to be active (${DOWNSTREAM_LAST_STATE})"
+    wait_for_kept_downstream || {
+      REUSE_FAILED_CHECK="downstream"
+      REUSE_FAILED_DETAIL="the downstream cluster ${DOWNSTREAM_ID} was not active within ${DOWNSTREAM_ACTIVE_LIMIT_SECONDS} s (${DOWNSTREAM_LAST_STATE})"
+      REUSE_FAILED_HINT="a downstream that reconnects after the host slept can take a few minutes; run again"
+      return 1
+    }
+    wait_for_downstream_active || {
+      REUSE_FAILED_CHECK="downstream"
+      REUSE_FAILED_DETAIL="the downstream cluster ${DOWNSTREAM_ID} turned active, but a later check of it failed (see the error above)"
+      return 1
+    }
+  fi
+  return 0
 }
 
 # rebuild_downstream removes the kept downstream (container and imported
-# cluster) and imports a fresh one into the running oracle.
+# cluster) and imports a fresh one into the running oracle. It runs only when
+# the k3s image of the downstream changed.
 rebuild_downstream() {
-  echo "==> kept downstream is unhealthy; rebuilding it against the running oracle"
+  echo "==> rebuilding the kept downstream against the running oracle (${downstream_pin_changed:-a different k3s image})"
   # The stale registration goes first and is confirmed gone before the
   # container is removed: a DELETE that stalls then fails the run with the
   # old container still present, never with a registered cluster that has
@@ -2234,7 +2343,10 @@ if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && reuse_state; then
   ORACLE_BOOTED=1
   require_disk
   echo "==> reusing healthy kept container"
-  reuse_downstream || rebuild_downstream
+  if ! reuse_downstream; then
+    [ -n "${downstream_pin_changed:-}" ] || refuse_reuse
+    rebuild_downstream
+  fi
   # A kept container was not necessarily primed for THIS run's SAN list -
   # the knob may appear (or change) between runs against the same
   # container. Priming is idempotent (dynamiclistener adds a SAN once),

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -381,6 +382,17 @@ func (k *keepRun) run() runResult {
 	return s.run()
 }
 
+// keepFindOutWhyLine is the second line of the refusal: the checks it names and
+// the commands that show why, which name the oracle container for a check of
+// the oracle and the downstream container for a check of the downstream.
+func keepFindOutWhyLine(container, check string) string {
+	named := container
+	if slices.Contains([]string{"k3s-container", "k3s-container-id", "downstream"}, check) {
+		named = container + "-k3s"
+	}
+	return fmt.Sprintf("error: with E2E_FIDELITY_KEEP=1 a kept pair whose container, container id, bind address, /ping, admin token, state file, k3s container, k3s container id or downstream cluster check fails is never removed. Find out why (docker ps -a --filter name=%s; docker logs --tail 50 %s) and run again.", named, named)
+}
+
 // keepStop is a way a kept pair fails a check of its own state, and what the
 // refusal says about it.
 type keepStop struct {
@@ -399,7 +411,7 @@ type keepStop struct {
 	unreadablePins bool
 }
 
-const unnamedDetail = "reuse_state failed at a check that sets no name; this is a defect in scripts/e2e-fidelity"
+const unnamedDetail = "reuse_state or reuse_downstream failed at a check that sets no name; this is a defect in scripts/e2e-fidelity"
 
 func keepStopRows() []keepStop {
 	missingField := func(field string) func(k *keepRun) string {
@@ -501,7 +513,7 @@ func keepStopRows() []keepStop {
 				require.NotEqual(k.t, realScriptPath(k.t), k.s.script, "the case changes the copy of the script only")
 				raw, err := os.ReadFile(k.s.script)
 				require.NoError(k.t, err)
-				const anchor = "  REUSE_FAILED_HINT=\"\"\n"
+				const anchor = "reuse_state() {\n  REUSE_RECREATE=\"\"\n"
 				text := string(raw)
 				require.Equal(k.t, 1, strings.Count(text, anchor))
 				text = strings.Replace(text, anchor, anchor+"  [ -n \"\" ] || return 1\n", 1)
@@ -530,6 +542,7 @@ func TestKeepRunStopsOnAFailedPairCheck(t *testing.T) {
 				t.Parallel()
 				k := newKeepRun(t, slot)
 				row.setup(k)
+				requests := k.recordRequestOptions()
 				res := k.run()
 
 				require.NotContains(t, res.stdout, keepToken, "the admin token must never be printed")
@@ -538,7 +551,7 @@ func TestKeepRunStopsOnAFailedPairCheck(t *testing.T) {
 				c := slot.container
 				block := []string{
 					fmt.Sprintf("error: E2E_FIDELITY_KEEP=1: the kept pair %s on port %d failed its %s check: %s; nothing was removed", c, k.port, row.check, row.detail(k)),
-					fmt.Sprintf("error: with E2E_FIDELITY_KEEP=1 a kept pair whose container, container id, bind address, /ping, admin token or state file check fails is never removed. Find out why (docker ps -a --filter name=%s; docker logs --tail 50 %s) and run again.", c, c),
+					keepFindOutWhyLine(c, row.check),
 				}
 				if row.hint != nil {
 					block = append(block, "error: "+row.hint(k))
@@ -565,11 +578,8 @@ func TestKeepRunStopsOnAFailedPairCheck(t *testing.T) {
 					assert.NotContains(t, res.stderr, "to reuse the pair as it is", "only an address that differs offers to reuse it")
 				}
 
-				for _, line := range res.log {
-					for _, prefix := range []string{"rm ", "network rm", "network create", "run -d", "exec -i", "container rm"} {
-						assert.Falsef(t, strings.HasPrefix(line, prefix), "docker call %q must not happen: %v", line, res.log)
-					}
-				}
+				requireKeptRunDockerCalls(t, slot.container, res.log)
+				requireNoRequestOptions(t, requests)
 				helmBoot := slot.kind == "helm" || slot.kind == "upcominghelm"
 				downloads := helmBoot && row.keptStateFails
 				// A kept pair of the upcoming minor booted with helm downloads the
@@ -797,7 +807,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 
 		assert.Contains(t, res.stdout, "==> reusing healthy kept container")
 		assert.Contains(t, res.stdout, "==> kept downstream was created from a different k3s image; rebuilding it")
-		assert.Contains(t, res.stdout, "==> kept downstream is unhealthy; rebuilding it against the running oracle")
+		assert.Contains(t, res.stdout, "==> rebuilding the kept downstream against the running oracle (a different k3s image)")
 		assert.NotContains(t, res.stderr, "failed its")
 		for _, line := range res.log {
 			assert.Falsef(t, strings.HasPrefix(line, "network rm"), "the network stays: %v", res.log)
@@ -886,6 +896,183 @@ func functionBody(t *testing.T, name string) []string {
 
 func indentOf(line string) int { return len(line) - len(strings.TrimLeft(line, " ")) }
 
+// groupOpener is the index of the line that opens the group the line at index
+// i sits in: the nearest earlier line with less indentation, or -1.
+func groupOpener(lines []string, i int) int {
+	for j := i - 1; j >= 0; j-- {
+		if indentOf(lines[j]) < indentOf(lines[i]) {
+			return j
+		}
+	}
+	return -1
+}
+
+// requireFailureGroupsSetAReason asserts, from the lines of one function of the
+// script, that no check fails by a trailing "|| return 1" and that every
+// "return 1" sits in a group that sets reasonVar, or sets both
+// REUSE_FAILED_CHECK and REUSE_FAILED_DETAIL. It returns the number of
+// "return 1" lines and the check names the function sets.
+func requireFailureGroupsSetAReason(t *testing.T, lines []string, reasonVar string) (returns int, names map[string]bool) {
+	t.Helper()
+	orReturn := regexp.MustCompile(`\|\|\s*return 1`)
+	setsCheck := regexp.MustCompile(`REUSE_FAILED_CHECK="([^"]+)"`)
+	names = map[string]bool{}
+	for i, line := range lines {
+		assert.Falsef(t, orReturn.MatchString(line), "a check fails with a bare \"|| return 1\" at line %d: %s", i, line)
+		if m := setsCheck.FindStringSubmatch(line); m != nil {
+			names[m[1]] = true
+		}
+		if strings.TrimSpace(line) != "return 1" {
+			continue
+		}
+		returns++
+		opener := groupOpener(lines, i)
+		require.Greaterf(t, opener, 0, "a return 1 outside any group at line %d", i)
+		closer := -1
+		for j := i + 1; j < len(lines); j++ {
+			text := strings.TrimSpace(lines[j])
+			if indentOf(lines[j]) == indentOf(lines[opener]) && (strings.HasPrefix(text, "}") || text == "fi") {
+				closer = j
+				break
+			}
+		}
+		require.Greaterf(t, closer, i, "no end of the group of the return 1 at line %d", i)
+		group := strings.Join(lines[opener:closer+1], "\n")
+		reason := strings.Contains(group, reasonVar+"=")
+		stops := strings.Contains(group, "REUSE_FAILED_CHECK=") && strings.Contains(group, "REUSE_FAILED_DETAIL=")
+		assert.Truef(t, reason || stops, "the group of the return 1 at line %d sets neither %s nor a failed check and its detail:\n%s", i, reasonVar, group)
+	}
+	return returns, names
+}
+
+// reviewedLine is a line of the script that is allowed to hold a word a scan
+// looks for, with the function it sits in (empty for the top level) and why.
+type reviewedLine struct{ owner, text, reason string }
+
+// requireReviewedLines asserts that every line of the script for which match
+// is true (continuation lines joined, comments skipped, runs of white space
+// read as one space) equals its own entry of list with the same owner function,
+// and that every entry equals one line: a second copy of a listed line fails,
+// and so does a stale entry. A new spelling of what the scan looks for, in any
+// function, fails until its line is reviewed and listed.
+func requireReviewedLines(t *testing.T, match func(line string) bool, list []reviewedLine) {
+	t.Helper()
+	funcStart := regexp.MustCompile(`^([a-z_][a-z0-9_]*)\(\) \{$`)
+	squash := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	used := make([]bool, len(list))
+	for _, entry := range list {
+		assert.NotEmptyf(t, entry.reason, "the entry needs its reason: %s", entry.text)
+	}
+	owner := ""
+	for _, line := range joinedScriptLines(t) {
+		if m := funcStart.FindStringSubmatch(line); m != nil {
+			owner = m[1]
+		} else if line == "}" {
+			owner = ""
+		}
+		text := strings.TrimSpace(line)
+		if strings.HasPrefix(text, "#") || !match(text) {
+			continue
+		}
+		found := false
+		for i, entry := range list {
+			if !used[i] && entry.owner == owner && squash(entry.text) == squash(text) {
+				used[i] = true
+				found = true
+				break
+			}
+		}
+		assert.Truef(t, found, "a line that is not reviewed, or a second copy of a listed line, in %q: %s", owner, text)
+	}
+	for i, entry := range list {
+		assert.Truef(t, used[i], "the entry matches no line of its function; remove it: %q in %q", entry.text, entry.owner)
+	}
+}
+
+// wordLines returns a match function for requireReviewedLines: a line that holds
+// the word.
+func wordLines(word *regexp.Regexp) func(string) bool { return word.MatchString }
+
+// TestDownstreamPinChangedIsReviewedEverywhere asserts that every line of the
+// script that names downstream_pin_changed is one of the reviewed lines: the
+// variable says that the kept downstream is rebuilt, which only a changed k3s
+// image may cause, so no other function and no other spelling may set it.
+func TestDownstreamPinChangedIsReviewedEverywhere(t *testing.T) {
+	requireReviewedLines(t, wordLines(regexp.MustCompile(`downstream_pin_changed`)), []reviewedLine{
+		{"reuse_downstream", `downstream_pin_changed=""`, "clears the result first, so an exported value never forces a rebuild"},
+		{"reuse_downstream", `downstream_pin_changed="a different k3s image"`, "the one place that sets it: the k3s image compare"},
+		{"", `[ -n "${downstream_pin_changed:-}" ] || refuse_reuse`, "the call site stops the run unless the k3s image changed"},
+		{"rebuild_downstream", `echo "==> rebuilding the kept downstream against the running oracle (${downstream_pin_changed:-a different k3s image})"`, "names the reason when the rebuild starts"},
+	})
+}
+
+// loginOwner is the name of the function that logs in to a new oracle. It is a
+// function that loops on the clock, which no test file outside oracleminor_test.go
+// may name, so it is read from the table of clock functions.
+func loginOwner(t *testing.T) string {
+	t.Helper()
+	for _, c := range clockFunctions {
+		if strings.HasPrefix(c.fn, "login") {
+			return c.fn
+		}
+	}
+	require.Fail(t, "no clock function that logs in")
+	return ""
+}
+
+// methodOptionLines are the lines of the script that give curl a request method,
+// a config file or a body, each with the function it sits in and why.
+func methodOptionLines(t *testing.T) []reviewedLine {
+	t.Helper()
+	return []reviewedLine{
+		{"import_downstream", `api -o /dev/null -X POST "${BASE_URL}/v1/provisioning.cattle.io.clusters" -d @- <<JSON`, "creates the imported cluster"},
+		{"rebuild_downstream", `code="$(api -o /dev/null -w '%{http_code}' -X DELETE "${BASE_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${DOWNSTREAM_NAME}")" || true`, "removes the imported cluster of a downstream whose k3s image changed"},
+		{loginOwner(t), `out="$(curl -s --max-time 30 -w '\n%{http_code}' --cacert "${CA_FILE}" "${BASE_URL}/v3-public/localProviders/local?action=login" -H 'Content-Type: application/json' -d @- <<JSON || true`, "logs in to a new oracle with the bootstrap password"},
+		{"", `curl -s --cacert "${CA_FILE}" -o /dev/null "${BASE_URL}/v3/settings/server-url" -X PUT -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' -d "{\"value\":\"https://${ORACLE_IP}\"}"`, "sets the server URL of a new oracle"},
+		{"", `ADMIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3/tokens" -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' -d @- <<'JSON' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'`, "creates the admin token of a new oracle"},
+	}
+}
+
+// TestMethodOptionsOfTheScriptAreReviewed asserts that every line of the script
+// that gives curl a request method (-X, alone or at the end of a cluster of
+// short options, --request), a config file (-K, --config, which can set the
+// method) or a request body or upload (-d, -F, -T, -I and --data, --json, --form,
+// --upload-file, --head on a line that runs curl or api; each makes curl send a
+// POST, a PUT or a HEAD) is one of the reviewed lines, so a request that creates
+// or removes something is listed with the function that sends it. No line uses a
+// config file.
+func TestMethodOptionsOfTheScriptAreReviewed(t *testing.T) {
+	method := regexp.MustCompile(`(?:^|\s)(?:-[A-Za-z]*[XK]|--request|--config)`)
+	body := regexp.MustCompile(`(?:^|\s)(?:-[A-Za-z]*[dFTI]|--data|--json|--form|--upload-file|--head)`)
+	runsCurl := regexp.MustCompile(`\b(?:curl|api)\b`)
+	match := func(line string) bool {
+		return method.MatchString(line) || runsCurl.MatchString(line) && body.MatchString(line)
+	}
+	requireReviewedLines(t, match, methodOptionLines(t))
+}
+
+// TestPythonRequestsOfTheScriptAreReviewed asserts that every line of the script
+// that names a python HTTP client (urllib, http.client, requests) is one of the
+// reviewed lines, so a request sent by python3 cannot be added without review.
+// The only client is the registry reader.
+func TestPythonRequestsOfTheScriptAreReviewed(t *testing.T) {
+	const reason = "the registry reader of read_registry_image: reads image metadata from the registry, sends no request to the oracle"
+	var list []reviewedLine
+	for _, text := range []string{
+		`import urllib.error`,
+		`import urllib.parse`,
+		`import urllib.request`,
+		`req = urllib.request.Request(path, method=method)`,
+		`with urllib.request.urlopen(req, timeout=timeout) as resp:`,
+		`except urllib.error.HTTPError as err:`,
+		`query = urllib.parse.urlencode(`,
+		`if isinstance(err, urllib.error.URLError):`,
+	} {
+		list = append(list, reviewedLine{"read_registry_image", text, reason})
+	}
+	requireReviewedLines(t, wordLines(regexp.MustCompile(`urllib|http\.client|requests\.`)), list)
+}
+
 // TestReuseStateFailuresSetAReason asserts, from the text of reuse_state, that
 // no failure leaves it without saying which kind it is: it starts by clearing
 // its result variables, every return of a failure sits in a group that either
@@ -909,39 +1096,7 @@ func TestReuseStateFailuresSetAReason(t *testing.T) {
 	}
 	assert.Equal(t, "return 0", last, "the last statement is an explicit success")
 
-	orReturn := regexp.MustCompile(`\|\|\s*return 1`)
-	names := map[string]bool{}
-	setsCheck := regexp.MustCompile(`REUSE_FAILED_CHECK="([^"]+)"`)
-	for i, line := range lines {
-		assert.Falsef(t, orReturn.MatchString(line), "a check fails with a bare \"|| return 1\" at line %d: %s", i, line)
-		if m := setsCheck.FindStringSubmatch(line); m != nil {
-			names[m[1]] = true
-		}
-		if strings.TrimSpace(line) != "return 1" {
-			continue
-		}
-		opener := -1
-		for j := i - 1; j >= 0; j-- {
-			if indentOf(lines[j]) < indentOf(line) {
-				opener = j
-				break
-			}
-		}
-		require.Greaterf(t, opener, 0, "a return 1 outside any group at line %d", i)
-		closer := -1
-		for j := i + 1; j < len(lines); j++ {
-			text := strings.TrimSpace(lines[j])
-			if indentOf(lines[j]) == indentOf(lines[opener]) && (strings.HasPrefix(text, "}") || text == "fi") {
-				closer = j
-				break
-			}
-		}
-		require.Greaterf(t, closer, i, "no end of the group of the return 1 at line %d", i)
-		group := strings.Join(lines[opener:closer+1], "\n")
-		recreates := strings.Contains(group, "REUSE_RECREATE=")
-		stops := strings.Contains(group, "REUSE_FAILED_CHECK=") && strings.Contains(group, "REUSE_FAILED_DETAIL=")
-		assert.Truef(t, recreates || stops, "the group of the return 1 at line %d sets neither a reason to recreate nor a failed check and its detail:\n%s", i, group)
-	}
+	_, names := requireFailureGroupsSetAReason(t, lines, "REUSE_RECREATE")
 
 	var want []string
 	for _, row := range keepStopRows() {
@@ -965,6 +1120,52 @@ func TestReuseStateFailuresSetAReason(t *testing.T) {
 	}
 }
 
+// pairRemoval matches a command of the script that removes part of a kept pair:
+// a docker removal or prune, a curl request with the DELETE method in any
+// spelling in the list of TestPairRemovalPatternMatchesEveryDeleteSpelling (-X
+// DELETE, -XDELETE, -X "DELETE", -X 'DELETE', -sX DELETE, --request DELETE,
+// --request=DELETE, --request "DELETE", in any letter case), and the removal of
+// the state file, state root or CA file. A method that no text names is caught
+// by the reviewed list of method options in
+// TestMethodOptionsOfTheScriptAreReviewed.
+var pairRemoval = regexp.MustCompile(`\bdocker\s+(container\s+|network\s+|volume\s+)?rm\b|\bdocker\s+(container|system|network|volume)\s+prune\b|(?:(?:^|\s)-[A-Za-z]*X\s*|--request(?:\s+|=))["']?(?i:DELETE)\b|\brm\b.*\$\{(STATE_FILE|STATE_ROOT|CA_FILE)\}`)
+
+// TestPairRemovalPatternMatchesEveryDeleteSpelling asserts that the pattern of
+// the removal scan matches each spelling of a DELETE request and of a docker
+// removal, and none of the reads and writes that are no removal.
+func TestPairRemovalPatternMatchesEveryDeleteSpelling(t *testing.T) {
+	for _, line := range []string{
+		`api -X DELETE "${URL}"`,
+		`api -XDELETE "${URL}"`,
+		`api -X "DELETE" "${URL}"`,
+		`api -X 'DELETE' "${URL}"`,
+		`api -X delete "${URL}"`,
+		`api -sX DELETE "${URL}"`,
+		`api -sSX DELETE "${URL}"`,
+		`api -fsSXDELETE "${URL}"`,
+		`api -sX "DELETE" "${URL}"`,
+		`api --request DELETE "${URL}"`,
+		`api --request=DELETE "${URL}"`,
+		`api --request "DELETE" "${URL}"`,
+		`api --request 'delete' "${URL}"`,
+		`docker rm -f -v "${K3S_CONTAINER}"`,
+		`docker network rm "${NETWORK}"`,
+		`rm -f "${STATE_FILE}"`,
+	} {
+		assert.Truef(t, pairRemoval.MatchString(line), "the removal scan misses %s", line)
+	}
+	for _, line := range []string{
+		`api -X POST "${URL}"`,
+		`api -X PATCH -d '{"deleted":true}' "${URL}"`,
+		`api --request GET "${URL}"`,
+		`api -sX POST "${URL}"`,
+		`api -o /dev/null "${BASE_URL}/v3/clusters/${DOWNSTREAM_ID}"`,
+		`docker ps -a --filter name="${CONTAINER}"`,
+	} {
+		assert.Falsef(t, pairRemoval.MatchString(line), "the removal scan flags %s", line)
+	}
+}
+
 // TestPairRemovalsHappenOnlyAtTheKnownSites asserts that every command of the
 // script that removes part of a kept pair (a container, the network, the state
 // file or state root, or the imported cluster) sits at a site that is allowed
@@ -976,7 +1177,7 @@ func TestReuseStateFailuresSetAReason(t *testing.T) {
 // file count as removals.
 func TestPairRemovalsHappenOnlyAtTheKnownSites(t *testing.T) {
 	lines := scriptLines(t)
-	removal := regexp.MustCompile(`\bdocker\s+(container\s+|network\s+|volume\s+)?rm\b|\bdocker\s+(container|system|network|volume)\s+prune\b|-X\s+DELETE|\brm\b.*\$\{(STATE_FILE|STATE_ROOT|CA_FILE)\}`)
+	removal := pairRemoval
 	funcStart := regexp.MustCompile(`^([a-z_][a-z0-9_]*)\(\) \{$`)
 
 	// printed lists the lines that name a removal command in text only. Every
@@ -990,18 +1191,34 @@ func TestPairRemovalsHappenOnlyAtTheKnownSites(t *testing.T) {
 	printedUsed := map[string]bool{}
 	allowed := map[string]string{
 		"boot_k3s":           "removes the downstream container before a new one; its callers are the fresh boot and rebuild_downstream",
-		"rebuild_downstream": "out of scope: a failed downstream check rebuilds the downstream, which the rule leaves as it is",
+		"rebuild_downstream": "rebuilds the downstream only after a k3s pin change: a changed k3sImage",
 	}
 	used := map[string]bool{}
 
-	callLine := -1
+	// The refusal has two calls: the fresh boot's, and the reuse branch's after
+	// a failed downstream check that is no pin change. Both run only under
+	// E2E_FIDELITY_KEEP=1.
+	const reuseRefusal = `[ -n "${downstream_pin_changed:-}" ] || refuse_reuse`
+	refuseWord := regexp.MustCompile(`\brefuse_reuse\b`)
+	callLine, reuseCall, refuseCalls := -1, -1, 0
 	for i, line := range lines {
-		if strings.TrimSpace(line) == "refuse_reuse" {
-			require.Equal(t, -1, callLine, "the refusal is called once")
+		text := strings.TrimSpace(line)
+		if strings.HasPrefix(text, "#") || text == "refuse_reuse() {" || !refuseWord.MatchString(text) {
+			continue
+		}
+		refuseCalls++
+		switch text {
+		case "refuse_reuse":
+			require.Equal(t, -1, callLine, "the fresh boot calls the refusal once")
 			callLine = i
+		case reuseRefusal:
+			require.Equal(t, -1, reuseCall, "the reuse branch calls the refusal once")
+			reuseCall = i
 		}
 	}
+	require.Equal(t, 2, refuseCalls, "the refusal has two calls")
 	require.GreaterOrEqual(t, callLine, 0, "the fresh boot calls the refusal")
+	require.GreaterOrEqual(t, reuseCall, 0, "the reuse branch calls the refusal")
 	require.Contains(t, lines[callLine-1], `"${E2E_FIDELITY_KEEP:-}" = "1"`, "the refusal call is gated on E2E_FIDELITY_KEEP=1")
 
 	// The fresh boot is the else branch of the reuse test; its removals sit
@@ -1013,6 +1230,17 @@ func TestPairRemovalsHappenOnlyAtTheKnownSites(t *testing.T) {
 	require.Less(t, reuseIf, elseLine)
 	require.Less(t, elseLine, callLine)
 	require.Less(t, callLine, fiLine)
+
+	// The reuse branch's call sits in the block of a failed reuse_downstream,
+	// after the branch's own KEEP=1 test, and the downstream is rebuilt after
+	// it in the same block.
+	failedIf := slices.Index(lines[reuseIf:], "  if ! reuse_downstream; then") + reuseIf
+	require.Greater(t, failedIf, reuseIf, "the reuse branch tests reuse_downstream with an if")
+	failedFi := slices.Index(lines[failedIf:], "  fi") + failedIf
+	require.Greater(t, failedFi, failedIf)
+	require.Less(t, failedFi, elseLine)
+	require.Greater(t, reuseCall, failedIf, "the refusal call comes after the test of reuse_downstream")
+	require.Less(t, reuseCall, failedFi, "the refusal call is inside the block of a failed reuse_downstream")
 
 	owner := ""
 	cleanupSites, freshBootSites := 0, 0
@@ -1062,7 +1290,8 @@ func TestPairRemovalsHappenOnlyAtTheKnownSites(t *testing.T) {
 
 	// The allowed functions run only where they are meant to: boot_k3s from
 	// rebuild_downstream and from the fresh boot, rebuild_downstream from the
-	// one line in the reuse branch.
+	// block of a failed reuse_downstream in the reuse branch, after the refusal
+	// call.
 	bootCall := regexp.MustCompile(`\bboot_k3s\b`)
 	rebuildCall := regexp.MustCompile(`\brebuild_downstream\b`)
 	bootCalls, rebuildCalls := 0, 0
@@ -1085,8 +1314,8 @@ func TestPairRemovalsHappenOnlyAtTheKnownSites(t *testing.T) {
 		}
 		if rebuildCall.MatchString(text) {
 			rebuildCalls++
-			assert.Truef(t, owner == "" && text == "reuse_downstream || rebuild_downstream" && i > reuseIf && i < elseLine,
-				"line %d calls rebuild_downstream anywhere but the one line of the reuse branch: %s", i+1, text)
+			assert.Truef(t, owner == "" && text == "rebuild_downstream" && i > reuseCall && i < failedFi,
+				"line %d calls rebuild_downstream anywhere but after the refusal call in the block of a failed reuse_downstream: %s", i+1, text)
 		}
 	}
 	assert.Equal(t, 2, bootCalls, "boot_k3s has two call sites")
@@ -1217,4 +1446,694 @@ func TestKeepRunStoppedOracleExitsFive(t *testing.T) {
 		assert.NotContains(t, res.stderr, "is not running")
 		assert.Contains(t, res.stdout, "[rancher] status=exited exitCode=0 oomKilled=false")
 	})
+}
+
+// keptRunDockerCalls are the docker calls a refused kept run makes, as prefixes
+// of the stub's log lines, each with why. Any other call fails a stop row: a
+// removal, a network change, a container start or a command run in a
+// container that changes anything. A name %s is a container of the slot's pair.
+var keptRunDockerCalls = []struct{ prefix, reason string }{
+	{"version --format ", "the check of the Docker platform before the run starts"},
+	{"info", "the Docker root directory and the daemon's information"},
+	{"image inspect ", "the check that a pinned image is present"},
+	{"pull -q ", "a helm pair whose kept state cannot be read pulls its pinned images before the lock"},
+	{"run --rm --entrypoint k3s ", "a helm pair reads the k3s version from an image in a container that removes itself"},
+	{"inspect --format ", "the container id and published address of the kept containers"},
+	{"inspect -f ", "the state of the containers in the diagnostics, and the port bindings of every container"},
+	{"network ls -q", "the check for a network that overlaps the slot's"},
+	{"network inspect -f ", "the check for a network that overlaps the slot's"},
+	{"ps -aq", "the check for a container that holds the slot's port"},
+	{"stats --no-stream", "the host's container load in the diagnostics"},
+	{"logs --tail ", "the last log lines of the containers in the diagnostics, through the redaction filter"},
+	{"exec %s kubectl get ", "a read of the oracle's nodes, pods and events in the diagnostics"},
+	{"exec %s kubectl describe ", "a read of the oracle's nodes in the diagnostics"},
+	{"exec %s kubectl -n cattle-system logs ", "a read of the Rancher or cluster agent log in the diagnostics"},
+	{"exec %s kubectl -n cattle-system get pods ", "a read of the Rancher pods in the diagnostics"},
+	{"exec %s kubectl -n cert-manager get pods ", "a read of the cert-manager pods in the diagnostics"},
+	{"exec %s kubectl -n kube-system logs ", "a read of the chart install job log in the diagnostics"},
+}
+
+// requireKeptRunDockerCalls asserts that every docker call of a refused run is
+// one of keptRunDockerCalls, where a name %s stands for the oracle container or
+// the downstream container of the slot.
+func requireKeptRunDockerCalls(t *testing.T, container string, log []string) {
+	t.Helper()
+	for _, line := range log {
+		allowed := false
+		for _, call := range keptRunDockerCalls {
+			if !strings.Contains(call.prefix, "%s") {
+				allowed = allowed || strings.HasPrefix(line, call.prefix)
+				continue
+			}
+			for _, name := range []string{container, container + "-k3s"} {
+				allowed = allowed || strings.HasPrefix(line, fmt.Sprintf(call.prefix, name))
+			}
+		}
+		assert.Truef(t, allowed, "docker call %q is not one a refused run makes: %v", line, log)
+	}
+}
+
+// keepCurlRecorder stands in for curl in front of whatever curl the case has
+// (saved as curl-next). It writes the arguments of every call that gives curl
+// a request method, a config file or a body (-X, --request, -d, --data*,
+// --json, -F, --form, -T, --upload-file, -I, --head, -K, --config, alone or in
+// a cluster of short options) to the file STUB_REQUEST_LOG, then runs the next
+// curl.
+const keepCurlRecorder = `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+  --request|--request=*|--data|--data-*|--json|--json=*|--form|--form=*|--upload-file|--upload-file=*|--head|--config|--config=*|-[XdFTKI]*|-[!-]*[XdFTKI]*)
+    printf '%s\n' "$*" >> "$STUB_REQUEST_LOG"
+    break ;;
+  esac
+done
+exec "$STUB_NEXT_CURL" "$@"
+`
+
+// recordRequestOptions puts the recorder in front of the case's curl and
+// returns the path of the file it writes. Call it after the other setup.
+func (k *keepRun) recordRequestOptions() string {
+	k.t.Helper()
+	next := filepath.Join(k.s.stubDir, "curl-next")
+	require.NoError(k.t, os.Rename(filepath.Join(k.s.stubDir, "curl"), next))
+	testfs.WriteExecutable(k.t, filepath.Join(k.s.stubDir, "curl"), []byte(keepCurlRecorder))
+	log := filepath.Join(k.s.stubDir, "curl.requests")
+	k.s.env["STUB_NEXT_CURL"] = next
+	k.s.env["STUB_REQUEST_LOG"] = log
+	return log
+}
+
+// requireNoRequestOptions asserts that no call of the run gave curl a request
+// method, a config file or a body: a refused run reads and sends nothing.
+func requireNoRequestOptions(t *testing.T, log string) {
+	t.Helper()
+	raw, err := os.ReadFile(log)
+	if os.IsNotExist(err) {
+		return
+	}
+	require.NoError(t, err)
+	assert.Emptyf(t, string(raw), "a refused run sends no request that has a method or a body")
+}
+
+// keepDownstreamStop is a way the kept downstream fails a check after the
+// kept pair passed its own, and what the refusal says about it.
+type keepDownstreamStop struct {
+	name   string
+	check  string
+	setup  func(k *keepRun)
+	detail func(k *keepRun) string
+	// hint is the extra refusal line the case adds, or empty.
+	hint string
+	// waitLast is the text in the parentheses of the wait line when the case
+	// reads a downstream that is not active, or empty when the run prints no
+	// wait line.
+	waitLast string
+	// limit is the time in seconds the wait line names: 1 or 0 for a case that
+	// shortens the wait, 120 for the script's own.
+	limit string
+	// everySlot is true for the one row of each check that runs on every slot;
+	// the other rows run on the community and helm-check slots only, because
+	// what they vary (the shape of a state file value, the words for the last
+	// read) does not depend on the slot.
+	everySlot bool
+	// proxyRead is true when the downstream turns active and the run then reads
+	// the proxy path to it; fleetRead when it then reads the fleet agent too.
+	proxyRead, fleetRead bool
+	// watchSleep is true for a case whose wait runs on the real clock with a
+	// limit the case shortens: the sleep stub ends a run that loses its bound.
+	watchSleep bool
+	// stderr is a text the run prints on stderr before the refusal, or empty.
+	stderr string
+}
+
+const keepDownstreamHint = "a downstream that reconnects after the host slept can take a few minutes; run again"
+
+// keepClusterRead is the path of the read of the kept downstream cluster.
+const keepClusterRead = "/v3/clusters/c-m-abc"
+
+// editScript replaces the one place in this case's copy of the script that
+// holds old with replacement.
+func (k *keepRun) editScript(old, replacement string) {
+	k.t.Helper()
+	require.NotEqual(k.t, realScriptPath(k.t), k.s.script, "the case changes the copy of the script only")
+	raw, err := os.ReadFile(k.s.script)
+	require.NoError(k.t, err)
+	text := string(raw)
+	require.Equal(k.t, 1, strings.Count(text, old))
+	testfs.WriteExecutable(k.t, k.s.script, []byte(strings.Replace(text, old, replacement, 1)))
+}
+
+// setDownstreamLimit gives the copy of the script a limit in seconds for a kept
+// downstream cluster to turn active. With 0 the wait reads once and stops. With
+// 1 it reads until the real clock passes the next second, because the stubbed
+// sleep takes no time.
+func (k *keepRun) setDownstreamLimit(seconds string) {
+	k.t.Helper()
+	k.editScript("\nDOWNSTREAM_ACTIVE_LIMIT_SECONDS=120\n", "\nDOWNSTREAM_ACTIVE_LIMIT_SECONDS="+seconds+"\n")
+}
+
+// setFleetLimit gives the copy of the script a limit in seconds for the fleet
+// agent to be ready. The wait reads bash's SECONDS, so it ends after the next
+// second passes whatever the stubbed sleep does.
+func (k *keepRun) setFleetLimit(seconds string) {
+	k.t.Helper()
+	k.editScript("\nFLEET_LIMIT_SECONDS=600\n", "\nFLEET_LIMIT_SECONDS="+seconds+"\n")
+}
+
+// keepRunawaySeconds is the real time a run may keep calling sleep before the
+// sleep stub of a case with a short wait ends the script.
+const keepRunawaySeconds = 30
+
+// keepSleepWatchdog stands in for sleep. It takes no time. When the run has
+// called it for STUB_SLEEP_SECONDS of real time it writes a marker file and ends
+// the script with a termination signal, so a wait that lost its bound fails the
+// case within that time and never hangs.
+const keepSleepWatchdog = `#!/bin/sh
+start="$STUB_SLEEP_START"
+now=$(date +%s)
+[ -f "$start" ] || echo "$now" > "$start"
+if [ $((now - $(cat "$start"))) -ge "$STUB_SLEEP_SECONDS" ]; then
+  echo runaway > "$start.runaway"
+  kill -TERM "$PPID"
+fi
+exit 0
+`
+
+// keepCurlWatchdog stands in for curl in front of the curl stub (saved as
+// curl-stub). It sends every call to the stub, except that once STUB_SLEEP_SECONDS
+// of real time have passed since the first read of the kept downstream cluster
+// it writes a marker file and answers active, which ends a wait that has no
+// sleep to watch. The answer carries the status line when the call asks for it.
+const keepCurlWatchdog = `#!/bin/sh
+case "$*" in
+*/v3/clusters/c-m-abc)
+  start="$STUB_CURL_START"
+  now=$(date +%s)
+  [ -f "$start" ] || echo "$now" > "$start"
+  if [ $((now - $(cat "$start"))) -ge "$STUB_SLEEP_SECONDS" ]; then
+    echo runaway > "$start.runaway"
+    case "$*" in
+    *http_code*) printf '{"state":"active"}\n200' ;;
+    *) printf '{"state":"active"}' ;;
+    esac
+    exit 0
+  fi ;;
+esac
+exec "$STUB_REAL_CURL" "$@"
+`
+
+// watchSleep replaces the sleep stub with the watchdog, which ends the script
+// after keepRunawaySeconds of real time in sleep calls, and returns the path of
+// the marker file it writes then.
+func (k *keepRun) watchSleep() string {
+	k.t.Helper()
+	testfs.WriteExecutable(k.t, filepath.Join(k.s.stubDir, "sleep"), []byte(keepSleepWatchdog))
+	start := filepath.Join(k.s.stubDir, "sleep.start")
+	k.s.env["STUB_SLEEP_START"] = start
+	k.s.env["STUB_SLEEP_SECONDS"] = strconv.Itoa(keepRunawaySeconds)
+	return start + ".runaway"
+}
+
+// watchWait puts a real-time deadline on a case that waits for the kept
+// downstream cluster: the sleep stub and the curl stub each write a marker file
+// and end the wait after keepRunawaySeconds, whichever the wait calls. It
+// returns the paths of the two marker files, which exist only when the wait did
+// not stop at its limit. The fleet agent rows let the run go on to its end after
+// a marker. A wait that makes no call to either stub is not covered; the test
+// timeout ends it.
+func (k *keepRun) watchWait() []string {
+	k.t.Helper()
+	sleepMarker := k.watchSleep()
+	realCurl := filepath.Join(k.s.stubDir, "curl-stub")
+	require.NoError(k.t, os.Rename(filepath.Join(k.s.stubDir, "curl"), realCurl))
+	testfs.WriteExecutable(k.t, filepath.Join(k.s.stubDir, "curl"), []byte(keepCurlWatchdog))
+	curlStart := filepath.Join(k.s.stubDir, "curl.start")
+	k.s.env["STUB_CURL_START"] = curlStart
+	k.s.env["STUB_REAL_CURL"] = realCurl
+	k.cannedFleetAgent()
+	return []string{sleepMarker, curlStart + ".runaway"}
+}
+
+// keepCurlCounter stands in for curl in front of the curl stub (saved as
+// curl-stub). The first STUB_INACTIVE_READS reads of the kept downstream
+// cluster are answered from the table STUB_CURL_TABLE.inactive, every other
+// call from the normal table.
+const keepCurlCounter = `#!/bin/sh
+case "$*" in
+*/v3/clusters/c-m-abc)
+  n=$(cat "$STUB_CURL_TABLE.count" 2>/dev/null || echo 0)
+  n=$((n + 1))
+  echo "$n" > "$STUB_CURL_TABLE.count"
+  if [ "$n" -le "$STUB_INACTIVE_READS" ]; then
+    exec env STUB_CURL_TABLE="$STUB_CURL_TABLE.inactive" "$STUB_REAL_CURL" "$@"
+  fi ;;
+esac
+exec "$STUB_REAL_CURL" "$@"
+`
+
+// inactiveFirstReads makes the first reads of the kept downstream cluster
+// answer with the given state, and every read after them with active.
+func (k *keepRun) inactiveFirstReads(reads int, state string) {
+	k.t.Helper()
+	realCurl := filepath.Join(k.s.stubDir, "curl-stub")
+	require.NoError(k.t, os.Rename(filepath.Join(k.s.stubDir, "curl"), realCurl))
+	testfs.WriteExecutable(k.t, filepath.Join(k.s.stubDir, "curl"), []byte(keepCurlCounter))
+	row := keepClusterRead + "\t200\t" + `{"state":"` + state + `"}` + "\n"
+	require.NoError(k.t, os.WriteFile(filepath.Join(k.s.stubDir, "curl.table.inactive"), []byte(row), 0o600))
+	k.s.env["STUB_REAL_CURL"] = realCurl
+	k.s.env["STUB_INACTIVE_READS"] = strconv.Itoa(reads)
+}
+
+// keepCurlOneActive stands in for curl in front of the curl stub (saved as
+// curl-stub). Only read number STUB_ACTIVE_READ of the kept downstream cluster
+// is answered from the normal table (active); every other read is answered from
+// the table STUB_CURL_TABLE.inactive.
+const keepCurlOneActive = `#!/bin/sh
+case "$*" in
+*/v3/clusters/c-m-abc)
+  n=$(cat "$STUB_CURL_TABLE.count" 2>/dev/null || echo 0)
+  n=$((n + 1))
+  echo "$n" > "$STUB_CURL_TABLE.count"
+  if [ "$n" -ne "$STUB_ACTIVE_READ" ]; then
+    exec env STUB_CURL_TABLE="$STUB_CURL_TABLE.inactive" "$STUB_REAL_CURL" "$@"
+  fi ;;
+esac
+exec "$STUB_REAL_CURL" "$@"
+`
+
+// activeOnlyOnRead makes the kept downstream cluster answer with the given state
+// on every read except read number n, which answers active.
+func (k *keepRun) activeOnlyOnRead(n int, state string) {
+	k.t.Helper()
+	realCurl := filepath.Join(k.s.stubDir, "curl-stub")
+	require.NoError(k.t, os.Rename(filepath.Join(k.s.stubDir, "curl"), realCurl))
+	testfs.WriteExecutable(k.t, filepath.Join(k.s.stubDir, "curl"), []byte(keepCurlOneActive))
+	row := keepClusterRead + "\t200\t" + `{"state":"` + state + `"}` + "\n"
+	require.NoError(k.t, os.WriteFile(filepath.Join(k.s.stubDir, "curl.table.inactive"), []byte(row), 0o600))
+	k.s.env["STUB_REAL_CURL"] = realCurl
+	k.s.env["STUB_ACTIVE_READ"] = strconv.Itoa(n)
+}
+
+// cannedFleetAgent adds the two reads of the fleet agent, answering ready.
+func (k *keepRun) cannedFleetAgent() {
+	k.t.Helper()
+	k.canned("/k8s/clusters/c-m-abc/api/v1/namespaces/cattle-fleet-system", "200", "{}")
+	k.canned("/k8s/clusters/c-m-abc/apis/apps/v1/namespaces/cattle-fleet-system/deployments/fleet-agent", "200", fleetAgentReady)
+}
+
+func keepDownstreamStopRows() []keepDownstreamStop {
+	var rows []keepDownstreamStop
+	for _, field := range []string{"k3sImage", "k3sContainerId", "downstream"} {
+		for _, variant := range []struct {
+			name  string
+			value any
+		}{{"is missing", nil}, {"is null", nil}, {"is a number", 5}} {
+			rows = append(rows, keepDownstreamStop{
+				name: "state file " + field + " " + variant.name, check: "state-file", everySlot: variant.name == "is missing",
+				setup: func(k *keepRun) {
+					if variant.name == "is missing" {
+						delete(k.state, field)
+						return
+					}
+					k.state[field] = variant.value
+				},
+				detail: func(k *keepRun) string { return "the state file " + k.stateFile() + " has no " + field },
+			})
+		}
+	}
+	missingContainer := func(k *keepRun) { k.ids = k.slot.container + " oracle-id\n" }
+	rows = append(rows,
+		keepDownstreamStop{
+			name: "k3s container does not exist", check: "k3s-container", setup: missingContainer, everySlot: true,
+			detail: func(k *keepRun) string { return "container " + k.slot.container + "-k3s does not exist" },
+		},
+		keepDownstreamStop{
+			name: "k3s container does not exist and downstream_pin_changed is exported", check: "k3s-container",
+			setup: func(k *keepRun) {
+				missingContainer(k)
+				k.s.env["downstream_pin_changed"] = "1"
+				k.s.env["DOWNSTREAM_PIN_CHANGED"] = "1"
+			},
+			detail: func(k *keepRun) string { return "container " + k.slot.container + "-k3s does not exist" },
+		},
+		keepDownstreamStop{
+			name: "k3s container has another id", check: "k3s-container-id", everySlot: true,
+			setup: func(k *keepRun) {
+				k.ids = k.slot.container + " oracle-id\n" + k.slot.container + "-k3s another-id\n"
+			},
+			detail: func(k *keepRun) string {
+				return "container " + k.slot.container + "-k3s has id another-id, but the state file records k3s-id"
+			},
+		},
+	)
+	// The case that stays provisioning keeps a limit of 1 s, so the wait loop
+	// runs more than once on every slot; the others read once and stop.
+	inactive := func(name, limit, code, body, last string, everySlot bool) keepDownstreamStop {
+		return keepDownstreamStop{
+			name: name, check: "downstream", hint: keepDownstreamHint, waitLast: last, limit: limit, everySlot: everySlot,
+			setup: func(k *keepRun) {
+				k.setDownstreamLimit(limit)
+				k.canned(keepClusterRead, code, body)
+			},
+			detail: func(*keepRun) string {
+				return "the downstream cluster c-m-abc was not active within " + limit + " s (" + last + ")"
+			},
+		}
+	}
+	rows = append(rows,
+		inactive("downstream stays provisioning", "1", "200", `{"state":"provisioning"}`, "last state provisioning", true),
+		inactive("downstream gives no answer", "0", "000", "", "no HTTP answer", false),
+		inactive("downstream answers 404", "0", "404", `{"type":"error","code":"NotFound"}`, "HTTP 404", false),
+		inactive("downstream answer has no state", "0", "200", "{}", "no state in the answer", false),
+		keepDownstreamStop{
+			name: "downstream turns active and its proxy path does not settle", check: "downstream",
+			waitLast: "last state provisioning", limit: "120", proxyRead: true, watchSleep: true,
+			setup: func(k *keepRun) {
+				k.inactiveFirstReads(2, "provisioning")
+				k.canned("/k8s/clusters/c-m-abc/version", "503", "")
+			},
+			detail: func(*keepRun) string {
+				return "the downstream cluster c-m-abc turned active, but a later check of it failed (see the error above)"
+			},
+		},
+		keepDownstreamStop{
+			name: "downstream turns active and then is not active again", check: "downstream",
+			waitLast: "last state provisioning", limit: "120", watchSleep: true, stderr: "did not become active within 10 minutes",
+			setup: func(k *keepRun) { k.activeOnlyOnRead(3, "provisioning") },
+			detail: func(*keepRun) string {
+				return "the downstream cluster c-m-abc turned active, but a later check of it failed (see the error above)"
+			},
+		},
+		keepDownstreamStop{
+			name: "downstream turns active and its fleet agent is never ready", check: "downstream",
+			waitLast: "last state provisioning", limit: "120", proxyRead: true, fleetRead: true, watchSleep: true,
+			stderr: "deployment cattle-fleet-system/fleet-agent on the downstream cluster c-m-abc was not ready within 1 s",
+			setup: func(k *keepRun) {
+				k.inactiveFirstReads(2, "provisioning")
+				k.setFleetLimit("1")
+				k.canned("/k8s/clusters/c-m-abc/api/v1/namespaces/cattle-fleet-system", "200", "{}")
+				k.canned("/k8s/clusters/c-m-abc/apis/apps/v1/namespaces/cattle-fleet-system/deployments/fleet-agent", "200", `{"spec":{"replicas":1},"status":{"readyReplicas":0}}`)
+			},
+			detail: func(*keepRun) string {
+				return "the downstream cluster c-m-abc turned active, but a later check of it failed (see the error above)"
+			},
+		},
+		keepDownstreamStop{
+			name: "a failure that sets no check", check: "unnamed", everySlot: true,
+			setup: func(k *keepRun) {
+				const anchor = "reuse_downstream() {\n  downstream_pin_changed=\"\"\n"
+				k.editScript(anchor, anchor+"  [ -n \"\" ] || return 1\n")
+			},
+			detail: func(*keepRun) string { return unnamedDetail },
+		},
+	)
+	return rows
+}
+
+// requireKeepRefusal asserts the refusal a run printed for a failed check: the
+// first line with the check and its detail, the line that names the checks and
+// the commands that show why, for a downstream read that got no answer the line
+// that names the oracle container too, the hint when there is one, and the
+// commands that remove the whole pair.
+func requireKeepRefusal(t *testing.T, k *keepRun, stderr, check, detail, hint string) {
+	t.Helper()
+	c := k.slot.container
+	block := []string{
+		fmt.Sprintf("error: E2E_FIDELITY_KEEP=1: the kept pair %s on port %d failed its %s check: %s; nothing was removed", c, k.port, check, detail),
+		keepFindOutWhyLine(c, check),
+	}
+	if check == "downstream" && strings.HasSuffix(detail, "(no HTTP answer)") {
+		block = append(block, fmt.Sprintf("error: the last read of the downstream cluster got no HTTP answer; also find out why the oracle did not answer (docker ps -a --filter name=%s; docker logs --tail 50 %s)", c, c))
+	}
+	if hint != "" {
+		block = append(block, "error: "+hint)
+	}
+	if check == "state-file" {
+		block = append(block, "error: "+detail+"; remove the pair with:")
+	} else {
+		block = append(block, "error: to boot a new pair instead, remove this one first, then run again:")
+	}
+	block = append(block,
+		"error:   docker rm -f -v "+shellWord(t, c)+" "+shellWord(t, c+"-k3s"),
+		"error:   docker network rm "+shellWord(t, c+"-net"),
+		"error:   rm -rf "+shellWord(t, k.root),
+	)
+	if k.slot.kind == "upcoming" || k.slot.kind == "helm" || k.slot.kind == "upcominghelm" {
+		block = append(block, "error: this also deletes drift reports under "+k.root)
+	}
+	require.Contains(t, stderr, strings.Join(block, "\n")+"\n")
+	if hint == "" {
+		assert.NotContains(t, stderr, "can take a few minutes; run again")
+	}
+}
+
+// TestKeepRunStopsOnAFailedDownstreamCheck asserts that under
+// E2E_FIDELITY_KEEP=1 a kept downstream that fails its state file, k3s
+// container, k3s container id or downstream cluster check stops the run with
+// exit 4 on every slot: the refusal names the failed check, the commands that
+// show why for the downstream container, and the commands that remove the whole
+// pair, and the run removes nothing, imports nothing, writes no state and sends
+// no request beyond the checks themselves. A downstream cluster that is not
+// active is waited for first, and one that turns active but fails a later check
+// stops the run too. A failure that sets no check name stops the run, and a
+// variable named downstream_pin_changed in the environment changes nothing.
+// Each check has one row on every slot; the variants of a state file value, the
+// other words for the last read, the proxy path and the exported variable run on
+// the community and helm-check slots. A wait that loses its bound ends the case
+// after keepRunawaySeconds with a message that says so.
+func TestKeepRunStopsOnAFailedDownstreamCheck(t *testing.T) {
+	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
+	requireKeepSlotsMatchTheScript(t)
+	var slotNames []string
+	for _, slot := range keepSlots {
+		slotNames = append(slotNames, slot.name)
+	}
+	require.Subset(t, slotNames, []string{"community", "helm-check"}, "the slots that run every row are slots of the script")
+	for _, slot := range keepSlots {
+		for _, row := range keepDownstreamStopRows() {
+			if !row.everySlot && slot.name != "community" && slot.name != "helm-check" {
+				continue
+			}
+			t.Run(slot.name+"/"+row.name, func(t *testing.T) {
+				t.Parallel()
+				k := newKeepRun(t, slot)
+				row.setup(k)
+				var runaway []string
+				switch {
+				case row.limit == "0" || row.limit == "1":
+					runaway = k.watchWait()
+				case row.watchSleep:
+					runaway = []string{k.watchSleep()}
+				}
+				requests := k.recordRequestOptions()
+				res := k.run()
+
+				for _, marker := range runaway {
+					_, err := os.Stat(marker)
+					require.Truef(t, os.IsNotExist(err), "the wait did not stop at its limit of %s s: the run kept waiting for %d s of real time and was ended\nstdout: %s\nstderr: %s", row.limit, keepRunawaySeconds, res.stdout, res.stderr)
+				}
+				require.NotContains(t, res.stdout, keepToken, "the admin token must never be printed")
+				require.NotContains(t, res.stderr, keepToken, "the admin token must never be printed")
+				require.Equalf(t, 4, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+				requireKeepRefusal(t, k, res.stderr, row.check, row.detail(k), row.hint)
+				if slot.kind == "community" || slot.kind == "prime" {
+					assert.NotContains(t, res.stderr, "drift reports", "a slot that allows no drift run has no drift reports")
+				}
+
+				assert.Contains(t, res.stdout, "==> reusing healthy kept container")
+				if row.waitLast != "" {
+					assert.Contains(t, res.stdout, "==> waiting up to "+row.limit+" s for the kept downstream cluster c-m-abc to be active ("+row.waitLast+")")
+				} else {
+					assert.NotContains(t, res.stdout, "==> waiting up to")
+				}
+				assert.NotContains(t, res.stdout, "rebuilding the kept downstream")
+				assert.NotContains(t, res.stdout, "recreating")
+
+				requireKeptRunDockerCalls(t, slot.container, res.log)
+				requireNoRequestOptions(t, requests)
+				allowed := []string{k.base() + "/ping", k.base() + "/v3/users?me=true", k.base() + keepClusterRead}
+				if row.proxyRead {
+					allowed = append(allowed, k.base()+"/k8s/clusters/c-m-abc/version")
+				}
+				if row.fleetRead {
+					allowed = append(allowed,
+						k.base()+"/k8s/clusters/c-m-abc/api/v1/namespaces/cattle-fleet-system",
+						k.base()+"/k8s/clusters/c-m-abc/apis/apps/v1/namespaces/cattle-fleet-system/deployments/fleet-agent")
+				}
+				if row.stderr != "" {
+					assert.Contains(t, res.stderr, row.stderr)
+				}
+				for _, line := range k.s.curlLog() {
+					if rest, ok := strings.CutPrefix(line, "canned "); ok {
+						assert.Containsf(t, allowed, rest, "the curl log: %v", k.s.curlLog())
+						continue
+					}
+					chartOnly := slot.kind == "upcominghelm" && line == "real "+k.s.helm.chartURL
+					assert.Truef(t, chartOnly, "request %q must not happen: %v", line, k.s.curlLog())
+				}
+				_, called := k.s.goEnv()
+				assert.False(t, called, "no test run starts after a refusal")
+				assert.Equal(t, k.before, k.snapshot(), "the state file and the CA file are not written")
+			})
+		}
+	}
+}
+
+// TestKeepRunWaitsForAKeptDownstreamToTurnActive asserts that on every slot a
+// kept downstream cluster that is not active on its first read is waited for:
+// the run prints the wait line, reads the cluster until it is active, then reads
+// the proxy path until it answers steadily and the fleet agent, in that order,
+// and goes on as with a reused downstream, with no rebuild and no removal. A
+// downstream that is active on its first read makes no wait, no proxy read and
+// no fleet read.
+func TestKeepRunWaitsForAKeptDownstreamToTurnActive(t *testing.T) {
+	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
+	requireKeepSlotsMatchTheScript(t)
+	for _, slot := range keepSlots {
+		t.Run(slot.name+"/not active on the first reads", func(t *testing.T) {
+			t.Parallel()
+			k := newKeepRun(t, slot)
+			k.inactiveFirstReads(3, "provisioning")
+			k.cannedFleetAgent()
+			start := time.Now()
+			res := k.run()
+
+			require.Equalf(t, 0, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+			assert.Less(t, time.Since(start), 60*time.Second, "a read without a canned row spins on the real clock")
+			requireOrder(t, strings.Split(res.stdout, "\n"),
+				"==> reusing healthy kept container",
+				"==> waiting up to 120 s for the kept downstream cluster c-m-abc to be active (last state provisioning)",
+				"==> waiting for the downstream cluster c-m-abc to be active",
+				"==> waiting for the proxy path to /k8s/clusters/c-m-abc to settle",
+				"==> waiting for the fleet agent on the downstream cluster c-m-abc",
+			)
+			assert.NotContains(t, res.stdout, "rebuilding the kept downstream")
+			for _, prefix := range []string{"rm ", "run ", "start ", "network rm", "network create", "container rm"} {
+				assert.Falsef(t, hasCall(res.log, prefix), "a reused pair makes no %q call: %v", prefix, res.log)
+			}
+
+			clusterReads, lastCluster, namespace, agent, versions := 0, -1, -1, -1, 0
+			for i, line := range k.s.curlLog() {
+				switch {
+				case strings.HasSuffix(line, keepClusterRead) && namespace < 0:
+					clusterReads++
+					lastCluster = i
+				case strings.HasSuffix(line, "/k8s/clusters/c-m-abc/version") && namespace < 0:
+					versions++
+					assert.Greater(t, lastCluster, -1, "the proxy path is read after the cluster")
+				case strings.HasSuffix(line, "/k8s/clusters/c-m-abc/api/v1/namespaces/cattle-fleet-system"):
+					namespace = i
+				case strings.HasSuffix(line, "/k8s/clusters/c-m-abc/apis/apps/v1/namespaces/cattle-fleet-system/deployments/fleet-agent"):
+					agent = i
+				case strings.Contains(line, "/v1/provisioning.cattle.io.clusters") || strings.Contains(line, "/v3/clusterregistrationtokens") || strings.Contains(line, "/v3/import"):
+					assert.Failf(t, "no import", "request %q must not happen", line)
+				}
+			}
+			assert.Equal(t, 5, clusterReads, "three reads that are not active, the read that is, and the read of the wait for the downstream")
+			assert.GreaterOrEqual(t, versions, 6, "the proxy path answered steadily before the fleet reads")
+			require.Greater(t, namespace, lastCluster, "the namespace is read after the last cluster read")
+			assert.Greater(t, agent, namespace, "the Deployment is read after the namespace")
+			assert.Equal(t, k.before, k.snapshot(), "the state file and the CA file stay")
+		})
+
+		t.Run(slot.name+"/active on the first read", func(t *testing.T) {
+			t.Parallel()
+			k := newKeepRun(t, slot)
+			res := k.run()
+
+			require.Equalf(t, 0, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+			for _, text := range []string{
+				"==> waiting up to", "==> waiting for the downstream cluster", "==> waiting for the proxy path", "==> waiting for the fleet agent",
+			} {
+				assert.NotContainsf(t, res.stdout, text, "an active downstream is reused as it is")
+			}
+			for _, line := range k.s.curlLog() {
+				assert.NotContains(t, line, "cattle-fleet-system", "an active downstream makes no fleet read")
+			}
+		})
+	}
+}
+
+// TestKeepRunRebuildsAMovedK3sImageBeforeCheckingItsContainer asserts that on
+// every slot a downstream whose k3s image moved is rebuilt even when its
+// container is gone: the image is compared before the container, so the case
+// is a pin change and not a failed check.
+func TestKeepRunRebuildsAMovedK3sImageBeforeCheckingItsContainer(t *testing.T) {
+	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
+	requireKeepSlotsMatchTheScript(t)
+	for _, slot := range keepSlots {
+		t.Run(slot.name, func(t *testing.T) {
+			t.Parallel()
+			k := newKeepRun(t, slot)
+			k.moveK3sImage()
+			k.cannedImport()
+			k.ids = slot.container + " oracle-id\n"
+			res := k.run()
+
+			assert.NotEqualf(t, 4, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+			assert.NotContains(t, res.stderr, "failed its")
+			assert.Contains(t, res.stdout, "==> kept downstream was created from a different k3s image; rebuilding it")
+			assert.Contains(t, res.stdout, "==> rebuilding the kept downstream against the running oracle (a different k3s image)")
+			assert.True(t, hasCall(res.log, "run -d --name "+slot.container+"-k3s"), "the downstream container is created again: %v", res.log)
+			assert.Contains(t, k.s.curlLog(), "canned "+k.base()+"/v1/provisioning.cattle.io.clusters/fleet-default/downstream")
+		})
+	}
+}
+
+// TestReuseDownstreamFailuresSetAReason asserts, from the text of
+// reuse_downstream, that no failure leaves it without saying which kind it is:
+// it starts by clearing its result variables, every return of a failure sits in
+// a group that either reports a changed k3s image or names the failed check and
+// its detail, no check fails by a trailing "|| return 1", and it ends with an
+// explicit success. The check names it sets are the ones the refusal tests
+// cover.
+func TestReuseDownstreamFailuresSetAReason(t *testing.T) {
+	lines := functionBody(t, "reuse_downstream")
+	body := lines[1 : len(lines)-1]
+
+	require.GreaterOrEqual(t, len(body), 5)
+	for i, want := range []string{`downstream_pin_changed=""`, `REUSE_FAILED_CHECK=""`, `REUSE_FAILED_DETAIL=""`, `REUSE_FAILED_HINT=""`} {
+		assert.Equal(t, want, strings.TrimSpace(body[i]), "the first statements clear the result variables")
+	}
+	var last string
+	for _, line := range body {
+		if strings.TrimSpace(line) != "" {
+			last = strings.TrimSpace(line)
+		}
+	}
+	assert.Equal(t, "return 0", last, "the last statement is an explicit success")
+
+	returns, names := requireFailureGroupsSetAReason(t, lines, "downstream_pin_changed")
+	assert.Greater(t, returns, 5, "the scan reads the failure groups")
+
+	// Only a changed k3s image rebuilds the downstream: the one non-empty
+	// assignment of downstream_pin_changed sits in the group that compares the
+	// k3s image of the state file with the pinned one.
+	assignsPin := regexp.MustCompile(`downstream_pin_changed="[^"]+"`)
+	var assigned []int
+	for i, line := range lines {
+		if assignsPin.MatchString(line) {
+			assigned = append(assigned, i)
+		}
+	}
+	require.Len(t, assigned, 1, "downstream_pin_changed is set to a reason in exactly one place")
+	opener := groupOpener(lines, assigned[0])
+	require.Greater(t, opener, 0)
+	assert.Equal(t, `[ "${saved_k3s_image}" = "${K3S_IMAGE}" ] || {`, strings.TrimSpace(lines[opener]), "only a changed k3s image rebuilds the downstream")
+
+	var want []string
+	for _, row := range keepDownstreamStopRows() {
+		if row.check != "unnamed" {
+			want = append(want, row.check)
+		}
+	}
+	assert.ElementsMatch(t, slices.Compact(slices.Sorted(slices.Values(want))), slices.Sorted(maps.Keys(names)), "the check names reuse_downstream sets and the names the refusal tests cover")
+
+	// Each check keeps one row that runs on every slot.
+	for _, check := range want {
+		onEverySlot := slices.ContainsFunc(keepDownstreamStopRows(), func(row keepDownstreamStop) bool {
+			return row.check == check && row.everySlot
+		})
+		assert.Truef(t, onEverySlot, "the check %s has no row that runs on every slot", check)
+	}
 }
