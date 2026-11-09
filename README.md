@@ -3,8 +3,9 @@
 An AI-native command-line tool for operating [Rancher Manager](https://github.com/rancher/rancher).
 
 A greenfield rewrite of the legacy Rancher CLI, built so a coding agent in a
-terminal harness (Claude Code, Codex, …) can operate Rancher like any other
-user - and operators get the same commands with readable table output.
+terminal harness (Claude Code, Codex, Gemini CLI, GitHub Copilot CLI and
+others) can operate Rancher like any other user - and operators get the same
+commands with readable table output.
 
 > [!NOTE]
 > **Experimental.** rancher-cli is under heavy development and is considered
