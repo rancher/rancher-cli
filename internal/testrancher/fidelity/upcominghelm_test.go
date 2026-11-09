@@ -236,6 +236,7 @@ func (s *scenario) callCount(log []string, prefix string) int {
 // registry request, any download and any state, that a format message wins
 // over the repository message, and that an empty value counts as unset.
 func TestUpcomingHelmRefusesBeforeDocker(t *testing.T) {
+	t.Parallel()
 	hex64 := strings.TrimPrefix(sampleDigest, "sha256:")
 	validChart := "https://charts.example.com/rancher-2.16.tgz@" + sampleDigest
 	serverImage := "rancher/rancher-server:v2.16-abc-head@" + sampleDigest
@@ -294,6 +295,7 @@ func TestUpcomingHelmRefusesBeforeDocker(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newScenario(t)
 			s.env = c.env
 			res := s.run()
@@ -304,6 +306,7 @@ func TestUpcomingHelmRefusesBeforeDocker(t *testing.T) {
 	}
 
 	t.Run("an empty value counts as unset", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.env = map[string]string{"E2E_FIDELITY_UPCOMING_BOOT": "", "E2E_FIDELITY_UPCOMING_CHART": ""}
 		res := s.run()
@@ -311,6 +314,7 @@ func TestUpcomingHelmRefusesBeforeDocker(t *testing.T) {
 		assert.Equal(t, 97, res.code, "the run goes on to the community profile and stops at the docker stub")
 	})
 	t.Run("an empty boot with a minor is the container boot", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		image := s.publishDefaults()
 		s.env = minor(map[string]string{"E2E_FIDELITY_UPCOMING_BOOT": "", "E2E_FIDELITY_PRINT_IMAGES": "1"})
@@ -319,6 +323,7 @@ func TestUpcomingHelmRefusesBeforeDocker(t *testing.T) {
 		assert.Equal(t, "rancher/rancher:head@"+image.ListDigest, decodePrinted(t, res.stdout)["oracleImage"])
 	})
 	t.Run("a rancher-server image with helm and a chart is accepted", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{})
 		s.slotScript()
 		s.env["E2E_FIDELITY_PRINT_IMAGES"] = "1"
@@ -334,10 +339,12 @@ func TestUpcomingHelmRefusesBeforeDocker(t *testing.T) {
 // and boots what it did before the helm boot existed: the same keys, the
 // rancher/rancher image, no chart request and no read of the server image.
 func TestUpcomingBootDefaultsToContainer(t *testing.T) {
+	t.Parallel()
 	today := []string{"minor", "source", "oracleImage", "serverVersion", "k3sImage", "k3sSource", "k3sVersion", "goldenOracleImage", "goldenK3sImage"}
 	for _, boot := range []string{"", "container"} {
 		for _, drift := range []bool{false, true} {
 			t.Run(fmt.Sprintf("print with boot %q and drift %t", boot, drift), func(t *testing.T) {
+				t.Parallel()
 				s := newScenario(t)
 				image := s.publishDefaults()
 				s.env = map[string]string{"E2E_FIDELITY_MINOR": "2.16", "E2E_FIDELITY_PRINT_IMAGES": "1"}
@@ -365,6 +372,7 @@ func TestUpcomingBootDefaultsToContainer(t *testing.T) {
 	}
 
 	t.Run("a healthy kept pair reaches its drift run and downloads nothing", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		image := s.publishDefaults()
 		oracle := "rancher/rancher:head@" + image.ListDigest
@@ -401,6 +409,7 @@ func TestUpcomingBootDefaultsToContainer(t *testing.T) {
 // no docker call past the platform read, downloads the chart once and no
 // cert-manager manifest, and creates nothing under the state home.
 func TestUpcomingHelmPrint(t *testing.T) {
+	t.Parallel()
 	helmKeys := []string{
 		"minor", "source", "oracleImage", "serverVersion", "k3sImage", "k3sSource", "k3sVersion", "goldenOracleImage", "goldenK3sImage",
 		"boot", "chart", "chartSha256", "localK3sImage", "assetsImage", "certManager", "revision", "containerImage", "containerRevision",
@@ -428,6 +437,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 		{"release branch", true, "release-branch", "v2.16-head"},
 	} {
 		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
 			s, u := newUpcomingHelmScenario(t, upcomingOptions{release: row.release, assets: "block"})
 			s.slotScript()
 			printEnv(s, nil)
@@ -464,6 +474,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 	}
 
 	t.Run("a chart override is verified by its sha256", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{})
 		s.slotScript()
 		pin := u.overrideURL + "@sha256:" + s.helm.chartSHA
@@ -477,6 +488,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 		assert.Contains(t, got, "containerImage", "a chart override does not turn off the comparison of the head images")
 	})
 	t.Run("an image override reads no tag and compares nothing", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{})
 		image := s.reg.publishLabeled(t, "rancher/rancher-server", "v2.16-"+u.commit+"-head", u.serverVersion, "v1.37.1+k3s1", u.revision, strings.Repeat("d", 40))
 		s.slotScript()
@@ -496,6 +508,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 		}
 	})
 	t.Run("a downstream override leaves the node container's k3s image", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{})
 		s.slotScript()
 		override := "rancher/k3s:v1.34.4-k3s1@" + sampleDigest
@@ -507,6 +520,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 		assert.Equal(t, u.nodeImage, got["localK3sImage"])
 	})
 	t.Run("a drift run adds the drift keys to the helm keys", func(t *testing.T) {
+		t.Parallel()
 		s, _ := newUpcomingHelmScenario(t, upcomingOptions{})
 		s.slotScript()
 		printEnv(s, map[string]string{"E2E_FIDELITY_DRIFT": "1", "E2E_FIDELITY_DRIFT_REPORT": filepath.Join(s.home, "report.json")})
@@ -519,6 +533,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 		assert.Equal(t, "2.16", got["minor"])
 	})
 	t.Run("an image override of a tagged build with a chart override is accepted", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{appVersion: "v2.16.0-rc1"})
 		image := s.reg.publishLabeled(t, "rancher/rancher-server", "v2.16.0-rc1", "v2.16.0-rc1", "v1.37.1+k3s1", u.revision, strings.Repeat("d", 40))
 		s.slotScript()
@@ -534,6 +549,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 		assert.NotContains(t, got, "containerImage")
 	})
 	t.Run("a chart without an assets image prints an empty assetsImage", func(t *testing.T) {
+		t.Parallel()
 		s, _ := newUpcomingHelmScenario(t, upcomingOptions{})
 		s.slotScript()
 		printEnv(s, nil)
@@ -623,6 +639,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 	}
 	for _, c := range stops {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s, u := newUpcomingHelmScenario(t, c.opts)
 			s.slotScript()
 			printEnv(s, nil)
@@ -641,6 +658,7 @@ func TestUpcomingHelmPrint(t *testing.T) {
 		})
 	}
 	t.Run("an unusable CATTLE_K3S_VERSION does not suggest the downstream override", func(t *testing.T) {
+		t.Parallel()
 		s, _ := newUpcomingHelmScenario(t, upcomingOptions{k3sVersion: "v1.37.1"})
 		s.slotScript()
 		printEnv(s, nil)
@@ -658,7 +676,9 @@ func TestUpcomingHelmPrint(t *testing.T) {
 // manifest once, one platform read and one slot read are made, and a chart
 // of another appVersion stops the run before anything is removed.
 func TestUpcomingHelmBoot(t *testing.T) {
+	t.Parallel()
 	t.Run("the steps and the values", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{assets: "block"})
 		f := s.helm
 		port := s.slotScript()
@@ -724,6 +744,7 @@ func TestUpcomingHelmBoot(t *testing.T) {
 	})
 
 	t.Run("a release branch image keeps its tag in the chart values", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{release: true})
 		s.slotScript()
 		s.helm.setPod("rancher/rancher-server:v9.9.9", "docker.io/rancher/rancher-server@"+sampleDigest)
@@ -738,6 +759,7 @@ func TestUpcomingHelmBoot(t *testing.T) {
 	})
 
 	t.Run("a chart of another appVersion stops before the lock", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{appVersion: "v2.16-other-head"})
 		s.slotScript()
 		res := s.run()
@@ -748,6 +770,7 @@ func TestUpcomingHelmBoot(t *testing.T) {
 	})
 
 	t.Run("a chart that is not published stops before any pull", func(t *testing.T) {
+		t.Parallel()
 		s, _ := newUpcomingHelmScenario(t, upcomingOptions{chartStatus: http.StatusNotFound})
 		s.slotScript()
 		res := s.run()
@@ -764,6 +787,7 @@ func TestUpcomingHelmBoot(t *testing.T) {
 // pull, removal or boot; another chart, a kept container pair run with helm,
 // and a kept helm pair run with container each recreate it.
 func TestUpcomingHelmKeptPair(t *testing.T) {
+	t.Parallel()
 	keptState := func(s *scenario, u *upcomingFixture) map[string]any {
 		return map[string]any{
 			"containerId": "oracle-id", "adminToken": "token", "oracleImage": s.helm.oracleImage,
@@ -783,6 +807,7 @@ func TestUpcomingHelmKeptPair(t *testing.T) {
 	}
 
 	t.Run("a healthy helm pair with a drift run", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{})
 		keep(s, keptState(s, u))
 		s.env["E2E_FIDELITY_DRIFT"] = "1"
@@ -806,6 +831,7 @@ func TestUpcomingHelmKeptPair(t *testing.T) {
 	})
 
 	t.Run("a pair of another chart runs the steps before the lock", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{})
 		state := keptState(s, u)
 		state["chart"] = u.overrideURL + "@sha256:" + s.helm.chartSHA
@@ -821,6 +847,7 @@ func TestUpcomingHelmKeptPair(t *testing.T) {
 	})
 
 	t.Run("a kept container pair run with helm is recreated", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{})
 		state := keptState(s, u)
 		delete(state, "boot")
@@ -836,6 +863,7 @@ func TestUpcomingHelmKeptPair(t *testing.T) {
 	})
 
 	t.Run("a kept helm pair run with container is recreated", func(t *testing.T) {
+		t.Parallel()
 		s, u := newUpcomingHelmScenario(t, upcomingOptions{})
 		s.env["E2E_FIDELITY_UPCOMING_BOOT"] = "container"
 		state := keptState(s, u)

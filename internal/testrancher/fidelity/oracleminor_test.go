@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"maps"
 	"math/big"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -580,6 +579,7 @@ const sampleDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 // variable combinations and of the minor itself exits 1 with its message
 // before any docker call and before any state is created.
 func TestOracleMinorRefusesBeforeDocker(t *testing.T) {
+	t.Parallel()
 	validUpcoming := "rancher/rancher:v2.16-abc-head@" + sampleDigest
 	validK3s := "rancher/k3s:v1.34.4-k3s1@" + sampleDigest
 	type tc struct {
@@ -612,6 +612,7 @@ func TestOracleMinorRefusesBeforeDocker(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newScenario(t)
 			s.env = c.env
 			res := s.run()
@@ -620,6 +621,7 @@ func TestOracleMinorRefusesBeforeDocker(t *testing.T) {
 		})
 	}
 	t.Run("E2E_FIDELITY_PRINT_IMAGES=0 alone is not refused", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.env = map[string]string{"E2E_FIDELITY_PRINT_IMAGES": "0"}
 		res := s.run()
@@ -634,6 +636,7 @@ func TestOracleMinorRefusesBeforeDocker(t *testing.T) {
 // the registry host), and that a valid k3s override on another registry is
 // accepted.
 func TestOracleMinorOverrideFormat(t *testing.T) {
+	t.Parallel()
 	hex64 := strings.TrimPrefix(sampleDigest, "sha256:")
 	noTag := func(variable, value, form string) string {
 		return variable + "=" + value + " has no tag; write " + form
@@ -683,6 +686,7 @@ func TestOracleMinorOverrideFormat(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newScenario(t)
 			s.env = map[string]string{"E2E_FIDELITY_MINOR": "2.16", c.variable: c.value}
 			res := s.run()
@@ -692,6 +696,7 @@ func TestOracleMinorOverrideFormat(t *testing.T) {
 	}
 
 	t.Run("k3s override on another registry is accepted", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.publishDefaults()
 		value := "registry.example.com:5000/team/k3s:v1.34.4-k3s1@sha256:" + hex64
@@ -707,6 +712,7 @@ func TestOracleMinorOverrideFormat(t *testing.T) {
 // one, the overrides verbatim, the platform entry the docker server reports,
 // the k3s image from the image's environment, and one JSON line on stdout.
 func TestOracleMinorChoosesTheImage(t *testing.T) {
+	t.Parallel()
 	printEnv := func(extra map[string]string) map[string]string {
 		env := map[string]string{"E2E_FIDELITY_MINOR": "2.16", "E2E_FIDELITY_PRINT_IMAGES": "1"}
 		maps.Copy(env, extra)
@@ -714,6 +720,7 @@ func TestOracleMinorChoosesTheImage(t *testing.T) {
 	}
 
 	t.Run("main without a release branch", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		image := s.publishDefaults()
 		s.env = printEnv(nil)
@@ -751,6 +758,7 @@ func TestOracleMinorChoosesTheImage(t *testing.T) {
 	})
 
 	t.Run("release branch", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.addBranch()
 		s.publishDefaults()
@@ -765,6 +773,7 @@ func TestOracleMinorChoosesTheImage(t *testing.T) {
 	})
 
 	t.Run("upcoming override", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.publishDefaults()
 		image := s.reg.publish(s.t, "rancher/rancher", "v2.16-0123abc-head", "v2.16-0123abc-head", "v1.37.1+k3s1")
@@ -782,6 +791,7 @@ func TestOracleMinorChoosesTheImage(t *testing.T) {
 	})
 
 	t.Run("k3s override", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.publishDefaults()
 		value := "rancher/k3s:v1.34.4-k3s1@" + sampleDigest
@@ -804,6 +814,7 @@ func TestOracleMinorChoosesTheImage(t *testing.T) {
 // and before any docker call past the platform read, and that a release
 // candidate override of the minor is accepted.
 func TestOracleMinorRefusesAnUnusableImage(t *testing.T) {
+	t.Parallel()
 	infoOnly := []string{"info"}
 	infoVersion := []string{"info", "version"}
 	rancherPath := "/v2/rancher/rancher/manifests/"
@@ -897,6 +908,7 @@ func TestOracleMinorRefusesAnUnusableImage(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newScenario(t)
 			s.env = map[string]string{"E2E_FIDELITY_MINOR": "2.16", "E2E_FIDELITY_PRINT_IMAGES": "1"}
 			c.setup(s)
@@ -917,6 +929,7 @@ func TestOracleMinorRefusesAnUnusableImage(t *testing.T) {
 	}
 
 	t.Run("release candidate override of the minor is accepted", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.publishDefaults()
 		image := s.reg.publish(s.t, "rancher/rancher", "v2.16.0-rc1", "v2.16.0-rc1", "v1.37.1+k3s1")
@@ -972,11 +985,14 @@ func (s *scenario) armConfigDigest(repo, tag string) string {
 // or helm-check slot.
 func (s *scenario) slotScript() int {
 	s.t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(s.t, err)
-	port := listener.Addr().(*net.TCPAddr).Port
-	require.NoError(s.t, listener.Close())
+	port := reserveFreePort(s.t)
+	s.slotScriptOn(port)
+	return port
+}
 
+// slotScriptOn is slotScript with the port the caller chose.
+func (s *scenario) slotScriptOn(port int) {
+	s.t.Helper()
 	raw, err := os.ReadFile(realScriptPath(s.t))
 	require.NoError(s.t, err)
 	text := string(raw)
@@ -1007,7 +1023,6 @@ func (s *scenario) slotScript() int {
 	require.NoError(s.t, os.MkdirAll(filepath.Dir(copyPath), 0o755))
 	testfs.WriteExecutable(s.t, copyPath, []byte(text))
 	s.script = copyPath
-	return port
 }
 
 // TestOracleMinorRefusesAHeldSlot asserts the pre-boot check: a port or subnet
@@ -1016,6 +1031,7 @@ func (s *scenario) slotScript() int {
 // network are not holders, and a case that passes the check reaches the pull
 // before the lock without any removal or boot.
 func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
+	t.Parallel()
 	stateRoot := func(s *scenario, minor string) string {
 		return filepath.Join(s.stateHome, "rancher-cli-e2e-fidelity-v"+minor)
 	}
@@ -1065,6 +1081,7 @@ func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newScenario(t)
 			s.publishDefaults()
 			port := s.slotScript()
@@ -1100,6 +1117,7 @@ func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
 	}
 	for _, c := range passes {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newScenario(t)
 			image := s.publishDefaults()
 			port := s.slotScript()
@@ -1130,6 +1148,7 @@ func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
 	// The pull covers both images, and an image that is already present is
 	// not pulled.
 	t.Run("only the k3s image is missing", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		image := s.publishDefaults()
 		oracleRef := "rancher/rancher:head@" + image.ListDigest
@@ -1146,6 +1165,7 @@ func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
 		s.requireNoStateCreated()
 	})
 	t.Run("both images present are not pulled", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		image := s.publishDefaults()
 		s.present = []string{"rancher/rancher:head@" + image.ListDigest, s.k3sRef}
@@ -1162,6 +1182,7 @@ func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
 		assert.Contains(t, res.log, "image inspect "+s.k3sRef)
 	})
 	t.Run("print images set to 0 does not print", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		image := s.publishDefaults()
 		s.slotScript()
@@ -1177,6 +1198,7 @@ func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
 	// A listener on the wildcard address is not covered: whether a bind on
 	// 127.0.0.1 then fails depends on the platform.
 	t.Run("2.17 row", func(t *testing.T) {
+		t.Parallel()
 		for _, c := range []struct {
 			name string
 			stub func(port int) slotStub
@@ -1198,6 +1220,7 @@ func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
 			}, func(int) string { return "could not pull rancher/rancher:head@" }},
 		} {
 			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
 				s := newScenario(t)
 				s.minor = "2.17"
 				s.publishDefaults()
@@ -1214,12 +1237,11 @@ func TestOracleMinorRefusesAHeldSlot(t *testing.T) {
 	})
 
 	t.Run("listener outside docker", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.publishDefaults()
-		port := s.slotScript()
-		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = listener.Close() })
+		port, _ := reserveOpenPort(t)
+		s.slotScriptOn(port)
 		s.slot = &slotStub{}
 		s.env = map[string]string{"E2E_FIDELITY_MINOR": "2.16"}
 		res := s.run()
@@ -1342,6 +1364,7 @@ func (h *fnHarness) calls(t *testing.T) int {
 // one arrives, bounds each attempt with a curl timeout, and keeps the
 // password off the curl command line.
 func TestOracleMinorLoginRetries(t *testing.T) {
+	t.Parallel()
 	h := newFnHarness(t, "LOGIN_LIMIT_SECONDS", "LOGIN_WAIT_SECONDS", "login_admin", map[string]string{
 		"1":       "\n000",
 		"2":       "<html>bad gateway</html>\n502",
@@ -1370,6 +1393,7 @@ func TestOracleMinorLoginRetries(t *testing.T) {
 // limit and not before, and without printing the response body or a
 // traceback.
 func TestOracleMinorLoginGivesUp(t *testing.T) {
+	t.Parallel()
 	h := newFnHarness(t, "LOGIN_LIMIT_SECONDS", "LOGIN_WAIT_SECONDS", "login_admin", map[string]string{
 		"default": "{\"message\":\"leak-marker\"}\n503",
 	})
@@ -1404,6 +1428,7 @@ func testCertificatePEM(t *testing.T) string {
 // a PEM header over garbage), and that only the certificate is written to the
 // CA file.
 func TestOracleMinorCARetries(t *testing.T) {
+	t.Parallel()
 	cert := testCertificatePEM(t)
 	h := newFnHarness(t, "CA_LIMIT_SECONDS", "CA_WAIT_SECONDS", "fetch_ca", map[string]string{
 		"1":       "API Aggregation not ready\n200",
@@ -1427,6 +1452,7 @@ func TestOracleMinorCARetries(t *testing.T) {
 // saying there was no HTTP answer, after the time limit, and leaves no CA
 // file.
 func TestOracleMinorCAGivesUp(t *testing.T) {
+	t.Parallel()
 	h := newFnHarness(t, "CA_LIMIT_SECONDS", "CA_WAIT_SECONDS", "fetch_ca", map[string]string{
 		"default": "API Aggregation not ready\n503",
 	})
@@ -1447,8 +1473,10 @@ func TestOracleMinorCAGivesUp(t *testing.T) {
 // TestOracleMinorLoginRefused asserts that a 401 or 403 ends the login at once
 // with its own line, without waiting for the time limit.
 func TestOracleMinorLoginRefused(t *testing.T) {
+	t.Parallel()
 	for _, status := range []string{"401", "403"} {
 		t.Run(status, func(t *testing.T) {
+			t.Parallel()
 			h := newFnHarness(t, "LOGIN_LIMIT_SECONDS", "LOGIN_WAIT_SECONDS", "login_admin", map[string]string{
 				"default": "{\"message\":\"leak-marker\"}\n" + status,
 			})
@@ -1464,6 +1492,7 @@ func TestOracleMinorLoginRefused(t *testing.T) {
 // TestOracleMinorLoginNoAnswer asserts that a login that never gets an HTTP
 // answer says so instead of printing the status 000.
 func TestOracleMinorLoginNoAnswer(t *testing.T) {
+	t.Parallel()
 	h := newFnHarness(t, "LOGIN_LIMIT_SECONDS", "LOGIN_WAIT_SECONDS", "login_admin", map[string]string{
 		"default": "000",
 	})
@@ -1488,6 +1517,7 @@ var clockFunctions = []struct{ fn, limitVar, waitVar string }{
 // still leaves the calls at 0, 1 and 2 s of the fake clock, three in all. On
 // the real clock that call would use up the limit and end the loop after one.
 func TestOracleMinorRetryClockIgnoresSlowCalls(t *testing.T) {
+	t.Parallel()
 	for _, c := range clockFunctions {
 		t.Run(c.fn, func(t *testing.T) {
 			t.Parallel()
@@ -1507,6 +1537,7 @@ func TestOracleMinorRetryClockIgnoresSlowCalls(t *testing.T) {
 // proxy path with the admin token; and, at its deadline, which of the three
 // states it last saw. The limit is 6 s and the wait 2 s on the fake clock.
 func TestFleetAgentWait(t *testing.T) {
+	t.Parallel()
 	const (
 		namespaceBody = `{"kind":"Namespace","metadata":{"name":"cattle-fleet-system"}}` + "\n200"
 		notFound      = `{"kind":"Status","code":404}` + "\n404"
@@ -1557,6 +1588,7 @@ func TestFleetAgentWait(t *testing.T) {
 	}
 
 	t.Run("the reads go through the proxy path with the admin token, the namespace first", func(t *testing.T) {
+		t.Parallel()
 		h := newFnHarness(t, "FLEET_LIMIT_SECONDS", "FLEET_WAIT_SECONDS", "wait_for_fleet_agent",
 			map[string]string{"1": namespaceBody, "2": agent("1", "1")})
 		_, stderr, code := h.run(t, 6, 2)
@@ -1578,6 +1610,7 @@ func TestFleetAgentWait(t *testing.T) {
 // what the most recent read gave. The limit is 6 s and the wait 2 s on the fake
 // clock, so a cluster that never turns active is read 4 times.
 func TestKeptDownstreamWait(t *testing.T) {
+	t.Parallel()
 	const (
 		active       = `{"state":"active"}` + "\n200"
 		provisioning = `{"state":"provisioning"}` + "\n200"
@@ -1617,6 +1650,7 @@ func TestKeptDownstreamWait(t *testing.T) {
 	}
 
 	t.Run("every read goes to the cluster with the admin token", func(t *testing.T) {
+		t.Parallel()
 		h := newFnHarness(t, "DOWNSTREAM_ACTIVE_LIMIT_SECONDS", "DOWNSTREAM_ACTIVE_WAIT_SECONDS", "wait_for_kept_downstream",
 			map[string]string{"1": provisioning, "default": active})
 		_, stderr, code := h.run(t, 6, 2)
@@ -1911,7 +1945,9 @@ func requireRemovalsRemoveVolumes(t *testing.T, log []string) {
 // trap, the downstream rebuild, and the downstream boot. A scan of the source
 // covers the remaining lines.
 func TestOracleMinorRemovesContainersWithVolumes(t *testing.T) {
+	t.Parallel()
 	t.Run("fresh boot and cleanup", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		image := s.publishDefaults()
 		s.present = []string{"rancher/rancher:head@" + image.ListDigest, s.k3sRef}
@@ -1933,6 +1969,7 @@ func TestOracleMinorRemovesContainersWithVolumes(t *testing.T) {
 
 	for _, name := range []string{"rebuild_downstream", "boot_k3s"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			if runtime.GOOS == "windows" {
 				t.Skip("scripts/e2e-fidelity is a bash script")
 			}
@@ -1958,6 +1995,7 @@ func TestOracleMinorRemovesContainersWithVolumes(t *testing.T) {
 	}
 
 	t.Run("source", func(t *testing.T) {
+		t.Parallel()
 		raw, err := os.ReadFile(realScriptPath(t))
 		require.NoError(t, err)
 		// Any spelling of a container removal: docker rm, docker container rm,

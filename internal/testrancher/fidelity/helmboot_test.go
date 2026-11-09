@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -111,6 +110,7 @@ func field(t *testing.T, doc map[string]any, path ...string) any {
 // helm-check variables exits 1 with its message before any docker call and
 // before any state is created, and that an empty value counts as unset.
 func TestHelmCheckRefusesBeforeDocker(t *testing.T) {
+	t.Parallel()
 	const flag = "E2E_FIDELITY_HELM_CHECK"
 	pinnedOnly := " is set without E2E_FIDELITY_MINOR; the community and Prime profiles run only their pinned images"
 	type tc struct {
@@ -134,6 +134,7 @@ func TestHelmCheckRefusesBeforeDocker(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newScenario(t)
 			s.slotScript()
 			s.env = c.env
@@ -145,6 +146,7 @@ func TestHelmCheckRefusesBeforeDocker(t *testing.T) {
 	}
 
 	t.Run("a helm pin of the community image", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.pinRewrites = map[string]string{"ORACLE_BOOT": "helm"}
 		s.slotScript()
@@ -154,6 +156,7 @@ func TestHelmCheckRefusesBeforeDocker(t *testing.T) {
 	})
 
 	t.Run("a helm boot of an image with a registry host", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		const image = "registry.example.com/rancher/rancher:v2.15.2@" + sampleDigest
 		s.pinRewrites = map[string]string{"ORACLE_IMAGE": image}
@@ -164,6 +167,7 @@ func TestHelmCheckRefusesBeforeDocker(t *testing.T) {
 	})
 
 	t.Run("an empty value counts as unset", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.slotScript()
 		s.env = map[string]string{flag: ""}
@@ -178,6 +182,7 @@ func TestHelmCheckRefusesBeforeDocker(t *testing.T) {
 // holds, and that another profile's refusal names the helm-check pair when it
 // holds the port.
 func TestHelmCheckRefusesAHeldSlot(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		stub func(port int) slotStub
@@ -196,6 +201,7 @@ func TestHelmCheckRefusesAHeldSlot(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newHelmCheckScenario(t, helmRowOptions{})
 			port := s.slotScript()
 			stub := c.stub(port)
@@ -211,11 +217,10 @@ func TestHelmCheckRefusesAHeldSlot(t *testing.T) {
 	}
 
 	t.Run("port outside docker", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
-		port := s.slotScript()
-		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = listener.Close() })
+		port, _ := reserveOpenPort(t)
+		s.slotScriptOn(port)
 		res := s.run()
 		require.Equalf(t, 1, res.code, "stderr: %s", res.stderr)
 		assert.Contains(t, res.stderr, fmt.Sprintf(
@@ -224,6 +229,7 @@ func TestHelmCheckRefusesAHeldSlot(t *testing.T) {
 	})
 
 	t.Run("the helm-check pair holds the port of an upcoming minor", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.publishDefaults()
 		port := s.slotScript()
@@ -236,6 +242,7 @@ func TestHelmCheckRefusesAHeldSlot(t *testing.T) {
 	})
 
 	t.Run("the helm-check's own pair is not a holder", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		port := s.slotScript()
 		stub := ownPair(helmCheckName, port, helmCheckSubnet)
@@ -271,10 +278,12 @@ func stopsBeforeTheLock(t *testing.T, s *scenario, res runResult, message string
 // does not match the pin, a failed download and a failed pull each end the
 // run before the lock, with their message, so nothing is removed.
 func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
+	t.Parallel()
 	zeros := strings.Repeat("0", 64)
 	k3sPin := scriptLiteral(t, "HELMCHECK_LOCAL_K3S_IMAGE")
 
 	t.Run("archive with another sha256", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		f := s.helm
 		s.pinRewrites["HELMCHECK_CHART"] = f.chartURL + "@sha256:" + zeros
@@ -284,6 +293,7 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 		assert.Equal(t, []string{"real " + f.chartURL}, s.curlLog(), "the manifest is not downloaded after a bad archive")
 	})
 	t.Run("manifest with another sha256", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		f := s.helm
 		s.pinRewrites["CERT_MANAGER_MANIFEST"] = f.manifestURL + "@sha256:" + zeros
@@ -292,12 +302,14 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 		stopsBeforeTheLock(t, s, res, fmt.Sprintf("error: the cert-manager manifest %s has sha256 %s, not the pinned %s;", f.manifestURL, f.manifestSHA, zeros))
 	})
 	t.Run("archive of another appVersion", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{appVersion: "v2.15.3"})
 		s.slotScript()
 		res := s.run()
 		stopsBeforeTheLock(t, s, res, "error: the chart archive's appVersion is v2.15.3, but the CATTLE_SERVER_VERSION of "+s.helm.oracleImage+" is v2.15.2")
 	})
 	t.Run("archive of the same appVersion passes the check", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.setPod("rancher/rancher:v9.9.9", "docker.io/rancher/rancher@"+sampleDigest)
 		s.slotScript()
@@ -306,6 +318,7 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 		assert.Contains(t, res.stderr, "the Rancher pod runs rancher/rancher:v9.9.9", "the run got past the checks before the lock to the boot")
 	})
 	t.Run("image that embeds another k3s", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.files["k3s_version"] = "k3s version v1.36.3+k3s1 (0000000)\n"
 		s.slotScript()
@@ -314,6 +327,7 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 		assert.Contains(t, res.log, "run --rm --entrypoint k3s "+s.helm.oracleImage+" --version")
 	})
 	t.Run("image whose k3s version line names no version", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.files["k3s_version"] = "unknown\n"
 		s.slotScript()
@@ -321,6 +335,7 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 		stopsBeforeTheLock(t, s, res, "shows no k3s version")
 	})
 	t.Run("rancher-server image that names another k3s", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{server: true, assets: "block"})
 		s.pinRewrites["HELMCHECK_LOCAL_K3S_IMAGE"] = "rancher/k3s:v1.37.2-k3s1@sha256:" + strings.Repeat("a", 64)
 		s.slotScript()
@@ -329,6 +344,7 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 		assert.False(t, hasCall(res.log, "run --rm"), "the k3s version of a rancher-server image is read from the registry")
 	})
 	t.Run("archive that cannot be downloaded", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		f := s.helm
 		s.pinRewrites["HELMCHECK_CHART"] = f.server.URL + "/missing.tgz@sha256:" + f.chartSHA
@@ -337,6 +353,7 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 		stopsBeforeTheLock(t, s, res, "error: could not download the chart archive "+f.server.URL+"/missing.tgz;")
 	})
 	t.Run("image that cannot be pulled", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.files["pull_fail"] = k3sPin + "\n"
 		s.slotScript()
@@ -352,10 +369,12 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 // the chart values, the post-rollout check against the pinned image, and that
 // a check that passes goes on to the wait for Rancher.
 func TestHelmCheckBoot(t *testing.T) {
+	t.Parallel()
 	k3sPin := scriptLiteral(t, "HELMCHECK_LOCAL_K3S_IMAGE")
 	password := regexp.MustCompile(`^[a-zA-Z0-9]{20}$`)
 
 	t.Run("the steps, the password and the HelmChart", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		f := s.helm
 		port := s.slotScript()
@@ -454,6 +473,7 @@ func TestHelmCheckBoot(t *testing.T) {
 	})
 
 	t.Run("a kept pair starts with a restart policy", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.setPod("rancher/rancher:v9.9.9", "docker.io/rancher/rancher@"+sampleDigest)
 		s.slotScript()
@@ -486,6 +506,7 @@ func TestHelmCheckBoot(t *testing.T) {
 		{"no pod", "", "", "error: the cluster in the node container has no Rancher pod"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newHelmCheckScenario(t, helmRowOptions{})
 			f := s.helm
 			digest := f.oracleImage[strings.Index(f.oracleImage, "@")+1:]
@@ -519,6 +540,7 @@ func TestHelmCheckBoot(t *testing.T) {
 // image from CATTLE_K3S_VERSION and no run of the image, and a chart with the
 // assets image gets that image's digest in its values.
 func TestHelmCheckBootOfARancherServerImage(t *testing.T) {
+	t.Parallel()
 	s := newHelmCheckScenario(t, helmRowOptions{server: true, assets: "block"})
 	f := s.helm
 	s.helm.setPod("rancher/rancher-server:v9.9.9", "docker.io/rancher/rancher-server@"+sampleDigest)
@@ -588,7 +610,9 @@ func resolved(t *testing.T, path string) string {
 // another chart runs the steps before the lock; a pair that fails its health
 // check stops the run with exit 4, removes nothing and downloads nothing.
 func TestHelmCheckKeptPair(t *testing.T) {
+	t.Parallel()
 	t.Run("a healthy helm-check pair with a drift run", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		port := s.slotScript()
 		stub := ownPair(helmCheckName, port, helmCheckSubnet)
@@ -619,6 +643,7 @@ func TestHelmCheckKeptPair(t *testing.T) {
 	})
 
 	t.Run("a healthy upcoming pair with a drift run", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		image := s.publishDefaults()
 		oracle := "rancher/rancher:head@" + image.ListDigest
@@ -647,6 +672,7 @@ func TestHelmCheckKeptPair(t *testing.T) {
 	})
 
 	t.Run("a community pair whose state has no boot is reused as a container boot", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.minor = ""
 		s.installHelmDocker()
@@ -683,6 +709,7 @@ func TestHelmCheckKeptPair(t *testing.T) {
 	})
 
 	t.Run("a kept pair of another chart runs the steps before the lock", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.setPod("rancher/rancher:v9.9.9", "docker.io/rancher/rancher@"+sampleDigest)
 		s.slotScript()
@@ -701,6 +728,7 @@ func TestHelmCheckKeptPair(t *testing.T) {
 	})
 
 	t.Run("a kept pair that fails its health check stops the run and removes nothing", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.setPod("rancher/rancher:v9.9.9", "docker.io/rancher/rancher@"+sampleDigest)
 		port := s.slotScript()
@@ -755,6 +783,7 @@ func stateProgram(t *testing.T, body string) (stateFile string, stdout string) {
 // cert-manager image digests it read from the state file, which the run did
 // not compute.
 func TestWriteStateRecordsTheBoot(t *testing.T) {
+	t.Parallel()
 	read := func(t *testing.T, path string) map[string]any {
 		t.Helper()
 		raw, err := os.ReadFile(path)
@@ -768,6 +797,7 @@ func TestWriteStateRecordsTheBoot(t *testing.T) {
 	}
 
 	t.Run("container", func(t *testing.T) {
+		t.Parallel()
 		path, _ := stateProgram(t, `BOOT=container; HELM_ASSETS_IMAGE=""; LOCAL_K3S_SOURCE=""; CERT_MANAGER_IMAGES="[]"; write_state`)
 		assert.Equal(t, map[string]any{
 			"containerId": "oracle-id", "adminToken": "token", "oracleImage": "oracle",
@@ -776,6 +806,7 @@ func TestWriteStateRecordsTheBoot(t *testing.T) {
 	})
 
 	t.Run("a computed helm pair", func(t *testing.T) {
+		t.Parallel()
 		path, _ := stateProgram(t, `BOOT=helm; HELM_ASSETS_IMAGE="tag@sha256:aa"; LOCAL_K3S_SOURCE=embedded; CERT_MANAGER_IMAGES='["quay.io/x@sha256:bb"]'; write_state`)
 		assert.Equal(t, map[string]any{
 			"containerId": "oracle-id", "adminToken": "token", "oracleImage": "oracle",
@@ -786,6 +817,7 @@ func TestWriteStateRecordsTheBoot(t *testing.T) {
 	})
 
 	t.Run("a reused helm pair keeps the values it did not compute", func(t *testing.T) {
+		t.Parallel()
 		dir := t.TempDir()
 		previous := filepath.Join(dir, "previous.json")
 		require.NoError(t, os.WriteFile(previous, []byte(`{"assetsImage":"old@sha256:cc","localK3sSource":"CATTLE_K3S_VERSION","certManager":{"manifest":"manifest","images":["quay.io/y@sha256:dd"]}}`), 0o600))
@@ -806,6 +838,7 @@ func TestWriteStateRecordsTheBoot(t *testing.T) {
 // id that differs from the state file's stops the run instead; the tests of
 // keepreuse_test.go assert that.
 func TestHelmCheckKeptPairFields(t *testing.T) {
+	t.Parallel()
 	zeros := strings.Repeat("0", 64)
 	rows := []struct {
 		name   string
@@ -827,6 +860,7 @@ func TestHelmCheckKeptPairFields(t *testing.T) {
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
 			s := newHelmCheckScenario(t, helmRowOptions{})
 			s.helm.setPod("rancher/rancher:v9.9.9", "docker.io/rancher/rancher@"+sampleDigest)
 			s.slotScript()
@@ -850,6 +884,7 @@ func TestHelmCheckKeptPairFields(t *testing.T) {
 // before the lock in a run with E2E_FIDELITY_KEEP=1 and no state file creates
 // no state root and removes nothing.
 func TestHelmCheckKeepStopsBeforeTheLockWithoutState(t *testing.T) {
+	t.Parallel()
 	s := newHelmCheckScenario(t, helmRowOptions{})
 	zeros := strings.Repeat("0", 64)
 	s.pinRewrites["HELMCHECK_CHART"] = s.helm.chartURL + "@sha256:" + zeros
@@ -894,6 +929,7 @@ func reuseProgram(t *testing.T, state map[string]any, computed bool) string {
 // values the run computed, and that a run which computed nothing reads them
 // from the state file.
 func TestReuseStateComparesWhatARunComputed(t *testing.T) {
+	t.Parallel()
 	const mismatch = "==> kept pair has a different assets image or a different source of its k3s version (the server image or CATTLE_K3S_VERSION); recreating"
 	base := func() map[string]any {
 		return map[string]any{
@@ -903,6 +939,7 @@ func TestReuseStateComparesWhatARunComputed(t *testing.T) {
 		}
 	}
 	t.Run("a run that computed other values than the state file's", func(t *testing.T) {
+		t.Parallel()
 		for key, value := range map[string]string{"assetsImage": "other@sha256:bb", "localK3sSource": "CATTLE_K3S_VERSION"} {
 			state := base()
 			state[key] = value
@@ -913,12 +950,14 @@ func TestReuseStateComparesWhatARunComputed(t *testing.T) {
 		}
 	})
 	t.Run("a run whose values equal the state file's goes on to the next check", func(t *testing.T) {
+		t.Parallel()
 		out := reuseProgram(t, base(), true)
 		assert.NotContains(t, out, mismatch)
 		assert.Contains(t, out, "recreate= failed=bind-address\n", "the stub reports no bind address, which is the next check; it stops the run and recreates nothing")
 		assert.NotContains(t, out, "recreating")
 	})
 	t.Run("a run that computed nothing reads the values from the state file", func(t *testing.T) {
+		t.Parallel()
 		state := base()
 		state["assetsImage"] = "recorded@sha256:cc"
 		state["localK3sSource"] = "CATTLE_K3S_VERSION"
@@ -949,7 +988,9 @@ func TestFetchPinnedChecksCertificates(t *testing.T) {
 // established stops the run before the secret and the chart, and a chart
 // install that creates no deploy/rancher is named as that.
 func TestHelmCheckBootFailures(t *testing.T) {
+	t.Parallel()
 	t.Run("a node container that stopped", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.files["not_ready"] = "1"
 		s.helm.files["node_state"] = "exited"
@@ -961,6 +1002,7 @@ func TestHelmCheckBootFailures(t *testing.T) {
 		assert.Empty(t, s.stdins(), "nothing is applied to a node container that stopped")
 	})
 	t.Run("a node container that Docker is restarting", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.files["not_ready"] = "1"
 		s.helm.files["node_state"] = "restarting"
@@ -972,6 +1014,7 @@ func TestHelmCheckBootFailures(t *testing.T) {
 		assert.Empty(t, s.stdins(), "nothing is applied to a node container that is restarting")
 	})
 	t.Run("a cert-manager webhook with no CA bundle", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.files["ca_bundle"] = ""
 		s.slotScript()
@@ -983,6 +1026,7 @@ func TestHelmCheckBootFailures(t *testing.T) {
 		assert.False(t, hasCall(res.log, "exec "+helmCheckName+" kubectl wait"), "the CRD is waited for after the CA bundle")
 	})
 	t.Run("a cert-manager Issuer CRD that is not established", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.files["crd_not_established"] = "1"
 		s.slotScript()
@@ -995,6 +1039,7 @@ func TestHelmCheckBootFailures(t *testing.T) {
 		assert.False(t, hasCall(res.log, "exec "+helmCheckName+" kubectl -n cattle-system rollout"), "no wait for the chart's rollout")
 	})
 	t.Run("a chart install that creates no deploy/rancher", func(t *testing.T) {
+		t.Parallel()
 		s := newHelmCheckScenario(t, helmRowOptions{})
 		s.helm.files["deploy_missing"] = "1"
 		s.slotScript()
@@ -1010,6 +1055,7 @@ func TestHelmCheckBootFailures(t *testing.T) {
 // assetsImage in a form the script cannot read stops the run before the lock
 // instead of booting with the chart's default assets image.
 func TestHelmCheckReadsTheAssetsImageForm(t *testing.T) {
+	t.Parallel()
 	s := newHelmCheckScenario(t, helmRowOptions{assets: "inline"})
 	s.slotScript()
 	res := s.run()

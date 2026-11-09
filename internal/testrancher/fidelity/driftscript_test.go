@@ -48,6 +48,7 @@ func scriptLiteral(t *testing.T, name string) string {
 // state is created, and that E2E_FIDELITY_DRIFT=0 with no drift variable
 // is not refused.
 func TestDriftRefusesBeforeDocker(t *testing.T) {
+	t.Parallel()
 	type tc struct {
 		name string
 		env  map[string]string
@@ -77,6 +78,7 @@ func TestDriftRefusesBeforeDocker(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			s := newScenario(t)
 			s.env = c.env
 			res := s.run()
@@ -89,6 +91,7 @@ func TestDriftRefusesBeforeDocker(t *testing.T) {
 		mode os.FileMode
 	}{{"a directory that is not writable", 0o500}, {"a directory that is not searchable", 0o200}} {
 		t.Run("report in "+c.name, func(t *testing.T) {
+			t.Parallel()
 			if os.Geteuid() == 0 {
 				t.Skip("root ignores directory permissions")
 			}
@@ -104,6 +107,7 @@ func TestDriftRefusesBeforeDocker(t *testing.T) {
 		})
 	}
 	t.Run("E2E_FIDELITY_DRIFT=0 with no drift variable is not refused", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.env = map[string]string{"E2E_FIDELITY_DRIFT": "0"}
 		res := s.run()
@@ -111,6 +115,7 @@ func TestDriftRefusesBeforeDocker(t *testing.T) {
 		assert.Equal(t, 97, res.code, "the run goes on to the community profile and stops at the docker stub")
 	})
 	t.Run("E2E_FIDELITY_DRIFT=0 with a minor is not refused", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		s.publishDefaults()
 		s.env = map[string]string{"E2E_FIDELITY_DRIFT": "0", "E2E_FIDELITY_MINOR": "2.16", "E2E_FIDELITY_PRINT_IMAGES": "1"}
@@ -126,6 +131,7 @@ func TestDriftRefusesBeforeDocker(t *testing.T) {
 // report path (empty for the default) and the known file under the script's
 // own repository root.
 func TestDriftPrintMode(t *testing.T) {
+	t.Parallel()
 	printMode := func(t *testing.T, s *scenario, extra map[string]string) map[string]string {
 		t.Helper()
 		s.publishDefaults()
@@ -143,6 +149,7 @@ func TestDriftPrintMode(t *testing.T) {
 	}
 
 	t.Run("the goldens' images, not the upcoming images", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		got := printMode(t, s, nil)
 		assert.Equal(t, scriptLiteral(t, "ORACLE_IMAGE"), got["goldenOracleImage"])
@@ -154,6 +161,7 @@ func TestDriftPrintMode(t *testing.T) {
 	})
 
 	t.Run("the goldens' images also with an upcoming override", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		got := printMode(t, s, map[string]string{"E2E_FIDELITY_K3S_IMAGE": "rancher/k3s:v1.99.0-k3s1@" + sampleDigest})
 		assert.Equal(t, scriptLiteral(t, "K3S_IMAGE"), got["goldenK3sImage"])
@@ -161,6 +169,7 @@ func TestDriftPrintMode(t *testing.T) {
 	})
 
 	t.Run("a relative report path is made absolute against the working directory", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		got := printMode(t, s, map[string]string{"E2E_FIDELITY_DRIFT": "1", "E2E_FIDELITY_DRIFT_REPORT": "report.json"})
 		assert.True(t, filepath.IsAbs(got["driftReport"]), got["driftReport"])
@@ -170,6 +179,7 @@ func TestDriftPrintMode(t *testing.T) {
 	})
 
 	t.Run("an absolute report path is kept", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		path := filepath.Join(t.TempDir(), "named.json")
 		got := printMode(t, s, map[string]string{"E2E_FIDELITY_DRIFT": "1", "E2E_FIDELITY_DRIFT_REPORT": path})
@@ -177,6 +187,7 @@ func TestDriftPrintMode(t *testing.T) {
 	})
 
 	t.Run("no report path prints empty", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		got := printMode(t, s, map[string]string{"E2E_FIDELITY_DRIFT": "1"})
 		assert.Contains(t, got, "driftReport")
@@ -184,6 +195,7 @@ func TestDriftPrintMode(t *testing.T) {
 	})
 
 	t.Run("a copy of the script in another directory uses its own repository root", func(t *testing.T) {
+		t.Parallel()
 		s := newScenario(t)
 		root := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(root, "scripts"), 0o755))
@@ -200,6 +212,7 @@ func TestDriftPrintMode(t *testing.T) {
 // scripts/e2e-fidelity-downstream refuses each of the six drift variables
 // with the same message, before it runs go, and still runs go without them.
 func TestDriftDownstreamScriptRefusesTheDriftVariables(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("scripts/e2e-fidelity-downstream is a bash script")
 	}
@@ -250,6 +263,7 @@ func TestDriftDownstreamScriptRefusesTheDriftVariables(t *testing.T) {
 
 	for _, name := range driftRefusedNames {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			stderr, code, calls := run(t, map[string]string{name: "x"})
 			assert.Equal(t, 1, code)
 			assert.Contains(t, stderr, "error: "+name+" is set without E2E_FIDELITY_DRIFT=1; unset it")
@@ -359,6 +373,7 @@ func dumped(calls []string) bool {
 // turns any other 3 into 1 with the dump, and that outside a drift run a 3
 // stays 3 with the dump, as every other failure.
 func TestDriftCleanup(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name            string
 		drift, reported int
@@ -375,6 +390,7 @@ func TestDriftCleanup(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			e := newShellEnv(t)
 			stdout, stderr, code, calls := e.run(e.cleanupProgram(c.drift, c.reported, c.body))
 			assert.Equal(t, c.code, code, "stderr: %s", stderr)
@@ -409,6 +425,7 @@ func stubReport(t *testing.T, tweak func(*Report)) string {
 // TestDriftResult asserts how drift_result maps the report and go test's
 // status to an exit status and the summary line.
 func TestDriftResult(t *testing.T) {
+	t.Parallel()
 	const image, started = "rancher/rancher:head@sha256:aa", "2026-10-20T19:00:00Z"
 	const failed = "error: the drift run failed: "
 	run := func(t *testing.T, goStatus int, path string) (stdout, stderr string, code int, calls []string) {
@@ -428,6 +445,7 @@ func TestDriftResult(t *testing.T) {
 	}
 
 	t.Run("a clean report and go test passed exits 0", func(t *testing.T) {
+		t.Parallel()
 		path := stubReport(t, nil)
 		stdout, stderr, code, calls := run(t, 0, path)
 		assert.Equal(t, 0, code, "stderr: %s", stderr)
@@ -437,6 +455,7 @@ func TestDriftResult(t *testing.T) {
 	})
 
 	t.Run("a report with differences exits 3 and sets DRIFT_REPORTED", func(t *testing.T) {
+		t.Parallel()
 		path := stubReport(t, notClean)
 		stdout, stderr, code, calls := run(t, 1, path)
 		assert.Equal(t, 3, code, "stderr: %s", stderr)
@@ -447,6 +466,7 @@ func TestDriftResult(t *testing.T) {
 	})
 
 	t.Run("a helm-check report names its profile on the summary line", func(t *testing.T) {
+		t.Parallel()
 		path := stubReport(t, func(r *Report) {
 			notClean(r)
 			r.Profile = ProfileHelmCheck
@@ -457,6 +477,7 @@ func TestDriftResult(t *testing.T) {
 	})
 
 	t.Run("a report with differences exits 3 whatever go test's status", func(t *testing.T) {
+		t.Parallel()
 		_, _, code, _ := run(t, 0, stubReport(t, notClean))
 		assert.Equal(t, 3, code)
 	})
@@ -523,6 +544,7 @@ func TestDriftResult(t *testing.T) {
 	}
 	for _, c := range failing {
 		t.Run(c.name+" exits 1 with the dump", func(t *testing.T) {
+			t.Parallel()
 			stdout, stderr, code, calls := run(t, c.goStatus, c.path(t))
 			assert.Equal(t, 1, code, "stderr: %s", stderr)
 			assert.Contains(t, stderr, c.outcome)

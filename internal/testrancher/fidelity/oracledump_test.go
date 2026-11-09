@@ -92,6 +92,7 @@ const stateExited = "status=exited exitCode=137 oomKilled=true finishedAt=2026-1
 // of an exit code in any other case. It also asserts that the dump goes on when
 // every docker call fails under errexit, as the exit trap of the script does.
 func TestCleanupReportsAStoppedOracle(t *testing.T) {
+	t.Parallel()
 	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
 	secrets := newDumpSecrets()
 	const running = "status=running exitCode=0 oomKilled=false finishedAt=0001-01-01T00:00:00Z"
