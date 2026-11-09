@@ -777,7 +777,7 @@ func TestReleaseTextDescribesDraftFirstOnly(t *testing.T) {
 	publish := find("the publish command", `Publish with .gh release edit <tag> --draft=false --prerelease=false --latest.`)
 	after := find("assets stay as they are after publishing", `^After publishing, .*Assets cannot be added or changed, and a bad release is fixed only by a new version`)
 	find("never move or reuse a pushed tag", `^Never move, delete and push again, or reuse a pushed tag`)
-	find("only the ruleset's bypass list changes release tags", `^Only the maintainers on the bypass list of the repository's .release tags. ruleset can create, update or delete a .v\*. tag`)
+	find("a maintainer pushes the release tag", `^A maintainer pushes the release tag`)
 	immutable := find("published releases are immutable", `Immutable releases are on for the repository: once a release is published, GitHub locks its assets and its tag`)
 	find("a flake re-runs, a fix deletes and counts on", `re-run the failed jobs when the cause is a flake .*delete the draft and the tag, fix on main, and cut the next number`)
 	assert.True(t, tag <= draft && draft < notes && notes < publish && publish < after,

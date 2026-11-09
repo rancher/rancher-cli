@@ -430,9 +430,9 @@ namespace RancherCliInstall
         $r = Invoke-Http 'HEAD' "$($S.BaseUrl)/$Repo/releases/latest" -Auth
         if ($r.Code -eq 404) {
             if (-not $S.Token) {
-                Fail "no stable release found - an internal repository needs a GitHub token (log in with gh auth login, or set GH_TOKEN); on a public repository there is no stable release yet - use -Pre or -Version <tag>"
+                Fail "no stable release found - use -Pre or -Version <tag>"
             }
-            Fail "no stable release yet - use -Pre or -Version <tag>; with a GitHub token set this can also mean the GitHub token lacks access to an internal repository (missing scope or SSO authorization)"
+            Fail "no stable release found for this GitHub token - use -Pre or -Version <tag>"
         }
         if ($r.Code -lt 300 -or $r.Code -gt 399) {
             Fail "could not look up the latest stable release (HTTP $($r.Code)) - check the GitHub token and the rate limit, then retry"
@@ -454,7 +454,7 @@ namespace RancherCliInstall
             $r = Invoke-Http 'GET' "$($S.ApiUrl)/repos/$Repo/releases?per_page=100&page=$page" -Auth -Accept 'application/vnd.github+json'
             if ($r.Code -ne 200) {
                 if (-not $S.Token) {
-                    Fail "release listing request failed (page $page, HTTP $($r.Code)) - an internal repository needs a GitHub token: log in with gh auth login, or set GH_TOKEN"
+                    Fail "release listing request failed (page $page, HTTP $($r.Code)) - a network or server failure, or GitHub limiting requests without a token; wait and retry, or set GH_TOKEN or GITHUB_TOKEN"
                 }
                 Fail "release listing request failed (page $page, HTTP $($r.Code))"
             }
@@ -745,8 +745,8 @@ namespace RancherCliInstall
         [IO.Directory]::CreateDirectory($S.Work) | Out-Null
         Write-Note "downloading $($S.Tag) for $Os/$($S.Arch)"
         if ($S.CliAssetId) {
-            # Internal repositories serve nothing on the release download URLs;
-            # the API asset endpoint is the path that works with a token.
+            # With a token, download through the GitHub API asset endpoint;
+            # without asset ids the plain release download URLs are used.
             Get-ReleaseAsset $S.CliAssetId (Join-Path $S.Work $S.CliAsset) $S.CliAsset
             Get-ReleaseAsset $S.HelperAssetId (Join-Path $S.Work $S.HelperAsset) $S.HelperAsset
             Get-ReleaseAsset $S.SumsAssetId (Join-Path $S.Work 'SHA256SUMS') 'SHA256SUMS'
@@ -756,7 +756,7 @@ namespace RancherCliInstall
         if (-not (Get-DirectAsset "$dl/$($S.CliAsset)" (Join-Path $S.Work $S.CliAsset))) {
             $msg = "download failed: $dl/$($S.CliAsset) (404 = tag '$($S.Tag)' has no such asset)"
             if ($S.Token -and $S.MetadataFailCode) {
-                $msg += " - or the GitHub token lacks access to an internal repository (missing scope or SSO authorization); release metadata was also unreadable (HTTP $($S.MetadataFailCode))"
+                $msg += " - or the GitHub token is expired or lacks access; release metadata was also unreadable (HTTP $($S.MetadataFailCode))"
             }
             Fail $msg
         }

@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,11 +30,10 @@ func TestDryRunResolvesStableLatest(t *testing.T) {
 	assert.Contains(t, out, "asset: "+s.srv.URL+"/rancher/rancher-cli/releases/download/v1.2.3/SHA256SUMS")
 }
 
-// TestStable404WithTokenHintsAtScope covers the case where a token is present
-// and the stable-latest endpoint returns 404, the error must suggest the token
-// may lack access (missing scope or SSO authorization) - not just steer the
-// user toward --pre.
-func TestStable404WithTokenHintsAtScope(t *testing.T) {
+// TestStable404WithTokenSuggestsPreOrVersion asserts that a stable-latest 404
+// with a token set says the answer is for that token and names --pre and
+// --version.
+func TestStable404WithTokenSuggestsPreOrVersion(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
 	// No release registered: stable-latest returns 404.
@@ -44,9 +42,8 @@ func TestStable404WithTokenHintsAtScope(t *testing.T) {
 		"PATH=" + toolPath(t, baseTools...),
 	}, "--dry-run")
 	require.NotEqual(t, 0, code)
+	assert.Contains(t, errOut, "no stable release found for this GitHub token")
 	assert.Contains(t, errOut, "use --pre or --version")
-	assert.Contains(t, errOut, "GitHub token lacks access",
-		"404 with a token set must hint at missing scope or SSO authorization as a possible cause")
 }
 
 func TestDryRunNoStableRelease(t *testing.T) {
@@ -54,11 +51,10 @@ func TestDryRunNoStableRelease(t *testing.T) {
 	s := newStub(t)
 	_, errOut, code := runInstall(t, s, nil, "--dry-run")
 	require.NotEqual(t, 0, code)
-	// Anonymous 404 is ambiguous (empty public repo vs unauthenticated
-	// internal repo); the message must name both readings and the way out
-	// of each.
+	// An anonymous 404 is the absence of a stable release; the message names
+	// the way out.
 	assert.Contains(t, errOut, "no stable release found")
-	assert.Contains(t, errOut, "log in with gh auth login, or set GH_TOKEN")
+	assert.NotContains(t, errOut, "GitHub token")
 	assert.Contains(t, errOut, "use --pre or --version")
 }
 
@@ -326,84 +322,6 @@ func TestMvCapabilityProbePrecedesAnyMutation(t *testing.T) {
 		"the probe must refuse before staging, links, or the receipt exist")
 	_, errOut, code = runInstall(t, s, env, "--dry-run")
 	assert.Equalf(t, 0, code, "dry-run needs no mv capability; stderr: %s", errOut)
-}
-
-// TestAuthenticatedBootstrapSnippet mirrors the internal-phase
-// download-then-run bootstrap in REFERENCE.md's "Downloading and running the
-// installer safely" section (moved from README 2026-08-12) and runs it
-// against a stub serving install.sh, asserting the token arrives as an
-// Authorization header and never in argv.
-func TestAuthenticatedBootstrapSnippet(t *testing.T) {
-	t.Parallel()
-	script, err := os.ReadFile("../install.sh")
-	require.NoError(t, err)
-	var (
-		authMu  sync.Mutex
-		gotAuth string
-	)
-	raw := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authMu.Lock()
-		gotAuth = r.Header.Get("Authorization")
-		authMu.Unlock()
-		_, _ = w.Write(script)
-	}))
-	defer raw.Close()
-	s := newStub(t)
-	// CURL_CA_BUNDLE names exactly ONE file: both stub certs go into a
-	// single concatenated bundle.
-	rawPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: raw.Certificate().Raw})
-	stubPEM, err := os.ReadFile(s.caPath)
-	require.NoError(t, err)
-	bundle := filepath.Join(t.TempDir(), "bundle.pem")
-	require.NoError(t, os.WriteFile(bundle, append(rawPEM, stubPEM...), 0o600))
-	writeRelease(s, "v1.2.3", false)
-	s.setLatest("v1.2.3")
-
-	// The snippet in REFERENCE.md's "Downloading and running the installer
-	// safely" section with the raw URL swapped for the stub's and a --dry-run
-	// appended; everything else byte-identical.
-	snippet := `(
-  t="$(mktemp)" || exit 1
-  trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
-  trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-  printf 'header = "Authorization: Bearer %s"\n' "${GH_TOKEN:-$GITHUB_TOKEN}" | \
-    curl --config - --proto '=https' --tlsv1.2 -fsSL \
-      -o "$t" \
-      ` + raw.URL + `/install.sh \
-    && GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}" sh "$t" --dry-run
-)`
-	assertSnippetMatchesDoc(t, "REFERENCE.md", `printf 'header = "Authorization: Bearer %s"`,
-		snippet, func(s string) string {
-			return strings.NewReplacer(
-				raw.URL+"/install.sh", rawInstallURL,
-				`sh "$t" --dry-run`, `sh "$t"`,
-			).Replace(s)
-		})
-	// Recording curl wrapper: logs every argv it receives, then execs the
-	// real curl - the seam proving the token travels ONLY via stdin config.
-	wrapDir, argvLog, wrapEnv := recordingCurlWrapper(t)
-
-	cmd := exec.Command("sh", "-c", snippet) // fixed test literal; no user input reaches the shell
-	cmd.Env = append([]string{
-		"HOME=" + t.TempDir(),
-		"PATH=" + wrapDir + ":" + toolPath(t, baseTools...),
-		"GH_TOKEN=test-token-123",
-		"RANCHER_CLI_INSTALL_BASE_URL=" + s.srv.URL,
-		"CURL_CA_BUNDLE=" + bundle,
-	}, wrapEnv...)
-	out, err := cmd.CombinedOutput()
-	require.NoErrorf(t, err, "bootstrap snippet failed: %s", out)
-	authMu.Lock()
-	auth := gotAuth
-	authMu.Unlock()
-	assert.Equal(t, "Bearer test-token-123", auth, "token must arrive as a header")
-	assert.Contains(t, string(out), "tag: v1.2.3")
-	assert.NotContains(t, string(out), "test-token-123",
-		"the token must never appear in installer output")
-	argv, err := os.ReadFile(argvLog)
-	require.NoError(t, err, "the curl wrapper must have recorded invocations")
-	assert.NotContains(t, string(argv), "test-token-123",
-		"the token must never appear in any curl argv - stdin config only")
 }
 
 // TestBootstrapFetchFailureRunsNothing runs the ANONYMOUS README one-liner
@@ -728,47 +646,4 @@ func TestHostnameDerivationForGhToken(t *testing.T) {
 				"resolve_token must strip userinfo, port, and brackets from BASE_URL")
 		})
 	}
-}
-
-// TestGhBootstrapSnippet runs the README internal-phase one-liner against a
-// stub gh that serves install.sh, verifying it resolves a release and exits 0.
-func TestGhBootstrapSnippet(t *testing.T) {
-	t.Parallel()
-	s := newStub(t)
-	// Early access ships prereleases only, and the README one-liner carries
-	// --pre - the fixture mirrors that reality (--pre needs a JSON parser
-	// on PATH, hence jq below).
-	writeRelease(s, "v0.1.0-alpha.1", false)
-
-	scriptPath, err := filepath.Abs("../install.sh")
-	require.NoError(t, err)
-
-	// Stub gh: serves install.sh for the README contents-API path; fails
-	// for all other subcommands so resolve_token degrades to anonymous and
-	// gh_capable stays false.
-	ghDir := ghStub(t, "#!/bin/sh\n"+
-		"case \"$1 $2\" in\n"+
-		"  'api repos/rancher/rancher-cli/contents/install.sh?ref=main') cat \"$RANCHER_TEST_INSTALL_SCRIPT\" ;;\n"+
-		"  *) exit 1 ;;\n"+
-		"esac\n")
-
-	// The README one-liner, byte-identical, with --dry-run appended to its
-	// flags - the stub gh serves install.sh for the contents-API call;
-	// RANCHER_CLI_INSTALL_BASE_URL redirects install.sh's curl calls.
-	snippet := `gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main" -H "Accept: application/vnd.github.raw" | sh -s -- --pre --dry-run`
-	assertSnippetMatchesDoc(t, "README.md", `gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main"`,
-		snippet, func(s string) string { return strings.Replace(s, "| sh -s -- --pre --dry-run", "| sh -s -- --pre", 1) })
-
-	cmd := exec.Command("sh", "-c", snippet) // fixed test literal
-	cmd.Env = []string{
-		"HOME=" + t.TempDir(),
-		"TMPDIR=" + t.TempDir(),
-		"PATH=" + ghDir + ":" + toolPath(t, append(append([]string{}, baseTools...), "jq")...),
-		"RANCHER_CLI_INSTALL_BASE_URL=" + s.srv.URL,
-		"CURL_CA_BUNDLE=" + s.caPath,
-		"RANCHER_TEST_INSTALL_SCRIPT=" + scriptPath,
-	}
-	out, runErr := cmd.CombinedOutput()
-	require.NoErrorf(t, runErr, "README bootstrap snippet failed: %s", out)
-	assert.Contains(t, string(out), "tag: v0.1.0-alpha.1")
 }

@@ -5,9 +5,6 @@
 //   - token: "auth token" prints RANCHER_TEST_GH_TOKEN; everything else fails.
 //   - capable: the attestation capability probe and "auth status" succeed,
 //     "attestation verify <file>" succeeds, and "auth token" fails.
-//   - api: "api repos/rancher/rancher-cli/contents/install.ps1?ref=main"
-//     prints the file named by RANCHER_TEST_INSTALL_SCRIPT; everything else
-//     fails.
 //   - anything else: every invocation fails.
 package main
 
@@ -43,16 +40,6 @@ func main() {
 		case sub == "auth status":
 			return
 		case strings.HasPrefix(sub, "attestation verify "):
-			return
-		}
-	case "api":
-		if strings.HasPrefix(sub, "api repos/rancher/rancher-cli/contents/install.ps1?ref=main") {
-			raw, err := os.ReadFile(os.Getenv("RANCHER_TEST_INSTALL_SCRIPT"))
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(2)
-			}
-			_, _ = os.Stdout.Write(raw)
 			return
 		}
 	}

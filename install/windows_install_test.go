@@ -91,7 +91,7 @@ func TestWindowsDryRunNoStableRelease(t *testing.T) {
 	_, errOut, code := runInstallPs(t, s, sh, newWinHome(t), nil, "-DryRun")
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "no stable release found")
-	assert.Contains(t, errOut, "log in with gh auth login, or set GH_TOKEN")
+	assert.NotContains(t, errOut, "GitHub token")
 	assert.Contains(t, errOut, "use -Pre or -Version")
 }
 
@@ -387,7 +387,11 @@ func TestWindowsCorruptVersionDirIsReplaced(t *testing.T) {
 	assertJunctionTo(t, home.binDir(), filepath.Join(home.versionsDir(), "v1.2.3.2"))
 }
 
-func TestWindowsInternalRepoTokenModeInstalls(t *testing.T) {
+// TestWindowsTokenModeInstallsThroughTheAssetEndpoint asserts that with a
+// token set, against a server that serves release assets only through the API
+// asset endpoint, install.ps1 downloads through the endpoint and sends the
+// token to the API host only.
+func TestWindowsTokenModeInstallsThroughTheAssetEndpoint(t *testing.T) {
 	t.Parallel()
 	for _, sh := range powerShells(t) {
 		t.Run(sh.name, func(t *testing.T) {
@@ -411,7 +415,10 @@ func TestWindowsInternalRepoTokenModeInstalls(t *testing.T) {
 	}
 }
 
-func TestWindowsInternalRepoAnonymousFailsClearly(t *testing.T) {
+// TestWindowsAnonymousDownloadFailsClearlyWhenAssetsAre404 asserts that with
+// no token, against a server that answers 404 on the release download URLs,
+// install.ps1 fails with a message that names the asset.
+func TestWindowsAnonymousDownloadFailsClearlyWhenAssetsAre404(t *testing.T) {
 	t.Parallel()
 	sh := requirePowerShell(t)
 	s := newStub(t)
@@ -1318,30 +1325,6 @@ func TestWindowsBootstrapParameterForm(t *testing.T) {
 			assert.True(t, os.IsNotExist(err), "a dry run must install nothing")
 		})
 	}
-}
-
-// TestWindowsGhBootstrapSnippet runs the README internal-phase PowerShell
-// one-liner against a gh stand-in that serves install.ps1, proving the
-// script reaches its parameter block through Out-String and resolves a
-// prerelease.
-func TestWindowsGhBootstrapSnippet(t *testing.T) {
-	t.Parallel()
-	sh := requirePowerShell(t)
-	s := newStub(t)
-	writeWindowsRelease(t, s, "v0.1.0-alpha.1")
-	scriptPath, err := filepath.Abs("../install.ps1")
-	require.NoError(t, err)
-	dir, _, ghEnv := ghStubDir(t, "api")
-
-	snippet := `iex "& { $(gh api 'repos/rancher/rancher-cli/contents/install.ps1?ref=main' -H 'Accept: application/vnd.github.raw' | Out-String) } -Pre -DryRun"`
-	assertSnippetMatchesDoc(t, "README.md", `iex "& { $(gh api 'repos/rancher/rancher-cli/contents/install.ps1?ref=main'`,
-		snippet, func(s string) string { return strings.Replace(s, " -Pre -DryRun", " -Pre", 1) })
-
-	cmd := exec.Command(sh.path, "-NoProfile", "-NonInteractive", "-Command", snippet)
-	cmd.Env = psEnv(s, newWinHome(t), append(ghEnv, "RANCHER_TEST_INSTALL_SCRIPT="+scriptPath, "PATH="+hermeticPath(dir))...)
-	out, runErr := cmd.CombinedOutput()
-	require.NoErrorf(t, runErr, "README gh bootstrap snippet failed: %s", out)
-	assert.Contains(t, string(out), "tag: v0.1.0-alpha.1")
 }
 
 // TestWindowsBootstrapPropagatesInstallerFailure asserts that a failing install

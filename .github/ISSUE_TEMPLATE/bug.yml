@@ -2,39 +2,76 @@ name: Bug report
 description: Report a bug in the CLI, the agent skill, the install script, the credential helper, or the documentation
 labels: ["bug"]
 body:
-  - type: textarea
-    id: problem
+  - type: markdown
     attributes:
-      label: What happened?
-      description: Remove tokens and passwords from anything you paste. Run the command with `-o json` to see the error code and hint, and include the command's exit code.
+      value: |
+        Do not report a security issue here: see [SECURITY.md](https://github.com/rancher/rancher-cli/blob/main/SECURITY.md).
+        Remove tokens, passwords and server URLs that must stay private from everything you paste.
+        For a problem with the install script or the documentation, write n/a in a field that does not apply.
+  - type: input
+    id: version
+    attributes:
+      label: rancher-cli version
+      description: The output of `rancher --version`. Write n/a for an install script or documentation problem.
     validations:
       required: true
+  - type: input
+    id: rancher-version
+    attributes:
+      label: Rancher version
+      description: The Rancher server version, and whether it is community or Prime. Write n/a for an install script or documentation problem.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system, architecture and shell
+      description: For example macOS 15 arm64 with zsh, or Windows 11 amd64 with PowerShell 7.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command
+      description: For an install problem, the installer command. Write n/a for a documentation problem.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: The full output, if the command printed an error
+      description: Run the command again with `-o json` and paste the whole document (code, message and hint). Add the exit code.
   - type: textarea
     id: expected
     attributes:
       label: What did you expect to happen?
+    validations:
+      required: true
   - type: textarea
     id: repro
     attributes:
-      label: How can we reproduce it (as minimally and precisely as possible)?
+      label: Steps to reproduce from a clean config directory
       description: |
-        For example:
-        1. Run `rancher get projects --cluster local -o wide`
-        2. See this output: ...
-  - type: textarea
-    id: environment
+        Start with a new config directory, for example
+        `RANCHER_CLI_CONFIG_DIR=$(mktemp -d) RANCHER_CLI_CREDENTIAL_STORE=file`, and list every step from `rancher auth login`. Write n/a for an install script or documentation problem.
+    validations:
+      required: true
+  - type: dropdown
+    id: runby
     attributes:
-      label: Environment
-      value: |
-        <details>
-
-        ```console
-        $ rancher --version
-        # paste output here
-        ```
-
-        - Rancher server: <version>, community or Prime
-        - Run by: a person at a terminal | a coding agent (harness: Claude Code, Codex, Copilot, other)
-        - OS:
-
-        </details>
+      label: Run by
+      options:
+        - A person at a terminal
+        - A coding agent (Claude Code, Codex, Copilot or another harness)
+        - kubectl's exec plugin
+        - A script or CI
+    validations:
+      required: false
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Redaction
+      options:
+        - label: I removed tokens, passwords and server URLs that must stay private.
+          required: true

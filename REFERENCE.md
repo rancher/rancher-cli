@@ -367,14 +367,15 @@ best-effort.
 GitHub token lookup order: `GH_TOKEN` > `GITHUB_TOKEN` > `gh auth token` (when
 `gh` is on PATH and logged in) > anonymous.
 
-When the installer has a GitHub token, it downloads assets through the GitHub
-API asset endpoint (internal repositories require it, because their plain
-release download URLs return nothing), and fetches any signed storage redirect
-with a second request that carries no token: the token is sent only to the API
-host. If the GitHub token cannot read the release metadata, the installer uses
-the plain release download URLs instead; if the download of the `rancher` binary
-then fails, the error also says the release metadata was unreadable and gives
-its HTTP status.
+No GitHub token is needed: the release downloads are public. When the installer
+has a GitHub token, it downloads assets through the GitHub API asset endpoint,
+and fetches any signed storage redirect with a second request that carries no
+token: the token is sent only to the API host. If the GitHub token cannot read
+the release metadata, the installer uses the plain release download URLs
+instead; if the download of the `rancher` binary then fails, the error also says
+the release metadata was unreadable and gives its HTTP status. Anonymous `--pre`
+lookups use the GitHub API, which limits requests to 60 per hour per address; a
+GitHub token raises the limit.
 
 After creating the links, the installer warns about any other `rancher` or
 `rancher-credential-vault` elsewhere on `PATH` (your shell can keep running the
@@ -413,30 +414,42 @@ code, download the installer to a file first and then run it:
 It passes on curl's exit code, removes its temp file on any exit, and never runs
 a partial download.
 
-While the repository is internal and `gh` is unavailable, use the command below,
-which sends a GitHub token: curl reads the token from a configuration given on
-standard input, and `sh` reads it from the environment; the token is never a
-command-line argument:
-
-    (
-      t="$(mktemp)" || exit 1
-      trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
-      trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-      printf 'header = "Authorization: Bearer %s"\n' "${GH_TOKEN:-$GITHUB_TOKEN}" | \
-        curl --config - --proto '=https' --tlsv1.2 -fsSL \
-          -o "$t" \
-          https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh \
-        && GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}" sh "$t"
-    )
-
 Pass installer flags after `sh "$t"` (for example `sh "$t" --version <tag>`).
+A GitHub token is optional: the installer reads `GH_TOKEN` or `GITHUB_TOKEN`
+from the environment when one is set.
 
 ### Manual download & verification
 
-Download the assets for your platform from the releases page, check them
-against `SHA256SUMS`, and (optionally) verify provenance with
-`gh attestation verify <file> --repo rancher/rancher-cli
---signer-workflow rancher/rancher-cli/.github/workflows/release.yaml`.
+1. Open the [latest release](https://github.com/rancher/rancher-cli/releases/latest)
+   and download, for your operating system and architecture,
+   `rancher-<os>-<arch>`, `rancher-credential-vault-<os>-<arch>` (both with
+   `.exe` on Windows) and `SHA256SUMS`.
+2. Check each binary against its line in `SHA256SUMS`. On Linux:
+
+   ```
+   grep '  rancher-linux-amd64$' SHA256SUMS | sha256sum -c -
+   grep '  rancher-credential-vault-linux-amd64$' SHA256SUMS | sha256sum -c -
+   ```
+
+   On macOS use `shasum -a 256 -c -` in place of `sha256sum -c -`. Each command
+   prints `<name>: OK`. On Windows see [By hand](#by-hand).
+3. Optional: verify the build provenance with the GitHub CLI (it needs
+   `gh auth login`), for each of the two binaries:
+
+   ```
+   gh attestation verify rancher-linux-amd64 --repo rancher/rancher-cli \
+     --signer-workflow rancher/rancher-cli/.github/workflows/release.yaml
+   ```
+
+   The attestations cover the binaries, `rancher-schema.json`, `install.sh` and
+   `install.ps1`; `SHA256SUMS` has none; it protects against a damaged
+   download only.
+4. Rename the two downloads to `rancher` and `rancher-credential-vault`
+   (`rancher.exe` and `rancher-credential-vault.exe` on Windows), make both
+   binaries runnable (`chmod +x` on Linux and macOS) and put them in one
+   directory on `PATH`. Both names matter: the CLI runs a credential helper as
+   `rancher-credential-<name>`, and kubectl runs a kubeconfig's exec plugin as
+   `rancher`.
 
 #### Windows
 
@@ -455,11 +468,6 @@ version 1607 or Windows Server 2016 or later. To pass parameters
 `-Quiet`), run the downloaded script as a script block:
 
     iex "& { $(irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1) } -Version v1.2.3"
-
-While the repository is internal, fetch the script through `gh` instead
-(the installer then reuses gh's token for the release assets):
-
-    iex "& { $(gh api 'repos/rancher/rancher-cli/contents/install.ps1?ref=main' -H 'Accept: application/vnd.github.raw' | Out-String) } -Pre"
 
 Like `install.sh`, the whole script lives inside a function invoked on its
 last line, so a truncated download either fails to parse or runs nothing.

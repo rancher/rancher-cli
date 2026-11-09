@@ -6,6 +6,15 @@ A greenfield rewrite of the legacy Rancher CLI, built so a coding agent in a
 terminal harness (Claude Code, Codex, …) can operate Rancher like any other
 user - and operators get the same commands with readable table output.
 
+> [!NOTE]
+> **Experimental.** rancher-cli is under heavy development and is considered
+> experimental. Commands, flags, output and stored formats can change between
+> releases, and the notes of each release list the changes. Use it with caution
+> and report issues through the
+> [issue forms](https://github.com/rancher/rancher-cli/issues/new/choose) (see
+> [CONTRIBUTING.md](CONTRIBUTING.md) for what to include). We appreciate your
+> feedback.
+
 - **Structured, versioned output** - nearly every command prints one JSON
   document under `-o json` (YAML under `-o yaml`), versioned as
   `cli.rancher.io/v1`; the default is readable text for an operator at a
@@ -25,11 +34,14 @@ user - and operators get the same commands with readable table output.
 
 [Install](#install) · [Quickstart](#quickstart) ·
 [Commands](COMMANDS.md) · [Reference](REFERENCE.md) ·
-[Migration](MIGRATING.md) · [Contributing](AGENTS.md)
-
-<!-- demo: asciinema/GIF slot -->
+[Migration](MIGRATING.md) · [Feedback](#feedback)
 
 ## Install
+
+rancher-cli works with Rancher 2.14 and later
+([details](REFERENCE.md#supported-server-version)). Downloads:
+[releases](https://github.com/rancher/rancher-cli/releases). Release notes
+are in each release's description.
 
     curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/rancher/rancher-cli/main/install.sh | sh
 
@@ -37,34 +49,19 @@ On Windows (PowerShell 7 or Windows PowerShell 5.1):
 
     irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1 | iex
 
-> [!NOTE]
-> While the repository is internal, the install commands above fail because
-> they send no GitHub token. Use `gh` instead (logged in once with
-> `gh auth login`) - the installer picks up the GitHub token that gh holds
-> automatically, and the token never appears in process arguments:
+No GitHub account or token is needed. The installer checks both binaries
+against `SHA256SUMS` before it installs them. To check the download before it
+runs, or to install without the script, see
+[REFERENCE.md](REFERENCE.md#downloading-and-running-the-installer-safely) and
+[manual download](REFERENCE.md#manual-download--verification).
 
-    gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main" -H "Accept: application/vnd.github.raw" | sh -s -- --pre
-
-PowerShell:
-
-    iex "& { $(gh api 'repos/rancher/rancher-cli/contents/install.ps1?ref=main' -H 'Accept: application/vnd.github.raw' | Out-String) } -Pre"
-
-`--pre` (`-Pre` in PowerShell) selects the newest prerelease - early
-access ships prereleases only; drop it once a stable release exists.
-Looking up a prerelease on Linux and macOS needs `jq` or `python3` on PATH.
-
-Without `gh`, how to download the installer with a GitHub token and then run
-it is in
-[REFERENCE.md](REFERENCE.md#downloading-and-running-the-installer-safely).
-
-On Linux and macOS both commands install `rancher` and its credential
-helper to `~/.local/bin`; on Windows to `%LOCALAPPDATA%\rancher-cli\bin`
-(no root or admin rights needed, no profile or `PATH` edits; the installer
-prints the `PATH` line if needed). Checksums are always verified; build
-provenance is verified when a `gh` CLI that is logged in is available. The
-manual Windows steps are in [REFERENCE.md](REFERENCE.md#windows) as a
-fallback. The CLI supports Rancher `>= 2.14`
-([details](REFERENCE.md#supported-server-version)); install internals and
+The Linux and macOS installer puts `rancher` and its credential helper in
+`~/.local/bin`; the Windows installer puts them in
+`%LOCALAPPDATA%\rancher-cli\bin` (no root or admin rights needed, no
+profile or `PATH` edits; the installer prints the `PATH` line if needed).
+Checksums are always verified; build provenance is verified when a `gh`
+CLI that is logged in is available. The manual Windows steps are in
+[REFERENCE.md](REFERENCE.md#windows) as a fallback. Install internals and
 manual download: [REFERENCE.md](REFERENCE.md#install-internals).
 
 <details>
@@ -73,14 +70,14 @@ manual download: [REFERENCE.md](REFERENCE.md#install-internals).
 Flags (with either piped command: `… | sh -s -- --version <tag>`):
 `--version <tag>` installs a specific release
 (or set the environment variable `RANCHER_CLI_VERSION`; the flag takes
-precedence), `--pre` selects the newest prerelease, `--bin-dir <dir>` sets
+precedence), `--pre` selects the newest prerelease (on Linux and macOS it
+needs `jq` or `python3` on PATH), `--bin-dir <dir>` sets
 the bin directory (or set the environment variable
 `RANCHER_CLI_INSTALL_BIN_DIR`), `--verify-attestation` makes provenance
 verification mandatory, `--dry-run` prints the release, the files it would
 download and the directories it would use, without writing anything, `-q`
-suppresses progress notes. Set `GH_TOKEN` or `GITHUB_TOKEN` to give the
-installer a GitHub token, which is needed while the repository is internal
-and helps with GitHub rate limits.
+suppresses progress notes. The installer uses a GitHub token only when
+`GH_TOKEN` or `GITHUB_TOKEN` is set or `gh` is logged in; none is needed.
 
 PowerShell takes the same options as parameters - `-Version <tag>`,
 `-Pre`, `-BinDir <dir>`, `-VerifyAttestation`, `-DryRun`, `-Quiet` - and
@@ -337,7 +334,7 @@ versions, what completion does offline, and details of live completion:
   mode, server-version support, kubectl integration, TLS (operators,
   automation authors).
 - [ARCHITECTURE.md](ARCHITECTURE.md) - layer map and design decisions
-  (contributors).
+  (readers of the source).
 - [CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md) - credential-helper
   protocol and examples (integrators).
 - [MIGRATING.md](MIGRATING.md) - moving from the legacy Rancher CLI
@@ -375,21 +372,23 @@ pre-commit `make validate` gate.
 
 Manual testing: `scripts/dev <args>` - never run the binary directly; it
 forces an isolated config directory and a file credential store, which keeps
-a manual run from touching your real config or OS keychain. Contributor guide:
-[AGENTS.md](AGENTS.md).
+a manual run from touching your real config or OS keychain. Build and test
+rules: [AGENTS.md](AGENTS.md).
+
+## Feedback
+
+We are not accepting code contributions at the moment. A clear issue helps most:
+open one with the [bug report or feature request form](https://github.com/rancher/rancher-cli/issues/new/choose),
+and read [CONTRIBUTING.md](CONTRIBUTING.md) for what to include.
 
 ## Support & community
 
-Questions and discussion: the [Rancher forums](http://forums.rancher.com/)
-and [Rancher Slack](https://slack.rancher.io/). Bugs and feature requests
-for the CLI, the agent skill, the installer, the credential helper or
-this documentation:
-[rancher/rancher-cli issues](https://github.com/rancher/rancher-cli/issues/new/choose).
-A problem in the Rancher server itself goes to
+Questions and discussion: the [Rancher forums](https://forums.rancher.com/)
+and [Rancher Slack](https://slack.rancher.io/). A problem in the Rancher
+server itself goes to
 [rancher/rancher issues](https://github.com/rancher/rancher/issues).
 
-For security issues, check the
-[security policy](https://github.com/rancher/rancher/security) and email
+For security issues, see [SECURITY.md](SECURITY.md) and email
 security-rancher@suse.com instead of opening a public issue.
 
 ## License

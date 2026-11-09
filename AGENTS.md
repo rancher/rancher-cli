@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for coding agents and contributors working **on** this repository. To
+Guidance for the maintainers and their coding agents working **on** this repository. To
 operate the CLI itself as an agent, see
 [`skills/rancher/SKILL.md`](skills/rancher/SKILL.md) instead.
 
@@ -202,8 +202,7 @@ Gotchas:
 
 ## Cutting a release
 
-- Only the maintainers on the bypass list of the repository's `release tags` ruleset can create,
-  update or delete a `v*` tag; GitHub refuses the push from anyone else.
+- A maintainer pushes the release tag.
 - Pushing a tag `vX.Y.Z` or `vX.Y.Z-{alpha|beta|rc}.N` on a commit that is already on main
   (`scripts/check-release-tag <tag>` checks the format first) runs `.github/workflows/release.yaml`:
   zizmor on the tagged commit, then `make validate` and `make e2e`, then the build, the attestations and a draft

@@ -2,14 +2,26 @@ name: Feature request
 description: Ask for something the CLI, the agent skill, the install script, the credential helper, or the documentation should do
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the workflow you are trying to do. A flag or command you have in mind helps as part of that, not instead of it.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What are you trying to do?
+      description: The task, step by step, and how you do it today (kubectl, the Rancher API, the UI), if at all.
+    validations:
+      required: true
   - type: textarea
     id: feature
     attributes:
       label: What would you like to be added?
+      description: The command, flag or behavior you have in mind, if any.
+  - type: input
+    id: version
+    attributes:
+      label: rancher-cli version
+      description: The output of `rancher --version`.
     validations:
       required: true
-  - type: textarea
-    id: rationale
-    attributes:
-      label: Why is this needed?
-      description: The task you are trying to do, and how you do it today (kubectl, API, UI), if at all.

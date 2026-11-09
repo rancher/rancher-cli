@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/rancher/rancher-cli/blob/main/SECURITY.md
+    about: Never report a security issue in a public issue. Read SECURITY.md and send the report by email.
+  - name: Question
+    url: https://forums.rancher.com/
+    about: Ask in the Rancher forums or on Rancher Slack (https://slack.rancher.io/), not in an issue.

@@ -473,7 +473,7 @@ func TestTableRowsRenderSettingProvenance(t *testing.T) {
 	}}
 	overridden := unstructured.Unstructured{Object: map[string]any{
 		"metadata":   map[string]any{"name": "server-url"},
-		"value":      "https://rancher.peterm.dev",
+		"value":      "https://rancher.example.com",
 		"default":    "",
 		"customized": true,
 		"source":     "env",

@@ -201,12 +201,14 @@ func TestReceiptSurvivesMetacharBinDir(t *testing.T) {
 	assert.Equal(t, binDir, receipt["binDir"])
 }
 
-// TestInternalRepoTokenModeInstalls proves the end-to-end API-asset path: when
-// a token is in play and the browser download URL returns 404 (private/internal
-// repo), the installer falls back to the GitHub API asset endpoint and succeeds.
-// Assertions: install completes, receipt lands, Authorization header reached the
-// stub on asset requests, token never appeared in any curl argv.
-func TestInternalRepoTokenModeInstalls(t *testing.T) {
+// TestTokenModeInstallsThroughTheAssetEndpoint asserts the end-to-end API
+// asset path: with a token set, against a server that serves release assets
+// only through the API asset endpoint and answers 404 on the release download
+// URLs, the installer downloads through the endpoint and succeeds. It asserts
+// that the install completes, the receipt lands, the Authorization header
+// reached the stub on asset requests and the token never appeared in any curl
+// argv.
+func TestTokenModeInstallsThroughTheAssetEndpoint(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
 	s.setPrivate(true)
@@ -251,11 +253,11 @@ func TestInternalRepoTokenModeInstalls(t *testing.T) {
 	assert.Equal(t, "versioned-dir", receipt["layout"])
 }
 
-// TestInternalRepoAnonymousFailsClearly asserts the failure mode when no token is
-// available for a private/internal repo: the browser download URL returns 404
-// and the installer exits with an error message that names the asset. This
-// ensures the failure is clear rather than silent.
-func TestInternalRepoAnonymousFailsClearly(t *testing.T) {
+// TestAnonymousDownloadFailsClearlyWhenAssetsAre404 asserts the failure mode
+// when no token is set and the server answers 404 on the release download
+// URLs: the installer exits with an error message that names the asset, so
+// the failure is clear rather than silent.
+func TestAnonymousDownloadFailsClearlyWhenAssetsAre404(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
 	s.setPrivate(true)
@@ -264,7 +266,7 @@ func TestInternalRepoAnonymousFailsClearly(t *testing.T) {
 
 	// No token env var, no gh binary.
 	_, errOut, code := runInstall(t, s, nil)
-	require.NotEqual(t, 0, code, "anonymous access to a private repo must fail")
+	require.NotEqual(t, 0, code, "an anonymous download from a server that answers 404 on the download URLs must fail")
 	// Must name the failing asset so the user knows what went wrong.
 	assert.Contains(t, errOut, "download failed")
 	assert.Contains(t, errOut, "rancher-",
@@ -440,7 +442,8 @@ func TestMetadataRequestWithNoStatusFallsBackToBrowserPath(t *testing.T) {
 }
 
 // TestPython3BranchExtractsAssetIds covers the python3 extraction branch:
-// private repo, token present, python3 on PATH but no jq. Skipped when
+// a server that serves assets only through the API endpoint, token present,
+// python3 on PATH but no jq. Skipped when
 // python3 is not functional on the host (e.g. macOS CLT stub exits non-zero).
 func TestPython3BranchExtractsAssetIds(t *testing.T) {
 	t.Parallel()
@@ -508,19 +511,19 @@ func TestPrivateRepoTokenModeWith302Redirect(t *testing.T) {
 		"302 mode: exactly one redirect URL request per asset")
 }
 
-// TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage covers the case
-// where TOKEN is present but the metadata endpoint returns 403 (missing scope
-// or SSO authorization) and the repo is private: download falls back to
-// browser URLs which 404, and the error must name BOTH the asset failure AND
-// the metadata failure code - so the user knows the real cause is their
-// token, not a missing asset.
+// TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage asserts that
+// when TOKEN is present, the metadata endpoint returns 403 (the token cannot
+// read the release) and the server answers 404 on the release download URLs,
+// the download falls back to the browser URLs which 404, and the error names
+// BOTH the asset failure AND the metadata failure code - so the user knows
+// the real cause is their token, not a missing asset.
 func TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
 	s.setPrivate(true)
 	writeRelease(s, "v1.2.3", false)
 	s.setLatest("v1.2.3")
-	// Metadata endpoint returns 403 (token lacks repo access or SSO not authorized).
+	// Metadata endpoint returns 403 (the token cannot read the release).
 	s.setReleaseTagStatus(403)
 
 	_, errOut, code := runInstall(t, s, []string{
@@ -529,7 +532,7 @@ func TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage(t *testing.T) {
 	})
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "download failed",
-		"download must fail because browser URLs 404 on a private repo")
+		"download must fail because the browser URLs answer 404")
 	assert.Contains(t, errOut, "release metadata was also unreadable (HTTP 403)",
 		"enriched message must name the metadata HTTP code")
 	assert.NotContains(t, errOut, "asset not found",
@@ -537,7 +540,8 @@ func TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage(t *testing.T) {
 }
 
 // TestPrivateRepoTokenWithNoMetadataStatusFailsWithEnrichedMessage covers the
-// private repository case where the releases/tags request ends with no HTTP
+// case of a server that answers 404 on the download URLs where the
+// releases/tags request ends with no HTTP
 // status at all: download falls back to browser URLs which 404, and the error
 // must say the metadata request had "no HTTP status".
 func TestPrivateRepoTokenWithNoMetadataStatusFailsWithEnrichedMessage(t *testing.T) {
@@ -555,7 +559,7 @@ func TestPrivateRepoTokenWithNoMetadataStatusFailsWithEnrichedMessage(t *testing
 	_, errOut, code := runInstall(t, s, env)
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "download failed",
-		"download must fail because browser URLs 404 on a private repo")
+		"download must fail because the browser URLs answer 404")
 	assert.Contains(t, errOut, "release metadata was also unreadable (no HTTP status)",
 		"enriched message must say the metadata request had no HTTP status")
 	assert.NotContains(t, errOut, "(HTTP error)",

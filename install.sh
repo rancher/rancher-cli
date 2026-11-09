@@ -103,7 +103,7 @@ fetch() {
 # the small redirect body in "$_out" is overwritten by a plain untokened fetch
 # of the Location URL; the signed URL is self-authenticating and the token
 # must never leave $API_URL. Security property: identical to the previous
-# two-step probe; direct-200 case (stub, internal mirrors) now makes exactly
+# two-step probe; direct-200 case (a stub or a mirror) now makes exactly
 # one request instead of two.
 fetch_asset() {
   _id="$1"; _out="$2"; _name="$3"
@@ -297,9 +297,9 @@ resolve_tag() {
     30?) : ;;
     404)
       if [ -z "$TOKEN" ]; then
-        err "no stable release found - an internal repository needs a GitHub token (log in with gh auth login, or set GH_TOKEN); on a public repository there is no stable release yet - use --pre or --version <tag>"
+        err "no stable release found - use --pre or --version <tag>"
       fi
-      err "no stable release yet - use --pre or --version <tag>; with a GitHub token set this can also mean the GitHub token lacks access to an internal repository (missing scope or SSO authorization)"
+      err "no stable release found for this GitHub token - use --pre or --version <tag>"
       ;;
     *) err "could not look up the latest stable release (HTTP $_code) - check the GitHub token and the rate limit, then retry" ;;
   esac
@@ -332,7 +332,7 @@ resolve_pre_tag() {
     [ "$_page" -gt 100 ] && err "release listing: stopped after 100 pages - the response may not come from the GitHub API, or the listing never ends"
     if ! _body="$(fetch "$API_URL/repos/$REPO/releases?per_page=100&page=$_page")"; then
       if [ -z "$TOKEN" ]; then
-        err "release listing request failed (page $_page) - an internal repository needs a GitHub token: log in with gh auth login, or set GH_TOKEN"
+        err "release listing request failed (page $_page) - a network or server failure, or GitHub limiting requests without a token; wait and retry, or set GH_TOKEN or GITHUB_TOKEN"
       fi
       err "release listing request failed (page $_page)"
     fi
@@ -586,10 +586,10 @@ download() {
 
   note "downloading $TAG for $OS/$ARCH"
   if [ -n "$CLI_ASSET_ID" ]; then
-    # Private/internal repos: browser download URLs return 404 regardless of
-    # authentication. Use the GitHub API asset endpoint; fetch_asset_ids
-    # resolved the numeric ids. If metadata was not reachable (scoped token on
-    # a public repo) CLI_ASSET_ID is empty and we fall through to browser URLs.
+    # With a token, download through the GitHub API asset endpoint
+    # (fetch_asset_ids resolved the numeric ids). If the release metadata was
+    # not reachable (a scoped token), CLI_ASSET_ID is empty and the browser
+    # URLs are used.
     fetch_asset "$CLI_ASSET_ID" "$WORK/$CLI_ASSET" "$CLI_ASSET"
     fetch_asset "$HELPER_ASSET_ID" "$WORK/$HELPER_ASSET" "$HELPER_ASSET"
     fetch_asset "$SHA256SUMS_ASSET_ID" "$WORK/SHA256SUMS" "SHA256SUMS"
@@ -597,7 +597,7 @@ download() {
     if ! fetch "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET"; then
       _dlmsg="download failed: $DL_BASE/$CLI_ASSET (404 = tag '$TAG' has no such asset)"
       if [ -n "$TOKEN" ] && [ -n "$METADATA_FAIL_STATE" ]; then
-        _dlmsg="$_dlmsg - or the GitHub token lacks access to an internal repository (missing scope or SSO authorization); release metadata was also unreadable ($METADATA_FAIL_STATE)"
+        _dlmsg="$_dlmsg - or the GitHub token is expired or lacks access; release metadata was also unreadable ($METADATA_FAIL_STATE)"
       fi
       err "$_dlmsg"
     fi

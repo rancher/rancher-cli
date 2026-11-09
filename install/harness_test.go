@@ -140,8 +140,9 @@ func newStub(t *testing.T) *stub {
 		body, ok := s.assets[key]
 		s.mu.Unlock()
 		if priv {
-			// Private/internal repos: browser download URLs return 404 even with
-			// a valid token. The API asset endpoint is the only path that works.
+			// A server that serves release assets only through the API asset
+			// endpoint answers 404 on the release download URLs, with or without
+			// a token.
 			http.NotFound(w, r)
 			return
 		}
