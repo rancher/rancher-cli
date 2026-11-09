@@ -524,87 +524,197 @@ func keepStopRows() []keepStop {
 	}
 }
 
+// keepFailureRows names one failure row for each kind of failure that depends
+// on where the check runs: a state file check, which a helm pair fails before the
+// lock; another check that a helm pair fails before the lock; and a check after
+// the lock that adds a hint line to the refusal.
+var keepFailureRows = []string{
+	"state file has no containerId",
+	"container does not exist",
+	"container is published on another address",
+}
+
+// keepFullSlots are the slots that run every failure row. One is a container
+// boot with no drift run and one is a helm boot with a drift run, so every row
+// meets each boot and the drift reports line.
+var keepFullSlots = []string{"community", "helm-check"}
+
+// keepOtherSlots are the slots that run only the rows of keepFailureRows.
+var keepOtherSlots = []string{"prime", "2.16", "2.17", "2.16-helm"}
+
+// keepDriftSlot reports whether the slot allows a drift run, so its refusal
+// names the drift reports it deletes.
+func keepDriftSlot(slot keepSlot) bool {
+	return slot.kind == "upcoming" || slot.kind == "helm" || slot.kind == "upcominghelm"
+}
+
+// keepStopCase is one failure row run on one slot.
+type keepStopCase struct {
+	slot keepSlot
+	row  keepStop
+}
+
+// keepStopCases lists the cases of TestKeepRunStopsOnAFailedPairCheck: every
+// row on each slot of keepFullSlots and the rows of keepFailureRows on each slot
+// of keepOtherSlots. It fails the test when a row of keepFailureRows is missing
+// from keepStopRows or no longer has the properties that make it the row for
+// its kind of failure, when keepFullSlots lacks a container boot without a
+// drift run or a helm boot with one, and when a slot of keepSlots gets fewer
+// cases than it needs.
+func keepStopCases(t *testing.T) []keepStopCase {
+	t.Helper()
+	require.Len(t, keepFailureRows, 3, "one row for each of the three kinds of failure")
+	rows := keepStopRows()
+	var named []keepStop
+	for _, name := range keepFailureRows {
+		i := slices.IndexFunc(rows, func(r keepStop) bool { return r.name == name })
+		require.GreaterOrEqualf(t, i, 0, "keepStopRows has no row named %q", name)
+		named = append(named, rows[i])
+	}
+	require.True(t, named[0].check == "state-file" && named[0].keptStateFails && !named[0].unreadablePins, "%q is the state file row that a helm pair fails before the lock", named[0].name)
+	require.True(t, named[1].check != "state-file" && named[1].keptStateFails, "%q is the other row that a helm pair fails before the lock", named[1].name)
+	require.True(t, named[2].hint != nil && !named[2].keptStateFails, "%q is the row after the lock with a hint line", named[2].name)
+
+	var fullBoots []string
+	for _, name := range keepFullSlots {
+		i := slices.IndexFunc(keepSlots, func(slot keepSlot) bool { return slot.name == name })
+		require.GreaterOrEqualf(t, i, 0, "keepSlots has no slot named %q", name)
+		slot := keepSlots[i]
+		fullBoots = append(fullBoots, slot.boot+" boot, drift run: "+strconv.FormatBool(keepDriftSlot(slot)))
+	}
+	require.Contains(t, fullBoots, "container boot, drift run: false", "keepFullSlots holds a container boot with no drift run")
+	require.Contains(t, fullBoots, "helm boot, drift run: true", "keepFullSlots holds a helm boot with a drift run")
+
+	var cases []keepStopCase
+	for _, slot := range keepSlots {
+		switch {
+		case slices.Contains(keepFullSlots, slot.name):
+			for _, row := range rows {
+				cases = append(cases, keepStopCase{slot, row})
+			}
+		case slices.Contains(keepOtherSlots, slot.name):
+			for _, row := range named {
+				cases = append(cases, keepStopCase{slot, row})
+			}
+		}
+	}
+
+	perSlot := map[string][]string{}
+	for _, tc := range cases {
+		perSlot[tc.slot.name] = append(perSlot[tc.slot.name], tc.row.name)
+	}
+	for _, slot := range keepSlots {
+		for _, name := range keepFailureRows {
+			assert.Containsf(t, perSlot[slot.name], name, "slot %s gets no case for the row %q", slot.name, name)
+		}
+	}
+	for _, name := range keepFullSlots {
+		var all []string
+		for _, row := range rows {
+			all = append(all, row.name)
+		}
+		assert.Equalf(t, all, perSlot[name], "slot %s runs every row", name)
+	}
+	return cases
+}
+
 // TestKeepRunStopsOnAFailedPairCheck asserts that under E2E_FIDELITY_KEEP=1 a
 // kept pair that fails its container, container id, bind address, /ping, admin
-// token or state file check stops the run with exit 4 on every slot: the
-// refusal names the failed check and the commands that remove the pair, and
-// the run removes nothing, boots nothing, writes no state and sends no request
-// beyond the checks themselves (and, on a helm slot whose kept state cannot be
-// read, the downloads before the lock; an upcoming minor booted with helm
-// always downloads its chart before the lock). A failure that sets no check
-// name stops the run too.
+// token or state file check stops the run with exit 4: the refusal names the
+// failed check and the commands that remove the pair, and the run removes
+// nothing, boots nothing, writes no state and sends no request beyond the
+// checks themselves (and, on a helm slot whose kept state cannot be read, the
+// downloads before the lock; an upcoming minor booted with helm always
+// downloads its chart before the lock). A failure that sets no check name stops
+// the run too.
+//
+// Each failure row runs on the community slot and on helm-check. Every other
+// slot runs one row for each kind of failure: the state file, the container,
+// and the bind address with its hint. That covers the other slots because the
+// checks depend on the slot only through the boot, the drift reports line, the
+// chart, k3s and cert-manager pins, the oracle image, and the URL and paths
+// derived from the port, state root and container name:
+//   - the boot and the drift reports line differ between the two full slots;
+//   - the two rows that fail before the lock run on both helm slots, which
+//     covers the values a helm slot computes before that point;
+//   - the pins and the oracle image of every slot are compared in
+//     TestKeepRunRecreatesOnAChangedPinOrNoState and
+//     TestKeepRunReusesAHealthyPairWithoutRemoval;
+//   - the URL and the CA file of the /ping and admin token checks are used on
+//     every slot by TestKeepRunReusesAHealthyPairWithoutRemoval, whose success
+//     path runs both checks;
+//   - the names and paths in the refusal lines are asserted on every case.
 func TestKeepRunStopsOnAFailedPairCheck(t *testing.T) {
 	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
 	requireKeepSlotsMatchTheScript(t)
-	for _, slot := range keepSlots {
-		for _, row := range keepStopRows() {
-			t.Run(slot.name+"/"+row.name, func(t *testing.T) {
-				t.Parallel()
-				k := newKeepRun(t, slot)
-				row.setup(k)
-				requests := k.recordRequestOptions()
-				res := k.run()
+	for _, tc := range keepStopCases(t) {
+		slot, row := tc.slot, tc.row
+		t.Run(slot.name+"/"+row.name, func(t *testing.T) {
+			t.Parallel()
+			k := newKeepRun(t, slot)
+			row.setup(k)
+			requests := k.recordRequestOptions()
+			res := k.run()
 
-				require.NotContains(t, res.stdout, keepToken, "the admin token must never be printed")
-				require.NotContains(t, res.stderr, keepToken, "the admin token must never be printed")
-				require.Equalf(t, 4, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
-				c := slot.container
-				block := []string{
-					fmt.Sprintf("error: E2E_FIDELITY_KEEP=1: the kept pair %s on port %d failed its %s check: %s; nothing was removed", c, k.port, row.check, row.detail(k)),
-					keepFindOutWhyLine(c, row.check),
-				}
-				if row.hint != nil {
-					block = append(block, "error: "+row.hint(k))
-				}
-				if row.check == "state-file" {
-					block = append(block, "error: "+row.detail(k)+"; remove the pair with:")
-				} else {
-					block = append(block, "error: to boot a new pair instead, remove this one first, then run again:")
-				}
-				block = append(block,
-					"error:   docker rm -f -v "+shellWord(t, c)+" "+shellWord(t, c+"-k3s"),
-					"error:   docker network rm "+shellWord(t, c+"-net"),
-					"error:   rm -rf "+shellWord(t, k.root),
-				)
-				driftSlot := slot.kind == "upcoming" || slot.kind == "helm" || slot.kind == "upcominghelm"
-				if driftSlot {
-					block = append(block, "error: this also deletes drift reports under "+k.root)
-				}
-				require.Contains(t, res.stderr, strings.Join(block, "\n")+"\n")
-				if !driftSlot {
-					assert.NotContains(t, res.stderr, "drift reports", "a slot that allows no drift run has no drift reports")
-				}
-				if row.hint == nil {
-					assert.NotContains(t, res.stderr, "to reuse the pair as it is", "only an address that differs offers to reuse it")
-				}
+			require.NotContains(t, res.stdout, keepToken, "the admin token must never be printed")
+			require.NotContains(t, res.stderr, keepToken, "the admin token must never be printed")
+			require.Equalf(t, 4, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+			c := slot.container
+			block := []string{
+				fmt.Sprintf("error: E2E_FIDELITY_KEEP=1: the kept pair %s on port %d failed its %s check: %s; nothing was removed", c, k.port, row.check, row.detail(k)),
+				keepFindOutWhyLine(c, row.check),
+			}
+			if row.hint != nil {
+				block = append(block, "error: "+row.hint(k))
+			}
+			if row.check == "state-file" {
+				block = append(block, "error: "+row.detail(k)+"; remove the pair with:")
+			} else {
+				block = append(block, "error: to boot a new pair instead, remove this one first, then run again:")
+			}
+			block = append(block,
+				"error:   docker rm -f -v "+shellWord(t, c)+" "+shellWord(t, c+"-k3s"),
+				"error:   docker network rm "+shellWord(t, c+"-net"),
+				"error:   rm -rf "+shellWord(t, k.root),
+			)
+			driftSlot := keepDriftSlot(slot)
+			if driftSlot {
+				block = append(block, "error: this also deletes drift reports under "+k.root)
+			}
+			require.Contains(t, res.stderr, strings.Join(block, "\n")+"\n")
+			if !driftSlot {
+				assert.NotContains(t, res.stderr, "drift reports", "a slot that allows no drift run has no drift reports")
+			}
+			if row.hint == nil {
+				assert.NotContains(t, res.stderr, "to reuse the pair as it is", "only an address that differs offers to reuse it")
+			}
 
-				requireKeptRunDockerCalls(t, slot.container, res.log)
-				requireNoRequestOptions(t, requests)
-				helmBoot := slot.kind == "helm" || slot.kind == "upcominghelm"
-				downloads := helmBoot && row.keptStateFails
-				// A kept pair of the upcoming minor booted with helm downloads the
-				// chart before the lock to compare its name with the state file.
-				chartAlways := slot.kind == "upcominghelm"
-				for _, line := range k.s.curlLog() {
-					if rest, ok := strings.CutPrefix(line, "canned "); ok {
-						assert.Containsf(t, []string{k.base() + "/ping", k.base() + "/v3/users?me=true"}, rest, "the curl log: %v", k.s.curlLog())
-						continue
-					}
-					chartOnly := chartAlways && line == "real "+k.s.helm.chartURL
-					assert.Truef(t, chartOnly || downloads && (line == "real "+k.s.helm.chartURL || line == "real "+k.s.helm.manifestURL),
-						"request %q must not happen: %v", line, k.s.curlLog())
+			requireKeptRunDockerCalls(t, slot.container, res.log)
+			requireNoRequestOptions(t, requests)
+			helmBoot := slot.kind == "helm" || slot.kind == "upcominghelm"
+			downloads := helmBoot && row.keptStateFails
+			// A kept pair of the upcoming minor booted with helm downloads the
+			// chart before the lock to compare its name with the state file.
+			chartAlways := slot.kind == "upcominghelm"
+			for _, line := range k.s.curlLog() {
+				if rest, ok := strings.CutPrefix(line, "canned "); ok {
+					assert.Containsf(t, []string{k.base() + "/ping", k.base() + "/v3/users?me=true"}, rest, "the curl log: %v", k.s.curlLog())
+					continue
 				}
-				if downloads {
-					assert.Contains(t, k.s.curlLog(), "real "+k.s.helm.chartURL)
-					assert.Contains(t, k.s.curlLog(), "real "+k.s.helm.manifestURL)
-				}
-				_, called := k.s.goEnv()
-				assert.False(t, called, "no test run starts after a refusal")
-				assert.Equal(t, k.before, k.snapshot(), "the state file and the CA file are not written")
-				assert.NotContains(t, res.stdout, "reusing healthy kept container")
-				assert.NotContains(t, res.stdout, "recreating")
-			})
-		}
+				chartOnly := chartAlways && line == "real "+k.s.helm.chartURL
+				assert.Truef(t, chartOnly || downloads && (line == "real "+k.s.helm.chartURL || line == "real "+k.s.helm.manifestURL),
+					"request %q must not happen: %v", line, k.s.curlLog())
+			}
+			if downloads {
+				assert.Contains(t, k.s.curlLog(), "real "+k.s.helm.chartURL)
+				assert.Contains(t, k.s.curlLog(), "real "+k.s.helm.manifestURL)
+			}
+			_, called := k.s.goEnv()
+			assert.False(t, called, "no test run starts after a refusal")
+			assert.Equal(t, k.before, k.snapshot(), "the state file and the CA file are not written")
+			assert.NotContains(t, res.stdout, "reusing healthy kept container")
+			assert.NotContains(t, res.stdout, "recreating")
+		})
 	}
 }
 
@@ -710,6 +820,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 	requireKeepSlotsMatchTheScript(t)
 
 	t.Run("a changed pin recreates the pair", func(t *testing.T) {
+		t.Parallel()
 		for _, slot := range keepSlots {
 			for _, pin := range keepPinChanges() {
 				if !slices.Contains(pin.slots, slot.name) || pin.computed {
@@ -728,6 +839,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 	})
 
 	t.Run("no state file creates a new pair", func(t *testing.T) {
+		t.Parallel()
 		for _, slot := range keepSlots {
 			t.Run(slot.name, func(t *testing.T) {
 				t.Parallel()
@@ -741,6 +853,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 	})
 
 	t.Run("a changed pin recreates the pair whatever else fails", func(t *testing.T) {
+		t.Parallel()
 		for _, slot := range keepSlots {
 			if slot.name != "community" && slot.name != "helm-check" {
 				continue
@@ -763,6 +876,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 	})
 
 	t.Run("every kind of changed pin recreates a pair whose container is missing", func(t *testing.T) {
+		t.Parallel()
 		for _, slot := range keepSlots {
 			for _, pin := range keepPinChanges() {
 				if !slices.Contains(pin.slots, slot.name) {
@@ -782,6 +896,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 	})
 
 	t.Run("a state file with no readable image stops the run before any pin is compared", func(t *testing.T) {
+		t.Parallel()
 		for _, slot := range keepSlots {
 			if slot.name != "community" && slot.name != "helm-check" {
 				continue
@@ -800,6 +915,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 	})
 
 	t.Run("a moved k3s image rebuilds the downstream and leaves the rest", func(t *testing.T) {
+		t.Parallel()
 		k := newKeepRun(t, keepSlots[0])
 		k.state["k3sImage"] = "rancher/k3s:v0.0.1@sha256:" + strings.Repeat("0", 64)
 		k.canned("/v1/provisioning.cattle.io.clusters/fleet-default/downstream", "404", "{}")
@@ -819,6 +935,7 @@ func TestKeepRunRecreatesOnAChangedPinOrNoState(t *testing.T) {
 	})
 
 	t.Run("a pair that is not a helm pair compares no helm field", func(t *testing.T) {
+		t.Parallel()
 		k := newKeepRun(t, keepSlots[0])
 		k.state["chart"] = "left over from another pin"
 		k.state["localK3sImage"] = "left over"
@@ -1164,6 +1281,211 @@ func TestPairRemovalPatternMatchesEveryDeleteSpelling(t *testing.T) {
 	} {
 		assert.Falsef(t, pairRemoval.MatchString(line), "the removal scan flags %s", line)
 	}
+}
+
+var (
+	keepBracedRead = regexp.MustCompile(`\$\{[#!]?([A-Za-z_][A-Za-z0-9_]*)`)
+	keepPlainRead  = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*)`)
+	keepAssignment = regexp.MustCompile(`(?:^\s*|\|\|\s+|&&\s+|;\s*|\bthen\s+)([A-Za-z_][A-Za-z0-9_]*)=`)
+	keepLocalNames = regexp.MustCompile(`^\s*local\s+(.+)$`)
+	keepComment    = regexp.MustCompile(`^\s*#`)
+	keepFuncStart  = regexp.MustCompile(`^([a-z_][a-z0-9_]*)\(\) \{$`)
+	keepCallPrefix = `(?:^\s*|\$\(|` + "`" + `|\|\|\s*|&&\s*|;\s*|\|\s*|!\s+|\{\s+|\b(?:then|if|elif|while|until|do|else)\s+)`
+)
+
+// keepCallPattern matches a line that calls one of the functions: its name in
+// the position of a command, after the start of the line, a command
+// substitution or backtick, a list operator, a negation, a brace, or one of
+// then, if, elif, while, until, do and else. A name in a quoted text matches
+// only after one of those prefixes; a match there makes the set of called
+// functions differ, so the scan test fails and the line is looked at.
+func keepCallPattern(functions []string) *regexp.Regexp {
+	quoted := make([]string, len(functions))
+	for i, fn := range functions {
+		quoted[i] = regexp.QuoteMeta(fn)
+	}
+	return regexp.MustCompile(keepCallPrefix + `(` + strings.Join(quoted, "|") + `)\b`)
+}
+
+// TestKeepCallPatternFindsEveryFormOfACall asserts the lines that
+// keepCallPattern reads as a call of new_helper and the lines it does not.
+func TestKeepCallPatternFindsEveryFormOfACall(t *testing.T) {
+	call := keepCallPattern([]string{"other_helper", "new_helper", "new_helper_two"})
+	for _, line := range []string{
+		"new_helper",
+		"  new_helper arg",
+		"  if new_helper; then",
+		"  if new_helper arg; then",
+		"  if ! new_helper; then",
+		"  elif new_helper; then",
+		"  while new_helper; do",
+		"  until new_helper; do",
+		"  do new_helper",
+		"  else new_helper",
+		"  then new_helper",
+		"  x=\"$(new_helper)\"",
+		"  x=`new_helper`",
+		"  cmd || new_helper",
+		"  cmd && new_helper",
+		"  cmd; new_helper",
+		"  cmd | new_helper",
+		"  { new_helper; }",
+		"  if other_helper; then",
+		"  new_helper_two",
+	} {
+		assert.Truef(t, call.MatchString(line), "a call of a helper: %s", line)
+	}
+	assert.Equal(t, "new_helper_two", call.FindStringSubmatch("  new_helper_two arg")[1], "a name that starts another name matches as the longer name")
+	assert.Equal(t, "new_helper", call.FindStringSubmatch("  new_helper arg")[1])
+	for _, line := range []string{
+		`  echo "new_helper failed"`,
+		`  detail="new_helper failed at a check"`,
+		"  new_helper_three",
+		"  x=${new_helper}",
+		"  # new_helper",
+		"  echo done",
+	} {
+		if keepComment.MatchString(line) {
+			continue
+		}
+		assert.Falsef(t, call.MatchString(line), "not a call of a helper: %s", line)
+	}
+}
+
+// TestKeepReadPatternsFindTheVariablesALineReads asserts the names that
+// keepBracedRead and keepPlainRead read from a line of the script.
+func TestKeepReadPatternsFindTheVariablesALineReads(t *testing.T) {
+	for line, want := range map[string]string{
+		`echo "${X}"`:          "X",
+		`echo "${#X}"`:         "X",
+		`echo "${!X}"`:         "X",
+		`echo "${X:-y}"`:       "X",
+		`echo "${X_1}"`:        "X_1",
+		`echo "$X"`:            "X",
+		`echo "$X_1 and more"`: "X_1",
+	} {
+		var got []string
+		for _, re := range []*regexp.Regexp{keepBracedRead, keepPlainRead} {
+			for _, m := range re.FindAllStringSubmatch(line, -1) {
+				got = append(got, m[1])
+			}
+		}
+		assert.Equalf(t, []string{want}, got, "the variables read by %s", line)
+	}
+	for _, line := range []string{`echo "$1"`, `echo "$?"`, `echo "$(date)"`, `echo "$#"`, `echo "${#}"`, `echo done`} {
+		for _, re := range []*regexp.Regexp{keepBracedRead, keepPlainRead} {
+			assert.Emptyf(t, re.FindAllStringSubmatch(line, -1), "no variable is read by %s", line)
+		}
+	}
+}
+
+// TestKeepChecksDependOnTheSlotOnlyThroughKnownVariables asserts that the
+// functions that check a kept pair (reuse_state, refuse_reuse and
+// read_kept_state, with the state_value and load_helm_state they call) read no
+// variable outside the list below, and call no function of the script besides
+// those two. TestKeepRunStopsOnAFailedPairCheck runs each failure row on two
+// slots only, which covers every slot while these functions read no other
+// variable that differs by slot. A new variable fails this test until the cases
+// of that test cover it and its name is added here. The branch of
+// refuse_reuse that names the downstream container for a downstream check is
+// reached by no failure row; the rows of
+// TestKeepRunStopsOnAFailedDownstreamCheck that run on every slot reach it.
+//
+// It is a scan of names, not a parse of the shell: a name the function assigns
+// itself (name= at the start of a statement, or local) is not a read of a slot
+// variable, and ${#NAME} and ${!NAME} count as reads. It does not see a read in
+// arithmetic without a dollar sign, a [[ -v NAME ]] test, or an environment
+// read in the inline python. It does not see the code before the lock (the helm
+// block, check_slot, helm_prepare and resolve_upcoming_chart), which the rows on
+// every slot guard, or an allowed name whose value starts to differ by slot.
+func TestKeepChecksDependOnTheSlotOnlyThroughKnownVariables(t *testing.T) {
+	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
+	allowed := map[string]string{
+		"BOOT":                  "container or helm, by slot",
+		"DRIFT_SLOT":            "set on the slots that allow a drift run",
+		"CONTAINER":             "container name, by slot",
+		"K3S_CONTAINER":         "derived from the container name",
+		"NETWORK":               "derived from the container name",
+		"HOST_PORT":             "port, by slot (the prime slot has its own)",
+		"STATE_ROOT":            "state root, by slot",
+		"STATE_FILE":            "under the state root",
+		"CA_FILE":               "under the state root",
+		"BASE_URL":              "derived from the port",
+		"ORACLE_IMAGE":          "oracle image, by slot",
+		"CHART_PIN":             "chart of a helm slot",
+		"LOCAL_K3S_PIN":         "node container k3s image of a helm slot",
+		"CERT_MANAGER_MANIFEST": "cert-manager manifest of a helm slot",
+		"HELM_COMPUTED":         "set by helm_prepare, which only a helm slot runs",
+		"HELM_ASSETS_IMAGE":     "computed by helm_prepare or read from the state file, on a helm slot",
+		"LOCAL_K3S_SOURCE":      "computed by helm_prepare or read from the state file, on a helm slot",
+		"BIND_ADDR":             "the same on every slot",
+		"REUSE_FAILED_CHECK":    "result of reuse_state or reuse_downstream, the same on every slot",
+		"REUSE_FAILED_DETAIL":   "result of reuse_state or reuse_downstream, the same on every slot",
+		"REUSE_FAILED_HINT":     "result of reuse_state or reuse_downstream, the same on every slot",
+		"DOWNSTREAM_LAST_STATE": "what the last read of the downstream gave, the same on every slot",
+	}
+	checks := []string{"reuse_state", "refuse_reuse", "read_kept_state"}
+	helpers := []string{"state_value", "load_helm_state"}
+
+	used := map[string]bool{}
+	for _, name := range slices.Concat(checks, helpers) {
+		body := functionBody(t, name)
+		assigned := map[string]bool{}
+		for _, line := range body {
+			if keepComment.MatchString(line) {
+				continue
+			}
+			for _, m := range keepAssignment.FindAllStringSubmatch(line, -1) {
+				assigned[m[1]] = true
+			}
+			if m := keepLocalNames.FindStringSubmatch(line); m != nil {
+				for field := range strings.FieldsSeq(m[1]) {
+					local, _, _ := strings.Cut(field, "=")
+					assigned[local] = true
+				}
+			}
+		}
+		for i, line := range body {
+			if keepComment.MatchString(line) {
+				continue
+			}
+			for _, re := range []*regexp.Regexp{keepBracedRead, keepPlainRead} {
+				for _, m := range re.FindAllStringSubmatch(line, -1) {
+					if assigned[m[1]] {
+						continue
+					}
+					_, ok := allowed[m[1]]
+					assert.Truef(t, ok, "%s line %d reads %s, which differs by slot or is not in the list of allowed variables: %s", name, i+1, m[1], strings.TrimSpace(line))
+					used[m[1]] = true
+				}
+			}
+		}
+	}
+	for name := range allowed {
+		assert.Truef(t, used[name], "no check reads %s; remove it from the list", name)
+	}
+
+	var functions []string
+	for _, line := range scriptLines(t) {
+		if m := keepFuncStart.FindStringSubmatch(line); m != nil {
+			functions = append(functions, m[1])
+		}
+	}
+	call := keepCallPattern(functions)
+	called := map[string]bool{}
+	for _, name := range slices.Concat(checks, helpers) {
+		for _, line := range functionBody(t, name)[1:] {
+			if keepComment.MatchString(line) {
+				continue
+			}
+			for _, m := range call.FindAllStringSubmatch(line, -1) {
+				if m[1] != name {
+					called[m[1]] = true
+				}
+			}
+		}
+	}
+	assert.ElementsMatch(t, helpers, slices.Sorted(maps.Keys(called)), "the functions of the script that the checks and their helpers call")
 }
 
 // TestPairRemovalsHappenOnlyAtTheKnownSites asserts that every command of the
