@@ -52,7 +52,6 @@ var refusalExemptions = map[string]refusalExemption{
 	"config add-server":              {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 0, "the TLS check reads /rancherversion for its certificate only; any answer proves the trust", nil},
 	"config update-server":           {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 0, "the TLS check reads /rancherversion for its certificate only; any answer proves the trust", nil},
 	"kubeconfig":                     {[]int{http.StatusForbidden}, []string{"local"}, 0, "a 403 on a direct-endpoint read is an omission notice and the proxy-only file is printed; a 401 fails with AUTH", nil},
-	"support-bundle":                 {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 0, "a bundle records each refused read and goes on", nil},
 	"patch clusterregistrationtoken": {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: the kind is read-only", nil},
 	"patch management-token":         {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher sets the token fields itself and the CLI does not change them", nil},
 	"patch clusterrepo":              {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: the CLI does not change repositories", nil},

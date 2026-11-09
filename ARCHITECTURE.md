@@ -376,6 +376,7 @@ graph TD
     observe --> steve
     observe --> observecomplete
     observe --> completion
+    observe --> tlstrust
 
     observecomplete --> kinds
     observecomplete --> completion

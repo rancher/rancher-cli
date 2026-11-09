@@ -667,8 +667,17 @@ run under config or environment read-only mode too.
   bundles are normal - read `errors` and `warnings` before treating the
   archive as complete: a log the server refused is an error item and a warning
   naming the pod and container, and `errors: 0` means every requested log is
-  inside. Complements rancherlabs/support-tools' node-level collector, not a
-  replacement for it.
+  inside. A run that collects no item from the server fails with the code of
+  those requests (the code they share, `GENERIC` when they differ) and
+  writes the archive anyway: `data.error.details.outputFile` is its path and
+  its `manifest.json` lists each failure. A run that collects at least one
+  item from the server exits 0 whatever else failed; a `--clusters` value
+  naming an offline cluster therefore still exits 0 while the local cluster
+  answers. An interrupted run (exit code 130) keeps the archive and its
+  message names the path. A rerun in the same second gets the same default
+  name and fails with `VALIDATION`; wait a second or pass a new
+  `--output-file`. Complements
+  rancherlabs/support-tools' node-level collector, not a replacement for it.
 - `rancher patch feature <name> --patch '[{"op":"replace","path":"/spec/value","value":true}]' --apply --yes` -
   flip a Rancher feature flag (an RFC 6902 JSON Patch, the default type of
   every `patch <kind>`).

@@ -1327,6 +1327,26 @@ container, the result's `errors` count includes it, and a warning names
 it, so `errors: 0` means every requested log is in the archive. A
 previous-container log that does not exist stays silent (the container
 never restarted); a refused one is a warning.
+A run that collects no item from the server fails with the error of those
+reads: the code they share (`GENERIC` for a 530, `AUTH` for a 401, `RBAC` for
+a 403, `TLS_TRUST` for a certificate failure) and `GENERIC` when they differ.
+The first failure's hint and `retryable` are kept only when every failure
+shares one code. The archive is written anyway and its `manifest.json` lists
+every failure; `data.error.details.outputFile` is its path, `attempted` and
+`failed` count the items read from the server, and `first` holds the
+certificate facts when the first failure was a certificate failure. The rule
+counts the whole bundle, not each requested cluster: a run that collects at
+least one item from the server exits 0 with the failures in the manifest,
+`errors` and `warnings`. A `--clusters` value naming an offline cluster
+therefore still exits 0 while the local cluster answers. The settings, schema
+and version files are not counted. Neither is an item the CLI itself could
+not write: one left out because a cluster id or namespace in its name is not
+a plain file name, or one the server answered whose archive write failed.
+A run ended by an interrupt closes the archive, keeps it and ends with
+`INTERRUPTED` (exit code 130), the message naming its path. The default
+name is `rancher-support-<unix seconds>.tar.gz`: a rerun in the same second
+meets the refusal to overwrite and fails with `VALIDATION`; a rerun a second
+later, or at another `--output-file`, works.
 An entry is left out of the archive when its file name is not a plain
 file name: it has a character other than letters, digits, `.`, `_` and
 `-` (a cluster id, namespace, pod or container name is part of it), it is
@@ -2469,10 +2489,13 @@ with `code` `TLS_TRUST`, the message in `error` and the certificate's facts in
 `certificate`, and keep exit 0 when the local deletes succeed; and steps that
 collect across many requests (`support-bundle`, the per-cluster notes of
 `access`, the degraded parts of `inspect`) record it as they do any failed
-request. A wait (`--wait`, and the OIDC client commands) stops on it at once.
+request; `support-bundle` ends with `TLS_TRUST` when every item it asked the
+server for failed on the certificate. A wait (`--wait`, and the OIDC client
+commands) stops on it at once.
 The error's `details` hold the certificate's kind, subject, issuer and
 fingerprint (for `auth login` and the sign-in of kubectl's credential plugin,
-inside the login failure's `primary` error). Where a command already wrote to
+inside the login failure's `primary` error; for `support-bundle`, in
+`details.first`). Where a command already wrote to
 the server (the four OIDC client commands and `create user`), the error's
 `details` are what the command already changed, and its message names the
 certificate's subject, issuer and fingerprint. The message names the remedy

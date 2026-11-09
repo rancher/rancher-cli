@@ -34,6 +34,15 @@ jsonquery stderr data.error.code VALIDATION
 jsonquery stderr data.error.code VALIDATION
 ! exists other.tar.gz
 
+# a server that answers nothing: no item is collected and the command fails
+# with the code of the failed requests; it keeps the archive, whose manifest
+# lists each failure. The dial error text differs per operating system; the
+# check reads the code only. This is the last step: env persists.
+env RANCHER_CLI_URL=https://127.0.0.1:1
+! exec rancher support-bundle --targets webhook --clusters local --output-file none.tar.gz -o json
+jsonquery stderr data.error.code GENERIC
+exists none.tar.gz
+
 -- webhook-pod.yaml --
 apiVersion: v1
 kind: Pod

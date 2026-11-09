@@ -46,6 +46,41 @@ type manifestItem struct {
 	Name    string `json:"name"`
 	Cluster string `json:"cluster,omitempty"`
 	Status  string `json:"status"`
+
+	// outcome is what the rule for a run that collected no server item reads
+	// of the item. The manifest does not carry it.
+	outcome itemOutcome `json:"-"`
+}
+
+// itemOutcome is an item's part in the rule that fails a run which collected
+// no item from the server. The zero value is an item the server answered:
+// it counts as collected. A new item counts unless it is marked outside.
+type itemOutcome struct {
+	// outside marks an item that is not a request to the server, or was never
+	// attempted: the schema and version files, the settings file (its reads
+	// drop their errors) and a target skipped before any request.
+	outside bool
+	// failure is why an attempted item was not collected; nil when it was.
+	failure error
+	// local marks a failure that came from the archive or from an entry
+	// name, not from the server.
+	local bool
+}
+
+// serverItem is the item of a read from the server that ended with err.
+func serverItem(name, cluster string, err error) manifestItem {
+	return manifestItem{Name: name, Cluster: cluster, Status: itemStatus(err), outcome: itemOutcome{failure: err}}
+}
+
+// localItem is the item of a step that did not read the server and ended with
+// err: a refused entry name or a failed archive write.
+func localItem(name, cluster string, err error) manifestItem {
+	return manifestItem{Name: name, Cluster: cluster, Status: itemStatus(err), outcome: itemOutcome{failure: err, local: err != nil}}
+}
+
+// outsideItem is an item the rule does not count.
+func outsideItem(name string, err error) manifestItem {
+	return manifestItem{Name: name, Status: itemStatus(err), outcome: itemOutcome{outside: true}}
 }
 
 type bundleManifest struct {
@@ -67,6 +102,7 @@ type supportBundleCmd struct {
 	roots   engine.RootClientFactory
 	schema  func() any
 	now     func() time.Time
+	create  func(path string) (*ArchiveWriter, error)
 }
 
 // NewSupportBundle builds `support-bundle [--targets ...|all] [--clusters
@@ -76,7 +112,7 @@ type supportBundleCmd struct {
 // snapshot - into one tar.gz, tri-state manifested so support can tell
 // "not applicable" from "collector failed" at a glance.
 func NewSupportBundle(clients engine.ClusterClientFactory, roots engine.RootClientFactory, schema func() any) runtime.Command {
-	return &supportBundleCmd{clients: clients, roots: roots, schema: schema, now: time.Now}
+	return &supportBundleCmd{clients: clients, roots: roots, schema: schema, now: time.Now, create: CreateArchive}
 }
 
 func (c *supportBundleCmd) Describe() runtime.Descriptor {
@@ -152,7 +188,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		return runtime.Result{}, err
 	}
 
-	bw, err := CreateArchive(path)
+	bw, err := c.create(path)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -160,21 +196,21 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	var items []manifestItem
 
 	if discoveryErr != nil {
-		items = append(items, manifestItem{Name: "cluster-discovery", Status: errorStatus(discoveryErr)})
+		items = append(items, serverItem("cluster-discovery", "", discoveryErr))
 	}
 
 	settingsValues, settingsData := collectSettings(ctx, local)
 	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/settings.json"), Data: settingsData})
-	items = append(items, manifestItem{Name: "rancher/settings.json", Status: statusCollected})
+	items = append(items, outsideItem("rancher/settings.json", nil))
 
 	featuresData, ferr := collectFeatures(ctx, local)
-	items = append(items, manifestItem{Name: "rancher/features.json", Status: itemStatus(ferr)})
+	items = append(items, serverItem("rancher/features.json", "", ferr))
 	if ferr == nil {
 		_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/features.json"), Data: featuresData})
 	}
 
 	schemaData, serr := json.Marshal(c.schema())
-	items = append(items, manifestItem{Name: "rancher/schema.json", Status: itemStatus(serr)})
+	items = append(items, outsideItem("rancher/schema.json", serr))
 	if serr == nil {
 		_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/schema.json"), Data: schemaData})
 	}
@@ -194,7 +230,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		"serverVersion": settingsValues["server-version"],
 	})
 	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/version.json"), Data: versionData})
-	items = append(items, manifestItem{Name: "rancher/version.json", Status: statusCollected})
+	items = append(items, outsideItem("rancher/version.json", nil))
 
 	var warnings []string
 	for _, clusterID := range clusters {
@@ -222,9 +258,33 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	}
 	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("manifest.json"), Data: manifestData})
 
+	// A run ended by its context, or one that collected no item from the
+	// server, still closes the archive: its manifest.json lists every item
+	// and why it failed.
+	var stop *clierr.Error
+	var failures []itemFailure
+	if ctx.Err() != nil {
+		stop = interruptedError(path).WithWarnings(warnings...)
+	} else if attempted, failed := serverOutcome(items); attempted > 0 && len(failed) == attempted {
+		failures = failed
+		stop = noServerItemError(path, attempted, failed).WithWarnings(warnings...)
+	}
+
 	bytesWritten, err := bw.Close()
 	if err != nil {
+		switch {
+		case failures != nil:
+			return runtime.Result{}, clierr.Wrap(err, fmt.Sprintf(
+				"support-bundle could not write the archive: %v; it collected no item from the server either, the first failure was: %v",
+				err, firstFailure(failures).err)).WithWarnings(warnings...)
+		case stop != nil:
+			return runtime.Result{}, clierr.Wrap(err, fmt.Sprintf(
+				"support-bundle stopped before it finished and could not write the archive: %v", err)).WithWarnings(warnings...)
+		}
 		return runtime.Result{}, err
+	}
+	if stop != nil {
+		return runtime.Result{}, stop
 	}
 
 	var skipped, errored int
@@ -426,22 +486,22 @@ func archiveEvents(ctx context.Context, clients engine.ClusterClientFactory, clu
 	for _, ns := range namespaces {
 		eventsName, nerr := entryPath("clusters", clusterID, "events-"+ns+".json")
 		if nerr != nil {
-			items = append(items, manifestItem{Name: "events-" + ns, Cluster: clusterID, Status: errorStatus(nerr)})
+			items = append(items, localItem("events-"+ns, clusterID, nerr))
 			warnings = append(warnings, fmt.Sprintf("support-bundle: events of cluster %s left out: %v", quoteValue(clusterID), nerr))
 			continue
 		}
 		data, total, included, eerr := collectEvents(ctx, clients, clusterID, ns)
-		status := itemStatus(eerr)
+		item := serverItem("events-"+ns, clusterID, eerr)
 		if eerr == nil && included < total {
-			status = fmt.Sprintf("collected (truncated to %d of %d, newest first)", included, total)
+			item.Status = fmt.Sprintf("collected (truncated to %d of %d, newest first)", included, total)
 		}
 		if eerr == nil {
 			if aerr := bw.Add(ArchiveEntry{Path: eventsName, Data: data}); aerr != nil {
-				status = errorStatus(aerr)
+				item = localItem("events-"+ns, clusterID, aerr)
 				warnings = append(warnings, fmt.Sprintf("support-bundle: events of cluster %s namespace %s not written: %v", quoteValue(clusterID), quoteValue(ns), aerr))
 			}
 		}
-		items = append(items, manifestItem{Name: "events-" + ns, Cluster: clusterID, Status: status})
+		items = append(items, item)
 	}
 	return items, warnings
 }
@@ -456,7 +516,7 @@ func archiveEvents(ctx context.Context, clients engine.ClusterClientFactory, clu
 // warning and no namespaces.
 func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, get steve.Getter, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string, []string) {
 	if err := checkComponent(clusterID); err != nil {
-		return []manifestItem{{Name: "cluster", Cluster: clusterID, Status: errorStatus(err)}},
+		return []manifestItem{localItem("cluster", clusterID, err)},
 			nil,
 			[]string{fmt.Sprintf("support-bundle: cluster left out: %v", err)}
 	}
@@ -465,7 +525,7 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, ge
 	namespaces := map[string]bool{"cattle-system": true}
 
 	if obj, err := steve.GetCluster(ctx, get, clusterID); err != nil {
-		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: errorStatus(err)})
+		items = append(items, serverItem("cluster.json", clusterID, err))
 	} else {
 		clusterState := steve.ObjectState(obj)
 		clusterConds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
@@ -477,14 +537,14 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, ge
 		if nerr == nil {
 			nerr = bw.Add(ArchiveEntry{Path: clusterName, Data: data})
 		}
-		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: itemStatus(nerr)})
+		items = append(items, localItem("cluster.json", clusterID, nerr))
 	}
 
 	if client, err := clients.Cluster(ctx, clusterID); err != nil {
-		items = append(items, manifestItem{Name: "nodes.json", Cluster: clusterID, Status: errorStatus(err)})
+		items = append(items, serverItem("nodes.json", clusterID, err))
 	} else {
 		if list, err := client.List(ctx, nodeKind.GVR, "", ""); err != nil {
-			items = append(items, manifestItem{Name: "nodes.json", Cluster: clusterID, Status: errorStatus(err)})
+			items = append(items, serverItem("nodes.json", clusterID, err))
 		} else {
 			rows := make([]map[string]any, 0, len(list.Items))
 			for i := range list.Items {
@@ -499,13 +559,13 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, ge
 			if nerr == nil {
 				nerr = bw.Add(ArchiveEntry{Path: nodesName, Data: data})
 			}
-			items = append(items, manifestItem{Name: "nodes.json", Cluster: clusterID, Status: itemStatus(nerr)})
+			items = append(items, localItem("nodes.json", clusterID, nerr))
 		}
 	}
 
 	for _, t := range targets {
 		if !Applicable(t, clusterID) {
-			items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: statusSkippedNotApplicable})
+			items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: statusSkippedNotApplicable, outcome: itemOutcome{outside: true}})
 			continue
 		}
 		resolved, err := ResolveOnCluster(ctx, clients, get, t, clusterID)
@@ -513,13 +573,13 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, ge
 			if nf := clierr.AsNotFound(err); nf != nil && nf.Message == nonACEHint {
 				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: fmt.Sprintf("skipped: not applicable - %s", nonACEHint)})
 			} else {
-				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: errorStatus(err)})
+				items = append(items, serverItem(t.Name, clusterID, err))
 			}
 			continue
 		}
 		namespaces[resolved.Namespace] = true
 		outcome := collectTargetLogs(ctx, t, resolved, tail, since, bw)
-		items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: outcome.status()})
+		items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: outcome.status(), outcome: outcome.itemOutcome()})
 		warnings = append(warnings, outcome.warnings(clusterID, t.Name)...)
 	}
 
@@ -540,6 +600,24 @@ type logOutcome struct {
 	containers     int
 	failed         []string
 	previousDenied []string
+
+	// written is how many current logs reached the archive, and readErr is
+	// the first error the server gave for a current log.
+	written int
+	readErr error
+}
+
+// itemOutcome is the target's part in the rule for a run that collected no
+// server item. A target with at least one log in the archive is collected,
+// whatever its status says.
+func (o logOutcome) itemOutcome() itemOutcome {
+	if len(o.failed) == 0 || o.written > 0 {
+		return itemOutcome{}
+	}
+	if o.readErr != nil {
+		return itemOutcome{failure: o.readErr}
+	}
+	return itemOutcome{failure: errors.New(o.failed[0]), local: true}
 }
 
 // status is the manifest status the outcome earns: collected only when
@@ -590,6 +668,9 @@ func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *i
 				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since})
 			if err != nil {
 				o.failed = append(o.failed, where+": "+err.Error())
+				if o.readErr == nil {
+					o.readErr = err
+				}
 				continue
 			}
 			if err := bw.Add(ArchiveEntry{Path: logName, Data: []byte(out)}); err != nil {
@@ -600,6 +681,7 @@ func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *i
 				}
 				continue
 			}
+			o.written++
 			prev, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
 				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since, Previous: true})
 			switch {

@@ -44,6 +44,7 @@ var textDetailsAllowed = map[string]string{
 	"internal/skillinstall Report":                 holdsNoCommand,
 	"internal/token directWaitDetails":             holdsNoCommand,
 	"internal/client/tlstrust Details":             holdsNoCommand,
+	"internal/engine/observe BundleFailureDetails": holdsNoCommand,
 }
 
 // textDetailsType is which of the methods the rule reads a type declares.

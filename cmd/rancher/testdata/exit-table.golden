@@ -324,6 +324,15 @@ exit: 1
 stderr:
 > error (GENERIC): Get "https://127.0.0.1:1/k8s/clusters/local/apis/management.cattle.io/v3/clusters": dial tcp 127.0.0.1:1: <dial error>
 
+$ rancher support-bundle --output-file bundle.tar.gz --targets webhook --clusters local
+env: RANCHER_CLI_URL=https://127.0.0.1:1
+env: RANCHER_CLI_TOKEN=id:secret
+exit: 1
+stderr:
+> error (GENERIC): support-bundle collected no item from the server: all 5 items it attempted failed; the archive is kept at bundle.tar.gz and its manifest.json lists each failure; first failure, "rancher/features.json": Get "https://127.0.0.1:1/k8s/clusters/local/apis/management.cattle.io/v3/features": dial tcp 127.0.0.1:1: <dial error>
+>   archive: bundle.tar.gz
+>   items attempted: 5, failed: 5
+
 $ rancher --rancher-completion-proto=2 --rancher-completion-cur=g
 exit: 0
 stderr: (empty)

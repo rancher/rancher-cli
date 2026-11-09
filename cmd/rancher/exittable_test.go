@@ -118,6 +118,8 @@ func exitTableRows() []exitRow {
 		line("get", "cluster"),
 		line("get", "cluster").withConfig("not: [valid yaml\n"),
 		line("get", "cluster").withEnv(config.EnvURL+"="+unreachableURL, config.EnvToken+"=id:secret"),
+		line("support-bundle", "--output-file", "bundle.tar.gz", "--targets", "webhook", "--clusters", "local").
+			withEnv(config.EnvURL+"="+unreachableURL, config.EnvToken+"=id:secret"),
 
 		line("--rancher-completion-proto=2", "--rancher-completion-cur=g"),
 		line("--rancher-completion-proto=2", "--rancher-completion-cur=", "get", "pod", "--"),
