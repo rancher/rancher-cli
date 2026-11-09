@@ -109,7 +109,12 @@ echo "stub 999999999 1 999999999 1% /"
 // finishedAt=<time>: the state is node_state for the node container and the
 // file k3s_state for a name ending in -k3s (running when absent), the exit code
 // is the file exit_code (0 when absent) and oomKilled the file oom (false when
-// absent).
+// absent). A read of the form docker inspect --format '<template naming
+// RestartCount>' <name> prints "<node_state> 0" when the file restart_seq is
+// absent; with the file it prints line k of it, where k counts the reads, and
+// the last line repeats. The line fail prints nothing and exits 1; the line
+// junk prints x. The file update_fail, when not empty, makes docker update
+// exit 1, and the file logs, when not empty, is what docker logs prints.
 const helmDockerStubScript = `#!/bin/sh
 printf '%s\n' "$*" >> "$STUB_LOG"
 node_state() {
@@ -139,6 +144,20 @@ inspect)
   if [ "$2" = "--format" ]; then
     case "$3" in
     *HostIp*) printf '%s\n' "$STUB_BOUND_IP"; exit 0 ;;
+    *RestartCount*)
+      if [ -s "$STUB_DIR/restart_seq" ]; then
+        k=$(( $(cat "$STUB_DIR/restart_count" 2>/dev/null || echo 0) + 1 ))
+        echo "$k" > "$STUB_DIR/restart_count"
+        total=$(awk 'END {print NR}' "$STUB_DIR/restart_seq")
+        if [ "$k" -gt "$total" ]; then k=$total; fi
+        line=$(awk -v k="$k" 'NR==k' "$STUB_DIR/restart_seq")
+        case "$line" in
+        fail) exit 1 ;;
+        junk) echo x; exit 0 ;;
+        esac
+        printf '%s\n' "$line"; exit 0
+      fi
+      printf '%s 0\n' "$(node_state)"; exit 0 ;;
     *State.Status*) node_state; exit 0 ;;
     *State.Running*) if [ "$(node_state)" = exited ]; then echo false; else echo true; fi; exit 0 ;;
     *State.Restarting*) if [ "$(node_state)" = restarting ]; then echo true; else echo false; fi; exit 0 ;;
@@ -168,7 +187,12 @@ network)
   create|rm) exit 0 ;;
   esac ;;
 rm) exit 0 ;;
-logs) echo "stub node container log line"; exit 0 ;;
+logs)
+  if [ -s "$STUB_DIR/logs" ]; then cat "$STUB_DIR/logs"; exit 0; fi
+  echo "stub node container log line"; exit 0 ;;
+update)
+  if [ -s "$STUB_DIR/update_fail" ]; then exit 1; fi
+  exit 0 ;;
 run)
   case "$*" in
   "run --rm --entrypoint k3s "*) cat "$STUB_DIR/k3s_version"; exit 0 ;;

@@ -89,8 +89,9 @@ GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # Exit codes: 0 the run passed (a clean drift run, print mode); 1 a boot or
 # harness failure; 3 a drift run that found differences; 4 a kept pair that
 # failed a check and was left in place; 5 the oracle container was not running
-# when the run failed (the diagnostics dump starts with its state and exit
-# code, and holds the host's free memory). Any other code is the status of
+# when the run failed, or had restarted more than 3 times during the boot (the
+# diagnostics dump starts with its state and exit code, and holds the host's
+# free memory). Any other code is the status of
 # the command that failed: go test's, curl's, docker's, 128 plus the number of
 # a signal. A command that itself exits 5 is reported as 1.
 #
@@ -192,6 +193,7 @@ DRIFT=0
 [ "${E2E_FIDELITY_DRIFT:-}" != "1" ] || DRIFT=1
 DRIFT_REPORTED=0
 ORACLE_BOOTED=0
+ORACLE_RESTARTS=0
 DRIFT_REPORT_ABS=""
 DRIFT_KNOWN=""
 DRIFT_PROFILE=""
@@ -1362,11 +1364,12 @@ cleanup() {
       status=1
     fi
   fi
-  # Exit 5 means the oracle container stopped and comes only from the check
-  # below; a command that exits 5 on its own is a failure like any other.
+  # Exit 5 means the oracle container stopped or restarted more than 3 times
+  # during the boot, and comes only from the two checks below; a command that
+  # exits 5 on its own is a failure like any other.
   [ ${status} -ne 5 ] || status=1
   # Every command here is guarded: the trap runs under set -e, and a failing
-  # read must not end the dump. The state is read with named State fields
+  # read must not end the dump. The state is read with named fields
   # only: the container's environment holds the bootstrap password.
   if [ ${status} -ne 0 ]; then
     oracle_state="$(docker inspect -f 'status={{.State.Status}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} finishedAt={{.State.FinishedAt}}' "${CONTAINER}" 2>/dev/null)" || oracle_state=""
@@ -1383,7 +1386,9 @@ cleanup() {
   # The oracle counts as stopped only once this run reached its own container
   # (ORACLE_BOOTED), so a stopped container another run left behind cannot
   # turn an earlier failure into this one. A kept pair runs with
-  # --restart unless-stopped, so a restarting container is stopped too.
+  # --restart unless-stopped, so a restarting container is stopped too, and a
+  # running one that restarted more than 3 times during the boot is reported
+  # the same way.
   if [ ${status} -ne 0 ] && [ ${status} -ne 4 ] && [ "${ORACLE_BOOTED:-}" = 1 ]; then
     case "${oracle_status}" in
       exited | dead | restarting)
@@ -1391,7 +1396,20 @@ cleanup() {
         status=5
         report_only=0
         ;;
+      *)
+        if [ "${ORACLE_RESTARTS:-0}" -gt 3 ]; then
+          echo "error: the oracle container ${CONTAINER} restarted ${ORACLE_RESTARTS} times during the boot (status ${oracle_status}, exit code ${exit_code}, OOMKilled ${oom}); its state and last log lines follow" >&2
+          status=5
+          report_only=0
+        fi
+        ;;
     esac
+    # A container that restarted more than 3 times keeps restarting until it
+    # is removed, and Docker shows it as restarting most of the time.
+    if [ ${status} -eq 5 ] && [ "${ORACLE_RESTARTS:-0}" -gt 3 ] && [ "${oracle_status}" != exited ] && [ "${oracle_status}" != dead ]; then
+      echo "error: a kept container restarts until it is removed; remove it, then run again:" >&2
+      printf 'error:   docker rm -f -v %q\n' "${CONTAINER}" >&2
+    fi
   fi
   # Diagnostics fire on EVERY failure - kept runs (recording, reconciling)
   # are exactly the ones that need them. Only removal is gated on keep mode.
@@ -1570,9 +1588,50 @@ fetch_ca() {
   done
 }
 
+# oracle_log_tail prints the last 1000 lines of the oracle container's output,
+# redacted. A restarted server writes its start-up output before the next
+# wait pass reads, so a shorter tail can miss the line that says why it exited.
+oracle_log_tail() {
+  docker logs --tail 1000 "${CONTAINER}" 2>&1 | redact_log "[rancher] " || true
+}
+
+# check_oracle_container runs in each pass of the boot waits. It prints the
+# restart count and the last FATAL line each time the container has restarted
+# again, and fails when the container stopped or restarted more than 3 times:
+# no restart is pending for an exited or dead container, and a kept container
+# with --restart unless-stopped restarts without end instead of exiting. A
+# failed read is no proof that the container stopped, so it fails nothing and
+# the wait keeps its own limit. The output holds every run of the container
+# and marks no boundary between them, so the FATAL line printed can come from
+# an earlier run.
+check_oracle_container() {
+  local state read_status count fatal
+  state="$(docker inspect --format '{{.State.Status}} {{.RestartCount}}' "${CONTAINER}" 2>/dev/null)" || return 0
+  read_status="${state%% *}"
+  count="${state##* }"
+  [[ "${count}" =~ ^[0-9]+$ ]] || return 0
+  if [ "${count}" -gt "${ORACLE_RESTARTS}" ]; then
+    ORACLE_RESTARTS="${count}"
+    echo "==> the oracle container ${CONTAINER} restarted (restart count ${count}); the last FATAL line in the container output:"
+    fatal="$(oracle_log_tail | grep -F '[FATAL]' | tail -n 1)" || fatal=""
+    printf '%s\n' "${fatal:-[rancher] no FATAL line in the last 1000 lines}"
+  fi
+  case "${read_status}" in
+    exited | dead)
+      echo "error: the oracle container ${CONTAINER} stopped during the boot (status ${read_status}, restart count ${count})" >&2
+      return 1
+      ;;
+  esac
+  if [ "${count}" -gt 3 ]; then
+    echo "error: the oracle container ${CONTAINER} restarted ${count} times during the boot" >&2
+    return 1
+  fi
+}
+
 wait_for_ping() {
   echo "==> waiting for ${BASE_URL}/ping"
   for _ in $(seq 1 90); do
+    check_oracle_container || return 1
     if curl -sk --max-time 5 "${BASE_URL}/ping" 2>/dev/null | grep -q pong; then
       return 0
     fi
@@ -1595,6 +1654,7 @@ echo "==> rancher-webhook wait: ${WEBHOOK_WAIT_TRIES} tries, 10 s apart"
 wait_for_webhook() {
   echo "==> waiting for rancher-webhook readiness"
   for _ in $(seq 1 "${WEBHOOK_WAIT_TRIES}"); do
+    check_oracle_container || return 1
     if docker exec "${CONTAINER}" kubectl -n cattle-system get deploy rancher-webhook \
       -o jsonpath='{.status.readyReplicas}' 2>/dev/null | grep -q '^1$'; then
       return 0
@@ -1666,8 +1726,8 @@ boot_k3s() {
   # --privileged for the same reason as the oracle (containerd, CNI, kernel
   # mounts); the container has no published port and is reachable only on
   # the private network.
-  # A kept downstream gets the oracle's restart policy so both survive a
-  # Docker restart together; suite mode stays policy-free like the oracle.
+  # A kept downstream gets unless-stopped so both containers of the pair
+  # survive a Docker restart together; a suite run gives it no restart policy.
   restart_args=""
   [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || restart_args="--restart unless-stopped"
   # shellcheck disable=SC2086
@@ -2135,8 +2195,10 @@ json.dump(state, open(sys.argv[7], "w"))
 
 # boot_helm_node starts the node container: the k3s image of the profile with
 # the arguments the Rancher image gives its own embedded k3s, under the
-# oracle's name, address and published port. A kept node container gets the
-# oracle's restart policy, as the container boot does.
+# oracle's name, address and published port. A suite run gives the node
+# container no restart policy: under helm a Rancher exit is a pod restart by
+# the kubelet, and the node container's PID 1 is k3s. A kept node container
+# gets unless-stopped.
 boot_helm_node() {
   local restart_args="" nodes
   [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || restart_args="--restart unless-stopped"
@@ -2384,11 +2446,11 @@ else
     # here - the image is digest-pinned, the port is loopback-bound by default
     # (BIND_ADDR), and the container is ephemeral (removed unless
     # E2E_FIDELITY_KEEP=1).
-    # A kept container self-heals: patching a non-dynamic Feature makes the
-    # single-node server exit to apply it, and without a restart policy the
-    # kept oracle stays down until someone notices. Suite mode stays
-    # policy-free so a crash fails loudly instead of masking itself.
-    RESTART_ARGS=""
+    # Rancher can exit once at boot on a conflict; the boot allows up to 3
+    # restarts until its checks pass, then turns the policy off, and a crash
+    # after that fails the run. A kept container keeps unless-stopped: a
+    # non-dynamic Feature change makes the server exit to apply it.
+    RESTART_ARGS="--restart on-failure:3"
     [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || RESTART_ARGS="--restart unless-stopped"
     # shellcheck disable=SC2086
     docker run -d --name "${CONTAINER}" --privileged ${RESTART_ARGS} \
@@ -2400,6 +2462,8 @@ else
   fi
   wait_for_ping
   wait_for_webhook
+  check_oracle_container
+  [ "${E2E_FIDELITY_KEEP:-}" = "1" ] || [ "${BOOT}" = "helm" ] || docker update --restart no "${CONTAINER}" >/dev/null
   [ -z "${EXTRA_SANS}" ] || prime_extra_sans
   fetch_ca
 

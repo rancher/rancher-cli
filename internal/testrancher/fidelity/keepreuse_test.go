@@ -989,7 +989,10 @@ func TestKeepRunReusesAHealthyPairWithoutRemoval(t *testing.T) {
 			} else {
 				assert.Contains(t, res.stdout, "oracle bootstrap smoke passed")
 			}
-			for _, prefix := range []string{"rm ", "run ", "start ", "network rm", "network create", "container rm"} {
+			// The update call is forbidden as a guard for a future change: the
+			// update that turns the restart policy off sits behind a test for a
+			// run without E2E_FIDELITY_KEEP, so a reused pair never reaches it.
+			for _, prefix := range []string{"rm ", "run ", "start ", "network rm", "network create", "container rm", "update "} {
 				assert.Falsef(t, hasCall(res.log, prefix), "a reused pair makes no %q call: %v", prefix, res.log)
 			}
 			assert.Equal(t, k.before, k.snapshot(), "the state file and the CA file stay")
@@ -1508,6 +1511,7 @@ func TestPairRemovalsHappenOnlyAtTheKnownSites(t *testing.T) {
 		`printf 'error:   docker rm -f -v %q %q\n' "${CONTAINER}" "${K3S_CONTAINER}"`: "the refusal prints the command that removes the pair",
 		`printf 'error:   docker network rm %q\n' "${NETWORK}"`:                       "the refusal prints the command that removes the network",
 		`printf 'error:   rm -rf %q\n' "${STATE_ROOT}"`:                               "the refusal prints the command that removes the state root",
+		`printf 'error:   docker rm -f -v %q\n' "${CONTAINER}" >&2`:                   "the report of an oracle container that restarted more than 3 times prints the command that removes it",
 	}
 	printed[`echo "error: the suite was renamed from e2e-real to e2e-fidelity; remove them (docker rm -f -v, docker network rm) together with the old state root ${STATE_ROOT/e2e-fidelity/e2e-real}, or rename them, then rerun" >&2`] = "the refusal for a pair from before the rename names the commands in text"
 	printedUsed := map[string]bool{}
@@ -1754,6 +1758,9 @@ func TestKeepRunStoppedOracleExitsFive(t *testing.T) {
 		assert.True(t, hasCall(res.log, "run -d --name "+k.slot.container), "the run reached its container: %v", res.log)
 		assert.Contains(t, res.stderr, "(status exited, exit code 137, OOMKilled true)")
 		assert.Contains(t, res.stdout, "[rancher] status=exited exitCode=137 oomKilled=true")
+		for _, line := range k.s.curlLog() {
+			assert.NotContains(t, line, "/ping", "the wait reads the container before it reads /ping, and stops")
+		}
 	})
 
 	t.Run("a failure before the run reached its container", func(t *testing.T) {
@@ -2396,7 +2403,7 @@ func TestKeepRunRebuildsAMovedK3sImageBeforeCheckingItsContainer(t *testing.T) {
 			assert.NotContains(t, res.stderr, "failed its")
 			assert.Contains(t, res.stdout, "==> kept downstream was created from a different k3s image; rebuilding it")
 			assert.Contains(t, res.stdout, "==> rebuilding the kept downstream against the running oracle (a different k3s image)")
-			assert.True(t, hasCall(res.log, "run -d --name "+slot.container+"-k3s"), "the downstream container is created again: %v", res.log)
+			assert.True(t, hasCall(res.log, "run -d --name "+slot.container+"-k3s --privileged --restart unless-stopped --network"), "the downstream container is created again and keeps its restart policy: %v", res.log)
 			assert.Contains(t, k.s.curlLog(), "canned "+k.base()+"/v1/provisioning.cattle.io.clusters/fleet-default/downstream")
 		})
 	}

@@ -105,8 +105,11 @@ func TestCleanupReportsAStoppedOracle(t *testing.T) {
 		oracle, k3s     string
 		helm            bool
 		memoryFails     bool
+		restarts        int
 		code            int
 		notRunning      bool
+		restarted       bool
+		hinted          bool
 		dump            bool
 		oracleLine      string
 	}{
@@ -125,6 +128,13 @@ func TestCleanupReportsAStoppedOracle(t *testing.T) {
 		{name: "the memory reading fails", exit: 1, booted: true, oracle: running, k3s: running, memoryFails: true, code: 1, dump: true},
 		{name: "a helm boot", exit: 1, booted: true, oracle: stateExited, k3s: running, helm: true, code: 5, notRunning: true, dump: true},
 		{name: "success", exit: 0, booted: true, oracle: stateExited, k3s: running, code: 0},
+		{name: "exit 1 and the oracle running after 4 restarts", exit: 1, booted: true, oracle: running, k3s: running, restarts: 4, code: 5, restarted: true, hinted: true, dump: true, oracleLine: "[rancher] " + running},
+		{name: "exit 1 and the oracle restarting after 4 restarts", exit: 1, booted: true, oracle: "status=restarting exitCode=1 oomKilled=false finishedAt=x", k3s: running, restarts: 4, code: 5, notRunning: true, hinted: true, dump: true},
+		{name: "exit 1 and the oracle restarting after 3 restarts", exit: 1, booted: true, oracle: "status=restarting exitCode=1 oomKilled=false finishedAt=x", k3s: running, restarts: 3, code: 5, notRunning: true, dump: true},
+		{name: "exit 1 and the oracle exited after 4 restarts", exit: 1, booted: true, oracle: stateExited, k3s: running, restarts: 4, code: 5, notRunning: true, dump: true},
+		{name: "exit 1 and the oracle dead after 4 restarts", exit: 1, booted: true, oracle: "status=dead exitCode=0 oomKilled=false finishedAt=x", k3s: running, restarts: 4, code: 5, notRunning: true, dump: true},
+		{name: "exit 1 and the oracle running after 3 restarts", exit: 1, booted: true, oracle: running, k3s: running, restarts: 3, code: 1, dump: true},
+		{name: "exit 4 and the oracle running after 4 restarts", exit: 4, booted: true, oracle: running, k3s: running, restarts: 4, code: 4, dump: true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -156,6 +166,9 @@ func TestCleanupReportsAStoppedOracle(t *testing.T) {
 			if c.helm {
 				body += "BOOT=helm\n"
 			}
+			if c.restarts > 0 {
+				body += fmt.Sprintf("ORACLE_RESTARTS=%d\n", c.restarts)
+			}
 			body += fmt.Sprintf("exit %d", c.exit)
 			stdout, stderr, code, calls := e.run(e.cleanupProgram(c.drift, c.reported, body))
 
@@ -175,6 +188,8 @@ func TestCleanupReportsAStoppedOracle(t *testing.T) {
 			if c.notRunning {
 				assert.Contains(t, stderr, "; its state and last log lines follow")
 			}
+			assert.Equal(t, c.restarted, strings.Contains(stderr, "error: the oracle container c restarted 4 times during the boot (status running, exit code 0, OOMKilled false); its state and last log lines follow\n"), "stderr: %s", stderr)
+			assert.Equal(t, c.hinted, strings.Contains(stderr, "error: a kept container restarts until it is removed; remove it, then run again:\nerror:   docker rm -f -v c\n"), "stderr: %s", stderr)
 			if c.memoryFails {
 				assert.Contains(t, stdout, "[host] memory free: unknown\n")
 			} else {
@@ -441,7 +456,7 @@ var (
 	// container's Config holds the bootstrap password.
 	allowedInspectFields = []string{
 		".Name", ".Id", ".HostConfig.PortBindings", ".NetworkSettings.Ports", ".IPAM.Config", ".Subnet", ".HostPort", ".HostIp",
-		".State.Status", ".State.ExitCode", ".State.OOMKilled", ".State.FinishedAt",
+		".State.Status", ".State.ExitCode", ".State.OOMKilled", ".State.FinishedAt", ".RestartCount",
 	}
 )
 
@@ -632,6 +647,7 @@ var logReadLines = []string{
 	`docker exec "${CONTAINER}" kubectl -n kube-system logs job/helm-install-rancher --tail 200 2>&1 | redact_log "[helm] " || true`,
 	`docker exec "${CONTAINER}" kubectl -n cattle-system logs deploy/rancher --tail 200 2>&1 | redact_log "[rancher] " || true`,
 	`docker logs --tail 20 "${CONTAINER}" 2>&1 | redact_log "" >&2 || true`,
+	`docker logs --tail 1000 "${CONTAINER}" 2>&1 | redact_log "[rancher] " || true`,
 }
 
 // logWordLines are the lines that hold the word log or logs without reading a
@@ -644,6 +660,7 @@ var logWordLines = map[string]string{
 	`echo "==> downstream agent log lines:"`:             "a heading of the diagnostics dump",
 	`echo "==> Rancher chart install job log:"`:          "a heading of the diagnostics dump",
 	`echo "==> Rancher pod log:"`:                        "a heading of the diagnostics dump",
+	`echo "error: the oracle container ${CONTAINER} restarted ${ORACLE_RESTARTS} times during the boot (status ${oracle_status}, exit code ${exit_code}, OOMKilled ${oom}); its state and last log lines follow" >&2`:                                                                                                                           "the error line for an oracle container that restarted more than 3 times",
 	`echo "error: the node container stopped (exit code $(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER}" 2>/dev/null)); its last log lines:" >&2`:                                                                                                                                                                                 "the error line for a stopped node container; its only docker inspect reads one State field",
 	`echo "error: with E2E_FIDELITY_KEEP=1 a kept pair whose container, container id, bind address, /ping, admin token, state file, k3s container, k3s container id or downstream cluster check fails is never removed. Find out why (docker ps -a --filter name=${named_container}; docker logs --tail 50 ${named_container}) and run again."`: "a message that names the command which shows the log",
 	`echo "error: the last read of the downstream cluster got no HTTP answer; also find out why the oracle did not answer (docker ps -a --filter name=${CONTAINER}; docker logs --tail 50 ${CONTAINER})"`:                                                                                                                                       "a message that names the command which shows the log",
@@ -670,6 +687,7 @@ var inspectLines = []string{
 	`k3s_cid="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}")"`,
 	`if [ "$(docker inspect --format '{{.State.Status}}' "${CONTAINER}" 2>/dev/null)" != "running" ]; then`,
 	`echo "error: the node container stopped (exit code $(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER}" 2>/dev/null)); its last log lines:" >&2`,
+	`state="$(docker inspect --format '{{.State.Status}} {{.RestartCount}}' "${CONTAINER}" 2>/dev/null)" || return 0`,
 }
 
 var (

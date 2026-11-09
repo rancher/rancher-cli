@@ -9,8 +9,9 @@ import (
 // command it runs, and the text that names one. Each has the function it sits in
 // (empty for the top level) and why it is allowed. A line is a command that reads,
 // or one of the few that change a pair: the cleanup of a run without
-// E2E_FIDELITY_KEEP=1, the fresh boot after the refusal call, the downstream
-// boot, and the one rebuild after a k3s image change. A kept run that passed its
+// E2E_FIDELITY_KEEP=1, the fresh boot after the refusal call (including the
+// update that turns the restart policy off), the downstream boot, and the one
+// rebuild after a k3s image change. A kept run that passed its
 // own checks and whose downstream failed one runs none of those.
 var dockerLines = []reviewedLine{
 	{"", `REGISTRY_URL="${E2E_FIDELITY_REGISTRY_URL:-https://registry-1.docker.io}"`, "the default address of the image registry the registry reader queries; no docker command"},
@@ -50,6 +51,9 @@ var dockerLines = []reviewedLine{
 	{"cleanup", `docker exec "${CONTAINER}" kubectl -n cert-manager get pods -o wide 2>&1 | sed 's/^/[cert-manager] /' || true`, "the diagnostics dump after a failure: reads the state, load, logs and pods of the containers; changes nothing"},
 	{"cleanup", `docker rm -f -v "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true`, "removes the pair when the run is not under E2E_FIDELITY_KEEP=1; a kept pair skips it"},
 	{"cleanup", `docker network rm "${NETWORK}" >/dev/null 2>&1 || true`, "removes the network when the run is not under E2E_FIDELITY_KEEP=1; a kept pair skips it"},
+	{"cleanup", `printf 'error:   docker rm -f -v %q\n' "${CONTAINER}" >&2`, "the report of an oracle container that restarted more than 3 times prints the command that removes it; it runs nothing"},
+	{"oracle_log_tail", `docker logs --tail 1000 "${CONTAINER}" 2>&1 | redact_log "[rancher] " || true`, "reads the last 1000 lines of the oracle container's output for the FATAL line of a restart, through the redaction filter; reads only"},
+	{"check_oracle_container", `state="$(docker inspect --format '{{.State.Status}} {{.RestartCount}}' "${CONTAINER}" 2>/dev/null)" || return 0`, "reads the status and restart count of the oracle container in each pass of the boot waits; reads only"},
 	{"require_disk", `root="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)"`, "reads the Docker root directory for the free disk check"},
 	{"wait_for_webhook", `if docker exec "${CONTAINER}" kubectl -n cattle-system get deploy rancher-webhook -o jsonpath='{.status.readyReplicas}' 2>/dev/null | grep -q '^1$'; then`, "reads the Rancher webhook deployment of the oracle; reads only"},
 	{"ensure_network", `docker network inspect "${NETWORK}" >/dev/null 2>&1 && return 0`, "creates or finds the pair's network, in the fresh boot"},
@@ -90,6 +94,7 @@ var dockerLines = []reviewedLine{
 	{"", `docker rm -f -v "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true`, "the fresh boot removes both containers of the pair, after the refusal call; a kept pair that passed its checks never reaches it"},
 	{"", `docker network rm "${NETWORK}" >/dev/null 2>&1 || true`, "the fresh boot removes the network, after the refusal call"},
 	{"", `docker run -d --name "${CONTAINER}" --privileged ${RESTART_ARGS} --network "${NETWORK}" --ip "${ORACLE_IP}" -p "${BIND_ADDR}:${HOST_PORT}:443" --env-file "${ENV_FILE}" "${ORACLE_IMAGE}" >/dev/null`, "the fresh boot starts the oracle container, after the refusal call"},
+	{"", `[ "${E2E_FIDELITY_KEEP:-}" = "1" ] || [ "${BOOT}" = "helm" ] || docker update --restart no "${CONTAINER}" >/dev/null`, "the fresh boot of a run without E2E_FIDELITY_KEEP=1 turns the restart policy of the oracle container off once its boot checks pass; a kept container keeps its policy, and the node container of a helm boot has none"},
 }
 
 // TestEveryDockerLineOfTheScriptIsReviewed asserts that every line of the script
