@@ -407,7 +407,7 @@ namespace RancherCliInstall
     function Resolve-Platform {
         $raw = $env:PROCESSOR_ARCHITEW6432
         if (-not $raw) { $raw = $env:PROCESSOR_ARCHITECTURE }
-        # Accepted architectures must match release.yaml's windows/* targets.
+        # Accepted architectures must match the windows/* targets of scripts/release-build.
         switch ($raw) {
             'AMD64' { $S.Arch = 'amd64' }
             default { Fail "unsupported platform windows/$raw - download manually: $($S.BaseUrl)/$Repo/releases" }
@@ -716,7 +716,7 @@ namespace RancherCliInstall
 
     function Resolve-Release {
         Resolve-Tag
-        # Asset names must match release.yaml's build loop - the two lists stay in lockstep.
+        # Asset names must match the build loop in scripts/release-build - the two lists stay in lockstep.
         $S.CliAsset = "rancher-$Os-$($S.Arch).exe"
         $S.HelperAsset = "rancher-credential-vault-$Os-$($S.Arch).exe"
         Resolve-AssetIds

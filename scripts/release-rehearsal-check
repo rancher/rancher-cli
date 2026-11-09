@@ -1,0 +1,107 @@
+#!/bin/bash
+# Check that dist/SHA256SUMS, built by the tag run, equals the SHA256SUMS of
+# a rehearsal of the same commit and tag: a run of release.yaml started by
+# hand on main that finished successfully and kept the artifact
+# release-rehearsal-sums-<tag>.
+#
+#   release-rehearsal-check <tag> <commit sha, 40 lowercase hex digits>
+#
+# Called by .github/workflows/release.yaml after the build and before the
+# attestation and the draft release, with GITHUB_REPOSITORY and GH_TOKEN
+# (the token needs actions: read) in the environment. It needs gh, jq and
+# unzip. Exit 0 when the two files are equal; otherwise a non-zero exit and
+# one plain error that says which case it is. There is no way to skip it: a
+# release with no matching rehearsal does not reach a draft.
+#
+# gh api cannot filter on every field the script relies on and the answers
+# are checked again here: every run must be a run of release.yaml, started
+# by hand (workflow_dispatch) on main for the commit, and have succeeded.
+set -euo pipefail
+
+SUMS=dist/SHA256SUMS
+
+[ "$#" -eq 2 ] || { echo "usage: release-rehearsal-check <tag> <commit sha>" >&2; exit 2; }
+TAG="$1"
+SHA="$2"
+[ -n "${GITHUB_REPOSITORY:-}" ] || { echo "error: GITHUB_REPOSITORY is not set" >&2; exit 1; }
+"${0%/*}/check-release-tag" "$TAG"
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "error: '$SHA' is not a commit sha of 40 lowercase hex digits" >&2; exit 2; }
+[ -f "$SUMS" ] || { echo "error: $SUMS does not exist: build the release assets first" >&2; exit 1; }
+
+ARTIFACT="release-rehearsal-sums-$TAG"
+START="gh workflow run release.yaml --ref main -f tag=$TAG"
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# Fetch and filter separately, so that a failed API call is not read as
+# "no run".
+runs_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yaml/runs?event=workflow_dispatch&head_sha=$SHA&status=success&branch=main&per_page=100" \
+  --paginate \
+  --jq ".workflow_runs[]
+    | select((.path == \".github/workflows/release.yaml\" or (.path | startswith(\".github/workflows/release.yaml@\")))
+      and .event == \"workflow_dispatch\"
+      and .head_sha == \"$SHA\"
+      and .head_branch == \"main\"
+      and .conclusion == \"success\")
+    | {id, created_at}")" || {
+  echo "error: could not list the runs of release.yaml: cannot tell whether $TAG has a rehearsal" >&2
+  exit 1
+}
+run_ids="$(printf '%s\n' "$runs_json" | jq -sr 'sort_by(.created_at) | reverse | .[].id')"
+
+if [ -z "$run_ids" ]; then
+  echo "error: no successful rehearsal run of release.yaml on main for commit $SHA; start one with: $START" >&2
+  exit 1
+fi
+
+found=""
+expired=""
+for run in $run_ids; do
+  artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?name=$ARTIFACT&per_page=100" \
+    --paginate \
+    --jq ".artifacts[] | select(.name == \"$ARTIFACT\") | [.id, (.expired | tostring)] | @tsv")" || {
+    echo "error: could not list the artifacts of run $run: cannot tell whether $TAG has a rehearsal" >&2
+    exit 1
+  }
+  while IFS=$'\t' read -r artifact_id artifact_expired; do
+    [ -n "$artifact_id" ] || continue
+    if [ "$artifact_expired" = "true" ]; then
+      expired="$run"
+    else
+      found="$run $artifact_id"
+      break
+    fi
+  done <<<"$artifacts"
+  [ -z "$found" ] || break
+done
+
+if [ -z "$found" ]; then
+  if [ -n "$expired" ]; then
+    echo "error: the rehearsal artifact $ARTIFACT of run $expired has expired; start a new rehearsal with: $START" >&2
+  else
+    echo "error: no rehearsal of $TAG for commit $SHA (the runs of that commit hold no artifact $ARTIFACT); start one with: $START" >&2
+  fi
+  exit 1
+fi
+run="${found% *}"
+artifact_id="${found#* }"
+
+gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" >"$WORK/sums.zip" || {
+  echo "error: could not download the artifact $ARTIFACT of run $run" >&2
+  exit 1
+}
+if ! unzip_error="$(unzip -p "$WORK/sums.zip" SHA256SUMS 2>&1 >"$WORK/SHA256SUMS")"; then
+  echo "error: could not read SHA256SUMS from the rehearsal artifact $ARTIFACT of run $run: ${unzip_error//$'\n'/ }" >&2
+  exit 1
+fi
+
+if cmp -s "$WORK/SHA256SUMS" "$SUMS"; then
+  echo "release-rehearsal-check: SHA256SUMS equals the rehearsal run $run of $TAG on $SHA"
+  exit 0
+fi
+{
+  echo "error: SHA256SUMS differs from the rehearsal run $run of $TAG; lines only in the rehearsal start with <, lines only in this build with >:"
+  diff "$WORK/SHA256SUMS" "$SUMS" || true
+} >&2
+exit 1

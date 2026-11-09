@@ -17,18 +17,18 @@ import (
 )
 
 // windowsInstallerPlatforms is every release platform install.ps1 must
-// serve, derived from release.yaml's build loop like installerPlatforms so
+// serve, derived from scripts/release-build's loop like installerPlatforms so
 // the stub's Windows assets cannot drift from what a release publishes.
 var windowsInstallerPlatforms = deriveWindowsInstallerPlatforms()
 
 func deriveWindowsInstallerPlatforms() []string {
-	raw, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "release.yaml"))
+	raw, err := os.ReadFile(filepath.Join("..", "scripts", "release-build"))
 	if err != nil {
 		panic(err)
 	}
 	m := platformLoopRe.FindStringSubmatch(string(raw))
 	if m == nil {
-		panic("release.yaml: no `for platform in ...; do` build loop found - it moved or was reworded")
+		panic("scripts/release-build: no `for platform in ...; do` build loop found - it moved or was reworded")
 	}
 	var out []string
 	for p := range strings.FieldsSeq(m[1]) {

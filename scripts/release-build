@@ -1,0 +1,50 @@
+#!/bin/bash
+# Build every asset of the release <tag> into dist/: a binary and a
+# credential helper for each platform, install.sh, install.ps1, the schema
+# manifest and SHA256SUMS.
+#
+# release.yaml runs this script for a rehearsal (a manual run on main, no tag
+# yet) and for the tag run, so both runs build the same files from the same
+# commands. The tag run stops before the draft release unless its
+# SHA256SUMS equals the one of a rehearsal of the same commit and tag, which
+# needs the same bytes from both builds:
+#   - GOFLAGS=-buildvcs=false: without it Go stamps the tag and the commit
+#     into the binary, and a build on the tag differs from one on main.
+#   - LC_ALL=C: the order of the files in SHA256SUMS follows the locale of the
+#     shell that expands the glob.
+#   - rm -rf dist: a leftover file would get into SHA256SUMS.
+#
+# Needs a Linux host to run the schema step, and sha256sum.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export LC_ALL=C
+export GOFLAGS=-buildvcs=false
+
+[ "$#" -eq 1 ] || { echo "usage: release-build <tag>" >&2; exit 2; }
+TAG="$1"
+./scripts/check-release-tag "$TAG"
+
+rm -rf dist
+mkdir -p dist
+# Asset names must match install.sh's CLI_ASSET/HELPER_ASSET construction - the two lists stay in lockstep.
+for platform in linux/amd64 linux/arm64 linux/s390x darwin/amd64 darwin/arm64 windows/amd64; do
+  goos="${platform%/*}"
+  goarch="${platform#*/}"
+  ext=""
+  if [ "$goos" = "windows" ]; then ext=".exe"; fi
+  GOOS="$goos" GOARCH="$goarch" VERSION="$TAG" ./scripts/build
+  mv "bin/rancher${ext}" "dist/rancher-${goos}-${goarch}${ext}"
+  mv "bin/rancher-credential-vault${ext}" "dist/rancher-credential-vault-${goos}-${goarch}${ext}"
+done
+# install.sh ships as a versioned release asset too: checksummed
+# and attested like the binaries. raw@main stays the canonical
+# living copy; this is the pinned, auditable one.
+cp install.sh install.ps1 dist/
+# The schema manifest of this exact build is a release asset: it
+# lists the command and flag names the build's events can carry.
+# The runner's own binary writes it, with a throwaway config
+# directory and the file credential store so no real keychain or
+# config directory is touched.
+RANCHER_CLI_CONFIG_DIR="$(mktemp -d)" RANCHER_CLI_CREDENTIAL_STORE=file \
+  dist/rancher-linux-amd64 schema --all -o json > dist/rancher-schema.json
+(cd dist && sha256sum -- * > SHA256SUMS)

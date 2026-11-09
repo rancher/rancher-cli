@@ -1148,7 +1148,7 @@ func TestWindowsQuietSuppressesNotesNotWarnings(t *testing.T) {
 
 // windowsPlatformMappingCases is install.ps1's PROCESSOR_ARCHITECTURE map.
 // TestWindowsPlatformMatrixConformance cross-checks its accepted set against
-// release.yaml's windows/* targets.
+// scripts/release-build's windows/* targets.
 var windowsPlatformMappingCases = []struct {
 	arch string
 	want string // "" = must be rejected
@@ -1179,7 +1179,7 @@ func TestWindowsPlatformMapping(t *testing.T) {
 }
 
 // TestWindowsPlatformMatrixConformance keeps install.ps1's accepted
-// architectures in lockstep with release.yaml's windows/* build targets.
+// architectures in lockstep with scripts/release-build's windows/* build targets.
 func TestWindowsPlatformMatrixConformance(t *testing.T) {
 	t.Parallel()
 	var accepts []string
@@ -1193,7 +1193,7 @@ func TestWindowsPlatformMatrixConformance(t *testing.T) {
 		want = append(want, strings.Replace(p, "-", "/", 1))
 	}
 	assert.ElementsMatch(t, want, accepts,
-		"install.ps1's accepted platforms (windowsPlatformMappingCases) must match release.yaml's windows targets")
+		"install.ps1's accepted platforms (windowsPlatformMappingCases) must match scripts/release-build's windows targets")
 }
 
 // TestWindowsTruncatedScriptMidFunctionExecutesNothing asserts that a download

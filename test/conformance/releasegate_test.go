@@ -83,11 +83,28 @@ func (wf gateWorkflow) reaches(from, target string) bool {
 	return walk(from)
 }
 
+const (
+	rehearseCondition = "github.event_name == 'workflow_dispatch'"
+	publishCondition  = "github.event_name == 'push'"
+)
+
+// releaseJobConditions is the one condition each conditional job of the
+// release workflow carries, as exact text; no other job has a condition.
+var releaseJobConditions = map[string]string{
+	"rehearse": rehearseCondition,
+	"publish":  publishCondition,
+}
+
+// releaseJobNames are the jobs of the release workflow and no others.
+var releaseJobNames = []string{"publish", "rehearse", "validate", "zizmor"}
+
 // releaseGateProblems returns what is wrong with the job graph of the
-// release workflow: the zizmor job calls the zizmor workflow of this
-// repository with nothing around the call, every other job waits for it
-// directly or through another job, validate waits for it, publish waits for
-// validate, and no job is conditional.
+// release workflow: the jobs are exactly zizmor, validate, rehearse and
+// publish; the zizmor job calls the zizmor workflow of this repository with
+// nothing around the call, every other job waits for it directly or through
+// another job, validate waits for it, rehearse and publish wait for
+// validate, and only rehearse (a manual run) and publish (a tag push) have a
+// condition, each exactly its own.
 func releaseGateProblems(wf gateWorkflow) []string {
 	var out []string
 	zizmor, ok := wf.Jobs["zizmor"]
@@ -111,18 +128,32 @@ func releaseGateProblems(wf gateWorkflow) []string {
 		}
 	}
 	for name, job := range wf.Jobs {
-		if job.If.Kind != 0 {
+		if !slices.Contains(releaseJobNames, name) {
+			out = append(out, "job "+name+" is not one of "+strings.Join(releaseJobNames, ", "))
+		}
+		want, conditional := releaseJobConditions[name]
+		switch {
+		case !conditional && job.If.Kind != 0:
 			out = append(out, "job "+name+" is conditional")
+		case conditional && (job.If.Kind != yaml.ScalarNode || job.If.Value != want):
+			out = append(out, fmt.Sprintf("job %s if is %q, want %q", name, job.If.Value, want))
 		}
 		if name != "zizmor" && ok && !wf.reaches(name, "zizmor") {
 			out = append(out, "job "+name+" does not wait for zizmor")
 		}
 	}
+	for _, name := range releaseJobNames {
+		if _, present := wf.Jobs[name]; !present {
+			out = append(out, "no job named "+name)
+		}
+	}
 	if !slices.Contains(wf.Jobs["validate"].needsNames(), "zizmor") {
 		out = append(out, "job validate does not name zizmor in needs")
 	}
-	if !slices.Contains(wf.Jobs["publish"].needsNames(), "validate") {
-		out = append(out, "job publish does not name validate in needs")
+	for _, name := range []string{"rehearse", "publish"} {
+		if !slices.Contains(wf.Jobs[name].needsNames(), "validate") {
+			out = append(out, "job "+name+" does not name validate in needs")
+		}
 	}
 	slices.Sort(out)
 	return out
@@ -187,7 +218,11 @@ jobs:
     needs: zizmor
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+  rehearse:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
   publish:
+    if: github.event_name == 'push'
     needs: validate
 `
 
@@ -199,7 +234,8 @@ func parseGateWorkflow(t *testing.T, text string) gateWorkflow {
 }
 
 // TestReleaseGateProblemsRules asserts the job graph check accepts the
-// release shape and refuses each way of weakening the zizmor gate.
+// release shape and refuses each way of weakening the zizmor gate, of adding
+// a job, and of changing a condition.
 func TestReleaseGateProblemsRules(t *testing.T) {
 	t.Parallel()
 	edit := func(old, repl string) string {
@@ -217,10 +253,21 @@ func TestReleaseGateProblemsRules(t *testing.T) {
 		{"relative form", edit("$/.github/workflows/zizmor.yaml", "./.github/workflows/zizmor.yaml"), "job zizmor uses"},
 		{"another workflow", edit("$/.github/workflows/zizmor.yaml", "$/.github/workflows/other.yaml"), "job zizmor uses"},
 		{"if on zizmor", edit("    uses: $/.github/workflows/zizmor.yaml\n", "    if: always()\n    uses: $/.github/workflows/zizmor.yaml\n"), "job zizmor is conditional"},
-		{"if on publish", edit("  publish:\n", "  publish:\n    if: always()\n"), "job publish is conditional"},
+		{"if on validate", edit("    needs: zizmor\n", "    if: github.event_name == 'push'\n    needs: zizmor\n"), "job validate is conditional"},
+		{"always on publish", edit("    if: github.event_name == 'push'\n", "    if: always()\n"), "job publish if is"},
+		{"publish without if", edit("    if: github.event_name == 'push'\n", ""), "job publish if is"},
+		{"publish on dispatch", edit("    if: github.event_name == 'push'\n", "    if: github.event_name == 'workflow_dispatch'\n"), "job publish if is"},
+		{"publish also on dispatch", edit("    if: github.event_name == 'push'\n", "    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'\n"), "job publish if is"},
+		{"rehearse without if", edit("    if: github.event_name == 'workflow_dispatch'\n", ""), "job rehearse if is"},
+		{"another expression on rehearse", edit("    if: github.event_name == 'workflow_dispatch'\n", "    if: github.event_name != 'push'\n"), "job rehearse if is"},
+		{"true or on rehearse", edit("    if: github.event_name == 'workflow_dispatch'\n", "    if: true || github.event_name == 'workflow_dispatch'\n"), "job rehearse if is"},
+		{"rehearse on push", edit("    if: github.event_name == 'workflow_dispatch'\n", "    if: github.event_name == 'push'\n"), "job rehearse if is"},
+		{"rehearse without needs validate", edit("    needs: validate\n  publish:\n", "    needs: zizmor\n  publish:\n"), "job rehearse does not name validate in needs"},
+		{"no rehearse job", edit("  rehearse:\n    if: github.event_name == 'workflow_dispatch'\n    needs: validate\n", ""), "no job named rehearse"},
+		{"an unknown job", gateWorkflowOK + "  extra:\n    needs: zizmor\n", "job extra is not one of"},
 		{"continue-on-error", edit("    uses: $/.github/workflows/zizmor.yaml\n", "    continue-on-error: true\n    uses: $/.github/workflows/zizmor.yaml\n"), "job zizmor sets continue-on-error"},
 		{"validate without needs", edit("    needs: zizmor\n", ""), "job validate does not name zizmor in needs"},
-		{"publish waits for zizmor only", edit("    needs: validate\n", "    needs: zizmor\n"), "job publish does not name validate in needs"},
+		{"publish waits for zizmor only", edit("    if: github.event_name == 'push'\n    needs: validate\n", "    if: github.event_name == 'push'\n    needs: zizmor\n"), "job publish does not name validate in needs"},
 		{"a job with no needs", gateWorkflowOK + "  extra:\n    runs-on: ubuntu-latest\n", "job extra does not wait for zizmor"},
 		{"zizmor waits for another job", edit("  zizmor:\n", "  zizmor:\n    needs: publish\n"), "job zizmor must not wait for another job"},
 	} {
@@ -484,7 +531,9 @@ jobs:
 // TestReleaseStepsCannotBeSkippedOrWriteRefs asserts that no job or step of
 // the release workflow can be skipped or can fail without stopping the run,
 // that validate runs make validate and make e2e as steps of their own, and
-// that nothing in the workflow or in release-upsert writes a reference.
+// that nothing in the workflow or in the scripts it runs with write access
+// (release-build, release-rehearsal-check, release-upsert) writes a
+// reference.
 func TestReleaseStepsCannotBeSkippedOrWriteRefs(t *testing.T) {
 	t.Parallel()
 	release := readGateWorkflow(t, releaseWorkflowPath)
@@ -494,7 +543,9 @@ func TestReleaseStepsCannotBeSkippedOrWriteRefs(t *testing.T) {
 			assert.Empty(t, refWriteProblems(step.Run), "job %s step %d", name, i+1)
 		}
 	}
-	assert.Empty(t, refWriteProblems(readText(t, upsertScript)))
+	for _, path := range []string{upsertScript, releaseBuildScript, rehearsalCheckScript} {
+		assert.Empty(t, refWriteProblems(readText(t, path)), path)
+	}
 }
 
 // TestReleaseStepRules asserts what the step and reference checks accept
@@ -546,6 +597,8 @@ jobs:
 		"make validate # git push is not run\nmake e2e",
 		"echo done \\\n  # git tag\n",
 		"gh api repos/o/r/releases \\\n  --paginate",
+		`gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yaml/runs?branch=main" --paginate`,
+		`gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > file`,
 	} {
 		assert.Empty(t, refWriteProblems(text), text)
 	}
@@ -583,14 +636,23 @@ func permissionProblems(where string, n yaml.Node, want map[string]string) []str
 }
 
 var (
-	readOnly     = map[string]string{"contents": "read"}
-	publishScope = map[string]string{"contents": "write", "id-token": "write", "attestations": "write"}
+	readOnly = map[string]string{"contents": "read"}
+
+	// releaseJobScopes are the exact scopes of the jobs that hold more than
+	// read access to the contents: rehearse attests and keeps artifacts but
+	// writes no contents; publish alone writes contents, and reads actions
+	// for the comparison with the rehearsal.
+	releaseJobScopes = map[string]map[string]string{
+		"rehearse": {"contents": "read", "id-token": "write", "attestations": "write"},
+		"publish":  {"contents": "write", "id-token": "write", "attestations": "write", "actions": "read"},
+	}
 )
 
 // releasePermissionProblems returns what is wrong with the permission split
 // of the release workflow: read only at the workflow level, zizmor and
-// validate read only, publish alone holds the write scopes it needs, and
-// every job declares its own permissions.
+// validate read only, rehearse and publish each hold exactly their own
+// scopes, only publish writes contents, and every job declares its own
+// permissions.
 func releasePermissionProblems(wf gateWorkflow) []string {
 	out := permissionProblems("workflow", wf.Permissions, readOnly)
 	if _, ok := wf.Jobs["zizmor"]; !ok {
@@ -598,8 +660,8 @@ func releasePermissionProblems(wf gateWorkflow) []string {
 	}
 	for name, job := range wf.Jobs {
 		want := readOnly
-		if name == "publish" {
-			want = publishScope
+		if scopes, ok := releaseJobScopes[name]; ok {
+			want = scopes
 		}
 		out = append(out, permissionProblems("job "+name, job.Permissions, want)...)
 	}
@@ -620,7 +682,7 @@ func zizmorPermissionProblems(wf gateWorkflow) []string {
 }
 
 // TestReleasePermissionSplitRules asserts the permission check accepts the
-// release split and refuses each widening.
+// release split and refuses each widening and each narrowing.
 func TestReleasePermissionSplitRules(t *testing.T) {
 	t.Parallel()
 	const ok = `
@@ -633,11 +695,17 @@ jobs:
   validate:
     permissions:
       contents: read
+  rehearse:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
   publish:
     permissions:
       contents: write
       id-token: write
       attestations: write
+      actions: read
 `
 	assert.Empty(t, releasePermissionProblems(parseGateWorkflow(t, ok)))
 	for _, c := range []struct{ name, old, repl string }{
@@ -645,8 +713,14 @@ jobs:
 		{"workflow contents write", "permissions:\n  contents: read\njobs:", "permissions:\n  contents: write\njobs:"},
 		{"validate id-token", "  validate:\n    permissions:\n      contents: read\n", "  validate:\n    permissions:\n      contents: read\n      id-token: write\n"},
 		{"zizmor without permissions", "  zizmor:\n    permissions:\n      contents: read\n", "  zizmor:\n"},
-		{"publish without attestations", "      attestations: write\n", ""},
-		{"publish with a scope more", "      attestations: write\n", "      attestations: write\n      packages: write\n"},
+		{"publish without attestations", "      attestations: write\n      actions: read\n", "      actions: read\n"},
+		{"publish with a scope more", "      attestations: write\n      actions: read\n", "      attestations: write\n      actions: read\n      packages: write\n"},
+		{"publish without actions read", "      actions: read\n", ""},
+		{"publish with actions write", "      actions: read\n", "      actions: write\n"},
+		{"rehearse with contents write", "  rehearse:\n    permissions:\n      contents: read\n", "  rehearse:\n    permissions:\n      contents: write\n"},
+		{"rehearse without id-token", "      contents: read\n      id-token: write\n      attestations: write\n  publish:", "      contents: read\n      attestations: write\n  publish:"},
+		{"rehearse with actions read", "      contents: read\n      id-token: write\n      attestations: write\n  publish:", "      contents: read\n      id-token: write\n      attestations: write\n      actions: read\n  publish:"},
+		{"rehearse with actions write", "      contents: read\n      id-token: write\n      attestations: write\n  publish:", "      contents: read\n      id-token: write\n      attestations: write\n      actions: write\n  publish:"},
 	} {
 		require.Contains(t, ok, c.old, c.name)
 		text := strings.Replace(ok, c.old, c.repl, 1)
@@ -670,8 +744,8 @@ jobs:
 }
 
 // TestReleasePermissionSplit asserts the permissions of the release
-// workflow and of the zizmor workflow it calls: nothing writes but the
-// publish job.
+// workflow and of the zizmor workflow it calls: only the publish job writes
+// contents.
 func TestReleasePermissionSplit(t *testing.T) {
 	t.Parallel()
 	assert.Empty(t, releasePermissionProblems(readGateWorkflow(t, releaseWorkflowPath)))
@@ -736,7 +810,9 @@ func readText(t *testing.T, path string) string {
 // release-upsert, AGENTS.md, README.md and REFERENCE.md describe one way to
 // cut a release, the draft-first way: none uses the wording of a release
 // created in the UI before the tag exists, and the text that states the new
-// flow is present.
+// flow is present: the rehearsal first, then the tag push that stops before
+// the draft without a matching rehearsal, then the draft, the notes, the
+// publish and the rules after publishing.
 // The forbidden list is a backstop; the required text is the guard.
 func TestReleaseTextDescribesDraftFirstOnly(t *testing.T) {
 	t.Parallel()
@@ -755,6 +831,8 @@ func TestReleaseTextDescribesDraftFirstOnly(t *testing.T) {
 	}
 	assert.Regexp(t, `draft release that holds every asset.*reviewed notes are pasted into it.*then it is published; the notes go in before publishing because watchers' notifications and the releases feed carry the body as it is at publish`,
 		leadingComment(texts[releaseWorkflowPath], "on:"), "the header of %s", releaseWorkflowPath)
+	assert.Regexp(t, `workflow_dispatch.*rehearsal.*rehearse.*publish.*stops unless their SHA256SUMS equals the one of a rehearsal of the same commit and tag`,
+		leadingComment(texts[releaseWorkflowPath], "on:"), "the header of %s names the manual run and the comparison", releaseWorkflowPath)
 
 	// Each rule is matched inside its own bullet, and the bullets that state
 	// the order of the cut (tag, draft, notes, publish, edit after) keep it.
@@ -771,16 +849,22 @@ func TestReleaseTextDescribesDraftFirstOnly(t *testing.T) {
 		}
 		return -1
 	}
+	rehearse := find("the rehearsal", `^A rehearsal comes first: .*gh workflow run release\.yaml --ref main -f tag=<tag>.*no tag and no release`)
+	install := find("installing and running the rehearsal assets", `^Install and run the assets of the rehearsal on every supported platform.*each fix gets a new rehearsal`)
 	tag := find("the tag push", `^Pushing a tag .vX\.Y\.Z. or .*on a commit that is already on main`)
+	find("the tag run stops before the draft without a matching rehearsal", `^Pushing a tag .*stops before the draft unless the build's .SHA256SUMS. equals the one of the rehearsal of the same commit and tag; with no rehearsal of that commit and tag it fails`)
+	opener := find("a maintainer pushes the release tag", `^A maintainer pushes the release tag`)
 	draft := find("a draft that holds every asset", `draft release that holds every asset, with the tag as its title`)
 	notes := find("the notes pasted into the draft before publishing", `Paste the reviewed notes into the draft, in the UI or with .gh release edit <tag> --notes-file <file>., before publishing: watchers' notifications and the releases feed carry the body as it is at publish`)
 	publish := find("the publish command", `Publish with .gh release edit <tag> --draft=false --prerelease=false --latest.`)
 	after := find("assets stay as they are after publishing", `^After publishing, .*Assets cannot be added or changed, and a bad release is fixed only by a new version`)
 	find("never move or reuse a pushed tag", `^Never move, delete and push again, or reuse a pushed tag`)
-	find("a maintainer pushes the release tag", `^A maintainer pushes the release tag`)
 	immutable := find("published releases are immutable", `Immutable releases are on for the repository: once a release is published, GitHub locks its assets and its tag`)
 	find("a flake re-runs, a fix deletes and counts on", `re-run the failed jobs when the cause is a flake .*delete the draft and the tag, fix on main, and cut the next number`)
-	assert.True(t, tag <= draft && draft < notes && notes < publish && publish < after,
-		"the bullets must keep the order tag, draft, notes, publish, edit after: got %d %d %d %d %d", tag, draft, notes, publish, after)
+	assert.True(t, opener < rehearse && rehearse < install && install < tag && tag <= draft && draft < notes && notes < publish && publish < after,
+		"the bullets must keep the order opener, rehearse, install, tag, draft, notes, publish, edit after: got %d %d %d %d %d %d %d %d", opener, rehearse, install, tag, draft, notes, publish, after)
+	for path, text := range texts {
+		assert.NotRegexp(t, `(?i)OS exercise`, text, "%s names an internal tool", path)
+	}
 	assert.Equal(t, after, immutable, "the immutable releases sentence belongs to the bullet about what stays editable after publishing")
 }

@@ -1308,6 +1308,19 @@ the regenerate annotation, and reads it again every 2 seconds while the stream
 is open if that read failed with a temporary error, because the watch does not
 see the Secret.
 
+**A release is rehearsed before its tag, and the tag run ships the rehearsed
+bytes.** A manual run of `release.yaml` on main (`workflow_dispatch` with the
+planned tag) builds and attests the release assets of main's commit and keeps
+them as workflow artifacts, with no tag and no release. The assets can then be
+installed and run on every supported platform before a tag number is used. The
+tag run builds again and stops before the attestation and the draft release
+unless its `SHA256SUMS` equals the one of a rehearsal of the same commit and
+tag. Both runs build through `scripts/release-build`, which turns off Go's VCS
+stamping (`-buildvcs=false`): Go otherwise writes the tag into the binary as the
+main module version, and a build on a tag would differ from one on main. The
+main-only check in the rehearsal job guards against a mistaken run; it is not a
+security boundary, because a branch's own copy of the workflow can drop it.
+
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or
 half-written, but it does not make the surrounding read-modify-write atomic. On

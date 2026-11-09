@@ -199,7 +199,7 @@ jobs:
 
   # Compile-check every release platform so an arch-specific break (endian,
   # 32/64 assumptions) surfaces on the PR, not at tag time. The list must
-  # match the build loop in release.yaml. linux/amd64 is kept for the 1:1
+  # match the build loop in scripts/release-build. linux/amd64 is kept for the 1:1
   # mapping with the release matrix, although the build contract in
   # conformance builds the same platform. One job per platform, so the
   # platforms build in parallel; each job restores the entry of the e2e job

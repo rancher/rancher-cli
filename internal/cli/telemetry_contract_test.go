@@ -111,14 +111,14 @@ func TestTelemetryValueListsEqualTheCode(t *testing.T) {
 	assert.Equal(t, append(invocation.AgentIDs(), invocation.AgentGeneric), schemaEnum(t, telemetry.EventCommandRun, "io.rancher.client.agent"))
 }
 
-// releasePlatforms reads the platform list of the release workflow's build
-// loop.
+// releasePlatforms reads the platform list of the build loop of
+// scripts/release-build, which release.yaml runs.
 func releasePlatforms(t *testing.T) []string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yaml"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "release-build"))
 	require.NoError(t, err)
 	m := regexp.MustCompile(`for platform in ([a-z0-9/ ]+); do`).FindSubmatch(data)
-	require.NotNil(t, m, "release.yaml has no platform loop")
+	require.NotNil(t, m, "scripts/release-build has no platform loop")
 	return strings.Fields(string(m[1]))
 }
 

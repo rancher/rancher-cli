@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"maps"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -75,8 +76,16 @@ func versionFromTagProblems(wf gateWorkflow) []string {
 	if !uploadsBinary(wf) {
 		return nil
 	}
+	return commandVersionProblems(workflowCommands(wf))
+}
+
+// commandVersionProblems returns the commands that build without the release
+// tag as the version: a scripts/build call without VERSION="$TAG" before it
+// on the same command, and a build command that does not go through
+// scripts/build.
+func commandVersionProblems(commands []string) []string {
 	var out []string
-	for _, c := range workflowCommands(wf) {
+	for _, c := range commands {
 		if loc := buildCallRE.FindStringIndex(c); loc != nil {
 			if v := versionFromTagRE.FindStringIndex(c); v == nil || v[0] > loc[0] {
 				out = append(out, "scripts/build without VERSION=\"$TAG\": "+strings.TrimSpace(c))
@@ -89,14 +98,51 @@ func versionFromTagProblems(wf gateWorkflow) []string {
 	return out
 }
 
+// scriptCallRE matches a call of a script under scripts/ in a command of
+// shell code; group 3 is the script name.
+var scriptCallRE = regexp.MustCompile(`(^|[\s;&|(])(\./)?scripts/([A-Za-z0-9._-]+)`)
+
+// scriptsRunBy returns the names of the scripts under scripts/ that the
+// commands call, directly or through the scripts they call, except
+// scripts/build: it is the one script that builds, called by
+// release-build with the version, and its own go build is the build.
+func scriptsRunBy(t *testing.T, commands []string) []string {
+	t.Helper()
+	seen := map[string]bool{"build": true}
+	var out []string
+	queue := commands
+	for len(queue) > 0 {
+		var next []string
+		for _, c := range queue {
+			for _, m := range scriptCallRE.FindAllStringSubmatch(c, -1) {
+				name := m[3]
+				if seen[name] {
+					continue
+				}
+				seen[name] = true
+				if _, err := os.Stat("scripts/" + name); err != nil {
+					continue
+				}
+				out = append(out, name)
+				next = append(next, shellCodeOf(readText(t, "scripts/"+name))...)
+			}
+		}
+		queue = next
+	}
+	slices.Sort(out)
+	return out
+}
+
 // TestReleaseBuildsSetVersionFromTag asserts every scripts/build call of the
-// release workflow, and of any workflow that uploads a binary, carries
-// VERSION="$TAG", and that those workflows hold no go build, go install or
-// make build, which would give the binary the version dev, the one version
-// that honors the experiment variable. A workflow uploads a binary when a
-// step runs scripts/release-upsert or gh release, uses
-// actions/attest-build-provenance, or uses actions/upload-artifact in a
-// workflow that also builds.
+// release workflow's scripts, and of any workflow that uploads a binary,
+// carries VERSION="$TAG", and that those workflows and scripts hold no go
+// build, go install or make build, which would give the binary the version
+// dev, the one version that honors the experiment variable. A workflow
+// uploads a binary when a step runs scripts/release-upsert or gh release,
+// uses actions/attest-build-provenance, or uses actions/upload-artifact in a
+// workflow that also builds. The release workflow itself holds no
+// scripts/build call: scripts/release-build is the one caller, so the
+// rehearsal and the tag run build with the same commands.
 func TestReleaseBuildsSetVersionFromTag(t *testing.T) {
 	t.Parallel()
 	paths, err := filepath.Glob(".github/workflows/*.y*ml")
@@ -108,8 +154,18 @@ func TestReleaseBuildsSetVersionFromTag(t *testing.T) {
 		if p == releaseWorkflowPath {
 			sawRelease = true
 			assert.True(t, uploadsBinary(wf), "the scan no longer sees the release workflow upload a binary")
-			assert.NotEmpty(t, workflowCommands(wf), p)
-			assert.True(t, slices.ContainsFunc(workflowCommands(wf), buildCallRE.MatchString), "%s holds no scripts/build call", p)
+			commands := workflowCommands(wf)
+			assert.NotEmpty(t, commands, p)
+			assert.False(t, slices.ContainsFunc(commands, buildCallRE.MatchString), "%s calls scripts/build itself: scripts/release-build is the one caller", p)
+
+			scripts := scriptsRunBy(t, commands)
+			assert.Contains(t, scripts, "release-build")
+			for _, name := range scripts {
+				code := shellCodeOf(readText(t, "scripts/"+name))
+				assert.Empty(t, commandVersionProblems(code), "scripts/%s", name)
+				hasBuild := slices.ContainsFunc(code, buildCallRE.MatchString)
+				assert.Equal(t, name == "release-build", hasBuild, "scripts/%s: only release-build calls scripts/build", name)
+			}
 		}
 		assert.Empty(t, versionFromTagProblems(wf), p)
 	}

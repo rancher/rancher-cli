@@ -14,8 +14,8 @@ import (
 
 var platformLoopRe = regexp.MustCompile(`for platform in ([^;]+); do`)
 
-// parseWorkflowPlatforms extracts the GOOS/GOARCH list from a workflow's
-// `for platform in ...; do` build loop.
+// parseWorkflowPlatforms extracts the GOOS/GOARCH list from the
+// `for platform in ...; do` build loop of a file.
 func parseWorkflowPlatforms(t *testing.T, path string) []string {
 	t.Helper()
 	raw, err := os.ReadFile(path)
@@ -56,20 +56,20 @@ func parseCrossCompileMatrix(t *testing.T, path string) []string {
 }
 
 // installerPlatforms is every release platform install.sh must serve -
-// derived from release.yaml rather than duplicated, so harness_test.go's
+// derived from scripts/release-build rather than duplicated, so harness_test.go's
 // stub release assets cannot drift from what a real release actually
 // publishes. Windows is excluded: the shell installer serves POSIX
 // platforms only, by design - it has no Windows binary format to install.
 var installerPlatforms = deriveInstallerPlatforms()
 
 func deriveInstallerPlatforms() []string {
-	raw, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "release.yaml"))
+	raw, err := os.ReadFile(filepath.Join("..", "scripts", "release-build"))
 	if err != nil {
 		panic(err)
 	}
 	m := platformLoopRe.FindStringSubmatch(string(raw))
 	if m == nil {
-		panic("release.yaml: no `for platform in ...; do` build loop found - it moved or was reworded")
+		panic("scripts/release-build: no `for platform in ...; do` build loop found - it moved or was reworded")
 	}
 	var out []string
 	for p := range strings.FieldsSeq(m[1]) {
@@ -82,7 +82,7 @@ func deriveInstallerPlatforms() []string {
 }
 
 // TestPlatformMatrixConformance keeps the release platform matrix from
-// desynchronizing across its independent copies: release.yaml's build loop,
+// desynchronizing across its independent copies: scripts/release-build's loop,
 // ci.yaml's cross-compile matrix (which must exercise the same targets before
 // a tag is cut), and install.sh's uname-to-GOOS/GOARCH map (asserted via
 // platformMappingCases, since install.sh is downloaded standalone and cannot
@@ -90,9 +90,9 @@ func deriveInstallerPlatforms() []string {
 func TestPlatformMatrixConformance(t *testing.T) {
 	t.Parallel()
 
-	release := parseWorkflowPlatforms(t, filepath.Join("..", ".github", "workflows", "release.yaml"))
+	release := parseWorkflowPlatforms(t, filepath.Join("..", "scripts", "release-build"))
 	ci := parseCrossCompileMatrix(t, filepath.Join("..", ".github", "workflows", "ci.yaml"))
-	assert.ElementsMatch(t, release, ci, "release.yaml and ci.yaml must build-check the same platform set")
+	assert.ElementsMatch(t, release, ci, "scripts/release-build and ci.yaml must build-check the same platform set")
 
 	// platformMappingCases has multiple uname aliases per platform (e.g. both
 	// "x86_64" and "amd64" map to linux/amd64) - dedupe before comparing sets.
@@ -109,5 +109,5 @@ func TestPlatformMatrixConformance(t *testing.T) {
 		wantAccepts = append(wantAccepts, strings.Replace(p, "-", "/", 1))
 	}
 	assert.ElementsMatch(t, wantAccepts, installSHAccepts,
-		"install.sh's accepted platforms (platformMappingCases) must match release.yaml's non-Windows targets")
+		"install.sh's accepted platforms (platformMappingCases) must match scripts/release-build's non-Windows targets")
 }

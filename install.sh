@@ -540,7 +540,7 @@ probe_platform() {
 
 resolve() {
   resolve_tag
-  # Asset names must match release.yaml's build loop - the two lists stay in lockstep.
+  # Asset names must match the build loop in scripts/release-build - the two lists stay in lockstep.
   CLI_ASSET="rancher-$OS-$ARCH"
   HELPER_ASSET="rancher-credential-vault-$OS-$ARCH"
   DL_BASE="$BASE_URL/$REPO/releases/download/$TAG"

@@ -202,10 +202,18 @@ Gotchas:
 
 ## Cutting a release
 
-- A maintainer pushes the release tag.
-- Pushing a tag `vX.Y.Z` or `vX.Y.Z-{alpha|beta|rc}.N` on a commit that is already on main
+- A maintainer pushes the release tag, after a rehearsal of the same commit and tag (the next two bullets).
+- A rehearsal comes first: the run of `release.yaml` that builds the release assets of a main commit before the tag
+  exists. Start it by hand on main with `gh workflow run release.yaml --ref main -f tag=<tag>`. After zizmor,
+  `make validate` and `make e2e`, it builds and attests the assets and keeps them, with `SHA256SUMS`, as workflow
+  artifacts for 30 days. It creates no tag and no release.
+- Install and run the assets of the rehearsal on every supported platform, and fix main until they pass; each fix gets
+  a new rehearsal. The artifact does not keep the executable bit.
+- Pushing a tag `vX.Y.Z` or `vX.Y.Z-{alpha|beta|rc}.N` on a commit that is already on main and was rehearsed
   (`scripts/check-release-tag <tag>` checks the format first) runs `.github/workflows/release.yaml`:
-  zizmor on the tagged commit, then `make validate` and `make e2e`, then the build, the attestations and a draft
+  zizmor on the tagged commit, then `make validate` and `make e2e`, then the build. The run stops before the draft
+  unless the build's `SHA256SUMS` equals the one of the rehearsal of the same commit and tag; with no rehearsal of
+  that commit and tag it fails, and the tag has used its number. After the check come the attestations and a draft
   release that holds every asset, with the tag as its title. No release is published yet.
 - Review the draft in the GitHub UI: the assets and `SHA256SUMS`. Paste the reviewed notes into the draft, in the UI or
   with `gh release edit <tag> --notes-file <file>`, before publishing: watchers' notifications and the releases feed
@@ -218,7 +226,8 @@ Gotchas:
   Immutable releases are on for the repository: once a release is published, GitHub locks its assets and its tag.
 - Never move, delete and push again, or reuse a pushed tag. A failed cut uses up its number.
 - A run that fails before publishing: re-run the failed jobs when the cause is a flake (the upload to the draft is
-  idempotent). Otherwise delete the draft and the tag, fix on main, and cut the next number.
+  idempotent). Otherwise delete the draft and the tag, fix on main, and cut the next number. A re-run of the tag run
+  compares with the rehearsal again and passes only while the artifacts of the rehearsal exist.
 
 ## Knowledge graph (graphify)
 

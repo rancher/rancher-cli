@@ -318,20 +318,20 @@ func isFunctionOf(pkgPath string, names ...string) func(types.Object) bool {
 	}
 }
 
-// releasePlatformsLine is the loop of the release workflow that builds each
-// platform: the pairs of GOOS and GOARCH it lists, as "goos/goarch".
+// releasePlatformsLine is the loop of the release build script that builds
+// each platform: the pairs of GOOS and GOARCH it lists, as "goos/goarch".
 var releasePlatformsLine = regexp.MustCompile(`for platform in ((?:[a-z0-9]+/[a-z0-9]+ ?)+); do`)
 
-// releasePlatforms are the GOOS and GOARCH pairs the release workflow builds,
-// read from the workflow, as "goos/goarch".
+// releasePlatforms are the GOOS and GOARCH pairs the release builds, read
+// from the build script release.yaml runs, as "goos/goarch".
 func releasePlatforms() ([]string, error) {
-	src, err := os.ReadFile(releaseWorkflowPath)
+	src, err := os.ReadFile(releaseBuildScript)
 	if err != nil {
 		return nil, err
 	}
 	m := releasePlatformsLine.FindSubmatch(src)
 	if m == nil {
-		return nil, fmt.Errorf("%s: no loop over the platforms to build", releaseWorkflowPath)
+		return nil, fmt.Errorf("%s: no loop over the platforms to build", releaseBuildScript)
 	}
 	return strings.Fields(string(m[1])), nil
 }

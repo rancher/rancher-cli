@@ -1,6 +1,11 @@
 name: release
 
-# A tag push runs zizmor, then validate, then publish. publish attests the
+# A manual run on main (workflow_dispatch with the planned tag) is a
+# rehearsal: zizmor, then validate, then rehearse, which builds and attests
+# the release assets of main's commit and keeps them as workflow artifacts,
+# with no tag and no release. A tag push runs zizmor, then validate, then
+# publish. publish builds the assets again, stops unless their SHA256SUMS
+# equals the one of a rehearsal of the same commit and tag, attests the
 # build and creates a draft release that holds every asset, with the tag as
 # its title. The draft is reviewed, the reviewed notes are pasted into it,
 # and then it is published; the notes go in before publishing because
@@ -9,17 +14,26 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The planned release tag, for example v0.1.0-beta.2
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 # Two runs for one tag (a re-run, or a tag pushed again) must not both see
 # zero existing releases and both create one - tag_name v0.1.0-alpha.1
-# carried two releases on 2026-08-12 from exactly that race.
+# carried two releases on 2026-08-12 from exactly that race. A rehearsal and
+# a tag push get separate groups: GitHub keeps one running and one pending
+# run per group and cancels a pending run when a newer one queues, so with a
+# shared group a new rehearsal would cancel a queued tag run.
 # cancel-in-progress stays false: the queued run must still run and take
 # release-upsert's idempotent upload branch, not vanish.
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event_name }}-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -45,7 +59,8 @@ jobs:
           persist-credentials: false
       - name: Enforce release tag grammar
         env:
-          TAG: ${{ github.ref_name }}
+          # The tag input of a rehearsal, or the pushed tag.
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: ./scripts/check-release-tag "$TAG"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -60,10 +75,80 @@ jobs:
       - run: make validate
       - run: make e2e
 
-  # Only checkout, build, attest, and upload run with write access - no
-  # third-party installs (apt, lint tooling, envtest) execute in a job that
-  # holds contents/id-token/attestations permissions.
+  # The rehearsal: build and attest the release assets of main's commit
+  # with the commands of the tag run, and keep them as artifacts for the
+  # people who install and run them, and for the comparison in publish.
+  # Nothing here writes a release, a tag or any other ref: the permissions
+  # grant no contents write and the steps are fixed (a test asserts both).
+  # No third-party install runs in this job, as in publish.
+  # The first step refuses a ref other than main. It guards against a
+  # dispatch from the wrong ref and is not a security boundary: a branch's
+  # own copy of this file can drop it, and the installers' signer-workflow
+  # check does not look at the ref.
+  rehearse:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # GitHub-native build provenance (actions/attest-build-provenance).
+      id-token: write
+      # Stores the attestation.
+      attestations: write
+    steps:
+      - name: Refuse a ref other than main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "error: a rehearsal runs from main only, not from '$GITHUB_REF'" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # See validate's setup-go: same cache-poisoning rationale.
+          cache: false
+      - name: Build release assets
+        env:
+          TAG: ${{ inputs.tag }}
+        run: scripts/release-build "$TAG"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/rancher-*
+            dist/install.sh
+            dist/install.ps1
+      # The whole of dist/, for installing and running on each platform. The
+      # artifact does not keep the executable bit.
+      - name: Keep the release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-rehearsal-${{ inputs.tag }}
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+      # SHA256SUMS alone, so that the comparison in publish downloads a few
+      # kilobytes instead of every asset.
+      - name: Keep the checksums
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-rehearsal-sums-${{ inputs.tag }}
+          path: dist/SHA256SUMS
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+
+  # Only checkout, build, check, attest, and upload run with write access -
+  # no third-party installs (apt, lint tooling, envtest) execute in a job
+  # that holds contents/id-token/attestations permissions. The check needs
+  # gh, jq and unzip, which the runner image has.
   publish:
+    if: github.event_name == 'push'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -73,6 +158,8 @@ jobs:
       # GitHub-native build provenance (actions/attest-build-provenance).
       id-token: write
       attestations: write
+      # The comparison reads the rehearsal run and its artifact.
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,33 +170,19 @@ jobs:
           # See validate's setup-go: same cache-poisoning rationale applies
           # here, in the job that actually holds the write permissions.
           cache: false
-      - name: Build release matrix
+      - name: Build release assets
         env:
           TAG: ${{ github.ref_name }}
-        run: |
-          mkdir -p dist
-          # Asset names must match install.sh's CLI_ASSET/HELPER_ASSET construction - the two lists stay in lockstep.
-          for platform in linux/amd64 linux/arm64 linux/s390x darwin/amd64 darwin/arm64 windows/amd64; do
-            goos="${platform%/*}"
-            goarch="${platform#*/}"
-            ext=""
-            if [ "$goos" = "windows" ]; then ext=".exe"; fi
-            GOOS="$goos" GOARCH="$goarch" VERSION="$TAG" ./scripts/build
-            mv "bin/rancher${ext}" "dist/rancher-${goos}-${goarch}${ext}"
-            mv "bin/rancher-credential-vault${ext}" "dist/rancher-credential-vault-${goos}-${goarch}${ext}"
-          done
-          # install.sh ships as a versioned release asset too: checksummed
-          # and attested like the binaries. raw@main stays the canonical
-          # living copy; this is the pinned, auditable one.
-          cp install.sh install.ps1 dist/
-          # The schema manifest of this exact build is a release asset: it
-          # lists the command and flag names the build's events can carry.
-          # The runner's own binary writes it, with a throwaway config
-          # directory and the file credential store so no real keychain or
-          # config directory is touched.
-          RANCHER_CLI_CONFIG_DIR="$(mktemp -d)" RANCHER_CLI_CREDENTIAL_STORE=file \
-            dist/rancher-linux-amd64 schema --all -o json > dist/rancher-schema.json
-          (cd dist && sha256sum -- * > SHA256SUMS)
+        run: scripts/release-build "$TAG"
+      # Stops the run, before any attestation or draft release exists, unless
+      # the SHA256SUMS just built equals the one of a rehearsal of this
+      # commit and tag. Re-running a failed tag run runs it again, and it
+      # passes while the rehearsal artifacts (30 days) exist.
+      - name: Compare with the rehearsal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: scripts/release-rehearsal-check "$TAG" "$GITHUB_SHA"
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

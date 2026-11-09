@@ -1,28 +1,26 @@
 package conformance
 
 import (
-	"os"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
 
 const (
 	releaseWorkflowPath = ".github/workflows/release.yaml"
-	releaseMatrixStep   = "Build release matrix"
+	releaseBuildScript  = "scripts/release-build"
 	releaseSchemaAsset  = "dist/rancher-schema.json"
 )
 
-// releaseSchemaStepProblems checks the run text of the release build step:
-// after the platform loop and before the checksum line, the runner's own
-// linux binary writes `schema --all -o json` to the schema asset, with a
-// throwaway config directory and the file credential store. The checksum,
-// attestation and upload steps then include the asset by their globs.
-// It returns one line per problem.
+// releaseSchemaStepProblems checks the text of scripts/release-build, which
+// both release paths run to build the assets: after the platform loop and
+// before the checksum line, the runner's own linux binary writes
+// `schema --all -o json` to the schema asset, with a throwaway config
+// directory and the file credential store. The checksum, attestation and
+// upload steps then include the asset by their globs. It returns one line
+// per problem.
 func releaseSchemaStepProblems(run string) []string {
 	lines := strings.Split(run, "\n")
 	find := func(sub string) int {
@@ -69,32 +67,14 @@ func releaseSchemaStepProblems(run string) []string {
 	return out
 }
 
-func releaseStepRun(t *testing.T) string {
-	t.Helper()
-	data, err := os.ReadFile(releaseWorkflowPath)
-	require.NoError(t, err)
-	var wf workflowFile
-	require.NoError(t, yaml.Unmarshal(data, &wf))
-	var runs []string
-	for _, job := range wf.Jobs {
-		for _, s := range job.Steps {
-			if s.Name == releaseMatrixStep {
-				runs = append(runs, s.Run)
-			}
-		}
-	}
-	require.Len(t, runs, 1, "exactly one %q step", releaseMatrixStep)
-	return runs[0]
-}
-
-// TestReleaseAttachesTheSchemaManifest asserts the release workflow's build
-// step writes rancher-schema.json inside the step, after the platform loop
-// and before the checksum line, from the runner's own binary.
+// TestReleaseAttachesTheSchemaManifest asserts the release build script
+// writes rancher-schema.json after the platform loop and before the checksum
+// line, from the runner's own binary.
 func TestReleaseAttachesTheSchemaManifest(t *testing.T) {
-	assert.Empty(t, releaseSchemaStepProblems(releaseStepRun(t)))
+	assert.Empty(t, releaseSchemaStepProblems(readText(t, releaseBuildScript)))
 }
 
-// TestReleaseStepCheckCatchesFixtures asserts the check reports the step
+// TestReleaseStepCheckCatchesFixtures asserts the check reports the script
 // with the schema command removed, moved after the checksum line, placed
 // before the loop ends, or lacking the throwaway directory.
 func TestReleaseStepCheckCatchesFixtures(t *testing.T) {
