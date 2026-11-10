@@ -1675,9 +1675,12 @@ prime_extra_sans() {
 }
 
 # api runs an authenticated request against the oracle with the admin token
-# on the header, never on argv beyond this function; bodies come on stdin.
+# sent from a pipe: -H @file reads the header from the file named on the
+# command line, and a process substitution names a pipe (/dev/fd/N) that
+# printf, a shell builtin, writes. The token is on no command line and in no
+# file, and stdin stays free for a body (-d @-).
 api() {
-  curl -s --cacert "${CA_FILE}" --max-time 30 -H "Authorization: Bearer ${ADMIN_TOKEN}" -H 'Content-Type: application/json' "$@"
+  curl -s --cacert "${CA_FILE}" --max-time 30 -H @<(printf 'Authorization: Bearer %s\n' "${ADMIN_TOKEN}") -H 'Content-Type: application/json' "$@"
 }
 
 ensure_network() {
@@ -1979,7 +1982,7 @@ reuse_state() {
     return 1
   }
   code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
-    -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/v3/users?me=true")" || true
+    -H @<(printf 'Authorization: Bearer %s\n' "${ADMIN_TOKEN}") "${BASE_URL}/v3/users?me=true")" || true
   [ "${code}" = "200" ] || {
     REUSE_FAILED_CHECK="admin-token"
     REUSE_FAILED_DETAIL="the admin token in the state file got HTTP ${code:-000} from ${BASE_URL}/v3/users?me=true"
@@ -2173,22 +2176,25 @@ write_state() {
   k3s_cid="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}")"
   (
     umask 177
-    python3 -c '
+    # The token goes in the environment of this one command and never on its
+    # argument list, which every process on the machine can read.
+    ADMIN_TOKEN="${ADMIN_TOKEN}" python3 -c '
 import json
+import os
 import sys
 
-keys = ("containerId", "adminToken", "oracleImage", "k3sContainerId", "k3sImage", "downstream")
-state = dict(zip(keys, sys.argv[1:7]))
-state["boot"] = sys.argv[8]
-if sys.argv[8] == "helm":
-    state["chart"] = sys.argv[9]
-    state["localK3sImage"] = sys.argv[10]
-    state["localK3sSource"] = sys.argv[11]
-    state["certManager"] = {"manifest": sys.argv[12], "images": json.loads(sys.argv[13])}
-    state["assetsImage"] = sys.argv[14]
-json.dump(state, open(sys.argv[7], "w"))
+state = {"containerId": sys.argv[1], "adminToken": os.environ["ADMIN_TOKEN"]}
+state.update(zip(("oracleImage", "k3sContainerId", "k3sImage", "downstream"), sys.argv[2:6]))
+state["boot"] = sys.argv[7]
+if sys.argv[7] == "helm":
+    state["chart"] = sys.argv[8]
+    state["localK3sImage"] = sys.argv[9]
+    state["localK3sSource"] = sys.argv[10]
+    state["certManager"] = {"manifest": sys.argv[11], "images": json.loads(sys.argv[12])}
+    state["assetsImage"] = sys.argv[13]
+json.dump(state, open(sys.argv[6], "w"))
 ' \
-      "${cid}" "${ADMIN_TOKEN}" "${ORACLE_IMAGE}" "${k3s_cid}" "${K3S_IMAGE}" "${DOWNSTREAM_ID}" "${STATE_FILE}" \
+      "${cid}" "${ORACLE_IMAGE}" "${k3s_cid}" "${K3S_IMAGE}" "${DOWNSTREAM_ID}" "${STATE_FILE}" \
       "${BOOT}" "${CHART_PIN}" "${LOCAL_K3S_PIN}" "${LOCAL_K3S_SOURCE}" "${CERT_MANAGER_MANIFEST}" "${CERT_MANAGER_IMAGES}" "${HELM_ASSETS_IMAGE}"
   )
 }
@@ -2473,10 +2479,10 @@ else
   # manifest): the oracle's address on the private network. Nothing the
   # harness records echoes it; the harness itself keeps dialing BASE_URL.
   curl -s --cacert "${CA_FILE}" -o /dev/null "${BASE_URL}/v3/settings/server-url" \
-    -X PUT -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' \
+    -X PUT -H @<(printf 'Authorization: Bearer %s\n' "${LOGIN_TOKEN}") -H 'Content-Type: application/json' \
     -d "{\"value\":\"https://${ORACLE_IP}\"}"
   ADMIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3/tokens" \
-    -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' -d @- <<'JSON' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
+    -H @<(printf 'Authorization: Bearer %s\n' "${LOGIN_TOKEN}") -H 'Content-Type: application/json' -d @- <<'JSON' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
 {"description":"e2e-fid oracle"}
 JSON
 )"
@@ -2505,10 +2511,10 @@ if [ -n "${SMOKE_PROFILE}" ]; then
     { echo "error: rancherversion smoke check failed" >&2; exit 1; }
   echo
   code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
-    -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/v3/users?me=true")"
+    -H @<(printf 'Authorization: Bearer %s\n' "${ADMIN_TOKEN}") "${BASE_URL}/v3/users?me=true")"
   [ "${code}" = "200" ] || { echo "error: admin token smoke check failed (http ${code})" >&2; exit 1; }
   code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
-    -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/k8s/clusters/${DOWNSTREAM_ID}/version")"
+    -H @<(printf 'Authorization: Bearer %s\n' "${ADMIN_TOKEN}") "${BASE_URL}/k8s/clusters/${DOWNSTREAM_ID}/version")"
   [ "${code}" = "200" ] || { echo "error: downstream proxy smoke check failed (http ${code})" >&2; exit 1; }
   echo "==> ${SMOKE_PROFILE} oracle bootstrap smoke passed"
   if [ "${DRIFT}" = 1 ]; then

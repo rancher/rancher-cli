@@ -1148,8 +1148,8 @@ func methodOptionLines(t *testing.T) []reviewedLine {
 		{"import_downstream", `api -o /dev/null -X POST "${BASE_URL}/v1/provisioning.cattle.io.clusters" -d @- <<JSON`, "creates the imported cluster"},
 		{"rebuild_downstream", `code="$(api -o /dev/null -w '%{http_code}' -X DELETE "${BASE_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${DOWNSTREAM_NAME}")" || true`, "removes the imported cluster of a downstream whose k3s image changed"},
 		{loginOwner(t), `out="$(curl -s --max-time 30 -w '\n%{http_code}' --cacert "${CA_FILE}" "${BASE_URL}/v3-public/localProviders/local?action=login" -H 'Content-Type: application/json' -d @- <<JSON || true`, "logs in to a new oracle with the bootstrap password"},
-		{"", `curl -s --cacert "${CA_FILE}" -o /dev/null "${BASE_URL}/v3/settings/server-url" -X PUT -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' -d "{\"value\":\"https://${ORACLE_IP}\"}"`, "sets the server URL of a new oracle"},
-		{"", `ADMIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3/tokens" -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' -d @- <<'JSON' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'`, "creates the admin token of a new oracle"},
+		{"", `curl -s --cacert "${CA_FILE}" -o /dev/null "${BASE_URL}/v3/settings/server-url" -X PUT -H @<(printf 'Authorization: Bearer %s\n' "${LOGIN_TOKEN}") -H 'Content-Type: application/json' -d "{\"value\":\"https://${ORACLE_IP}\"}"`, "sets the server URL of a new oracle"},
+		{"", `ADMIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3/tokens" -H @<(printf 'Authorization: Bearer %s\n' "${LOGIN_TOKEN}") -H 'Content-Type: application/json' -d @- <<'JSON' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'`, "creates the admin token of a new oracle"},
 	}
 }
 

@@ -1599,7 +1599,8 @@ func TestFleetAgentWait(t *testing.T) {
 		require.Len(t, argv, 2)
 		for i, url := range []string{"http://127.0.0.1:1" + namespaceURL, "http://127.0.0.1:1" + agentURL} {
 			assert.True(t, strings.HasSuffix(argv[i], " "+url), "request %d: %s", i+1, argv[i])
-			assert.Contains(t, argv[i], "-H Authorization: Bearer stub-admin-token")
+			assert.Contains(t, argv[i], "-H @/dev/fd/")
+			assert.NotContains(t, argv[i], "stub-admin-token")
 		}
 	})
 }
@@ -1661,7 +1662,8 @@ func TestKeptDownstreamWait(t *testing.T) {
 		require.Len(t, argv, 2)
 		for i, line := range argv {
 			assert.True(t, strings.HasSuffix(line, " "+clusterURL), "request %d: %s", i+1, line)
-			assert.Contains(t, line, "-H Authorization: Bearer stub-admin-token")
+			assert.Contains(t, line, "-H @/dev/fd/")
+			assert.NotContains(t, line, "stub-admin-token")
 		}
 	})
 }
