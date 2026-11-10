@@ -211,22 +211,167 @@ func TestUninstall(t *testing.T) {
 
 	leases, err := Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
 	require.NoError(t, err)
-	removed, err := leases[0].Uninstall()
+	removed, warnings, err := leases[0].Uninstall()
 	ReleaseAll(leases)
 	require.NoError(t, err) // absent = no-op success
 	assert.False(t, removed)
+	assert.Empty(t, warnings)
 
 	install(t, tg, "v1.0.0")
 
 	leases, err = Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
 	require.NoError(t, err)
-	removed, err = leases[0].Uninstall()
+	removed, warnings, err = leases[0].Uninstall()
 	ReleaseAll(leases)
 	require.NoError(t, err)
 	assert.True(t, removed)
+	assert.Empty(t, warnings)
 
 	v, _, _ := StatusTarget(tg, "v1.0.0")
 	assert.Equal(t, VerdictAbsent, v)
+}
+
+// uninstallTarget runs Uninstall under a lease, as the command does.
+func uninstallTarget(t *testing.T, tg Target) (bool, []string) {
+	t.Helper()
+	leases, err := Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
+	require.NoError(t, err)
+	defer ReleaseAll(leases)
+	removed, warnings, err := leases[0].Uninstall()
+	require.NoError(t, err)
+	return removed, warnings
+}
+
+// An uninstall that leaves its skills directory empty removes it, and goes
+// no further up: the harness folder stays.
+func TestUninstallRemovesEmptyParentOnly(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	install(t, tg, "v1.0.0")
+	parent := filepath.Dir(tg.Dir)
+	harnessDir := filepath.Dir(parent)
+
+	removed, warnings := uninstallTarget(t, tg)
+	assert.True(t, removed)
+	assert.Empty(t, warnings)
+	assert.NoDirExists(t, parent)
+	assert.DirExists(t, harnessDir)
+}
+
+// A skills directory that holds anything else stays, without a message:
+// another skill, a leftover temporary directory or any other entry.
+func TestUninstallKeepsParentWithOtherEntries(t *testing.T) {
+	for name, setup := range map[string]func(t *testing.T, parent string){
+		"another skill": func(t *testing.T, parent string) {
+			t.Helper()
+			require.NoError(t, os.MkdirAll(filepath.Join(parent, "other"), 0o755))
+		},
+		"leftover temporary directory": func(t *testing.T, parent string) {
+			t.Helper()
+			require.NoError(t, os.MkdirAll(filepath.Join(parent, stagingPrefix+"cafe"), 0o755))
+		},
+		"plain file": func(t *testing.T, parent string) {
+			t.Helper()
+			require.NoError(t, os.WriteFile(filepath.Join(parent, "notes.txt"), []byte("x\n"), 0o644))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			SetSource(testSource(t))
+			tg := targetIn(t)
+			install(t, tg, "v1.0.0")
+			parent := filepath.Dir(tg.Dir)
+			setup(t, parent)
+			before, err := os.ReadDir(parent)
+			require.NoError(t, err)
+
+			removed, warnings := uninstallTarget(t, tg)
+			assert.True(t, removed)
+			assert.Empty(t, warnings)
+			assert.NoDirExists(t, tg.Dir)
+			after, err := os.ReadDir(parent)
+			require.NoError(t, err)
+			assert.Len(t, after, len(before)-1, "only the target directory is gone")
+		})
+	}
+}
+
+// A target that was not installed removes nothing, an empty skills directory
+// included.
+func TestUninstallAbsentTargetKeepsEmptyParent(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	parent := filepath.Dir(tg.Dir)
+	require.NoError(t, os.MkdirAll(parent, 0o755))
+
+	removed, warnings := uninstallTarget(t, tg)
+	assert.False(t, removed)
+	assert.Empty(t, warnings)
+	assert.DirExists(t, parent)
+}
+
+// A skills directory that is a symlink stays, and so does the directory it
+// points to.
+func TestUninstallKeepsSymlinkedParent(t *testing.T) {
+	skipIfNoSymlinks(t)
+	SetSource(testSource(t))
+	base := t.TempDir()
+	realDir := filepath.Join(base, "real-skills")
+	require.NoError(t, os.MkdirAll(realDir, 0o755))
+	harnessDir := filepath.Join(base, ".claude")
+	require.NoError(t, os.MkdirAll(harnessDir, 0o755))
+	parent := filepath.Join(harnessDir, "skills")
+	testfs.Symlink(t, realDir, parent)
+	tg := Target{Harness: "claude", Scope: ScopeUser, Dir: filepath.Join(parent, "rancher")}
+	install(t, tg, "v1.0.0")
+
+	removed, warnings := uninstallTarget(t, tg)
+	assert.True(t, removed)
+	assert.Empty(t, warnings)
+	assert.NoDirExists(t, filepath.Join(realDir, "rancher"))
+	info, err := os.Lstat(parent)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&os.ModeSymlink, "the link stays")
+	assert.DirExists(t, realDir)
+}
+
+// An empty skills directory that cannot be removed adds one warning that
+// names it and the error; the target is still removed and no error returns.
+func TestUninstallEmptyParentRemovalFailureWarns(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	install(t, tg, "v1.0.0")
+	parent := filepath.Dir(tg.Dir)
+	removeParentHook = func(string) error { return fmt.Errorf("induced removal failure") }
+	t.Cleanup(func() { removeParentHook = nil })
+
+	removed, warnings := uninstallTarget(t, tg)
+	assert.True(t, removed)
+	assert.Equal(t, []string{
+		"could not remove the empty directory " + parent + ": induced removal failure",
+	}, warnings)
+	assert.NoDirExists(t, tg.Dir)
+	assert.DirExists(t, parent)
+}
+
+// A removal that fails because an entry appeared in the directory since it was
+// read is not a failure to report: the directory is not empty any more.
+func TestUninstallParentRemovalRaceWithNewEntryIsSilent(t *testing.T) {
+	SetSource(testSource(t))
+	tg := targetIn(t)
+	install(t, tg, "v1.0.0")
+	parent := filepath.Dir(tg.Dir)
+	removeParentHook = func(dir string) error {
+		if err := os.WriteFile(filepath.Join(dir, "late.txt"), []byte("x\n"), 0o644); err != nil {
+			return err
+		}
+		return fmt.Errorf("directory not empty")
+	}
+	t.Cleanup(func() { removeParentHook = nil })
+
+	removed, warnings := uninstallTarget(t, tg)
+	assert.True(t, removed)
+	assert.Empty(t, warnings)
+	assert.DirExists(t, parent)
 }
 
 // Crash between remove and rename leaves ABSENT (never mixed) - asserted via
@@ -368,7 +513,7 @@ func TestUninstallAbsentIsFilesystemNoOp(t *testing.T) {
 
 	leases, err := Acquire(testLockDir(tg), []Target{tg}, "uninstall", false)
 	require.NoError(t, err)
-	removed, err := leases[0].Uninstall()
+	removed, _, err := leases[0].Uninstall()
 	ReleaseAll(leases)
 	require.NoError(t, err)
 	assert.False(t, removed)
@@ -391,7 +536,7 @@ func TestUninstallAbsentLeaseBlocksConcurrentInstall(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "another skill operation")
 
-	removed, err := leases[0].Uninstall()
+	removed, _, err := leases[0].Uninstall()
 	ReleaseAll(leases)
 	require.NoError(t, err)
 	assert.False(t, removed)

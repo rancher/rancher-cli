@@ -557,22 +557,72 @@ func (l *Lease) current(cliVersion string) bool {
 	return maps.EqualFunc(have, want, bytes.Equal)
 }
 
+// removeParentHook, when non-nil, replaces the removal of the emptied parent
+// directory - the failure seam for tests. Always nil in production.
+var removeParentHook func(path string) error
+
 // Uninstall removes the leased owned installation. Absent = no-op success -
 // stable under the held OS-user-cache lock: a concurrent rancher install
 // of the same target serializes on the same lock file, so absence cannot
-// flip mid-operation.
-func (l *Lease) Uninstall() (bool, error) {
+// flip mid-operation. After it removed the target, the parent (the harness's
+// skills directory) is removed too when it is empty; an empty parent that
+// cannot be removed adds a warning and does not fail the uninstall.
+func (l *Lease) Uninstall() (removed bool, warnings []string, err error) {
 	t := l.target
 	if err := validateTarget(t, "uninstall", false); err != nil {
-		return false, err
+		return false, nil, err
 	}
 	if _, err := os.Stat(t.Dir); os.IsNotExist(err) {
-		return false, nil
+		return false, nil, nil
 	}
 	if err := os.RemoveAll(t.Dir); err != nil {
-		return false, err
+		return false, nil, err
 	}
-	return true, nil
+	if w := removeEmptyParent(filepath.Dir(t.Dir)); w != "" {
+		warnings = append(warnings, w)
+	}
+	return true, warnings, nil
+}
+
+// removeEmptyParent removes dir when it is a real, empty directory and
+// returns "" for every state it leaves alone: a symlink, a non-directory, a
+// directory that holds any entry (leftovers of the install included). It
+// returns a warning when an empty directory could not be removed or the state
+// of dir could not be read.
+func removeEmptyParent(dir string) string {
+	warn := func(err error) string {
+		return fmt.Sprintf("could not remove the empty directory %s: %v", dir, err)
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ""
+		}
+		return warn(err)
+	}
+	if !info.IsDir() {
+		return ""
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return warn(err)
+	}
+	if len(entries) > 0 {
+		return ""
+	}
+	remove := os.Remove
+	if removeParentHook != nil {
+		remove = removeParentHook
+	}
+	rmErr := remove(dir)
+	if rmErr == nil || os.IsNotExist(rmErr) {
+		return ""
+	}
+	// Something else may have put an entry into dir since it was read.
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+		return ""
+	}
+	return warn(rmErr)
 }
 
 // StatusTarget classifies one target. Read-only and lock-free.

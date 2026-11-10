@@ -30,10 +30,20 @@ jsonquery stdout data.0.verdict modified
 # Repair, then remove.
 exec rancher skill install -o json
 jsonquery stdout data.0.action changed
-exec rancher skill uninstall -o json
-jsonquery stdout data.0.action changed
+
+# Uninstall prints only the columns it fills and removes the skills directory
+# it emptied; status prints no ACTION column.
+exec rancher skill uninstall
+stdout 'HARNESS\s+SCOPE\s+ACTION\s+DETAIL'
+! stdout VERDICT
+! stdout VERSION
+! exists $WORK/home/.claude/skills
+exists $WORK/home/.claude
 exec rancher skill status -o json
 jsonquery stdout data.0.verdict absent
+exec rancher skill status
+stdout 'HARNESS\s+SCOPE\s+VERDICT\s+VERSION\s+DETAIL'
+! stdout ACTION
 
 # Fresh-machine shape: no harness homes -> empty report, exit 0, warning.
 env HOME=$WORK/empty

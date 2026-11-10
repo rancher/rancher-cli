@@ -79,7 +79,7 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 	res, err = NewStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus)
-	rows := res.Data.(skillOutcomes)
+	rows := res.Data.(skillStatusOutcomes)
 	require.Len(t, rows, 1)
 	assert.Equal(t, skillinstall.VerdictInSync, rows[0].Verdict)
 
@@ -91,8 +91,8 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 
 	res, err = NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
-	outs = res.Data.(skillOutcomes)
-	assert.Equal(t, "changed", outs[0].Action)
+	uninstalled := res.Data.(skillUninstallOutcomes)
+	assert.Equal(t, "changed", uninstalled[0].Action)
 
 	res, err = NewStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestSkillInstallUpgradeIsChangedAndAgreesWithStatus(t *testing.T) {
 	res, err := NewStatus("v2.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus)
-	status := res.Data.(skillOutcomes)
+	status := res.Data.(skillStatusOutcomes)
 	require.Len(t, status, 1)
 	assert.Equal(t, rows["claude"].Verdict, status[0].Verdict)
 	assert.Equal(t, rows["claude"].CLIVersion, status[0].CLIVersion)
@@ -241,7 +241,7 @@ func TestSkillStatusFreshMachineEmptyReport(t *testing.T) {
 	res, err := NewStatus("v1.0.0").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitStatus)
-	assert.Empty(t, res.Data.(skillOutcomes))
+	assert.Empty(t, res.Data.(skillStatusOutcomes))
 	assert.NotEmpty(t, res.Warnings)
 }
 
@@ -340,46 +340,287 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	assert.Contains(t, text, "to see each target's state, run: rancher skill status --scope user; to see every reason, run the command again with -o json")
 }
 
-// TestSkillOutcomesImplementsTabular asserts that skillOutcomes implements
-// output.Tabular and that its column headers and row cells are correct.
-// This asserts the default (-o table) rendering path, which the existing tests
-// exercise only via -o json.
-func TestSkillOutcomesImplementsTabular(t *testing.T) {
-	t.Parallel()
-	var _ output.Tabular = skillOutcomes(nil)
+// tableCase produces the table one command prints for one outcome.
+type tableCase struct {
+	name string
+	// run returns the command's result payload.
+	run func(t *testing.T) output.Tabular
+	// key is a column and the value its cell must have in the only row, so a
+	// case cannot drift to another outcome.
+	key, want string
+	// allowedEmpty names the columns that legitimately have no value for the
+	// outcome, each with the reason.
+	allowedEmpty map[string]string
+}
 
-	s := skillOutcomes{
-		{
-			Target:     skillinstall.Target{Harness: "claude", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.claude/skills/rancher"},
-			Action:     "changed",
-			Verdict:    skillinstall.VerdictInSync,
-			CLIVersion: "v1.2.3",
-		},
-		{
-			Target: skillinstall.Target{Harness: "agents", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.agents/skills/rancher"},
-			Action: "skipped",
-			Reason: "not installed",
-		},
-		{
-			Target:     skillinstall.Target{Harness: "codex", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.codex/skills/rancher"},
-			Action:     "unchanged",
-			Verdict:    skillinstall.VerdictInSync,
-			CLIVersion: "v1.2.3",
-		},
+// installedClaude sets up a home with an installed skill and returns the input
+// that selects it.
+func installedClaude(t *testing.T) (home string, in skillInput) {
+	t.Helper()
+	home = skillHome(t, ".claude")
+	skillinstall.SetSource(skillTestSource(t))
+	in = skillInput{strings: map[string]string{"agent": "claude", "scope": "user"}}
+	_ = installRows(t, "v1.0.0", in)
+	return home, in
+}
+
+func tableOf(t *testing.T, res runtime.Result, err error) output.Tabular {
+	t.Helper()
+	require.NoError(t, err)
+	tab, ok := res.Data.(output.Tabular)
+	require.True(t, ok, "%T is not a table", res.Data)
+	return tab
+}
+
+func installTable(t *testing.T, in skillInput) output.Tabular {
+	t.Helper()
+	res, err := NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
+	return tableOf(t, res, err)
+}
+
+func uninstallTable(t *testing.T, in skillInput) output.Tabular {
+	t.Helper()
+	res, err := NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
+	return tableOf(t, res, err)
+}
+
+func statusTable(t *testing.T, version string, in skillInput) output.Tabular {
+	t.Helper()
+	res, err := NewStatus(version).(skillStatusCmd).Execute(t.Context(), in, nil)
+	return tableOf(t, res, err)
+}
+
+// TestSkillTablesShowOnlyTheColumnsTheCommandFills asserts each command's
+// columns and that every cell of every row it prints has a value, for each
+// outcome the command produces. A column that is empty for a produced outcome
+// has to be named with a reason.
+func TestSkillTablesShowOnlyTheColumnsTheCommandFills(t *testing.T) {
+	installColumns := []string{"HARNESS", "SCOPE", "ACTION", "VERDICT", "VERSION", "DETAIL"}
+	uninstallColumns := []string{"HARNESS", "SCOPE", "ACTION", "DETAIL"}
+	statusColumns := []string{"HARNESS", "SCOPE", "VERDICT", "VERSION", "DETAIL"}
+	noVersion := map[string]string{"VERSION": "the installed version is not read from a missing or foreign directory"}
+
+	tests := []struct {
+		command string
+		columns []string
+		cases   []tableCase
+	}{
+		{"skill install", installColumns, []tableCase{
+			{name: "changed", key: "ACTION", want: "changed", run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				skillHome(t, ".claude")
+				skillinstall.SetSource(skillTestSource(t))
+				return installTable(t, skillInput{strings: map[string]string{"agent": "claude"}})
+			}},
+			{name: "unchanged", key: "ACTION", want: "unchanged", run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				_, in := installedClaude(t)
+				return installTable(t, in)
+			}},
+			{name: "verdict check failed", key: "ACTION", want: "changed",
+				allowedEmpty: map[string]string{"VERDICT": "the check that gives the verdict failed; a warning names it"},
+				run: func(t *testing.T) output.Tabular {
+					t.Helper()
+					skillHome(t, ".claude")
+					skillinstall.SetSource(skillTestSource(t))
+					statusTarget = func(skillinstall.Target, string) (skillinstall.Verdict, string, error) {
+						return "", "", fmt.Errorf("induced check failure")
+					}
+					t.Cleanup(func() { statusTarget = skillinstall.StatusTarget })
+					return installTable(t, skillInput{strings: map[string]string{"agent": "claude"}})
+				}},
+		}},
+		{"skill uninstall", uninstallColumns, []tableCase{
+			{name: "changed", key: "ACTION", want: "changed", run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				_, in := installedClaude(t)
+				return uninstallTable(t, in)
+			}},
+			{name: "skipped", key: "ACTION", want: "skipped", run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				skillHome(t, ".claude")
+				skillinstall.SetSource(skillTestSource(t))
+				return uninstallTable(t, skillInput{strings: map[string]string{"agent": "claude"}})
+			}},
+		}},
+		{"skill status", statusColumns, []tableCase{
+			{name: "in-sync", key: "VERDICT", want: "in-sync", run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				_, in := installedClaude(t)
+				return statusTable(t, "v1.0.0", in)
+			}},
+			{name: "skew", key: "VERDICT", want: "skew", run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				_, in := installedClaude(t)
+				return statusTable(t, "v2.0.0", in)
+			}},
+			{name: "modified", key: "VERDICT", want: "modified", run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				home, in := installedClaude(t)
+				require.NoError(t, os.WriteFile(filepath.Join(home, ".claude", "skills", "rancher", "extra.md"), []byte("x\n"), 0o644))
+				return statusTable(t, "v1.0.0", in)
+			}},
+			{name: "foreign", key: "VERDICT", want: "foreign", allowedEmpty: noVersion, run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				home := skillHome(t, ".claude")
+				skillinstall.SetSource(skillTestSource(t))
+				dir := filepath.Join(home, ".claude", "skills", "rancher")
+				require.NoError(t, os.MkdirAll(dir, 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644))
+				return statusTable(t, "v1.0.0", skillInput{strings: map[string]string{"agent": "claude"}})
+			}},
+			{name: "absent", key: "VERDICT", want: "absent", allowedEmpty: noVersion, run: func(t *testing.T) output.Tabular {
+				t.Helper()
+				skillHome(t, ".claude")
+				skillinstall.SetSource(skillTestSource(t))
+				return statusTable(t, "v1.0.0", skillInput{strings: map[string]string{"agent": "claude"}})
+			}},
+		}},
 	}
-	assert.Equal(t, []string{"HARNESS", "SCOPE", "ACTION", "VERDICT", "VERSION", "DETAIL"}, s.Columns())
-	rows := s.Rows()
-	require.Len(t, rows, 3)
-	assert.Equal(t, "claude", rows[0][0])
-	assert.Equal(t, "user", rows[0][1])
-	assert.Equal(t, "changed", rows[0][2])
-	assert.Equal(t, "in-sync", rows[0][3])
-	assert.Equal(t, "v1.2.3", rows[0][4])
-	assert.Equal(t, "/home/bob/.claude/skills/rancher", rows[0][5]) // dir when no reason
-	assert.Equal(t, "agents", rows[1][0])
-	assert.Equal(t, "skipped", rows[1][2])
-	assert.Equal(t, "not installed", rows[1][5]) // reason when set
-	assert.Equal(t, "unchanged", rows[2][2])
-	assert.Equal(t, "in-sync", rows[2][3])
-	assert.Equal(t, "v1.2.3", rows[2][4])
+	for _, c := range tests {
+		for _, tc := range c.cases {
+			t.Run(c.command+"/"+tc.name, func(t *testing.T) {
+				tab := tc.run(t)
+				assert.Equal(t, c.columns, tab.Columns())
+				rows := tab.Rows()
+				require.Len(t, rows, 1)
+				require.Len(t, rows[0], len(c.columns))
+				for i, col := range c.columns {
+					if col == tc.key {
+						assert.Equal(t, tc.want, rows[0][i], "the case produces the outcome it names")
+					}
+					if _, ok := tc.allowedEmpty[col]; ok {
+						assert.Empty(t, rows[0][i], "%s is listed as empty and has a value", col)
+						continue
+					}
+					assert.NotEmpty(t, rows[0][i], "%s is empty", col)
+				}
+			})
+		}
+	}
+}
+
+// TestSkillTablesRowsFollowColumns asserts the cells of a row against fixed
+// outcomes: the directory is the detail when there is no reason, and the reason
+// is the detail when there is one.
+func TestSkillTablesRowsFollowColumns(t *testing.T) {
+	t.Parallel()
+	installed := skillinstall.Target{Harness: "claude", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.claude/skills/rancher"}
+	missing := skillinstall.Target{Harness: "agents", Scope: skillinstall.ScopeUser, Dir: "/home/bob/.agents/skills/rancher"}
+	outcomes := []skillinstall.Outcome{
+		{Target: installed, Action: "changed", Verdict: skillinstall.VerdictInSync, CLIVersion: "v1.2.3"},
+		{Target: missing, Action: "skipped", Reason: "not installed"},
+	}
+
+	assert.Equal(t, [][]string{
+		{"claude", "user", "changed", "in-sync", "v1.2.3", "/home/bob/.claude/skills/rancher"},
+		{"agents", "user", "skipped", "", "", "not installed"},
+	}, skillOutcomes(outcomes).Rows())
+	assert.Equal(t, [][]string{
+		{"claude", "user", "changed", "/home/bob/.claude/skills/rancher"},
+		{"agents", "user", "skipped", "not installed"},
+	}, skillUninstallOutcomes(outcomes).Rows())
+	assert.Equal(t, [][]string{
+		{"claude", "user", "in-sync", "v1.2.3", "/home/bob/.claude/skills/rancher"},
+		{"agents", "user", "", "", "not installed"},
+	}, skillStatusOutcomes(outcomes).Rows())
+}
+
+// Uninstall removes the skills directory it leaves empty, in the harness
+// folders it emptied and in no other place.
+func TestSkillUninstallRemovesEmptySkillsDirectory(t *testing.T) {
+	home := skillHome(t, ".claude", ".codex")
+	skillinstall.SetSource(skillTestSource(t))
+	in := skillInput{strings: map[string]string{}}
+	installRows(t, "v1.0.0", in)
+	other := filepath.Join(home, ".codex", "skills", "other")
+	require.NoError(t, os.MkdirAll(other, 0o755))
+
+	res, err := NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
+	require.NoError(t, err)
+	assert.Empty(t, res.Warnings)
+	assert.Equal(t, 0, res.ExitStatus)
+	assert.NoDirExists(t, filepath.Join(home, ".claude", "skills"))
+	assert.DirExists(t, filepath.Join(home, ".claude"))
+	assert.DirExists(t, other, "a skills directory with another entry stays")
+	assert.NoDirExists(t, filepath.Join(home, ".codex", "skills", "rancher"))
+}
+
+// Two harnesses that share one project directory give one target; it is
+// removed once, with its skills directory, and the command exits 0.
+func TestSkillUninstallSharedProjectTargetRemovedOnce(t *testing.T) {
+	skillHome(t)
+	skillinstall.SetSource(skillTestSource(t))
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	in := skillInput{strings: map[string]string{"agent": "all", "scope": "project"}}
+	res, err := NewInstall("v1.0.0").(skillInstallCmd).Execute(t.Context(), in, nil)
+	require.NoError(t, err)
+	var shared int
+	for _, o := range res.Data.(skillOutcomes) {
+		if filepath.Base(filepath.Dir(filepath.Dir(o.Target.Dir))) == ".agents" {
+			shared++
+		}
+	}
+	require.Equal(t, 1, shared, "copilot and agents share one target")
+
+	res, err = NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
+	require.NoError(t, err)
+	outs := res.Data.(skillUninstallOutcomes)
+	require.Len(t, outs, 3)
+	for _, o := range outs {
+		assert.Equal(t, "changed", o.Action)
+	}
+	assert.Empty(t, res.Warnings)
+	for _, d := range []string{".agents", ".claude", ".codex"} {
+		assert.NoDirExists(t, filepath.Join(cwd, d, "skills"))
+		assert.DirExists(t, filepath.Join(cwd, d))
+	}
+}
+
+// An empty skills directory that cannot be removed gives a warning on the
+// result; the row stays changed and the command succeeds.
+func TestSkillUninstallEmptyDirectoryRemovalFailureWarns(t *testing.T) {
+	home, in := installedClaude(t)
+	// Removing the target works with write access to skills; removing skills
+	// itself needs write access to the folder above it.
+	testfs.RestrictAccess(t, filepath.Join(home, ".claude"), 0o500)
+
+	res, err := NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
+	require.NoError(t, err)
+	outs := res.Data.(skillUninstallOutcomes)
+	require.Len(t, outs, 1)
+	assert.Equal(t, "changed", outs[0].Action)
+	assert.Equal(t, 0, res.ExitStatus)
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "could not remove the empty directory "+filepath.Join(home, ".claude", "skills"))
+	assert.DirExists(t, filepath.Join(home, ".claude", "skills"))
+}
+
+// An uninstall that fails for one target still reports the empty-directory
+// warning of another: the error carries the outcomes and the warning.
+func TestSkillUninstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
+	home := skillHome(t, ".claude", ".codex")
+	skillinstall.SetSource(skillTestSource(t))
+	in := skillInput{strings: map[string]string{}}
+	installRows(t, "v1.0.0", in)
+	// The claude target is removed but its skills directory cannot be; the
+	// codex target cannot be emptied.
+	testfs.RestrictAccess(t, filepath.Join(home, ".claude"), 0o500)
+	testfs.RestrictAccess(t, filepath.Join(home, ".codex", "skills", "rancher"), 0o500)
+
+	_, err := NewUninstall("v1.0.0").(skillUninstallCmd).Execute(t.Context(), in, nil)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	report, ok := ce.Details.(skillinstall.Report)
+	require.True(t, ok)
+	actions := map[string]string{}
+	for _, o := range report.Outcomes {
+		actions[o.Target.Harness] = o.Action
+	}
+	assert.Equal(t, map[string]string{"claude": "changed", "codex": "failed"}, actions)
+	warnings := ce.Warnings()
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "could not remove the empty directory "+filepath.Join(home, ".claude", "skills"))
 }

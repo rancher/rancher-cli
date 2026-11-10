@@ -157,7 +157,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 | `schema [command\|kind\|group]` | Schema manifest: bare = grouped table of contents; `<command>`/`<kind>`/`<group>` = one card; filter flags search all commands |
 | `completion <bash\|zsh\|fish\|pwsh>` | Print a shell completion script; `-o` is ignored, output is always the raw script |
 | `skill install` | Install the rancher-cli agent skill into coding-agent harnesses (a target that already holds the same files is left untouched and reported `unchanged`) |
-| `skill uninstall` | Remove the agent skills that rancher-cli installed (a skill directory that rancher-cli did not install is never removed: the command stops with an error and changes no target) |
+| `skill uninstall` | Remove the agent skills that rancher-cli installed (a skill directory that rancher-cli did not install is never removed: the command stops with an error and changes no target); a `skills` directory it leaves empty is removed too |
 | `skill status` | Report, for each harness, the installed skill version and whether its files are unchanged; exits 7 when a selected target is not in the expected state (another version, changed files, content rancher-cli did not install, or missing under --require-installed) |
 <!-- /conformance:commands-table -->
 
