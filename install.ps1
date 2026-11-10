@@ -671,14 +671,15 @@ namespace RancherCliInstall
     }
 
     # Attestation: capability probe, then verify. Anything short of a gh that
-    # is installed, supports --signer-workflow and is logged in takes the
+    # is installed, supports --cert-identity and --source-ref (gh 2.68.0 or
+    # newer, the first with --source-ref) and is logged in takes the
     # unavailable path (notice; fatal only with -VerifyAttestation). A capable
     # client's verification failure is fatal.
     function Test-GhCapable {
         $gh = Find-Command 'gh'
         if (-not $gh) { return $null }
         $r = Invoke-Process $gh @('attestation', 'verify', '--help')
-        if ($r.Out -notmatch 'signer-workflow') { return $null }
+        if ($r.Out -notmatch 'cert-identity' -or $r.Out -notmatch 'source-ref') { return $null }
         $r = Invoke-Process $gh @('auth', 'status')
         if ($r.Code -ne 0) { return $null }
         return $gh
@@ -857,15 +858,18 @@ namespace RancherCliInstall
         Test-Checksums
         $gh = Test-GhCapable
         if ($gh) {
+            # The check names the exact workflow file and the tag being installed.
+            # --cert-identity matches the workflow path and ref exactly; --source-ref
+            # adds the ref the run started from. --signer-workflow accepts any ref.
             foreach ($b in @((Join-Path $S.Work $S.CliAsset), (Join-Path $S.Work $S.HelperAsset))) {
-                $r = Invoke-Process $gh @('attestation', 'verify', $b, '--repo', $Repo, '--signer-workflow', "$Repo/.github/workflows/release.yaml")
-                if ($r.Code -ne 0) { Fail "build provenance attestation failed for $b" }
+                $r = Invoke-Process $gh @('attestation', 'verify', $b, '--repo', $Repo, '--cert-identity', "https://github.com/$Repo/.github/workflows/release.yaml@refs/tags/$($S.Tag)", '--source-ref', "refs/tags/$($S.Tag)")
+                if ($r.Code -ne 0) { Fail "build provenance attestation failed for $b - it needs an attestation that release.yaml made for refs/tags/$($S.Tag)" }
             }
             Write-Note "build provenance attestation verified"
         } elseif ($VerifyAttestation) {
-            Fail "-VerifyAttestation needs a gh CLI whose 'gh attestation verify' supports --signer-workflow, and a gh login (gh auth login)"
+            Fail "-VerifyAttestation needs gh 2.68.0 or newer (its 'gh attestation verify' supports --cert-identity and --source-ref) and a gh login (gh auth login)"
         } else {
-            Write-Note "notice: attestation skipped (gh is not installed, its 'gh attestation verify' does not support --signer-workflow, or gh is not logged in)"
+            Write-Note "notice: attestation skipped (gh is not installed, is older than 2.68.0, or is not logged in)"
         }
     }
 

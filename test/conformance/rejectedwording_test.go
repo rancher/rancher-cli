@@ -315,7 +315,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"caller-scoped"}, "with your permissions"},
 	{[]string{"canonical owner identity"}, "the owner's apiVersion|kind|namespace|name|uid"},
 	{[]string{"capability manifest"}, "schema manifest"},
-	{[]string{"capable authenticated"}, "a gh CLI that is logged in and whose 'gh attestation verify' supports --signer-workflow"},
+	{[]string{"capable authenticated"}, "a gh CLI 2.68.0 or newer that is logged in"},
 	{[]string{"cdn fetch", "storage fetch"}, "could not download from the redirect URL"},
 	{[]string{"channel server route"}, "name the path: it was not found on the server"},
 	{[]string{"clears cleanly"}, "succeeds and changes nothing"},

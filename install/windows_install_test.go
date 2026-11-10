@@ -578,7 +578,7 @@ func TestWindowsVerifyAttestationWithoutGhIsFatal(t *testing.T) {
 	home := newWinHome(t)
 	_, errOut, code := runInstallPs(t, s, sh, home, nil, "-VerifyAttestation")
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, errOut, "-VerifyAttestation needs a gh CLI whose 'gh attestation verify' supports --signer-workflow")
+	assert.Contains(t, errOut, "-VerifyAttestation needs gh 2.68.0 or newer (its 'gh attestation verify' supports --cert-identity and --source-ref)")
 	_, err := os.Lstat(home.binDir())
 	assert.True(t, os.IsNotExist(err), "a refused attestation must install nothing")
 }
@@ -597,7 +597,7 @@ func TestWindowsCapableGhAttestationRuns(t *testing.T) {
 	require.NoError(t, err)
 	var verified []string
 	for line := range strings.SplitSeq(string(raw), "\n") {
-		if strings.HasPrefix(line, "attestation verify ") && strings.Contains(line, "--signer-workflow rancher/rancher-cli/.github/workflows/release.yaml") {
+		if strings.HasPrefix(line, "attestation verify ") && strings.Contains(line, "--cert-identity https://github.com/rancher/rancher-cli/.github/workflows/release.yaml@refs/tags/v1.2.3 --source-ref refs/tags/v1.2.3") {
 			verified = append(verified, line)
 		}
 	}

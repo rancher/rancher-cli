@@ -521,16 +521,19 @@ gh_run() {
 }
 
 # Attestation: capability probe, then verify. Anything short of a gh that is
-# installed, supports --signer-workflow and is logged in takes the
-# unavailable path (notice; fatal only with --verify-attestation). A capable
-# client's verification failure is fatal.
+# installed, supports --cert-identity and --source-ref (gh 2.68.0 or newer,
+# the first with --source-ref) and is logged in takes the unavailable path
+# (notice; fatal only with --verify-attestation). A capable client's
+# verification failure is fatal.
 #
 # Attestation verification talks to github.com regardless of BASE_URL -
 # that is where release attestations live. The auth check here is
 # deliberately NOT scoped to the download host.
 gh_capable() {
   command -v gh >/dev/null 2>&1 || return 1
-  gh_run attestation verify --help 2>/dev/null | grep -q 'signer-workflow' || return 1
+  _help="$(gh_run attestation verify --help 2>/dev/null)" || return 1
+  printf '%s\n' "$_help" | grep -q 'cert-identity' || return 1
+  printf '%s\n' "$_help" | grep -q 'source-ref' || return 1
   gh_run auth status >/dev/null 2>&1 || return 1
   return 0
 }
@@ -759,17 +762,21 @@ download() {
 verify() {
   verify_checksums
   if gh_capable; then
+    # The check names the exact workflow file and the tag being installed.
+    # --cert-identity matches the workflow path and ref exactly; --source-ref
+    # adds the ref the run started from. --signer-workflow accepts any ref.
     for _b in "$WORK/$CLI_ASSET" "$WORK/$HELPER_ASSET"; do
       gh_run attestation verify "$_b" --repo "$REPO" \
-        --signer-workflow "$REPO/.github/workflows/release.yaml" >/dev/null 2>&1 || \
-        err "build provenance attestation failed for $_b"
+        --cert-identity "https://github.com/$REPO/.github/workflows/release.yaml@refs/tags/$TAG" \
+        --source-ref "refs/tags/$TAG" >/dev/null 2>&1 || \
+        err "build provenance attestation failed for $_b - it needs an attestation that release.yaml made for refs/tags/$TAG"
     done
     note "build provenance attestation verified"
   else
     if [ -n "$REQUIRE_ATTESTATION" ]; then
-      err "--verify-attestation needs a gh CLI whose 'gh attestation verify' supports --signer-workflow, and a gh login (gh auth login)"
+      err "--verify-attestation needs gh 2.68.0 or newer (its 'gh attestation verify' supports --cert-identity and --source-ref) and a gh login (gh auth login)"
     fi
-    note "notice: attestation skipped (gh is not installed, its 'gh attestation verify' does not support --signer-workflow, or gh is not logged in)"
+    note "notice: attestation skipped (gh is not installed, is older than 2.68.0, or is not logged in)"
   fi
 }
 

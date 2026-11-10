@@ -368,7 +368,7 @@ files, or a directory link it did not create, with a notice. Unlike
 directory becomes the Windows directory link to the current version.
 
 Checksums (`SHA256SUMS`) are always verified. Build provenance is
-verified when a `gh` CLI that is logged in is available, and
+verified when a `gh` CLI 2.68.0 or newer that is logged in is available, and
 `--verify-attestation` makes that verification mandatory instead of
 best-effort.
 
@@ -450,13 +450,16 @@ from the environment when one is set.
 
    On macOS use `shasum -a 256 -c -` in place of `sha256sum -c -`. Each command
    prints `<name>: OK`. On Windows see [By hand](#by-hand).
-3. Optional: verify the build provenance with the GitHub CLI (it needs
-   `gh auth login`), for each of the two binaries:
+3. Optional: verify the build provenance with the GitHub CLI (2.68.0 or
+   newer; it needs `gh auth login`), for each of the two binaries:
 
    ```
    gh attestation verify rancher-linux-amd64 --repo rancher/rancher-cli \
-     --signer-workflow rancher/rancher-cli/.github/workflows/release.yaml
+     --cert-identity https://github.com/rancher/rancher-cli/.github/workflows/release.yaml@refs/tags/<tag> \
+     --source-ref refs/tags/<tag>
    ```
+
+   Use the tag you downloaded (for example `v0.1.0-beta.1`).
 
    The attestations cover the binaries, `rancher-schema.json`, `install.sh` and
    `install.ps1`; `SHA256SUMS` has none; it protects against a damaged
@@ -476,7 +479,7 @@ installer (PowerShell 7 or Windows PowerShell 5.1):
     irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1 | iex
 
 It verifies both binaries against `SHA256SUMS`, verifies build provenance
-when a `gh` that is logged in is available (`-VerifyAttestation` makes
+when gh 2.68.0 or newer is installed and logged in (`-VerifyAttestation` makes
 that mandatory), installs under `%LOCALAPPDATA%\rancher-cli`, and prints
 the `PATH` line to add - it never edits `PATH` itself. Its atomic switch
 to a new version relies on a directory rename that requires Windows 10
@@ -511,8 +514,9 @@ If the installer cannot be used, install by hand:
 
    Compare each output against its matching line in `SHA256SUMS`.
 4. Optionally verify build provenance for both:
-   `gh attestation verify rancher.exe --repo rancher/rancher-cli --signer-workflow rancher/rancher-cli/.github/workflows/release.yaml`,
-   then the same command with `rancher-credential-vault.exe`.
+   `gh attestation verify rancher.exe --repo rancher/rancher-cli --cert-identity https://github.com/rancher/rancher-cli/.github/workflows/release.yaml@refs/tags/<tag> --source-ref refs/tags/<tag>`
+   with the tag you downloaded (for example `v0.1.0-beta.1`), then the same
+   command with `rancher-credential-vault.exe`.
 5. Only after both binaries verify, place them in a directory on `PATH`.
 
 ##### Notepad on Windows 11

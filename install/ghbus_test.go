@@ -37,7 +37,7 @@ func recordingGh(t *testing.T) (dir, callLog string) {
 		"  'auth token') exit 1 ;;\n" +
 		"  'auth status') exit \"${RANCHER_TEST_GH_STATUS_RC:-0}\" ;;\n" +
 		"  'attestation verify')\n" +
-		"    if [ \"$3\" = --help ]; then echo '--signer-workflow'; exit 0; fi\n" +
+		"    if [ \"$3\" = --help ]; then echo '--cert-identity'; echo '--source-ref'; exit 0; fi\n" +
 		"    exit \"${RANCHER_TEST_GH_VERIFY_RC:-0}\" ;;\n" +
 		"esac\nexit 0\n"
 	testfs.WriteExecutable(t, filepath.Join(dir, "gh"), []byte(script))
@@ -267,7 +267,7 @@ func TestGhRunSessionBusRows(t *testing.T) {
 				if i >= 3 {
 					assert.Contains(t, argv, "with space/", "the file argument must arrive whole")
 					assert.Truef(t, strings.HasSuffix(argv,
-						"][--repo][rancher/rancher-cli][--signer-workflow][rancher/rancher-cli/.github/workflows/release.yaml]"),
+						"][--repo][rancher/rancher-cli][--cert-identity][https://github.com/rancher/rancher-cli/.github/workflows/release.yaml@refs/tags/v1.2.3][--source-ref][refs/tags/v1.2.3]"),
 						"verify arguments: %q", argv)
 				}
 			}
@@ -314,7 +314,7 @@ func TestGhRunPassesGhExitStatus(t *testing.T) {
 		res := runBusInstall(t, busRun{kernel: "Linux", env: []string{"RANCHER_TEST_GH_STATUS_RC=1"},
 			args: []string{"--verify-attestation"}})
 		require.NotEqual(t, 0, res.code)
-		assert.Contains(t, res.errOut, "--verify-attestation needs a gh CLI")
+		assert.Contains(t, res.errOut, "--verify-attestation needs gh 2.68.0 or newer")
 	})
 	t.Run("verification fails", func(t *testing.T) {
 		t.Parallel()

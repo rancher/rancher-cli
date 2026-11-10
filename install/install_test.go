@@ -142,7 +142,7 @@ func TestVerifyAttestationWithoutGhIsFatal(t *testing.T) {
 	// probe fails deterministically regardless of the host.
 	_, errOut, code := runInstall(t, s, []string{"PATH=" + toolPath(t, baseTools...)}, "--verify-attestation")
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, errOut, "--verify-attestation needs a gh CLI whose 'gh attestation verify' supports --signer-workflow")
+	assert.Contains(t, errOut, "--verify-attestation needs gh 2.68.0 or newer (its 'gh attestation verify' supports --cert-identity and --source-ref)")
 }
 
 func TestReceiptSymlinkToDirectoryIsReplacedNotEntered(t *testing.T) {

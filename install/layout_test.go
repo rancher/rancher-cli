@@ -395,7 +395,7 @@ func TestCapableGhAttestationRuns(t *testing.T) {
 		"echo \"$@\" >> \"$RANCHER_TEST_GH_CALL_LOG\"\n" +
 		"case \"$1 $2\" in\n" +
 		"  'auth status') exit 0 ;;\n" +
-		"  'attestation verify') if [ \"$3\" = --help ] || [ \"$3\" = '' ]; then echo '--signer-workflow'; fi; exit 0 ;;\n" +
+		"  'attestation verify') if [ \"$3\" = --help ] || [ \"$3\" = '' ]; then echo '--cert-identity'; echo '--source-ref'; fi; exit 0 ;;\n" +
 		"esac\nexit 0\n"
 	testfs.WriteExecutable(t, filepath.Join(dir, "gh"), []byte(fake))
 	home := t.TempDir()
@@ -409,16 +409,16 @@ func TestCapableGhAttestationRuns(t *testing.T) {
 	// Twice, once per binary: a single count would pass if the helper's
 	// verification were dropped and only the CLI checked.
 	assert.Equal(t, 2, strings.Count(string(logBytes),
-		"--signer-workflow rancher/rancher-cli/.github/workflows/release.yaml"),
-		"both binaries must be verified against the pinned signer workflow")
+		"--cert-identity https://github.com/rancher/rancher-cli/.github/workflows/release.yaml@refs/tags/v1.2.3 --source-ref refs/tags/v1.2.3"),
+		"both binaries must be verified against the workflow identity and ref of the installed tag")
 	// And they are the two DIFFERENT binaries, not the CLI twice. The logged
 	// paths are absolute (the download work dir), so match on the asset stem
 	// rather than the whole argument.
 	var verified []string
 	for line := range strings.SplitSeq(string(logBytes), "\n") {
 		// The capability probe is also an "attestation verify" line
-		// ("--help"); only the real calls carry the pinned workflow.
-		if strings.HasPrefix(line, "attestation verify ") && strings.Contains(line, "--signer-workflow ") {
+		// ("--help"); only the real calls carry the identity.
+		if strings.HasPrefix(line, "attestation verify ") && strings.Contains(line, "--cert-identity ") {
 			verified = append(verified, line)
 		}
 	}

@@ -1336,6 +1336,11 @@ stamping (`-buildvcs=false`): Go otherwise writes the tag into the binary as the
 main module version, and a build on a tag would differ from one on main. The
 main-only check in the rehearsal job guards against a mistaken run; it is not a
 security boundary, because a branch's own copy of the workflow can drop it.
+The installers accept only an attestation that `release.yaml` made for the tag
+being installed (`refs/tags/<tag>`); a rehearsal asset, attested for
+`refs/heads/main`, does not pass an installer's check. The check trusts any run
+for a `v*` tag: who can push such a tag is set by the repository's tag
+protection.
 
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or

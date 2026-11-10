@@ -83,8 +83,10 @@ jobs:
   # No third-party install runs in this job, as in publish.
   # The first step refuses a ref other than main. It guards against a
   # dispatch from the wrong ref and is not a security boundary: a branch's
-  # own copy of this file can drop it, and the installers' signer-workflow
-  # check does not look at the ref.
+  # own copy of this file can drop it. The installers accept only an
+  # attestation made for the tag being installed; assets from a rehearsal or
+  # from a run on a branch do not pass their check. A run for a v* tag does,
+  # and tag protection decides who can push one.
   rehearse:
     if: github.event_name == 'workflow_dispatch'
     needs: validate

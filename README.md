@@ -61,7 +61,7 @@ The Linux and macOS installer puts `rancher` and its credential helper in
 `%LOCALAPPDATA%\rancher-cli\bin` (no root or admin rights needed, no
 profile or `PATH` edits; the installer prints the `PATH` line if needed).
 Checksums are always verified; build provenance is verified when a `gh`
-CLI that is logged in is available. The manual Windows steps are in
+CLI 2.68.0 or newer that is logged in is available. The manual Windows steps are in
 [REFERENCE.md](REFERENCE.md#windows) as a fallback. Install internals and
 manual download: [REFERENCE.md](REFERENCE.md#install-internals).
 
