@@ -273,7 +273,8 @@ func completionStepCount(steps []map[string]any) int {
 // step: checkout, setup-go, go-cache and the cache save with the commits
 // recorded in cacheUsesPins, the tools install the part needs (the shells
 // only for the tests-race-3 part, which also has the completion shell tests
-// step), and the part step.
+// step), the part step and the CPU model step (keys name and run only, the
+// text of linuxCPUCommand, which only prints).
 // The part jobs goCacheReaders lists (test-2, test-3, cachemodel) have
 // go-cache with restore-from in place of go-cache without it, and no cache
 // save. Any other step in a part job can change what the part runs.
@@ -305,7 +306,7 @@ func allowedPartSteps(jobID, part string) []map[string]any {
 			map[string]any{"uses": setupToolsAction, "with": map[string]any{"lint-tools": "false"}},
 			completionStep)
 	}
-	return steps
+	return append(steps, map[string]any{"name": linuxCPUStepName, "run": linuxCPUCommand + "\n"})
 }
 
 // partStepProblems returns the steps of a part job that are none of the
@@ -319,7 +320,7 @@ func partStepProblems(jobID, part string, steps []map[string]any) []string {
 	allowed := allowedPartSteps(jobID, part)
 	for i, step := range steps {
 		if !slices.ContainsFunc(allowed, func(a map[string]any) bool { return reflect.DeepEqual(a, step) }) {
-			out = append(out, fmt.Sprintf("job %s step %d is none of the steps a part job may have (checkout, setup-go, go-cache with restore-from and no cache save in a reader job or go-cache and the cache save in any other, setup-tools, the completion shell tests step and the part step, each exactly as listed in allowedPartSteps): %v", jobID, i+1, step))
+			out = append(out, fmt.Sprintf("job %s step %d is none of the steps a part job may have (checkout, setup-go, go-cache with restore-from and no cache save in a reader job or go-cache and the cache save in any other, setup-tools, the completion shell tests step, the part step and the CPU model step, each exactly as listed in allowedPartSteps): %v", jobID, i+1, step))
 		}
 	}
 	return out
@@ -342,7 +343,9 @@ func partStepProblems(jobID, part string, steps []map[string]any) []string {
 // job of tests-race-3, and in no other part job; go-cache with restore-from
 // and no cache save in test-2, test-3 and cachemodel, which restore the entry
 // of another job, go-cache without it and the cache save in the other part
-// jobs); that each part job has exactly the keys runs-on (ubuntu-latest),
+// jobs, and the CPU model step, which only prints, in every part job but lint
+// (TestEveryLinuxJobStartsByPrintingTheCPU checks where it stands));
+// that each part job has exactly the keys runs-on (ubuntu-latest),
 // timeout-minutes and steps; and that each job installs only the tools its
 // part uses (the shells only in the job of tests-race-3, whose completion
 // shell tests step is the only one that starts them in the race shards' jobs).
@@ -1045,6 +1048,7 @@ func TestPartJobStepRules(t *testing.T) {
 		return []map[string]any{a[0], a[1], a[2], a[4], a[3]}
 	}
 	assert.Empty(t, partStepProblems(job, testsConformanceStepBody, good()), "the listed steps")
+	assert.Empty(t, partStepProblems(job, testsConformanceStepBody, []map[string]any{{"name": linuxCPUStepName, "run": linuxCPUCommand + "\n"}}), "the CPU model step")
 	cacheModel := allowedPartSteps("cachemodel", testsCacheModelStepBody)
 	assert.Empty(t, partStepProblems("cachemodel", testsCacheModelStepBody, cacheModel), "the steps of the tests-cachemodel part")
 	for i, part := range []string{testsRace1StepBody, testsRace2StepBody} {
@@ -1098,6 +1102,10 @@ func TestPartJobStepRules(t *testing.T) {
 		"a setup-go with an if":               {setupGoWith("if", "always()")},
 		"a part step with a shell":            {{"run": testsConformanceStepBody, "shell": "bash"}},
 		"a part step with an env":             {{"run": testsConformanceStepBody, "env": map[string]any{"GOFLAGS": "-run=^$"}}},
+		"a CPU step with an if":               {{"name": linuxCPUStepName, "run": linuxCPUCommand + "\n", "if": "always()"}},
+		"a CPU step with an env":              {{"name": linuxCPUStepName, "run": linuxCPUCommand + "\n", "env": map[string]any{"GOFLAGS": "-run=^$"}}},
+		"a CPU step with a shell":             {{"name": linuxCPUStepName, "run": linuxCPUCommand + "\n", "shell": "bash"}},
+		"a CPU step with another command":     {{"name": linuxCPUStepName, "run": "echo done\n"}},
 		"a save whose if is another":          {{"uses": "actions/cache/save@" + cacheUsesPins["actions/cache/save"], "if": "always()", "with": map[string]any{"path": goCacheOutputExpr("go-cache", "path"), "key": goCacheOutputExpr("go-cache", "key")}}},
 		"a go-cache with another name":        {{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": "other"}}},
 		"a go-cache that passes setup-go-key": {{"id": "go-cache", "uses": goCacheAction, "with": map[string]any{"name": job, "setup-go-key": "true"}}},

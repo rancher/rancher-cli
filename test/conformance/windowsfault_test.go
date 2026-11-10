@@ -27,9 +27,22 @@ const (
 	e2eScriptPath      = "scripts/e2e"
 	e2eScriptCommand   = "bash scripts/e2e"
 	autocrlfCommand    = "git config --global core.autocrlf false"
-	faultCPUCommand    = "Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name"
+	faultCPUCommand    = "Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Format-List Name, NumberOfLogicalProcessors"
 	faultInstallRun    = "sudo apt-get update\nsudo apt-get install -y --no-install-recommends strace\nstrace -V | sed -n 1p\nmkdir -p \"$FAULT_LOG_DIR\""
 )
+
+// linuxCPUCommand is the run body of the step that prints the CPU model and
+// count on a Linux runner. The ci.yaml jobs, the part job step list, the
+// fault-check job rule and the Linux CPU step rule all use this one text. The
+// step only prints: each command ends in a form that cannot exit non-zero, so
+// a runner with no model name field (arm64) or no nproc does not fail the job.
+const linuxCPUCommand = "grep -m1 'model name' /proc/cpuinfo || true\necho \"cpus: $(nproc || true)\""
+
+// linuxCPUStepName is the name of that step, checked by the same rules.
+const linuxCPUStepName = "CPU model"
+
+// linuxCPUStepKeys are the exact keys of the Linux CPU step.
+var linuxCPUStepKeys = []string{"name", "run"}
 
 // faultStep is one step of a job with every key it carries; a key
 // no rule allows is visible.
@@ -240,8 +253,15 @@ func faultCheckJobProblems(jobs map[string]faultJob) []string {
 			}
 		case strings.Contains(run, "go test") || strings.Contains(run, e2eScriptPath):
 			add("write each traced command as the whole run of one step:", run)
+		case run == linuxCPUCommand:
+			if !slices.Equal(step.keys(), linuxCPUStepKeys) {
+				add("the CPU model step must have exactly the keys name and run, got", list(step.keys()))
+			}
+			if step.text("name") != linuxCPUStepName {
+				add("the CPU model step must be named", linuxCPUStepName+", got", step.text("name"))
+			}
 		case run != "" && run != faultInstallRun:
-			add("a step may run only a traced command, the strace install or", faultCheckRun+", because any other command can change what the traced commands run under:", run)
+			add("a step may run only a traced command, the CPU model step, the strace install or", faultCheckRun+", because any other command can change what the traced commands run under:", run)
 		case run == faultInstallRun:
 			for _, key := range step.keys() {
 				if !slices.Contains(faultStepKeySet, key) {
@@ -370,6 +390,7 @@ func TestFaultCheckJobRules(t *testing.T) {
 	saveStep := "      - uses: actions/cache/save@" + cacheSHA + " # v6.1.0\n        if: ${{ github.event_name == 'push' }}\n        with:\n          path: ~/go/pkg/mod\n          key: fault-check\n"
 	goCacheStep := "      - uses: " + goCacheAction + "\n        with:\n          name: fault-check\n"
 	windowsJobEnd := e2eStep + "        timeout-minutes: 25\n"
+	linuxCPUStepYAML := "      - name: " + linuxCPUStepName + "\n        run: |\n" + indentLines(linuxCPUCommand, "          ") + "\n"
 
 	for _, c := range []struct {
 		name, text, want string
@@ -397,11 +418,16 @@ func TestFaultCheckJobRules(t *testing.T) {
 		{"a step after the check step is not a cache save", edit(checkStep, checkStep+"      - run: echo done\n"), "only cache save steps may follow"},
 		{"a save step before the check step carries an if", edit("      - name: Install strace\n", saveStep+"      - name: Install strace\n"), "must not carry an if"},
 		{"setup-go sets a cache input the other jobs do not", edit("      - name: Install strace\n", "      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0\n        with:\n          cache: true\n      - name: Install strace\n"), "setup-go sets cache true"},
-		{"a step writes to the environment of the later steps", edit(e2eStep, "      - run: echo \"GOFLAGS=\" >> \"$GITHUB_ENV\"\n"+e2eStep), "a step may run only a traced command, the strace install or"},
-		{"a step runs another command", edit(e2eStep, "      - run: echo done\n"+e2eStep), "a step may run only a traced command, the strace install or"},
+		{"a step writes to the environment of the later steps", edit(e2eStep, "      - run: echo \"GOFLAGS=\" >> \"$GITHUB_ENV\"\n"+e2eStep), "a step may run only a traced command, the CPU model step, the strace install or"},
+		{"a step runs another command", edit(e2eStep, "      - run: echo done\n"+e2eStep), "a step may run only a traced command, the CPU model step, the strace install or"},
+		{"the CPU model step before the traced commands", edit(e2eStep, linuxCPUStepYAML+e2eStep), ""},
+		{"the CPU model step with an env", edit(e2eStep, linuxCPUStepYAML+"        env:\n          GOFLAGS: \"\"\n"+e2eStep), "the CPU model step must have exactly the keys name and run"},
+		{"the CPU model step with continue-on-error", edit(e2eStep, linuxCPUStepYAML+"        continue-on-error: true\n"+e2eStep), "the CPU model step must have exactly the keys name and run"},
+		{"the CPU model step with another name", edit(e2eStep, strings.Replace(linuxCPUStepYAML, "name: "+linuxCPUStepName, "name: Host", 1)+e2eStep), "the CPU model step must be named"},
+		{"the CPU model step with another command", edit(e2eStep, strings.Replace(linuxCPUStepYAML, "nproc", "nproc --all", 1)+e2eStep), "a step may run only a traced command, the CPU model step, the strace install or"},
 		{"the strace install step has a shell template", edit("      - name: Install strace\n        run: |\n", "      - name: Install strace\n        shell: sh -c 'echo GOFLAGS= >> \"$GITHUB_ENV\"' {0}\n        run: |\n"), "the strace install step must not carry the key shell"},
 		{"the strace install step sets its environment", edit("      - name: Install strace\n        run: |\n", "      - name: Install strace\n        env:\n          GOFLAGS: \"\"\n        run: |\n"), "the strace install step must not carry the key env"},
-		{"the strace install step changes", edit("          mkdir -p \"$FAULT_LOG_DIR\"\n", "          mkdir -p \"$FAULT_LOG_DIR\"\n          export GOFLAGS=\n"), "a step may run only a traced command, the strace install or"},
+		{"the strace install step changes", edit("          mkdir -p \"$FAULT_LOG_DIR\"\n", "          mkdir -p \"$FAULT_LOG_DIR\"\n          export GOFLAGS=\n"), "a step may run only a traced command, the CPU model step, the strace install or"},
 		{"the go cache action is accepted before the first test", edit("      - name: Install strace\n", goCacheStep+"      - name: Install strace\n"), ""},
 	} {
 		problems := faultCheckJobProblems(decodeFaultText(t, c.text))
@@ -679,6 +705,141 @@ func TestWindowsCPUStepRules(t *testing.T) {
 	} {
 		problems, windowsJobs := windowsCPUStepProblems("w.yaml", decodeFaultText(t, c.text))
 		assert.Equal(t, c.windowsJobs, windowsJobs, c.name)
+		if c.want == "" {
+			assert.Empty(t, problems, c.name)
+			continue
+		}
+		require.NotEmpty(t, problems, c.name)
+		assert.Contains(t, strings.Join(problems, "\n"), c.want, c.name)
+	}
+}
+
+// indentLines prefixes every line of text with indent.
+func indentLines(text, indent string) string {
+	lines := strings.Split(text, "\n")
+	for i, l := range lines {
+		lines[i] = indent + l
+	}
+	return strings.Join(lines, "\n")
+}
+
+// linuxCPUAllowlist names the jobs of ci.yaml on a Linux runner that do not
+// start by printing the CPU model, each with the reason.
+var linuxCPUAllowlist = map[string]string{
+	"lint": "runs scripts/validate static (gofmt, vet, go test -list and the lint tools) and no test",
+}
+
+// linuxCPUStepProblems returns what is wrong with the jobs of one workflow
+// file against the rule that a job on a Linux runner starts by printing the CPU
+// model and count, except the jobs in the allowlist. A runner counts as Linux
+// when runs-on is one plain name that does not start with windows or macos. It
+// also returns the number of Linux jobs it saw.
+func linuxCPUStepProblems(file string, jobs map[string]faultJob, allowlist map[string]string) (problems []string, linuxJobs int) {
+	for _, name := range slices.Sorted(maps.Keys(allowlist)) {
+		if _, ok := jobs[name]; !ok {
+			problems = append(problems, file+": the allowlist names the job "+name+", which does not exist")
+		}
+		if strings.TrimSpace(allowlist[name]) == "" {
+			problems = append(problems, file+": the allowlist entry for the job "+name+" has no reason")
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(jobs)) {
+		job := jobs[name]
+		where := file + " job " + name + ": "
+		runsOn, hasRunsOn := job.keys["runs-on"]
+		if !hasRunsOn {
+			if _, calls := job.keys["uses"]; !calls {
+				problems = append(problems, where+"the job has neither runs-on nor uses; write runs-on as one plain runner name so the CPU step rule can see the job")
+			}
+			continue
+		}
+		if runsOn.Kind != yaml.ScalarNode || strings.Contains(runsOn.Value, "${{") {
+			problems = append(problems, where+"write runs-on as one plain runner name so the CPU step rule can see the job")
+			continue
+		}
+		runner := strings.ToLower(runsOn.Value)
+		if strings.HasPrefix(runner, "windows") || strings.HasPrefix(runner, "macos") {
+			continue
+		}
+		linuxJobs++
+		if _, skip := allowlist[name]; skip {
+			continue
+		}
+		if len(job.steps) == 0 {
+			problems = append(problems, where+"the job has no steps; its first step must print the CPU model")
+			continue
+		}
+		first := job.steps[0]
+		if !slices.Equal(first.keys(), linuxCPUStepKeys) {
+			problems = append(problems, where+"the first step must print the CPU model with exactly the keys name and run, got "+strings.Join(first.keys(), ", "))
+			continue
+		}
+		if first.text("name") != linuxCPUStepName {
+			problems = append(problems, where+"the CPU step must be named "+linuxCPUStepName)
+		}
+		if strings.TrimSpace(first.text("run")) != linuxCPUCommand {
+			problems = append(problems, where+"the CPU step must run "+linuxCPUCommand)
+		}
+	}
+	return problems, linuxJobs
+}
+
+// TestEveryLinuxJobStartsByPrintingTheCPU asserts that every job of ci.yaml on
+// a Linux runner, except the jobs in linuxCPUAllowlist, has as its first step
+// the step that prints the CPU model and count. Timings of one job across
+// commits can then be told apart from a change of runner. Linux jobs of other
+// workflow files are out of scope.
+func TestEveryLinuxJobStartsByPrintingTheCPU(t *testing.T) {
+	t.Parallel()
+	problems, linuxJobs := linuxCPUStepProblems(ciWorkflowPath, readFaultWorkflow(t, ciWorkflowPath), linuxCPUAllowlist)
+	assert.Empty(t, problems)
+	assert.GreaterOrEqual(t, linuxJobs, 9, "the rule found fewer Linux jobs than ci.yaml has")
+}
+
+// TestLinuxCPUStepRules asserts what the checker of the Linux CPU step accepts
+// and refuses, over small workflow texts.
+func TestLinuxCPUStepRules(t *testing.T) {
+	t.Parallel()
+	cpuStep := "      - name: " + linuxCPUStepName + "\n        run: |\n" + indentLines(linuxCPUCommand, "          ") + "\n"
+	const otherStep = "      - run: go version\n"
+	job := func(runsOn, steps string) string {
+		return "jobs:\n  a:\n    runs-on: " + runsOn + "\n    steps:\n" + steps
+	}
+	for _, c := range []struct {
+		name, text, want string
+		allowlist        map[string]string
+		linuxJobs        int
+	}{
+		{"a Linux job that starts with the step", job("ubuntu-latest", cpuStep+otherStep), "", nil, 1},
+		{"a Windows job with no step", job("windows-latest", otherStep), "", nil, 0},
+		{"a macOS job with no step", job("macos-14", otherStep), "", nil, 0},
+		{"a Windows job named with a capital and no step", job("Windows-2022", otherStep), "", nil, 0},
+		{"a macOS job named with capitals and no step", job("macOS-14", otherStep), "", nil, 0},
+		{"a reusable workflow call with no runner", "jobs:\n  call:\n    uses: ./.github/workflows/other.yaml\n", "", nil, 0},
+		{"a Linux job with no step", job("ubuntu-latest", otherStep), "the first step must print the CPU model", nil, 1},
+		{"a Linux job with the step second", job("ubuntu-latest", otherStep+cpuStep), "the first step must print the CPU model", nil, 1},
+		{"a Linux job named with a capital and no step", job("Ubuntu-24.04", otherStep), "the first step must print the CPU model", nil, 1},
+		{"a Linux job with the step and a capital", job("Ubuntu-24.04", cpuStep+otherStep), "", nil, 1},
+		{"a Linux job with another command", job("ubuntu-latest", strings.Replace(cpuStep, "nproc", "nproc --all", 1)+otherStep), "the CPU step must run", nil, 1},
+		{"a Linux job that drops the count", job("ubuntu-latest", strings.Replace(cpuStep, "          echo \"cpus: $(nproc || true)\"\n", "", 1)+otherStep), "the CPU step must run", nil, 1},
+		{"a Linux job whose command can fail the step", job("ubuntu-latest", strings.Replace(cpuStep, " || true\n", "\n", 1)+otherStep), "the CPU step must run", nil, 1},
+		{"a Linux job whose step has a condition", job("ubuntu-latest", cpuStep+"        if: false\n"+otherStep), "exactly the keys name and run", nil, 1},
+		{"a Linux job whose step continues on error", job("ubuntu-latest", cpuStep+"        continue-on-error: true\n"+otherStep), "exactly the keys name and run", nil, 1},
+		{"a Linux job whose step has an env", job("ubuntu-latest", cpuStep+"        env:\n          A: b\n"+otherStep), "exactly the keys name and run", nil, 1},
+		{"a Linux job whose step names a shell", job("ubuntu-latest", cpuStep+"        shell: sh\n"+otherStep), "exactly the keys name and run", nil, 1},
+		{"a Linux job whose step uses an action", job("ubuntu-latest", "      - name: "+linuxCPUStepName+"\n        uses: actions/checkout@v7\n"+otherStep), "exactly the keys name and run", nil, 1},
+		{"a Linux job whose step has another name", job("ubuntu-latest", strings.Replace(cpuStep, "name: "+linuxCPUStepName, "name: Host", 1)+otherStep), "must be named " + linuxCPUStepName, nil, 1},
+		{"a Linux job with an empty step list", "jobs:\n  a:\n    runs-on: ubuntu-latest\n", "the job has no steps", nil, 1},
+		{"a runner list", job("[self-hosted, linux]", cpuStep+otherStep), "write runs-on as one plain runner name", nil, 0},
+		{"a runner from an expression", job("${{ matrix.os }}", otherStep), "write runs-on as one plain runner name", nil, 0},
+		{"a runner group mapping", "jobs:\n  a:\n    runs-on:\n      group: big\n    steps:\n" + otherStep, "write runs-on as one plain runner name", nil, 0},
+		{"a job with neither a runner nor a call", "jobs:\n  a:\n    steps:\n" + otherStep, "neither runs-on nor uses", nil, 0},
+		{"an allowed Linux job with no step", job("ubuntu-latest", otherStep), "", map[string]string{"a": "runs no test"}, 1},
+		{"an allowlist entry with no reason", job("ubuntu-latest", otherStep), "has no reason", map[string]string{"a": " "}, 1},
+		{"an allowlist entry for a job that does not exist", job("ubuntu-latest", cpuStep+otherStep), "names the job b, which does not exist", map[string]string{"b": "runs no test"}, 1},
+	} {
+		problems, linuxJobs := linuxCPUStepProblems("w.yaml", decodeFaultText(t, c.text), c.allowlist)
+		assert.Equal(t, c.linuxJobs, linuxJobs, c.name)
 		if c.want == "" {
 			assert.Empty(t, problems, c.name)
 			continue

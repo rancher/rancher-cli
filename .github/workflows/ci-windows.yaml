@@ -22,12 +22,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
-      # Informational: names the host and nothing gates on it. Prints one line
-      # per processor. A query error is not shown and does not fail the step,
-      # so a runner without WMI access prints nothing.
+      # Informational: names the host and nothing gates on it. Prints the model
+      # name and the number of logical processors of each processor socket. A
+      # query error is not shown and does not fail the step, so a runner
+      # without WMI access prints nothing.
       - name: CPU model
         shell: pwsh
-        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Format-List Name, NumberOfLogicalProcessors
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -46,12 +47,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
-      # Informational: names the host and nothing gates on it. Prints one line
-      # per processor. A query error is not shown and does not fail the step,
-      # so a runner without WMI access prints nothing.
+      # Informational: names the host and nothing gates on it. Prints the model
+      # name and the number of logical processors of each processor socket. A
+      # query error is not shown and does not fail the step, so a runner
+      # without WMI access prints nothing.
       - name: CPU model
         shell: pwsh
-        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Format-List Name, NumberOfLogicalProcessors
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -80,12 +82,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
-      # Informational: names the host and nothing gates on it. Prints one line
-      # per processor. A query error is not shown and does not fail the step,
-      # so a runner without WMI access prints nothing.
+      # Informational: names the host and nothing gates on it. Prints the model
+      # name and the number of logical processors of each processor socket. A
+      # query error is not shown and does not fail the step, so a runner
+      # without WMI access prints nothing.
       - name: CPU model
         shell: pwsh
-        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Format-List Name, NumberOfLogicalProcessors
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -112,12 +115,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      # Informational: names the host and nothing gates on it. Prints one line
-      # per processor. A query error is not shown and does not fail the step,
-      # so a runner without WMI access prints nothing.
+      # Informational: names the host and nothing gates on it. Prints the model
+      # name and the number of logical processors of each processor socket. A
+      # query error is not shown and does not fail the step, so a runner
+      # without WMI access prints nothing.
       - name: CPU model
         shell: pwsh
-        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+        run: Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Format-List Name, NumberOfLogicalProcessors
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
