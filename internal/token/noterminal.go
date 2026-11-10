@@ -187,7 +187,7 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 			of, signIn = of+" made"+through, signIn+through
 		}
 	}
-	msg := head + "; " + login.Instruction("to log in without one, pipe an API token"+of+" to: ")
+	msg := head + "; " + login.Instruction("to log in without a terminal, pipe an API token"+of+" to: ")
 	if choice != "" {
 		msg += "; " + choice
 	}
@@ -347,13 +347,16 @@ func CreateKubeconfigRemedy(clusterID string) string {
 // LoginRemedy is the auth login that stores a login for an exec entry's
 // call without a terminal: an API token piped to it.
 type LoginRemedy struct {
-	// Command is the auth login, a remedy command.
-	Command string
+	// command is the auth login, a remedy command. With an inline CA it holds
+	// --cacert <file>, which needs the clause Facts gives, so it is read only
+	// through Text, Instruction and Hint.
+	command string
 	// Named reports that the entry name is filled in; otherwise <name>
 	// stands for one the operator chooses.
 	Named bool
 	// InlineCA reports that the call carries its CA inline, so auth login
-	// needs it from a file the command cannot name.
+	// needs it from a file the command cannot name; Facts says what <file>
+	// stands for.
 	InlineCA bool
 	// CASource is where an inline CA came from: RANCHER_CLI_CACERT, or the
 	// server entry whose config.yaml record carries it, for a login of
@@ -376,23 +379,36 @@ type LoginRemedy struct {
 // first, then each step after "; then ".
 func (l LoginRemedy) Text() string {
 	if l.Then == "" {
-		return l.Command
+		return l.command
 	}
-	return l.Command + "; then " + l.Then
+	return l.command + "; then " + l.Then
 }
 
 // Facts says what the operator has to know before the login command: that
-// <name> is a name of their choice, and where an inline CA is carried, since
-// --cacert needs a file. It is empty when the command needs neither.
+// <name> is a name of their choice, and, where an inline CA is carried, that
+// --cacert needs a file and what <file> stands for. It is empty when the
+// command needs neither.
 func (l LoginRemedy) Facts() string {
 	var facts []string
 	if !l.Named {
 		facts = append(facts, "<name> stands for a name of your choice")
 	}
 	if l.InlineCA {
-		facts = append(facts, config.InlineCAHolder(l.CASource)+" and --cacert needs a file")
+		facts = append(facts, config.InlineCAHolder(l.CASource)+" and --cacert needs a file", config.CAFileMeaning)
 	}
 	return strings.Join(facts, "; ")
+}
+
+// inlineCAArg is the CA flag of a login whose CA is carried inline, with the
+// <file> placeholder: the command cannot name the file.
+func inlineCAArg() string {
+	return config.CAFileArg("--cacert")
+}
+
+// String is Instruction with no lead, so a print of the value (%v, %+v, %s)
+// carries Facts before the command, as every message does.
+func (l LoginRemedy) String() string {
+	return l.Instruction("")
 }
 
 // Instruction is the login as a sentence names it: Facts, then lead, which
@@ -410,13 +426,13 @@ func (l LoginRemedy) Instruction(lead string) string {
 func (l LoginRemedy) signIn(authConfig string) string {
 	switch {
 	case l.name == "" && l.InlineCA:
-		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --cacert <file> --auth-provider " + clierr.ShellQuote(authConfig)
+		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " " + inlineCAArg() + " --auth-provider " + clierr.ShellQuote(authConfig)
 	case l.name == "" && l.caPath != "":
 		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --cacert " + clierr.ShellQuote(l.caPath) + " --auth-provider " + clierr.ShellQuote(authConfig)
 	case l.name == "":
 		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --auth-provider " + clierr.ShellQuote(authConfig)
 	case l.InlineCA:
-		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" --cacert <file> --auth-provider "+clierr.ShellQuote(authConfig), l.name)
+		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" "+inlineCAArg()+" --auth-provider "+clierr.ShellQuote(authConfig), l.name)
 	case l.caPath != "":
 		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" --cacert "+clierr.ShellQuote(l.caPath)+" --auth-provider "+clierr.ShellQuote(authConfig), l.name)
 	}
@@ -429,13 +445,13 @@ func (l LoginRemedy) signIn(authConfig string) string {
 func (l LoginRemedy) pipedLogin() string {
 	switch {
 	case l.name == "" && l.InlineCA:
-		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --cacert <file> --token-stdin"
+		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " " + inlineCAArg() + " --token-stdin"
 	case l.name == "" && l.caPath != "":
 		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --cacert " + clierr.ShellQuote(l.caPath) + " --token-stdin"
 	case l.name == "":
 		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --token-stdin"
 	case l.InlineCA:
-		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" --cacert <file> --token-stdin", l.name)
+		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" "+inlineCAArg()+" --token-stdin", l.name)
 	case l.caPath != "":
 		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" --cacert "+clierr.ShellQuote(l.caPath)+" --token-stdin", l.name)
 	}
@@ -446,7 +462,7 @@ func (l LoginRemedy) pipedLogin() string {
 // command and nothing else.
 func (l LoginRemedy) Hint() string {
 	if l.Named && !l.InlineCA {
-		return l.Command
+		return l.command
 	}
 	return ""
 }
@@ -505,6 +521,6 @@ func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert stri
 	if named {
 		login.name = loginEntry
 	}
-	login.Command = login.pipedLogin()
+	login.command = login.pipedLogin()
 	return login
 }

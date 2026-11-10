@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -360,6 +361,24 @@ func TestRequestAllowlistRules(t *testing.T) {
 var fieldManagerPackages = sync.OnceValues(func() ([]*packages.Package, error) {
 	return loadPackages("./...", "")
 })
+
+// otherGOOSLoads holds the module type-checked once per process for each of
+// GOOS=windows and GOOS=linux.
+var otherGOOSLoads = map[string]func() ([]*packages.Package, error){
+	"windows": sync.OnceValues(func() ([]*packages.Package, error) { return loadPackages("./...", "windows") }),
+	"linux":   sync.OnceValues(func() ([]*packages.Package, error) { return loadPackages("./...", "linux") }),
+}
+
+// otherGOOSPackages is the module type-checked for goos, shared by every scan
+// that needs the files the build constraints of this machine leave out. It
+// returns nil for the platform of this machine: fieldManagerPackages is that
+// load.
+func otherGOOSPackages(goos string) ([]*packages.Package, error) {
+	if goos == runtime.GOOS {
+		return nil, nil
+	}
+	return otherGOOSLoads[goos]()
+}
 
 // loadPackages type-checks the packages of pattern. goos "" builds them for
 // the host; another value builds them for that GOOS without cgo.

@@ -9,6 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
+
+	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 )
 
 // TestKubeconfigNoticeOfAMissingLoginNamesTheVariablesCA asserts the notice
@@ -38,7 +41,8 @@ func TestKubeconfigNoticeOfAMissingLoginNamesTheVariablesCA(t *testing.T) {
 	assert.Contains(t, noticeFor(t, caPath), " --cacert '"+caPath+"'")
 	inline := noticeFor(t, pemCA)
 	assert.Contains(t, inline, "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file; ")
-	assert.Contains(t, inline, " --cacert <file> --token-stdin")
+	assert.Contains(t, inline, " "+config.CAFileArg("--cacert")+" --token-stdin")
+	remedytest.AssertClauseOnce(t, inline, config.CAFileMeaning, config.CAFileArg("--cacert"), true)
 	assert.NotContains(t, inline, "this exec entry carries the CA inline")
 	assert.NotContains(t, noticeFor(t, ""), "--cacert")
 }

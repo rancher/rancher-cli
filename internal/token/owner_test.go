@@ -490,7 +490,7 @@ func TestUserIDNeverReadsOrWritesAnotherUsersPluginLoginEntry(t *testing.T) {
 		_, err := x.call("prod-c-test", "user-carol", "", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-carol' to: "+
+		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without a terminal, pipe an API token of Rancher user 'user-carol' to: "+
 			"rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin; or run kubectl once in a terminal and sign in as 'user-carol'", msg)
 		assert.Equal(t, "rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
 	})

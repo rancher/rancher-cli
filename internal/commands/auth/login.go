@@ -108,18 +108,19 @@ func pinnedTrustFailure(err error, name, host string) error {
 // plain path can only point at the entry's saved CA.
 func loginVariableRemedy(urlPath bool, name string) string {
 	if urlPath {
-		return "the CA came from " + config.EnvCACert + " - pass --cacert <file> to this login, or unset " +
-			config.EnvCACert + ", or set it to the server's CA"
+		return "the CA came from " + config.EnvCACert + " - pass " + config.CAFileArg("--cacert") + " to this login, or unset " +
+			config.EnvCACert + ", or set it to the server's CA; " + config.CAFileMeaning
 	}
-	return "the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; to save a CA for this entry, run: " +
-		clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", name)
+	return "the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; " + config.CAFileMeaning +
+		"; to save a CA for this entry, run: " +
+		clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), name)
 }
 
 // loginSaveCARemedy is the remedy of an unknown-authority failure of a
 // plain login's verify step: the CA is the one the entry saves, so the
 // entry is where to change it.
 func loginSaveCARemedy(name string) string {
-	return "save it for this entry with: " + clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", name)
+	return config.CAFileMeaning + "; save it for this entry with: " + clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), name)
 }
 
 // verifyTLSRemedy words a certificate failure of the verify step. The
@@ -178,15 +179,18 @@ type connectionCA struct {
 // the saved CA, or with none.
 func variableNotice(name, savedSelector string) string {
 	q := clierr.ShellQuote(name)
-	save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", name)
+	save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), name)
+	lead, action := "", ""
 	if savedSelector == "" {
-		return "server entry " + q + " has no saved CA and this login used " + config.EnvCACert +
-			"; commands run without that variable will not trust the server (logout uses the variable for this entry); " +
-			"to save the CA, run: " + save
+		lead = "server entry " + q + " has no saved CA and this login used " + config.EnvCACert +
+			"; commands run without that variable will not trust the server (logout uses the variable for this entry); "
+		action = "to save the CA, run: "
+	} else {
+		lead = "server entry " + q + " keeps its saved CA, which differs from " + config.EnvCACert +
+			" that this login used; commands run without that variable, and logout, use the saved CA, and fail if it does not fit the server; "
+		action = "to replace it, run: "
 	}
-	return "server entry " + q + " keeps its saved CA, which differs from " + config.EnvCACert +
-		" that this login used; commands run without that variable, and logout, use the saved CA, and fail if it does not fit the server; " +
-		"to replace it, run: " + save
+	return lead + config.CAFileMeaning + "; " + action + save
 }
 
 // replacedUserWarning is the warning of a login that leaves a server entry

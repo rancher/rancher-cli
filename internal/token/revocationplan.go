@@ -671,11 +671,12 @@ func (d *Deletion) revokeTLSRemedy(it *revocationItem) tlstrust.Remedy {
 	fromVariable := d.clients[it.trust].fromVariable
 	if d.retry(it) == retryNextLogin {
 		entry := clierr.ShellQuote(it.entry)
-		save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", it.entry)
+		save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), it.entry)
+		meaning := config.CAFileMeaning
 		if fromVariable {
-			r.CA = "; the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; to save a CA for entry " + entry + ", run: " + save
+			r.CA = "; the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; " + meaning + "; to save a CA for entry " + entry + ", run: " + save
 		} else {
-			r.CA = "; save it for entry " + entry + " with: " + save
+			r.CA = "; " + meaning + "; save it for entry " + entry + " with: " + save
 		}
 		return r
 	}
@@ -684,12 +685,12 @@ func (d *Deletion) revokeTLSRemedy(it *revocationItem) tlstrust.Remedy {
 		r.CA = "; the CA came from " + config.EnvCACert + " in this command's environment - " +
 			"a Rancher administrator who deletes the token sets it to the server's CA in their own environment"
 	case it.ref != nil && it.ref.Kind == TokenKindV3:
-		r.CA = "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server; run: " +
-			clierr.Rancher + " config update-server <entry> --cacert <file>"
+		r.CA = "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server; " +
+			config.CAFileMeaning + "; run: " + clierr.Rancher + " config update-server <entry> " + config.CAFileArg("--cacert")
 	case fromVariable:
 		r.CA = "; the CA came from " + config.EnvCACert + " - set it to the server's CA before the recovery steps"
 	default:
-		r.CA = " and add --cacert <file> to the auth login in the recovery steps"
+		r.CA = " and add " + config.CAFileArg("--cacert") + " to the auth login in the recovery steps; " + config.CAFileMeaning
 	}
 	return r
 }
@@ -781,7 +782,7 @@ func (d *Deletion) advise(it *revocationItem) config.RecordAdvice {
 
 // serverCATail says how a login connects to a server whose certificate a
 // private CA signs.
-const serverCATail = "add --cacert <file with the server's CA certificate> to the login, or set " + config.EnvCACert + " to that file"
+var serverCATail = "add " + config.CAFileArg("--cacert") + " to the login, or set " + config.EnvCACert + " to that file; " + config.CAFileMeaning
 
 // Warnings are one line per manual token, its remedy marked, and one line
 // per entry for the tokens its next login revokes.
@@ -808,17 +809,19 @@ func (d *Deletion) Warnings() []string {
 		if k := needsCA[e]; k > 0 {
 			// Only a CA fixes an unknown authority, and the next login meets
 			// the same certificate until the entry saves it.
-			save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert <file>", e)
+			save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), e)
+			var failed string
 			switch {
 			case next[e] == 1:
-				line += "; its revoke failed on the server's certificate; first save the server's CA with: " + save
+				failed = "; its revoke failed on the server's certificate"
 			case k == next[e]:
-				line += "; their revokes failed on the server's certificate; first save the server's CA with: " + save
+				failed = "; their revokes failed on the server's certificate"
 			case k == 1:
-				line += "; the revoke of 1 of them failed on the server's certificate; first save the server's CA with: " + save
+				failed = "; the revoke of 1 of them failed on the server's certificate"
 			default:
-				line += fmt.Sprintf("; the revokes of %d of them failed on the server's certificate; first save the server's CA with: %s", k, save)
+				failed = fmt.Sprintf("; the revokes of %d of them failed on the server's certificate", k)
 			}
+			line += failed + "; " + config.CAFileMeaning + "; first save the server's CA with: " + save
 		}
 		out = append(out, line)
 	}

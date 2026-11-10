@@ -82,22 +82,22 @@ func TestNoTerminalLoginNamesTheCAFlagInsideTheCommand(t *testing.T) {
 	const pem = "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: url}}}
 	path := NoTerminalLogin(cfg, "team", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false)
-	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert '/etc/rancher/ca.pem' --token-stdin", clierr.ExpandRemedies(path.Command, ""))
+	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert '/etc/rancher/ca.pem' --token-stdin", clierr.ExpandRemedies(path.command, ""))
 	assert.Empty(t, path.Facts())
-	assert.Equal(t, path.Command, path.Hint())
+	assert.Equal(t, path.command, path.Hint())
 
 	inline := NoTerminalLogin(cfg, "team", "c-1", url, pem, config.CASource{Kind: config.CASourceVariable}, false)
-	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert <file> --token-stdin", clierr.ExpandRemedies(inline.Command, ""))
-	assert.Equal(t, "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file", inline.Facts())
+	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert <file> --token-stdin", clierr.ExpandRemedies(inline.command, ""))
+	assert.Equal(t, "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file; "+config.CAFileMeaning, inline.Facts())
 	assert.Empty(t, inline.Hint(), "a command with a placeholder is no hint")
 	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert <file> --auth-provider 'corp-ldap'", clierr.ExpandRemedies(inline.signIn("corp-ldap"), ""))
 
 	own := NoTerminalLogin(cfg, "prod", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false)
-	assert.Equal(t, "rancher auth login 'prod' --url 'https://r.example.com' --token-stdin", clierr.ExpandRemedies(own.Command, ""))
+	assert.Equal(t, "rancher auth login 'prod' --url 'https://r.example.com' --token-stdin", clierr.ExpandRemedies(own.command, ""))
 
 	unnamed := NoTerminalLogin(cfg, "", "c-1", url, "", config.CASource{}, false)
 	assert.Equal(t, "<name> stands for a name of your choice", unnamed.Facts())
-	assert.Equal(t, "<name> stands for a name of your choice; pipe an API token to: "+unnamed.Command, unnamed.Instruction("pipe an API token to: "))
+	assert.Equal(t, "<name> stands for a name of your choice; pipe an API token to: "+unnamed.command, unnamed.Instruction("pipe an API token to: "))
 }
 
 // TestLoginRemedyKeepsTheDashedNameAfterTheDoubleDash asserts the sign-in
@@ -107,7 +107,7 @@ func TestLoginRemedyKeepsTheDashedNameAfterTheDoubleDash(t *testing.T) {
 	t.Parallel()
 	const url = "https://r.example.com"
 	login := NoTerminalLogin(nil, "-x", "c-1", url, "", config.CASource{}, false)
-	assert.Equal(t, "rancher auth login --url 'https://r.example.com' --token-stdin -- '-x'", clierr.ExpandRemedies(login.Command, ""))
+	assert.Equal(t, "rancher auth login --url 'https://r.example.com' --token-stdin -- '-x'", clierr.ExpandRemedies(login.command, ""))
 	assert.Equal(t, "rancher auth login --url 'https://r.example.com' --auth-provider 'corp-ldap' -- '-x'", clierr.ExpandRemedies(login.signIn("corp-ldap"), ""))
 }
 

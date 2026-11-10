@@ -2187,6 +2187,14 @@ from a directory that declares the file store (log in with
 `--credential-store file`), whose exec entry then reads that store whatever
 kubectl's environment sets, or keep a warm `--name` cache.
 
+kubectl runs the plugin for each request until a run returns a credential, and
+does not cache a failed run, so it runs the plugin again for the next request.
+An error of the plugin, for example the refusal to sign in with no terminal,
+therefore prints once per request: several times on
+a first call with no discovery cache, and once more under a kubectl wrapper
+that asks the server's version before it runs kubectl (Rancher Desktop's
+kuberlr does). kubectl then exits 1 and names the plugin's exit code.
+
 The plugin opens the directory the exec entry records (`RANCHER_CLI_CONFIG_DIR`
 in its `env`), and every command that reads a config directory it prints as a
 remedy - in an error, a warning or a notice, its own and the shared ones it

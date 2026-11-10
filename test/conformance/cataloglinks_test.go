@@ -8,7 +8,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -146,14 +145,13 @@ var catalogScanPackages = sync.OnceValues(func() ([][]*packages.Package, error) 
 	}
 	sets := [][]*packages.Package{host}
 	for _, goos := range []string{"windows", "linux"} {
-		if goos == runtime.GOOS {
-			continue
-		}
-		pkgs, err := loadPackages("./...", goos)
+		pkgs, err := otherGOOSPackages(goos)
 		if err != nil {
 			return nil, err
 		}
-		sets = append(sets, pkgs)
+		if pkgs != nil {
+			sets = append(sets, pkgs)
+		}
 	}
 	return sets, nil
 })

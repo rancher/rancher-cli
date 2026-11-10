@@ -59,10 +59,7 @@ func (u userCheck) relogin(cfg *config.Config, entry string, plugin bool) (text,
 		if u.authConfig != "" {
 			piped = "a login made" + through + " and piped to: "
 		}
-		next := "the next call signs in as " + clierr.ShellQuote(u.userID) + through + " in a terminal; or it uses " + piped + login.Text()
-		if facts := login.Facts(); facts != "" {
-			next = facts + "; " + next
-		}
+		next := login.Instruction("the next call signs in as " + clierr.ShellQuote(u.userID) + through + " in a terminal; or it uses " + piped)
 		return "remove " + quoted + " with: " + clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", entry) + "; then " +
 			clierr.Rancher + " config delete-server" + clierr.ShellQuoteArgs("", entry) + "; " + next, ""
 	}

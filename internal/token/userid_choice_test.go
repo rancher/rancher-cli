@@ -337,7 +337,7 @@ func TestUserIDWithoutAClusterAsksForATokenForRancherItself(t *testing.T) {
 		_, err := x.callIn("", "", "user-carol", "", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; <name> stands for a name of your choice; to log in without one, pipe an API token of Rancher user 'user-carol' to: "+
+		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; <name> stands for a name of your choice; to log in without a terminal, pipe an API token of Rancher user 'user-carol' to: "+
 			"rancher auth login <name> --url '"+x.serverID()+"' --token-stdin; "+
 			"or run kubectl once in a terminal and sign in as 'user-carol', which lasts until the cached token expires", msg)
 	})

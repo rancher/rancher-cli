@@ -169,7 +169,7 @@ func TestKubeconfigRefusesANameAuthGetTokenRefuses(t *testing.T) {
 		{"user-id:", "https://user-id:8443", "user-id:", "", "", ""},
 		{"legacy:", "https://legacy:8443", "legacy:", "", "", ""},
 		{"a CA path", "https://user-id:8443", "user-id:", caPath, " --cacert '" + caPath + "'", ""},
-		{"an inline CA", "https://user-id:8443", "user-id:", pemCA, " --cacert <file>", "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file; "},
+		{"an inline CA", "https://user-id:8443", "user-id:", pemCA, " " + config.CAFileArg("--cacert"), "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file; " + config.CAFileMeaning + "; "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, _, dir, err := runRecords(t, recordsSetup{envURL: tc.url, envToken: true, envCA: tc.ca})

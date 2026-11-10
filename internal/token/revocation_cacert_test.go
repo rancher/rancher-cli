@@ -168,7 +168,7 @@ func TestTrustForRanksAnEntryThatConnectsWithTheVariableAfterOneWithACA(t *testi
 // recovery sequence, and no recovery list in the report does; a manual
 // recovery of another reason carries none.
 func TestAManualRecoveryForANoEntryTokenAsksForThePrivateCA(t *testing.T) {
-	const sentence = "for a server whose certificate a private CA signs, add --cacert <file with the server's CA certificate> to the login, or set RANCHER_CLI_CACERT to that file"
+	const sentence = "for a server whose certificate a private CA signs, add --cacert <file> to the login, or set RANCHER_CLI_CACERT to that file; " + config.CAFileMeaning
 
 	t.Run("noEntry", func(t *testing.T) {
 		x := newRevFixture(t, testrancher.Options{})
@@ -200,6 +200,7 @@ func TestAManualRecoveryForANoEntryTokenAsksForThePrivateCA(t *testing.T) {
 		require.NotEmpty(t, line)
 		assert.Contains(t, clierr.ExpandRemedies(line, ""), "; "+sentence)
 		assert.True(t, strings.HasSuffix(line, sentence), "the sentence ends the line")
+		assertCAFileMeaningOnce(t, clierr.ExpandRemedies(line, ""), "--cacert", false)
 	})
 
 	t.Run("another reason", func(t *testing.T) {

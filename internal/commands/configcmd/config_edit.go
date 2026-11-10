@@ -318,6 +318,7 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 	sort.Strings(sorted)
 
 	var offenses []string
+	caFileSaid := false
 	for _, n := range sorted {
 		b, bOK := before.Servers[n]
 		e, eOK := edited.Servers[n]
@@ -328,7 +329,14 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 		case bOK && !eOK:
 			offenses = append(offenses, fmt.Sprintf("servers.%s removed; use: ", n)+deleteServerCommand(n))
 		case bOK && eOK && !reflect.DeepEqual(b, e):
-			offenses = append(offenses, fmt.Sprintf("servers.%s changed; <url> is the server's address; --cacert <file> or --clear-cacert changes the CA instead; use: ", n)+
+			caFlags := config.CAFileArg("--cacert") + " or --clear-cacert changes the CA instead"
+			if !caFileSaid {
+				// The message names <file> once; the first server that
+				// changed says what it stands for.
+				caFlags += "; " + config.CAFileMeaning
+				caFileSaid = true
+			}
+			offenses = append(offenses, fmt.Sprintf("servers.%s changed; <url> is the server's address; ", n)+caFlags+"; use: "+
 				clierr.Rancher+" config update-server"+clierr.ShellQuoteArgs(" --url <url>", n))
 		}
 	}

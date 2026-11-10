@@ -314,8 +314,8 @@ func tlsRemedyFor(from config.CASource, shim bool) tlstrust.Remedy {
 	r := tlstrust.Remedy{URL: "--server", Fix: flag}
 	switch {
 	case from.Kind == config.CASourceVariable:
-		r.CA = "; the CA came from " + config.EnvCACert + " - pass " + flag + " <file>, or unset " +
-			config.EnvCACert + ", or set it to the server's CA"
+		r.CA = "; the CA came from " + config.EnvCACert + " - pass " + config.CAFileArg(flag) + ", or unset " +
+			config.EnvCACert + ", or set it to the server's CA; " + config.CAFileMeaning
 	case shim:
 		r.CA = " and pass it with " + flag
 	default:

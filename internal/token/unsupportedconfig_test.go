@@ -272,7 +272,7 @@ func TestTheExecPluginRefusesAnUnsupportedAuthConfigInEveryForm(t *testing.T) {
 			x := newOwnerFixture(t, reuse, testrancher.Options{ExtraProviders: []string{"githubProvider"}})
 			ce := execRefusal(t, x, authCall{cluster: "c-test", name: "n", authConfig: "github", cacert: pemCA, noInput: true})
 			assert.Empty(t, ce.Hint, "the login needs the CA from a file, which no hint can name")
-			assert.True(t, strings.HasSuffix(ce.Message, "; this exec entry carries the CA inline and --cacert needs a file; "+
+			assert.True(t, strings.HasSuffix(ce.Message, "; this exec entry carries the CA inline and --cacert needs a file; "+config.CAFileMeaning+"; "+
 				"to log in with an API token, pipe it to: "+clierr.Rancher+" auth login 'n' --url '"+x.serverID()+"' --cacert <file> --token-stdin"), "token reuse %t: %s", reuse, ce.Message)
 			assert.NotContains(t, ce.Message, "-----BEGIN", "token reuse %t", reuse)
 		}

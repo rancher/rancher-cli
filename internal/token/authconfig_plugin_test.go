@@ -34,7 +34,7 @@ func TestASeveralMatchWithoutATerminalNamesTheConfigsToThePlugin(t *testing.T) {
 			want:       "azureADProvider",
 			code:       clierr.CodeAmbiguousSelection,
 			candidates: []string{"corp-azure", "eu-azure"},
-			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to: ",
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without a terminal, pipe an API token to: ",
 			choice:     "; or add --auth-provider with one of corp-azure, eu-azure to the command (in a kubeconfig, to the exec entry's args) and sign in through it in a browser",
 		},
 		{
@@ -42,7 +42,7 @@ func TestASeveralMatchWithoutATerminalNamesTheConfigsToThePlugin(t *testing.T) {
 			entries: [][2]string{{"local", "localProvider"}, {"corp-ldap", "openLdapProvider"}, {"eu-ldap", "openLdapProvider"}, {"corp-azure", "azureADProvider"}},
 			want:    "openLdapProvider",
 			code:    clierr.CodeAuth,
-			head:    "interactive login required for one of the auth configs corp-ldap, eu-ldap; this call has no terminal to answer it; to log in without one, pipe an API token to: ",
+			head:    "interactive login required for one of the auth configs corp-ldap, eu-ldap; this call has no terminal to answer it; to log in without a terminal, pipe an API token to: ",
 		},
 	} {
 		for _, lane := range choiceLanes {

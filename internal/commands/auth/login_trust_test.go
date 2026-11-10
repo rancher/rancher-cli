@@ -601,7 +601,7 @@ func TestPlainLoginWithASavedCAThatDoesNotFitNamesConfigUpdateServer(t *testing.
 	assert.Empty(t, ce.Hint)
 	details, ok := ce.Details.(tlstrust.Details)
 	require.True(t, ok)
-	assert.Equal(t, tlstrust.UnknownAuthorityMessage(details.IsLeafCertificate(), "; save it for this entry with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), ce.Message)
+	assert.Equal(t, tlstrust.UnknownAuthorityMessage(details.IsLeafCertificate(), "; "+config.CAFileMeaning+"; save it for this entry with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), ce.Message)
 	assert.NotContains(t, ce.Message, "pass it with --cacert")
 	assert.NotContains(t, ce.Message, "pinned")
 	assert.NotContains(t, ce.Message, "'prod''s")

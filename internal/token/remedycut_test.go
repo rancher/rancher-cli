@@ -29,6 +29,7 @@ var cutFacts = []cutRule{
 	{"Deletion.nextLoginText", "", "the next login of"},
 	{"Deletion.revokeTLSRemedy", "; a Rancher administrator who deletes the token needs", "a Rancher administrator who deletes the token needs"},
 	{"Deletion.revokeTLSRemedy", "; to save a CA for entry", "the CA came from"},
+	{"Deletion.revokeTLSRemedy", "; save it for entry", "holds the server's CA certificate"},
 	{"NoTerminalLogin", "this exec entry carries the CA inline", "carries the CA inline"},
 	{"NoTerminalLogin", "stands for a name of your choice", "stands for a name of your choice"},
 	{"ResidualRecovery", "", "no credential was stored"},
@@ -66,7 +67,6 @@ var cutNoteOnly = []cutRule{
 	{"userCheck.authConfigRemedy", "sign in through auth config", ""},
 	{"userCheck.relogin", "remove '", ""},
 	{"userCheck.relogin", "pipe an API token of", ""},
-	{"Deletion.revokeTLSRemedy", "; save it for entry", ""},
 }
 
 // ruleFor is the first rule of rules for a text of builder.

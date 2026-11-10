@@ -292,7 +292,7 @@ func TestPluginLoginHostRefusalPutsTheInlineCAClauseAfterTheUrlClause(t *testing
 	const pem = "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"
 	const head = "the server URL's host holds U+200B, which is removed when a name is printed; the kubectl plugin cannot create its login entry for it; " +
 		"<url> stands for the server's address; <name> stands for a name of your choice; "
-	const tail = " and --cacert needs a file; to log in under a name of your own, pipe an API token to: rancher auth login <name> --url '<url>' --cacert <file> --token-stdin"
+	const tail = " and --cacert needs a file; " + config.CAFileMeaning + "; to log in under a name of your own, pipe an API token to: rancher auth login <name> --url '<url>' --cacert <file> --token-stdin"
 	for name, tc := range map[string]struct {
 		from config.CASource
 		want string
@@ -306,6 +306,7 @@ func TestPluginLoginHostRefusalPutsTheInlineCAClauseAfterTheUrlClause(t *testing
 				entryNameCharacters(&config.Config{}, config.NameProblem{Rune: rune(0x200b)})
 			msg := clierr.ExpandRemedies(ce.Message, "")
 			assert.Equal(t, tc.want, msg)
+			assertCAFileMeaningOnce(t, msg, "--cacert", true)
 			assert.Equal(t, msg, output.Printable(msg))
 		})
 	}

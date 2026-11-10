@@ -96,7 +96,7 @@ func TestNotLoggedInForAPluginLoginEntryWithASavedCAAddsTheCA(t *testing.T) {
 	withCA := ErrNotLoggedInFor(servers, map[string]bool{entry: true})
 	assert.Equal(t, clierr.CodeNotLoggedIn, withCA.Code)
 	assert.Equal(t, "not logged in - no current server; the only server entry, '"+entry+"', is the exec plugin's own login entry, which auth login refuses; "+
-		"server entry '"+entry+"' carries the CA inline in config.yaml and --cacert needs a file; "+
+		"server entry '"+entry+"' carries the CA inline in config.yaml and --cacert needs a file; "+CAFileMeaning+"; "+
 		"log in under a server entry of your own with: rancher auth login 'r.ex' --url 'https://r.ex' --cacert <file>",
 		clierr.ExpandRemedies(withCA.Message, ""))
 	assert.Empty(t, withCA.Hint, "the login needs a file, so it is no hint")

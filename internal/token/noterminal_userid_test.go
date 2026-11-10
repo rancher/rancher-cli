@@ -81,7 +81,7 @@ func TestNoTerminalRemediesNameTheUserForACallWithUserID(t *testing.T) {
 				ce, ok := clierrOf(err)
 				require.True(t, ok, "%v", err)
 				assert.Equal(t, h.code, ce.Code)
-				want := h.head + "; " + tc.facts + "to log in without one, pipe an API token of Rancher user '" + user + "' to: " + tc.login + h.choice + tc.clause
+				want := h.head + "; " + tc.facts + "to log in without a terminal, pipe an API token of Rancher user '" + user + "' to: " + tc.login + h.choice + tc.clause
 				if tc.kubeconfig {
 					want += "; for a kubeconfig that carries its own token, run: rancher create kubeconfig --clusters 'c-1' --apply --yes"
 				}

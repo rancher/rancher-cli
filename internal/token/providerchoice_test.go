@@ -119,14 +119,14 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			name:      "only basic providers",
 			providers: []string{"localProvider", "openLdapProvider"},
 			code:      clierr.CodeAuth,
-			head:      "interactive login required for one of the auth configs local, openldap; this call has no terminal to answer it; to log in without one, pipe an API token to: ",
+			head:      "interactive login required for one of the auth configs local, openldap; this call has no terminal to answer it; to log in without a terminal, pipe an API token to: ",
 		},
 		{
 			name:       "one provider signs in without a terminal",
 			providers:  []string{"localProvider", "oktaProvider"},
 			code:       clierr.CodeAmbiguousSelection,
 			candidates: []string{"okta"},
-			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to: ",
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without a terminal, pipe an API token to: ",
 			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
 		},
 		{
@@ -134,7 +134,7 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			providers:  []string{"localProvider", "oktaProvider", "azureADProvider"},
 			code:       clierr.CodeAmbiguousSelection,
 			candidates: []string{"okta", "azuread"},
-			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to: ",
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without a terminal, pipe an API token to: ",
 			choice:     "; or add --auth-provider with one of okta, azuread to the command (in a kubeconfig, to the exec entry's args) and sign in through it in a browser",
 		},
 		{
@@ -142,7 +142,7 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			providers: []string{"localProvider", "oktaProvider"},
 			prompter:  func() runtime.Prompter { return noInputWithTerminal() },
 			code:      clierr.CodeAuth,
-			head:      "interactive login required for one of the auth configs local, okta; this call has no terminal to answer it; to log in without one, pipe an API token to: ",
+			head:      "interactive login required for one of the auth configs local, okta; this call has no terminal to answer it; to log in without a terminal, pipe an API token to: ",
 		},
 		{
 			name:       "a call for a user",
@@ -150,7 +150,7 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			extra:      map[string]string{"user-id": "u-abc12"},
 			code:       clierr.CodeAmbiguousSelection,
 			candidates: []string{"okta"},
-			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token of Rancher user " + clierr.ShellQuote("u-abc12") + " to: ",
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without a terminal, pipe an API token of Rancher user " + clierr.ShellQuote("u-abc12") + " to: ",
 			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
 		},
 		{
@@ -158,7 +158,7 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			providers:  []string{"localProvider", "oktaProvider", "githubProvider"},
 			code:       clierr.CodeAmbiguousSelection,
 			candidates: []string{"okta"},
-			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to: ",
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without a terminal, pipe an API token to: ",
 			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
 			tail:       "; " + unsupportedNote([]string{"githubProvider"}),
 		},
@@ -166,7 +166,7 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			name:      "an unsupported provider advertised, none that signs in",
 			providers: []string{"localProvider", "openLdapProvider", "githubProvider"},
 			code:      clierr.CodeAuth,
-			head:      "interactive login required for one of the auth configs local, openldap; this call has no terminal to answer it; to log in without one, pipe an API token to: ",
+			head:      "interactive login required for one of the auth configs local, openldap; this call has no terminal to answer it; to log in without a terminal, pipe an API token to: ",
 			tail:      "; " + unsupportedNote([]string{"githubProvider"}),
 		},
 		{
@@ -175,7 +175,7 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			unfinish:   true,
 			code:       clierr.CodeAmbiguousSelection,
 			candidates: []string{"okta"},
-			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to: ",
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without a terminal, pipe an API token to: ",
 			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
 			tail:       "; a credential store change is unfinished; see it with: " + clierr.Rancher + " config status",
 		},
@@ -249,7 +249,7 @@ func TestAProviderChoiceRemediesMatchTheLane(t *testing.T) {
 	require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 
 	err = runProviderChoice(t, srv, "legacy shim", noTerminal(), nil, false)
-	require.ErrorContains(t, err, "<name> stands for a name of your choice; to log in without one, pipe an API token to: "+clierr.Rancher+" auth login <name> --url "+clierr.ShellQuote(url)+" --token-stdin")
+	require.ErrorContains(t, err, "<name> stands for a name of your choice; to log in without a terminal, pipe an API token to: "+clierr.Rancher+" auth login <name> --url "+clierr.ShellQuote(url)+" --token-stdin")
 	ce, _ = errors.AsType[*clierr.Error](err)
 	assert.Empty(t, ce.Hint, "the shim's slot is no name auth login accepts")
 }

@@ -67,7 +67,7 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 		// Matches the --cacert-without-url matrix's absent-name row: body
 		// guidance only, no machine hint (neither value is known here).
 		return loginTarget{}, clierr.New(clierr.CodeValidation,
-			"--cacert without --url and without a name has no entry to attach trust to; pass a name to change an existing entry's trust with: "+clierr.Rancher+" config update-server <name> --cacert <file>")
+			"--cacert without --url and without a name has no entry to attach trust to; "+config.CAFileMeaning+"; pass a name to change an existing entry's trust with: "+clierr.Rancher+" config update-server <name> "+config.CAFileArg("--cacert"))
 	}
 
 	cur, srv, cerr := cfg.CurrentServerEntry()

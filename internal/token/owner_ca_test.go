@@ -50,6 +50,7 @@ func TestUserIDNewEntryLoginsCarryTheCallsCA(t *testing.T) {
 				return
 			}
 			assert.Contains(t, msg, "this exec entry carries the CA inline and --cacert needs a file; ")
+			assertCAFileMeaningOnce(t, msg, "--cacert", true)
 			assert.Contains(t, msg, "rancher auth login <name> --url '"+x.serverID()+"' --cacert <file> --token-stdin")
 		}
 		t.Run("another owner's plugin login entry, "+tc.name, func(t *testing.T) {
@@ -109,7 +110,7 @@ func TestUserIDPluginLaneWithoutATerminalNamesTheUser(t *testing.T) {
 	_, err := x.call("prod-c-test", "user-carol", "", nil)
 	ce, msg := refusal(t, err)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-carol' to: "+
+	assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without a terminal, pipe an API token of Rancher user 'user-carol' to: "+
 		"rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin; or run kubectl once in a terminal and sign in as 'user-carol'", msg)
 	_, plugin := x.stored(x.pluginEntry())
 	assert.Empty(t, plugin.URL, "nothing is written")

@@ -46,13 +46,13 @@ func TestTLSRemedyForWordsEachGetTokenRow(t *testing.T) {
 		{"get-token with an entry's CA", entryFrom("prod"), false,
 			tlstrust.Remedy{CA: " and pass it with --cacert" + getTokenKubeconfigNote, URL: "--server", Fix: "--cacert"}},
 		{"get-token with the variable", variable, false,
-			tlstrust.Remedy{CA: "; the CA came from RANCHER_CLI_CACERT - pass --cacert <file>, or unset RANCHER_CLI_CACERT, or set it to the server's CA", URL: "--server", Fix: "--cacert"}},
+			tlstrust.Remedy{CA: "; the CA came from RANCHER_CLI_CACERT - pass --cacert <file>, or unset RANCHER_CLI_CACERT, or set it to the server's CA; " + config.CAFileMeaning, URL: "--server", Fix: "--cacert"}},
 		{"the shim with no CA", config.CASource{}, true,
 			tlstrust.Remedy{CA: " and pass it with --cacerts", URL: "--server", Fix: "--cacerts"}},
 		{"the shim with --cacerts", config.CASource{Kind: config.CASourceFlag}, true,
 			tlstrust.Remedy{CA: " and pass it with --cacerts", URL: "--server", Fix: "--cacerts"}},
 		{"the shim with the variable", variable, true,
-			tlstrust.Remedy{CA: "; the CA came from RANCHER_CLI_CACERT - pass --cacerts <file>, or unset RANCHER_CLI_CACERT, or set it to the server's CA", URL: "--server", Fix: "--cacerts"}},
+			tlstrust.Remedy{CA: "; the CA came from RANCHER_CLI_CACERT - pass --cacerts <file>, or unset RANCHER_CLI_CACERT, or set it to the server's CA; " + config.CAFileMeaning, URL: "--server", Fix: "--cacerts"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, tlsRemedyFor(tc.from, tc.shim))
@@ -93,8 +93,8 @@ func requireTrustErrorWith(t *testing.T, err error, remedy string) *clierr.Error
 func TestGetTokenClassifiesACertificateFailure(t *testing.T) {
 	keyring.MockInit()
 	wrong := selfSignedCAPEM(t)
-	variableRemedy := "; the CA came from RANCHER_CLI_CACERT - pass --cacert <file>, or unset RANCHER_CLI_CACERT, or set it to the server's CA"
-	shimVariableRemedy := "; the CA came from RANCHER_CLI_CACERT - pass --cacerts <file>, or unset RANCHER_CLI_CACERT, or set it to the server's CA"
+	variableRemedy := "; the CA came from RANCHER_CLI_CACERT - pass --cacert <file>, or unset RANCHER_CLI_CACERT, or set it to the server's CA; " + config.CAFileMeaning
+	shimVariableRemedy := "; the CA came from RANCHER_CLI_CACERT - pass --cacerts <file>, or unset RANCHER_CLI_CACERT, or set it to the server's CA; " + config.CAFileMeaning
 	for _, tc := range []struct {
 		name     string
 		shim     bool

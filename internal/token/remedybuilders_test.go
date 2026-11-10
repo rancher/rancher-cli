@@ -420,7 +420,7 @@ func TestAPluginLoginEntryAtAnotherURLGetsANewEntryLogin(t *testing.T) {
 		if ca == pemCA {
 			// The plugin-created login records the CA inline; the exec entry
 			// carries the call's server's CA, not this one.
-			login = "<name> stands for a name of your choice; server entry 'exec-login-o' carries the CA inline in config.yaml and --cacert needs a file; " +
+			login = "<name> stands for a name of your choice; server entry 'exec-login-o' carries the CA inline in config.yaml and --cacert needs a file; " + config.CAFileMeaning + "; " +
 				"pipe an API token to: rancher auth login <name> --url '" + other + "' --cacert <file> --token-stdin"
 		}
 		return "log in there under a server entry of your own, since auth login refuses the exec plugin's own login entries; " + login +

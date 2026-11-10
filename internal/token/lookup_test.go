@@ -138,10 +138,10 @@ func TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := NoTerminalLogin(tc.cfg, tc.callName, "c-1", url, "", config.CASource{}, tc.shim)
-			assert.Equal(t, clierr.Rancher+" auth login "+tc.want+" --url '"+url+"' --token-stdin", got.Command)
+			assert.Equal(t, clierr.Rancher+" auth login "+tc.want+" --url '"+url+"' --token-stdin", got.command)
 			assert.Equal(t, tc.named, got.Named)
 			if tc.named {
-				assert.Equal(t, got.Command, got.Hint())
+				assert.Equal(t, got.command, got.Hint())
 			} else {
 				assert.Empty(t, got.Hint())
 				assert.Equal(t, "<name> stands for a name of your choice", got.Facts())

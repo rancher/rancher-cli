@@ -124,9 +124,9 @@ func ErrNotLoggedInFor(servers map[string]string, withCA map[string]bool) *clier
 				return clierr.New(clierr.CodeNotLoggedIn, msg+EntryOrigin(names[0]).Text(err))
 			}
 			if withCA[names[0]] {
-				login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url)+" --cacert <file>", name)
+				login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url)+" "+CAFileArg("--cacert"), name)
 				return clierr.New(clierr.CodeNotLoggedIn, msg+InlineCAHolder(CASource{Kind: CASourceEntry, Entry: names[0]})+
-					" and --cacert needs a file; log in under a server entry of your own with: "+login)
+					" and --cacert needs a file; "+CAFileMeaning+"; log in under a server entry of your own with: "+login)
 			}
 			login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url), name)
 			return clierr.New(clierr.CodeNotLoggedIn, msg+"log in under a server entry of your own with: "+login).WithHint(login)

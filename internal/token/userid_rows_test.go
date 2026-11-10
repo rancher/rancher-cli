@@ -46,7 +46,7 @@ func TestUserIDPluginLoginEntryTheNameIdentifiesWithoutATerminal(t *testing.T) {
 			_, err := x.call(name+"-c-test", "user-alice", "", nil)
 			ce, msg := refusal(t, err)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
-			assert.Contains(t, msg, "this call has no terminal to answer it; <name> stands for a name of your choice; to log in without one, pipe an API token of Rancher user 'user-alice' to: rancher auth login <name> --url '"+x.serverID()+"'")
+			assert.Contains(t, msg, "this call has no terminal to answer it; <name> stands for a name of your choice; to log in without a terminal, pipe an API token of Rancher user 'user-alice' to: rancher auth login <name> --url '"+x.serverID()+"'")
 			assert.Contains(t, msg, "or run kubectl once in a terminal and sign in as 'user-alice'")
 			assert.NotContains(t, msg, "sets no --name")
 		})

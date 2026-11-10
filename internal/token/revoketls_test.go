@@ -145,6 +145,9 @@ type tlsRevokeRow struct {
 	// request used and the token's name.
 	setup func(t *testing.T) (*revFixture, LocalDelete, string)
 	retry string
+	// fileInCommand reports that the row's clause names <file> in a command
+	// (the meaning of <file> comes before it) rather than in a clause.
+	fileInCommand bool
 	// ca is the clause an unknown authority failure carries, by whether the
 	// variable supplied the CA.
 	caEntry, caVariable string
@@ -153,15 +156,15 @@ type tlsRevokeRow struct {
 func tlsRevokeRows() []tlsRevokeRow {
 	return []tlsRevokeRow{
 		{
-			name: "nextLogin", retry: retryNextLogin,
+			name: "nextLogin", retry: retryNextLogin, fileInCommand: true,
 			setup: func(t *testing.T) (*revFixture, LocalDelete, string) {
 				t.Helper()
 				x := newRevFixture(t, testrancher.Options{})
 				login := x.login("prod", "alice")
 				return x, x.req(DeleteForLogout, "prod"), login.Ref.Name
 			},
-			caEntry:    "; save it for entry 'prod' with: rancher config update-server 'prod' --cacert <file>" + unknownAuthorityTail,
-			caVariable: "; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; to save a CA for entry 'prod', run: rancher config update-server 'prod' --cacert <file>" + unknownAuthorityTail,
+			caEntry:    "; " + config.CAFileMeaning + "; save it for entry 'prod' with: rancher config update-server 'prod' --cacert <file>" + unknownAuthorityTail,
+			caVariable: "; the CA came from RANCHER_CLI_CACERT - unset it, or set it to the server's CA; " + config.CAFileMeaning + "; to save a CA for entry 'prod', run: rancher config update-server 'prod' --cacert <file>" + unknownAuthorityTail,
 		},
 		{
 			name: "manual", retry: retryManual,
@@ -175,17 +178,17 @@ func tlsRevokeRows() []tlsRevokeRow {
 				x.cache("k", target, x.own("prod").WithCreatedToken(target.Ref, "user-other"), false)
 				return x, x.req(DeleteForLogout, "prod"), target.Ref.Name
 			},
-			caEntry:    " and add --cacert <file> to the auth login in the recovery steps" + unknownAuthorityTail,
+			caEntry:    " and add --cacert <file> to the auth login in the recovery steps; " + config.CAFileMeaning + unknownAuthorityTail,
 			caVariable: "; the CA came from RANCHER_CLI_CACERT - set it to the server's CA before the recovery steps" + unknownAuthorityTail,
 		},
 		{
-			name: "v3", retry: retryManual,
+			name: "v3", retry: retryManual, fileInCommand: true,
 			setup: func(t *testing.T) (*revFixture, LocalDelete, string) {
 				t.Helper()
 				x := stubV3Fixture(t, newV3Stub(t, 0, 0))
 				return x, x.req(DeleteForLogout, "prod"), stubV3Name
 			},
-			caEntry:    "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server; run: rancher config update-server <entry> --cacert <file>" + unknownAuthorityTail,
+			caEntry:    "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server; " + config.CAFileMeaning + "; run: rancher config update-server <entry> --cacert <file>" + unknownAuthorityTail,
 			caVariable: "; the CA came from RANCHER_CLI_CACERT in this command's environment - a Rancher administrator who deletes the token sets it to the server's CA in their own environment" + unknownAuthorityTail,
 		},
 	}
@@ -217,6 +220,9 @@ func TestEachRevokeRowWordsAnUnknownAuthorityForWhatRevokesTheToken(t *testing.T
 				assert.Equal(t, "failed", n.Reason)
 				assert.Equal(t, clierr.CodeTLSTrust, n.Code)
 				assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), want)
+				if strings.Contains(want, "<file>") {
+					assertCAFileMeaningOnce(t, clierr.ExpandRemedies(n.Error, ""), "--cacert", row.fileInCommand)
+				}
 				assert.Contains(t, n.Error, "the server presented a certificate signed by an unknown authority")
 				assert.Equal(t, strings.Contains(want, "rancher config update-server"), strings.Contains(n.Error, clierr.RemedyMarker), "the message opens a command with the marker exactly when it names one")
 				require.NotNil(t, n.Certificate)
@@ -449,7 +455,7 @@ func TestACertificateFailureTextHoldsNoControlCharacters(t *testing.T) {
 // certificate. Mutations: use reasonText unchanged; drop the clause; add it
 // for every kind; read the certificate's kind without the nil check.
 func TestTheWarningNamesTheCodeAndAddsTheCATailForAnUnknownAuthorityOnly(t *testing.T) {
-	const tail = "; add --cacert <file with the server's CA certificate> to the login, or set RANCHER_CLI_CACERT to that file"
+	const tail = "; add --cacert <file> to the login, or set RANCHER_CLI_CACERT to that file; " + config.CAFileMeaning
 	warningOf := func(t *testing.T, cause error) string {
 		t.Helper()
 		x := newRevFixture(t, testrancher.Options{})
@@ -471,6 +477,7 @@ func TestTheWarningNamesTheCodeAndAddsTheCATailForAnUnknownAuthorityOnly(t *test
 		assert.Contains(t, w, "was not revoked (failed, TLS_TRUST); the sequence assumes RANCHER_CLI_URL")
 		assert.NotContains(t, w, "the server presented")
 		assert.True(t, strings.HasSuffix(w, tail), w)
+		assertCAFileMeaningOnce(t, clierr.ExpandRemedies(w, ""), "--cacert", false)
 	})
 	t.Run("hostname mismatch", func(t *testing.T) {
 		w := warningOf(t, hostnameFailure(tlsCert(t, "other", "other.example"), "r.example"))
@@ -484,7 +491,8 @@ func TestTheWarningNamesTheCodeAndAddsTheCATailForAnUnknownAuthorityOnly(t *test
 		var w string
 		require.NotPanics(t, func() { w = d.manualWarning(it) })
 		assert.Contains(t, w, "was not revoked (failed, TLS_TRUST)")
-		assert.NotContains(t, w, "--cacert <file with")
+		assert.NotContains(t, w, config.CAFileArg("--cacert"))
+		assert.NotContains(t, w, config.CAFileMeaning)
 	})
 }
 
@@ -783,7 +791,7 @@ func TestTheURLClauseNamesTheTrustEntryAndTheCAClauseTheRecordedEntry(t *testing
 	require.Equal(t, retryNextLogin, d.retry(it))
 	r := d.revokeTLSRemedy(it)
 	assert.Equal(t, "the server URL of entry 'prod'", r.URL)
-	assert.Equal(t, "; save it for entry 'dev' with: "+clierr.Rancher+" config update-server 'dev' --cacert <file>", r.CA)
+	assert.Equal(t, "; "+config.CAFileMeaning+"; save it for entry 'dev' with: "+clierr.Rancher+" config update-server 'dev' --cacert <file>", r.CA)
 }
 
 // nextLoginWarning is the warning of entry's tokens a next login revokes.
@@ -824,7 +832,8 @@ func TestTheNextLoginWarningSaysToSaveTheCAFirstForAnUnknownAuthority(t *testing
 	t.Run("one token, an unknown authority", func(t *testing.T) {
 		w := oneToken(t, unknown, false)
 		assert.Contains(t, w, "1 token(s) recorded on prod are revoked by the next login of prod as user-alice; run it with: "+clierr.Rancher+" auth login 'prod'")
-		assert.True(t, strings.HasSuffix(w, "; its revoke failed on the server's certificate; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), w)
+		assert.True(t, strings.HasSuffix(w, "; its revoke failed on the server's certificate; "+config.CAFileMeaning+"; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), w)
+		assertCAFileMeaningOnce(t, clierr.ExpandRemedies(w, ""), "--cacert", true)
 	})
 	t.Run("an expired certificate", func(t *testing.T) {
 		assert.NotContains(t, oneToken(t, expired, false), "first save")
@@ -844,7 +853,8 @@ func TestTheNextLoginWarningSaysToSaveTheCAFirstForAnUnknownAuthority(t *testing
 		// Both revokes fail on the certificate: all of them.
 		w := nextLoginWarning(t, d, "prod")
 		assert.Contains(t, w, "2 token(s) recorded on prod")
-		assert.Contains(t, w, "; their revokes failed on the server's certificate; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>")
+		assert.Contains(t, w, "; their revokes failed on the server's certificate; "+config.CAFileMeaning+"; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>")
+		assertCAFileMeaningOnce(t, clierr.ExpandRemedies(w, ""), "--cacert", true)
 
 		x2 := newRevFixture(t, testrancher.Options{})
 		x2.login("prod", "alice")
@@ -861,7 +871,8 @@ func TestTheNextLoginWarningSaysToSaveTheCAFirstForAnUnknownAuthority(t *testing
 		dd.RevokeTokens(t.Context())
 		w = nextLoginWarning(t, dd, "prod")
 		assert.Contains(t, w, "2 token(s) recorded on prod")
-		assert.True(t, strings.HasSuffix(w, "; the revoke of 1 of them failed on the server's certificate; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), w)
+		assert.True(t, strings.HasSuffix(w, "; the revoke of 1 of them failed on the server's certificate; "+config.CAFileMeaning+"; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), w)
+		assertCAFileMeaningOnce(t, clierr.ExpandRemedies(w, ""), "--cacert", true)
 
 		x3 := newRevFixture(t, testrancher.Options{})
 		x3.login("prod", "alice")
@@ -879,7 +890,8 @@ func TestTheNextLoginWarningSaysToSaveTheCAFirstForAnUnknownAuthority(t *testing
 		d3.RevokeTokens(t.Context())
 		w = nextLoginWarning(t, d3, "prod")
 		assert.Contains(t, w, "3 token(s) recorded on prod")
-		assert.True(t, strings.HasSuffix(w, "; the revokes of 2 of them failed on the server's certificate; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), w)
+		assert.True(t, strings.HasSuffix(w, "; the revokes of 2 of them failed on the server's certificate; "+config.CAFileMeaning+"; first save the server's CA with: "+clierr.Rancher+" config update-server 'prod' --cacert <file>"), w)
+		assertCAFileMeaningOnce(t, clierr.ExpandRemedies(w, ""), "--cacert", true)
 	})
 }
 
@@ -895,5 +907,6 @@ func TestTheNextLoginWarningOfAnExecLoginEntryFollowsTheSignInText(t *testing.T)
 		cert: &tlstrust.Details{Kind: tlstrust.KindUnknownAuthority}}}
 	w := nextLoginWarning(t, d, name)
 	assert.Equal(t, "1 token(s) recorded on "+name+" are revoked by the next kubectl sign-in through "+name+" as u-1"+
-		"; its revoke failed on the server's certificate; first save the server's CA with: "+clierr.Rancher+" config update-server '"+name+"' --cacert <file>", w)
+		"; its revoke failed on the server's certificate; "+config.CAFileMeaning+"; first save the server's CA with: "+clierr.Rancher+" config update-server '"+name+"' --cacert <file>", w)
+	assertCAFileMeaningOnce(t, clierr.ExpandRemedies(w, ""), "--cacert", true)
 }
