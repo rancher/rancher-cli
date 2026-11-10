@@ -2,6 +2,8 @@ package register
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"maps"
 	neturl "net/url"
@@ -206,7 +208,7 @@ func recheckBytes(canonicalURL, selector, want string) (bool, error) {
 // CreateOutcome is the create commit's result (add-server, and login's
 // delegated add), threaded into the caller's Result envelope. Created is
 // entry-scoped: true only when this call wrote servers[name] for the first
-// time, false for an identical existing entry. CurrentServer is the
+// time, false for an existing entry that is kept as it is. CurrentServer is the
 // pointer's POST-COMMIT value, and PointerRepaired reports whether this
 // call bootstrapped or repaired it.
 type CreateOutcome struct {
@@ -216,6 +218,16 @@ type CreateOutcome struct {
 	Created         bool
 	CurrentServer   string
 	PointerRepaired bool
+	// KeptSavedCA is true when the entry already had a CA, the caller named
+	// another one, and both hold the same certificates: the entry stays as
+	// saved, CASelector and CABytes are the saved CA's, and the caller says
+	// so in a warning.
+	KeptSavedCA bool
+	// CABytes is the PEM of CASelector as the registration resolved it (empty
+	// for system roots and under http). It is the probe's bytes, except when
+	// KeptSavedCA is true: then it is the saved selector's bytes, which the
+	// login that follows binds to the entry.
+	CABytes string
 	// Notices are the removals a login's registration made of credentials
 	// left under the name it created; empty for add-server.
 	Notices []string
@@ -235,6 +247,93 @@ func bootstrapPointer(cfg *config.Config, name string) bool {
 	return true
 }
 
+// certificateFingerprints returns the SHA-256 fingerprints of the
+// certificates a TLS root pool built from pemText would hold, sorted and
+// without repeats: the PEM blocks of type CERTIFICATE with no headers that
+// x509.ParseCertificate accepts. Any other block, and a block that does not
+// parse, is skipped. Line endings may be LF or CRLF.
+func certificateFingerprints(pemText string) []string {
+	var fingerprints []string
+	rest := []byte(pemText)
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			continue
+		}
+		fingerprints = append(fingerprints, tlstrust.Fingerprint(cert))
+	}
+	slices.Sort(fingerprints)
+	return slices.Compact(fingerprints)
+}
+
+// caSide is one side of a CA comparison: the certificates it holds, or the
+// reason it has none to compare.
+type caSide struct {
+	fingerprints []string
+	// note is set when fingerprints is empty: "none (system roots)" for an
+	// empty selector, or why the side cannot be compared.
+	note string
+}
+
+// caSideOf describes the CA a selector names; text returns the PEM the
+// selector resolves to. The result never carries the selector or the path:
+// an unreadable file is described by config.CAFileProblem.
+func caSideOf(selector string, text func() (string, error)) caSide {
+	if selector == "" {
+		return caSide{note: "none (system roots)"}
+	}
+	pemText, err := text()
+	if err != nil {
+		return caSide{note: "cannot be compared: " + config.CAFileProblem(err)}
+	}
+	fingerprints := certificateFingerprints(pemText)
+	if len(fingerprints) == 0 {
+		return caSide{note: "cannot be compared: the text holds no certificate"}
+	}
+	return caSide{fingerprints: fingerprints}
+}
+
+// sameCertificates reports whether both sides hold certificates and the
+// same ones. A side that is empty or cannot be compared is never the same.
+func sameCertificates(a, b caSide) bool {
+	return len(a.fingerprints) > 0 && slices.Equal(a.fingerprints, b.fingerprints)
+}
+
+// text renders the side for the conflict message: the fingerprints the
+// other side lacks (all of them when the other side holds none), or the
+// note.
+func (s caSide) text(other caSide) string {
+	if len(s.fingerprints) == 0 {
+		return s.note
+	}
+	var missing []string
+	for _, f := range s.fingerprints {
+		if !slices.Contains(other.fingerprints, f) {
+			missing = append(missing, f)
+		}
+	}
+	if len(missing) == 0 {
+		return "no certificate the other side lacks"
+	}
+	return strings.Join(missing, ", ")
+}
+
+// KeptSavedCAWarning is the warning a caller adds when the entry kept its
+// saved CA because the CA it was given holds the same certificates. It names
+// no flag: the given CA is a --cacert value, or a certificate accepted at
+// the trust prompt.
+func KeptSavedCAWarning(name string) string {
+	return fmt.Sprintf("server entry %q keeps its saved CA, which holds the same certificates", name)
+}
+
 // commitCreate is the commit-time half of add-server and login's delegated
 // add (never update-server, which runs commitUpdate instead): called under
 // config.WithLock immediately before any write, with the exact probe
@@ -242,14 +341,15 @@ func bootstrapPointer(cfg *config.Config, name string) bool {
 // requires them to still equal probe.CABytes - a path-valued CA can rotate
 // between the outside-the-lock probe and this commit, on both the
 // name-absent and the existing-identical path - then requires the name to
-// be absent, or present with the same canonical URL and CA selector
-// (whether it existed when Prepare ran or was concurrently
+// be absent, or present with the same canonical URL and a CA that holds the
+// same certificates (whether it existed when Prepare ran or was concurrently
 // created identically). Anything else is CONFLICT with no write. A commit
 // that proceeds on an absent name creates the entry; one that proceeds on an
-// identical existing entry is an entry no-op - servers[name] is not
-// rewritten, but the current-server pointer is still bootstrapped/repaired
-// when empty or dangling, and cfg.Write() runs only when something actually
-// changed (the entry, the pointer, or both).
+// existing entry is an entry no-op - servers[name] is not rewritten, even
+// when the CA selector is other text with the same certificates, such as a
+// copy on another path - but the current-server pointer is still
+// bootstrapped/repaired when empty or dangling, and cfg.Write() runs only
+// when something actually changed (the entry, the pointer, or both).
 func commitCreate(cfg *config.Config, name string, probe Probe) (CreateOutcome, error) {
 	return commitCreateWith(cfg, name, probe, nil)
 }
@@ -264,6 +364,8 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 
 	existing, exists := cfg.Servers[name]
 	created := false
+	keptSavedCA := false
+	caSelector, caBytes := probe.CASelector, probe.CABytes
 	switch {
 	case !exists:
 		// Before beforeCreate, which removes credentials left under the
@@ -302,12 +404,33 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 				name, config.DisplayServerURL(existing.URL))+hint).
 			WithHint(hint)
 	default:
-		// URL matches; only the CA selector differs.
+		// URL matches; only the CA selector differs as text. The saved CA is
+		// read once: the text compared is the text a kept entry hands back.
+		savedText, savedErr := config.ResolveCA(existing.CA)
+		saved := caSideOf(existing.CA, func() (string, error) { return savedText, savedErr })
+		given := caSideOf(probe.CASelector, func() (string, error) {
+			if strings.HasPrefix(probe.CanonicalURL, "https://") {
+				return probe.CABytes, nil
+			}
+			return config.ResolveCA(probe.CASelector)
+		})
+		if sameCertificates(saved, given) {
+			// The saved selector stays and the login that follows binds to
+			// its bytes (empty under http, as ResolveCA returns them), never
+			// to this call's.
+			keptSavedCA = true
+			caSelector, caBytes = existing.CA, ""
+			if strings.HasPrefix(probe.CanonicalURL, "https://") {
+				caBytes = savedText
+			}
+			break
+		}
 		hint := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+CAUpdateArg(probe.CASelector), name)
 		return CreateOutcome{}, clierr.New(clierr.CodeConflict,
 			fmt.Sprintf(
-				"server entry %q already exists with a different CA; to add a new server choose a different name, or to change this entry's trust run: ",
-				name)+hint).
+				"server entry %q already exists with a different CA (saved: %s; --cacert: %s)",
+				name, saved.text(given), given.text(saved))+
+				"; to add a new server choose a different name, or to change this entry's trust run: "+hint).
 			WithHint(hint)
 	}
 
@@ -318,8 +441,8 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 		}
 	}
 	return CreateOutcome{
-		Name: name, CanonicalURL: probe.CanonicalURL, CASelector: probe.CASelector,
-		Created: created, CurrentServer: cfg.CurrentServer, PointerRepaired: repaired,
+		Name: name, CanonicalURL: probe.CanonicalURL, CASelector: caSelector, CABytes: caBytes,
+		Created: created, CurrentServer: cfg.CurrentServer, PointerRepaired: repaired, KeptSavedCA: keptSavedCA,
 	}, nil
 }
 

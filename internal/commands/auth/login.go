@@ -415,8 +415,11 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 	if probe.VersionWarning != "" {
 		early = append(early, probe.VersionWarning)
 	}
+	if out.KeptSavedCA {
+		early = append(early, register.KeptSavedCAWarning(out.Name))
+	}
 	early = append(early, out.Notices...)
-	return l.authenticateDelegated(ctx, in, p, out.Name, out.CanonicalURL, out.CASelector, probe.CABytes,
+	return l.authenticateDelegated(ctx, in, p, out.Name, out.CanonicalURL, out.CASelector, out.CABytes,
 		connectionCA{bytes: probe.ConnectionBytes, fromEnvironment: probe.FromEnvironment}, early, out.Created)
 }
 

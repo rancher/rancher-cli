@@ -741,6 +741,70 @@ func TestLoginDelegatedIdenticalURLDifferentCacertConflicts(t *testing.T) {
 	assert.NotContains(t, ce.Hint, "--url")
 }
 
+// TestLoginDelegatedSameCertificatesOnAnotherPathCompletes asserts that
+// `login <name> --url U --cacert F` on an entry whose saved CA holds the same
+// certificate as F (a copy on another path, with Windows line endings, and
+// under http as well as https) completes the login: no CONFLICT and no
+// "entry changed" refusal after the token was created, the credential is
+// stored, the entry's ca stays the saved path and the login warns that the
+// saved CA was kept. The login binds to the saved selector and its bytes,
+// not to the new file's.
+func TestLoginDelegatedSameCertificatesOnAnotherPathCompletes(t *testing.T) {
+	t.Parallel()
+	for _, serverURL := range []string{"https://r.ex", "http://r.ex"} {
+		t.Run(serverURL, func(t *testing.T) {
+			t.Parallel()
+			dir, store := cmdtest.FilePolicyDir(t)
+			certificate := cmdtest.CertificatePEM(t)
+			saved := cmdtest.WriteCAFile(t, certificate)
+			seedServer(t, dir, "prod", serverURL, saved, false)
+			copyPath := cmdtest.WriteCAFile(t, strings.ReplaceAll(certificate, "\n", "\r\n"))
+
+			res, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+				cmdtest.Input{Str: map[string]string{"url": serverURL, "cacert": copyPath}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}},
+				cmdtest.StdinPrompter("id:sec\n"))
+			require.NoError(t, err)
+			assert.Equal(t, false, res.Data.(map[string]any)["added"])
+			assert.Contains(t, res.Warnings, `server entry "prod" keeps its saved CA, which holds the same certificates`)
+			_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
+			require.NoError(t, tokErr, "the credential is stored")
+
+			cfg, cerr := config.Load(config.FilePath(dir))
+			require.NoError(t, cerr)
+			assert.Equal(t, saved, cfg.Servers["prod"].CA)
+		})
+	}
+}
+
+// TestLoginDelegatedDifferentCertificateConflictsWithFingerprints asserts
+// that a --cacert file with another certificate than the saved CA is still a
+// CONFLICT that lists both fingerprints, stores no credential and leaves the
+// entry as saved.
+func TestLoginDelegatedDifferentCertificateConflictsWithFingerprints(t *testing.T) {
+	t.Parallel()
+	dir, store := cmdtest.FilePolicyDir(t)
+	saved := cmdtest.WriteCAFile(t, cmdtest.CertificatePEM(t))
+	other := cmdtest.WriteCAFile(t, cmdtest.CertificatePEM(t))
+	seedServer(t, dir, "prod", "https://r.ex", saved, false)
+
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
+		cmdtest.Input{Str: map[string]string{"url": "https://r.ex", "cacert": other}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}},
+		cmdtest.StdinPrompter("id:sec\n"))
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	head, _, _ := strings.Cut(ce.Message, "; to add a new server")
+	assert.Regexp(t, `^server entry "prod" already exists with a different CA \(saved: [0-9a-f]{64}; --cacert: [0-9a-f]{64}\)$`, head)
+	assert.NotContains(t, head, filepath.Dir(saved))
+	assert.NotContains(t, head, filepath.Dir(other))
+	assert.Contains(t, ce.Hint, "--cacert")
+	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
+	require.Error(t, tokErr, "no credential is stored")
+	cfg, cerr := config.Load(config.FilePath(dir))
+	require.NoError(t, cerr)
+	assert.Equal(t, saved, cfg.Servers["prod"].CA)
+}
+
 // TestLoginDelegatedDifferentURLIsValidationBeforeAnyProbe asserts that a known
 // name whose registered URL disagrees with --url is refused immediately,
 // with a code and wording distinct from the shared registration commit's own

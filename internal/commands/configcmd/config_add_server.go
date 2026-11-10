@@ -18,7 +18,9 @@ type configAddServerCmd struct {
 // [--cacert <path|PEM>]` (local): the registration path's add caller -
 // establishes trust and records a server entry, bootstrapping/repairing the
 // current-server pointer when it is empty or dangling. Never an upsert: an
-// existing name with a different URL or CA is CONFLICT.
+// existing name with a different URL or a CA with other certificates is
+// CONFLICT; a --cacert that holds the same certificates as the saved CA
+// leaves the entry as saved, with a warning.
 func NewConfigAddServer(dir string) runtime.Command {
 	return &configAddServerCmd{dir: dir, tlsPreflight: register.TLSPreflight}
 }
@@ -80,6 +82,9 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 	}}
 	if probe.VersionWarning != "" {
 		res.Warnings = append(res.Warnings, probe.VersionWarning)
+	}
+	if out.KeptSavedCA {
+		res.Warnings = append(res.Warnings, register.KeptSavedCAWarning(out.Name))
 	}
 	res.Warnings = append(res.Warnings, out.Notices...)
 	if !out.Created {

@@ -294,10 +294,17 @@ with none of them the system roots verify the server.
 |---|---|---|
 | `auth get-token`, `rancher token` | `--cacert` (`--cacerts`), then `RANCHER_CLI_CACERT`, then the CA of the server entry the call identifies or whose URL matches, then system roots; `rancher token --skip-verify` uses none | nothing |
 | ordinary commands | `RANCHER_CLI_CACERT`, then the current server entry's CA (dropped when `RANCHER_CLI_URL` names another server), then system roots | nothing |
-| `auth login` (with or without `--url`) | `--cacert` (with `--url` only), then `RANCHER_CLI_CACERT`, then the entry's saved CA, then system roots | `--cacert`, or a certificate accepted at the trust prompt; never the variable (an entry left without a CA after a login that used it carries `caFromEnvironment: true`) |
+| `auth login` (with or without `--url`) | `--cacert` (with `--url` only), then `RANCHER_CLI_CACERT`, then the entry's saved CA, then system roots | `--cacert` (with `--url`, unless the entry's saved CA already holds the same certificates), or a certificate accepted at the trust prompt; never the variable (an entry left without a CA after a login that used it carries `caFromEnvironment: true`) |
 | `auth logout`, `auth delete-token`, `config delete-server` (revokes) | the entry's saved CA; `RANCHER_CLI_CACERT` only for an entry `auth login` saved without a CA because that variable supplied it; otherwise system roots | nothing |
-| `config add-server`, `config update-server` | `--cacert`, else (`update-server`) the saved CA it keeps; the variable is not read | `--cacert` |
+| `config add-server`, `config update-server` | `--cacert`, else (`update-server`) the saved CA it keeps; the variable is not read | `--cacert` (`add-server` on an existing entry: unless the saved CA already holds the same certificates) |
 | the exec plugin's own sign-in (token reuse on) | the same order as `auth get-token` | the CA it connected with, the variable's included (none under `--skip-verify`), in its `exec-login-*` entry |
+
+`config add-server` and `auth login --url` on an entry that already has a CA
+accept a `--cacert` whose certificates are the same as the saved CA's (a copy
+on another path, or with other line endings): the entry keeps its saved CA and
+a warning says so. Any other CA is refused with CONFLICT and a message that
+lists the SHA-256 fingerprints of the certificates that differ.
+`config update-server --cacert` changes the saved CA.
 
 `RANCHER_CLI_CACERT` is not applied to a command that names a server other
 than the one `RANCHER_CLI_URL` names: a variable exported with

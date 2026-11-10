@@ -2,12 +2,18 @@ package configcmd
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -154,4 +160,75 @@ func TestAddServerUnchangedHeadlineBold(t *testing.T) {
 	styled := tr.StyledText(style.Style{Enabled: true})
 	assert.Equal(t, "\x1b[1mserver prod unchanged\x1b[0m\n", styled)
 	assert.Equal(t, tr.Text, style.Strip(styled))
+}
+
+// TestAddServerSameCertificatesOnAnotherPathKeepsTheSavedCA asserts that a
+// second add-server with a --cacert file that holds the same certificate as
+// the entry's saved CA (a copy with Windows line endings on another path)
+// answers unchanged with a warning, and leaves the config file as it was.
+func TestAddServerSameCertificatesOnAnotherPathKeepsTheSavedCA(t *testing.T) {
+	dir, _ := cmdtest.FilePolicyDir(t)
+	c := newAddServerCmd(dir)
+	certificate := cmdtest.CertificatePEM(t)
+	saved := cmdtest.WriteCAFile(t, certificate)
+	_, err := c.Execute(t.Context(),
+		cmdtest.Input{Str: map[string]string{"url": "https://qa1.example.com", "cacert": saved}, Pos: []string{"qa1"}}, nil)
+	require.NoError(t, err)
+	before, err := os.ReadFile(config.FilePath(dir))
+	require.NoError(t, err)
+
+	copyPath := cmdtest.WriteCAFile(t, strings.ReplaceAll(certificate, "\n", "\r\n"))
+	res, err := c.Execute(t.Context(),
+		cmdtest.Input{Str: map[string]string{"url": "https://qa1.example.com", "cacert": copyPath}, Pos: []string{"qa1"}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ServerAdded", res.Kind)
+	data := res.Data.(map[string]any)
+	assert.Equal(t, true, data["unchanged"])
+	assert.Equal(t, "path", data["ca"])
+	assert.Equal(t, "server qa1 unchanged\n", res.Text)
+	assert.Contains(t, res.Warnings, `server entry "qa1" keeps its saved CA, which holds the same certificates`)
+
+	after, err := os.ReadFile(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "the config file is not rewritten")
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, saved, cfg.Servers["qa1"].CA)
+}
+
+// TestAddServerDifferentCertificateIsAConflictWithBothFingerprints asserts
+// that another CA is still refused, with the fingerprints of both
+// certificates and no path in the text before the unchanged tail.
+func TestAddServerDifferentCertificateIsAConflictWithBothFingerprints(t *testing.T) {
+	dir, _ := cmdtest.FilePolicyDir(t)
+	c := newAddServerCmd(dir)
+	first, second := cmdtest.CertificatePEM(t), cmdtest.CertificatePEM(t)
+	saved, other := cmdtest.WriteCAFile(t, first), cmdtest.WriteCAFile(t, second)
+	_, err := c.Execute(t.Context(),
+		cmdtest.Input{Str: map[string]string{"url": "https://qa1.example.com", "cacert": saved}, Pos: []string{"qa1"}}, nil)
+	require.NoError(t, err)
+
+	_, err = c.Execute(t.Context(),
+		cmdtest.Input{Str: map[string]string{"url": "https://qa1.example.com", "cacert": other}, Pos: []string{"qa1"}}, nil)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	head, _, _ := strings.Cut(ce.Message, "; to add a new server")
+	assert.Equal(t, `server entry "qa1" already exists with a different CA (saved: `+certificateFingerprint(t, first)+
+		`; --cacert: `+certificateFingerprint(t, second)+`)`, head)
+	assert.NotContains(t, head, filepath.Dir(saved))
+	assert.NotContains(t, head, filepath.Dir(other))
+	assert.Contains(t, ce.Hint, "--cacert")
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, saved, cfg.Servers["qa1"].CA)
+}
+
+func certificateFingerprint(t *testing.T, pemText string) string {
+	t.Helper()
+	block, _ := pem.Decode([]byte(pemText))
+	require.NotNil(t, block)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+	return tlstrust.Fingerprint(cert)
 }
