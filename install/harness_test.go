@@ -353,7 +353,7 @@ func newStub(t *testing.T) *stub {
 // ones tests control explicitly (jq, python3, gh).
 var baseTools = []string{"sh", "curl", "uname", "mktemp", "chmod", "ln",
 	"readlink", "grep", "awk", "tr", "mv", "cp", "rm", "rmdir", "mkdir",
-	"date", "sleep", "cat", "sha256sum", "shasum", "dirname", "basename"}
+	"date", "sleep", "cat", "sha256sum", "shasum", "dirname", "basename", "id"}
 
 // toolPath builds a PATH dir symlinking exactly the named tools (resolved
 // from the host PATH; missing hosts' tools are skipped), so the presence or
@@ -376,6 +376,16 @@ func fakeUname(t *testing.T, kernel, machine string) string {
 	dir := t.TempDir()
 	script := "#!/bin/sh\ncase \"$1\" in\n  -s) echo \"" + kernel + "\" ;;\n  -m) echo \"" + machine + "\" ;;\nesac\n"
 	testfs.WriteExecutable(t, filepath.Join(dir, "uname"), []byte(script))
+	return dir
+}
+
+// fakeID returns a dir whose id prints the given uid for -u, so a test can
+// choose a uid whose /run/user directory cannot exist on the host.
+func fakeID(t *testing.T, uid string) string {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\ncase \"$1\" in\n  -u) echo \"" + uid + "\" ;;\nesac\n"
+	testfs.WriteExecutable(t, filepath.Join(dir, "id"), []byte(script))
 	return dir
 }
 

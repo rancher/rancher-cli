@@ -490,6 +490,36 @@ verify_checksums() {
   done
 }
 
+# gh_run <gh arguments>: the only place install.sh runs gh. gh looks its token
+# up in the system keyring through the D-Bus session bus. On Linux with no
+# session bus the D-Bus library starts one (dbus-daemon, then the keyring's
+# gnome-keyring-daemon) and both keep running after the install. An address
+# the library rejects at once makes the keyring lookup fail without starting
+# anything; gh then reads its token from its own config file. With a session
+# bus (the address is set, or a bus exists at /run/user/<uid>/bus or
+# /run/user/<uid>/dbus-session, the paths the library checks) gh runs
+# unchanged and a desktop keyring keeps working. A missing uname or id counts
+# as a session bus: the check never stops the installer. The subshell keeps
+# the override out of the rest of the script.
+gh_run() {
+  (
+    case "${DBUS_SESSION_BUS_ADDRESS:-}" in
+      ''|autolaunch:)
+        if [ "$(uname -s 2>/dev/null || true)" = Linux ]; then
+          _bus_uid="$(id -u 2>/dev/null || true)"
+          if [ -n "$_bus_uid" ] && \
+             [ ! -e "/run/user/$_bus_uid/bus" ] && \
+             [ ! -e "/run/user/$_bus_uid/dbus-session" ]; then
+            DBUS_SESSION_BUS_ADDRESS="disabled:"
+            export DBUS_SESSION_BUS_ADDRESS
+          fi
+        fi
+        ;;
+    esac
+    gh "$@"
+  )
+}
+
 # Attestation: capability probe, then verify. Anything short of a gh that is
 # installed, supports --signer-workflow and is logged in takes the
 # unavailable path (notice; fatal only with --verify-attestation). A capable
@@ -500,8 +530,8 @@ verify_checksums() {
 # deliberately NOT scoped to the download host.
 gh_capable() {
   command -v gh >/dev/null 2>&1 || return 1
-  gh attestation verify --help 2>/dev/null | grep -q 'signer-workflow' || return 1
-  gh auth status >/dev/null 2>&1 || return 1
+  gh_run attestation verify --help 2>/dev/null | grep -q 'signer-workflow' || return 1
+  gh_run auth status >/dev/null 2>&1 || return 1
   return 0
 }
 
@@ -515,7 +545,7 @@ resolve_token() {
     \[*) _host="${_host#\[}"; _host="${_host%%\]*}" ;;
     *) _host="${_host%%:*}" ;;
   esac
-  _tok="$(gh auth token --hostname "$_host" 2>/dev/null </dev/null || true)"
+  _tok="$(gh_run auth token --hostname "$_host" 2>/dev/null </dev/null || true)"
   [ -n "$_tok" ] || return 0
   TOKEN="$_tok"
   TOKEN_SOURCE="gh auth token"
@@ -633,7 +663,7 @@ parse_args() {
 # guard - a missing tr would fail the control-byte guard OPEN), so they are
 # preflighted like the rest.
 preflight_tools() {
-  for tool in curl uname mktemp chmod mv ln readlink grep awk tr sleep; do
+  for tool in curl uname id mktemp chmod mv ln readlink grep awk tr sleep; do
     command -v "$tool" >/dev/null 2>&1 || err "required tool not found: $tool"
   done
   if command -v sha256sum >/dev/null 2>&1; then
@@ -730,7 +760,7 @@ verify() {
   verify_checksums
   if gh_capable; then
     for _b in "$WORK/$CLI_ASSET" "$WORK/$HELPER_ASSET"; do
-      gh attestation verify "$_b" --repo "$REPO" \
+      gh_run attestation verify "$_b" --repo "$REPO" \
         --signer-workflow "$REPO/.github/workflows/release.yaml" >/dev/null 2>&1 || \
         err "build provenance attestation failed for $_b"
     done

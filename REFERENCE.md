@@ -374,6 +374,12 @@ best-effort.
 GitHub token lookup order: `GH_TOKEN` > `GITHUB_TOKEN` > `gh auth token` (when
 `gh` is on PATH and logged in) > anonymous.
 
+On Linux with no D-Bus session bus, `install.sh` does not let `gh` start one:
+no `dbus-daemon` or `gnome-keyring-daemon` is left running. A `gh` token kept
+only in a keyring is then not used for the download or the attestation check;
+a token in the `gh` configuration file is. Set `GH_TOKEN` to use a keyring
+token.
+
 No GitHub token is needed: the release downloads are public. When the installer
 has a GitHub token, it downloads assets through the GitHub API asset endpoint,
 and fetches any signed storage redirect with a second request that carries no
