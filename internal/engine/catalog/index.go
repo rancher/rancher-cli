@@ -6,6 +6,7 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -23,6 +24,8 @@ type ChartVersion struct {
 	Description string            `json:"description"`
 	Deprecated  bool              `json:"deprecated"`
 	Annotations map[string]string `json:"annotations"`
+	// Digest is empty for an OCI entry until Rancher has fetched the chart.
+	Digest string `json:"digest"`
 }
 
 // Index is a Helm repository index: the versions of each chart, by chart
@@ -54,6 +57,42 @@ func ReadIndex(ctx context.Context, root engine.RootClient, cluster, repo string
 			"the index of ClusterRepo "+clierr.ShellQuote(repo)+" is not valid JSON").WithCause(err)
 	}
 	return idx, nil
+}
+
+// Info is what Rancher's info link returns for one chart version: the
+// chart's default values and its Chart.yaml annotations.
+type Info struct {
+	Values map[string]any `json:"values"`
+	Chart  InfoChart      `json:"chart"`
+}
+
+// InfoChart is the part of a chart's Chart.yaml the info link answer carries
+// that the commands use.
+type InfoChart struct {
+	Annotations map[string]string `json:"annotations"`
+}
+
+// ReadInfo reads the info of one chart version from the ClusterRepo repo of
+// cluster, a cluster id. Errors are shaped as ReadIndex's are: every one
+// names the repository, a server answer keeps the status table's code, and
+// an answer that does not decode is GENERIC and never quotes the body.
+func ReadInfo(ctx context.Context, root engine.RootClient, cluster, repo, chart, version string) (Info, error) {
+	req := steve.Request{Type: ClusterRepoType, Name: repo}
+	if cluster != engine.LocalCluster {
+		req.Cluster = cluster
+	}
+	path := req.Path() + "?link=info&chartName=" + url.QueryEscape(chart) + "&version=" + url.QueryEscape(version)
+	body, err := root.GetJSON(ctx, path)
+	if err != nil {
+		return Info{}, repoError(repo, err)
+	}
+	var info Info
+	if err := json.Unmarshal(body, &info); err != nil {
+		return Info{}, clierr.New(clierr.CodeGeneric,
+			"the info of chart "+clierr.ShellQuote(chart)+" version "+clierr.ShellQuote(version)+
+				" in ClusterRepo "+clierr.ShellQuote(repo)+" is not valid JSON").WithCause(err)
+	}
+	return info, nil
 }
 
 // repoError puts the repository name in front of err's message and keeps

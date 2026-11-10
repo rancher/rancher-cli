@@ -159,6 +159,7 @@ or point the instructions file of any other coding-agent harness at it.
 | [Projects & access](COMMANDS.md#projects--access) | project namespace membership, grant, revoke |
 | [Cluster scaling & autoscaling](COMMANDS.md#cluster-scaling--autoscaling) | machine-pool scale, cluster-autoscaler set/clear/pause/resume |
 | [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project/user reads, images, usage, charts |
+| [Apps](COMMANDS.md#apps) | install a chart from a ClusterRepo as a Helm release (`app install`), uninstall one (`app uninstall`); Rancher runs Helm, previews come from server reads |
 | [Access](COMMANDS.md#access) | who can do what, as the cluster's authorizer answers it (`access can`, `access list`, `access who-can`, `access explain`), which clusters a subject can reach through Rancher's proxy (`access clusters`), and which projects a subject can see and is a member of (`access projects`) |
 | [Logs & support](COMMANDS.md#logs--support) | logs of Rancher components, support bundle |
 | [kubectl integration](COMMANDS.md#kubectl-integration) | kubeconfig that uses the exec plugin, legacy `rancher token` command |

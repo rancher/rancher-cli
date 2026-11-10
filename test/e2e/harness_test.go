@@ -3,6 +3,8 @@
 package e2e
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -101,6 +103,13 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	// The index link of a ClusterRepo, which the envtest apiserver does not
 	// serve.
 	"charts": func(o *testrancher.Options) { o.Fallthrough = chartIndexRoute(o.Fallthrough) },
+	// The index and info links of a ClusterRepo and the install and
+	// uninstall actions, none of which the envtest apiserver serves; every
+	// action body is kept for the script's check.
+	"app-install": func(o *testrancher.Options) {
+		appActions = &appActionLog{}
+		o.Fallthrough = appActionRoutes(appActions, chartIndexRoute(o.Fallthrough))
+	},
 }
 
 // chartIndexes are the Helm repository indexes the charts scenario's Rancher
@@ -123,13 +132,24 @@ var chartIndexes = map[string]string{
 	    {"name":"charts-old","version":"1.0.0","description":"no longer maintained","annotations":{"catalog.cattle.io/deprecated":"true"},"digest":"d8","urls":["charts-old-1.0.0.tgz"]}]}}`,
 	"charts-second": `{"apiVersion":"v1","entries":{
 	  "second-app":[{"name":"second-app","version":"0.1.0","description":"second","digest":"d6","urls":["second-app-0.1.0.tgz"]}]}}`,
+	"app-install-repo": `{"apiVersion":"v1","generated":"2026-01-02T03:04:05Z","entries":{
+	  "app-install-chart":[
+	    {"name":"app-install-chart","version":"1.2.0","appVersion":"12","description":"the chart","digest":"a2","urls":["app-install-chart-1.2.0.tgz"]},
+	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"older","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}]}}`,
 }
 
 // chartIndexRoute answers GET
 // <cluster>/v1/catalog.cattle.io.clusterrepos/<name> with link=index for a
 // ClusterRepo the envtest apiserver holds, on the local cluster and on
-// c-test. A ClusterRepo with spec.enabled false answers not found, as Rancher
-// main does, and so does a name no ClusterRepo has.
+// c-test. A ClusterRepo with spec.enabled false answers 500 with a ServerError
+// object, as Rancher main does: its content manager returns the error
+// "clusterrepo <name> is disabled: NotFound" wrapped (rancher main
+// pkg/catalogv2/content/content.go:323-325), and the apiserver answers an
+// error that is neither a bare validation.ErrorCode nor an APIError with 500
+// ServerError and the error's text (rancher/apiserver v0.9.10
+// pkg/handlers/error.go:18-23, :33-38). A name no ClusterRepo has answers 404
+// with the Kubernetes error text (rancher/steve v0.9.23
+// pkg/stores/proxy/error_wrapper.go:57-64).
 func chartIndexRoute(next http.Handler) http.Handler {
 	const typePath = "/v1/catalog.cattle.io.clusterrepos/"
 	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "clusterrepos"}
@@ -152,8 +172,7 @@ func chartIndexRoute(next http.Handler) http.Handler {
 			return
 		}
 		if enabled, found, _ := unstructured.NestedBool(repo.Object, "spec", "enabled"); found && !enabled {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"type":"error","status":404,"code":"NotFound","message":"clusterrepo ` + name + ` is disabled: NotFound"}`))
+			appServerError(w, "clusterrepo "+name+" is disabled: NotFound")
 			return
 		}
 		body, ok := chartIndexes[name]
@@ -162,6 +181,277 @@ func chartIndexRoute(next http.Handler) http.Handler {
 		}
 		_, _ = w.Write([]byte(body))
 	})
+}
+
+// appActions keeps the bodies of the actions the app-install scenario's
+// Rancher accepted, for the scenario's check.
+var appActions *appActionLog
+
+// appActionEntry is one accepted action: the action name, the request path,
+// the fieldManager query value and the JSON body as sent.
+type appActionEntry struct {
+	Action       string          `json:"action"`
+	Path         string          `json:"path"`
+	FieldManager string          `json:"fieldManager"`
+	Body         json.RawMessage `json:"body"`
+}
+
+type appActionLog struct {
+	mu      sync.Mutex
+	entries []appActionEntry
+}
+
+func (l *appActionLog) add(e appActionEntry) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries = append(l.entries, e)
+}
+
+func (l *appActionLog) json() ([]byte, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return json.Marshal(append([]appActionEntry{}, l.entries...))
+}
+
+// cmdAppActions writes every action the app-install scenario's Rancher
+// accepted so far, in order, as a JSON array to a file: appactions <file>.
+func cmdAppActions(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 || appActions == nil {
+		ts.Fatalf("usage: appactions <file> (in the app-install scenario)")
+	}
+	b, err := appActions.json()
+	if err != nil {
+		ts.Fatalf("appactions: %v", err)
+	}
+	if err := os.WriteFile(ts.MkAbs(args[0]), b, 0o644); err != nil {
+		ts.Fatalf("appactions: write %s: %v", args[0], err)
+	}
+}
+
+// appInfos are the answers of a ClusterRepo's info link by "<chart>/<version>":
+// the keys of Rancher's ChartInfo with the files of the chart that matter
+// here, values.yaml as values and Chart.yaml as chart (rancher
+// pkg/catalogv2/helm/info.go InfoFromTarball, :25-84; the type is
+// pkg/api/steve/catalog/types/rest.go:52-58).
+var appInfos = map[string]string{
+	"app-install-chart/1.2.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.2.0"}}`,
+	"app-install-chart/1.1.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.1.0"}}`,
+}
+
+// appActionRoutes answers, on c-test, GET
+// /v1/catalog.cattle.io.clusterrepos/<name>?link=info, and POST
+// /v1/catalog.cattle.io.clusterrepos/<name>?action=install and
+// /v1/catalog.cattle.io.apps/<ns>/<name>?action=uninstall. An action keeps
+// its body, creates the Operation Rancher creates, and answers 201 as
+// Rancher does. Every other request goes on.
+func appActionRoutes(log *appActionLog, next http.Handler) http.Handler {
+	const (
+		repoPath = "/v1/catalog.cattle.io.clusterrepos/"
+		appPath  = "/v1/catalog.cattle.io.apps/"
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path, ok := strings.CutPrefix(r.URL.Path, "/k8s/clusters/c-test")
+		q := r.URL.Query()
+		var serve func(http.ResponseWriter, *http.Request, string)
+		switch {
+		case !ok:
+		case r.Method == http.MethodGet && q.Get("link") == "info" && strings.HasPrefix(path, repoPath):
+			serve = func(w http.ResponseWriter, r *http.Request, name string) { serveAppInfo(w, q, name) }
+			path = strings.TrimPrefix(path, repoPath)
+		case r.Method == http.MethodPost && q.Get("action") == "install" && strings.HasPrefix(path, repoPath):
+			serve = func(w http.ResponseWriter, r *http.Request, name string) { serveAppInstall(w, r, log, name) }
+			path = strings.TrimPrefix(path, repoPath)
+		case r.Method == http.MethodPost && q.Get("action") == "uninstall" && strings.HasPrefix(path, appPath):
+			serve = func(w http.ResponseWriter, r *http.Request, name string) { serveAppUninstall(w, r, log, name) }
+			path = strings.TrimPrefix(path, appPath)
+		}
+		if serve == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+testToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		serve(w, r, path)
+	})
+}
+
+// appError writes the error object the apiserver sends: type, status, code and
+// message (rancher/apiserver v0.9.10 pkg/handlers/error.go:50-56).
+func appError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"type": "error", "status": status, "code": code, "message": message})
+}
+
+// appNotFound answers a read of an object by its id that does not exist: 404
+// with the code NotFound and the Kubernetes error text, for example
+// clusterrepos.catalog.cattle.io "x" not found (rancher/steve v0.9.23
+// pkg/stores/proxy/error_wrapper.go:57-64).
+func appNotFound(w http.ResponseWriter, what string) {
+	appError(w, http.StatusNotFound, "NotFound", what+" not found")
+}
+
+// appServerError answers 500 with the code ServerError and the error's text,
+// which the apiserver does for every error that is not a validation.ErrorCode
+// or an APIError (rancher/apiserver v0.9.10 pkg/handlers/error.go:33-38).
+func appServerError(w http.ResponseWriter, message string) {
+	appError(w, http.StatusInternalServerError, "ServerError", message)
+}
+
+// serveAppInfo answers the info link. An empty chartName is the bare
+// validation.NotFound, which answers 404 with an empty message (rancher
+// v2.15.2 pkg/api/steve/catalog/content.go:82-84; rancher/apiserver v0.9.10
+// pkg/handlers/error.go:18-20, :55). The body is the encoded ChartInfo
+// (content.go:92-93). A chart the repository lacks answers 500 ServerError
+// with Helm's "no chart name found" (helm v4.2.2 pkg/repo/v1/index.go:51,
+// :195-199), and a version it lacks "no chart version found for
+// <chart>-<version>" (index.go:239); Rancher returns both errors unchanged
+// (content.go:87-90, pkg/catalogv2/content/content.go:225-228).
+func serveAppInfo(w http.ResponseWriter, q url.Values, repo string) {
+	chart, version := q.Get("chartName"), q.Get("version")
+	if chart == "" {
+		appError(w, http.StatusNotFound, "NotFound", "")
+		return
+	}
+	body, ok := appInfos[chart+"/"+version]
+	if !ok || repo != "app-install-repo" {
+		message := "no chart name found"
+		for key := range appInfos {
+			if repo == "app-install-repo" && strings.HasPrefix(key, chart+"/") {
+				message = "no chart version found for " + chart + "-" + version
+			}
+		}
+		appServerError(w, message)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(body))
+}
+
+// appActionAnswer writes the 201 of a catalog action: a chartActionOutput
+// with the Operation's name and namespace (rancher
+// pkg/api/steve/catalog/operation.go:93-99; types/rest.go:101-104). The
+// apiserver adds the type and an empty links object to the object's fields
+// and no id, so no links and no actions (rancher/apiserver v0.9.10
+// pkg/writer/encoding.go:65-79 and :93-96, pkg/types/server_types.go:21-66).
+func appActionAnswer(w http.ResponseWriter, op *unstructured.Unstructured) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"type": "chartActionOutput", "links": map[string]any{},
+		"operationName": op.GetName(), "operationNamespace": op.GetNamespace(),
+	})
+}
+
+// decodeAppBody decodes an action body as Rancher does, with a JSON decoder
+// on the request body, so the error text is the decoder's, for example EOF for
+// an empty body (rancher v2.15.2 pkg/catalogv2/helmop/operation.go:721-724 for
+// an install, :357-360 for an uninstall). The action answers that error with
+// 500 ServerError (appServerError); Rancher has no 400 answer for it.
+func decodeAppBody(raw []byte, into any) error {
+	return json.NewDecoder(bytes.NewReader(raw)).Decode(into)
+}
+
+// appOperation creates the Operation of an action, named after the pod
+// Rancher creates with generateName helm-operation- (rancher
+// pkg/catalogv2/helmop/operation.go:1013-1016, :819-826), in the release's
+// namespace, with the status the action sets (:815-817, :835-836, and
+// :727-729, :763, :768 for an install; :371-377 for an uninstall). The token
+// and the command are left out.
+func appOperation(ctx context.Context, action, release, ns string) (*unstructured.Unstructured, error) {
+	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "operations"}
+	op := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "catalog.cattle.io/v1", "kind": "Operation",
+		"metadata": map[string]any{"generateName": "helm-operation-", "namespace": ns},
+	}}
+	created, err := dynCli.Resource(gvr).Namespace(ns).Create(ctx, op, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	created.Object["status"] = map[string]any{
+		"action": action, "releaseName": release, "namespace": ns,
+		"podName": created.GetName(), "podNamespace": "cattle-system",
+	}
+	return dynCli.Resource(gvr).Namespace(ns).UpdateStatus(ctx, created, metav1.UpdateOptions{})
+}
+
+func serveAppInstall(w http.ResponseWriter, r *http.Request, log *appActionLog, repo string) {
+	// The apiserver reads the object of an action first and answers its
+	// error (rancher/apiserver v0.9.10 pkg/server/server.go:172-179).
+	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "clusterrepos"}
+	if _, err := dynCli.Resource(gvr).Get(r.Context(), repo, metav1.GetOptions{}); err != nil {
+		appNotFound(w, "clusterrepos.catalog.cattle.io "+strconv.Quote(repo))
+		return
+	}
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	var body struct {
+		Namespace string `json:"namespace"`
+		Charts    []struct {
+			ReleaseName string `json:"releaseName"`
+		} `json:"charts"`
+	}
+	if err := decodeAppBody(raw, &body); err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	// The namespace is "default" when the body has none (rancher
+	// pkg/catalogv2/helmop/operation.go:776-782); the release is the last
+	// chart's (:763).
+	ns, release := cmp.Or(body.Namespace, "default"), ""
+	if len(body.Charts) > 0 {
+		release = body.Charts[len(body.Charts)-1].ReleaseName
+	}
+	// A failure to create the Operation is the Kubernetes error, answered 500
+	// ServerError with its text (rancher v2.15.2
+	// pkg/catalogv2/helmop/operation.go:826-829).
+	op, err := appOperation(r.Context(), "install", release, ns)
+	if err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	log.add(appActionEntry{Action: "install", Path: r.URL.Path, FieldManager: r.URL.Query().Get("fieldManager"), Body: raw})
+	appActionAnswer(w, op)
+}
+
+func serveAppUninstall(w http.ResponseWriter, r *http.Request, log *appActionLog, name string) {
+	ns, release, ok := strings.Cut(name, "/")
+	if !ok {
+		appNotFound(w, "apps.catalog.cattle.io "+strconv.Quote(name))
+		return
+	}
+	// The App is read first by the apiserver (server.go:172-179) and by the
+	// action, whose Operation names the App's release and namespace
+	// (rancher pkg/catalogv2/helmop/operation.go:351-377).
+	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "apps"}
+	app, err := dynCli.Resource(gvr).Namespace(ns).Get(r.Context(), release, metav1.GetOptions{})
+	if err != nil {
+		appNotFound(w, "apps.catalog.cattle.io "+strconv.Quote(release))
+		return
+	}
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	if err := decodeAppBody(raw, &struct{}{}); err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	specName, _, _ := unstructured.NestedString(app.Object, "spec", "name")
+	// A failure to create the Operation answers as for an install (operation.go:826-829).
+	op, err := appOperation(r.Context(), "uninstall", specName, ns)
+	if err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	log.add(appActionEntry{Action: "uninstall", Path: r.URL.Path, FieldManager: r.URL.Query().Get("fieldManager"), Body: raw})
+	appActionAnswer(w, op)
 }
 
 // execPluginFactsID is the install id the exec-plugin-facts scenario's
@@ -1461,6 +1751,7 @@ func TestScenarios(t *testing.T) {
 			"jsonget":       cmdJSONGet,
 			"setenvfrom":    cmdSetenvFrom,
 			"waitobj":       cmdWaitObj,
+			"appactions":    cmdAppActions,
 		},
 	})
 }

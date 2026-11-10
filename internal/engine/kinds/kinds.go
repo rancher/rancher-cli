@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
@@ -100,6 +101,19 @@ const (
 	NSPlain NamespacePolicy = "plain"
 )
 
+// operationStalledRemedy is the StalledRemedy of the operation row: the command
+// that shows the app of the Helm release the operation ran for, read from the
+// operation's status.releaseName and status.namespace. It gives no command
+// when one of them or the typed cluster is empty: get app requires --cluster.
+func operationStalledRemedy(obj *unstructured.Unstructured, cluster string) string {
+	release, _, _ := unstructured.NestedString(obj.Object, "status", "releaseName")
+	ns, _, _ := unstructured.NestedString(obj.Object, "status", "namespace")
+	if release == "" || ns == "" || cluster == "" {
+		return ""
+	}
+	return clierr.Rancher + " get app" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(cluster)+" --namespace "+clierr.ShellQuote(ns), release)
+}
+
 type Kind struct {
 	Key              string   // canonical MCP-vocabulary key ("managementcluster")
 	Name             string   // CLI-facing singular ("cluster")
@@ -142,6 +156,17 @@ type Kind struct {
 	// semantics and no birth-window race has been observed on them. A future
 	// kind wanting only one of the gated behaviours would need a new axis.
 	WaitFailsOnStalled bool
+	// StalledRemedy, when set on a row with WaitFailsOnStalled, writes the
+	// command that shows why a wait stopped on Stalled=True; the error of that
+	// wait carries it as its hint. It is for a kind whose Stalled message does
+	// not say why. obj is the observed object and cluster is --cluster as the
+	// user typed it ("" when none). It returns "" when obj or cluster lacks a
+	// value the command needs, and then the error carries no command. A command it writes
+	// starts with clierr.Rancher and passes every positional value through
+	// clierr.ShellQuoteArgs and every flag value through clierr.ShellQuote.
+	// Every row with WaitFailsOnStalled sets this or is listed with its reason
+	// in the guard test of this package.
+	StalledRemedy func(obj *unstructured.Unstructured, cluster string) string
 	// DeleteCascadeWarning, when non-empty, is appended to the generic
 	// delete's Effect warnings: a plain statement of what the server removes
 	// beyond the named object. Advisory only, never a gate (Destructive
@@ -960,9 +985,9 @@ var table = []Kind{
 		Key: "app", Name: "app", Aliases: []string{"apps"},
 		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "apps"},
 		Policy: NSPlain, K8sKind: "App", Scope: Downstream, Deletable: false, Completable: true,
-		NoDeleteReason:      "deleting an app object leaves its Helm release installed; this CLI does not uninstall apps",
+		NoDeleteReason:      "deleting an app object leaves its Helm release installed; to uninstall it (<name> is its name, <c> the cluster and <ns> its namespace), run `rancher app uninstall <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview",
 		NoPatchReason:       "Rancher creates and manages app objects from the Helm release; this CLI does not change them",
-		NoCreateViaManifest: "Rancher creates an app when it installs a chart; this CLI does not install charts",
+		NoCreateViaManifest: "Rancher creates an app when it installs a chart; to install one (<release> is the Helm release name, <c> the cluster, <ns> the namespace, <repo> the ClusterRepo and <chart> the chart), run `" + clierr.Rancher + " app install <release> --cluster <c> --namespace <ns> --repo <repo> --chart <chart> --dry-run` and add --apply after reading the preview",
 		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			{Header: "CHART", Path: []string{"spec", "chart", "metadata", "name"}},
@@ -977,6 +1002,8 @@ var table = []Kind{
 		Key: "operation", Name: "operation", Aliases: []string{"operations"},
 		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "operations"},
 		Policy: NSPlain, K8sKind: "Operation", Scope: Downstream, Deletable: false, Completable: true,
+		WaitDefault: "condition=Reconciling=False", WaitFailsOnStalled: true,
+		StalledRemedy:       operationStalledRemedy,
 		NoDeleteReason:      "this CLI does not delete operations",
 		NoPatchReason:       "Rancher creates and manages operation objects; this CLI does not change them",
 		NoCreateViaManifest: "Rancher creates an operation for each Helm command it runs",

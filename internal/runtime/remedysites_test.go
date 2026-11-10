@@ -247,7 +247,7 @@ func siteRows() []siteRow {
 			res.CommittedContext = &runtime.CommittedContext{ResourceKind: "token", ResourceName: "t"}
 			cmd := siteMutating{
 				d:   runtime.Descriptor{Name: "create widget", CommandType: runtime.Mutating, Delivery: runtime.DeliveryOnceOnly},
-				eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t"},
+				eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t"},
 				res: res,
 			}
 			return drivenResult(t, r, cmd, func(io *runtime.IO) { io.Apply = true })
@@ -261,7 +261,7 @@ func siteRows() []siteRow {
 		}},
 		{site: "internal/runtime.renderEffect expandAll", channel: "effect warning", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
-			return drivenResult(t, r, dryRun(safety.Effect{Warnings: []string{r.text}}), func(io *runtime.IO) { io.DryRun = true })
+			return drivenResult(t, r, dryRun(safety.Effect{PreviewSource: safety.PreviewServerDryRun, Warnings: []string{r.text}}), func(io *runtime.IO) { io.DryRun = true })
 		}},
 		{site: "internal/runtime.renderErrDrained expandAll", channel: "drained notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
@@ -324,7 +324,7 @@ func dryRun(eff safety.Effect) runtime.Command {
 func previewCommand(displayName string) runtime.Command {
 	return siteMutating{
 		d:   runtime.Descriptor{Name: "clusters scale", CommandType: runtime.Mutating},
-		eff: safety.Effect{Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: displayName},
+		eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: displayName},
 	}
 }
 

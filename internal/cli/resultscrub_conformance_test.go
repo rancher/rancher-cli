@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
@@ -660,6 +661,15 @@ type scrubRow struct {
 	// check makes extra assertions for the row, beyond the scan for hidden
 	// values; nil for none.
 	check func(t *testing.T, format string, run scrubRun)
+	// deps builds the command's dependencies in place of the in-process fake,
+	// for a command that reads through the link, index and action clients the
+	// fake does not serve. It starts its own server and plants the row's
+	// values through the server's plant hook; the runner fills in src from the
+	// row's input when deps leaves it nil. nil for a row served by the fake.
+	deps func(t *testing.T, f *scrubFake, ps *plantSet) runDeps
+	// wrap, when set, wraps the command the runner builds, for a test that
+	// reads what the command hands the pipeline.
+	wrap func(runtime.Command) runtime.Command
 }
 
 func (r scrubRow) name() string {
@@ -857,6 +867,33 @@ func requireTargetsSentIntact(t *testing.T, _ string, run scrubRun) {
 // dryRunReason is the reason of a dry-run row.
 const dryRunReason = "the result is the Effect of a dry run: its diff, never the object the server returns"
 
+// appScrubDeps returns the deps of an app command row: a Rancher test server
+// that prepare fills, and the real client factory over it, which serves the
+// cluster, link and action reads and the action request. The server plants
+// the row's values in every answer for the row's kind, and the fake counts
+// the answers that carry a value the row must not show.
+func appScrubDeps(prepare func(s *appServer)) func(t *testing.T, f *scrubFake, ps *plantSet) runDeps {
+	return func(t *testing.T, f *scrubFake, ps *plantSet) runDeps {
+		t.Helper()
+		s := newAppServer(t, "community")
+		prepare(s)
+		s.plant = func(resource string, obj map[string]any) {
+			if f.kind == nil || resource != f.kind.GVR.Resource {
+				return
+			}
+			mergeMissing(obj, ps.fragment)
+			f.scan(&unstructured.Unstructured{Object: obj})
+		}
+		dir := grConfigDir(t, s.srv)
+		factory := newClientFactory(dir, config.NewFileStore(dir))
+		return runDeps{clients: factory, roots: factory, actions: factory, serverBase: factory, sessionNamer: factory}
+	}
+}
+
+// appResultReason is the reason of the app rows: the result is built from
+// names, never from a server object.
+const appResultReason = "the result is built from names: the release, the operation Rancher names in its answer and the request id; no server object"
+
 // handWrittenScrubRows are the rows of the mutating commands that are not
 // generated from the kind table.
 func handWrittenScrubRows() []scrubRow {
@@ -983,6 +1020,18 @@ func handWrittenScrubRows() []scrubRow {
 					_ = unstructured.SetNestedField(obj.Object, "true", "metadata", "annotations", "provisioning.cattle.io/cluster-autoscaler-paused")
 				}
 			}},
+		{command: "app install", kind: "operation", class: classNames, reason: appResultReason,
+			input: in([]string{appRelease}, map[string]string{"cluster": "prod", "namespace": appNS, "repo": appRepo, "chart": appChart}),
+			deps: appScrubDeps(func(s *appServer) {
+				s.put(appOperationPath(appNS, "helm-operation-other"), map[string]any{
+					"apiVersion": "catalog.cattle.io/v1", "kind": "Operation",
+					"metadata": map[string]any{"name": "helm-operation-other", "namespace": appNS, "resourceVersion": "3"},
+					"status":   map[string]any{"releaseName": "other-release"},
+				})
+			})},
+		{command: "app uninstall", kind: "app", class: classNames, reason: appResultReason,
+			input: in([]string{appRelease}, map[string]string{"cluster": "prod", "namespace": appNS}),
+			deps:  appScrubDeps(func(s *appServer) { s.putApp("deployed") })},
 		{command: "grant", kind: "globalrolebinding", class: classEcho,
 			input: func(*plantSet) fieldCoverageInput {
 				return fieldCoverageInput{args: []string{"local://u-abc"}, values: map[string]string{"role": "admin"}, bools: map[string]bool{"global": true}}
@@ -1059,10 +1108,20 @@ func runScrubRow(t *testing.T, reg *runtime.Registry, entries map[string]entry, 
 	}
 	e, ok := entries[row.command]
 	require.True(t, ok, "no command %q", row.command)
-	cmd := e.make(runDeps{
+	deps := runDeps{
 		clients: f, roots: fieldCoverageRoots{}, serverBase: scrubBase{},
 		src: fieldCoverageSource{body}, sessionNamer: scrubNamer{row.namer},
-	})
+	}
+	if row.deps != nil {
+		deps = row.deps(t, f, ps)
+		if deps.src == nil {
+			deps.src = fieldCoverageSource{body}
+		}
+	}
+	cmd := e.make(deps)
+	if row.wrap != nil {
+		cmd = row.wrap(cmd)
+	}
 	var out, errOut bytes.Buffer
 	status, ce := runtime.Run(t.Context(), cmd, input, runtime.IO{
 		Out: &out, Err: &errOut, Format: format,

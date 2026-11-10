@@ -10,6 +10,17 @@ set -euo pipefail
 # golden instead; review its diff like the schema golden. The golden lists
 # the union of both editions, each field with the editions that have it.
 #
+# The same commits also give the JSON field names of the catalog action
+# request types ChartInstallAction, ChartInstall, ChartUpgradeAction,
+# ChartUpgrade and ChartUninstallAction. They are read from
+# pkg/api/steve/catalog/types/rest.go of the root module
+# github.com/rancher/rancher at the same pseudo-version, downloaded with go
+# mod download and parsed with go/parser, so the module is never imported and
+# its replace directives do not matter. The download is about 5 MB per
+# edition and unpacks to about 25 MB in the module cache, which stays the
+# default one: the unpacked files are read-only, so a cache inside the
+# temporary directory would make its removal on exit fail.
+#
 # The module is required in a throwaway module in a temporary directory,
 # removed on exit, never in this repository: a go.mod or go.sum here that
 # named it would make manifest scanners (trivy fs, osv-scanner, Dependabot)
@@ -28,6 +39,7 @@ set -euo pipefail
 # registry read, for tests: one object keyed by edition, each value the
 # output of docker buildx imagetools inspect --format '{{json .Image}}'.
 module="github.com/rancher/rancher/pkg/apis"
+root_module="github.com/rancher/rancher"
 
 cd "$(dirname "$0")/.."
 GOLDEN="internal/cli/testdata/rancher-api-fields.golden.json"
@@ -146,7 +158,7 @@ resolve_version() {
 # vendor directory, and may update their own go.mod freely.
 export GOWORK=off GOFLAGS=-mod=mod
 
-mkdir -p "$work/extract" "$work/merge" "$work/labels"
+mkdir -p "$work/extract" "$work/merge" "$work/labels" "$work/catalog"
 cat >"$work/labels/main.go" <<'GOEOF'
 // Command labels prints the commit an oracle image names in one label. It
 // reads the output of docker buildx imagetools inspect --format
@@ -270,6 +282,210 @@ GOEOF
   run "building the label reader" go build -o labels .
 )
 
+cat >"$work/catalog/main.go" <<'GOEOF'
+// Command catalog prints, as JSON, the JSON field names of the catalog
+// action request types in pkg/api/steve/catalog/types/rest.go of a
+// downloaded github.com/rancher/rancher module. It reads the output of go
+// mod download -json for the module from standard input and takes the
+// module path and the expected version as arguments. The file is parsed,
+// never compiled, and the names follow encoding/json: a field's json tag
+// name, else its Go name; a tag of "-" and an unexported field are skipped;
+// an embedded struct without a json name is flattened into its parent.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io"
+	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+const restFile = "pkg/api/steve/catalog/types/rest.go"
+
+var typeNames = []string{
+	"ChartInstallAction",
+	"ChartInstall",
+	"ChartUpgradeAction",
+	"ChartUpgrade",
+	"ChartUninstallAction",
+}
+
+type download struct {
+	Path    string
+	Version string
+	Dir     string
+	Error   string
+}
+
+type result struct {
+	Type   string   `json:"type"`
+	Fields []string `json:"fields"`
+}
+
+func main() {
+	out, err := run(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string) ([]result, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("want the module path and its version")
+	}
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, err
+	}
+	var d download
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return nil, fmt.Errorf("cannot parse the output of go mod download: %w", err)
+	}
+	if d.Error != "" {
+		return nil, fmt.Errorf("go mod download: %s", d.Error)
+	}
+	if d.Path != args[0] || d.Version != args[1] {
+		return nil, fmt.Errorf("go mod download returned %s@%s, want %s@%s", d.Path, d.Version, args[0], args[1])
+	}
+	if d.Dir == "" {
+		return nil, fmt.Errorf("go mod download reported no directory for %s@%s", d.Path, d.Version)
+	}
+	path := filepath.Join(d.Dir, filepath.FromSlash(restFile))
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	structs := map[string]*ast.StructType{}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts := spec.(*ast.TypeSpec)
+			if st, ok := ts.Type.(*ast.StructType); ok {
+				structs[ts.Name.Name] = st
+			}
+		}
+	}
+	var out []result
+	for _, name := range typeNames {
+		fields, err := jsonNames(structs, name, nil)
+		if err != nil {
+			return nil, fmt.Errorf("%s in %s: %w", name, restFile, err)
+		}
+		sort.Strings(fields)
+		out = append(out, result{Type: name, Fields: fields})
+	}
+	return out, nil
+}
+
+func jsonNames(structs map[string]*ast.StructType, name string, path []string) ([]string, error) {
+	st, ok := structs[name]
+	if !ok {
+		return nil, fmt.Errorf("no struct type %s", name)
+	}
+	for _, p := range path {
+		if p == name {
+			return nil, fmt.Errorf("embedded %s contains itself", name)
+		}
+	}
+	path = append(path, name)
+	var names []string
+	add := func(n string) error {
+		for _, have := range names {
+			if have == n {
+				return fmt.Errorf("the json name %q appears twice", n)
+			}
+		}
+		names = append(names, n)
+		return nil
+	}
+	for _, f := range st.Fields.List {
+		tag := ""
+		if f.Tag != nil {
+			unquoted, err := strconv.Unquote(f.Tag.Value)
+			if err != nil {
+				return nil, err
+			}
+			tag = reflect.StructTag(unquoted).Get("json")
+		}
+		if tag == "-" {
+			continue
+		}
+		tagName, _, _ := strings.Cut(tag, ",")
+		if len(f.Names) == 0 {
+			embedded, err := embeddedName(f.Type)
+			if err != nil {
+				return nil, err
+			}
+			if tagName == "" {
+				inner, err := jsonNames(structs, embedded, path)
+				if err != nil {
+					return nil, fmt.Errorf("embedded %s: %w", embedded, err)
+				}
+				for _, n := range inner {
+					if err := add(n); err != nil {
+						return nil, err
+					}
+				}
+				continue
+			}
+			if !ast.IsExported(embedded) {
+				continue
+			}
+			if err := add(tagName); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		for _, n := range f.Names {
+			if !n.IsExported() {
+				continue
+			}
+			jsonName := tagName
+			if jsonName == "" {
+				jsonName = n.Name
+			}
+			if err := add(jsonName); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return names, nil
+}
+
+func embeddedName(expr ast.Expr) (string, error) {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e.Name, nil
+	case *ast.StarExpr:
+		return embeddedName(e.X)
+	}
+	return "", fmt.Errorf("an embedded field of a type from another package or a generic type cannot be followed")
+}
+GOEOF
+(
+  cd "$work/catalog"
+  run "creating the catalog reader module" go mod init rancherapifieldscatalog
+  run "building the catalog reader" go build -o catalog .
+)
+
 cat >"$work/extract/main.go" <<'EOF'
 // Command extract prints, as JSON, the top-level fields of the Rancher API
 // types the bespoke create commands build: one level only, the json names
@@ -376,7 +592,8 @@ EOF
 
 cat >"$work/merge/main.go" <<'EOF'
 // Command merge writes the golden: the union of the per-edition field
-// lists, each field with the editions whose types have it.
+// lists, each field with the editions whose types have it, for the resource
+// specs and for the catalog action types.
 package main
 
 import (
@@ -398,31 +615,63 @@ type oracle struct {
 	PseudoVersion string `json:"pseudoVersion"`
 }
 
+type catalogAction struct {
+	Type   string   `json:"type"`
+	Fields []string `json:"fields"`
+}
+
 type goldenResource struct {
 	Resource string              `json:"resource"`
 	Path     string              `json:"path"`
 	Fields   map[string][]string `json:"fields"`
 }
 
+type goldenCatalogAction struct {
+	Type   string              `json:"type"`
+	Fields map[string][]string `json:"fields"`
+}
+
 type golden struct {
-	Module    string            `json:"module"`
-	Oracles   map[string]oracle `json:"oracles"`
-	Resources []goldenResource  `json:"resources"`
+	Module         string                `json:"module"`
+	Oracles        map[string]oracle     `json:"oracles"`
+	Resources      []goldenResource      `json:"resources"`
+	CatalogActions []goldenCatalogAction `json:"catalogActions"`
 }
 
 // Arguments: module, then edition image label commit pseudo-version
-// extract-output, once per oracle.
+// extract-output catalog-output, once per oracle.
 func main() {
 	args := os.Args[1:]
 	g := golden{Module: args[0], Oracles: map[string]oracle{}}
 	byName := map[string]*goldenResource{}
 	var order []string
-	if (len(args)-1)%6 != 0 {
-		panic("want the module, then six arguments per oracle")
+	catalogByType := map[string]*goldenCatalogAction{}
+	var catalogOrder []string
+	if (len(args)-1)%7 != 0 {
+		panic("want the module, then seven arguments per oracle")
 	}
-	for i := 1; i < len(args); i += 6 {
-		edition, image, label, commit, version, path := args[i], args[i+1], args[i+2], args[i+3], args[i+4], args[i+5]
+	for i := 1; i < len(args); i += 7 {
+		edition, image, label, commit, version, path, catalogPath := args[i], args[i+1], args[i+2], args[i+3], args[i+4], args[i+5], args[i+6]
 		g.Oracles[edition] = oracle{Image: image, Label: label, Commit: commit, PseudoVersion: version}
+		catalogRaw, err := os.ReadFile(catalogPath)
+		if err != nil {
+			panic(err)
+		}
+		var cas []catalogAction
+		if err := json.Unmarshal(catalogRaw, &cas); err != nil {
+			panic(err)
+		}
+		for _, ca := range cas {
+			gc, ok := catalogByType[ca.Type]
+			if !ok {
+				gc = &goldenCatalogAction{Type: ca.Type, Fields: map[string][]string{}}
+				catalogByType[ca.Type] = gc
+				catalogOrder = append(catalogOrder, ca.Type)
+			}
+			for _, f := range ca.Fields {
+				gc.Fields[f] = append(gc.Fields[f], edition)
+			}
+		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			panic(err)
@@ -453,6 +702,13 @@ func main() {
 			sort.Strings(editions)
 		}
 		g.Resources = append(g.Resources, *gr)
+	}
+	for _, name := range catalogOrder {
+		gc := catalogByType[name]
+		for _, editions := range gc.Fields {
+			sort.Strings(editions)
+		}
+		g.CatalogActions = append(g.CatalogActions, *gc)
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -501,6 +757,23 @@ extract() {
     fi
   )
 }
+
+# catalog_actions downloads the root module at the pseudo-version and writes
+# the json field names of its catalog action types to the file named by the
+# third argument. It runs in the script's own shell like resolve_version.
+catalog_actions() {
+  local edition=$1 version=$2 out=$3 info
+  if ! info=$(cd "$work/resolve" && go mod download -json "$root_module@$version" 2>&1); then
+    echo "error: cannot download $root_module@$version for the $edition catalog types:" >&2
+    echo "$info" >&2
+    exit 1
+  fi
+  if ! "$work/catalog/catalog" "$root_module" "$version" <<<"$info" >"$out" 2>"$work/catalog.log"; then
+    echo "error: reading the $edition catalog types of $root_module@$version failed:" >&2
+    cat "$work/catalog.log" >&2
+    exit 1
+  fi
+}
 pinned_image ORACLE_IMAGE COMMUNITY_IMAGE
 pinned_image PRIME_ORACLE_IMAGE PRIME_IMAGE
 read_commit community "$COMMUNITY_IMAGE" COMMUNITY_COMMIT
@@ -511,13 +784,15 @@ resolve_version "$COMMUNITY_COMMIT" COMMUNITY_VERSION
 resolve_version "$PRIME_COMMIT" PRIME_VERSION
 extract "$COMMUNITY_VERSION" "$work/community.json"
 extract "$PRIME_VERSION" "$work/prime.json"
+catalog_actions community "$COMMUNITY_VERSION" "$work/community-catalog.json"
+catalog_actions prime "$PRIME_VERSION" "$work/prime-catalog.json"
 
 (
   cd "$work/merge"
   run "creating the merge module" go mod init rancherapifieldsmerge
   if ! go run . "$module" \
-    community "$COMMUNITY_IMAGE" "$COMMUNITY_LABEL" "$COMMUNITY_COMMIT" "$COMMUNITY_VERSION" "$work/community.json" \
-    prime "$PRIME_IMAGE" "$PRIME_LABEL" "$PRIME_COMMIT" "$PRIME_VERSION" "$work/prime.json" >"$work/golden.json" 2>"$work/merge.log"; then
+    community "$COMMUNITY_IMAGE" "$COMMUNITY_LABEL" "$COMMUNITY_COMMIT" "$COMMUNITY_VERSION" "$work/community.json" "$work/community-catalog.json" \
+    prime "$PRIME_IMAGE" "$PRIME_LABEL" "$PRIME_COMMIT" "$PRIME_VERSION" "$work/prime.json" "$work/prime-catalog.json" >"$work/golden.json" 2>"$work/merge.log"; then
     echo "error: merging the field lists failed:" >&2
     cat "$work/merge.log" >&2
     exit 1

@@ -24,6 +24,10 @@ const (
 	hiddenAnnotation = "catalog.cattle.io/hidden"
 )
 
+// IsHidden reports whether the Rancher UI does not list v: its annotation
+// catalog.cattle.io/hidden is present and not empty, whatever the value.
+func IsHidden(v ChartVersion) bool { return v.Annotations[hiddenAnnotation] != "" }
+
 // chartItem is one line of the list.
 type chartItem struct {
 	Repository  string `json:"repository"`
@@ -225,7 +229,7 @@ func itemsOf(repo string, idx Index, all, includeDeprecated bool) chartList {
 				Version:     v.Version,
 				AppVersion:  v.AppVersion,
 				Description: v.Description,
-				Hidden:      v.Annotations[hiddenAnnotation] != "",
+				Hidden:      IsHidden(v),
 				Deprecated:  IsDeprecated(v),
 			})
 		}

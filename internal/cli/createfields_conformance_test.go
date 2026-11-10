@@ -28,7 +28,9 @@ import (
 // rancherAPIFieldsGolden is written by `make rancher-api-fields-update`
 // (scripts/rancher-api-fields): the top-level fields of the Rancher API
 // types the bespoke create commands build, read from the pkg/apis of the
-// commit each pinned oracle image names.
+// commit each pinned oracle image names, and the JSON field names of the
+// catalog action request types, read from the root module at the same
+// commit.
 const rancherAPIFieldsGolden = "testdata/rancher-api-fields.golden.json"
 
 type rancherAPIFields struct {
@@ -44,6 +46,10 @@ type rancherAPIFields struct {
 		Path     string              `json:"path"`
 		Fields   map[string][]string `json:"fields"`
 	} `json:"resources"`
+	CatalogActions []struct {
+		Type   string              `json:"type"`
+		Fields map[string][]string `json:"fields"`
+	} `json:"catalogActions"`
 }
 
 func loadRancherAPIFields(t *testing.T) rancherAPIFields {
@@ -53,6 +59,7 @@ func loadRancherAPIFields(t *testing.T) rancherAPIFields {
 	var g rancherAPIFields
 	require.NoError(t, json.Unmarshal(raw, &g))
 	require.NotEmpty(t, g.Resources)
+	require.NotEmpty(t, g.CatalogActions)
 	return g
 }
 
@@ -633,6 +640,16 @@ var rancherAPIFieldsImages = map[string]string{
 	"prime":     "PRIME_ORACLE_IMAGE",
 }
 
+// rancherAPIFieldsCatalogTypes is the catalog action request types the
+// golden lists, in order: the fixed type list of scripts/rancher-api-fields.
+var rancherAPIFieldsCatalogTypes = []string{
+	"ChartInstallAction",
+	"ChartInstall",
+	"ChartUpgradeAction",
+	"ChartUpgrade",
+	"ChartUninstallAction",
+}
+
 // checkRancherAPIFields returns what is wrong with a golden's oracles and
 // per-field edition lists against the image references of
 // scripts/e2e-fidelity, keyed by edition.
@@ -679,6 +696,26 @@ func checkRancherAPIFields(g rancherAPIFields, images map[string]string) []strin
 			}
 		}
 	}
+	var catalogTypes []string
+	for _, c := range g.CatalogActions {
+		catalogTypes = append(catalogTypes, c.Type)
+		if len(c.Fields) == 0 {
+			problems = append(problems, fmt.Sprintf("catalog action %s lists no field", c.Type))
+		}
+		for f, editions := range c.Fields {
+			if len(editions) == 0 {
+				problems = append(problems, fmt.Sprintf("catalog action %s %s names no edition", c.Type, f))
+			}
+			for _, e := range editions {
+				if _, ok := g.Oracles[e]; !ok {
+					problems = append(problems, fmt.Sprintf("catalog action %s %s names the edition %q, which is not one of the golden's oracles", c.Type, f, e))
+				}
+			}
+		}
+	}
+	if !slices.Equal(catalogTypes, rancherAPIFieldsCatalogTypes) {
+		problems = append(problems, fmt.Sprintf("the golden lists the catalog action types %v, want %v", catalogTypes, rancherAPIFieldsCatalogTypes))
+	}
 	return problems
 }
 
@@ -702,7 +739,9 @@ func rancherAPIFieldsPinnedImages(t *testing.T) map[string]string {
 // the oracle images pinned in scripts/e2e-fidelity: exactly the editions
 // community and prime, each with its image reference (tag and digest), the
 // label that names its commit, a 40-digit commit, and a pseudo-version of
-// that commit; and that every field names only those editions. Bumping an
+// that commit; that every field names only those editions; and that the
+// catalog action types are the five the script reads, each field with an
+// edition. Bumping an
 // oracle image fails until the golden is regenerated. The link from the
 // label to the commit is checked by scripts/rancher-api-fields, which
 // reads the labels from the registries.
@@ -801,6 +840,27 @@ func TestRancherAPIFieldsPinsMutations(t *testing.T) {
 				}
 			}
 		}, "names the unknown edition"},
+		{"catalog action type removed", func(g *rancherAPIFields, _ map[string]string) {
+			g.CatalogActions = g.CatalogActions[1:]
+		}, "the golden lists the catalog action types"},
+		{"catalog action type added", func(g *rancherAPIFields, _ map[string]string) {
+			g.CatalogActions = append(g.CatalogActions, g.CatalogActions[0])
+		}, "the golden lists the catalog action types"},
+		{"catalog action types out of order", func(g *rancherAPIFields, _ map[string]string) {
+			g.CatalogActions[0], g.CatalogActions[1] = g.CatalogActions[1], g.CatalogActions[0]
+		}, "the golden lists the catalog action types"},
+		{"catalog action without fields", func(g *rancherAPIFields, _ map[string]string) {
+			g.CatalogActions[0].Fields = nil
+		}, "lists no field"},
+		{"catalog action field emptied", func(g *rancherAPIFields, _ map[string]string) {
+			c := g.CatalogActions[0]
+			c.Fields[slices.Sorted(maps.Keys(c.Fields))[0]] = nil
+		}, "catalog action ChartInstallAction"},
+		{"catalog action field names an edition that is not an oracle", func(g *rancherAPIFields, _ map[string]string) {
+			c := g.CatalogActions[0]
+			f := slices.Sorted(maps.Keys(c.Fields))[0]
+			c.Fields[f] = append(c.Fields[f], "v2.15.2")
+		}, "which is not one of the golden's oracles"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

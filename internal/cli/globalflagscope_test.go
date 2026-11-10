@@ -99,6 +99,11 @@ func listsVersionFlag(section string) bool {
 	return false
 }
 
+// ownVersionFlag is the one leaf that declares a --version flag of its own:
+// the version of the chart app install installs. Every other command below
+// the root accepts no --version.
+var ownVersionFlag = []string{"app", "install"}
+
 // TestEveryCommandAndGroupOffersOnlyTheGlobalFlagsItAccepts asserts, for
 // every registered command, every command group of the built tree and the
 // root, that flag-name completion offers and the help card lists each
@@ -223,7 +228,10 @@ func TestEveryCommandAndGroupOffersOnlyTheGlobalFlagsItAccepts(t *testing.T) {
 			}
 			assert.Equal(t, want, listsFlag(globals, name), "%s: GLOBAL OPTIONS lists --%s", row.label, name)
 		}
-		assert.Equal(t, row.root, slices.Contains(offered, "--version"), "%s: completion offers --version", row.label)
+		// app install declares its own --version, the chart version; no
+		// other command below the root offers one.
+		wantVersion := row.root || row.label == strings.Join(ownVersionFlag, " ")
+		assert.Equal(t, wantVersion, slices.Contains(offered, "--version"), "%s: completion offers --version", row.label)
 		assert.Equal(t, row.root, slices.Contains(offeredTokensFor(t, row.words, "-"), "-v"), "%s: completion offers -v", row.label)
 		assert.Equal(t, row.root, listsVersionFlag(globals), "%s: GLOBAL OPTIONS lists --version", row.label)
 		checked[row.label] = true

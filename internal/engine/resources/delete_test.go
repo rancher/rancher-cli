@@ -374,24 +374,24 @@ func TestWaitStalledScopedToOptInKinds(t *testing.T) {
 
 		// Opt-in kind: aborts immediately.
 		client := &seqClient{objs: []*unstructured.Unstructured{stalledReady}}
-		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, true)
+		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, stalledRule{fail: true})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "stalled")
 
 		// Non-opt-in kind: keeps polling to the eventual Ready.
 		ready := multiConditionObj([3]string{"Ready", "True", ""}, [3]string{"Stalled", "True", "boom"})
 		client2 := &seqClient{objs: []*unstructured.Unstructured{stalledReady, ready}}
-		got, err := waitFor(t.Context(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+		got, err := waitFor(t.Context(), client2, schema.GroupVersionResource{}, "", "x", cond, time.Second, stalledRule{})
 		require.NoError(t, err, "without the opt-in, Stalled=True must not abort the wait")
 		require.NotNil(t, got)
 	})
 }
 
 // TestWaitFlagWiredFromKindRow asserts the row->waitFor plumbing: gitrepo,
-// bundle, and fleet-cluster opt in; the common Ready-waiting kinds do not.
+// bundle, fleet-cluster, and operation opt in; the common Ready-waiting kinds do not.
 func TestWaitFlagWiredFromKindRow(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"gitrepo", "bundle", "fleet-cluster"} {
+	for _, name := range []string{"gitrepo", "bundle", "fleet-cluster", "operation"} {
 		assert.True(t, mustKind(t, name).WaitFailsOnStalled, name)
 	}
 	for _, name := range []string{"pod", "deployment", "node", "cluster"} {

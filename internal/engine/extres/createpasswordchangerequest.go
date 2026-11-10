@@ -104,6 +104,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 			"upgrade the server to a version that supports them")
 	}
 	eff := safety.Effect{
+		PreviewSource:     safety.PreviewServerDryRun,
 		Action:            safety.ActionCreate,
 		Target:            passwordChangeRequestGVR.Resource + "/" + userID,
 		DisplayKind:       "password-change-request",

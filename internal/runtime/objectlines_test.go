@@ -60,7 +60,8 @@ func TestObjectLinesOrdersOutcomesAndShowsReasons(t *testing.T) {
 func TestDryRunTextListsTheEffectObjects(t *testing.T) {
 	t.Parallel()
 	eff := safety.Effect{
-		Action: safety.ActionDelete, DisplayKind: "project", DisplayName: "p-1", Cluster: "c-abc", Destructive: true,
+		PreviewSource: safety.PreviewServerDryRun,
+		Action:        safety.ActionDelete, DisplayKind: "project", DisplayName: "p-1", Cluster: "c-abc", Destructive: true,
 		Objects: append(namespaceObjects(safety.OutcomeRancherKeeps, "apps"), namespaceObjects(safety.OutcomeRancherDeletes, "legacy")...),
 	}
 	assert.Equal(t, "delete project/p-1\n"+
@@ -78,7 +79,7 @@ func TestDryRunTextListsTheEffectObjects(t *testing.T) {
 // that lists none.
 func TestEffectObjectsMarshalAsAnArrayOnlyWhenPresent(t *testing.T) {
 	t.Parallel()
-	eff := safety.Effect{Action: safety.ActionDelete, DisplayKind: "project", DisplayName: "p-1",
+	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionDelete, DisplayKind: "project", DisplayName: "p-1",
 		Objects: []safety.Object{{Kind: "namespace", Name: "default", Outcome: safety.OutcomeNotDeleted, Message: "Kubernetes never deletes it"}}}
 	raw, err := json.Marshal(eff)
 	require.NoError(t, err)

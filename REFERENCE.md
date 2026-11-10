@@ -12,6 +12,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Project scope (--project)](#project-scope---project)
 - [Kinds & verbs](#kinds--verbs)
 - [Cluster provisioning](#cluster-provisioning)
+- [Installing and uninstalling apps](#installing-and-uninstalling-apps)
 - [Composite commands](#composite-commands)
 - [Access management](#access-management)
 - [Diagnostics & support](#diagnostics--support)
@@ -709,13 +710,16 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   `get clusterregistrationtoken` reads through the Steve API and applies the
   selector itself to the list it gets back.
 - The catalog kinds `clusterrepo`, `app` and `operation` (catalog.cattle.io)
-  are read-only. Each cluster has its own repositories, apps and operations,
+  are read with `get`; a chart is installed and uninstalled with `app install`
+  and `app uninstall` (see "Installing and uninstalling apps"). Each cluster
+  has its own repositories, apps and operations,
   so they take `--cluster` (`local` for the local cluster); `app` and
   `operation` take `--namespace`; a `clusterrepo` is not namespaced and takes
   no `--namespace`. `patch` of each is refused with `VALIDATION` and the
-  reason, before any request; `create resource` refuses a manifest of each;
-  `delete` does not exist for them, and `rancher delete app` (or `apps`) fails
-  with the reason. The
+  reason, before any request; `create resource` refuses a manifest of each
+  (for an app, the reason names `rancher app install`); `delete` does not
+  exist for them, and `rancher delete app` (or `apps`) fails with the reason,
+  which names `rancher app uninstall`. The
   CLI hides an app's `spec.values`, `spec.chart.values` and `spec.info.notes`
   and an operation's `status.token` from every output. The columns follow the
   table the Rancher server returns. For `operation`, COMMAND shows the
@@ -752,8 +756,9 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   them, with a DEPRECATED column in the table and `deprecated` in JSON. It only
   widens the list, unlike `--allow-deprecated` of the commands that change
   things. A ClusterRepo with `spec.enabled` false is skipped when `--repo` is
-  not given. On Rancher main the index of a disabled ClusterRepo answers not
-  found, so `--repo` of one fails with `NOT_FOUND`; older minors serve it.
+  not given. On Rancher main the index of a disabled ClusterRepo answers HTTP
+  500 with the message `clusterrepo <name> is disabled: NotFound`, so `--repo`
+  of one fails with `GENERIC` and that message; older minors serve it.
   Without `--repo`, a ClusterRepo whose index cannot be read (for example one
   that answers 503, or one with no stored index yet, which answers 500) is left
   out and named in one warning, and the exit code is 0; with `--repo` the same
@@ -1120,6 +1125,148 @@ rancher-webhook may then reject the server-side dry-run, and a rejected
 dry-run also stops `--apply`, which runs the same dry-run first. Log in
 again, or check that you may create `selfusers.ext.cattle.io`, then
 retry.
+
+## Installing and uninstalling apps
+
+`rancher app install <release>` installs a chart from a ClusterRepo as a Helm
+release, and `rancher app uninstall <release>` removes one. Rancher does the
+work: it fetches the chart, runs Helm in a pod of its own and records the
+release as an App. The CLI renders no chart, stores no release and runs no
+`helm`. Both commands require `--cluster` (`local` for the local cluster) and
+`--namespace`; the namespace `default` is never assumed. `app install` also
+requires `--repo` and `--chart`. Both return once Rancher accepts the request;
+they have no `--wait` and no `--timeout`.
+
+**The preview comes from server reads.** Rancher's install action has no
+dry-run. The CLI never sends the uninstall action's `dryRun` option. `--dry-run`
+therefore builds the preview from what the server answers to reads, and the
+Effect says so: `previewSource` is `serverReads` (every other mutation says
+`serverDryRun`), `resourceVersion` is empty and `conflictDetection` is false.
+Every preview warns that it comes from server reads and names who Helm runs as.
+For an install that is the ClusterRepo's `spec.serviceAccount` in its
+`spec.serviceAccountNamespace` (both set, the namespace holding no `:`). For an
+uninstall it is `spec.serviceAccount` of the ClusterRepo the App names in its
+`catalog.cattle.io/ui-source-repo-type` and `catalog.cattle.io/ui-source-repo`
+annotations, in the App's namespace (the same `:` rule). Otherwise it is you.
+
+What the preview proves, each from a server answer:
+
+- the ClusterRepo exists on the cluster, is enabled, and you can read it;
+- the chart and version are in the index Rancher serves for the cluster, and
+  the chart's annotations that Rancher's server never reads, but the Rancher UI
+  does and this command enforces, pass: the fixed namespace and release name,
+  `catalog.cattle.io/requires-gvr` and `catalog.cattle.io/permits-os`. The
+  annotations come from the chart's entry in the index; only an entry with none
+  falls back to the chart metadata of the version's info link. When the server
+  refuses the read of the management cluster, the `permits-os` check is skipped
+  with a warning; any other failure of that read is the command's error;
+- the App is absent for an install, and present for an uninstall;
+- no operation for the release is running or was just created (for an
+  uninstall, under the App's `spec.name`), when you can list operations in the
+  namespace (otherwise a warning says it was not checked);
+- the namespace exists and you can read it;
+- who Helm runs as.
+
+What it cannot prove:
+
+- that Helm's writes of the chart's resources are allowed, pass admission
+  webhooks or are valid: Rancher checks them only when Helm runs them;
+- that a service account the ClusterRepo names has the rights the chart needs;
+- that the values pass the chart's `values.schema.json`, or that the chart's
+  hooks succeed;
+- that the chart's content when Helm runs is the content previewed;
+- that nothing changes the release between the request and the start of Helm in
+  the pod, which can be minutes;
+- which resources an uninstall deletes;
+- which image pull secrets Rancher creates, changes or deletes for the
+  release: the install preview warns "Rancher may create, change or delete
+  image pull secrets for this release; the preview cannot list them", and the
+  uninstall preview warns "Rancher may delete image pull secrets for this
+  release; the preview cannot list them".
+
+**Gates.** `app install` needs `--apply`. `app uninstall` needs `--apply
+--yes`. There is no resourceVersion precondition. With `--apply` the CLI reads
+the App, the operations and, for an install, the index entry of the version
+again, and refuses with `CONFLICT` (retryable) when the App or the chart's
+content changed, the index cannot be read again, or an operation started since
+the preview; run the command again to see a new preview. This is a check before the request, not a
+precondition: nothing checks for a change after the request is sent, and the
+result says so. When the connection fails after the request was written, or the
+server answers 500, 502 or 504, the CLI does not know whether Rancher ran the
+action. Every other status keeps its code from the error codes table. The CLI
+reports `GENERIC`, not retryable, with the command that lists the operations and
+the one that shows the App; read them before you run the command again, because
+a second request runs Helm a second time. An install sends a request id in the chart's
+annotations (`cli.rancher.io/request-id`) and prints it in this error.
+
+**Values come only from files.** `--values <file>` is repeatable; the files merge
+in the order given (maps merge key by key; any other value replaces the earlier
+one). `--values -` reads stdin, once, and is refused when stdin is a terminal.
+There is no flag that takes a value on the command line. The preview lists the
+path of every value sent (`values.auth.password: <hidden>`), never the value. An
+error about a values file names the file and at most a line number, never text
+from the file.
+
+Where values live on the server: the operation's Secret in `cattle-system`
+until Rancher removes the operation, and the release's Secret in the release
+namespace. Anyone who can read those Secrets reads the values.
+
+The CLI replaces a value with `<hidden>` in the error answer of the install or
+uninstall action: each string value of 4 characters or more, each line of 4 characters or more of a multi-line string,
+and the JSON-escaped form of each. It does not cover numbers, booleans, strings
+under 4 characters, or a value the chart changes before it is printed.
+
+**Stated limits.** The CLI does not check the values against the chart's values
+schema. Helm does, in the pod, and a rejected value shows only as an exit code.
+Neither Rancher nor the CLI checks a chart signature.
+
+**What `app install` refuses.** Each refusal is a typed error before any request.
+
+- A chart whose default values declare `global.cattle` (`VALIDATION`): the
+  Rancher UI sets these values when it installs a chart, and rancher-cli cannot.
+  Install it from the Rancher UI. This covers most charts of Rancher's own
+  repository; `rancher charts` still lists them.
+- A chart that names another chart to install first, through the annotations
+  `catalog.cattle.io/auto-install` or `catalog.cattle.io/auto-install-gvr`
+  (`VALIDATION`, naming that chart). Install it from the Rancher UI.
+- A namespace that does not exist (`NOT_FOUND`, with the `rancher create
+  namespace` commands that create it); the command does not create it.
+- A ClusterRepo that is disabled (`VALIDATION`).
+- A release name Helm refuses (`VALIDATION`): more than 53 characters, or
+  anything but lowercase letters, digits, `-` and `.`, with each part between
+  dots starting and ending with a letter or digit.
+- A version that is not in the index (`VALIDATION`), a range included. Without
+  `--version` the version is the one `rancher charts` shows for the chart.
+- A release name that already has an App in the namespace (`CONFLICT`, naming
+  `rancher get app`, and for a failed release `rancher app uninstall --dry-run`).
+
+`app uninstall` refuses an App that does not exist (`NOT_FOUND`) and
+`--keep-history` on an App already uninstalled with its history kept
+(`VALIDATION`). Without `--keep-history`, uninstalling such an App removes its
+kept history, and the preview says so. When the chart installed another chart
+with it, a warning names that chart and the command that lists the apps to find
+it; the other chart stays installed.
+
+**Helm options.** `--helm-wait` makes Helm wait for the chart's resources
+(default true; `--helm-wait=false` sends false). `--helm-timeout` is a
+duration such as `10m`, at least 1s and at most 15m, and is Helm's timeout: the
+default is 10m on install, and uninstall sends it only when given. The chart's
+hooks can make a run longer, and Rancher removes a run's access one hour after
+the operation starts. `--no-hooks` skips the chart's hooks,
+`--disable-openapi-validation` (install) skips the validation of the rendered
+resources against the OpenAPI schema, `--description` (install) sets the release
+description, and `--keep-history` (uninstall) keeps the release's history.
+
+**What follows the request.** The result names the operation Rancher created and
+the commands that follow it: `rancher get operation <name> --cluster <c>
+--namespace <ns> --wait` (only when you can read the operation) and `rancher get
+app <release> --cluster <c> --namespace <ns>`. The App exists once Helm stores
+the release; its `spec.info.status` and `spec.info.description` then show whether
+Helm succeeded. A chart that fails before that (a values schema or a template
+error) leaves no App, and `rancher get operation <name> --cluster <c> --namespace
+<ns> --wait` shows the failure: its Stalled message holds Helm's exit code. The
+result carries the line "a chart that fails before Helm stores the release leaves
+no app; the operation then shows the failure".
 
 ## Composite commands
 
@@ -1632,7 +1779,8 @@ the tokens the CLI created and recorded (see
 
 `--dry-run` of a mutating command still sends write-verb requests
 server-side (admission dry-run); a genuinely read-only RBAC token cannot
-dry-run at all. Read-only mode doesn't special-case this - it refuses
+dry-run at all. `app install` and `app uninstall` are the exception: their
+preview comes from server reads (`previewSource: serverReads`). Read-only mode doesn't special-case this - it refuses
 mutating commands outright, `--dry-run` included.
 
 ## Supported server version

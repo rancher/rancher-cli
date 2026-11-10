@@ -38,7 +38,7 @@ func onceOnlyExec(res Result) ExecuteFunc {
 
 func runOnceOnly(t *testing.T, out, errW *bytes.Buffer, res Result, format string) (int, *clierr.Error) {
 	t.Helper()
-	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 	return Run(t.Context(), cmd, mapInput{}, IO{Out: out, Err: errW, Format: format, Apply: true},
 		safety.Binding{})
 }
@@ -120,7 +120,7 @@ func TestFinishOnceOnlyResultFailingStdoutWriter(t *testing.T) {
 			t.Parallel()
 			var errBuf bytes.Buffer
 			res := Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}, CommittedContext: cc}
-			cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+			cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 			status, ce := Run(t.Context(), cmd, mapInput{},
 				IO{Out: tc.out, Err: &errBuf, Format: "json", Apply: true}, safety.Binding{})
 			require.NotNil(t, ce)
@@ -152,7 +152,7 @@ func TestFinishOnceOnlyResultFailingStdoutWriterProjectsCreateTokenDetails(t *te
 	t.Parallel()
 	cc := &CommittedContext{ResourceKind: "Token", ResourceName: "t-abc123", Recovery: "delete token t-abc123, then create again"}
 	res := Result{Kind: "TokenCreated", Data: map[string]string{"name": "t-abc123"}, CommittedContext: cc}
-	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc123"}, exec: onceOnlyExec(res)}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc123"}, exec: onceOnlyExec(res)}
 	var errBuf bytes.Buffer
 	_, ce := Run(t.Context(), cmd, mapInput{},
 		IO{Out: &partialWriteErr{n: 0}, Err: &errBuf, Format: "json", Apply: true}, safety.Binding{})
@@ -174,7 +174,7 @@ func TestFinishOnceOnlyResultFailingStdoutAndStderr(t *testing.T) {
 	t.Parallel()
 	cc := &CommittedContext{ResourceKind: "Widget", ResourceName: "w1", Recovery: "get widget w1 -o json"}
 	res := Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}, CommittedContext: cc}
-	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 
 	failOut := &partialWriteErr{n: 3}
 	failErr := &partialWriteErr{n: 0}
@@ -213,7 +213,7 @@ func TestFinishOnceOnlyResultRecoversNoticeOnFailingWrite(t *testing.T) {
 			t.Run(format+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
 				res := Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}, CommittedContext: cc}
-				cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+				cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 				notices := &stubNoticeSource{notices: []string{notice}}
 				var errBuf bytes.Buffer
 				status, ce := Run(t.Context(), cmd, mapInput{},
@@ -245,7 +245,7 @@ func TestFinishOnceOnlyResultSuccessDeliversNoticeInEnvelope(t *testing.T) {
 	t.Parallel()
 	cc := &CommittedContext{ResourceKind: "Widget", ResourceName: "w1", Recovery: "get widget w1 -o json"}
 	res := Result{Kind: "WidgetCreated", Data: map[string]string{"name": "w1"}, CommittedContext: cc}
-	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 	notices := &stubNoticeSource{notices: []string{"first-pin notice"}}
 	var out, errBuf bytes.Buffer
 	status, ce := Run(t.Context(), cmd, mapInput{},
@@ -313,7 +313,7 @@ func TestRunOutputPolicyAcceptsEveryAllowedFormat(t *testing.T) {
 					ResourceKind: "Widget", ResourceName: "w1", Recovery: "get widget w1 -o json",
 				},
 			}
-			cmd := fakeMutating{d: restrictiveOnceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+			cmd := fakeMutating{d: restrictiveOnceOnlyDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 			status, ce := Run(t.Context(), cmd, mapInput{},
 				IO{Out: &out, Err: &errBuf, Format: format, Apply: true, Yes: true}, safety.Binding{})
 			require.Nil(t, ce)
@@ -363,7 +363,7 @@ func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
 					ResourceKind: "Token", ResourceName: "t-abc", Recovery: "delete token t-abc, then create again",
 				},
 			}
-			cmd := fakeMutating{d: onceOnlyTextDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+			cmd := fakeMutating{d: onceOnlyTextDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
 			status, ce := Run(t.Context(), cmd, mapInput{},
 				IO{Out: &out, Err: &errBuf, Format: format, Apply: true, Yes: true}, safety.Binding{})
 			require.Nil(t, ce)

@@ -314,9 +314,15 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   server returns on a read.
 - `--allow-deprecated` is required to write through a deprecated-stability API.
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
-  write. An `RBAC` error on dry-run means the write would be denied too.
+  write. An `RBAC` error on dry-run means the write would be denied too. The
+  exception is a Rancher action the CLI previews from server reads (`app
+  install`, `app uninstall`): its Effect has `previewSource: serverReads`, built from server
+  reads, with no `resourceVersion` and `conflictDetection` false.
 - The dry-run's `resourceVersion`/`conflictDetection` fields describe THAT
-  invocation only. `--apply` re-plans from scratch - fresh read, fresh
+  invocation only. An Effect with `previewSource: serverReads` carries no
+  resourceVersion and no conflict detection at all; `--apply` reads the state
+  again and refuses with `CONFLICT` when it changed, and nothing checks after
+  the request. `--apply` re-plans from scratch - fresh read, fresh
   resourceVersion - and its conflict check spans its own plan-to-execute
   window, not the gap since your dry-run. If the object may have changed
   since the preview, re-run `--dry-run` and re-read the diff before applying.
@@ -766,8 +772,10 @@ Never present a role list as permissions.
 - `rancher get clusterrepo`, `rancher get app` and `rancher get operation` read
   the Helm repositories, installed apps and Helm operations of one cluster; each
   cluster has its own, so pass `--cluster <id|name>` (`local` for the local
-  cluster), and `--namespace` for one app or operation. They are read-only:
-  patch, create and delete are refused with `VALIDATION` before any request. The
+  cluster), and `--namespace` for one app or operation. `patch`, `create
+  resource` and `delete` of them are refused with `VALIDATION` before any
+  request; change a Helm release with `rancher app install` and `rancher app
+  uninstall` (below). The
   CLI hides an app's Helm values, chart default values and install notes, and
   an operation's `status.token`, from every output. It also hides the Helm
   `values` and `templateValues` of HelmOps, bundles and bundle deployments:
@@ -788,6 +796,7 @@ Never present a role list as permissions.
   Turtles, `<name>` is the cluster's id (`c-...`). It is read-only: `patch`,
   `create resource` and `delete` fail with `VALIDATION`.
 - `rancher charts --cluster <c> --repo <r>` lists what a ClusterRepo offers, one line per chart with its newest version that is not a prerelease (`--all-versions` for every version, `--include-deprecated` for deprecated versions, which are left out by default); without `--repo` it reads every enabled ClusterRepo of the cluster, and one whose index cannot be read is named in a warning.
+- `rancher app install <release> --cluster <c> --namespace <ns> --repo <r> --chart <chart>` asks Rancher to install a chart as a Helm release, and `rancher app uninstall <release> --cluster <c> --namespace <ns>` removes one; Rancher fetches the chart and runs Helm in its own pod, and the CLI runs no `helm`. The flow: (1) `--dry-run -o json` and read the Effect: `previewSource` is `serverReads`, the warnings name who Helm runs as and what the preview cannot show, and `diff` lists the value paths as `<hidden>`, never the values; (2) relay the warnings to the user; (3) `--apply` (an uninstall also needs `--yes`); (4) follow the operation with the commands in `data.followUp`, `rancher get operation <name> --cluster <c> --namespace <ns> --wait` and `rancher get app <release> --cluster <c> --namespace <ns>`. The App exists once Helm stores the release, and `rancher get app` then shows `spec.info.status` and `spec.info.description` as the server holds them; a chart that fails before that (values schema, templates) leaves no App, and `rancher get operation <name> --cluster <c> --namespace <ns> --wait` shows the failure (its Stalled message holds the exit code). Values come only from `--values <file>` (repeatable; `-` reads stdin once), never from the command line. `--version` is one exact version from the index (without it, the version `rancher charts` shows); `--helm-wait`, `--helm-timeout`, `--no-hooks` and `--keep-history` (uninstall) set Helm's options. A chart whose default values declare `global.cattle`, and a chart that names another chart to install first, are refused: tell the user to install them from the Rancher UI. A missing namespace is `NOT_FOUND` with the `rancher create namespace` commands. An app that exists is `CONFLICT`. If `--apply` fails with `GENERIC` and says the answer did not tell whether Rancher ran the request (a 500, 502 or 504 answer, or a connection lost after the request was written), do not run it again: list the operations and read the app first. The values reach the server in Secrets that anyone who can read them can read, and the CLI hides only the string values of 4 characters or more in the error answer of the install or uninstall action.
 - `rancher create user <username> --password-stdin` creates a local user (a
   `v3 User`, its password secret, and a `v3 GlobalRoleBinding` for each global
   role the server marks `newUserDefault`, `user` on a default install) - the

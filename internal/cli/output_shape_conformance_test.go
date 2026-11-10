@@ -165,6 +165,8 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"get token":                         runtime.ShapeTabular,
 	"get user":                          runtime.ShapeTabular,
 	"get vmwarevsphereconfig":           runtime.ShapeTabular,
+	"app install":                       runtime.ShapeText,
+	"app uninstall":                     runtime.ShapeText,
 	"charts":                            runtime.ShapeTabular,
 	"grant":                             runtime.ShapeText,
 	"images":                            runtime.ShapeTabular,

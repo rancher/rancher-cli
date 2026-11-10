@@ -211,7 +211,7 @@ func TestSchemaCommandGroupField(t *testing.T) {
 //   - A kind identifier shadowing a group name means the group card is
 //     reachable only via --kind (groups win the collision tier).
 //
-// "project" and "cluster" are the known collisions (the GROUP wins each
+// "project", "cluster" and "app" are the known collisions (the GROUP wins each
 // time; TestSchemaProjectShadowing asserts "project"'s behavior). Single-token
 // command × group: zero overlaps.
 func TestSchemaKindGroupCollisionSweep(t *testing.T) {
@@ -224,6 +224,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	knownShadowings := map[string]string{
 		"project": "the project group wins the selector; the kind card is reachable via --kind and each card hints the other; renaming would churn the TOC layout",
 		"cluster": "the cluster group wins the selector, same as project; the kind card is reachable via --kind and each card hints the other; renaming would churn every agent prompt referencing the family",
+		"app":     "the app group (app install, app uninstall) wins the selector, same as project; the kind card is reachable via --kind and each card hints the other; the group is named for the object Rancher records a release as",
 	}
 
 	groupNames := map[string]bool{}
@@ -258,12 +259,12 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 // TestSchemaGroupKindCollisionsAreDeliberate guards the schema selector's
 // name space: a command-group name that is also a kind name (or alias) makes
 // the kind reachable only via --kind, so every such collision must be a
-// reviewed decision. "project" and "cluster" are the deliberate collisions
+// reviewed decision. "project", "cluster" and "app" are the deliberate collisions
 // today (the group card wins each; its kind-view hint points at --kind). A
 // new name here means either rename the group or extend this allowlist on
 // purpose.
 func TestSchemaGroupKindCollisionsAreDeliberate(t *testing.T) {
-	deliberate := map[string]bool{"project": true, "cluster": true}
+	deliberate := map[string]bool{"project": true, "cluster": true, "app": true}
 
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)

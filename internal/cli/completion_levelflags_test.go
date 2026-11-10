@@ -154,6 +154,11 @@ func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 			assert.Empty(t, flagNames(number), "rancher %v --<TAB>: a word names no command", number)
 		}
 		for _, local := range [][]string{{"--version"}, {"-v"}} {
+			if slices.Equal(path, ownVersionFlag) && local[0] == "--version" {
+				// app install declares --version itself, the chart version,
+				// which takes a value.
+				continue
+			}
 			line := append(slices.Clone(path), local...)
 			got := flagNames(line)
 			if atRoot {
@@ -166,6 +171,11 @@ func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 	assert.Positive(t, takesArgs, "the sampled leaves include one that takes an argument")
 	assert.Positive(t, takesNone, "the sampled leaves include one that takes none")
 }
+
+// ownVersionFlag is the one leaf that declares a --version flag of its own:
+// the version of the chart app install installs. Every other command below
+// the root accepts no --version.
+var ownVersionFlag = []string{"app", "install"}
 
 // commandAt returns the command at path below root.
 func commandAt(root *ucli.Command, path []string) *ucli.Command {

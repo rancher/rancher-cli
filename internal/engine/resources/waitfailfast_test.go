@@ -61,7 +61,7 @@ func TestWaitForEndsAtOnceOnAuthAndTLSFailures(t *testing.T) {
 				client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{tt.err}}
 				cond := waitCond{kind: "state", name: "active"}
 				start := time.Now()
-				_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Minute, false)
+				_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Minute, stalledRule{})
 				elapsed := time.Since(start)
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok)
@@ -101,7 +101,7 @@ func TestWaitForRetriesOtherGetErrorsAndNamesTheLastOne(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{tt.err}}
 				cond := waitCond{kind: "state", name: "active"}
-				_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond, false)
+				_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond, stalledRule{})
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok)
 				assert.Equal(t, clierr.CodeGeneric, ce.Code)
@@ -125,7 +125,7 @@ func TestWaitForTimeoutAfterAnErrorThenAnObjectNamesNoError(t *testing.T) {
 			errs: []error{clierr.New(clierr.CodeRBAC, "forbidden (403)"), nil},
 		}
 		cond := waitCond{kind: "state", name: "active"}
-		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond, false)
+		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 20*time.Millisecond, stalledRule{})
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok)
 		assert.Equal(t, "timed out waiting for x; last state: provisioning; "+
@@ -143,7 +143,7 @@ func TestWaitForSucceedsAfterAForbiddenGet(t *testing.T) {
 			errs: []error{clierr.New(clierr.CodeRBAC, "forbidden (403)"), nil},
 		}
 		cond := waitCond{kind: "state", name: "active"}
-		got, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, false)
+		got, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Second, stalledRule{})
 		require.NoError(t, err)
 		assert.Equal(t, "active", mustState(got))
 		assert.Equal(t, 2, client.calls)
@@ -172,7 +172,7 @@ func TestWaitForTimeoutDuringAGetNamesNoCutError(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				client := &blockingClient{scripted: tt.scripted}
 				cond := waitCond{kind: "state", name: "active"}
-				_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 50*time.Millisecond, false)
+				_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 50*time.Millisecond, stalledRule{})
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok)
 				assert.Equal(t, tt.want, ce.Message)
@@ -200,7 +200,7 @@ func TestWaitForTimeoutDuringAGetThatWasAnsweredNamesTheAnswer(t *testing.T) {
 	withFastPoll(t)
 	synctest.Test(t, func(t *testing.T) {
 		cond := waitCond{kind: "state", name: "active"}
-		_, err := waitFor(t.Context(), &answeredThenCutClient{}, schema.GroupVersionResource{}, "", "x", cond, 50*time.Millisecond, false)
+		_, err := waitFor(t.Context(), &answeredThenCutClient{}, schema.GroupVersionResource{}, "", "x", cond, 50*time.Millisecond, stalledRule{})
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok)
 		assert.Equal(t, "timed out waiting for x; last state: <no state observed>; last error: GENERIC: "+
@@ -216,7 +216,7 @@ func TestWaitForNotFoundStillEndsAtOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		client := &seqClient{objs: []*unstructured.Unstructured{nil}, errs: []error{clierr.New(clierr.CodeNotFound, "x not found")}}
 		cond := waitCond{kind: "state", name: "active"}
-		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Minute, false)
+		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, time.Minute, stalledRule{})
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok)
 		assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -249,7 +249,7 @@ func TestWaitForEndsAtOnceOnACertificateFailureFromTheRealClient(t *testing.T) {
 	gvr := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
 	cond := waitCond{kind: "condition", name: "Ready", status: "True"}
 	start := time.Now()
-	_, err := waitFor(t.Context(), client, gvr, "", "c-abc", cond, time.Minute, false)
+	_, err := waitFor(t.Context(), client, gvr, "", "c-abc", cond, time.Minute, stalledRule{})
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)

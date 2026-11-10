@@ -84,6 +84,8 @@ var callerBespokeRows = map[string]callerRow{
 	"access list":              {args: "access list --cluster prod -o json", target: targetDownstream},
 	"access projects":          {args: "access projects --cluster prod -o json", target: targetDownstream},
 	"access who-can":           {args: "access who-can get pods --cluster prod --namespace default -o json", target: targetDownstream},
+	"app install":              {args: "app install web --cluster prod --namespace default --repo r --chart c --dry-run -o json", target: targetDownstream},
+	"app uninstall":            {args: "app uninstall web --cluster prod --namespace default --dry-run -o json", target: targetDownstream},
 	"auth get-token":           {args: "auth get-token --server {base} --cluster prod --name kube -o json", target: targetLocalExt, plugin: true},
 	"token":                    {args: "token --server {base} --user kube --cluster prod -o json", target: targetLocalExt, plugin: true},
 	"create kubeconfig":        {args: "create kubeconfig --clusters prod --dry-run", target: targetLocalExt},
@@ -478,7 +480,7 @@ func callerRows(t *testing.T) map[string]callerRow {
 			rows[d.Name] = row
 		}
 	}
-	assert.Equal(t, 107, taking, "the commands that take a cluster or clusters flag")
+	assert.Equal(t, 109, taking, "the commands that take a cluster or clusters flag")
 	for name, row := range callerBespokeRows {
 		if _, ok := rows[name]; !ok {
 			rows[name] = row

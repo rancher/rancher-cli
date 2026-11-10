@@ -102,7 +102,7 @@ func refusalCases() []refusalCase {
 		createRefusal("clusterrepo", "clusterrepo", manifestOf("catalog.cattle.io/v1", "ClusterRepo", false),
 			"cannot create a clusterrepo from a manifest; this CLI does not add repositories"),
 		createRefusal("app", "app", manifestOf("catalog.cattle.io/v1", "App", true),
-			"cannot create an app from a manifest; Rancher creates an app when it installs a chart; this CLI does not install charts"),
+			"cannot create an app from a manifest; Rancher creates an app when it installs a chart; to install one (<release> is the Helm release name, <c> the cluster, <ns> the namespace, <repo> the ClusterRepo and <chart> the chart), run `"+clierr.Rancher+" app install <release> --cluster <c> --namespace <ns> --repo <repo> --chart <chart> --dry-run` and add --apply after reading the preview"),
 		createRefusal("operation", "operation", manifestOf("catalog.cattle.io/v1", "Operation", true),
 			"cannot create an operation from a manifest; Rancher creates an operation for each Helm command it runs"),
 
@@ -112,7 +112,7 @@ func refusalCases() []refusalCase {
 		deleteRefusal("clusterrepo", "clusterrepo",
 			`unknown command "clusterrepo"; clusterrepo cannot be deleted - this CLI does not delete repositories`),
 		deleteRefusal("app", "app",
-			`unknown command "app"; app cannot be deleted - deleting an app object leaves its Helm release installed; this CLI does not uninstall apps`),
+			"unknown command \"app\"; app cannot be deleted - deleting an app object leaves its Helm release installed; to uninstall it (<name> is its name, <c> the cluster and <ns> its namespace), run `rancher app uninstall <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview"),
 		deleteRefusal("operation", "operation",
 			`unknown command "operation"; operation cannot be deleted - this CLI does not delete operations`),
 

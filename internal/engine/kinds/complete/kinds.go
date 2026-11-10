@@ -132,17 +132,20 @@ func built(p completion.Path, err error) (completion.Path, bool) {
 // answers for.
 const ChartsCommand = "charts"
 
-// ClusterRepoSource is the live source of the --repo flag of the charts
-// command: the names of the typed cluster's ClusterRepos whose spec.enabled is
-// not false (a missing spec.enabled counts as enabled), because Rancher
-// answers a read of a disabled ClusterRepo's index as not found. It claims no
-// other command's --repo and no other site, and a line with no --cluster typed
-// completes nothing.
-func ClusterRepoSource() completion.Source {
+// ClusterRepoSource is ClusterRepoSourceFor the charts command.
+func ClusterRepoSource() completion.Source { return ClusterRepoSourceFor(ChartsCommand) }
+
+// ClusterRepoSourceFor is the live source of the --repo flag of command, a
+// registered command name (charts, app install): the names of the typed cluster's ClusterRepos whose
+// spec.enabled is not false (a missing spec.enabled counts as enabled),
+// because Rancher answers a read of a disabled ClusterRepo's index as not
+// found. It claims no other command's --repo and no other site, and a line
+// with no --cluster typed completes nothing.
+func ClusterRepoSourceFor(command string) completion.Source {
 	k, known := kinds.ByKey("clusterrepo")
 	return completion.Source{
 		Claim: func(req completion.Request) (completion.Requirements, bool) {
-			if !known || req.Command != ChartsCommand || req.Flag != "repo" {
+			if !known || req.Command != command || req.Flag != "repo" {
 				return completion.Requirements{}, false
 			}
 			return requirements(k)

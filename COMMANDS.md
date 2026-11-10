@@ -14,6 +14,7 @@ in detail.
 [OIDC client](#oidc-client) ·
 [Cluster scaling & autoscaling](#cluster-scaling--autoscaling) ·
 [Read & inspect](#read--inspect) ·
+[Apps](#apps) ·
 [Access](#access) ·
 [Logs & support](#logs--support) ·
 [kubectl integration](#kubectl-integration) ·
@@ -114,6 +115,13 @@ for lifecycle; `get provisioning-cluster` for reads.
 | `images` | Active-pod container images, grouped by image or owning workload, fleet-wide |
 | `usage` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
 
+## Apps
+
+| Command | Purpose |
+|---|---|
+| `app install <release> --cluster <c> --namespace <ns> --repo <name> --chart <name> [--version <v>] [--values <file>]` | Ask Rancher to install a chart from a ClusterRepo as a Helm release; Rancher fetches the chart and runs Helm in its own pod, and the CLI runs no `helm`. The preview comes from server reads (`previewSource: serverReads`) and carries no resourceVersion precondition; values come only from files or stdin and show as paths, never values. Returns once Rancher accepts the request, with the operation to follow; dry-run/apply. Details in [REFERENCE.md](REFERENCE.md#installing-and-uninstalling-apps) |
+| `app uninstall <release> --cluster <c> --namespace <ns> [--keep-history]` | Ask Rancher to uninstall a Helm release shown as an App, which removes the release's resources; the preview comes from server reads, with no resourceVersion precondition - destructive; dry-run/apply --yes |
+
 ## Access
 
 | Command | Purpose |
@@ -182,6 +190,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 61-kind table: `get <kind>` (61), `patch <kind>`
 (61), `delete <kind>` (38 - 37 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-160 generated commands, 230 total together with the fixed commands above. The authoritative, always-current list is
+160 generated commands, 232 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

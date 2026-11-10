@@ -96,7 +96,16 @@ func satisfiedAfterOnePoll(t *testing.T, expr string) *seqClient {
 	if cond.kind == "state" {
 		return &seqClient{objs: []*unstructured.Unstructured{stateObj("pending", ""), stateObj(cond.name, "")}}
 	}
-	return &seqClient{objs: []*unstructured.Unstructured{conditionObj(cond.name, "False"), conditionObj(cond.name, "True")}}
+	var unmet string
+	switch cond.status {
+	case "True":
+		unmet = "False"
+	case "False":
+		unmet = "True"
+	default:
+		t.Fatalf("%s: condition status %q is neither True nor False", expr, cond.status)
+	}
+	return &seqClient{objs: []*unstructured.Unstructured{conditionObj(cond.name, unmet), conditionObj(cond.name, cond.status)}}
 }
 
 // TestGetEveryKindStartsTheWaitFromForOrTimeoutAlone asserts, for every get

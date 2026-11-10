@@ -167,6 +167,9 @@ func (k missingKind) rows() []missingRow {
 const (
 	crtCollection = "/v1/management.cattle.io.clusterregistrationtokens"
 	namespaceGET  = "GET /k8s/clusters/c-abc/api/v1/namespaces/" + missingNamespace
+	// repoPath is where the index and the chart info of the ClusterRepo r
+	// are read, through the Rancher API of the downstream cluster.
+	repoPath = "/k8s/clusters/c-abc/v1/catalog.cattle.io.clusterrepos/r"
 )
 
 // missingRows is every row: the generated kinds, the registration token
@@ -231,6 +234,10 @@ func missingRows() []missingRow {
 			code: clierr.CodeNotFound, last: namespaceGET},
 		missingRow{name: "usage", class: classChecks, argv: slices.Concat([]string{"usage"}, cluster),
 			code: clierr.CodeNotFound, last: namespaceGET},
+		missingRow{name: "app install", class: classChecks, argv: slices.Concat([]string{"app", "install", "web", "--repo", "r", "--chart", "c"}, cluster, []string{"--dry-run"}),
+			code: clierr.CodeNotFound, last: namespaceGET},
+		missingRow{name: "app uninstall", class: classChecks, argv: slices.Concat([]string{"app", "uninstall", "web"}, cluster, []string{"--dry-run"}),
+			code: clierr.CodeNotFound, last: "GET " + downstream + "/apis/catalog.cattle.io/v1/namespaces/" + missingNamespace + "/apps/web"},
 	)
 }
 
@@ -259,7 +266,8 @@ func (s *missingServer) take() []string {
 // under the missing namespace is answered as Kubernetes answers it: a
 // create and a named read are a Status 404, a list is empty, and the
 // namespace itself is a Status 404. A registration token read through the
-// root API answers the same way, by path. The API group list names the
+// root API answers the same way, by path. The index and the chart info of
+// the ClusterRepo r are served, so app install reaches its namespace read. The API group list names the
 // groups whose kinds leave their version to discovery. Every other request
 // is answered as the caller-scope tests answer it: the version, discovery,
 // access reviews and the objects of the kinds table.
@@ -281,6 +289,16 @@ func missingFallthrough(w http.ResponseWriter, r *http.Request) {
 	if rest, ok := strings.CutPrefix(p, crtCollection+"/"); ok {
 		notFound("clusterregistrationtokens " + rest)
 		return
+	}
+	if p == repoPath && r.Method == http.MethodGet {
+		switch r.URL.Query().Get("link") {
+		case "index":
+			write(http.StatusOK, map[string]any{"entries": map[string]any{"c": []any{map[string]any{"version": "1.0.0", "digest": "d"}}}})
+			return
+		case "info":
+			write(http.StatusOK, map[string]any{"values": map[string]any{}, "chart": map[string]any{"annotations": map[string]any{}}})
+			return
+		}
 	}
 	if r.Method == http.MethodGet && strings.HasSuffix(p, "/apis") {
 		group := func(name, version string) map[string]any {
@@ -430,8 +448,8 @@ func TestEveryNamespaceCommandHasAMissingNamespaceRow(t *testing.T) {
 			"add its row to "+table+" in this file, saying what it does with a namespace that does not exist")
 	}
 	commands, rowCount := len(declaring), len(rows)
-	assert.Equal(t, 124, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
-	assert.Equal(t, 165, rowCount, "the rows; uncovered commands: %v", uncovered)
+	assert.Equal(t, 126, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
+	assert.Equal(t, 167, rowCount, "the rows; uncovered commands: %v", uncovered)
 
 	h := newMissingHarness(t)
 	for _, row := range rows {

@@ -251,7 +251,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 // runMutating drives the Plan → invariant checks → server stamping →
 // confirmation gate → Execute path for a mutating command.
 func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
-	eff, exec, err := c.Plan(ctx, in)
+	eff, exec, err := c.Plan(ctx, stdinInput{Input: in, terminal: streams.IsTTY})
 	if err != nil {
 		return 0, renderErr(streams, toClierr(ctx, err))
 	}
@@ -307,6 +307,10 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 	if eff.DisplayKind == "" || eff.DisplayName == "" {
 		return clierr.New(clierr.CodeGeneric,
 			"internal error: the dry-run preview has an empty DisplayKind or DisplayName")
+	}
+	if !eff.PreviewSource.Valid() {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("internal error: invalid preview source %q in the dry-run preview", eff.PreviewSource))
 	}
 	if eff.Action == safety.ActionDelete && !eff.Destructive {
 		return clierr.New(clierr.CodeGeneric, "internal error: a delete in the dry-run preview must be destructive")

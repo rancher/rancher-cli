@@ -66,6 +66,25 @@ func invalidForErr(forExpr string) *clierr.Error {
 			"JSONPath is not supported - for that, use kubectl wait with a kubeconfig from this command, where <cluster> is the cluster: ", forExpr)+clierr.Rancher+" kubeconfig --cluster <cluster>")
 }
 
+// stalledRule is a kind row's Stalled settings for one wait: whether
+// Stalled=True fails the wait (kinds.Kind.WaitFailsOnStalled), the command the
+// failure offers (kinds.Kind.StalledRemedy), and the cluster as the user typed
+// --cluster, which the command repeats.
+type stalledRule struct {
+	fail    bool
+	remedy  func(obj *unstructured.Unstructured, cluster string) string
+	cluster string
+}
+
+// remedyFor writes the command the rule's remedy gives for the observed
+// object, or "" when the rule has no remedy.
+func (s stalledRule) remedyFor(obj *unstructured.Unstructured) string {
+	if s.remedy == nil {
+		return ""
+	}
+	return s.remedy(obj, s.cluster)
+}
+
 // waitFor waits until cond is satisfied, the object reports a Rancher
 // fail-fast (status.transitioning == "error"), or timeout elapses. A client
 // that can list and watch one object (engine.ObjectWatcher) is watched; any
@@ -80,7 +99,7 @@ func invalidForErr(forExpr string) *clierr.Error {
 // non-retryable error; a timeout always returns a retryable error carrying
 // the last-observed state and the last error, never a raw request error; a
 // cancelled context returns its own error.
-func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource, ns, name string, cond waitCond, timeout time.Duration, failOnStalled bool) (*unstructured.Unstructured, error) {
+func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource, ns, name string, cond waitCond, timeout time.Duration, stalled stalledRule) (*unstructured.Unstructured, error) {
 	var result *unstructured.Unstructured
 	err := engine.WaitObject(ctx, client, engine.WaitParams{
 		GVR:         gvr,
@@ -91,7 +110,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 		SpacingFrom: engine.SpacingFromReturn,
 		Observe: func(_ context.Context, obj *unstructured.Unstructured, source engine.WaitSource) (engine.WaitOutcome, error) {
 			// The generation staleness gate applies only to kstatus-opted
-			// kinds (failOnStalled=true). A controller that has not
+			// kinds (stalled.fail). A controller that has not
 			// reconciled the object's current generation yet has written
 			// none of the conditions we are about to trust - a freshly
 			// created object can carry a default Ready=True before its
@@ -100,13 +119,13 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// keep waiting. Objects without the field (no generation
 			// tracking) are always considered settled.
 			//
-			// Non-opted kinds (failOnStalled=false) keep pre-branch
+			// Non-opted kinds (stalled.fail false) keep pre-branch
 			// behaviour: transitioning=error and waitSatisfied are checked
 			// on every observation regardless of generation bookkeeping.
 			// TestWaitForSkipsUnsettledGenerations and
 			// TestWaitForUnsettledUnstalledSucceedsImmediately assert the two
 			// sides of this invariant.
-			if failOnStalled && !settled(obj) {
+			if stalled.fail && !settled(obj) {
 				return engine.WaitContinue, nil
 			}
 			// A watch event that shows a fail-fast state closes the stream and
@@ -127,7 +146,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// unless Stalled itself is what the caller is waiting for. Opt-in
 			// per kind row (WaitFailsOnStalled): not every controller treats
 			// Stalled as terminal, so a kind must be known-kstatus to abort.
-			if failOnStalled && !cond.isStalledTarget() {
+			if stalled.fail && !cond.isStalledTarget() {
 				if status, msg, ok := conditionStatus(obj.Object, "Stalled"); ok && status == "True" {
 					if source == engine.SourceEvent {
 						return engine.WaitClose, nil
@@ -135,7 +154,11 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 					if msg == "" {
 						msg = "condition Stalled=True"
 					}
-					return engine.WaitContinue, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, output.Printable(msg)))
+					stalledErr := clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, output.Printable(msg)))
+					if remedy := stalled.remedyFor(obj); remedy != "" {
+						stalledErr = stalledErr.WithHint(remedy)
+					}
+					return engine.WaitContinue, stalledErr
 				}
 			}
 			if waitSatisfied(obj, cond) {
@@ -160,7 +183,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			return ctx.Err()
 		},
 		OnTimeout: func(last *unstructured.Unstructured, lastErr *clierr.Error) error {
-			return waitTimeoutErr(name, last, lastErr, cond, failOnStalled)
+			return waitTimeoutErr(name, last, lastErr, cond, stalled.fail)
 		},
 	})
 	if err != nil {

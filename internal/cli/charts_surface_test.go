@@ -29,10 +29,11 @@ const (
 // collection, the ClusterRepos of the local cluster and of c-aaa11 and
 // each ClusterRepo's index link. The ClusterRepos are rancher-charts (no
 // spec.enabled), partner-charts (enabled), off-charts (disabled; its index
-// answers NotFound as Rancher main does) and, when broken is set, three
-// enabled ClusterRepos whose index cannot be read: unavailable-charts (503),
-// empty-charts (500, the index ConfigMap "" does not exist) and
-// unowned-charts (401). It records the request URIs.
+// answers 500 ServerError "clusterrepo off-charts is disabled: NotFound" as
+// Rancher main does, rancher main pkg/catalogv2/content/content.go:323-325)
+// and, when broken is set, three enabled ClusterRepos whose index cannot be
+// read: unavailable-charts (503), empty-charts (500, the index ConfigMap ""
+// does not exist) and unowned-charts (401). It records the request URIs.
 type chartsServer struct {
 	srv  *httptest.Server
 	mu   sync.Mutex
@@ -109,8 +110,13 @@ func newChartsServer(t *testing.T, broken bool) *chartsServer {
 				_, _ = w.Write([]byte(f.body))
 				return
 			}
+			if name == "off-charts" {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"type":"error","status":500,"code":"ServerError","message":"clusterrepo ` + name + ` is disabled: NotFound"}`))
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"type":"error","status":404,"code":"NotFound","message":"clusterrepo ` + name + ` is disabled: NotFound"}`))
+			_, _ = w.Write([]byte(`{"type":"error","status":404,"code":"NotFound","message":"clusterrepos.catalog.cattle.io \"` + name + `\" not found"}`))
 			return
 		}
 		http.NotFound(w, r)
@@ -312,11 +318,12 @@ type chartsErrorEnvelope struct {
 }
 
 // TestChartsRepoErrors asserts a failed --repo read is the command's error:
-// a missing and a disabled repository are NOT_FOUND with the command that
-// lists the repositories of the cluster as typed, a 503 and a 500 for an
-// index that is not stored are retryable errors, a 401 says Rancher refused
-// to serve the index and sends no one to sign in, and each names the
-// repository.
+// a missing repository is NOT_FOUND with the command that lists the
+// repositories of the cluster as typed; a disabled one (500 with "is
+// disabled: NotFound", as Rancher main answers), a 503 and a 500 for an
+// index that is not stored are retryable GENERIC errors with no hint; a 401
+// says Rancher refused to serve the index and sends no one to sign in; and
+// each names the repository.
 func TestChartsRepoErrors(t *testing.T) {
 	s := newChartsServer(t, true)
 	chartsFixture(t, s.srv)
@@ -328,7 +335,7 @@ func TestChartsRepoErrors(t *testing.T) {
 		retryable bool
 	}{
 		{"nope", "NOT_FOUND", true, false},
-		{"off-charts", "NOT_FOUND", true, false},
+		{"off-charts", "GENERIC", false, true},
 		{"unavailable-charts", "GENERIC", false, true},
 		{"empty-charts", "GENERIC", false, true},
 		{"unowned-charts", "GENERIC", false, false},
@@ -342,6 +349,9 @@ func TestChartsRepoErrors(t *testing.T) {
 			assert.Equal(t, tc.code, env.Data.Error.Code)
 			assert.Contains(t, env.Data.Error.Message, "ClusterRepo '"+tc.repo+"'")
 			assert.Equal(t, tc.retryable, env.Data.Error.Retryable)
+			if tc.repo == "off-charts" {
+				assert.Contains(t, env.Data.Error.Message, "clusterrepo off-charts is disabled: NotFound")
+			}
 			if tc.repo == "unowned-charts" {
 				assert.Contains(t, env.Data.Error.Message, "Rancher refused to serve its index")
 			}
@@ -355,7 +365,7 @@ func TestChartsRepoErrors(t *testing.T) {
 }
 
 // TestChartsRepoSuggestionsAreAccepted asserts each suggestion of --repo is
-// accepted by the command on the same server, which answers NotFound for the
+// accepted by the command on the same server, which answers 500 for the
 // index of a disabled repository as Rancher main does: no suggestion is
 // refused, and the disabled repository is not offered.
 func TestChartsRepoSuggestionsAreAccepted(t *testing.T) {

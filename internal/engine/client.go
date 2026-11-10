@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -180,6 +181,63 @@ type RootClient interface {
 type RootClientFactory interface {
 	Root() (RootClient, error)
 }
+
+// ActionClient is the one port that POSTs a steve action: a Rancher API
+// action on a Rancher resource, such as a chart install on a ClusterRepo.
+// RootClient stays GET-only; nothing else here sends a steve write.
+type ActionClient interface {
+	// PostAction POSTs body, a JSON document, to path (absolute, starting
+	// "/v1/" or "/k8s/clusters/<id>/v1/", with its ?action= query) against
+	// the server root, with the caller's credential, once: it never retries,
+	// whatever the answer or the transport error. It reads at most 1 MiB
+	// of the answer and returns the 2xx answer body. A 500, a 502 and a 504
+	// are an *ActionOutcomeUnknown, as is any error once the request was
+	// written: Rancher answers 500 for an error it meets after it started
+	// the run, and the cluster proxy may answer 502 or 504 after the
+	// cluster accepted the request. Every other non-2xx answer is an
+	// *ActionRefused. An error before the request was written sent
+	// nothing.
+	PostAction(ctx context.Context, path string, body []byte) ([]byte, error)
+}
+
+// ActionClientFactory hands out the action client at call time.
+type ActionClientFactory interface {
+	Action() (ActionClient, error)
+}
+
+// ActionOutcomeUnknown is the error of a steve action whose request was
+// sent but whose answer did not tell whether the server ran it: the
+// connection failed or timed out after the request was written, or the
+// server answered 500, 502 or 504. Err is the transport error, or the
+// server's answer as clierr.ResponseError builds it, whose status
+// clierr.HTTPStatus reads.
+type ActionOutcomeUnknown struct {
+	Err error
+	// Body is the body of the server's answer, read up to a bound; nil
+	// for a transport failure.
+	Body []byte
+}
+
+func (e *ActionOutcomeUnknown) Error() string { return e.Err.Error() }
+
+func (e *ActionOutcomeUnknown) Unwrap() error { return e.Err }
+
+// ActionRefused is a non-2xx answer to a steve action that says the server
+// did not run it. Err is the answer as clierr's status table classifies it
+// (its code, retry advice and hint, and its status, which clierr.HTTPStatus
+// reads); its message holds the server's text as sent. Body is the
+// answer's body, read up to a bound, and Request names the server, for a
+// caller that classifies the answer again after hiding what the request
+// carried.
+type ActionRefused struct {
+	Err     *clierr.Error
+	Body    []byte
+	Request *clierr.Request
+}
+
+func (e *ActionRefused) Error() string { return e.Err.Error() }
+
+func (e *ActionRefused) Unwrap() error { return e.Err }
 
 // ServerBaseURLProvider exposes the canonical, resolved server base URL
 // (scheme preserved, no trailing slash) - the SAME value RootClient's

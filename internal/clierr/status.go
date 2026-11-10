@@ -222,23 +222,44 @@ type errorObject struct {
 }
 
 // serverMessage is the text of body a message may carry.
-func serverMessage(body []byte) string {
+func serverMessage(body []byte) string { return decodeMessage(body, keepText) }
+
+// FilteredServerMessage is the text of body a message may carry, decoded as
+// every server message is (a JSON error object's message, or the first
+// line of a body that is not JSON; none for other JSON or a blank body),
+// with filter run on the whole text before it is trimmed and cut to the
+// bound every server message keeps. Running the filter first lets it hide a
+// value the cut would split.
+func FilteredServerMessage(body []byte, filter func(string) string) string {
+	return decodeMessage(body, func(s string) string { return strings.TrimSpace(filter(s)) })
+}
+
+// keepText is the filter of the callers that show the message as sent.
+func keepText(s string) string { return s }
+
+// decodeMessage is serverMessage with filter run on the decoded text before
+// it is bounded.
+func decodeMessage(body []byte, filter func(string) string) string {
 	text := strings.TrimSpace(string(body))
 	if text == "" {
 		return ""
 	}
-	if m, ok := objectMessage(text); ok {
+	if m, ok := objectMessageFiltered(text, filter); ok {
 		return m
 	}
 	if json.Valid([]byte(text)) {
 		return ""
 	}
 	line, _, _ := strings.Cut(text, "\n")
-	return bounded(line)
+	return bounded(filter(line))
 }
 
 // objectMessage decodes text as a JSON error object.
-func objectMessage(text string) (string, bool) {
+func objectMessage(text string) (string, bool) { return objectMessageFiltered(text, keepText) }
+
+// objectMessageFiltered is objectMessage with filter run on the message
+// before it is trimmed and bounded.
+func objectMessageFiltered(text string, filter func(string) string) (string, bool) {
 	if !strings.HasPrefix(text, "{") {
 		return "", false
 	}
@@ -246,7 +267,7 @@ func objectMessage(text string) (string, bool) {
 	if json.Unmarshal([]byte(text), &obj) != nil {
 		return "", false
 	}
-	return bounded(strings.TrimSpace(obj.Message)), true
+	return bounded(strings.TrimSpace(filter(obj.Message))), true
 }
 
 // bounded cuts s to maxServerMessage bytes on a character boundary.

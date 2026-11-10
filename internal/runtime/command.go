@@ -308,6 +308,25 @@ type textTableInput struct {
 
 func (i textTableInput) TextTable() bool { return i.textTable }
 
+// StdinInput is the Input the pipeline hands a mutating command's Plan:
+// StdinTerminal reports whether the invocation's stdin is a terminal, so a
+// command that reads "-" from stdin can refuse a terminal instead of
+// waiting on it. A command type-asserts it; an Input from anywhere else
+// does not implement it.
+type StdinInput interface {
+	Input
+	StdinTerminal() bool
+}
+
+// stdinInput is the Input the pipeline wraps around a mutating command's
+// own. It exposes the Input methods and StdinTerminal only.
+type stdinInput struct {
+	Input
+	terminal bool
+}
+
+func (i stdinInput) StdinTerminal() bool { return i.terminal }
+
 // BoolValue is a positional argument typed after a bool flag: its index
 // among the positional arguments and the flag as typed. A bool flag takes
 // its value only joined with "=", so `--force false` is the flag (true) and

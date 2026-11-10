@@ -432,6 +432,161 @@
     {
       "args": [
         {
+          "desc": "Helm release name",
+          "name": "release",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Asks Rancher to install --chart from the ClusterRepo --repo on --cluster as the Helm release <release> in --namespace, through the ClusterRepo's install action: Rancher fetches the chart and runs Helm in a pod, and records the release as an App. The server has no dry-run for this action; the preview comes from server reads (previewSource serverReads): the ClusterRepo (it must be enabled), the chart and version in the index Rancher serves for the cluster, the chart's default values and annotations, the App (it must not exist), the operations of the namespace (none may still be running for the release) and the namespace (it must exist). It carries no resourceVersion precondition: --apply reads the App, the operations and the index entry again before it sends the request, and nothing checks for a change after that. --version names one exact version from the index; without it the version is the one `rancher charts` shows. Values come only from files (--values, repeatable, merged in order; - reads stdin once); the preview lists their paths, never the values. Neither Rancher nor rancher-cli checks the values against the chart's values schema (Helm does, in the pod) or the chart's signature. Refused: a chart whose default values declare global.cattle (install it from the Rancher UI), a chart that names another chart to install first (catalog.cattle.io/auto-install or auto-install-gvr), and a chart whose catalog.cattle.io/namespace, release-name, requires-gvr or permits-os annotation the target does not meet. --helm-wait (default true; --helm-wait=false sends false) makes Helm wait for the chart's resources; --helm-timeout (default 10m, at least 1s, at most 15m) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. The command returns once Rancher accepts the request, with the operation's name and the commands that follow it.",
+      "destructive": "false",
+      "examples": [
+        "rancher app install my-nginx --cluster prod --namespace web --repo bitnami --chart nginx --values values.yaml --dry-run",
+        "rancher app install my-nginx --cluster prod --namespace web --repo bitnami --chart nginx --values values.yaml --apply"
+      ],
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` of the release; it must exist",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "ClusterRepo `name` to install from",
+          "name": "repo",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "chart `name` in the repository",
+          "name": "chart",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "exact chart `version` (default: the version `rancher charts` shows)",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "desc": "values `file`, repeatable, merged in order; - reads stdin",
+          "name": "values",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "Helm waits for the chart's resources (default true; --helm-wait=false sends false)",
+          "name": "helm-wait",
+          "type": "bool"
+        },
+        {
+          "desc": "Helm `timeout` for each step, 1s to 15m (default 10m)",
+          "name": "helm-timeout",
+          "type": "string"
+        },
+        {
+          "desc": "do not run the chart's hooks",
+          "name": "no-hooks",
+          "type": "bool"
+        },
+        {
+          "desc": "do not validate the rendered resources against the OpenAPI schema",
+          "name": "disable-openapi-validation",
+          "type": "bool"
+        },
+        {
+          "desc": "release `description`",
+          "name": "description",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "app",
+      "name": "app install",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Install a chart from a ClusterRepo as a Helm release"
+    },
+    {
+      "args": [
+        {
+          "desc": "Helm release name",
+          "name": "release",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Asks Rancher to uninstall the Helm release <release> in --namespace on --cluster through the App's uninstall action: Rancher runs helm uninstall in a pod, which removes the release's resources. The CLI never sends the uninstall action's dryRun option; the preview comes from server reads (previewSource serverReads): the App (it must exist) and the operations of the namespace (none may still be running for the release). It carries no resourceVersion precondition: --apply reads the App and the operations again before it sends the request and refuses when the App changed, and nothing checks for a change after that. --keep-history keeps the release's history (status uninstalled); an App already uninstalled with its history kept is removed by running without it. --helm-timeout (at least 1s, at most 15m; sent only when given) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. The command returns once Rancher accepts the request, with the operation's name and the commands that follow it.",
+      "destructive": "true",
+      "examples": [
+        "rancher app uninstall my-nginx --cluster prod --namespace web --dry-run",
+        "rancher app uninstall my-nginx --cluster prod --namespace web --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` of the release",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "keep the release's history",
+          "name": "keep-history",
+          "type": "bool"
+        },
+        {
+          "desc": "do not run the chart's hooks",
+          "name": "no-hooks",
+          "type": "bool"
+        },
+        {
+          "desc": "Helm `timeout` for each step, 1s to 15m",
+          "name": "helm-timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "app",
+      "name": "app uninstall",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Uninstall a Helm release that Rancher shows as an App"
+    },
+    {
+      "args": [
+        {
           "name": "name",
           "type": "string"
         }
@@ -11351,6 +11506,7 @@
           "desc": "show only commands with this verb (the first word of the command name)",
           "enum": [
             "access",
+            "app",
             "auth",
             "charts",
             "cluster",
@@ -11806,6 +11962,10 @@
         "type": "string"
       },
       {
+        "name": "previewSource",
+        "type": "string"
+      },
+      {
         "name": "server",
         "type": "string"
       },
@@ -11837,6 +11997,10 @@
         "name": "objects",
         "type": "array"
       }
+    ],
+    "previewSources": [
+      "serverDryRun",
+      "serverReads"
     ]
   },
   "envVars": [
@@ -12341,6 +12505,14 @@
       ],
       "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "name": "get"
+    },
+    {
+      "commands": [
+        "app install",
+        "app uninstall"
+      ],
+      "desc": "Install a chart from a ClusterRepo as an app, or uninstall an app, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
+      "name": "app"
     },
     {
       "commands": [
@@ -13967,12 +14139,12 @@
       "verbs": {
         "create": {
           "contract": "internal",
-          "note": "Rancher creates an app when it installs a chart; this CLI does not install charts",
+          "note": "Rancher creates an app when it installs a chart; to install one (<release> is the Helm release name, <c> the cluster, <ns> the namespace, <repo> the ClusterRepo and <chart> the chart), run `rancher app install <release> --cluster <c> --namespace <ns> --repo <repo> --chart <chart> --dry-run` and add --apply after reading the preview",
           "stability": "beta",
           "state": "refused"
         },
         "delete": {
-          "note": "deleting an app object leaves its Helm release installed; this CLI does not uninstall apps",
+          "note": "deleting an app object leaves its Helm release installed; to uninstall it (<name> is its name, <c> the cluster and <ns> its namespace), run `rancher app uninstall <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview",
           "state": "absent"
         },
         "get": {
@@ -14023,7 +14195,8 @@
           "state": "refused"
         }
       },
-      "version": "v1"
+      "version": "v1",
+      "waitDefault": "condition=Reconciling=False"
     },
     {
       "aliases": [

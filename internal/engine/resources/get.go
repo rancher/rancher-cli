@@ -258,7 +258,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 				return runtime.Result{}, terr
 			}
 			start := time.Now()
-			one, err = waitFor(ctx, client, c.k.GVR, ns, name, cond, timeout, c.k.WaitFailsOnStalled)
+			one, err = waitFor(ctx, client, c.k.GVR, ns, name, cond, timeout, stalledRule{fail: c.k.WaitFailsOnStalled, remedy: c.k.StalledRemedy, cluster: in.String(FlagCluster)})
 			if err == nil {
 				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
 				if c.k.WaitFailsOnStalled && !cond.isStalledTarget() {

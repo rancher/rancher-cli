@@ -65,6 +65,10 @@ func TestPathBuilders(t *testing.T) {
 			p: must(SteveCollectionPath("management.cattle.io.clusters"))},
 		{name: "steve collection with a continue token", want: "/v1/management.cattle.io.clusters?continue=x%26y",
 			p: must(SteveCollectionPath("management.cattle.io.clusters")).WithQuery("continue", "x&y")},
+		{name: "clusterrepo index of a downstream cluster", want: "/k8s/clusters/c-x/v1/catalog.cattle.io.clusterrepos/rancher-charts?link=index",
+			p: must(ClusterRepoIndexPath("c-x", "rancher-charts"))},
+		{name: "clusterrepo index of the local cluster", want: "/v1/catalog.cattle.io.clusterrepos/rancher-charts?link=index",
+			p: must(ClusterRepoIndexPath("local", "rancher-charts"))},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -96,6 +100,8 @@ func TestPathBuildersRejectInvalidSegments(t *testing.T) {
 			}
 			add(ManagementPath("management.cattle.io", "v3", s))
 			add(SteveCollectionPath(s))
+			add(ClusterRepoIndexPath("c-x", s))
+			add(ClusterRepoIndexPath(s, "rancher-charts"))
 			if s != "" { // an empty group is the core-group form, not a segment
 				add(ManagementPath(s, "v3", "users"))
 			}

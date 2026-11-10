@@ -158,7 +158,7 @@ func (c parityCase) run(t *testing.T, client engine.ClusterClient) outcome {
 	if timeout == 0 {
 		timeout = time.Minute
 	}
-	got, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", c.cond, timeout, c.failOnStalled)
+	got, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", c.cond, timeout, stalledRule{fail: c.failOnStalled})
 	return outcomeOf(got, err)
 }
 
@@ -234,7 +234,7 @@ func TestWaitForWatchedNotFoundIsTheGetError(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				c := &parityWatch{steps: steps}
-				_, err := waitFor(t.Context(), c, schema.GroupVersionResource{}, "", "x", waitCond{kind: "state", name: "active"}, time.Minute, false)
+				_, err := waitFor(t.Context(), c, schema.GroupVersionResource{}, "", "x", waitCond{kind: "state", name: "active"}, time.Minute, stalledRule{})
 				assert.Same(t, notFound, err)
 				assert.Equal(t, clierr.CodeNotFound, clierr.From(err).Code)
 			})
@@ -249,12 +249,12 @@ func TestWaitForWatchSeesAStateThatPollingSkips(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cond := waitCond{kind: "state", name: "active"}
 		watched := &parityWatch{steps: []parityStep{obj(stateObj("provisioning", "yes")), obj(stateObj("active", "no")), obj(stateObj("provisioning", "yes"))}}
-		got, err := waitFor(t.Context(), watched, schema.GroupVersionResource{}, "", "x", cond, time.Minute, false)
+		got, err := waitFor(t.Context(), watched, schema.GroupVersionResource{}, "", "x", cond, time.Minute, stalledRule{})
 		require.NoError(t, err)
 		assert.Equal(t, "active", mustState(got))
 
 		sampled := &seqClient{objs: []*unstructured.Unstructured{stateObj("provisioning", "yes")}}
-		_, err = waitFor(t.Context(), sampled, schema.GroupVersionResource{}, "", "x", cond, time.Minute, false)
+		_, err = waitFor(t.Context(), sampled, schema.GroupVersionResource{}, "", "x", cond, time.Minute, stalledRule{})
 		require.ErrorContains(t, err, "timed out")
 	})
 }
@@ -270,7 +270,7 @@ func TestWaitForWatchedFailFastStateNeedsToPersist(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			c := &parityWatch{steps: []parityStep{obj(stateObj("provisioning", "yes")), obj(errorObj("quota exceeded")), obj(stateObj("active", "no"))}}
 			start := time.Now()
-			got, err := waitFor(t.Context(), c, schema.GroupVersionResource{}, "", "x", cond, time.Minute, false)
+			got, err := waitFor(t.Context(), c, schema.GroupVersionResource{}, "", "x", cond, time.Minute, stalledRule{})
 			require.NoError(t, err)
 			assert.Equal(t, "active", mustState(got))
 			assert.GreaterOrEqual(t, time.Since(start), pollInterval, "the List that decides comes one interval after the event")
@@ -279,7 +279,7 @@ func TestWaitForWatchedFailFastStateNeedsToPersist(t *testing.T) {
 	t.Run("persists", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			c := &parityWatch{steps: []parityStep{obj(stateObj("provisioning", "yes")), obj(errorObj("quota exceeded"))}}
-			_, err := waitFor(t.Context(), c, schema.GroupVersionResource{}, "", "x", cond, time.Minute, false)
+			_, err := waitFor(t.Context(), c, schema.GroupVersionResource{}, "", "x", cond, time.Minute, stalledRule{})
 			require.ErrorContains(t, err, "x failed: quota exceeded")
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
@@ -312,7 +312,7 @@ func TestWaitForWatchedEventSatisfiedWhileStalled(t *testing.T) {
 func TestWaitForWatchedEventFromAnUnsettledGenerationIsIgnored(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := &parityWatch{steps: []parityStep{obj(unsettledObj("False", 2, 1)), obj(unsettledObj("True", 2, 1))}}
-		_, err := waitFor(t.Context(), c, schema.GroupVersionResource{}, "", "x", readyCond(), 30*time.Second, true)
+		_, err := waitFor(t.Context(), c, schema.GroupVersionResource{}, "", "x", readyCond(), 30*time.Second, stalledRule{fail: true})
 		require.ErrorContains(t, err, "timed out")
 		assert.ErrorContains(t, err, "not yet reconciled")
 	})
@@ -369,7 +369,7 @@ func TestWaitForWatchedTimeoutDuringARequestNamesNoCutError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				_, err := waitFor(t.Context(), tt.client, schema.GroupVersionResource{}, "", "x", waitCond{kind: "state", name: "active"}, tt.timeout, false)
+				_, err := waitFor(t.Context(), tt.client, schema.GroupVersionResource{}, "", "x", waitCond{kind: "state", name: "active"}, tt.timeout, stalledRule{})
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok)
 				assert.Equal(t, tt.want, ce.Message)
@@ -389,7 +389,7 @@ func TestWaitForWatchedCancelReturnsTheContextError(t *testing.T) {
 			time.Sleep(3 * time.Second)
 			cancel()
 		}()
-		_, err := waitFor(ctx, c, schema.GroupVersionResource{}, "", "x", waitCond{kind: "state", name: "running"}, time.Minute, false)
+		_, err := waitFor(ctx, c, schema.GroupVersionResource{}, "", "x", waitCond{kind: "state", name: "running"}, time.Minute, stalledRule{})
 		require.ErrorIs(t, err, context.Canceled)
 		assert.NotContains(t, err.Error(), "timed out")
 		_, structured := errors.AsType[*clierr.Error](err)

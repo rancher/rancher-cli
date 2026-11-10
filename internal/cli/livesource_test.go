@@ -157,7 +157,8 @@ func TestValidateLiveWiring(t *testing.T) {
 // through the user one, the two oidc-client secret
 // verbs through the oidcclient one, logs through the observe one, inspect
 // project's positional through the projects one, inspect cluster's
-// through the access one, the three sign-in commands through the token
+// through the access one, app install's --repo, --chart and --version
+// through the kinds one, the three sign-in commands through the token
 // one, every other entry's probe implements nothing, and BuildRoot
 // accepts the wiring.
 func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
@@ -174,7 +175,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		require.NoError(t, checkSourceDeclared("command "+name, lc.LiveSource()))
 	}
 	assert.ElementsMatch(t, []string{
-		"access projects", "grant", "revoke", "charts",
+		"access projects", "grant", "revoke", "charts", "app install",
 		"create cluster", "create user", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",
@@ -186,9 +187,9 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 }
 
 // TestPositionalKindsMatchTheWiringTables is a golden of the wiring on purpose:
-// the bespoke first-positional table names exactly the ten commands that get
+// the bespoke first-positional table names exactly the eleven commands that get
 // a kind (inspect user, the five cluster-family verbs, the three oidc-client
-// secret verbs and create password-change-request; inspect project and
+// secret verbs, create password-change-request and app uninstall; inspect project and
 // inspect cluster complete through their own sources), and the
 // flag-source and kind-source tables carry exactly the keys listed in the
 // assertions. An intended change to the wiring edits this test in the same
@@ -206,6 +207,7 @@ func TestPositionalKindsMatchTheWiringTables(t *testing.T) {
 		"oidc-client rotate-secret":      "oidcclient",
 		"oidc-client remove-secret":      "oidcclient",
 		"create password-change-request": "user",
+		"app uninstall":                  "app",
 	}
 	assert.Equal(t, want, positionalKinds)
 	assert.ElementsMatch(t, []string{"cluster", "project", "namespace", "node", "as"}, slices.Collect(maps.Keys(flagSources)))

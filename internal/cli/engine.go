@@ -1,15 +1,19 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
@@ -29,6 +33,11 @@ import (
 // than a constant) so tests can shrink it - mirrors keyringProbeTimeout's
 // test-shrinkable pattern in internal/config/credstore.go.
 var rootTimeout = 30 * time.Second
+
+// actionTimeout bounds one steve action POST: Rancher fetches the chart and
+// creates the operation's objects before it answers. A package var so tests
+// can shrink it.
+var actionTimeout = 5 * time.Minute
 
 // clientFactory implements engine.ClusterClientFactory for one invocation.
 // Config + credentials resolve exactly once: one server, one token,
@@ -60,6 +69,12 @@ type clientFactory struct {
 	rootOnce sync.Once
 	root     engine.RootClient
 	rootErr  error
+
+	// actionOnce builds the action client at most once per invocation, with
+	// its own http.Client for its own timeout.
+	actionOnce sync.Once
+	action     engine.ActionClient
+	actionErr  error
 
 	// serverInfoOnce memoizes the /rancherversion version+edition read
 	// exactly once per invocation (f is itself the per-invocation instance):
@@ -217,6 +232,97 @@ func (r *rootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
 		return body, nil
 	}
 	return nil, clierr.FromResponse("GET "+path+" on the Rancher server", http.MethodGet, resp.StatusCode, body, &clierr.Request{Server: config.DisplayServerURL(r.base)})
+}
+
+// Action resolves the memoized engine.ActionClient for this invocation: the
+// root client's server, credential and transport (its TLS trust included),
+// with actionTimeout in place of the root client's timeout.
+func (f *clientFactory) Action() (engine.ActionClient, error) {
+	f.actionOnce.Do(func() {
+		root, err := f.Root()
+		if err != nil {
+			f.actionErr = err
+			return
+		}
+		rc, ok := root.(*rootClient)
+		if !ok {
+			f.actionErr = clierr.New(clierr.CodeGeneric, "internal error: the root client is not the one the action client is built from")
+			return
+		}
+		hc := *rc.hc
+		hc.Timeout = actionTimeout
+		f.action = &actionClient{base: rc.base, token: rc.token, hc: &hc}
+	})
+	return f.action, f.actionErr
+}
+
+// actionClient implements engine.ActionClient over httpx: one POST per call,
+// no retry.
+type actionClient struct {
+	base  string
+	token string
+	hc    *http.Client
+}
+
+func (a *actionClient) PostAction(ctx context.Context, path string, body []byte) ([]byte, error) {
+	// written records that the transport wrote the request, its body
+	// included: an error after that may come after the server ran the
+	// action, so its outcome is unknown.
+	var written atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(httptrace.WroteRequestInfo) { written.Store(true) },
+	})
+	req, err := kube.NewWriteRequest(ctx, http.MethodPost, a.base+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	if a.token != "" {
+		req.Header.Set("Authorization", "Bearer "+a.token)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	resp, respBody, err := doBounded(a.hc, req)
+	if err != nil {
+		if written.Load() {
+			return nil, &engine.ActionOutcomeUnknown{Err: err}
+		}
+		if ce := tlstrust.TypedError(err); ce != nil {
+			return nil, ce
+		}
+		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("POST %s on the Rancher server: %v", path, err))
+	}
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return respBody, nil
+	case resp.StatusCode == http.StatusInternalServerError || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout:
+		return nil, &engine.ActionOutcomeUnknown{Err: clierr.ResponseError(http.MethodPost, resp.StatusCode, respBody), Body: respBody}
+	}
+	request := &clierr.Request{Server: config.DisplayServerURL(a.base)}
+	return nil, &engine.ActionRefused{
+		Err:     clierr.FromResponse("POST "+path+" on the Rancher server", http.MethodPost, resp.StatusCode, respBody, request),
+		Body:    respBody,
+		Request: request,
+	}
+}
+
+// maxActionAnswer bounds the answer body an action request reads: Rancher's
+// answer is a short JSON object, and an error answer is shown cut to a few
+// hundred bytes.
+const maxActionAnswer = 1 << 20
+
+// doBounded sends req once and reads at most maxActionAnswer bytes of the
+// answer body, closing it before it returns.
+func doBounded(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
+	resp, err := client.Do(req)
+	if err != nil {
+		return resp, nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxActionAnswer))
+	if err != nil {
+		return resp, nil, err
+	}
+	return resp, body, nil
 }
 
 // ServerInfo resolves the memoized /rancherversion version+edition for this
@@ -447,6 +553,7 @@ func (s noticeSources) DrainNotices() []string {
 type runDeps struct {
 	clients    engine.ClusterClientFactory
 	roots      engine.RootClientFactory
+	actions    engine.ActionClientFactory
 	serverBase engine.ServerBaseURLProvider
 	src        engine.FileSource
 	dir        string
@@ -555,7 +662,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				io.Capability = newCapabilityChecker(f)
 				io.Projects = projectResolver{f}
 				view := experimentView()
-				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
+				cmd = make(runDeps{clients: f, roots: f, actions: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
 			}
 			addExperimentNotices(&io, d.Name)
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)

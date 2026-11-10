@@ -49,6 +49,26 @@ type Binding struct {
 	Stability Stability
 }
 
+// PreviewSource says where an Effect comes from. Every Plan sets one of the
+// two values; the pipeline refuses any other, the empty value included.
+type PreviewSource string
+
+const (
+	// PreviewServerDryRun is a preview from a server-side dry-run of the
+	// same write the command then sends.
+	PreviewServerDryRun PreviewSource = "serverDryRun"
+	// PreviewServerReads is a preview built from server reads, for a
+	// Rancher action the CLI does not preview with a server dry-run. Such an
+	// Effect carries no resourceVersion precondition and no conflict
+	// detection.
+	PreviewServerReads PreviewSource = "serverReads"
+)
+
+// Valid reports whether s is one of the two preview sources.
+func (s PreviewSource) Valid() bool {
+	return s == PreviewServerDryRun || s == PreviewServerReads
+}
+
 // DiffEntry is a single field change in an Effect.
 type DiffEntry struct {
 	Path string `json:"path"`
@@ -105,14 +125,18 @@ type Effect struct {
 	// the committed success identity is derived from the returned object
 	// and never carries the "*" suffix). A Plan that omits it is a command
 	// bug (checkPlan).
-	DisplayName       string      `json:"displayName"`
-	Server            string      `json:"server,omitempty"`
-	Cluster           string      `json:"cluster,omitempty"`
-	Diff              []DiffEntry `json:"diff,omitempty"`
-	ResourceVersion   string      `json:"resourceVersion,omitempty"`
-	ConflictDetection bool        `json:"conflictDetection"`
-	Reversible        bool        `json:"reversible"`
-	Destructive       bool        `json:"destructive"`
+	DisplayName string `json:"displayName"`
+	// PreviewSource says whether the preview comes from a server-side
+	// dry-run or from server reads. A Plan that leaves it empty is a
+	// command bug (checkPlan).
+	PreviewSource     PreviewSource `json:"previewSource"`
+	Server            string        `json:"server,omitempty"`
+	Cluster           string        `json:"cluster,omitempty"`
+	Diff              []DiffEntry   `json:"diff,omitempty"`
+	ResourceVersion   string        `json:"resourceVersion,omitempty"`
+	ConflictDetection bool          `json:"conflictDetection"`
+	Reversible        bool          `json:"reversible"`
+	Destructive       bool          `json:"destructive"`
 	// Objects lists the objects beyond Target that the command acts on or
 	// reports, each with its outcome. Empty for a command that touches one
 	// object, which leaves its output unchanged.

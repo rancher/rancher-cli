@@ -243,5 +243,216 @@
         ]
       }
     }
+  ],
+  "catalogActions": [
+    {
+      "type": "ChartInstallAction",
+      "fields": {
+        "automaticCPTolerations": [
+          "community",
+          "prime"
+        ],
+        "charts": [
+          "community",
+          "prime"
+        ],
+        "disableOpenAPIValidation": [
+          "community",
+          "prime"
+        ],
+        "namespace": [
+          "community",
+          "prime"
+        ],
+        "noHooks": [
+          "community",
+          "prime"
+        ],
+        "operationTolerations": [
+          "community",
+          "prime"
+        ],
+        "projectId": [
+          "community",
+          "prime"
+        ],
+        "serverSide": [
+          "community"
+        ],
+        "skipSchemaValidation": [
+          "community"
+        ],
+        "timeout": [
+          "community",
+          "prime"
+        ],
+        "wait": [
+          "community",
+          "prime"
+        ]
+      }
+    },
+    {
+      "type": "ChartInstall",
+      "fields": {
+        "annotations": [
+          "community",
+          "prime"
+        ],
+        "chartName": [
+          "community",
+          "prime"
+        ],
+        "description": [
+          "community",
+          "prime"
+        ],
+        "releaseName": [
+          "community",
+          "prime"
+        ],
+        "values": [
+          "community",
+          "prime"
+        ],
+        "version": [
+          "community",
+          "prime"
+        ]
+      }
+    },
+    {
+      "type": "ChartUpgradeAction",
+      "fields": {
+        "automaticCPTolerations": [
+          "community",
+          "prime"
+        ],
+        "charts": [
+          "community",
+          "prime"
+        ],
+        "cleanupOnFail": [
+          "community",
+          "prime"
+        ],
+        "disableOpenAPIValidation": [
+          "community",
+          "prime"
+        ],
+        "force": [
+          "community",
+          "prime"
+        ],
+        "historyMax": [
+          "community",
+          "prime"
+        ],
+        "install": [
+          "community",
+          "prime"
+        ],
+        "namespace": [
+          "community",
+          "prime"
+        ],
+        "noHooks": [
+          "community",
+          "prime"
+        ],
+        "operationTolerations": [
+          "community",
+          "prime"
+        ],
+        "serverSide": [
+          "community"
+        ],
+        "skipSchemaValidation": [
+          "community"
+        ],
+        "takeOwnership": [
+          "community",
+          "prime"
+        ],
+        "timeout": [
+          "community",
+          "prime"
+        ],
+        "wait": [
+          "community",
+          "prime"
+        ]
+      }
+    },
+    {
+      "type": "ChartUpgrade",
+      "fields": {
+        "annotations": [
+          "community",
+          "prime"
+        ],
+        "chartName": [
+          "community",
+          "prime"
+        ],
+        "description": [
+          "community",
+          "prime"
+        ],
+        "force": [
+          "community",
+          "prime"
+        ],
+        "releaseName": [
+          "community",
+          "prime"
+        ],
+        "resetValues": [
+          "community",
+          "prime"
+        ],
+        "values": [
+          "community",
+          "prime"
+        ],
+        "version": [
+          "community",
+          "prime"
+        ]
+      }
+    },
+    {
+      "type": "ChartUninstallAction",
+      "fields": {
+        "automaticCPTolerations": [
+          "community",
+          "prime"
+        ],
+        "description": [
+          "community",
+          "prime"
+        ],
+        "dryRun": [
+          "community",
+          "prime"
+        ],
+        "keepHistory": [
+          "community",
+          "prime"
+        ],
+        "noHooks": [
+          "community",
+          "prime"
+        ],
+        "operationTolerations": [
+          "community",
+          "prime"
+        ],
+        "timeout": [
+          "community",
+          "prime"
+        ]
+      }
+    }
   ]
 }

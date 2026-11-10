@@ -26,7 +26,7 @@ import (
 func TestDeleteHintNamesTheReasonForEveryTypedName(t *testing.T) {
 	exitEnv(t)
 	for typed, want := range map[string]string{
-		"apps":           `unknown command "apps"; app cannot be deleted - deleting an app object leaves its Helm release installed; this CLI does not uninstall apps`,
+		"apps":           "unknown command \"apps\"; app cannot be deleted - deleting an app object leaves its Helm release installed; to uninstall it (<name> is its name, <c> the cluster and <ns> its namespace), run `rancher app uninstall <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview",
 		"operations":     `unknown command "operations"; operation cannot be deleted - this CLI does not delete operations`,
 		"clusterrepos":   `unknown command "clusterrepos"; clusterrepo cannot be deleted - this CLI does not delete repositories`,
 		"etcd-snapshot":  `unknown command "etcd-snapshot"; etcd-snapshot cannot be deleted - an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place`,

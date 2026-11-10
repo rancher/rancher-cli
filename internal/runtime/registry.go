@@ -251,10 +251,12 @@ type EffectField struct {
 }
 
 // EffectSchema describes the --dry-run Effect payload so agents can parse it
-// from the manifest alone: the closed Action enum and the Effect field set.
+// from the manifest alone: the closed Action enum, the closed previewSource
+// enum and the Effect field set.
 type EffectSchema struct {
-	Actions []string      `json:"actions"`
-	Fields  []EffectField `json:"fields"`
+	Actions        []string      `json:"actions"`
+	PreviewSources []string      `json:"previewSources"`
+	Fields         []EffectField `json:"fields"`
 }
 
 // effectSchema is the static Effect contract. Actions are built from the safety
@@ -266,12 +268,14 @@ func effectSchema() EffectSchema {
 		strs[i] = string(a)
 	}
 	return EffectSchema{
-		Actions: strs,
+		Actions:        strs,
+		PreviewSources: []string{string(safety.PreviewServerDryRun), string(safety.PreviewServerReads)},
 		Fields: []EffectField{
 			{Name: "action", Type: "string"},
 			{Name: "target", Type: "string"},
 			{Name: "displayKind", Type: "string"},
 			{Name: "displayName", Type: "string"},
+			{Name: "previewSource", Type: "string"},
 			{Name: "server", Type: "string"},
 			{Name: "cluster", Type: "string"},
 			{Name: "diff", Type: "array"},

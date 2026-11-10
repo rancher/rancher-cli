@@ -20,18 +20,21 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// The index link of a ClusterRepo is read in one place, and the read never
+// The index link of a ClusterRepo is read in two places, and neither read
 // asks Rancher for more or other than it lists for the cluster. In
 // non-test Go code a string literal that holds "link=" or is exactly "link"
-// belongs only to catalogLinkFile, and no literal holds "skipFilter" or
-// "k8sVersion" anywhere: the first two spellings build a link request, the
-// others change which versions the server answers with.
+// belongs only to catalogLinkFile, which the commands read through, and to
+// the completion path builder named in catalogLinkAllowlist, which the
+// --chart and --version completion read through; no literal holds
+// "skipFilter" or "k8sVersion" anywhere: the first two spellings build a
+// link request, the others change which versions the server answers with.
 const catalogLinkFile = "internal/engine/catalog/index.go"
 
 // catalogLinkAllowlist names the files whose "link" literal is not a link
 // request, each with its reason.
 var catalogLinkAllowlist = map[string]string{
-	"internal/telemetry/fsroot.go": "the name of the file system operation Link, passed to the operation observer",
+	"internal/telemetry/fsroot.go":        "the name of the file system operation Link, passed to the operation observer",
+	"internal/runtime/completion/path.go": "the completion read of the same filtered index, for --chart and --version of app install; it never sets skipFilter or k8sVersion",
 }
 
 // catalogLiteralFinding is one constant string the scan reports.

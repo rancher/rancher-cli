@@ -147,7 +147,7 @@ func (dryRunData) Describe() runtime.Descriptor {
 }
 
 func (dryRunData) Plan(context.Context, runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	eff := safety.Effect{Action: safety.ActionUpdate, Target: clierr.Rancher + " get pods", DisplayKind: "Cluster", DisplayName: clierr.Rancher + " config status"}
+	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: clierr.Rancher + " get pods", DisplayKind: "Cluster", DisplayName: clierr.Rancher + " config status"}
 	return eff, func(context.Context) (runtime.Result, error) { return runtime.Result{}, nil }, nil
 }
 
@@ -256,7 +256,7 @@ func (dryRunControlData) Describe() runtime.Descriptor {
 }
 
 func (dryRunControlData) Plan(context.Context, runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	eff := safety.Effect{Action: safety.ActionUpdate, Target: "cluster-1", DisplayKind: "Cluster", DisplayName: clierr.Rancher + " config status\x7f\u009b"}
+	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "cluster-1", DisplayKind: "Cluster", DisplayName: clierr.Rancher + " config status\x7f\u009b"}
 	return eff, func(context.Context) (runtime.Result, error) { return runtime.Result{}, nil }, nil
 }
 

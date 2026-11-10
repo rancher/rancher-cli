@@ -38,7 +38,7 @@ func TestErrorTextStripsControlCharacters(t *testing.T) {
 // server's dry-run answer cannot forge a preview line.
 func TestDryRunTextStripsControlCharacters(t *testing.T) {
 	t.Parallel()
-	eff := safety.Effect{Action: safety.ActionCreate, DisplayKind: "project", DisplayName: "web",
+	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "project", DisplayName: "web",
 		Diff: []safety.DiffEntry{{Path: "/spec/description", From: "", To: "a\nb\x1b[2J"}}}
 	out := dryRunText(eff)
 	assert.Contains(t, out, "/spec/description:  -> ab[2J")

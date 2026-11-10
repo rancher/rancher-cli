@@ -216,7 +216,8 @@ func dataShapes() []dataShape {
 		{name: "dry-run effect", effect: true,
 			build: func(v dataValues) any {
 				return safety.Effect{
-					Action: safety.ActionUpdate, Target: v.misread, DisplayKind: "Cluster", DisplayName: "c",
+					PreviewSource: safety.PreviewServerDryRun,
+					Action:        safety.ActionUpdate, Target: v.misread, DisplayKind: "Cluster", DisplayName: "c",
 					Server: v.marked, Cluster: v.planted, ResourceVersion: v.other,
 					Objects: []safety.Object{{Kind: "cluster", Name: "c", Outcome: safety.OutcomeRancherKeeps, Message: v.plain}},
 				}

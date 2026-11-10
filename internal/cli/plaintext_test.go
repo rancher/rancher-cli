@@ -101,7 +101,7 @@ type markedMutation struct{ d runtime.Descriptor }
 func (c markedMutation) Describe() runtime.Descriptor { return c.d }
 
 func (c markedMutation) Plan(context.Context, runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	eff := safety.Effect{Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: "c"}
+	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: "c"}
 	return eff, func(context.Context) (runtime.Result, error) { return markedResult(c.d), nil }, nil
 }
 

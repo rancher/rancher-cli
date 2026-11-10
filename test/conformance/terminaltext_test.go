@@ -273,7 +273,7 @@ var (
 		"Objects[].Kind", "Objects[].Name", "Objects[].Outcome", "Objects[].Message",
 	}
 	previewNotPrinted = []string{"Target", "ResourceVersion", "Objects[].Code", "Warnings[]"}
-	previewByHand     = []string{"Action"}
+	previewByHand     = []string{"Action", "PreviewSource"}
 	// previewWithCommand are the printed paths that keep this process's
 	// marker, so a command of the CLI planted there expands.
 	previewWithCommand = []string{"DisplayKind", "DisplayName", "Server", "Cluster"}
@@ -295,6 +295,7 @@ func plantedEffect(t *testing.T) safety.Effect {
 	eff, ok := reflect.TypeAssert[safety.Effect](planted)
 	require.True(t, ok)
 	eff.Action = safety.ActionUpdate
+	eff.PreviewSource = safety.PreviewServerDryRun
 	return eff
 }
 
@@ -378,7 +379,7 @@ var terminalRows = []terminalRow{
 			OnceOnlyNotice:   notice,
 			CommittedContext: &runtime.CommittedContext{ResourceKind: "Widget", ResourceName: "w1", Recovery: "get widget w1"},
 		}
-		eff := safety.Effect{Action: safety.ActionCreate, DisplayKind: "widget", DisplayName: "w1"}
+		eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "widget", DisplayName: "w1"}
 		out, errOut := e.run(terminalMutating{d: d, eff: eff, res: res}, func(io *runtime.IO) { io.Apply = true })
 		assertBothClean(t, out, errOut, terminalSequences)
 		assertNoForgedLine(t, "standard output", out)
@@ -464,12 +465,12 @@ var terminalRows = []terminalRow{
 		e.assertWarning(out, errOut, "warnings envelope")
 	}},
 	{"warnings preview text", func(e terminalEnv) {
-		eff := safety.Effect{Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: "c", Warnings: warningText("warnings preview text")}
+		eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: "c", Warnings: warningText("warnings preview text")}
 		out, errOut := e.run(terminalMutating{d: previewDescriptor(), eff: eff}, func(io *runtime.IO) { io.DryRun = true })
 		e.assertWarning(out, errOut, "warnings preview text")
 	}},
 	{"warnings preview envelope", func(e terminalEnv) {
-		eff := safety.Effect{Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: "c", Warnings: warningText("warnings preview envelope")}
+		eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: "c", Warnings: warningText("warnings preview envelope")}
 		out, errOut := e.run(terminalMutating{d: previewDescriptor(), eff: eff}, func(io *runtime.IO) { io.DryRun = true; io.Format = "name" })
 		e.assertWarning(out, errOut, "warnings preview envelope")
 	}},

@@ -80,8 +80,9 @@ var kindSources = map[string]completion.Source{
 // first positional completes as: the inspect leaf whose positional is a
 // management user, the cluster-family verbs' provisioning cluster,
 // the oidc-client secret verbs' client, and the existing user
-// create password-change-request addresses. create user is absent: its
-// positional is a new username, never an existing one.
+// create password-change-request addresses, and app uninstall's release
+// (the app of that name in --namespace). create user and app install are
+// absent: their positional is a new name, never an existing one.
 var positionalKinds = map[string]string{
 	"inspect user":                   "user",
 	"cluster scale":                  "provisioningcluster",
@@ -93,6 +94,7 @@ var positionalKinds = map[string]string{
 	"oidc-client rotate-secret":      "oidcclient",
 	"oidc-client remove-secret":      "oidcclient",
 	"create password-change-request": "user",
+	"app uninstall":                  "app",
 }
 
 // allowanceLimit maps a granted allowance class to its request count:

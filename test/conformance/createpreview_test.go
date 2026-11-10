@@ -62,6 +62,8 @@ var createEffectAllowlist = map[string]string{
 	"internal/engine/diff.go":                               "the create diff walk and the update diff",
 	"internal/engine/redact.go":                             "the one function that hides values in a diff",
 	"internal/engine/extres/createpasswordchangerequest.go": "the password change request has no kind row; it builds its own Effect and takes the diff from the walk with its own redaction",
+	"internal/engine/catalog/install.go":                    "a Rancher catalog action the CLI previews from server reads: the Effect is built from server reads (previewSource serverReads) and its diff lists the request's fields and value paths, never a value",
+	"internal/engine/catalog/uninstall.go":                  "a Rancher catalog action the CLI previews from server reads: the Effect is built from server reads (previewSource serverReads) and its diff lists the release, its chart and version, the Helm options sent and what Helm removes; no value paths",
 }
 
 // plannerCallKeys returns the sorted keys of the functions of pkg that use a

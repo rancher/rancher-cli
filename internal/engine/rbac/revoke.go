@@ -221,6 +221,7 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 		effCluster = engine.LocalCluster
 	}
 	eff := safety.Effect{
+		PreviewSource:     safety.PreviewServerDryRun,
 		Action:            safety.ActionDelete,
 		Target:            target,
 		DisplayKind:       bindKind.Name,

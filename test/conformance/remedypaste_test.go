@@ -610,7 +610,13 @@ func (sc *pasteSchema) check(p *pasteParsed, text string, start int, gated []str
 	hasFlagsUnknown = hasFlagsUnknown || p.unknown
 	if !hasFlagsUnknown && !p.flags["help"] && !p.flags["h"] {
 		for name, f := range cmd.flags {
-			if f.required && !p.flags[name] {
+			// An alias key shares its flag's entry; the parser records the
+			// flag's own name whichever spelling the text uses, so the
+			// flag's own key alone decides whether it was given.
+			if name != f.name {
+				continue
+			}
+			if f.required && !p.flags[f.name] {
 				p.problems = append(p.problems, pasteProblem{pasteCheckSchema, fmt.Sprintf("%q needs the required flag --%s", cmd.name, f.name)})
 			}
 		}

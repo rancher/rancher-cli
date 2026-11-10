@@ -161,7 +161,7 @@ func TestRunMutatingUnaffectedWhenReadOnlyFalse(t *testing.T) {
 	called := 0
 	cmd := fakeMutating{
 		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
+		eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
 		exec: func(context.Context) (Result, error) {
 			called++
 			return Result{Kind: "ScaleResult"}, nil
@@ -179,7 +179,7 @@ func TestRunRejectsInvalidAction(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.Action("destroy"), Target: "x", DisplayKind: "widget", DisplayName: "x"},
+		eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.Action("destroy"), Target: "x", DisplayKind: "widget", DisplayName: "x"},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
@@ -194,7 +194,7 @@ func TestRunRejectsNonDestructiveDelete(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x", Destructive: false},
+		eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x", Destructive: false},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
@@ -209,7 +209,7 @@ func TestRunDeprecatedGateUsesBinding(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
+		eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
@@ -228,7 +228,7 @@ func TestRenderEffectWarningsJSONOnce(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    mutatingDesc(),
-		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a"}},
+		eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a"}},
 		exec: unusedExec(t),
 	}
 	var out, errBuf bytes.Buffer
@@ -255,7 +255,8 @@ func TestRenderEffectTableRendersDryRunTextWarningsToStderr(t *testing.T) {
 	cmd := fakeMutating{
 		d: mutatingDesc(),
 		eff: safety.Effect{
-			Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x",
+			PreviewSource: safety.PreviewServerDryRun,
+			Action:        safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x",
 			Server: "prod", Cluster: "c-x", Warnings: []string{"note-a"},
 		},
 		exec: unusedExec(t),
@@ -280,7 +281,7 @@ func TestRenderEffectWideMatchesTable(t *testing.T) {
 	newCmd := func() fakeMutating {
 		return fakeMutating{
 			d:    mutatingDesc(),
-			eff:  safety.Effect{Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x", Destructive: true},
+			eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x", Destructive: true},
 			exec: unusedExec(t),
 		}
 	}
@@ -302,7 +303,8 @@ func TestDryRunTextDiffLines(t *testing.T) {
 	cmd := fakeMutating{
 		d: mutatingDesc(),
 		eff: safety.Effect{
-			Action: safety.ActionUpdate, Target: "x", DisplayKind: "deployment", DisplayName: "nginx",
+			PreviewSource: safety.PreviewServerDryRun,
+			Action:        safety.ActionUpdate, Target: "x", DisplayKind: "deployment", DisplayName: "nginx",
 			Diff: []safety.DiffEntry{{Path: "/spec/replicas", From: float64(1), To: float64(3)}},
 		},
 		exec: unusedExec(t),
@@ -325,7 +327,8 @@ func TestDryRunTextDiffValues(t *testing.T) {
 	cmd := fakeMutating{
 		d: mutatingDesc(),
 		eff: safety.Effect{
-			Action: safety.ActionCreate, Target: "x", DisplayKind: "project", DisplayName: "web",
+			PreviewSource: safety.PreviewServerDryRun,
+			Action:        safety.ActionCreate, Target: "x", DisplayKind: "project", DisplayName: "web",
 			Diff: []safety.DiffEntry{
 				{Path: "/spec/limit", To: map[string]any{"limitsCpu": "500m", "n": nil}},
 				{Path: "/spec/uris", To: []any{"https://a/?x=1&y=<2>", nil}},
@@ -366,7 +369,7 @@ func TestRenderEffectRawFormatsWarningsToStderr(t *testing.T) {
 			t.Parallel()
 			cmd := fakeMutating{
 				d:    mutatingDesc(),
-				eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"cascade-warning"}},
+				eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"cascade-warning"}},
 				exec: unusedExec(t),
 			}
 			var out, errBuf bytes.Buffer
@@ -392,7 +395,7 @@ func TestRenderEffectWarningsCombineDryRun(t *testing.T) {
 	newCmd := func() fakeMutating {
 		return fakeMutating{
 			d:    mutatingDesc(),
-			eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a", "note-b"}},
+			eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a", "note-b"}},
 			exec: unusedExec(t),
 		}
 	}
@@ -420,7 +423,7 @@ func TestRunApplyRendersEffectWarnings(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a"}},
+		eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a"}},
 		exec: func(context.Context) (Result, error) {
 			return Result{Kind: "ScaleResult"}, nil
 		},
@@ -445,7 +448,7 @@ func TestRunApplyCombinesEffectWarnings(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a", "note-b"}},
+		eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "x", DisplayKind: "widget", DisplayName: "x", Warnings: []string{"note-a", "note-b"}},
 		exec: func(context.Context) (Result, error) {
 			return Result{Kind: "UpdateResult"}, nil
 		},
@@ -468,7 +471,7 @@ func TestRunExecClosureResultRendered(t *testing.T) {
 	called := 0
 	cmd := fakeMutating{
 		d:   mutatingDesc(),
-		eff: safety.Effect{Action: safety.ActionCreate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
+		eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, Target: "x", DisplayKind: "widget", DisplayName: "x"},
 		exec: func(context.Context) (Result, error) {
 			called++
 			return Result{Kind: "X", Data: map[string]string{"k": "v"}}, nil
@@ -487,7 +490,7 @@ func TestRunStampsEffectServer(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:    Descriptor{Name: "create widget", CommandType: Mutating},
-		eff:  safety.Effect{Action: safety.ActionCreate, Cluster: "c-x", DisplayKind: "widget", DisplayName: "x"},
+		eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, Cluster: "c-x", DisplayKind: "widget", DisplayName: "x"},
 		exec: func(context.Context) (Result, error) { return Result{Kind: "Widget"}, nil },
 	}
 	var out bytes.Buffer
@@ -504,7 +507,7 @@ func TestRunRejectsNilExecutor(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
 		d:   Descriptor{Name: "create widget", CommandType: Mutating},
-		eff: safety.Effect{Action: safety.ActionCreate},
+		eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate},
 		// exec deliberately nil: Plan returned (eff, nil, nil)
 	}
 	var out, errOut bytes.Buffer
@@ -923,7 +926,7 @@ func TestMutatingShapeViolationStillEmitsDiagnosticsAfterCommit(t *testing.T) {
 			var committed bool
 			cmd := fakeMutating{
 				d:   Descriptor{Name: "patch thing", CommandType: Mutating, Shape: tc.shape},
-				eff: safety.Effect{Action: safety.ActionUpdate, DisplayKind: "thing", DisplayName: "t1"},
+				eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, DisplayKind: "thing", DisplayName: "t1"},
 				exec: func(context.Context) (Result, error) {
 					committed = true
 					return tc.res, nil
@@ -2104,7 +2107,7 @@ func TestInternalErrorMessagesStartWithThePrefix(t *testing.T) {
 			return run(t, fakeMutating{d: mutatingDesc(), eff: eff, exec: exec}, IO{Apply: true, Yes: true})
 		}
 	}
-	widget := safety.Effect{Action: safety.ActionCreate, Target: "x", DisplayKind: "widget", DisplayName: "x"}
+	widget := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, Target: "x", DisplayKind: "widget", DisplayName: "x"}
 	styled := func(style.Style) string { return "x\n" }
 
 	for _, tc := range []struct {
@@ -2118,11 +2121,11 @@ func TestInternalErrorMessagesStartWithThePrefix(t *testing.T) {
 		}, "internal error: command implements neither ReadCommand nor MutatingCommand: broken"},
 		{"a plan with no executor", plan(widget, nil),
 			"internal error: the command returned nothing to run to apply the change"},
-		{"a plan with an invalid action", plan(safety.Effect{Action: safety.Action("destroy"), Target: "x", DisplayKind: "widget", DisplayName: "x"}, unusedExec(t)),
+		{"a plan with an invalid action", plan(safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.Action("destroy"), Target: "x", DisplayKind: "widget", DisplayName: "x"}, unusedExec(t)),
 			`internal error: invalid action "destroy" in the dry-run preview`},
-		{"a plan with no display kind", plan(safety.Effect{Action: safety.ActionCreate, Target: "x", DisplayName: "x"}, unusedExec(t)),
+		{"a plan with no display kind", plan(safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, Target: "x", DisplayName: "x"}, unusedExec(t)),
 			"internal error: the dry-run preview has an empty DisplayKind or DisplayName"},
-		{"a delete that is not destructive", plan(safety.Effect{Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x"}, unusedExec(t)),
+		{"a delete that is not destructive", plan(safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionDelete, Target: "x", DisplayKind: "widget", DisplayName: "x"}, unusedExec(t)),
 			"internal error: a delete in the dry-run preview must be destructive"},
 		{"a capability requirement with no checker", func(t *testing.T) *clierr.Error {
 			t.Helper()

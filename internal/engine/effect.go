@@ -42,6 +42,7 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		return safety.Effect{}, nil, nil, err
 	}
 	eff := safety.Effect{
+		PreviewSource:     safety.PreviewServerDryRun,
 		Action:            safety.ActionCreate,
 		Target:            gvr.Resource + "/" + out.GetName(),
 		DisplayKind:       displayKind,
@@ -107,6 +108,7 @@ func PlanUpdateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		return safety.Effect{}, nil, nil, err
 	}
 	eff := safety.Effect{
+		PreviewSource:     safety.PreviewServerDryRun,
 		Action:            safety.ActionUpdate,
 		Target:            gvr.Resource + "/" + obj.GetName(),
 		DisplayKind:       displayKind,

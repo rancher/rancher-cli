@@ -27,7 +27,7 @@ func TestMutatingCommandContract(t *testing.T) {
 	t.Parallel()
 	var c Command = fakeMutating{
 		d:    Descriptor{Name: "clusters scale", CommandType: Mutating},
-		eff:  safety.Effect{Action: safety.ActionUpdate, Target: "x"},
+		eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, Target: "x"},
 		exec: func(context.Context) (Result, error) { return Result{Kind: "ScaleResult"}, nil },
 	}
 	assert.Equal(t, Mutating, c.Describe().CommandType)

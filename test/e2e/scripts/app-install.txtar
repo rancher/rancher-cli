@@ -1,0 +1,150 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj core/v1/namespaces . namespace.yaml
+seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
+
+# --dry-run reads the server and sends no action: the preview is from server
+# reads, the version is the one `rancher charts` shows, and the values appear
+# by path, never by content.
+exec rancher app install app-install-rel --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-install-chart --values values.yaml --dry-run -o json
+cp stdout dry.json
+jsonquery dry.json data.previewSource serverReads
+jsonquery dry.json data.action create
+jsonquery dry.json data.displayName app-install-rel
+jsonquery dry.json 'data.diff.#(path="version").to' 1.2.0
+jsonquery dry.json 'data.diff.#(path="chart").to' app-install-chart
+jsonquery dry.json 'data.diff.#(path="values.replicaCount").to' '<hidden>'
+! stdout 'topsecret'
+appactions actions.json
+jsonquery actions.json '#' 0
+
+# Without --apply the command is refused and sends nothing.
+! exec rancher app install app-install-rel --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-install-chart -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+appactions actions.json
+jsonquery actions.json '#' 0
+
+# --apply sends the install action once, with the chart, release, version and
+# values and the request id the command reports.
+exec rancher app install app-install-rel --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-install-chart --version 1.1.0 --values values.yaml --helm-timeout 5m --description 'first install' --apply -o json
+cp stdout apply.json
+jsonquery apply.json data.release app-install-rel
+jsonquery apply.json data.operationNamespace app-install-ns
+! jsonquery apply.json data.operationName ''
+jsonget apply.json data.operationName opname.txt
+setenvfrom OPNAME opname.txt
+jsonget apply.json data.requestID reqid.txt
+setenvfrom REQID reqid.txt
+! stdout 'topsecret'
+appactions actions.json
+jsonquery actions.json '#' 1
+jsonquery actions.json '0.action' install
+jsonquery actions.json '0.fieldManager' cli.rancher.io
+jsonquery actions.json '0.path' /k8s/clusters/c-test/v1/catalog.cattle.io.clusterrepos/app-install-repo
+jsonquery actions.json '0.body.namespace' app-install-ns
+jsonquery actions.json '0.body.wait' true
+jsonquery actions.json '0.body.timeout' 5m0s
+jsonquery actions.json '0.body.charts.#' 1
+jsonquery actions.json '0.body.charts.0.chartName' app-install-chart
+jsonquery actions.json '0.body.charts.0.releaseName' app-install-rel
+jsonquery actions.json '0.body.charts.0.version' 1.1.0
+jsonquery actions.json '0.body.charts.0.description' 'first install'
+jsonquery actions.json '0.body.charts.0.values.replicaCount' 3
+jsonquery actions.json '0.body.charts.0.values.image.tag' topsecret-tag
+jsonquery actions.json '0.body.charts.0.annotations.cli\.rancher\.io/request-id' $REQID
+jsonquery actions.json '0.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo' app-install-repo
+jsonquery actions.json '0.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo-type' cluster
+
+# The operation Rancher created exists in the release namespace.
+exec rancher get operation $OPNAME --cluster testcluster --namespace app-install-ns -o json
+jsonquery stdout data.status.action install
+jsonquery stdout data.status.releaseName app-install-rel
+
+# While that operation may still run, another install of the release is
+# refused and sends nothing.
+! exec rancher app install app-install-rel --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-install-chart --apply -o json
+jsonquery stderr data.error.code CONFLICT
+appactions actions.json
+jsonquery actions.json '#' 1
+
+# Rancher records the release as an App; the operation finishes.
+seedobj catalog.cattle.io/v1/apps app-install-ns app.yaml
+flipstatus testcluster catalog.cattle.io/v1/operations app-install-ns $OPNAME '{"observedGeneration":1,"conditions":[{"type":"Reconciling","status":"False"}]}'
+
+# The release exists now: install refuses it.
+! exec rancher app install app-install-rel --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-install-chart --apply -o json
+jsonquery stderr data.error.code CONFLICT
+
+# uninstall: --dry-run previews from the App and sends nothing.
+exec rancher app uninstall app-install-rel --cluster testcluster --namespace app-install-ns --keep-history --no-hooks --dry-run -o json
+cp stdout undry.json
+jsonquery undry.json data.previewSource serverReads
+jsonquery undry.json data.action delete
+jsonquery undry.json data.displayName app-install-rel
+jsonquery undry.json 'data.diff.#(path="chart").from' app-install-chart
+jsonquery undry.json 'data.diff.#(path="keepHistory").to' true
+appactions actions.json
+jsonquery actions.json '#' 1
+
+# --apply without --yes is refused: uninstall removes the release's resources.
+! exec rancher app uninstall app-install-rel --cluster testcluster --namespace app-install-ns --keep-history --no-hooks --apply -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+appactions actions.json
+jsonquery actions.json '#' 1
+
+# --apply --yes sends the uninstall action once.
+exec rancher app uninstall app-install-rel --cluster testcluster --namespace app-install-ns --keep-history --no-hooks --apply --yes -o json
+cp stdout unapply.json
+jsonquery unapply.json data.release app-install-rel
+jsonquery unapply.json data.operationNamespace app-install-ns
+! jsonquery unapply.json data.operationName ''
+jsonget unapply.json data.operationName unopname.txt
+setenvfrom UNOPNAME unopname.txt
+! jsonquery unapply.json data.operationName $OPNAME
+appactions actions.json
+jsonquery actions.json '#' 2
+jsonquery actions.json '1.action' uninstall
+jsonquery actions.json '1.fieldManager' cli.rancher.io
+jsonquery actions.json '1.path' /k8s/clusters/c-test/v1/catalog.cattle.io.apps/app-install-ns/app-install-rel
+jsonquery actions.json '1.body.keepHistory' true
+jsonquery actions.json '1.body.noHooks' true
+jsonquery actions.json '1.body.dryRun' ''
+exec rancher get operation $UNOPNAME --cluster testcluster --namespace app-install-ns -o json
+jsonquery stdout data.status.action uninstall
+jsonquery stdout data.status.releaseName app-install-rel
+
+-- namespace.yaml --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app-install-ns
+-- repo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: app-install-repo
+spec:
+  url: https://charts.example.test/app-install
+  enabled: true
+-- values.yaml --
+replicaCount: 3
+image:
+  tag: topsecret-tag
+-- app.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: App
+metadata:
+  name: app-install-rel
+  namespace: app-install-ns
+spec:
+  name: app-install-rel
+  chart:
+    metadata:
+      name: app-install-chart
+      version: 1.1.0
+      annotations:
+        catalog.cattle.io/ui-source-repo-type: cluster
+        catalog.cattle.io/ui-source-repo: app-install-repo
+  info:
+    status: deployed

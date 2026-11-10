@@ -415,9 +415,11 @@ func allowedOutputEnum(enum []string, policy runtime.OutputPolicy) []string {
 	return out
 }
 
-// completionCharset is the allowlist for candidate values. The
-// first character must not be a hyphen, which would parse as a flag.
-var completionCharset = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]*$`)
+// completionCharset is the allowlist for candidate values. The first
+// character is a letter, digit, dot or underscore: a value that starts with
+// a hyphen would parse as a flag. After it, hyphens and plus signs are
+// allowed too, as in the chart version 108.0.0+up0.9.0.
+var completionCharset = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._+-]*$`)
 
 // sanitizeCandidates drops values that do not conform to the shell-safe
 // charset and returns the survivors sorted.

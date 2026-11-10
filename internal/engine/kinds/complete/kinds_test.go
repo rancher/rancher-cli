@@ -263,8 +263,8 @@ func TestKindSourceDescribesWithTheLookupFieldsOnly(t *testing.T) {
 }
 
 // TestClusterRepoSourceClaim asserts the source claims only the --repo flag
-// of the charts command, as one list read of the typed cluster, and declines
-// every other site, another command's --repo included.
+// of the charts and app install commands, as one list read of the typed
+// cluster, and declines every other site, another command's --repo included.
 func TestClusterRepoSourceClaim(t *testing.T) {
 	t.Parallel()
 	reqs, ok := ClusterRepoSource().Claim(completion.Request{Command: ChartsCommand, Flag: "repo"})
@@ -273,6 +273,13 @@ func TestClusterRepoSourceClaim(t *testing.T) {
 	for _, flag := range []string{"", "cluster", "namespace", "repository"} {
 		_, ok := ClusterRepoSource().Claim(completion.Request{Command: ChartsCommand, Flag: flag})
 		assert.False(t, ok, "flag %q", flag)
+	}
+	installReqs, ok := ClusterRepoSourceFor(InstallCommand).Claim(completion.Request{Command: InstallCommand, Flag: "repo"})
+	require.True(t, ok, "the --repo of app install")
+	assert.Equal(t, reqs, installReqs)
+	for _, flag := range []string{"", "cluster", "chart", "version"} {
+		_, ok := ClusterRepoSourceFor(InstallCommand).Claim(completion.Request{Command: InstallCommand, Flag: flag})
+		assert.False(t, ok, "app install flag %q", flag)
 	}
 	for _, command := range []string{"", "get clusterrepo", "install", "chart"} {
 		_, ok := ClusterRepoSource().Claim(completion.Request{Command: command, Flag: "repo"})

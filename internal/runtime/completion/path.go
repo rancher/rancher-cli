@@ -134,6 +134,24 @@ func AuthProvidersPath() (Path, error) {
 	return build([]string{"v1-public", "authproviders"})
 }
 
+// ClusterRepoIndexPath is the read of a ClusterRepo's Helm repository index
+// through steve at the server root, scoped to a cluster the way the
+// command's own read is: /v1/catalog.cattle.io.clusterrepos/<repo>?link=index
+// for the local cluster, /k8s/clusters/<clusterID>/v1/... for any other. The
+// query is the filtered index: it never asks for the versions the cluster
+// cannot run. Every segment goes through ValidSegment.
+func ClusterRepoIndexPath(clusterID, repo string) (Path, error) {
+	segs := []string{"v1", "catalog.cattle.io.clusterrepos", repo}
+	if clusterID != "local" {
+		segs = append([]string{"k8s", "clusters", clusterID}, segs...)
+	}
+	p, err := build(segs)
+	if err != nil {
+		return Path{}, err
+	}
+	return p.WithQuery("link", "index"), nil
+}
+
 // WithQuery returns p with key=value appended to its query, both
 // URL-encoded, so a value can never reach the path. A zero Path stays
 // zero.

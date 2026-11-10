@@ -40,6 +40,7 @@ func newKindSitesServer(t *testing.T) *pathCountingServer {
 		downNodesPath:      items(plain("node-2"), plain("node-1")),
 		downPodsPath:       items(plain("web-2"), plain("web-1")),
 		downDeploysPath:    items(plain("web")),
+		downAppsPath:       items(plain("other-app"), plain("my-app")),
 	}, steveClustersPages)
 }
 
@@ -53,7 +54,7 @@ func newKindSitesServer(t *testing.T) *pathCountingServer {
 // kinds, a cluster-namespaced kind, downstream kinds in and out of a
 // namespace); the bespoke first positionals (three inspect leaves, the
 // five cluster-family verbs, the three oidc-client secret verbs, create
-// password-change-request); a kind that does not complete, a second
+// password-change-request, app uninstall's release); a kind that does not complete, a second
 // positional, and a new-name positional. Two later sites fed by the typed
 // first positional (the oidc-client secret name, the cluster-family
 // --pool) stay in this table beside the positional that feeds them, so a
@@ -148,6 +149,15 @@ func TestKindSitesFullCallback(t *testing.T) {
 		{name: "oidc-client add-secret", words: []string{"oidc-client", "add-secret"}, want: []string{"my-client", "other"}, hits: map[string]int{oidcClientsPath: 1}},
 		{name: "oidc-client rotate-secret", words: []string{"oidc-client", "rotate-secret"}, want: []string{"my-client", "other"}, hits: map[string]int{oidcClientsPath: 1}},
 		{name: "oidc-client remove-secret", words: []string{"oidc-client", "remove-secret"}, want: []string{"my-client", "other"}, hits: map[string]int{oidcClientsPath: 1}},
+		// app uninstall's release: the apps of --namespace in the typed cluster
+		{name: "app uninstall release", words: []string{"app", "uninstall", "--cluster", "c-aaa11", "--namespace", "default"}, want: []string{"my-app", "other-app"}, hits: map[string]int{downAppsPath: 1}},
+		{name: "app uninstall release in a namespace typed as -n", words: []string{"app", "uninstall", "--cluster", "c-aaa11", "-n", "default"}, want: []string{"my-app", "other-app"}, hits: map[string]int{downAppsPath: 1}},
+		{name: "app uninstall release with a cluster display name resolves it first", words: []string{"app", "uninstall", "--cluster", "prod", "--namespace", "default"}, want: []string{"my-app", "other-app"}, hits: map[string]int{steveClustersPath: 2, downAppsPath: 1}},
+		{name: "app uninstall release without a namespace", words: []string{"app", "uninstall", "--cluster", "c-aaa11"}, hits: map[string]int{}},
+		{name: "app uninstall release without a cluster", words: []string{"app", "uninstall", "--namespace", "default"}, hits: map[string]int{}},
+		{name: "app uninstall second positional completes nothing", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--namespace", "default"}, hits: map[string]int{}},
+		{name: "app uninstall release with the network off", words: []string{"app", "uninstall", "--cluster", "c-aaa11", "--namespace", "default"}, noNet: true, hits: map[string]int{}},
+		{name: "app install release names a new release", words: []string{"app", "install", "--cluster", "c-aaa11", "--namespace", "default"}, hits: map[string]int{}},
 		// Served by the user kind source: ids, system accounts left out, each
 		// once - the same answer get, patch, delete and inspect user give.
 		{name: "create password-change-request", words: []string{"create", "password-change-request"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},

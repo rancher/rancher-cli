@@ -288,7 +288,7 @@ func TestDrainedNoticesNameTheInvocationsDirectory(t *testing.T) {
 		{"the error path", noticingRead{d: Descriptor{Name: "kubeconfig", CommandType: Local}, err: clierr.New(clierr.CodeAuth, "failed")}, false, true},
 		{"the result path", noticingRead{d: Descriptor{Name: "kubeconfig", CommandType: Local, Shape: ShapeBytes}, res: Result{RawBytes: []byte("x\n")}}, false, false},
 		{"the dry-run path", fakeMutating{d: Descriptor{Name: "clusters scale", CommandType: Mutating},
-			eff:  safety.Effect{Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: "c"},
+			eff:  safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionUpdate, DisplayKind: "Cluster", DisplayName: "c"},
 			exec: func(context.Context) (Result, error) { return Result{}, nil }}, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -417,7 +417,7 @@ func TestOnceOnlyNoticeIsPrintedOnce(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	notice := "shown once; see " + marked
 	res := Result{Text: "secret\n", OnceOnlyNotice: notice, CommittedContext: &CommittedContext{ResourceKind: "token", ResourceName: "t"}}
-	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t"}, exec: onceOnlyExec(res)}
+	cmd := fakeMutating{d: onceOnlyDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t"}, exec: onceOnlyExec(res)}
 	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Apply: true, RemedyDir: "/d"}, safety.Binding{})
 	require.Nil(t, ce)
 	assert.NotContains(t, errBuf.String(), "shown once", "the notice the text carries is not mirrored again")

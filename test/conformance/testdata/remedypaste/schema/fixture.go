@@ -27,6 +27,9 @@ func texts() []string {
 		clierr.Rancher + " inspekt cluster" + clierr.ShellQuoteArgs("", name()), // hit
 		builder(name(), flagsFrom()),                                            // hit
 		builder(name(), " --role x"),
+		clierr.Rancher + " app uninstall" + clierr.ShellQuoteArgs(" --cluster c1 --namespace n1 --dry-run", name()),
+		clierr.Rancher + " app uninstall" + clierr.ShellQuoteArgs(" --cluster c1 -n n1 --dry-run", name()),
+		clierr.Rancher + " app uninstall" + clierr.ShellQuoteArgs(" --cluster c1 --dry-run", name()), // hit
 	}
 }
 

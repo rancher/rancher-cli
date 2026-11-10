@@ -120,6 +120,7 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 	}
 	title := resultKind(k)
 	eff := safety.Effect{
+		PreviewSource:     safety.PreviewServerDryRun,
 		Action:            safety.ActionDelete,
 		Target:            k.GVR.Resource + "/" + name,
 		DisplayKind:       k.Name,

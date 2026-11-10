@@ -17,7 +17,7 @@ import (
 // provisioning cluster in two namespaces, and one OIDC client.
 func newCommandSitesServer(t *testing.T) *pathCountingServer {
 	t.Helper()
-	return newPathCountingServer(t, map[string]string{
+	return newPathCountingServer(t, addAppCompletionBodies(map[string]string{
 		machineConfigsPath: items(plain("cfg-b"), plain("cfg-a"), plain("bad name!")),
 		cloudCredsPath:     completiontest.CloudCredentialsBody,
 		mgmtUsersPath:      usersBody,
@@ -32,7 +32,7 @@ func newCommandSitesServer(t *testing.T) *pathCountingServer {
 		oidcClientPath:     `{"metadata":{"name":"my-client"},"status":{"clientSecrets":{"secret-2":{},"secret-1":{}}}}`,
 		localRepos:         reposBody,
 		downRepos:          reposBody,
-	}, steveClustersPages)
+	}), steveClustersPages)
 }
 
 // machineConfigPrefixes returns the `<kind>/` tokens of every
@@ -61,7 +61,9 @@ func machineConfigPrefixes(spelling string) []string {
 // declare no --pool; logs --pod for a local-only target, a
 // downstream-only target by cluster id and display name, a target
 // without a static namespace and an unknown one; the oidc-client secret
-// name of the typed client; create user's --global-role. Each row asserts the exact
+// name of the typed client; charts --repo and app install's --repo, --chart and
+// --version (the ClusterRepo and index reads, the charts the index allows, the
+// versions that are not deprecated); create user's --global-role. Each row asserts the exact
 // candidates and the exact requests per path. NOT parallel: t.Setenv
 // mutates env globals, setStoredConfig mutates storedConfig.
 func TestCommandSitesFullCallback(t *testing.T) {
@@ -196,6 +198,44 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "charts --repo with a display name resolves it first", words: []string{"charts", "--cluster", "prod", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{steveClustersPath: 2, downRepos: 1}},
 		{name: "charts --repo without --cluster offers no names", words: []string{"charts", "--repo"}, hits: map[string]int{}},
 		{name: "charts --repo with the network off", words: []string{"charts", "--cluster", "c-aaa11", "--repo"}, noNet: true, hits: map[string]int{}},
+		// app install --repo: the same enabled ClusterRepos charts offers
+		{name: "app install --repo offers the enabled repositories and not the disabled one", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{downRepos: 1}},
+		{name: "app install --repo= equals form", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11"}, cur: "--repo=", want: []string{"--repo=no-enabled-field", "--repo=rancher-charts"}, hits: map[string]int{downRepos: 1}},
+		{name: "app install --repo of the local cluster", words: []string{"app", "install", "my-rel", "--cluster", "local", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{localRepos: 1}},
+		{name: "app install --repo without --cluster offers no names", words: []string{"app", "install", "my-rel", "--repo"}, hits: map[string]int{}},
+		{name: "app install --repo with the network off", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--repo"}, noNet: true, hits: map[string]int{}},
+		// app install --chart: the charts the index allows, one read of the
+		// ClusterRepo and one of its index per TAB
+		{name: "app install --chart offers the charts the index allows and not a hidden, auto-install or all-deprecated chart", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart"}, want: []string{"fixed-namespace-chart", "fixed-release-chart", "nginx"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --chart= equals form", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts"}, cur: "--chart=", want: []string{"--chart=fixed-namespace-chart", "--chart=fixed-release-chart", "--chart=nginx"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --chart does not offer a fixed namespace that differs from --namespace", words: []string{"app", "install", "--cluster", "c-aaa11", "--namespace", "default", "--repo", "rancher-charts", "--chart"}, want: []string{"fixed-release-chart", "nginx"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --chart offers a fixed namespace that matches --namespace", words: []string{"app", "install", "--cluster", "c-aaa11", "--namespace", "cattle-monitoring-system", "--repo", "rancher-charts", "--chart"}, want: []string{"fixed-namespace-chart", "fixed-release-chart", "nginx"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --chart does not offer a fixed release name that differs from the release", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart"}, want: []string{"fixed-namespace-chart", "nginx"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --chart offers a fixed release name that matches the release", words: []string{"app", "install", "fleet", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart"}, want: []string{"fixed-namespace-chart", "fixed-release-chart", "nginx"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --chart of the local cluster", words: []string{"app", "install", "--cluster", "local", "--repo", "rancher-charts", "--chart"}, want: []string{"fixed-namespace-chart", "fixed-release-chart", "nginx"}, hits: map[string]int{localRepoObject: 1, localRepoIndex: 1}},
+		{name: "app install --chart with a display name resolves it first", words: []string{"app", "install", "--cluster", "prod", "--repo", "rancher-charts", "--chart"}, want: []string{"fixed-namespace-chart", "fixed-release-chart", "nginx"}, hits: map[string]int{steveClustersPath: 2, downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --chart without --repo offers no names", words: []string{"app", "install", "--cluster", "c-aaa11", "--chart"}, hits: map[string]int{}},
+		{name: "app install --chart without --cluster offers no names", words: []string{"app", "install", "--repo", "rancher-charts", "--chart"}, hits: map[string]int{}},
+		{name: "app install --chart of a disabled repository offers no names and reads no index", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "disabled-charts", "--chart"}, hits: map[string]int{downDisabledRepoObject: 1}},
+		{name: "app install --chart of an unknown repository", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "nope", "--chart"}, hits: map[string]int{"/k8s/clusters/c-aaa11/apis/catalog.cattle.io/v1/clusterrepos/nope": 1}},
+		{name: "app install --chart with the network off", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart"}, noNet: true, hits: map[string]int{}},
+		// app install --version: the versions of --chart in the index, the
+		// surface sorts the answer, so the order Rancher serves is asserted
+		// in the source's own tests
+		{name: "app install --version offers a prerelease and not a deprecated version", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart", "nginx", "--version"}, want: []string{"0.8.0", "1.1.0", "2.0.0-rc.1"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --version= equals form", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart", "nginx"}, cur: "--version=", want: []string{"--version=0.8.0", "--version=1.1.0", "--version=2.0.0-rc.1"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --version without --chart offers no versions", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--version"}, hits: map[string]int{}},
+		{name: "app install --version without --repo offers no versions", words: []string{"app", "install", "--cluster", "c-aaa11", "--chart", "nginx", "--version"}, hits: map[string]int{}},
+		{name: "app install --version of a chart the index lacks", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart", "nope", "--version"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --version of a chart with only deprecated versions", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart", "deprecated-chart", "--version"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --version of a disabled repository", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "disabled-charts", "--chart", "nginx", "--version"}, hits: map[string]int{downDisabledRepoObject: 1}},
+		{name: "app install --version with the network off", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart", "nginx", "--version"}, noNet: true, hits: map[string]int{}},
+		// the rest of app install and app uninstall
+		{name: "app install --values is left to the shell", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--values"}, hits: map[string]int{}},
+		{name: "app install --helm-timeout offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--helm-timeout"}, hits: map[string]int{}},
+		{name: "app install --description offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--description"}, hits: map[string]int{}},
+		{name: "app install release names a new release", words: []string{"app", "install"}, hits: map[string]int{}},
+		{name: "app uninstall --helm-timeout offers nothing", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--helm-timeout"}, hits: map[string]int{}},
 		// create user --global-role
 		{name: "create user --global-role", words: []string{"create", "user", "alice", "--global-role"}, want: globalRoles, hits: map[string]int{globalRolesPath: 1}},
 		{name: "create user --global-role= equals form", words: []string{"create", "user", "alice"}, cur: "--global-role=", want: []string{"--global-role=admin:Administrator", "--global-role=user-base:User-Base"}, hits: map[string]int{globalRolesPath: 1}},
@@ -243,6 +283,9 @@ func TestCommandSitesUnderAnExecCredentialOnlyToken(t *testing.T) {
 		{name: "logs --pod of a local-only target", words: []string{"logs", "webhook", "--pod"}, want: []string{"rancher-webhook-1", "rancher-webhook-2"}, hits: map[string]int{localCattlePods: 1}},
 		{name: "logs --pod of a downstream-only target with a cluster id", words: []string{"logs", "agent", "--cluster", "c-aaa11", "--pod"}, want: []string{"cattle-cluster-agent-1", "cattle-cluster-agent-2"}, hits: map[string]int{downCattlePods: 1}},
 		{name: "charts --repo of a cluster id", words: []string{"charts", "--cluster", "c-aaa11", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{downRepos: 1}},
+		{name: "app install --repo of a cluster id", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--repo"}, want: []string{"no-enabled-field", "rancher-charts"}, hits: map[string]int{downRepos: 1}},
+		{name: "app install --chart of a cluster id", words: []string{"app", "install", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart"}, want: []string{"fixed-namespace-chart", "fixed-release-chart", "nginx"}, hits: map[string]int{downRepoObject: 1, downRepoIndex: 1}},
+		{name: "app install --chart of a display name is refused", words: []string{"app", "install", "--cluster", "prod", "--repo", "rancher-charts", "--chart"}, hits: map[string]int{}},
 		{name: "logs --pod of a downstream-only target with a display name is refused", words: []string{"logs", "agent", "--cluster", "prod", "--pod"}, hits: map[string]int{}},
 		{name: "--machine-config kind prefix is refused", words: []string{"create", "cluster", "node-1", "--machine-config"}, cur: "amazonec2config/", hits: map[string]int{}},
 		{name: "--cloud-credential is refused", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, hits: map[string]int{}},
