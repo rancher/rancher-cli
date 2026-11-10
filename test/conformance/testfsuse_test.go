@@ -436,7 +436,7 @@ var testfsAllowlist = []testfsRow{
 	pending("install/harness_test.go", callSymlink, 1),
 	pending("install/install_test.go", callChmod, 2),
 	pending("install/install_test.go", callSymlink, 5),
-	permanent("install/install_test.go", callGOOSValue, 2, "the platform string of an asset name"),
+	permanent("install/install_test.go", callGOOSValue, 1, "the platform string of an asset name"),
 	pending("install/layout_test.go", callSymlink, 1),
 	pending("install/windows_harness_test.go", callGOOSWindows, 1),
 	permanent("install/windows_harness_test.go", callGOOSValue, 1, "the OS name in a skip message"),

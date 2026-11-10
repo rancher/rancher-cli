@@ -20,6 +20,13 @@ REQ_VERSION="${RANCHER_CLI_VERSION:-}"
 BIN_DIR="${RANCHER_CLI_INSTALL_BIN_DIR:-}"
 REQUIRE_ATTESTATION=""
 TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+# TOKEN_SOURCE names where TOKEN came from, for download errors.
+TOKEN_SOURCE=""
+if [ -n "${GH_TOKEN:-}" ]; then
+  TOKEN_SOURCE="GH_TOKEN"
+elif [ -n "${GITHUB_TOKEN:-}" ]; then
+  TOKEN_SOURCE="GITHUB_TOKEN"
+fi
 
 # cleanup() reads these before they are assigned by any phase; initialize
 # them here so the trap fires safely even on very early exits.
@@ -36,8 +43,18 @@ SHA256SUMS_ASSET_ID=""
 # METADATA_FAIL_STATE: how a failed fetch_asset_ids() metadata GET ended, as
 # "HTTP <status>" or "no HTTP status" when curl printed no status. Set when
 # TOKEN is non-empty but the tags endpoint returns non-200; consulted by
-# download()'s browser-URL error path to produce an enriched message.
+# dl_fail()'s browser-URL error path to produce an enriched message.
 METADATA_FAIL_STATE=""
+
+# Where the last download attempt stopped, set by dl_record and the attempt
+# functions: the URL requested, the final URL after a redirect (without its
+# query string), the HTTP status, the target of an unfollowed redirect and the
+# transport error text.
+DL_URL=""
+DL_FINAL=""
+DL_CODE=""
+DL_LOCATION=""
+DL_ERR=""
 
 # REL_JSON: winning release JSON cached by resolve_pre_tag() so
 # fetch_asset_ids() can skip a redundant GET on the --pre path.
@@ -65,7 +82,7 @@ EOF
 # curl_authed <extra-header|""> <curl-args...>: single owner of the
 # token→curl channel. The token travels via --config on stdin - never in
 # argv. Every tokened request in this script calls this function.
-# Untokened requests (anonymous fetch branches, CDN leg of fetch_asset)
+# Untokened requests (anonymous branches, the redirect URL leg of dl_attempt_api)
 # call curl directly.
 curl_authed() {
   _extra_hdr="$1"; shift
@@ -75,60 +92,168 @@ curl_authed() {
   } | curl --config - --proto '=https' --tlsv1.2 "$@"
 }
 
-# fetch <url> [output]: curl with the token (if any) passed via --config on
-# stdin so it never appears in argv or logs.
+# fetch <url>: curl with the token (if any) passed via --config on stdin so it
+# never appears in argv or logs. For the resolution requests (tag, listing);
+# release assets go through download_asset.
 fetch() {
-  _url="$1"; _out="${2:-}"
+  _url="$1"
   if [ -n "$TOKEN" ]; then
-    if [ -n "$_out" ]; then
-      curl_authed "" -fsSL -o "$_out" "$_url"
-    else
-      curl_authed "" -fsSL "$_url"
-    fi
+    curl_authed "" -fsSL "$_url"
   else
-    if [ -n "$_out" ]; then
-      curl --proto '=https' --tlsv1.2 -fsSL -o "$_out" "$_url"
-    else
-      curl --proto '=https' --tlsv1.2 -fsSL "$_url"
-    fi
+    curl --proto '=https' --tlsv1.2 -fsSL "$_url"
   fi
 }
 
-# fetch_asset <id> <output> <name>: downloads a release asset via the GitHub
-# API asset endpoint. TOKEN must be non-empty.
+# What each download attempt reads back from curl -w: the status, the number
+# of redirects followed, the final URL, and the target of a redirect that was
+# not followed (last, because it can be empty).
+DL_FORMAT='%{http_code} %{num_redirects} %{url_effective} %{redirect_url}'
+
+# dl_record <curl exit code> <curl -w line>: sets the DL_ variables for the
+# attempt that just ran. Only status 200 with a zero curl exit is success; DL_CODE
+# is empty when no complete response came back (a curl failure, even after a
+# status line), and DL_ERR then says why. The final URL of a followed redirect
+# is kept without its query string: the query of a signed storage URL is a
+# short-lived credential. DL_LOCATION is the target of a redirect that was not
+# followed.
+dl_record() {
+  _dl_rc="$1"; _dl_line="$2"
+  DL_CODE=""; DL_LOCATION=""; DL_ERR=""
+  if [ -n "$_dl_line" ]; then
+    _dl_status="${_dl_line%% *}"
+    _dl_rest="${_dl_line#* }"
+    _dl_redirects="${_dl_rest%% *}"
+    _dl_rest="${_dl_rest#* }"
+    _dl_final="${_dl_rest%% *}"
+    DL_LOCATION="${_dl_rest#* }"
+    if [ "$_dl_redirects" != 0 ]; then DL_FINAL="${_dl_final%%\?*}"; fi
+  else
+    _dl_status=000
+  fi
+  if [ "$_dl_rc" -ne 0 ]; then
+    DL_ERR="curl exit $_dl_rc"
+    _dl_msg=""
+    IFS= read -r _dl_msg <"$WORK/curl.err" 2>/dev/null || :
+    _dl_msg="${_dl_msg#"curl: ("*") "}"
+    _dl_msg="${_dl_msg% }"
+    if [ -n "$_dl_msg" ]; then DL_ERR="$DL_ERR: $_dl_msg"; fi
+  elif [ "$_dl_status" = 000 ]; then
+    DL_ERR="no HTTP status"
+  else
+    DL_CODE="$_dl_status"
+  fi
+}
+
+# dl_attempt_browser <url> <output>: one download from a release download
+# URL, following redirects. Returns 0 only for status 200.
+dl_attempt_browser() {
+  _dla_url="$1"; _dla_file="$2"
+  DL_URL="$_dla_url"; DL_FINAL=""
+  _dla_rc=0
+  if [ -n "$TOKEN" ]; then
+    _dla_line="$(curl_authed "" -sS -L -o "$_dla_file" -w "$DL_FORMAT" \
+      "$_dla_url" 2>"$WORK/curl.err")" || _dla_rc=$?
+  else
+    _dla_line="$(curl --proto '=https' --tlsv1.2 -sS -L -o "$_dla_file" \
+      -w "$DL_FORMAT" "$_dla_url" 2>"$WORK/curl.err")" || _dla_rc=$?
+  fi
+  dl_record "$_dla_rc" "$_dla_line"
+  [ "$_dla_rc" -eq 0 ] && [ "$DL_CODE" = 200 ]
+}
+
+# dl_attempt_api <asset id> <output>: one download through the GitHub API
+# asset endpoint. TOKEN must be non-empty.
 #
-# Single tokened request without -L writes the body to "$_out" and captures
-# the HTTP code and redirect Location via -w. On 200 the file already holds
-# the asset - done, one request. On 302/301 (real GitHub signed CDN redirect)
-# the small redirect body in "$_out" is overwritten by a plain untokened fetch
-# of the Location URL; the signed URL is self-authenticating and the token
-# must never leave $API_URL. Security property: identical to the previous
-# two-step probe; direct-200 case (a stub or a mirror) now makes exactly
-# one request instead of two.
-fetch_asset() {
-  _id="$1"; _out="$2"; _name="$3"
-  _probe_rc=0
-  _probe="$(curl_authed "Accept: application/octet-stream" -sS \
-    -o "$_out" -w '%{http_code} %{redirect_url}' \
-    "$API_URL/repos/$REPO/releases/assets/$_id")" || _probe_rc=$?
-  [ "$_probe_rc" -eq 0 ] || err "download failed: $_name (asset id $_id)"
-  _code="${_probe%% *}"
-  _location="${_probe#* }"
-  case "$_code" in
-    200)
-      # Body already written to $_out by the tokened request above.
+# A single tokened request without -L writes the body to the output file and
+# reports the status and redirect target via -w. On 200 the file already
+# holds the asset. On 301 or 302 (the GitHub signed storage redirect) the
+# small redirect body is overwritten by a plain untokened request to the
+# redirect URL; the signed URL authenticates itself and the token must never
+# leave $API_URL. Returns 0 only for status 200 at the end.
+dl_attempt_api() {
+  _dla_id="$1"; _dla_file="$2"
+  DL_URL="$API_URL/repos/$REPO/releases/assets/$_dla_id"; DL_FINAL=""
+  _dla_rc=0
+  _dla_line="$(curl_authed "Accept: application/octet-stream" -sS \
+    -o "$_dla_file" -w "$DL_FORMAT" "$DL_URL" 2>"$WORK/curl.err")" || _dla_rc=$?
+  dl_record "$_dla_rc" "$_dla_line"
+  [ "$_dla_rc" -eq 0 ] || return 1
+  case "$DL_CODE" in
+    200) return 0 ;;
+    301|302)
+      [ -n "$DL_LOCATION" ] || return 1
+      _dla_next="$DL_LOCATION"
+      _dla_rc=0
+      _dla_line="$(curl --proto '=https' --tlsv1.2 -sS -o "$_dla_file" \
+        -w "$DL_FORMAT" "$_dla_next" 2>"$WORK/curl.err")" || _dla_rc=$?
+      dl_record "$_dla_rc" "$_dla_line"
+      DL_FINAL="${_dla_next%%\?*}"
+      [ "$_dla_rc" -eq 0 ] && [ "$DL_CODE" = 200 ]
       ;;
-    30[12])
-      # Redirect to signed CDN URL: overwrite $_out without token.
-      [ -n "$_location" ] || err "download failed: $_name (asset id $_id, redirect with no Location)"
-      curl --proto '=https' --tlsv1.2 -fsS \
-        -o "$_out" "$_location" || \
-        err "download failed: $_name (asset id $_id, could not download from the redirect URL)"
-      ;;
-    *)
-      err "download failed: $_name (asset id $_id, HTTP $_code)"
-      ;;
+    *) return 1 ;;
   esac
+}
+
+# dl_fail <api|browser> <name> <both tries were 404 on the first hop>: the
+# single error line for a failed asset download, from the state of the second
+# attempt. The tag has no such asset only when a first-hop 404 came twice on
+# the release download URL.
+dl_fail() {
+  _df_kind="$1"; _df_name="$2"; _df_both404="$3"
+  _df_msg="download failed: $_df_name from $DL_URL"
+  if [ -n "$DL_FINAL" ]; then _df_msg="$_df_msg, redirected to $DL_FINAL"; fi
+  if [ -n "$DL_CODE" ]; then
+    _df_what="HTTP $DL_CODE after one retry"
+  else
+    _df_what="no complete response after one retry: $DL_ERR"
+  fi
+  case "$DL_CODE" in
+    3??) if [ -z "$DL_LOCATION" ]; then _df_what="$_df_what; redirect with no Location"; fi ;;
+  esac
+  if [ -n "$_df_both404" ]; then
+    _df_what="$_df_what; tag '$TAG' has no asset with this name"
+  fi
+  if [ -n "$TOKEN" ]; then
+    _df_what="$_df_what; the download used the token from $TOKEN_SOURCE"
+  fi
+  _df_msg="$_df_msg ($_df_what)"
+  if [ "$_df_kind" = browser ] && [ -n "$TOKEN" ] && [ -n "$METADATA_FAIL_STATE" ]; then
+    _df_msg="$_df_msg - or the GitHub token is expired or lacks access; release metadata was also unreadable ($METADATA_FAIL_STATE)"
+  fi
+  err "$_df_msg"
+}
+
+# download_asset <api|browser> <name> <asset id or URL> <output>: downloads
+# one release asset, retrying once from the first request after a pause. The
+# only caller of the attempt functions, so every asset on both paths gets the
+# same retry and the same error.
+download_asset() {
+  _da_kind="$1"; _da_name="$2"; _da_src="$3"; _da_out="$4"
+  _da_first404=""
+  _da_try=1
+  while :; do
+    if [ "$_da_kind" = api ]; then
+      if dl_attempt_api "$_da_src" "$_da_out"; then return 0; fi
+    else
+      if dl_attempt_browser "$_da_src" "$_da_out"; then return 0; fi
+    fi
+    if [ "$_da_try" -ge 2 ]; then break; fi
+    if [ "$_da_kind" = browser ] && [ "$DL_CODE" = 404 ] && [ -z "$DL_FINAL" ]; then
+      _da_first404=1
+    fi
+    if [ -n "$DL_CODE" ]; then
+      warn "download of $_da_name failed (HTTP $DL_CODE); retrying once"
+    else
+      warn "download of $_da_name failed (no complete response); retrying once"
+    fi
+    sleep "${RANCHER_CLI_INSTALL_TEST_RETRY_DELAY:-2}"
+    _da_try=2
+  done
+  _da_both404=""
+  if [ -n "$_da_first404" ] && [ "$DL_CODE" = 404 ] && [ -z "$DL_FINAL" ]; then
+    _da_both404=1
+  fi
+  dl_fail "$_da_kind" "$_da_name" "$_da_both404"
 }
 
 # fetch_asset_ids: when TOKEN is set, resolves the numeric GitHub asset ids
@@ -393,6 +518,7 @@ resolve_token() {
   _tok="$(gh auth token --hostname "$_host" 2>/dev/null </dev/null || true)"
   [ -n "$_tok" ] || return 0
   TOKEN="$_tok"
+  TOKEN_SOURCE="gh auth token"
   note "using gh auth token"
 }
 
@@ -507,7 +633,7 @@ parse_args() {
 # guard - a missing tr would fail the control-byte guard OPEN), so they are
 # preflighted like the rest.
 preflight_tools() {
-  for tool in curl uname mktemp chmod mv ln readlink grep awk tr; do
+  for tool in curl uname mktemp chmod mv ln readlink grep awk tr sleep; do
     command -v "$tool" >/dev/null 2>&1 || err "required tool not found: $tool"
   done
   if command -v sha256sum >/dev/null 2>&1; then
@@ -590,19 +716,13 @@ download() {
     # (fetch_asset_ids resolved the numeric ids). If the release metadata was
     # not reachable (a scoped token), CLI_ASSET_ID is empty and the browser
     # URLs are used.
-    fetch_asset "$CLI_ASSET_ID" "$WORK/$CLI_ASSET" "$CLI_ASSET"
-    fetch_asset "$HELPER_ASSET_ID" "$WORK/$HELPER_ASSET" "$HELPER_ASSET"
-    fetch_asset "$SHA256SUMS_ASSET_ID" "$WORK/SHA256SUMS" "SHA256SUMS"
+    download_asset api "$CLI_ASSET" "$CLI_ASSET_ID" "$WORK/$CLI_ASSET"
+    download_asset api "$HELPER_ASSET" "$HELPER_ASSET_ID" "$WORK/$HELPER_ASSET"
+    download_asset api "SHA256SUMS" "$SHA256SUMS_ASSET_ID" "$WORK/SHA256SUMS"
   else
-    if ! fetch "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET"; then
-      _dlmsg="download failed: $DL_BASE/$CLI_ASSET (404 = tag '$TAG' has no such asset)"
-      if [ -n "$TOKEN" ] && [ -n "$METADATA_FAIL_STATE" ]; then
-        _dlmsg="$_dlmsg - or the GitHub token is expired or lacks access; release metadata was also unreadable ($METADATA_FAIL_STATE)"
-      fi
-      err "$_dlmsg"
-    fi
-    fetch "$DL_BASE/$HELPER_ASSET" "$WORK/$HELPER_ASSET" || err "download failed: $DL_BASE/$HELPER_ASSET"
-    fetch "$DL_BASE/SHA256SUMS" "$WORK/SHA256SUMS" || err "download failed: $DL_BASE/SHA256SUMS"
+    download_asset browser "$CLI_ASSET" "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET"
+    download_asset browser "$HELPER_ASSET" "$DL_BASE/$HELPER_ASSET" "$WORK/$HELPER_ASSET"
+    download_asset browser "SHA256SUMS" "$DL_BASE/SHA256SUMS" "$WORK/SHA256SUMS"
   fi
 }
 

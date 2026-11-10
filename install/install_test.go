@@ -15,6 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// hostPlatform is the platform suffix of the host's release assets, such as
+// linux-amd64.
+func hostPlatform() string { return runtime.GOOS + "-" + runtime.GOARCH }
+
 func TestCleanHomeInstallProducesPairAndReceipt(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
@@ -50,7 +54,7 @@ func TestChecksumMismatchIsFatal(t *testing.T) {
 	// Tamper the CURRENT platform's CLI asset - derived, not hardcoded, so
 	// the test exercises a mismatch on every supported platform (a fixed
 	// list omitted linux-s390x and would pass untested there).
-	s.setAsset("v1.2.3/rancher-"+runtime.GOOS+"-"+runtime.GOARCH, []byte("tampered"))
+	s.setAsset("v1.2.3/rancher-"+hostPlatform(), []byte("tampered"))
 	_, errOut, code := runInstall(t, s, nil)
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "checksum verification failed")
@@ -62,7 +66,7 @@ func TestChecksumMismatchIsFatal(t *testing.T) {
 // accept the duplicate and leave the helper entirely unchecked.
 func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 	t.Parallel()
-	plat := runtime.GOOS + "-" + runtime.GOARCH
+	plat := hostPlatform()
 	cli, helper := "rancher-"+plat, "rancher-credential-vault-"+plat
 	mutations := map[string]struct {
 		mutate func(sums string) string
@@ -271,6 +275,9 @@ func TestAnonymousDownloadFailsClearlyWhenAssetsAre404(t *testing.T) {
 	assert.Contains(t, errOut, "download failed")
 	assert.Contains(t, errOut, "rancher-",
 		"error must name the asset to help the user understand what failed")
+	assert.Contains(t, errOut, "HTTP 404 after one retry; tag 'v1.2.3' has no asset with this name",
+		"two 404 answers from the release download URL name the tag")
+	assert.NotContains(t, errOut, "no such asset")
 }
 
 // TestMissingAssetInPrivateModeFails covers the "asset not found in release"
@@ -535,6 +542,8 @@ func TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage(t *testing.T) {
 		"download must fail because the browser URLs answer 404")
 	assert.Contains(t, errOut, "release metadata was also unreadable (HTTP 403)",
 		"enriched message must name the metadata HTTP code")
+	assert.Contains(t, errOut, "tag 'v1.2.3' has no asset with this name")
+	assert.Contains(t, errOut, "the download used the token from GH_TOKEN")
 	assert.NotContains(t, errOut, "asset not found",
 		"error must not mis-diagnose the cause as a missing release asset")
 }

@@ -189,6 +189,8 @@ func psEnv(s *stub, home winHome, extra ...string) []string {
 		"PATH="+hermeticPath(),
 		"RANCHER_CLI_INSTALL_BASE_URL="+s.srv.URL,
 		"RANCHER_CLI_INSTALL_TEST_PIN_CERT="+s.caPath,
+		// No pause before the one retry of a failed download.
+		"RANCHER_CLI_INSTALL_TEST_RETRY_DELAY=0",
 	)
 	return append(env, extra...)
 }

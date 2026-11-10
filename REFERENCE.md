@@ -372,9 +372,12 @@ has a GitHub token, it downloads assets through the GitHub API asset endpoint,
 and fetches any signed storage redirect with a second request that carries no
 token: the token is sent only to the API host. If the GitHub token cannot read
 the release metadata, the installer uses the plain release download URLs
-instead; if the download of the `rancher` binary then fails, the error also says
-the release metadata was unreadable and gives its HTTP status. Anonymous `--pre`
-lookups use the GitHub API, which limits requests to 60 per hour per address; a
+instead; if a download then fails, the error also says the release metadata was
+unreadable and gives its HTTP status. The installer retries a failed asset
+download once; the error gives the HTTP status of the last request, or why no
+response came back, and, when a GitHub token was used, where it came from
+(`GH_TOKEN`, `GITHUB_TOKEN` or `gh auth token`). Anonymous `--pre` lookups use
+the GitHub API, which limits requests to 60 per hour per address; a
 GitHub token raises the limit.
 
 After creating the links, the installer warns about any other `rancher` or

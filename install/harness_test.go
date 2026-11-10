@@ -33,30 +33,104 @@ type stub struct {
 	// goroutine while handler goroutines read - without the mutex those are
 	// data races under the mandated -race.
 	mu               sync.Mutex
-	releases         []map[string]any  // newest first, like the API
-	rawListing       [][]byte          // raw per-page bodies; overrides releases when set
-	assets           map[string][]byte // "<tag>/<name>" -> content (browser download path)
-	assetByID        map[string][]byte // "<numeric-id>" -> content (API asset path)
-	releaseJSON      map[string][]byte // "<tag>" -> single-release JSON bytes
-	nextAssetID      int64             // counter for allocating numeric asset ids
-	latest           string            // tag the /releases/latest redirect names; "" = 404
-	latestStatus     int               // when non-zero, /releases/latest returns this status instead
-	authHeader       string            // last Authorization header seen on API asset requests
-	cdnAuthHeader    string            // last Authorization header seen on CDN asset requests
-	private          bool              // when true, browser download paths return 404
-	assetRedirect    bool              // when true, API asset endpoint 302s to /cdn/assets/<id>
-	releaseTagStatus int               // when non-zero, /repos/.../releases/tags/ returns this status
-	apiAssetRequests int               // count of requests to the API asset endpoint
-	cdnAssetRequests int               // count of requests to the CDN asset endpoint
+	releases         []map[string]any     // newest first, like the API
+	rawListing       [][]byte             // raw per-page bodies; overrides releases when set
+	assets           map[string][]byte    // "<tag>/<name>" -> content (browser download path)
+	assetByID        map[string][]byte    // "<numeric-id>" -> content (API asset path)
+	releaseJSON      map[string][]byte    // "<tag>" -> single-release JSON bytes
+	nextAssetID      int64                // counter for allocating numeric asset ids
+	latest           string               // tag the /releases/latest redirect names; "" = 404
+	latestStatus     int                  // when non-zero, /releases/latest returns this status instead
+	authHeader       string               // last Authorization header seen on API asset requests
+	cdnAuthorized    int                  // requests to the CDN asset endpoint, failed ones included, that carried an Authorization header
+	cdnAuthHeader    string               // last Authorization header seen on CDN asset requests
+	private          bool                 // when true, browser download paths return 404
+	assetRedirect    bool                 // when true, API asset endpoint 302s to /cdn/assets/<id>
+	releaseTagStatus int                  // when non-zero, /repos/.../releases/tags/ returns this status
+	apiAssetRequests int                  // count of requests to the API asset endpoint
+	cdnAssetRequests int                  // count of requests to the CDN asset endpoint
+	browserRedirect  bool                 // when true, release download URLs 302 to /cdn/download/<tag>/<name>
+	failRules        map[string]*failRule // request path -> how its next requests fail
+	pathRequests     map[string]int       // request path -> requests seen
+}
+
+// dropConnection as a status in a failRule closes the connection without a
+// response.
+const dropConnection = -1
+
+// failRule answers the next requests of one path with the statuses in order,
+// then lets the stub answer normally.
+type failRule struct {
+	statuses []int
+}
+
+// failPath answers the first requests of path with the given statuses in
+// order (dropConnection closes the connection with no response).
+func (s *stub) failPath(path string, statuses ...int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failRules[path] = &failRule{statuses: statuses}
+}
+
+// failPathTimes answers the first n requests of path with status.
+func (s *stub) failPathTimes(path string, n, status int) {
+	statuses := make([]int, n)
+	for i := range statuses {
+		statuses[i] = status
+	}
+	s.failPath(path, statuses...)
+}
+
+// pathRequestCount is the number of requests the stub saw for path.
+func (s *stub) pathRequestCount(path string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pathRequests[path]
+}
+
+// applyFailRule counts the request and, when a rule for its path still has
+// statuses left, answers it and reports true.
+func (s *stub) applyFailRule(w http.ResponseWriter, r *http.Request) bool {
+	s.mu.Lock()
+	s.pathRequests[r.URL.Path]++
+	if strings.HasPrefix(r.URL.Path, "/cdn/assets/") && r.Header.Get("Authorization") != "" {
+		s.cdnAuthorized++
+	}
+	status := 0
+	if rule := s.failRules[r.URL.Path]; rule != nil && len(rule.statuses) > 0 {
+		status = rule.statuses[0]
+		rule.statuses = rule.statuses[1:]
+	}
+	s.mu.Unlock()
+	switch status {
+	case 0:
+		return false
+	case dropConnection:
+		if hj, ok := w.(http.Hijacker); ok {
+			if conn, _, err := hj.Hijack(); err == nil {
+				_ = conn.Close()
+			}
+		}
+	default:
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte("injected failure"))
+	}
+	return true
 }
 
 func (s *stub) setLatestStatus(code int) { s.mu.Lock(); defer s.mu.Unlock(); s.latestStatus = code }
 
-func (s *stub) setLatest(tag string)      { s.mu.Lock(); defer s.mu.Unlock(); s.latest = tag }
-func (s *stub) lastAuthHeader() string    { s.mu.Lock(); defer s.mu.Unlock(); return s.authHeader }
+func (s *stub) setLatest(tag string)   { s.mu.Lock(); defer s.mu.Unlock(); s.latest = tag }
+func (s *stub) lastAuthHeader() string { s.mu.Lock(); defer s.mu.Unlock(); return s.authHeader }
+func (s *stub) cdnAuthorizedCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cdnAuthorized
+}
 func (s *stub) lastCDNAuthHeader() string { s.mu.Lock(); defer s.mu.Unlock(); return s.cdnAuthHeader }
 func (s *stub) setPrivate(v bool)         { s.mu.Lock(); defer s.mu.Unlock(); s.private = v }
 func (s *stub) setAssetRedirect(v bool)   { s.mu.Lock(); defer s.mu.Unlock(); s.assetRedirect = v }
+func (s *stub) setBrowserRedirect(v bool) { s.mu.Lock(); defer s.mu.Unlock(); s.browserRedirect = v }
 func (s *stub) apiAssetRequestCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -111,10 +185,12 @@ func (s *stub) asset(key string) []byte {
 func newStub(t *testing.T) *stub {
 	t.Helper()
 	s := &stub{
-		assets:      map[string][]byte{},
-		assetByID:   map[string][]byte{},
-		releaseJSON: map[string][]byte{},
-		nextAssetID: 1000,
+		assets:       map[string][]byte{},
+		assetByID:    map[string][]byte{},
+		releaseJSON:  map[string][]byte{},
+		nextAssetID:  1000,
+		failRules:    map[string]*failRule{},
+		pathRequests: map[string]int{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/rancher/rancher-cli/releases/latest", func(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +213,7 @@ func newStub(t *testing.T) *stub {
 		s.mu.Lock()
 		s.authHeader = auth
 		priv := s.private
+		redirect := s.browserRedirect
 		body, ok := s.assets[key]
 		s.mu.Unlock()
 		if priv {
@@ -146,6 +223,25 @@ func newStub(t *testing.T) *stub {
 			http.NotFound(w, r)
 			return
 		}
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		if redirect {
+			// The query stands in for a signed storage URL's credential.
+			http.Redirect(w, r, s.srv.URL+"/cdn/download/"+key+"?sig=SECRETSIG", http.StatusFound)
+			return
+		}
+		_, _ = w.Write(body)
+	})
+	// Storage endpoint a release download URL redirects to when browserRedirect
+	// is set.
+	mux.HandleFunc("/cdn/download/", func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimPrefix(r.URL.Path, "/cdn/download/")
+		s.mu.Lock()
+		s.cdnAuthHeader = r.Header.Get("Authorization")
+		body, ok := s.assets[key]
+		s.mu.Unlock()
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -190,7 +286,8 @@ func newStub(t *testing.T) *stub {
 			return
 		}
 		if redirect {
-			http.Redirect(w, r, s.srv.URL+"/cdn/assets/"+id, http.StatusFound)
+			// The query stands in for a signed storage URL's credential.
+			http.Redirect(w, r, s.srv.URL+"/cdn/assets/"+id+"?sig=SECRETSIG", http.StatusFound)
 			return
 		}
 		_, _ = w.Write(body)
@@ -239,7 +336,12 @@ func newStub(t *testing.T) *stub {
 	})
 	// TLS, not plain HTTP: install.sh's curl runs with --proto '=https'
 	// --tlsv1.2 UNCHANGED, trusting the stub via CURL_CA_BUNDLE.
-	s.srv = httptest.NewTLSServer(mux)
+	s.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.applyFailRule(w, r) {
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 	t.Cleanup(s.srv.Close)
 	s.caPath = filepath.Join(t.TempDir(), "stub-ca.pem")
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.srv.Certificate().Raw})
@@ -402,6 +504,8 @@ func runInstall(t *testing.T, s *stub, extraEnv []string, args ...string) (strin
 		"PATH=" + toolPath(t, baseTools...),
 		"RANCHER_CLI_INSTALL_BASE_URL=" + s.srv.URL,
 		"CURL_CA_BUNDLE=" + s.caPath,
+		// No pause before the one retry of a failed download.
+		"RANCHER_CLI_INSTALL_TEST_RETRY_DELAY=0",
 	}, extraEnv...)
 	var out, errb strings.Builder
 	cmd.Stdout, cmd.Stderr = &out, &errb

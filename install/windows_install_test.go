@@ -429,6 +429,9 @@ func TestWindowsAnonymousDownloadFailsClearlyWhenAssetsAre404(t *testing.T) {
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "download failed")
 	assert.Contains(t, errOut, "rancher-"+windowsPlat+".exe")
+	assert.Contains(t, errOut, "HTTP 404 after one retry; tag 'v1.2.3' has no asset with this name",
+		"two 404 answers from the release download URL name the tag")
+	assert.NotContains(t, errOut, "no such asset")
 }
 
 func TestWindowsDryRunWithTokenShowsAPIAssetURLs(t *testing.T) {

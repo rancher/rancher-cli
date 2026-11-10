@@ -39,6 +39,7 @@ function Install-RancherCli {
         BaseUrl          = 'https://github.com'
         ApiUrl           = 'https://api.github.com'
         Token            = $env:GH_TOKEN
+        TokenSource      = $null
         UsedGhToken      = $false
         BinDir           = $BinDir
         DataDir          = $null
@@ -63,7 +64,12 @@ function Install-RancherCli {
         Aside            = $null
         Sums             = $null
     }
-    if (-not $S.Token) { $S.Token = $env:GITHUB_TOKEN }
+    if ($S.Token) {
+        $S.TokenSource = 'GH_TOKEN'
+    } elseif ($env:GITHUB_TOKEN) {
+        $S.Token = $env:GITHUB_TOKEN
+        $S.TokenSource = 'GITHUB_TOKEN'
+    }
     if ($env:RANCHER_CLI_INSTALL_BASE_URL) {
         $S.BaseUrl = $env:RANCHER_CLI_INSTALL_BASE_URL.TrimEnd('/')
         $S.ApiUrl = $S.BaseUrl
@@ -279,17 +285,21 @@ namespace RancherCliInstall
         return $client
     }
 
-    # Invoke-Http <method> <url> [-Auth] [-Accept a] [-OutFile f]: one request,
-    # no redirect following. Returns @{ Code; Location; Body } where Body is
-    # the response text unless -OutFile received a 200 body. -Auth attaches
-    # the token when one is set.
+    # Invoke-Http <method> <url> [-Auth] [-Accept a] [-OutFile f] [-NoThrow]:
+    # one request, no redirect following. Returns @{ Code; Location; Body;
+    # Error } where Body is the response text unless -OutFile received a 200
+    # body. -Auth attaches the token when one is set. A request that fails
+    # with no response calls Fail; a body that cannot be read or written
+    # throws; with -NoThrow both return Code 0 and the exception text in
+    # Error instead.
     function Invoke-Http {
         param(
             [string]$Method,
             [string]$Url,
             [switch]$Auth,
             [string]$Accept,
-            [string]$OutFile
+            [string]$OutFile,
+            [switch]$NoThrow
         )
         $client = Get-Http
         $request = New-Object System.Net.Http.HttpRequestMessage((New-Object System.Net.Http.HttpMethod($Method)), $Url)
@@ -302,11 +312,13 @@ namespace RancherCliInstall
         } catch {
             $inner = $_.Exception
             while ($inner.InnerException) { $inner = $inner.InnerException }
+            if ($NoThrow) { return @{ Code = 0; Location = $null; Body = $null; Error = $inner.Message } }
             Fail "request failed: $Method $Url - $($inner.Message)"
         }
+        $code = 0
+        $location = $null
         try {
             $code = [int]$response.StatusCode
-            $location = $null
             if ($response.Headers.Location) { $location = $response.Headers.Location.ToString() }
             $body = $null
             if ($OutFile -and $code -eq 200) {
@@ -316,7 +328,14 @@ namespace RancherCliInstall
             } elseif ($Method -ne 'HEAD') {
                 $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             }
-            return @{ Code = $code; Location = $location; Body = $body }
+            return @{ Code = $code; Location = $location; Body = $body; Error = $null }
+        } catch {
+            if (-not $NoThrow) { throw }
+            # A status that arrived with an unreadable body is still the status.
+            if ($code -ne 0 -and $code -ne 200) { return @{ Code = $code; Location = $location; Body = $null; Error = $null } }
+            $inner = $_.Exception
+            while ($inner.InnerException) { $inner = $inner.InnerException }
+            return @{ Code = 0; Location = $null; Body = $null; Error = $inner.Message }
         } finally {
             $response.Dispose()
         }
@@ -401,6 +420,7 @@ namespace RancherCliInstall
         $t = $r.Out.Trim()
         if (-not $t) { return }
         $S.Token = $t
+        $S.TokenSource = 'gh auth token'
         $S.UsedGhToken = $true
     }
 
@@ -508,30 +528,104 @@ namespace RancherCliInstall
         $S.SumsAssetId = $ids['SHA256SUMS']
     }
 
-    # Get-ReleaseAsset <id> <out> <name>: downloads through the API asset
-    # endpoint. A 200 already wrote the file. A redirect names the signed
-    # storage URL, fetched with a second request that carries no token -
-    # the token never travels past the API host.
-    function Get-ReleaseAsset([string]$Id, [string]$Out, [string]$Name) {
-        $r = Invoke-Http 'GET' "$($S.ApiUrl)/repos/$Repo/releases/assets/$Id" -Auth -Accept 'application/octet-stream' -OutFile $Out
-        if ($r.Code -eq 200) { return }
-        if ($r.Code -ge 300 -and $r.Code -le 399) {
-            if (-not $r.Location) { Fail "download failed: $Name (asset id $Id, redirect with no Location)" }
-            $cdn = Invoke-Http 'GET' $r.Location -OutFile $Out
-            if ($cdn.Code -ne 200) { Fail "download failed: $Name (asset id $Id, the redirect URL answered HTTP $($cdn.Code))" }
-            return
-        }
-        Fail "download failed: $Name (asset id $Id, HTTP $($r.Code))"
+    # Get-UrlWithoutQuery <url>: the URL up to its query string. The query of
+    # a signed storage URL is a short-lived credential and is never printed.
+    function Get-UrlWithoutQuery([string]$U) {
+        $i = $U.IndexOf('?')
+        if ($i -ge 0) { return $U.Substring(0, $i) }
+        return $U
     }
 
-    function Get-DirectAsset([string]$Url, [string]$Out) {
-        $r = Invoke-Http 'GET' $Url -Auth -OutFile $Out
-        if ($r.Code -eq 200) { return $true }
+    # Get-ReleaseAsset <id> <out>: one download through the API asset
+    # endpoint. A 200 already wrote the file. A redirect names the signed
+    # storage URL, fetched with a second request that carries no token -
+    # the token never travels past the API host. Returns @{ Ok; Url; Final;
+    # Code; Error; NoLocation }: the URL requested, the redirect URL without its query
+    # string when one was followed, and the status of the last request (0
+    # with Error when no complete response came back).
+    function Get-ReleaseAsset([string]$Id, [string]$Out) {
+        $api = "$($S.ApiUrl)/repos/$Repo/releases/assets/$Id"
+        $r = Invoke-Http 'GET' $api -Auth -Accept 'application/octet-stream' -OutFile $Out -NoThrow
+        $res = @{ Ok = ($r.Code -eq 200); Url = $api; Final = $null; Code = $r.Code; Error = $r.Error; NoLocation = ($r.Code -ge 300 -and $r.Code -le 399 -and -not $r.Location) }
         if ($r.Code -ge 300 -and $r.Code -le 399 -and $r.Location) {
-            $r = Invoke-Http 'GET' $r.Location -OutFile $Out
-            if ($r.Code -eq 200) { return $true }
+            $res.Final = Get-UrlWithoutQuery $r.Location
+            $leg = Invoke-Http 'GET' $r.Location -OutFile $Out -NoThrow
+            $res.Ok = ($leg.Code -eq 200)
+            $res.Code = $leg.Code
+            $res.Error = $leg.Error
+            $res.NoLocation = ($leg.Code -ge 300 -and $leg.Code -le 399 -and -not $leg.Location)
         }
-        return $false
+        return $res
+    }
+
+    # Get-DirectAsset <url> <out>: one download from a release download URL,
+    # following one redirect without the token. Returns the same table as
+    # Get-ReleaseAsset.
+    function Get-DirectAsset([string]$Url, [string]$Out) {
+        $r = Invoke-Http 'GET' $Url -Auth -OutFile $Out -NoThrow
+        $res = @{ Ok = ($r.Code -eq 200); Url = $Url; Final = $null; Code = $r.Code; Error = $r.Error; NoLocation = ($r.Code -ge 300 -and $r.Code -le 399 -and -not $r.Location) }
+        if ($r.Code -ge 300 -and $r.Code -le 399 -and $r.Location) {
+            $res.Final = Get-UrlWithoutQuery $r.Location
+            $leg = Invoke-Http 'GET' $r.Location -OutFile $Out -NoThrow
+            $res.Ok = ($leg.Code -eq 200)
+            $res.Code = $leg.Code
+            $res.Error = $leg.Error
+            $res.NoLocation = ($leg.Code -ge 300 -and $leg.Code -le 399 -and -not $leg.Location)
+        }
+        return $res
+    }
+
+    # Get-AssetFailure <api|browser> <name> <result> <first try was a 404 from
+    # the release download URL>: the single error line for a failed asset
+    # download, from the result of the second attempt. The tag has no such
+    # asset only when a first-hop 404 came twice on the release download URL.
+    function Get-AssetFailure([string]$Kind, [string]$Name, $Res, [bool]$First404) {
+        $msg = "download failed: $Name from $($Res.Url)"
+        if ($Res.Final) { $msg += ", redirected to $($Res.Final)" }
+        if ($Res.Code) {
+            $what = "HTTP $($Res.Code) after one retry"
+        } else {
+            $what = "no complete response after one retry: $($Res.Error)"
+        }
+        if ($Res.NoLocation) {
+            $what += "; redirect with no Location"
+        }
+        if ($First404 -and $Kind -eq 'browser' -and $Res.Code -eq 404 -and -not $Res.Final) {
+            $what += "; tag '$($S.Tag)' has no asset with this name"
+        }
+        if ($S.Token) {
+            $what += "; the download used the token from $($S.TokenSource)"
+        }
+        $msg += " ($what)"
+        if ($Kind -eq 'browser' -and $S.Token -and $S.MetadataFailCode) {
+            $msg += " - or the GitHub token is expired or lacks access; release metadata was also unreadable (HTTP $($S.MetadataFailCode))"
+        }
+        return $msg
+    }
+
+    # Save-Asset <api|browser> <name> <asset id or URL> <out>: downloads one
+    # release asset, retrying once from the first request after a pause. The
+    # only caller of the attempt functions, so every asset on both paths gets
+    # the same retry and the same error. A failed first try can leave a
+    # partial file; the retry creates the file again.
+    function Save-Asset([string]$Kind, [string]$Name, [string]$Source, [string]$Out) {
+        $pause = 2.0
+        if ($env:RANCHER_CLI_INSTALL_TEST_RETRY_DELAY) { $pause = [double]$env:RANCHER_CLI_INSTALL_TEST_RETRY_DELAY }
+        $first404 = $false
+        for ($try = 1; $try -le 2; $try++) {
+            if ($Kind -eq 'api') { $res = Get-ReleaseAsset $Source $Out } else { $res = Get-DirectAsset $Source $Out }
+            if ($res.Ok) { return }
+            if ($try -eq 1) {
+                if ($Kind -eq 'browser' -and $res.Code -eq 404 -and -not $res.Final) { $first404 = $true }
+                if ($res.Code) {
+                    Write-Warn "download of $Name failed (HTTP $($res.Code)); retrying once"
+                } else {
+                    Write-Warn "download of $Name failed (no complete response); retrying once"
+                }
+                Start-Sleep -Milliseconds ([int]($pause * 1000))
+            }
+        }
+        Fail (Get-AssetFailure $Kind $Name $res $first404)
     }
 
     # Read-Sums parses the downloaded SHA256SUMS once: asset name (compared
@@ -747,21 +841,15 @@ namespace RancherCliInstall
         if ($S.CliAssetId) {
             # With a token, download through the GitHub API asset endpoint;
             # without asset ids the plain release download URLs are used.
-            Get-ReleaseAsset $S.CliAssetId (Join-Path $S.Work $S.CliAsset) $S.CliAsset
-            Get-ReleaseAsset $S.HelperAssetId (Join-Path $S.Work $S.HelperAsset) $S.HelperAsset
-            Get-ReleaseAsset $S.SumsAssetId (Join-Path $S.Work 'SHA256SUMS') 'SHA256SUMS'
+            Save-Asset 'api' $S.CliAsset $S.CliAssetId (Join-Path $S.Work $S.CliAsset)
+            Save-Asset 'api' $S.HelperAsset $S.HelperAssetId (Join-Path $S.Work $S.HelperAsset)
+            Save-Asset 'api' 'SHA256SUMS' $S.SumsAssetId (Join-Path $S.Work 'SHA256SUMS')
             return
         }
         $dl = "$($S.BaseUrl)/$Repo/releases/download/$($S.Tag)"
-        if (-not (Get-DirectAsset "$dl/$($S.CliAsset)" (Join-Path $S.Work $S.CliAsset))) {
-            $msg = "download failed: $dl/$($S.CliAsset) (404 = tag '$($S.Tag)' has no such asset)"
-            if ($S.Token -and $S.MetadataFailCode) {
-                $msg += " - or the GitHub token is expired or lacks access; release metadata was also unreadable (HTTP $($S.MetadataFailCode))"
-            }
-            Fail $msg
-        }
-        if (-not (Get-DirectAsset "$dl/$($S.HelperAsset)" (Join-Path $S.Work $S.HelperAsset))) { Fail "download failed: $dl/$($S.HelperAsset)" }
-        if (-not (Get-DirectAsset "$dl/SHA256SUMS" (Join-Path $S.Work 'SHA256SUMS'))) { Fail "download failed: $dl/SHA256SUMS" }
+        Save-Asset 'browser' $S.CliAsset "$dl/$($S.CliAsset)" (Join-Path $S.Work $S.CliAsset)
+        Save-Asset 'browser' $S.HelperAsset "$dl/$($S.HelperAsset)" (Join-Path $S.Work $S.HelperAsset)
+        Save-Asset 'browser' 'SHA256SUMS' "$dl/SHA256SUMS" (Join-Path $S.Work 'SHA256SUMS')
     }
 
     function Test-Release {
