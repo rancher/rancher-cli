@@ -215,8 +215,8 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			named := &config.Config{Servers: map[string]config.Server{name: userNamed}}
 			d := &Deletion{cfg: named, view: named}
 			userOwned := &config.Config{Servers: map[string]config.Server{"prod": {URL: url, TokenUserID: "u-abc12"}}}
-			return []string{d.nextLoginText(name, true), (&Deletion{cfg: cfg, view: cfg}).nextLoginText(name, true),
-				(&Deletion{cfg: userOwned, view: userOwned}).nextLoginText("prod", true)}
+			return []string{d.nextLoginText(name, true, clierr.IDText), (&Deletion{cfg: cfg, view: cfg}).nextLoginText(name, true, clierr.IDText),
+				(&Deletion{cfg: userOwned, view: userOwned}).nextLoginText("prod", true, clierr.IDText)}
 		},
 		"v3Remedy": func() []string {
 			ref := TokenRef{Kind: TokenKindV3, Name: "token-v3"}

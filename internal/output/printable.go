@@ -19,9 +19,10 @@ import (
 // cell; text builders apply it at each insertion of a server field; the
 // runtime applies it to warning lines, to the message, hint and candidates of
 // an error and to the preview fields. The details lines of an error show each
-// value as clierr.IDText does, with these runes as escapes and nothing
-// removed, so two values that differ by a hidden character print differently;
-// Printable then only writes each invalid byte of such a line as U+FFFD.
+// value as clierr.IDText does, with these runes and each invalid byte as
+// escapes and nothing removed, so two values that differ by a hidden character
+// or an invalid byte print differently; those lines need no further change
+// from Printable.
 // Structured formats (json, yaml, template) never pass through it - they
 // return the bytes verbatim. A whole text with its own lines goes through
 // PrintableLines, which the runtime applies to every text print and

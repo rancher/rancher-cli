@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,7 +62,8 @@ func assertDetailsText(t *testing.T, cases []detailsTextCase) {
 }
 
 // TestDetailsTextOfTLSTrust asserts the default-format text of certificate
-// details with safe values.
+// details with safe values, with an invalid byte, and with a single quote and
+// a hidden character.
 func TestDetailsTextOfTLSTrust(t *testing.T) {
 	t.Parallel()
 	assertDetailsText(t, []detailsTextCase{
@@ -81,6 +83,18 @@ func TestDetailsTextOfTLSTrust(t *testing.T) {
 			"  issuer: CN=ca\n" +
 			"  fingerprint: AA:BB\n" +
 			"  valid: 2026-01-01T00:00:00Z to 2027-01-01T00:00:00Z\n"},
+		{"an invalid byte in the subject", tlstrust.Details{
+			Kind: tlstrust.KindUnknownAuthority, Subject: "CN=a\x9bb", Issuer: "CN=ca", Fingerprint: "AA:BB",
+		}, "error (GENERIC): m\n" +
+			"  certificate authority: \"CN=a\\x9bb\"\n" +
+			"  issuer: CN=ca\n" +
+			"  fingerprint: AA:BB\n"},
+		{"a single quote and a hidden character in the subject", tlstrust.Details{
+			Kind: tlstrust.KindUnknownAuthority, Subject: "CN=o'b\u200b", Issuer: "CN=ca", Fingerprint: "AA:BB",
+		}, "error (GENERIC): m\n" +
+			"  certificate authority: CN=o'\"b\\u200b\"\n" +
+			"  issuer: CN=ca\n" +
+			"  fingerprint: AA:BB\n"},
 		{"fingerprint only", tlstrust.Details{Kind: tlstrust.KindInvalidChain, Fingerprint: "AA:BB", NotBefore: "2026-01-01T00:00:00Z"},
 			"error (GENERIC): m\n  fingerprint: AA:BB\n"},
 		{"nothing", tlstrust.Details{Kind: tlstrust.KindInvalidChain}, "error (GENERIC): m\n"},
@@ -101,7 +115,8 @@ func TestDetailsTextOfFeatureGates(t *testing.T) {
 
 // TestDetailsTextOfCommittedContext asserts the default-format text of the
 // committed-context payload with safe values, with and without partial
-// output.
+// output, with an invalid byte, and with a single quote and a hidden
+// character.
 func TestDetailsTextOfCommittedContext(t *testing.T) {
 	t.Parallel()
 	assertDetailsText(t, []detailsTextCase{
@@ -113,6 +128,14 @@ func TestDetailsTextOfCommittedContext(t *testing.T) {
 			"error (GENERIC): m\n" +
 				"  committed: token tok-1 - the change may already be on the server\n" +
 				"  partial output may already be on stdout\n" +
+				"  recover: run the list command\n"},
+		{"an invalid byte in the resource name", clierr.CommittedContextDetails{Committed: true, ResourceKind: "token", ResourceName: "tok\x9b1", Recovery: "run the list command"},
+			"error (GENERIC): m\n" +
+				"  committed: token \"tok\\x9b1\" - the change may already be on the server\n" +
+				"  recover: run the list command\n"},
+		{"a single quote and a hidden character in the resource name", clierr.CommittedContextDetails{Committed: true, ResourceKind: "token", ResourceName: "o'b\u200b", Recovery: "run the list command"},
+			"error (GENERIC): m\n" +
+				"  committed: token o'\"b\\u200b\" - the change may already be on the server\n" +
 				"  recover: run the list command\n"},
 	})
 }
@@ -792,6 +815,27 @@ func checkDetailsRow(t *testing.T, row detailsRow) {
 			textA := renderDetails(t, detailsPlant(t, row, variant, plain("ab")), "")
 			textB := renderDetails(t, detailsPlant(t, row, variant, plain("a\u200bb")), "")
 			assert.NotEqual(t, textA, textB, "variant %q: two values of %s that differ only by a hidden character print differently", variant.name, p)
+
+			invalid := "<" + p + ">a\x9bb"
+			invalidText := renderDetails(t, detailsPlant(t, row, variant, plain("a\x9bb")), "")
+			assert.Contains(t, invalidText, strconv.Quote(invalid), "variant %q: %s with an invalid byte shows as an escaped string", variant.name, p)
+			assert.NotContains(t, invalidText, "\x9b", "variant %q: %s prints no invalid byte", variant.name, p)
+			assert.NotContains(t, invalidText, "\ufffd", "variant %q: %s prints no replacement character", variant.name, p)
+			assert.True(t, utf8.ValidString(invalidText), "variant %q: the text of %s is valid UTF-8: %q", variant.name, p, invalidText)
+
+			c, d := plain("a\xffb")(p), plain("a\x9bb")(p)
+			assert.Equal(t, output.Printable(c), output.Printable(d), "the two planted invalid-byte values are the same under output.Printable")
+			textC := renderDetails(t, detailsPlant(t, row, variant, plain("a\xffb")), "")
+			textD := renderDetails(t, detailsPlant(t, row, variant, plain("a\x9bb")), "")
+			assert.NotEqual(t, textC, textD, "variant %q: two values of %s that differ only by an invalid byte print differently", variant.name, p)
+
+			quoted := renderDetails(t, detailsPlant(t, row, variant, func(path string) string {
+				if path == p {
+					return "<" + path + ">o'a\u200bb"
+				}
+				return detailsSafe(path)
+			}), "")
+			assert.Contains(t, quoted, "<"+p+">o'"+strconv.Quote("a\u200bb"), "variant %q: %s with a single quote and a hidden character is quoted only where it needs it", variant.name, p)
 		}
 
 		planted := detailsPlant(t, row, variant, detailsUnsafe)

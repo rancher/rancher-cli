@@ -1288,8 +1288,9 @@ func detailsTextLines(details any) []clierr.DetailLine {
 // paragraph separator shows as a double-quoted string with escapes, and two
 // values that differ by a hidden character print differently. The indent stays
 // outside the quotes.
-// output.Printable then writes each invalid UTF-8 byte as U+FFFD; it removes no
-// rune from the result, whose labels hold none.
+// An invalid UTF-8 byte is already an escape when the text reaches
+// output.Printable, which removes and replaces nothing in it: the labels hold
+// no rune it removes.
 func detailLineText(l clierr.DetailLine) string {
 	var b strings.Builder
 	b.WriteString(l.Indent)

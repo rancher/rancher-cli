@@ -435,6 +435,11 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 	plantedExpanded := "rancher" + prefix + " delete x"
 	cliExpanded := "rancher" + prefix + " get pods"
 	both := "server said " + plantedRemedy + "; run " + cliCommand
+	// A details line shows a value that holds a hidden character as escapes,
+	// quoted only in the pieces between single quotes, so the expanded command
+	// of the CLI sits there with a double-quoted piece before its quoted
+	// directory.
+	bothInDetails := clierr.IDText("server said " + plantedRemedy + "; run " + cliExpanded)
 	for _, row := range siteRows() {
 		formats := []string{"", "json"}
 		if row.textOnly {
@@ -444,6 +449,9 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 			if format == "" && row.jsonOnly {
 				continue
 			}
+			// The default, table and wide text of a details payload shows each
+			// value through clierr.IDText; no other channel does.
+			detailsText := strings.Contains(row.site, "ExpandError") && strings.Contains(row.channel, ".") && format != "json"
 			t.Run(row.site+" "+row.channel+" "+format, func(t *testing.T) {
 				t.Parallel()
 				run := func(r siteRun) string {
@@ -454,6 +462,7 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 					}
 					shown := visibleText(t, out, errOut)
 					assert.NotContains(t, shown, plantedExpanded, "the planted text gets no directory")
+					assert.NotContains(t, shown, clierr.ShellQuote(dir)+" delete x", "the planted text gets no directory, even when a details line cuts the value at the quote")
 					assert.NotContains(t, shown, clierr.RemedyMarker, "no marker is left")
 					return shown
 				}
@@ -466,7 +475,12 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 
 				shown = run(siteRun{text: both})
 				assert.Contains(t, shown, "rancher delete x", "the planted text reaches the output")
-				assert.Contains(t, shown, cliExpanded, "the command of the CLI names the directory beside the planted text")
+				if detailsText {
+					assert.True(t, strings.Contains(shown, cliExpanded) || strings.Contains(shown, bothInDetails),
+						"the command of the CLI names the directory beside the planted text: %q", shown)
+				} else {
+					assert.Contains(t, shown, cliExpanded, "the command of the CLI names the directory beside the planted text")
+				}
 
 				if strings.Contains(row.site, "ExpandError") {
 					shown = run(siteRun{text: plantedRemedy, cli: cliCommand})

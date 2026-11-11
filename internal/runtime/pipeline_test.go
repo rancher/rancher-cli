@@ -1467,8 +1467,9 @@ func TestRenderErrDetailsBlock(t *testing.T) {
 // that holds a control character, an invisible format character or a line
 // separator prints as a double-quoted string with escapes, in place, with the
 // label before it and the indent outside the quotes; that a value whose only
-// problem is an invalid UTF-8 byte prints with U+FFFD for the byte; and that
-// the value of a part after a label with no value is shown the same way.
+// problem is an invalid UTF-8 byte prints with the byte as an escape; that a
+// value with a single quote is quoted only in the piece that needs it; and
+// that the value of a part after a label with no value is shown the same way.
 func TestRenderErrDetailsShowHiddenCharactersAsEscapes(t *testing.T) {
 	t.Parallel()
 	render := func(lines ...clierr.DetailLine) string {
@@ -1485,8 +1486,12 @@ func TestRenderErrDetailsShowHiddenCharactersAsEscapes(t *testing.T) {
 		render(clierr.Line(clierr.ValuePart("a ", "x\ny"), clierr.ValuePart(" b ", "\x1b[2J"), clierr.LabelPart(" c"))))
 
 	got := render(clierr.Line(clierr.ValuePart("value: ", "a\x9bb")))
-	assert.Equal(t, "error (CONFLICT): boom\n  value: a\ufffdb\n", got)
+	assert.Equal(t, "error (CONFLICT): boom\n  value: \"a\\x9bb\"\n", got)
 	assert.NotContains(t, got, "\x9b")
+	assert.NotContains(t, got, "\ufffd")
+
+	assert.Equal(t, "error (CONFLICT): boom\n  value: o'\"b\\u200b\"\n",
+		render(clierr.Line(clierr.ValuePart("value: ", "o'b\u200b"))))
 
 	assert.Equal(t, "error (CONFLICT): boom\n  value: plain text, with spaces\n",
 		render(clierr.Line(clierr.ValuePart("value: ", "plain text, with spaces"))))

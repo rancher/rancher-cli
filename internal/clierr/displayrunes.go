@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // IsUnsafeToDisplay reports whether the CLI never shows r raw. It is true for
@@ -22,14 +23,15 @@ import (
 //   - The line separator U+2028 and the paragraph separator U+2029, where some
 //     terminals and editors break the line.
 //
-// No other rune is covered. A byte that is not valid UTF-8 is not a rune and
-// is handled by each caller.
+// No other rune is covered. A byte that is not valid UTF-8 is not a rune;
+// NotPrintable covers it with these runes.
 //
 // The callers' rule: output.Printable removes these runes from displayed
 // text, a new server entry name may not hold them, a user id the CLI did
 // not validate goes into error, hint, warning and recovery text through
-// IDText, which shows the id with these runes as escapes, and each value in
-// the details lines of an error is shown the same way by the renderer.
+// IDText, which shows the id with these runes and any invalid byte as
+// escapes, and each value in the details lines of an error is shown the same
+// way by the renderer.
 //
 // The source scan in test/conformance refuses any other test of these classes
 // through the unicode package outside its allowlist, so every caller shares
@@ -53,16 +55,32 @@ func WithoutUnsafeToDisplay(s string) string {
 	}, s)
 }
 
+// NotPrintable reports whether v holds a rune IsUnsafeToDisplay matches, the
+// start of the remedy marker (U+2063) included, or is not valid UTF-8. It is
+// the same test as IDText(v) != v.
+func NotPrintable(v string) bool {
+	return !utf8.ValidString(v) || strings.IndexFunc(v, IsUnsafeToDisplay) >= 0
+}
+
 // IDText is id as it goes into error, hint, warning and recovery text. An id
-// none of whose runes IsUnsafeToDisplay reports is returned unchanged. Any
-// other id is returned as a double-quoted Go string with those runes written
-// as escapes, so the text shows the exact id and no rune hides or reorders the
-// text around it. The runes are never removed: removing them could turn one id
-// into another real id. An invalid UTF-8 byte is not a rune IsUnsafeToDisplay
-// matches, so an id with only such a byte comes back unchanged.
+// that NotPrintable reports false for is returned unchanged. Any other id is
+// cut at each single quote; each piece that NotPrintable reports true for is
+// written as a double-quoted Go string, with each rune IsUnsafeToDisplay
+// matches and each invalid UTF-8 byte as escapes, and every single quote and
+// every other piece stays as written. The text shows the exact id and no rune
+// hides or reorders the text around it. No double-quoted piece holds a single
+// quote, and ShellQuote of the result never puts a single quote inside double
+// quotes. Nothing is removed:
+// removing a rune or replacing a byte could turn one id into another real id.
 func IDText(id string) string {
-	if strings.IndexFunc(id, IsUnsafeToDisplay) < 0 {
+	if !NotPrintable(id) {
 		return id
 	}
-	return strconv.Quote(id)
+	pieces := strings.Split(id, "'")
+	for i, piece := range pieces {
+		if NotPrintable(piece) {
+			pieces[i] = strconv.Quote(piece)
+		}
+	}
+	return strings.Join(pieces, "'")
 }

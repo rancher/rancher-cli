@@ -110,11 +110,15 @@ func (r *recordedFailures) Errorf(string, ...any) { r.failed = true }
 // TestAssertIDShownWithEscapesFailsForEveryWrongText asserts the check passes
 // for a text that shows the id with escapes and fails for a text that shows
 // it raw, with its hidden runes removed, or in addition to the escaped form,
-// and for an id with no hidden rune.
+// and for an id with no hidden rune. An id whose only problem is an invalid
+// UTF-8 byte passes with the escaped text and fails with the raw text and with
+// the text that holds U+FFFD.
 func TestAssertIDShownWithEscapesFailsForEveryWrongText(t *testing.T) {
 	t.Parallel()
 	const id = "u-abc\u200b12"
+	const invalidID = "u-a\xffb"
 	escaped := clierr.IDText(id)
+	escapedInvalid := clierr.IDText(invalidID)
 	for _, tc := range []struct {
 		name, text, id string
 		fails          bool
@@ -126,6 +130,9 @@ func TestAssertIDShownWithEscapesFailsForEveryWrongText(t *testing.T) {
 		{"a hidden rune elsewhere", "the user " + escaped + " is gone\u202e", id, true},
 		{"escaped, on two lines", "the user " + escaped + " is gone\nthe next line", id, false},
 		{"an id with no hidden rune", "the user u-abc12 is gone", "u-abc12", true},
+		{"an invalid byte, escaped", "the user " + escapedInvalid + " is gone", invalidID, false},
+		{"an invalid byte, raw", "the user " + invalidID + " is gone", invalidID, true},
+		{"an invalid byte, replaced", "the user u-a\ufffdb is gone", invalidID, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -60,6 +60,31 @@ func TestUnconfirmedPasswordChangeShowsAnIdWithHiddenRunesAsEscapes(t *testing.T
 	assert.Equal(t, 1, strings.Count(recovery, "rancher "), "only the command that lists users")
 }
 
+// TestPasswordChangeShowsAnIdWithAnInvalidByteAsAnEscape asserts that a typed
+// user id whose only problem is an invalid UTF-8 byte reaches the error
+// message of an unconfirmed password change and the preview name as a
+// double-quoted string with the byte as an escape, and that the details keep
+// the exact id.
+func TestPasswordChangeShowsAnIdWithAnInvalidByteAsAnEscape(t *testing.T) {
+	t.Parallel()
+	const id = "u-a\xffb"
+	client := &fakeClient{status: map[string]any{"conditions": []any{}}}
+	cmd := NewCreatePasswordChangeRequest(stubFactory{c: client}, fakeFileSource{body: []byte("aVeryLongPassword123\n")})
+	eff, exec, err := cmd.(runtime.MutatingCommand).Plan(t.Context(), pcrInput{args: []string{id}, bools: map[string]bool{"password-stdin": true}})
+	require.NoError(t, err)
+	assert.Equal(t, strconv.Quote(id), eff.DisplayName)
+	remedytest.AssertIDShownWithEscapes(t, eff.DisplayName, id)
+
+	_, err = exec(t.Context())
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	details, ok := ce.Details.(clierr.CommittedContextDetails)
+	require.True(t, ok)
+	assert.Equal(t, id, details.ResourceName, "the data field keeps the exact id")
+	assert.Equal(t, "the server did not confirm the password change for user "+strconv.Quote(id), ce.Message)
+	remedytest.AssertIDShownWithEscapes(t, ce.Message, id)
+}
+
 // TestUnconfirmedPasswordChangeRecoveryNamesAUserIDAsBefore asserts a typed
 // Rancher user id gets the command that shows the user, as before.
 func TestUnconfirmedPasswordChangeRecoveryNamesAUserIDAsBefore(t *testing.T) {

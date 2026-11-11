@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -821,7 +822,7 @@ func (d *Deletion) Warnings() []string {
 		}
 	}
 	for _, e := range slices.Sorted(maps.Keys(next)) {
-		line := fmt.Sprintf("%d token(s) recorded on %s are revoked by %s", next[e], e, d.nextLoginText(e, true))
+		line := fmt.Sprintf("%d token(s) recorded on %s are revoked by %s", next[e], e, d.nextLoginText(e, true, clierr.IDText))
 		if k := needsCA[e]; k > 0 {
 			// Only a CA fixes an unknown authority, and the next login meets
 			// the same certificate until the entry saves it.
@@ -879,13 +880,25 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	return text
 }
 
+// successTextID is id as the success text of a revoke writes it: unchanged
+// when no rune clierr.IsUnsafeToDisplay matches, else the whole id as a
+// double-quoted Go string. An invalid UTF-8 byte is left as it is, for
+// output.Printable to write as U+FFFD, so the text keeps its form.
+func successTextID(id string) string {
+	if strings.IndexFunc(id, clierr.IsUnsafeToDisplay) < 0 {
+		return id
+	}
+	return strconv.Quote(id)
+}
+
 // nextLoginText names the login that revokes an entry's recorded tokens,
-// with the command that makes it when withCommand is set.
-func (d *Deletion) nextLoginText(entry string, withCommand bool) string {
+// with the command that makes it when withCommand is set. writeID writes the
+// owner's id into the text.
+func (d *Deletion) nextLoginText(entry string, withCommand bool, writeID func(string) string) string {
 	e := d.view.Servers[entry]
 	as := ""
 	if e.TokenUserID != "" {
-		as = " as " + clierr.IDText(e.TokenUserID)
+		as = " as " + writeID(e.TokenUserID)
 	}
 	if e.Provenance == clierr.ProvenanceExecLogin || config.IsExecLoginEntryName(entry) {
 		return "the next kubectl sign-in through " + entry + as
@@ -973,7 +986,7 @@ func (d *Deletion) textLine(it *revocationItem) string {
 	if e := d.reportedEntry(it); e != "" {
 		detail += "; recorded on " + e
 		if d.retry(it) == retryNextLogin {
-			detail += ": " + output.Printable(d.nextLoginText(e, false)) + " revokes it"
+			detail += ": " + output.Printable(d.nextLoginText(e, false, successTextID)) + " revokes it"
 		}
 	}
 	return fmt.Sprintf("not revoked %s (%s)", name, detail)

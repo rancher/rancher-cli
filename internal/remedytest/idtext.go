@@ -13,12 +13,14 @@ import (
 // clierr.IDText writes it, holds no rune the terminal hides (once the remedy
 // marker is read as the word it stands for; a line break between the lines of
 // a text is allowed), and does not hold the id with those runes removed, which
-// would read as another id. id must hold a rune the terminal hides, so that
-// its removed form differs from it.
+// would read as another id. id must hold a rune the terminal hides or an
+// invalid UTF-8 byte, so that its removed form differs from it:
+// clierr.WithoutUnsafeToDisplay removes each such rune and writes U+FFFD for
+// each invalid byte.
 func AssertIDShownWithEscapes(tb testing.TB, text, id string, msgAndArgs ...any) {
 	tb.Helper()
 	stripped := clierr.WithoutUnsafeToDisplay(id)
-	if !assert.NotEqual(tb, id, stripped, "the planted id holds no rune the terminal hides") {
+	if !assert.NotEqual(tb, id, stripped, "the planted id holds no rune the terminal hides and no invalid byte") {
 		return
 	}
 	assert.Contains(tb, text, clierr.IDText(id), msgAndArgs...)
