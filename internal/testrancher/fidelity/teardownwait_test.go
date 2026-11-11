@@ -553,6 +553,25 @@ func assertGuardTotals(t assert.TestingT, want, got int, allow map[stepKey]strin
 	}
 }
 
+// shortFixturePollInterval sets the pause between the requests of a
+// waitFixture poll for one test. A test that calls it sets package state and
+// must not run in parallel; its subtests may.
+func shortFixturePollInterval(t *testing.T) {
+	t.Helper()
+	old := fixturePollInterval
+	fixturePollInterval = 10 * time.Millisecond
+	t.Cleanup(func() { fixturePollInterval = old })
+}
+
+// TestFixturePollIntervalDefault asserts a waitFixture poll pauses three
+// seconds between its requests unless a test shortened it. The test runs in
+// parallel, so it starts after every serial test has restored the value, and
+// it also fails when a test that shortened the interval did not restore it.
+func TestFixturePollIntervalDefault(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 3*time.Second, fixturePollInterval)
+}
+
 // TestEveryTeardownWaitsForTheProjectsItDeletes asserts no probe's teardown
 // deletes a project without waiting until the project and its backing
 // namespace are gone, runs every teardown step of every probe against a
@@ -567,7 +586,7 @@ func assertGuardTotals(t assert.TestingT, want, got int, allow map[stepKey]strin
 // 202, passes, and so does a step that sends exactly three unconditional
 // GETs per path. A run against Rancher (the fidelity suite) catches both.
 func TestEveryTeardownWaitsForTheProjectsItDeletes(t *testing.T) {
-	t.Parallel()
+	shortFixturePollInterval(t)
 	const wantProjectDeletes = 4
 	var mu sync.Mutex
 	total := 0
@@ -629,7 +648,7 @@ func TestAssertGuardTotals(t *testing.T) {
 // answers 404, then polls its backing namespace, with {downstream}
 // resolved.
 func TestDeleteProjectFixtureWaitsForTheProjectAndItsBackingNamespace(t *testing.T) {
-	t.Parallel()
+	shortFixturePollInterval(t)
 	const (
 		project = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/" + testDownstream + "/projects/p-x"
 		backing = "/k8s/clusters/local/api/v1/namespaces/" + testDownstream + "-p-x"
@@ -685,7 +704,7 @@ func TestDeleteProjectFixtureWaitsForTheProjectAndItsBackingNamespace(t *testing
 // needed is reported, every capture an observation declares is seeded, and
 // a seeded capture in a project path names a project.
 func TestCheckTeardownRules(t *testing.T) {
-	t.Parallel()
+	shortFixturePollInterval(t)
 	t.Run("unresolved project path is a problem even when allowlisted", func(t *testing.T) {
 		t.Parallel()
 		p := Probe{Name: "fam/unresolved", Teardown: []Step{deleteFixture("project", "/v3/projects/{pid}")}}

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,7 +36,7 @@ func hourDir(h time.Time) string { return h.UTC().Format("2006010215") }
 // from the committed full example, with the event time set to the hour.
 func eventFields(t *testing.T, n int, hour time.Time) map[string]any {
 	t.Helper()
-	fields := maps.Clone(flatExamples(t, "valid")["command-run-full.json"])
+	fields := flatExample(t, "valid", "command-run-full.json")
 	fields["log.record.uid"] = uidOf(n)
 	fields["time"] = hour.UTC().Format(time.RFC3339)
 	return fields

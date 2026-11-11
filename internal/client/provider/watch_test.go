@@ -823,6 +823,7 @@ func TestWatchObjectClosesTheChannelWhenTheContextEnds(t *testing.T) {
 // authentication or certificate failure. Either way no wait ends on it. The
 // repeats take about ten seconds.
 func TestWatchObjectOfAResetConnectionEndsTheStream(t *testing.T) {
+	t.Parallel()
 	srv := newStreamServer(t)
 	srv.onWatch = func(_ int, _ http.ResponseWriter, _ *http.Request) { panic(http.ErrAbortHandler) }
 	ch, err := watcher(t, watchingClient(t, srv.srv, nil)).WatchObject(t.Context(), watchGVR, "", "x", "100", 55*time.Second)
@@ -927,6 +928,8 @@ func holdFor(d time.Duration, w http.ResponseWriter, r *http.Request) {
 // the list before it, and after the third failed watch the wait sends only
 // Gets, an interval apart.
 func TestWaitObjectAgainstTheServerStreamEndings(t *testing.T) {
+	// The subtests run in parallel, each against its own server; the parent
+	// restores the stream length after the last of them ends.
 	shortStreams(t)
 	const interval = 200 * time.Millisecond
 	tests := []struct {
@@ -969,6 +972,7 @@ func TestWaitObjectAgainstTheServerStreamEndings(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			srv := newStreamServer(t)
 			tt.setup(srv)
 			res := waitFor(t, watchingClient(t, srv.srv, nil), 3500*time.Millisecond, interval)

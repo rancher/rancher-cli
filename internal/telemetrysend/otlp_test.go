@@ -3,6 +3,7 @@ package telemetrysend
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"maps"
 	"math"
@@ -12,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,22 +29,107 @@ var contractRoot = filepath.Join("..", "..", "telemetry", "contract")
 
 var contractDir = filepath.Join(contractRoot, telemetry.ContractVersion)
 
+// loadFlatExamples reads and decodes every committed flat example of both
+// kinds ("valid" and "invalid") once per test binary, by kind and file name,
+// as encoding/json decodes them. Callers get copies from flatExamples.
+var loadFlatExamples = sync.OnceValues(func() (map[string]map[string]map[string]any, error) {
+	out := map[string]map[string]map[string]any{}
+	for _, kind := range []string{"valid", "invalid"} {
+		files, err := filepath.Glob(filepath.Join(contractDir, "examples", kind, "*.json"))
+		if err != nil {
+			return nil, fmt.Errorf("list %s examples: %w", kind, err)
+		}
+		if len(files) == 0 {
+			return nil, fmt.Errorf("no %s examples", kind)
+		}
+		examples := map[string]map[string]any{}
+		for _, f := range files {
+			data, err := os.ReadFile(f)
+			if err != nil {
+				return nil, fmt.Errorf("read %s example: %w", kind, err)
+			}
+			var fields map[string]any
+			if err := json.Unmarshal(data, &fields); err != nil {
+				return nil, fmt.Errorf("decode %s example %s: %w", kind, filepath.Base(f), err)
+			}
+			examples[filepath.Base(f)] = fields
+		}
+		out[kind] = examples
+	}
+	return out, nil
+})
+
+// deepCopy returns a copy of a decoded JSON value in which no map or slice is
+// shared with v.
+func deepCopy(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for k, e := range v {
+			out[k] = deepCopy(e)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, e := range v {
+			out[i] = deepCopy(e)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
 // flatExamples returns the committed flat examples of one kind ("valid" or
-// "invalid") by file name, as encoding/json decodes them.
+// "invalid") by file name, as encoding/json decodes them. The caller owns the
+// result: it shares no map or slice with the result of another call.
 func flatExamples(t *testing.T, kind string) map[string]map[string]any {
 	t.Helper()
-	files, err := filepath.Glob(filepath.Join(contractDir, "examples", kind, "*.json"))
+	all, err := loadFlatExamples()
 	require.NoError(t, err)
-	require.NotEmpty(t, files, "no %s examples", kind)
-	out := map[string]map[string]any{}
-	for _, f := range files {
-		data, err := os.ReadFile(f)
-		require.NoError(t, err)
-		var fields map[string]any
-		require.NoError(t, json.Unmarshal(data, &fields))
-		out[filepath.Base(f)] = fields
+	_, ok := all[kind]
+	require.True(t, ok, "no %s examples", kind)
+	out := make(map[string]map[string]any, len(all[kind]))
+	for name, fields := range all[kind] {
+		out[name] = deepCopy(fields).(map[string]any)
 	}
 	return out
+}
+
+// flatExample returns a copy of one committed flat example of a kind, which
+// the caller owns as it does the result of flatExamples.
+func flatExample(t *testing.T, kind, name string) map[string]any {
+	t.Helper()
+	all, err := loadFlatExamples()
+	require.NoError(t, err)
+	fields, ok := all[kind][name]
+	require.True(t, ok, "no %s example %s", kind, name)
+	return deepCopy(fields).(map[string]any)
+}
+
+// TestFlatExamplesShareNothingBetweenCalls asserts a change to a top-level
+// key or to an element of a list in one result does not show in the next
+// result, from flatExamples or flatExample.
+func TestFlatExamplesShareNothingBetweenCalls(t *testing.T) {
+	const name = "command-run-full.json"
+	const flags = "io.rancher.cli.command.flags"
+	first := flatExamples(t, "valid")[name]
+	list, ok := first[flags].([]any)
+	require.True(t, ok, "%s is a list", flags)
+	require.NotEmpty(t, list)
+	uid, firstFlag := first["log.record.uid"], list[0]
+	require.NotEqual(t, "changed", uid)
+	require.NotEqual(t, "changed", firstFlag)
+	first["log.record.uid"] = "changed"
+	list[0] = "changed"
+
+	for label, next := range map[string]map[string]any{
+		"flatExamples": flatExamples(t, "valid")[name],
+		"flatExample":  flatExample(t, "valid", name),
+	} {
+		assert.Equal(t, uid, next["log.record.uid"], label)
+		assert.Equal(t, firstFlag, next[flags].([]any)[0], label)
+	}
 }
 
 // fileNames lists the file names in dir, sorted.

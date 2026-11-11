@@ -1166,7 +1166,7 @@ func waitFixtureCaptured(name, method, pathTemplate, body string, ready func(dec
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
-				case <-time.After(3 * time.Second):
+				case <-time.After(fixturePollInterval):
 				}
 			}
 		},
@@ -1281,6 +1281,10 @@ func sarAllowed(decoded map[string]any, status int) bool {
 const fixtureRetryAttempts = 5
 
 var fixtureRetryPause = 3 * time.Second
+
+// fixturePollInterval is the pause between the requests of a waitFixture
+// poll. Tests shorten it and must not run in parallel.
+var fixturePollInterval = 3 * time.Second
 
 // retriableFixtureCreate reports whether a 5xx answer to a create of body at
 // path may be retried: the path goes through the proxy of the probe's
