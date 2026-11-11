@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -257,7 +258,12 @@ func decodeErrorEnvelope(t *testing.T, raw string) appError {
 // value plainly, JSON-escaped or one line of a multi-line value, an answer
 // whose outcome is unknown, a values file whose top level is a scalar, a
 // YAML syntax error on the value's line and a repeated key holding the
-// value; no refusal carries the YAML decoders' own text. Each run is
+// value, and every end of the wait: success, a Stalled Operation, the App
+// failed with the value in spec.info.description (one line, and a
+// multi-line value one line at a time), the timeout, the no-revision and
+// the another-change errors; no refusal carries the YAML decoders' own
+// text. Each wait run also asserts the text that reaches the output in
+// place of the value. Each run is
 // checked in stdout, stderr and the decoded envelope. The values file also
 // sets every path app install adds a cluster value at, so the canary there
 // is a file's value too. A second canary at the two registry paths of a
@@ -301,6 +307,56 @@ func TestAppCommandsNeverPrintValues(t *testing.T) {
 			run{"multi-line " + http.StatusText(code), values, withArgs(appInstallArgs, "--values", "-", "--apply"), answer(code, "refused "+strings.ReplaceAll(multi, "\n", " then "))},
 		)
 	}
+	waitArgs := withArgs(appInstallArgs, "--values", "-", "--apply", "--wait")
+	done := opStatus([3]string{"Reconciling", "False", ""}, [3]string{"Stalled", "False", ""})
+	stalled := func(msg string) map[string]any {
+		return opStatus([3]string{"Reconciling", "False", ""}, [3]string{"Stalled", "True", msg})
+	}
+	revision := func(status string, version int64, desc string, own bool) func(string) map[string]any {
+		return func(id string) map[string]any {
+			if !own {
+				id = "another-request"
+			}
+			return appObject(status, id, version, desc)
+		}
+	}
+	canaryDesc := `Release "my-nginx" failed: password ` + appCanary
+	// A wait run's setup changes the server before the run; shown is text
+	// the table output holds.
+	type waitRun struct {
+		name  string
+		args  []string
+		setup func(s *appServer)
+		shown string
+	}
+	waits := []waitRun{
+		{name: "wait success", args: waitArgs, shown: fmt.Sprintf("installed (revision %d, status deployed)", appFirstRevision), setup: func(s *appServer) {
+			s.completeOnAction(done, revision("deployed", appFirstRevision, "Install complete "+appCanary, true))
+		}},
+		{name: "wait stalled", args: waitArgs, shown: "operation message: refused <hidden>", setup: func(s *appServer) {
+			s.completeOnAction(stalled("refused "+appCanary), revision("failed", appFirstRevision, canaryDesc, true))
+		}},
+		{name: "wait failed", args: waitArgs, shown: `Release "my-nginx" failed: password <hidden> (status failed)`, setup: func(s *appServer) {
+			s.completeOnAction(done, revision("failed", appFirstRevision, canaryDesc, true))
+		}},
+		{name: "wait failed multi-line", args: waitArgs, shown: `Release "my-nginx" failed: <hidden> <hidden> (status failed)`, setup: func(s *appServer) {
+			s.completeOnAction(done, revision("failed", appFirstRevision, "Release \"my-nginx\" failed:\n"+multi, true))
+		}},
+		{name: "wait timeout", args: withArgs(waitArgs, "--timeout", "1s"), shown: "Stalled=False; last error: GENERIC: ", setup: func(s *appServer) {
+			s.completeOnAction(done, nil)
+			complete := s.action
+			s.action = func(w http.ResponseWriter, r *http.Request) {
+				complete(w, r)
+				s.answer(appAppPath(appNS, appRelease), http.StatusServiceUnavailable, `{"type":"error","status":503,"message":"busy `+appCanary+`"}`)
+			}
+		}},
+		{name: "wait no revision", args: withArgs(waitArgs, "--timeout", "2s"), shown: "(operation message: boom <hidden>) and no revision", setup: func(s *appServer) {
+			s.completeOnAction(stalled("boom "+appCanary), nil)
+		}},
+		{name: "wait another change", args: waitArgs, shown: fmt.Sprintf("another change to 'my-nginx' also ran (revision %d)", appLaterRevision), setup: func(s *appServer) {
+			s.completeOnAction(done, revision("deployed", appLaterRevision, canaryDesc, false))
+		}},
+	}
 	for _, r := range runs {
 		for _, format := range []string{"json", "yaml", "table"} {
 			t.Run(r.name+" "+format, func(t *testing.T) {
@@ -315,7 +371,52 @@ func TestAppCommandsNeverPrintValues(t *testing.T) {
 			})
 		}
 	}
+	for _, r := range waits {
+		for _, format := range []string{"json", "yaml", "table"} {
+			t.Run(r.name+" "+format, func(t *testing.T) {
+				s := newAppServer(t, "community")
+				r.setup(s)
+				stdout, stderr, _ := appRunStdin(t, s, values, withArgs(r.args, "-o", format)...)
+				out := stdout + "\n" + stderr
+				assert.NotContains(t, out, appCanary)
+				assert.NotContains(t, out, `\"`+appCanary)
+				assert.NotContains(t, out, "second-line-")
+				if format == "table" {
+					assert.Contains(t, out, r.shown)
+				}
+			})
+		}
+	}
 	registryValuesShownOnlyAsTheirTo(t, answer)
+	uninstallWaitTextIsPrintable(t)
+}
+
+// uninstallWaitTextIsPrintable asserts the App's spec.info.description and a
+// Stalled message reach the output of an uninstall wait only with the
+// characters output.Printable removes removed, in every format: an
+// uninstall sends no values, and the server text is its only risk.
+func uninstallWaitTextIsPrintable(t *testing.T) {
+	t.Helper()
+	bell := "\a"
+	stalled := opStatus([3]string{"Reconciling", "False", ""}, [3]string{"Stalled", "True", "boom" + bell + "bell"})
+	for _, format := range []string{"json", "yaml", "table"} {
+		t.Run("uninstall wait "+format, func(t *testing.T) {
+			s := newAppServer(t, "community")
+			s.putApp("deployed")
+			s.completeOnAction(stalled, func(string) map[string]any {
+				return appObject("uninstalling", "", 1, "Deletion"+bell+" in progress")
+			})
+			stdout, stderr, _ := appRun(t, s, withArgs(appUninstallArgs, "--apply", "--yes", "--wait", "-o", format)...)
+			out := stdout + "\n" + stderr
+			assert.NotContains(t, out, bell)
+			assert.NotContains(t, out, `\u0007`)
+			assert.NotContains(t, out, `\a`)
+			if format == "table" {
+				assert.Contains(t, out, "operation message: boombell")
+				assert.Contains(t, out, "status uninstalling (Deletion in progress)")
+			}
+		})
+	}
 }
 
 // registryCanary is the value a values file sets at both registry paths.

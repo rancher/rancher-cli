@@ -1143,8 +1143,9 @@ work: it fetches the chart, runs Helm in a pod of its own and records the
 release as an App. The CLI renders no chart, stores no release and runs no
 `helm`. Both commands require `--cluster` (`local` for the local cluster) and
 `--namespace`; the namespace `default` is never assumed. `app install` also
-requires `--repo` and `--chart`. Both return once Rancher accepts the request;
-they have no `--wait` and no `--timeout`.
+requires `--repo` and `--chart`. Without `--wait` both return once Rancher
+accepts the request. `--wait` and `--timeout` wait for the end of Helm's run
+(see "What follows the request").
 
 **The preview comes from server reads.** Rancher's install action has no
 dry-run. The CLI never sends the uninstall action's `dryRun` option. `--dry-run`
@@ -1206,8 +1207,8 @@ the App, the operations and, for an install, the index entry of the version
 again, and refuses with `CONFLICT` (retryable) when the App or the chart's
 content changed, the index cannot be read again, or an operation started since
 the preview; run the command again to see a new preview. This is a check before the request, not a
-precondition: nothing checks for a change after the request is sent, and the
-result says so. When the connection fails after the request was written, or the
+precondition: without `--wait` nothing checks for a change after the request is
+sent, and the result says so. When the connection fails after the request was written, or the
 server answers 500, 502 or 504, the CLI does not know whether Rancher ran the
 action. Every other status keeps its code from the error codes table. The CLI
 reports `GENERIC`, not retryable, with the command that lists the operations and
@@ -1316,16 +1317,94 @@ the operation starts. `--no-hooks` skips the chart's hooks,
 resources against the OpenAPI schema, `--description` (install) sets the release
 description, and `--keep-history` (uninstall) keeps the release's history.
 
-**What follows the request.** The result names the operation Rancher created and
+**What follows the request.** Without `--wait`, the result names the operation Rancher created and
 the commands that follow it: `rancher get operation <name> --cluster <c>
 --namespace <ns> --wait` (only when you can read the operation) and `rancher get
 app <release> --cluster <c> --namespace <ns>`. The App exists once Helm stores
 the release; its `spec.info.status` and `spec.info.description` then show whether
 Helm succeeded. A chart that fails before that (a values schema or a template
 error) leaves no App, and `rancher get operation <name> --cluster <c> --namespace
-<ns> --wait` shows the failure: its Stalled message holds Helm's exit code. The
-result carries the line "a chart that fails before Helm stores the release leaves
-no app; the operation then shows the failure".
+<ns> --wait` shows the failure: its Stalled message is Rancher's text, which
+ends in Helm's exit code when the container ended. The result carries the line
+"a chart that fails before Helm stores the release leaves no app; the operation
+then shows the failure".
+
+**`--wait` and `--timeout`.** `--wait` waits until Helm's run finishes and
+reports how it ended. `--timeout <duration>` (default 55m, at most 55m) bounds
+the wait and alone starts it. A value over 55m is `VALIDATION`, because
+Rancher removes the operation one hour after it starts; `--wait=false` with
+`--timeout` is `VALIDATION` too. With `--dry-run`, or without `--apply`,
+nothing is sent and nothing waits. Without `--wait` the result is as described
+above. These are the CLI's flags; `--helm-wait` and `--helm-timeout` are Helm's
+options.
+
+The wait reads the operation named in Rancher's answer until it is done
+(`status.observedGeneration` is current and the `Reconciling` condition is
+`False`) or `Stalled` is `True` (the pod's `helm` container ended with a
+non-zero exit code or could not run). The `Stalled` message is Rancher's text,
+which ends in `exit code: <n>` when the container ended; the CLI shows the exit
+code when the message is only that, else the message. The wait then reads the
+App. After `Stalled`, the App is read for at most 30 seconds, or the time left.
+After a done operation, an install reads an App that does not exist yet until
+the timeout, and a revision of this request at a status other than `deployed`
+or `failed` for at most 30 seconds more, or the time left; an uninstall reads
+the App for at most 30 seconds, or the time left, and an App still there at
+the end ends the wait with `the release stays installed`. A watch event that
+the App was deleted ends an uninstall's wait at once.
+
+- `app install` is done when the revision that carries this request's id
+  (`cli.rancher.io/request-id` in `spec.chart.metadata.annotations`) reads
+  `deployed`. `data.status` is `deployed`, `data.revision` is the App's
+  `spec.version`, `data.followUp` holds only `rancher get app ...`, and the text
+  is `app <release>: installed (revision <n>, status deployed)`.
+- `app uninstall` is done when the App is gone, or with `--keep-history` when
+  its status reads `uninstalled`. `data.status` is `uninstalled` and the text is
+  `app <release>: uninstalled`. `data.followUp` is empty when the App is gone,
+  and holds `rancher get app ...` when it keeps its history.
+
+An install ends in an error when:
+
+- the revision reads `failed`: the error carries `spec.info.description` (with
+  the values from your files hidden), the status and, when the operation was
+  `Stalled`, Helm's exit code, says the release stays installed and names the command that previews its uninstall;
+- the operation is `Stalled` and no revision carries this request's id: Helm
+  records no revision when it fails before it stores the release, for example
+  on values that fail the chart's values schema, template errors or resources
+  another release owns; the error's hint is `rancher get operation ...`;
+- the revision is left pending;
+- another change to the release ran;
+- the release is `deployed` but a later step of the operation failed.
+
+An uninstall ends in an error when the operation is `Stalled` and the App is
+gone or reads `uninstalled` within the 30 seconds (`release <name> was
+uninstalled; a later step failed`), when the App is still there at the end
+(`the release stays installed`), or when the App reads `uninstalled` without
+`--keep-history` (its kept history was not removed).
+
+When the operation is not found (Rancher removes it one hour after it starts),
+a warning says the wait reads the app only. A release left pending after the
+operation was read and is gone ends the wait with `Helm's run was cut off`.
+When Helm runs as a ClusterRepo's service account and you cannot get
+operations in the namespace, the preview and the result warn that the wait
+reads the app only, and that a chart Helm refuses before it stores a release
+(for an uninstall, an uninstall that fails and leaves the app unchanged) is seen
+only as the wait timeout. When the access review request itself fails, the
+warning says rancher-cli could not check whether you can get operations.
+
+Every error the wait returns is not retryable. The errors above and the
+timeout are `GENERIC`; Ctrl-C ends the wait with `INTERRUPTED` (exit 130). An
+error a read returned (an `AUTH` or `TLS_TRUST` failure, or any other) keeps
+its code and its hint, with the committed details added. The error carries
+`committed: true`, `resourceKind: app`, the `resourceName` and a `recovery`
+command: the command the error's hint names, `rancher get app ...` for most
+errors, `rancher get apps ...` when the App is gone and `rancher get operation
+...` when no revision carries this request's id; for an `AUTH` or `TLS_TRUST`
+failure it is `rancher get app ...`, and an error a read returned with no hint
+gets `rancher get app ...` as both. A timeout reads `timed out after <duration>
+waiting for release <release>; last state: ...`; an operation whose
+`status.observedGeneration` is behind `metadata.generation` shows as `behind`
+there. The `INTERRUPTED` error of Ctrl-C carries the same details and, for an
+install, the request id.
 
 ## Composite commands
 

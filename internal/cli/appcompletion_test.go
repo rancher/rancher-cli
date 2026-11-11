@@ -89,7 +89,8 @@ var appCompletionSites = map[string]appCompletionSite{
 	},
 	"app install --version":      {completion: "live", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--repo", "rancher-charts", "--chart", "nginx", "--version"}},
 	"app install --values":       {completion: "file", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--values"}},
-	"app install --helm-timeout": {completion: "none", reason: "a free duration, as --timeout", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--helm-timeout"}},
+	"app install --helm-timeout": {completion: "none", reason: "a free duration, as get --timeout", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--helm-timeout"}},
+	"app install --timeout":      {completion: "none", reason: "a free duration, as get --timeout", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--timeout"}},
 	"app install --description":  {completion: "none", reason: "free text", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--description"}},
 
 	"app install --system-default-registry": {completion: "none", reason: "a registry host; there is no list to complete from", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--system-default-registry"}},
@@ -97,7 +98,8 @@ var appCompletionSites = map[string]appCompletionSite{
 	"app uninstall <release>":      {completion: "live", words: []string{"app", "uninstall", "--cluster", "c-aaa11", "--namespace", "default"}},
 	"app uninstall --cluster":      {completion: "live", words: []string{"app", "uninstall", "my-app", "--cluster"}},
 	"app uninstall --namespace":    {completion: "live", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--namespace"}},
-	"app uninstall --helm-timeout": {completion: "none", reason: "a free duration, as --timeout", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--helm-timeout"}},
+	"app uninstall --helm-timeout": {completion: "none", reason: "a free duration, as get --timeout", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--helm-timeout"}},
+	"app uninstall --timeout":      {completion: "none", reason: "a free duration, as get --timeout", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--timeout"}},
 }
 
 // TestEveryValueOfAppInstallAndUninstallHasACompletion asserts every

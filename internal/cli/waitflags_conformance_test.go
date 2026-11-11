@@ -94,11 +94,9 @@ func TestForWithoutWaitCheckFindsACommandDeclaringOnlyFor(t *testing.T) {
 	assert.Empty(t, commandsDeclaringForWithoutWait([]runtime.Command{both, neither}))
 }
 
-// wantWaitCommands is the commands that declare --wait: the get of every
-// kind but clusterregistrationtoken, whose get never waits. The --timeout of
-// the access and oidc-client commands is a time limit, not a wait, and those
-// commands declare no --wait.
-func wantWaitCommands() []string {
+// wantGetWaitCommands is the get commands that declare --wait: the get of
+// every kind but clusterregistrationtoken, whose get never waits.
+func wantGetWaitCommands() []string {
 	var want []string
 	for _, k := range kinds.All() {
 		if k.Name != "clusterregistrationtoken" {
@@ -108,11 +106,14 @@ func wantWaitCommands() []string {
 	return want
 }
 
-// TestOnlyGetDeclaresTheWaitFlags asserts that the commands declaring --wait
-// are exactly the generic gets, so delete, patch and the clusterregistrationtoken
-// get do not offer a flag they ignore or refuse, and that every command
-// declaring --for declares --wait.
-func TestOnlyGetDeclaresTheWaitFlags(t *testing.T) {
+// TestOnlyGetAndAppActionsDeclareTheWaitFlags asserts that the commands
+// declaring --wait are exactly the generic gets plus app install and app
+// uninstall, so delete, patch and the clusterregistrationtoken get do not
+// offer a flag they ignore or refuse, and that every command declaring --for
+// declares --wait. The --timeout of the access and oidc-client commands is a
+// time limit, not a wait, and those commands declare no --wait. App install
+// and app uninstall declare --wait and --timeout for their wait of Helm's run.
+func TestOnlyGetAndAppActionsDeclareTheWaitFlags(t *testing.T) {
 	t.Parallel()
 	wr, err := buildWiredRegistry("v-test", nil)
 	require.NoError(t, err)
@@ -124,7 +125,8 @@ func TestOnlyGetDeclaresTheWaitFlags(t *testing.T) {
 			got = append(got, c.Describe().Name)
 		}
 	}
-	assert.ElementsMatch(t, wantWaitCommands(), got)
+	want := append(wantGetWaitCommands(), "app install", "app uninstall")
+	assert.ElementsMatch(t, want, got)
 	assert.Empty(t, commandsDeclaringForWithoutWait(cmds))
 }
 
@@ -134,7 +136,7 @@ func TestOnlyGetDeclaresTheWaitFlags(t *testing.T) {
 // before the command reaches a client.
 func TestEveryGetRefusesTheWaitFlagsWithoutAName(t *testing.T) {
 	t.Parallel()
-	want := wantWaitCommands()
+	want := wantGetWaitCommands()
 	deps := runDeps{clients: failingClients{}, roots: failingRoots{}}
 	seen := map[string]bool{}
 	for _, e := range buildEntries() {

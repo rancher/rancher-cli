@@ -165,6 +165,80 @@ func (s *appServer) putApp(status string) {
 	})
 }
 
+// The revisions the App fixtures use: the first revision, and a later one
+// another request made.
+const (
+	appFirstRevision = 1
+	appLaterRevision = 2
+)
+
+// appObject is the App of the release at revision version with status and
+// description, whose chart carries the request id id ("" for none).
+func appObject(status, id string, version int64, description string) map[string]any {
+	ann := map[string]any{"catalog.cattle.io/ui-source-repo-type": "cluster", "catalog.cattle.io/ui-source-repo": appRepo}
+	if id != "" {
+		ann["cli.rancher.io/request-id"] = id
+	}
+	return map[string]any{
+		"apiVersion": "catalog.cattle.io/v1", "kind": "App",
+		"metadata": map[string]any{"name": appRelease, "namespace": appNS, "resourceVersion": "8"},
+		"spec": map[string]any{
+			"name": appRelease, "version": version,
+			"info":  map[string]any{"status": status, "description": description},
+			"chart": map[string]any{"metadata": map[string]any{"name": appChart, "version": "2.0.0", "annotations": ann}},
+		},
+	}
+}
+
+// opStatus is an Operation status at observedGeneration 1 with the
+// conditions, each a type, a status and a message; an empty message is left
+// out, as Rancher leaves it out.
+func opStatus(conds ...[3]string) map[string]any {
+	list := []any{}
+	for _, c := range conds {
+		cond := map[string]any{"type": c[0], "status": c[1]}
+		if c[2] != "" {
+			cond["message"] = c[2]
+		}
+		list = append(list, cond)
+	}
+	return map[string]any{"observedGeneration": 1, "releaseName": appRelease, "namespace": appNS, "conditions": list}
+}
+
+// completeOnAction makes the action store the Operation its answer names,
+// with status, and then change the App: app gives the App for the request
+// id the install sent, and an app that returns nil removes it. A nil app
+// leaves the App as it is.
+func (s *appServer) completeOnAction(status map[string]any, app func(requestID string) map[string]any) {
+	s.action = func(w http.ResponseWriter, _ *http.Request) {
+		id := ""
+		if posts := s.recorded(); len(posts) > 0 {
+			charts, _ := posts[len(posts)-1].body["charts"].([]any)
+			if len(charts) > 0 {
+				chart, _ := charts[0].(map[string]any)
+				ann, _ := chart["annotations"].(map[string]any)
+				id, _ = ann["cli.rancher.io/request-id"].(string)
+			}
+		}
+		s.put(appOperationPath(appNS, appOpName), map[string]any{
+			"apiVersion": "catalog.cattle.io/v1", "kind": "Operation",
+			"metadata": map[string]any{"name": appOpName, "namespace": appNS, "generation": 1, "resourceVersion": "1"},
+			"status":   status,
+		})
+		if app != nil {
+			if obj := app(id); obj != nil {
+				s.put(appAppPath(appNS, appRelease), obj)
+			} else {
+				s.mu.Lock()
+				delete(s.objects, appAppPath(appNS, appRelease))
+				s.mu.Unlock()
+			}
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"type": "chartActionOutput", "links": map[string]any{},
+			"operationName": appOpName, "operationNamespace": appNS})
+	}
+}
+
 func (s *appServer) put(path string, obj map[string]any) {
 	s.mu.Lock()
 	s.objects[path] = obj

@@ -159,11 +159,11 @@ func recheckOperations(ctx context.Context, client engine.ClusterClient, t actio
 }
 
 // canGetOperations asks the cluster whether the caller may get operations
-// in ns. A failed request is no.
-func canGetOperations(ctx context.Context, client engine.ClusterClient, ns string) bool {
+// in ns. A failed request is no, with reviewed false.
+func canGetOperations(ctx context.Context, client engine.ClusterClient, ns string) (allowed, reviewed bool) {
 	gvk, ok := engine.ReviewGVK(engine.ReviewSelfSubjectAccess)
 	if !ok {
-		return false
+		return false, false
 	}
 	gvr := kind("operation").GVR
 	review := &unstructured.Unstructured{Object: map[string]any{
@@ -174,10 +174,10 @@ func canGetOperations(ctx context.Context, client engine.ClusterClient, ns strin
 	}}
 	resp, err := client.PostReview(ctx, engine.ReviewRequest{Kind: engine.ReviewSelfSubjectAccess, Object: review})
 	if err != nil || resp.Status < 200 || resp.Status > 299 || resp.Object == nil {
-		return false
+		return false, false
 	}
-	allowed, _, _ := unstructured.NestedBool(resp.Object.Object, "status", "allowed")
-	return allowed
+	allowed, _, _ = unstructured.NestedBool(resp.Object.Object, "status", "allowed")
+	return allowed, true
 }
 
 // serviceAccountIdentity is the identity Helm runs as for an install from
@@ -195,22 +195,27 @@ func serviceAccountIdentity(repo *unstructured.Unstructured) string {
 
 // identityOf reads who Helm runs as and, when that is not the caller,
 // whether the caller can still read the operation. The warning names the
-// identity.
-func identityOf(ctx context.Context, client engine.ClusterClient, sa, ns string) (warning string, canReadOperation bool) {
+// identity; reviewed is false when the access review request failed.
+func identityOf(ctx context.Context, client engine.ClusterClient, sa, ns string) (warning string, canReadOperation, reviewed bool) {
 	if sa == "" {
-		return identityWarning(callerIdentity), true
+		return identityWarning(callerIdentity), true, true
 	}
-	return identityWarning(sa), canGetOperations(ctx, client, ns)
+	canRead, reviewed := canGetOperations(ctx, client, ns)
+	return identityWarning(sa), canRead, reviewed
 }
 
 // result is the payload of a catalog action: the operation Rancher created
-// and the commands that follow it. RequestID is set for an install.
+// and the commands that follow it. RequestID is set for an install. Status
+// and Revision are set after a wait: the App's spec.info.status at the end
+// (uninstalled when the App is gone) and, for an install, its spec.version.
 type result struct {
 	Release            string   `json:"release"`
 	Namespace          string   `json:"namespace"`
 	OperationName      string   `json:"operationName"`
 	OperationNamespace string   `json:"operationNamespace"`
 	RequestID          string   `json:"requestID,omitempty"`
+	Status             string   `json:"status,omitempty"`
+	Revision           int64    `json:"revision,omitempty"`
 	FollowUp           []string `json:"followUp"`
 }
 
@@ -246,6 +251,36 @@ func actionResult(verb string, t actionTarget, a actionAnswer, canReadOperation 
 		},
 		Text:     text.String(),
 		Warnings: warnings,
+	}
+}
+
+// waitedResult builds the result of a request whose wait ended with
+// success: the text names the end, and the one follow-up command reads the
+// App when it still exists.
+func waitedResult(verb string, t actionTarget, a actionAnswer, end waitEnd) runtime.Result {
+	follow := []string{t.getApp()}
+	line := fmt.Sprintf("app %s: uninstalled\n", t.release)
+	if verb == "install" {
+		line = fmt.Sprintf("app %s: installed (revision %d, status %s)\n", t.release, end.revision, end.status)
+	}
+	// An App that is gone has nothing left for get app to show.
+	if end.gone {
+		follow = []string{}
+	}
+	var text strings.Builder
+	text.WriteString(line)
+	for _, f := range follow {
+		text.WriteString("follow it with: " + f + "\n")
+	}
+	return runtime.Result{
+		Kind: "AppOperation",
+		Data: result{
+			Release: t.release, Namespace: t.namespace,
+			OperationName: a.OperationName, OperationNamespace: a.OperationNamespace,
+			RequestID: t.requestID, Status: end.status, Revision: end.revision, FollowUp: follow,
+		},
+		Text:     text.String(),
+		Warnings: end.warnings,
 	}
 }
 

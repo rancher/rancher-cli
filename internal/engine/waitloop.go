@@ -82,6 +82,19 @@ type WaitParams struct {
 	OnCancel func(ctx context.Context, last *unstructured.Unstructured, lastErr *clierr.Error) error
 	// OnTimeout returns the error for a wait that ran out of time.
 	OnTimeout func(last *unstructured.Unstructured, lastErr *clierr.Error) error
+	// WhileAbsent keeps the wait going when a Get answers NOT_FOUND, for an
+	// object that may not exist yet: the answer ends the cycle like any other
+	// read, Observe is not called, the spacing is kept, and the last object
+	// and the last error are cleared, so OnTimeout gets a nil last object
+	// when the object was absent at the last read. A watch Deleted event
+	// clears them the same way.
+	WhileAbsent bool
+	// OnDeleted, when set, decides on a watch Deleted event, for a wait
+	// whose end is the object's removal: WaitDone ends the wait with success,
+	// an error ends it with that error, and any other outcome goes on as
+	// without OnDeleted (the stream closes and the next cycle reads). Nil
+	// leaves the Deleted event to the next cycle.
+	OnDeleted func(ctx context.Context) (WaitOutcome, error)
 }
 
 // failedWatchLimit is how many failed watches in a row make a wait poll.
@@ -144,7 +157,8 @@ const (
 )
 
 // WaitObject waits for one object until Observe returns WaitDone, Observe or
-// an abort ends it with an error, a Get answers NOT_FOUND, or Timeout ends.
+// an abort ends it with an error, a Get answers NOT_FOUND (unless WhileAbsent
+// is set), OnDeleted ends it on a Deleted event, or Timeout ends.
 //
 // A client that implements ObjectWatcher is watched: a cycle Lists the object
 // by name and watches from the list's resourceVersion until the stream ends.
@@ -310,6 +324,8 @@ func WaitObject(ctx context.Context, client ClusterClient, p WaitParams) error {
 			obj, err := client.Get(ctx, p.GVR, p.Namespace, p.Name)
 			sent(before)
 			switch {
+			case err != nil && clierr.IsNotFound(err) && p.WhileAbsent:
+				last, lastErr = nil, nil
 			case err != nil && clierr.IsNotFound(err):
 				return err
 			case err != nil && WaitShouldStop(err):
@@ -412,6 +428,18 @@ func WaitObject(ctx context.Context, client ClusterClient, p WaitParams) error {
 				}
 			case ev.Type == ObjectDeleted:
 				got = true
+				if p.WhileAbsent {
+					last, lastErr = nil, nil
+				}
+				if p.OnDeleted != nil {
+					out, oerr := p.OnDeleted(ctx)
+					if oerr != nil {
+						return oerr
+					}
+					if out == WaitDone {
+						return nil
+					}
+				}
 				closeStream()
 				endCycle()
 			case ev.Type == ObjectFailed:

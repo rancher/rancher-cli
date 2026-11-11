@@ -62,13 +62,15 @@ type installCmd struct {
 	src     engine.FileSource
 	now     func() time.Time
 	newID   func() string
+	// interval is the spacing of the wait's reads.
+	interval time.Duration
 }
 
 // NewInstall builds `app install <release> --cluster <c> --namespace <ns>
 // --repo <r> --chart <chart>`: a chart install through the install action
 // of a ClusterRepo, previewed from server reads.
 func NewInstall(clients engine.ClusterClientFactory, roots engine.RootClientFactory, actions engine.ActionClientFactory, src engine.FileSource) runtime.Command {
-	return &installCmd{clients: clients, roots: roots, actions: actions, src: src, now: time.Now, newID: randomID}
+	return &installCmd{clients: clients, roots: roots, actions: actions, src: src, now: time.Now, newID: randomID, interval: defaultPollInterval}
 }
 
 // randomID is a new request id: 16 random bytes in hex.
@@ -89,7 +91,7 @@ func (*installCmd) Describe() runtime.Descriptor {
 			"the chart's default values and annotations, the App (it must not exist), the operations of the namespace " +
 			"(none may still be running for the release) and the namespace (it must exist). " +
 			"It carries no resourceVersion precondition: --apply reads the App, the operations and the index entry again " +
-			"before it sends the request, and nothing checks for a change after that. " +
+			"before it sends the request, and without --wait nothing checks for a change after that. " +
 			"--version names one exact version from the index; without it the version is the one `rancher charts` shows. " +
 			"Values come only from files (--values, repeatable, merged in order; - reads stdin once); " +
 			"the preview lists their paths, never the values, except the values rancher-cli adds and the registry host, which show the value sent (the host only for a chart that declares a registry path). " +
@@ -101,12 +103,14 @@ func (*installCmd) Describe() runtime.Descriptor {
 			"and a chart whose catalog.cattle.io/namespace, release-name, requires-gvr or permits-os annotation the target does not meet. " +
 			"--helm-wait (default true; --helm-wait=false sends false) makes Helm wait for the chart's resources; " +
 			"--helm-timeout (default 10m, at least 1s, at most 15m) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. " +
-			"The command returns once Rancher accepts the request, with the operation's name and the commands that follow it.",
+			"Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. " +
+			"With --wait (or --timeout, default 55m, at most 55m) it returns when Helm's run has finished: with the release's revision and status, " +
+			"or with Helm's error, the release's state and the command to run next.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
 			{Name: "release", Type: "string", Required: true, Desc: "Helm release name"},
 		},
-		Flags: []runtime.ArgSpec{
+		Flags: append([]runtime.ArgSpec{
 			engine.ClusterFlag(true, true),
 			withDesc(engine.NamespaceFlag(true), "`namespace` of the release; it must exist"),
 			{Name: flagRepo, Type: "string", Required: true, Desc: "ClusterRepo `name` to install from"},
@@ -120,7 +124,7 @@ func (*installCmd) Describe() runtime.Descriptor {
 			{Name: flagDescription, Type: "string", Desc: "release `description`"},
 			{Name: flagSystemDefaultRegistry, Type: "string", Desc: "registry `host` to send at values.global.cattle.systemDefaultRegistry and values.global.systemDefaultRegistry"},
 			{Name: flagNoSystemDefaultRegistry, Type: "bool", Desc: "send neither registry value, also when a values file sets one"},
-		},
+		}, waitFlags()...),
 		Examples: []string{
 			"rancher app install my-nginx --cluster prod --namespace web --repo bitnami --chart nginx --values values.yaml --dry-run",
 			"rancher app install my-nginx --cluster prod --namespace web --repo bitnami --chart nginx --values values.yaml --apply",
@@ -157,6 +161,7 @@ type installPlan struct {
 	values  Values
 	sent    composition
 	canRead bool
+	wait    waitRequest
 }
 
 func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
@@ -165,6 +170,10 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 		return safety.Effect{}, nil, err
 	}
 	timeout, err := helmTimeout(in.String(flagHelmTimeout), defaultHelmTimeout)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	wait, err := readWaitFlags(in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -181,6 +190,7 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 		repo:   in.String(flagRepo),
 		chart:  in.String(flagChart),
 		values: values,
+		wait:   wait,
 		target: actionTarget{typedCluster: in.String(engine.FlagCluster), namespace: in.String(engine.FlagNamespace), release: release, requestID: c.newID()},
 	}
 	var warnings []string
@@ -242,8 +252,13 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 		return safety.Effect{}, nil, err
 	}
 
-	idWarning, canRead := identityOf(ctx, p.client, serviceAccountIdentity(repoObj), p.target.namespace)
+	idWarning, canRead, reviewed := identityOf(ctx, p.client, serviceAccountIdentity(repoObj), p.target.namespace)
 	p.canRead = canRead
+	// The Effect's warnings reach the result too: the skip warning is added
+	// here only.
+	if p.wait.on && !canRead {
+		warnings = append(warnings, skipWarning(true, reviewed, p.target.namespace))
+	}
 
 	if p.sent, err = p.composeValues(ctx, info.Values, mgmt, reg); err != nil {
 		return safety.Effect{}, nil, err
@@ -711,7 +726,18 @@ func (c *installCmd) execute(ctx context.Context, p installPlan) (runtime.Result
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	res := actionResult("install", t, a, p.canRead)
+	if !p.wait.on {
+		res := actionResult("install", t, a, p.canRead)
+		res.Warnings = append(warnings, res.Warnings...)
+		return res, nil
+	}
+	w := &appWait{client: p.client, interval: c.interval, timeout: p.wait.timeout, t: t, op: a,
+		filter: p.values.filterFunc(), install: true, skip: !p.canRead}
+	end, err := w.run(ctx)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	res := waitedResult("install", t, a, end)
 	res.Warnings = append(warnings, res.Warnings...)
 	return res, nil
 }

@@ -110,6 +110,13 @@ var scriptOptions = map[string]func(*testrancher.Options){
 		appActions = &appActionLog{}
 		o.Fallthrough = appActionRoutes(appActions, chartIndexRoute(appSettingRoutes(o.Fallthrough)))
 	},
+	// The same routes, with the actions complete at once: the Operation is
+	// created done and an install creates its App as deployed (appoutcome
+	// changes that to failed), an uninstall deletes the App.
+	"app-wait": func(o *testrancher.Options) {
+		appWaitActions = &appActionLog{outcome: appDeployed}
+		o.Fallthrough = appActionRoutes(appWaitActions, chartIndexRoute(appSettingRoutes(o.Fallthrough)))
+	},
 }
 
 // chartIndexes are the Helm repository indexes the charts scenario's Rancher
@@ -138,6 +145,9 @@ var chartIndexes = map[string]string{
 	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"older","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}],
 	  "app-registry-chart":[
 	    {"name":"app-registry-chart","version":"1.0.0","appVersion":"10","description":"declares the registry values","digest":"a3","urls":["app-registry-chart-1.0.0.tgz"]}]}}`,
+	"app-wait-repo": `{"apiVersion":"v1","generated":"2026-01-02T03:04:05Z","entries":{
+	  "app-install-chart":[
+	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"the chart","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}]}}`,
 }
 
 // chartIndexRoute answers GET
@@ -172,6 +182,10 @@ func chartIndexRoute(next http.Handler) http.Handler {
 // Rancher accepted, for the scenario's check.
 var appActions *appActionLog
 
+// appWaitActions is the log of the app-wait scenario's Rancher, apart from
+// appActions so that the two scenarios run side by side.
+var appWaitActions *appActionLog
+
 // appActionEntry is one accepted action: the action name, the request path,
 // the fieldManager query value and the JSON body as sent.
 type appActionEntry struct {
@@ -181,9 +195,31 @@ type appActionEntry struct {
 	Body         json.RawMessage `json:"body"`
 }
 
+// The outcomes of an install the app-wait scenario's Rancher completes with:
+// the App is created at the Helm status of the same name.
+const (
+	appDeployed = "deployed"
+	appFailed   = "failed"
+)
+
 type appActionLog struct {
 	mu      sync.Mutex
 	entries []appActionEntry
+	// outcome is empty when an action only creates its Operation, as for a
+	// Rancher whose Helm run has not ended; otherwise appDeployed or appFailed.
+	outcome string
+}
+
+func (l *appActionLog) completion() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.outcome
+}
+
+func (l *appActionLog) setOutcome(outcome string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.outcome = outcome
 }
 
 func (l *appActionLog) add(e appActionEntry) {
@@ -211,6 +247,15 @@ func cmdAppActions(ts *testscript.TestScript, neg bool, args []string) {
 	if err := os.WriteFile(ts.MkAbs(args[0]), b, 0o644); err != nil {
 		ts.Fatalf("appactions: write %s: %v", args[0], err)
 	}
+}
+
+// cmdAppOutcome sets how the next installs of the app-wait scenario's Rancher
+// end: appoutcome deployed|failed.
+func cmdAppOutcome(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 || (args[0] != appDeployed && args[0] != appFailed) || appWaitActions == nil {
+		ts.Fatalf("usage: appoutcome deployed|failed (in the app-wait scenario)")
+	}
+	appWaitActions.setOutcome(args[0])
 }
 
 // appInfos are the answers of a ClusterRepo's info link by "<chart>/<version>":
@@ -322,6 +367,10 @@ func appServerError(w http.ResponseWriter, message string) {
 	appError(w, http.StatusInternalServerError, "ServerError", message)
 }
 
+// isAppRepo reports whether a ClusterRepo is one of the app scenarios'
+// repositories, whose charts appInfos describes.
+func isAppRepo(repo string) bool { return repo == "app-install-repo" || repo == "app-wait-repo" }
+
 // serveAppInfo answers the info link. An empty chartName is the bare
 // validation.NotFound, which answers 404 with an empty message (rancher
 // v2.15.2 pkg/api/steve/catalog/content.go:82-84; rancher/apiserver v0.9.10
@@ -338,10 +387,10 @@ func serveAppInfo(w http.ResponseWriter, q url.Values, repo string) {
 		return
 	}
 	body, ok := appInfos[chart+"/"+version]
-	if !ok || repo != "app-install-repo" {
+	if !ok || !isAppRepo(repo) {
 		message := "no chart name found"
 		for key := range appInfos {
-			if repo == "app-install-repo" && strings.HasPrefix(key, chart+"/") {
+			if isAppRepo(repo) && strings.HasPrefix(key, chart+"/") {
 				message = "no chart version found for " + chart + "-" + version
 			}
 		}
@@ -381,8 +430,10 @@ func decodeAppBody(raw []byte, into any) error {
 // pkg/catalogv2/helmop/operation.go:1013-1016, :819-826), in the release's
 // namespace, with the status the action sets (:815-817, :835-836, and
 // :727-729, :763, :768 for an install; :371-377 for an uninstall). The token
-// and the command are left out.
-func appOperation(ctx context.Context, action, release, ns string) (*unstructured.Unstructured, error) {
+// and the command are left out. With an outcome the Operation is done at its
+// generation: Reconciling is False, and Stalled is True with Helm's exit
+// message when an install failed.
+func appOperation(ctx context.Context, action, release, ns, outcome string) (*unstructured.Unstructured, error) {
 	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "operations"}
 	op := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "catalog.cattle.io/v1", "kind": "Operation",
@@ -392,11 +443,49 @@ func appOperation(ctx context.Context, action, release, ns string) (*unstructure
 	if err != nil {
 		return nil, err
 	}
-	created.Object["status"] = map[string]any{
+	status := map[string]any{
 		"action": action, "releaseName": release, "namespace": ns,
 		"podName": created.GetName(), "podNamespace": "cattle-system",
 	}
+	if outcome != "" {
+		stalled := map[string]any{"type": "Stalled", "status": "False"}
+		if action == "install" && outcome == appFailed {
+			stalled = map[string]any{"type": "Stalled", "status": "True", "message": " exit code: 1"}
+		}
+		conditions := []any{map[string]any{"type": "Reconciling", "status": "False"}, stalled}
+		status["observedGeneration"] = created.GetGeneration()
+		status["conditions"] = conditions
+	}
+	created.Object["status"] = status
 	return dynCli.Resource(gvr).Namespace(ns).UpdateStatus(ctx, created, metav1.UpdateOptions{})
+}
+
+// createAppForInstall creates the App a finished install leaves: the first
+// revision of the release, with the chart's metadata as the install sent it
+// (the request id is one of its annotations) and the Helm status and
+// description of the outcome.
+func createAppForInstall(ctx context.Context, ns, release, outcome, chart, version string, annotations map[string]string) error {
+	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "apps"}
+	annotationValues := map[string]any{}
+	for k, v := range annotations {
+		annotationValues[k] = v
+	}
+	info := map[string]any{"status": outcome}
+	if outcome == appFailed {
+		info["description"] = fmt.Sprintf("Release %q failed: a test failure", release)
+	}
+	app := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "catalog.cattle.io/v1", "kind": "App",
+		"metadata": map[string]any{"name": release, "namespace": ns},
+		"spec": map[string]any{
+			"name": release, "version": int64(1), "info": info,
+			"chart": map[string]any{"metadata": map[string]any{
+				"name": chart, "version": version, "annotations": annotationValues,
+			}},
+		},
+	}}
+	_, err := dynCli.Resource(gvr).Namespace(ns).Create(ctx, app, metav1.CreateOptions{})
+	return err
 }
 
 func serveAppInstall(w http.ResponseWriter, r *http.Request, log *appActionLog, repo string) {
@@ -415,7 +504,10 @@ func serveAppInstall(w http.ResponseWriter, r *http.Request, log *appActionLog, 
 	var body struct {
 		Namespace string `json:"namespace"`
 		Charts    []struct {
-			ReleaseName string `json:"releaseName"`
+			ReleaseName string            `json:"releaseName"`
+			ChartName   string            `json:"chartName"`
+			Version     string            `json:"version"`
+			Annotations map[string]string `json:"annotations"`
 		} `json:"charts"`
 	}
 	if err := decodeAppBody(raw, &body); err != nil {
@@ -426,13 +518,23 @@ func serveAppInstall(w http.ResponseWriter, r *http.Request, log *appActionLog, 
 	// pkg/catalogv2/helmop/operation.go:776-782); the release is the last
 	// chart's (:763).
 	ns, release := cmp.Or(body.Namespace, "default"), ""
+	var chartName, chartVersion string
+	var annotations map[string]string
 	if len(body.Charts) > 0 {
-		release = body.Charts[len(body.Charts)-1].ReleaseName
+		last := body.Charts[len(body.Charts)-1]
+		release, chartName, chartVersion, annotations = last.ReleaseName, last.ChartName, last.Version, last.Annotations
 	}
 	// A failure to create the Operation is the Kubernetes error, answered 500
 	// ServerError with its text (rancher v2.15.2
 	// pkg/catalogv2/helmop/operation.go:826-829).
-	op, err := appOperation(r.Context(), "install", release, ns)
+	outcome := log.completion()
+	if outcome != "" {
+		if err := createAppForInstall(r.Context(), ns, release, outcome, chartName, chartVersion, annotations); err != nil {
+			appServerError(w, err.Error())
+			return
+		}
+	}
+	op, err := appOperation(r.Context(), "install", release, ns, outcome)
 	if err != nil {
 		appServerError(w, err.Error())
 		return
@@ -467,7 +569,14 @@ func serveAppUninstall(w http.ResponseWriter, r *http.Request, log *appActionLog
 	}
 	specName, _, _ := unstructured.NestedString(app.Object, "spec", "name")
 	// A failure to create the Operation answers as for an install (operation.go:826-829).
-	op, err := appOperation(r.Context(), "uninstall", specName, ns)
+	outcome := log.completion()
+	if outcome != "" {
+		if err := dynCli.Resource(gvr).Namespace(ns).Delete(r.Context(), release, metav1.DeleteOptions{}); err != nil {
+			appServerError(w, err.Error())
+			return
+		}
+	}
+	op, err := appOperation(r.Context(), "uninstall", specName, ns, outcome)
 	if err != nil {
 		appServerError(w, err.Error())
 		return
@@ -1774,6 +1883,7 @@ func TestScenarios(t *testing.T) {
 			"setenvfrom":    cmdSetenvFrom,
 			"waitobj":       cmdWaitObj,
 			"appactions":    cmdAppActions,
+			"appoutcome":    cmdAppOutcome,
 		},
 	})
 }

@@ -233,10 +233,12 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		// the rest of app install and app uninstall
 		{name: "app install --values is left to the shell", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--values"}, hits: map[string]int{}},
 		{name: "app install --helm-timeout offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--helm-timeout"}, hits: map[string]int{}},
+		{name: "app install --timeout offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--timeout"}, hits: map[string]int{}},
 		{name: "app install --description offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--description"}, hits: map[string]int{}},
 		{name: "app install --system-default-registry offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--system-default-registry"}, hits: map[string]int{}},
 		{name: "app install release names a new release", words: []string{"app", "install"}, hits: map[string]int{}},
 		{name: "app uninstall --helm-timeout offers nothing", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--helm-timeout"}, hits: map[string]int{}},
+		{name: "app uninstall --timeout offers nothing", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--timeout"}, hits: map[string]int{}},
 		// create user --global-role
 		{name: "create user --global-role", words: []string{"create", "user", "alice", "--global-role"}, want: globalRoles, hits: map[string]int{globalRolesPath: 1}},
 		{name: "create user --global-role= equals form", words: []string{"create", "user", "alice"}, cur: "--global-role=", want: []string{"--global-role=admin:Administrator", "--global-role=user-base:User-Base"}, hits: map[string]int{globalRolesPath: 1}},

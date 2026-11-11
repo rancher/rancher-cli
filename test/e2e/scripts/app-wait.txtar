@@ -1,0 +1,54 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj core/v1/namespaces . namespace.yaml
+seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
+
+# install --wait --apply returns after Helm's run: the Operation is done and
+# the App is at the revision this request created, deployed.
+exec rancher app install wait-ok --cluster testcluster --namespace app-wait-ns --repo app-wait-repo --chart app-install-chart --version 1.1.0 --wait --apply -o json
+cp stdout ok.json
+jsonquery ok.json data.release wait-ok
+jsonquery ok.json data.status deployed
+jsonquery ok.json 'data.revision' 1
+jsonget ok.json data.requestID reqid.txt
+setenvfrom REQID reqid.txt
+exec rancher get app wait-ok --cluster testcluster --namespace app-wait-ns -o json
+jsonquery stdout data.spec.info.status deployed
+jsonquery stdout 'data.spec.chart.metadata.annotations.cli\.rancher\.io/request-id' $REQID
+
+# --timeout alone also starts the wait.
+exec rancher app install wait-timeout --cluster testcluster --namespace app-wait-ns --repo app-wait-repo --chart app-install-chart --version 1.1.0 --timeout 2m --apply -o json
+jsonquery stdout data.status deployed
+jsonquery stdout 'data.revision' 1
+
+# A failed Helm run ends with a GENERIC error that holds the App's
+# description and names the command that previews the cleanup.
+appoutcome failed
+! exec rancher app install wait-fail --cluster testcluster --namespace app-wait-ns --repo app-wait-repo --chart app-install-chart --version 1.1.0 --wait --apply -o json
+jsonquery stderr data.error.code GENERIC
+jsonquery stderr '[data.error].#(message%"*Release \"wait-fail\" failed: a test failure*").code' GENERIC
+jsonquery stderr '[data.error].#(message%"*app uninstall ''wait-fail'' --cluster ''testcluster'' --namespace ''app-wait-ns'' --dry-run*").code' GENERIC
+exec rancher get app wait-fail --cluster testcluster --namespace app-wait-ns -o json
+jsonquery stdout data.spec.info.status failed
+
+# uninstall --wait --apply --yes returns when the App is gone.
+exec rancher app uninstall wait-ok --cluster testcluster --namespace app-wait-ns --wait --apply --yes -o json
+jsonquery stdout data.release wait-ok
+jsonquery stdout data.status uninstalled
+! exec rancher get app wait-ok --cluster testcluster --namespace app-wait-ns -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+-- namespace.yaml --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app-wait-ns
+-- repo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: app-wait-repo
+spec:
+  url: https://charts.example.test/app-wait
+  enabled: true

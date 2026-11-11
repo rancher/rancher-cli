@@ -134,6 +134,67 @@ type appFake struct {
 	// onRead runs before each cluster read, so a test can change the state
 	// between Plan and Execute.
 	onRead func(key string)
+	// after holds, by read key, the answers of the Gets after the first
+	// action request, in order; the last one repeats.
+	after map[string][]scripted
+}
+
+// scripted is one answer of a Get after the action request: an object with
+// fields (its top-level fields other than metadata name and namespace), an
+// error, or, with neither, NOT_FOUND.
+type scripted struct {
+	fields map[string]any
+	err    error
+}
+
+func found(fields map[string]any) scripted { return scripted{fields: fields} }
+
+var absent = scripted{}
+
+func failing(err error) scripted { return scripted{err: err} }
+
+// script sets the answers of the Gets of key after the action request.
+func (f *appFake) script(key string, answers ...scripted) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.after == nil {
+		f.after = map[string][]scripted{}
+	}
+	f.after[key] = answers
+}
+
+// scriptedGet answers a Get of key from the script once an action request
+// was sent; ok is false when the script does not apply. The caller holds
+// f.mu.
+func (f *appFake) scriptedGet(key, ns, name string) (obj *unstructured.Unstructured, ok bool, err error) {
+	seq := f.after[key]
+	if len(f.posts) == 0 || len(seq) == 0 {
+		return nil, false, nil
+	}
+	a := seq[0]
+	if len(seq) > 1 {
+		f.after[key] = seq[1:]
+	}
+	switch {
+	case a.err != nil:
+		return nil, true, a.err
+	case a.fields == nil:
+		return nil, true, clierr.New(clierr.CodeNotFound, name+" not found")
+	}
+	obj = &unstructured.Unstructured{Object: map[string]any{}}
+	for k, v := range a.fields {
+		obj.Object[k] = deepCopyValue(v)
+	}
+	obj.SetName(name)
+	obj.SetNamespace(ns)
+	if obj.GetResourceVersion() == "" {
+		obj.SetResourceVersion("1")
+	}
+	return obj, true, nil
+}
+
+func deepCopyValue(v any) any {
+	return (&unstructured.Unstructured{Object: map[string]any{"v": v}}).DeepCopy().Object["v"]
 }
 
 // newAppFake is a cluster with the ClusterRepo, the chart's index and info,
@@ -261,6 +322,9 @@ func (f *appFake) Get(_ context.Context, gvr schema.GroupVersionResource, ns, na
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.reads = append(f.reads, key)
+	if obj, ok, err := f.scriptedGet(key, ns, name); ok {
+		return obj, err
+	}
 	if err := f.errs[key]; err != nil {
 		return nil, err
 	}
@@ -415,11 +479,11 @@ func newTestInstall(f *appFake, src engine.FileSource) *installCmd {
 		src = files{}
 	}
 	return &installCmd{clients: f, roots: f, actions: f, src: src,
-		now: func() time.Time { return testNow }, newID: func() string { return testRequestID }}
+		now: func() time.Time { return testNow }, newID: func() string { return testRequestID }, interval: time.Second}
 }
 
 func newTestUninstall(f *appFake) *uninstallCmd {
-	return &uninstallCmd{clients: f, actions: f, now: func() time.Time { return testNow }}
+	return &uninstallCmd{clients: f, actions: f, now: func() time.Time { return testNow }, interval: time.Second}
 }
 
 var testNow = time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)

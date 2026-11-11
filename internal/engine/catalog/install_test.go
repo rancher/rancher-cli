@@ -127,6 +127,8 @@ var installFlagFields = map[string]bodyField{
 	flagDescription:              {"ChartInstall", "description"},
 	flagSystemDefaultRegistry:    {},
 	flagNoSystemDefaultRegistry:  {},
+	flagWait:                     {},
+	flagTimeout:                  {},
 }
 
 // uninstallFlagFields is installFlagFields for app uninstall.
@@ -137,6 +139,8 @@ var uninstallFlagFields = map[string]bodyField{
 	flagKeepHistory:      {"ChartUninstallAction", "keepHistory"},
 	flagNoHooks:          {"ChartUninstallAction", "noHooks"},
 	flagHelmTimeout:      {"ChartUninstallAction", "timeout"},
+	flagWait:             {},
+	flagTimeout:          {},
 }
 
 // TestEveryAppFlagNamesABodyFieldEveryEditionHas asserts the flag tables

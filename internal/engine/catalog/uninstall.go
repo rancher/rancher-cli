@@ -19,13 +19,15 @@ type uninstallCmd struct {
 	clients engine.ClusterClientFactory
 	actions engine.ActionClientFactory
 	now     func() time.Time
+	// interval is the spacing of the wait's reads.
+	interval time.Duration
 }
 
 // NewUninstall builds `app uninstall <release> --cluster <c> --namespace
 // <ns>`: a Helm uninstall through the uninstall action of the App,
 // previewed from server reads.
 func NewUninstall(clients engine.ClusterClientFactory, actions engine.ActionClientFactory) runtime.Command {
-	return &uninstallCmd{clients: clients, actions: actions, now: time.Now}
+	return &uninstallCmd{clients: clients, actions: actions, now: time.Now, interval: defaultPollInterval}
 }
 
 func (*uninstallCmd) Describe() runtime.Descriptor {
@@ -37,21 +39,23 @@ func (*uninstallCmd) Describe() runtime.Descriptor {
 			"The CLI never sends the uninstall action's dryRun option; the preview comes from server reads (previewSource serverReads): " +
 			"the App (it must exist) and the operations of the namespace (none may still be running for the release). " +
 			"It carries no resourceVersion precondition: --apply reads the App and the operations again before it sends the request " +
-			"and refuses when the App changed, and nothing checks for a change after that. " +
+			"and refuses when the App changed, and without --wait nothing checks for a change after that. " +
 			"--keep-history keeps the release's history (status uninstalled); an App already uninstalled with its history kept is removed by running without it. " +
 			"--helm-timeout (at least 1s, at most 15m; sent only when given) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. " +
-			"The command returns once Rancher accepts the request, with the operation's name and the commands that follow it.",
+			"Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. " +
+			"With --wait (or --timeout, default 55m, at most 55m) it returns when Helm's run has finished: when the App is gone, or with --keep-history reads uninstalled, " +
+			"or with Helm's exit code, the release's state and the command to run next.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
 			{Name: "release", Type: "string", Required: true, Desc: "Helm release name"},
 		},
-		Flags: []runtime.ArgSpec{
+		Flags: append([]runtime.ArgSpec{
 			engine.ClusterFlag(true, true),
 			withDesc(engine.NamespaceFlag(true), "`namespace` of the release"),
 			{Name: flagKeepHistory, Type: "bool", Desc: "keep the release's history"},
 			{Name: flagNoHooks, Type: "bool", Desc: "do not run the chart's hooks"},
 			{Name: flagHelmTimeout, Type: "string", Desc: "Helm `timeout` for each step, 1s to 15m"},
-		},
+		}, waitFlags()...),
 		Examples: []string{
 			"rancher app uninstall my-nginx --cluster prod --namespace web --dry-run",
 			"rancher app uninstall my-nginx --cluster prod --namespace web --apply --yes",
@@ -69,6 +73,10 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 		return safety.Effect{}, nil, err
 	}
 	keep := in.Bool(flagKeepHistory)
+	wait, err := readWaitFlags(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
 	if err != nil {
 		return safety.Effect{}, nil, err
@@ -114,7 +122,12 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 
 	sa, w := uninstallIdentity(ctx, client, app)
 	warnings = append(warnings, w...)
-	idWarning, canRead := identityOf(ctx, client, sa, t.namespace)
+	idWarning, canRead, reviewed := identityOf(ctx, client, sa, t.namespace)
+	// The Effect's warnings reach the result too: the skip warning is added
+	// here only.
+	if wait.on && !canRead {
+		warnings = append(warnings, skipWarning(false, reviewed, t.namespace))
+	}
 
 	ann, _, _ := unstructured.NestedStringMap(app.Object, "spec", "chart", "metadata", "annotations")
 	if crd := autoInstallChartNames(ann); len(crd) > 0 {
@@ -176,7 +189,16 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		return actionResult("uninstall", t, a, canRead), nil
+		if !wait.on {
+			return actionResult("uninstall", t, a, canRead), nil
+		}
+		w := &appWait{client: client, interval: c.interval, timeout: wait.timeout, t: t, op: a,
+			filter: Values{}.filterFunc(), keepHistory: keep, planStatus: status, skip: !canRead}
+		end, err := w.run(ctx)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+		return waitedResult("uninstall", t, a, end), nil
 	}
 	return eff, exec, nil
 }
