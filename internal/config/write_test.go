@@ -123,3 +123,9 @@ func TestAtomicWriteFile(t *testing.T) {
 func TestHardenHookIsTheSharedACLCall(t *testing.T) {
 	assert.Equal(t, reflect.ValueOf(fsacl.Harden).Pointer(), reflect.ValueOf(hardenACLHook).Pointer())
 }
+
+// TestHardenDirHookIsTheSharedACLCall asserts the hook EnsureDir calls on a
+// new config directory is the shared inheritable owner-only access list call.
+func TestHardenDirHookIsTheSharedACLCall(t *testing.T) {
+	assert.Equal(t, reflect.ValueOf(fsacl.HardenInheritable).Pointer(), reflect.ValueOf(hardenDirHook).Pointer())
+}

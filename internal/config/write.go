@@ -33,6 +33,11 @@ func WriteRawConfig(path string, data []byte) error {
 // real Windows host.
 var hardenACLHook = fsacl.Harden
 
+// hardenDirHook is fsacl.HardenInheritable behind a package var, so a test
+// can record the call EnsureDir makes on a new directory, or fail it, without
+// a real Windows host.
+var hardenDirHook = fsacl.HardenInheritable
+
 // HardenTempFileACL exposes fsacl.Harden to other internal packages whose own
 // temp files hold config/credential content but which don't go through
 // atomicWriteFile - e.g. the config-edit scratch file (newTempCopy), which
@@ -68,7 +73,7 @@ func afterWrite(what string) {
 // atomicWriteFile writes data to path with perm atomically, refusing symlinks and enforcing perms.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := EnsureDir(dir); err != nil {
 		return err
 	}
 

@@ -108,7 +108,7 @@ func readHelperRecords(dir string) (*helperRecords, error) {
 // dirty. The lock spanning the helper calls is what makes a concurrent
 // login's re-store never race a logout's erase-then-unrecord.
 func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecords) error) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := EnsureDir(dir); err != nil {
 		return err
 	}
 	// ctx is the caller's context where one exists (the deletes, so Ctrl-C

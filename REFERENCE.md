@@ -43,6 +43,12 @@ any distro including musl/distroless).
 | Linux | `~/.config/rancher` | Secret Service (D-Bus; absent when headless → file) | `0600` file |
 | Windows | `%APPDATA%\rancher` | Credential Manager | owner-only-ACL file |
 
+The CLI creates a missing config directory readable by your account only:
+mode `0700` on Linux and macOS, and on Windows an access list that grants
+only your account, which files and folders created in it inherit. A
+directory that already exists keeps its permissions. Data files are
+owner-only on every system.
+
 Precedence above the default everywhere: `--config` flag (`-c`) >
 `RANCHER_CLI_CONFIG_DIR` > `$XDG_CONFIG_HOME/rancher`.
 

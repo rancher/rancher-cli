@@ -282,7 +282,7 @@ func openIdentityRoot(dir string) (*os.Root, error) {
 // not there yet. Only a credential write reaches it: a read never creates
 // the directory, so a file-store directory never grows one.
 func createIdentityRoot(dir string) (*os.Root, error) {
-	if err := os.MkdirAll(dir, identityDirPerm); err != nil {
+	if err := EnsureDir(dir); err != nil {
 		return nil, err
 	}
 	switch err := os.Mkdir(identityDirPath(dir), identityDirPerm); {

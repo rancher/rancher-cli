@@ -41,7 +41,7 @@ func WithPluginLoginLock(ctx context.Context, dir, canonicalURL string, fn func(
 	if os.Getenv(EnvConfigNoLock) != "" {
 		return fn()
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := EnsureDir(dir); err != nil {
 		return err
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, lockWaitTimeout)

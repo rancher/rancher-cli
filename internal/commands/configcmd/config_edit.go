@@ -225,7 +225,7 @@ func execEditor(bin string, args []string, tempPath string) error {
 // under the config lock.
 func newTempCopy(realPath string) (tmpPath string, baseline []byte, existed bool, err error) {
 	dir := filepath.Dir(realPath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := config.EnsureDir(dir); err != nil {
 		return "", nil, false, err
 	}
 

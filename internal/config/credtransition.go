@@ -318,7 +318,7 @@ func writeTransition(dir string, m transitionManifest) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, identityDirPerm); err != nil {
+	if err := EnsureDir(dir); err != nil {
 		return err
 	}
 	root, err := os.OpenRoot(dir)

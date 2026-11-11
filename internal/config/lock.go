@@ -233,7 +233,7 @@ func tryDirLock(dir, name string, sem chan struct{}, held func(), fn func() erro
 // lockFile is the flock file of the lock name in dir, with dir created
 // first: both ways of taking a lock open the same file.
 func lockFile(dir, name string) (string, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := EnsureDir(dir); err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, name), nil

@@ -363,7 +363,7 @@ func SetCacheLockWaitForTest(d time.Duration) (restore func()) {
 // the prune branches of GetCachedCred and ListCachedCreds, and the local
 // delete's read hold (HoldCachedCreds).
 func (f *fileStore) withCacheLock(fn func() error) error {
-	if err := os.MkdirAll(filepath.Dir(f.cacheLockPath), 0o700); err != nil {
+	if err := EnsureDir(filepath.Dir(f.cacheLockPath)); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cacheLockWait)
