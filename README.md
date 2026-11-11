@@ -283,8 +283,6 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
   either; a second signal forces a command that did not stop on the first
   to exit with 128 plus that signal's own number (`130` Ctrl-C, `143`
   SIGTERM).
-  Rancher's proxy paths reject an invalid or insufficient token as a 403
-  (`RBAC`, exit `6`), not a 401 (`AUTH`, exit `3`).
 - **Discovery:** `rancher schema -o json` is the overview -
   commands, kinds, and exit codes as a compact table of contents;
   `rancher schema --all -o json` is the complete manifest, and the single

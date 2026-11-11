@@ -404,7 +404,7 @@ var codeDescs = map[string]string{
 	CodeCredentialTransitionIncomplete: "a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet; a second store change is refused until it is, and other commands proceed",
 	CodeCredentialStoreUnavailable:     "the credential store this directory uses cannot be read or written right now: a locked keychain, a keychain prompt that was cancelled, a keychain that cannot be reached, or a credential helper that is missing, timed out or failed; the message names the store, the entry, the cause as far as it is known, and the remedy",
 	CodeNotFound:                       "no such resource, server entry, or name: the server answered 404 for an object or for an API through a downstream cluster, the config directory has no such entry, or the name matched nothing in already-fetched data; when the command holds the list of names it could have meant, the error lists them as candidates",
-	CodeRBAC:                           "the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token",
+	CodeRBAC:                           "the server denied the request for lack of permission (HTTP 403)",
 	CodeValidation:                     "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422)",
 	CodeGeneric:                        "an error with no more specific code, including a server or transport failure",
 	CodePrimeRequired:                  "the command requires Rancher Prime and the connected server does not have it",

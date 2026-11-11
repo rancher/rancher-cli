@@ -12188,7 +12188,7 @@
     },
     {
       "code": "RBAC",
-      "desc": "the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token",
+      "desc": "the server denied the request for lack of permission (HTTP 403)",
       "exit": 6
     },
     {
