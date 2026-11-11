@@ -673,8 +673,10 @@ run under config or environment read-only mode too.
   bundles are normal - read `errors` and `warnings` before treating the
   archive as complete: a log the server refused is an error item and a warning
   naming the pod and container, and `errors: 0` means every requested log is
-  inside. A run that collects no item from the server fails with the code of
-  those requests (the code they share, `GENERIC` when they differ) and
+  inside. A setting read that fails with anything but not found is an errored
+  item too; `errors: 0` also means every setting read got an answer (not found
+  counts as one). A run that collects no item from the server fails with the
+  code of those requests (the code they share, `GENERIC` when they differ) and
   writes the archive anyway: `data.error.details.outputFile` is its path and
   its `manifest.json` lists each failure. A run that collects at least one
   item from the server exits 0 whatever else failed; a `--clusters` value

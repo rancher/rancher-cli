@@ -124,6 +124,12 @@ func (f *fakeClient) withDeniedKind(gvr schema.GroupVersionResource, err error) 
 	return f
 }
 
+// withGetErr makes the Get of one named object fail with err.
+func (f *fakeClient) withGetErr(gvr schema.GroupVersionResource, ns, name string, err error) *fakeClient {
+	f.getErrs[objKey{gvr, ns, name}] = err
+	return f
+}
+
 func (f *fakeClient) withLog(container, out string) *fakeClient {
 	f.logs[container] = out
 	return f
@@ -171,7 +177,7 @@ func (f *fakeClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns,
 	if obj, ok := f.objects[k]; ok {
 		return obj, nil
 	}
-	return nil, fmt.Errorf("fakeClient: no object for %+v", k)
+	return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("fakeClient: no object for %+v", k))
 }
 
 func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns string, selector string) (*unstructured.UnstructuredList, error) {

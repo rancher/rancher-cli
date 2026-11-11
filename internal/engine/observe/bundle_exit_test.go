@@ -250,9 +250,6 @@ type exitRow struct {
 	// collected names the items (name, cluster) whose status is not an error
 	// when the run succeeds, and failed those whose status is.
 	collected, failed [][2]string
-	// schemaFails is true when the row makes the schema item fail, which the
-	// rule does not count.
-	schemaFails bool
 }
 
 func exitRows() []exitRow {
@@ -297,8 +294,10 @@ func exitRows() []exitRow {
 	mixed[readNodes] = statusFailure(403)
 	row(exitRow{name: "every item failed with two codes", factory: exitFactory(mixed), clusters: local, targets: webhook, wantCode: clierr.CodeGeneric})
 	row(exitRow{name: "every item failed and the schema failed", factory: exitFactory(failAll(statusFailure(530))), clusters: local, targets: webhook,
-		wantCode: clierr.CodeGeneric, schemaFails: true,
-		opts: []func(*supportBundleCmd){func(c *supportBundleCmd) { c.schema = func() any { return make(chan int) } }}})
+		wantCode: clierr.CodeGeneric,
+		opts:     []func(*supportBundleCmd){failingSchema}})
+	row(exitRow{name: "every item failed with 403 and the schema failed", factory: exitFactory(failAll(statusFailure(403))), clusters: local, targets: webhook,
+		wantCode: clierr.CodeRBAC, opts: []func(*supportBundleCmd){failingSchema}})
 	row(exitRow{name: "every item failed and every target was skipped", factory: exitFactory(failAll(statusFailure(530))), clusters: local, targets: "agent", wantCode: clierr.CodeGeneric})
 
 	row(exitRow{name: "a target skipped on a cluster without an authorized cluster endpoint is an answer",
@@ -322,6 +321,9 @@ func exitRows() []exitRow {
 		failed:    [][2]string{{"cluster.json", "c-abc"}, {"nodes.json", "c-abc"}, {"agent", "c-abc"}}})
 	return rows
 }
+
+// failingSchema makes the schema fail to marshal.
+func failingSchema(c *supportBundleCmd) { c.schema = func() any { return make(chan int) } }
 
 // nonACEAfterTheFirstRead gives the server a downstream cluster whose
 // management Cluster fails the first read of it and then answers, without an
@@ -404,9 +406,8 @@ func decodeError(t *testing.T, err error) (*clierr.Error, errorEnvelope) {
 // each kind of item failing alone and succeeding alone, every item failing
 // with each failure a server gives, and the shapes between. A kind collected
 // alone that is not counted (the settings file) fails the run. The rule has a
-// bypass the table does not see: a collector that drops its error and reports
-// the item collected counts as a success, as the settings read does, and an
-// item whose kind no run of the completeness test makes is not seen.
+// bypass the table does not see: an item whose kind no run of the
+// completeness test makes is not seen.
 // Mutations: return the result when the rule fires; count a skipped target as
 // collected; leave events out of the count; count the settings file; count a
 // target with a log in the archive as failed.
@@ -438,9 +439,16 @@ func TestSupportBundleFailsWhenNoServerItemWasCollected(t *testing.T) {
 			assert.Equal(t, row.wantCode, ce.Code)
 			assert.NotZero(t, clierr.ExitCode(ce.Code), "the code exits non-zero")
 			assert.Equal(t, path, env.Details.OutputFile)
+			// An item of a kind the rule does not count (the settings and
+			// schema files) can carry an error status; it is in the manifest's
+			// error count but is neither attempted nor failed.
 			counted := errored
-			if row.schemaFails {
-				counted--
+			for _, it := range m.Items {
+				kind, ok := exitKindOf(it.Name)
+				require.True(t, ok, "the item %q has no kind", it.Name)
+				if isErrorStatus(it.Status) && !exitKinds[kind].counted {
+					counted--
+				}
 			}
 			assert.Equal(t, counted, env.Details.Attempted, "every attempted item failed")
 			assert.Equal(t, counted, env.Details.Failed)
@@ -567,7 +575,8 @@ func TestSupportBundleCountsOnlyItemsReadFromTheServer(t *testing.T) {
 		assert.Equal(t, 5, env.Details.Failed)
 		assert.Contains(t, ce.Message, "all 5 items it attempted failed")
 		errored, byItem := errorStatuses(manifestFrom(t, path))
-		assert.Equal(t, 6, errored)
+		assert.Equal(t, 7, errored, "the 5 failed items, the unsafe cluster id and the settings item, which reads 403 and is not attempted")
+		assert.True(t, byItem[[2]string{"rancher/settings.json", ""}])
 		assert.True(t, byItem[[2]string{"cluster", "a/b"}])
 	})
 
@@ -607,7 +616,9 @@ func TestSupportBundleCountsOnlyItemsReadFromTheServer(t *testing.T) {
 // context ended closes the archive, keeps it with its manifest, and returns an
 // error that names the path in its message and in its details and does not
 // wrap context.Canceled, whether the server still answered or the requests
-// failed with the cancellation. Mutation: drop the context check.
+// failed with the cancellation. When the requests fail, the manifest reads the
+// settings item as an error and the archive has no settings file. Mutation:
+// drop the context check.
 func TestSupportBundleInterruptedRunKeepsAndNamesTheArchive(t *testing.T) {
 	t.Parallel()
 	for name, r := range map[string]reads{
@@ -627,7 +638,16 @@ func TestSupportBundleInterruptedRunKeepsAndNamesTheArchive(t *testing.T) {
 			assert.Contains(t, ce.Message, "is kept at "+path)
 			assert.Equal(t, path, env.Details.OutputFile)
 			assert.Nil(t, res.Data)
-			assert.Contains(t, readArchive(t, path), "manifest.json")
+			archive := readArchive(t, path)
+			assert.Contains(t, archive, "manifest.json")
+			settings := findItem(t, manifestFrom(t, path), "rancher/settings.json", "")
+			if r == nil {
+				assert.Equal(t, statusCollected, settings.Status)
+				return
+			}
+			assert.True(t, strings.HasPrefix(settings.Status, "error: "+settingsNotRead(settingsAllowlist)+"; first failure: "), settings.Status)
+			assert.True(t, strings.HasSuffix(settings.Status, clierr.ExpandRemedies(r[readSettings].Error(), "")), settings.Status)
+			assert.NotContains(t, archive, "rancher/settings.json")
 		})
 	}
 }

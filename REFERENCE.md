@@ -1517,6 +1517,14 @@ therefore still exits 0 while the local cluster answers. The settings, schema
 and version files are not counted. Neither is an item the CLI itself could
 not write: one left out because a cluster id or namespace in its name is not
 a plain file name, or one the server answered whose archive write failed.
+A failed settings read still counts in `errors`, though the settings file is
+not counted by that rule. A setting the server refuses or fails to answer
+(anything but not found) makes the `rancher/settings.json` item an `error:`
+status that names the settings not read and the first failure; a setting the
+Rancher version does not have (not found) stays silent. The file holds the
+settings that were read and is left out when every read failed. `errors: 0`
+therefore also means every settings read got an answer (not found counts as
+one).
 A run ended by an interrupt closes the archive, keeps it and ends with
 `INTERRUPTED` (exit code 130), the message naming its path. The default
 name is `rancher-support-<unix seconds>.tar.gz`: a rerun in the same second

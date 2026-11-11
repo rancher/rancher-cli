@@ -57,8 +57,11 @@ type manifestItem struct {
 // it counts as collected. A new item counts unless it is marked outside.
 type itemOutcome struct {
 	// outside marks an item that is not a request to the server, or was never
-	// attempted: the schema and version files, the settings file (its reads
-	// drop their errors) and a target skipped before any request.
+	// attempted: the schema and version files and a target skipped before
+	// any request. The settings file is outside too: it is an optional
+	// diagnostic. Its failure is reported in the manifest and counts in
+	// errors, and does not count toward the rule that fails a run which
+	// collected no item.
 	outside bool
 	// failure is why an attempted item was not collected; nil when it was.
 	failure error
@@ -199,9 +202,11 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		items = append(items, serverItem("cluster-discovery", "", discoveryErr))
 	}
 
-	settingsValues, settingsData := collectSettings(ctx, local)
-	_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/settings.json"), Data: settingsData})
-	items = append(items, outsideItem("rancher/settings.json", nil))
+	settingsValues, settingsData, settingsErr := collectSettings(ctx, local)
+	if settingsData != nil {
+		_ = bw.Add(ArchiveEntry{Path: staticEntryPath("rancher/settings.json"), Data: settingsData})
+	}
+	items = append(items, outsideItem("rancher/settings.json", settingsErr))
 
 	featuresData, ferr := collectFeatures(ctx, local)
 	items = append(items, serverItem("rancher/features.json", "", ferr))
@@ -425,15 +430,26 @@ func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFact
 	return out, nil, nil
 }
 
-// collectSettings fetches every allowlisted setting; a setting absent on
-// this Rancher version is silently skipped (not every version ships every
-// allowlisted setting) - never a full dump, and a missing setting is not a
-// collector failure.
-func collectSettings(ctx context.Context, local engine.ClusterClient) (map[string]string, []byte) {
-	values := map[string]string{}
+// collectSettings fetches every allowlisted setting - never a full dump. A
+// setting the server answers not found is skipped silently (not every Rancher
+// version ships every allowlisted setting). Any other failure is returned in
+// the error, which names the settings not read and wraps the first failure;
+// the reads continue after it, so the settings that were read stay in values.
+// data is the settings file; it is nil when every read failed, because an
+// empty file would read as a server that reports none of these settings.
+func collectSettings(ctx context.Context, local engine.ClusterClient) (values map[string]string, data []byte, err error) {
+	values = map[string]string{}
+	var failed []string
+	var first error
 	for _, name := range settingsAllowlist {
-		obj, err := local.Get(ctx, settingKind.GVR, "", name)
-		if err != nil {
+		obj, getErr := local.Get(ctx, settingKind.GVR, "", name)
+		if getErr != nil {
+			if !clierr.IsNotFound(getErr) {
+				failed = append(failed, name)
+				if first == nil {
+					first = getErr
+				}
+			}
 			continue
 		}
 		// Key presence means "the server reports this setting": a Setting
@@ -443,8 +459,14 @@ func collectSettings(ctx context.Context, local engine.ClusterClient) (map[strin
 			values[name] = v
 		}
 	}
-	data, _ := json.Marshal(values)
-	return values, data
+	if first != nil {
+		err = fmt.Errorf("%d of %d settings not read (%s); first failure: %w",
+			len(failed), len(settingsAllowlist), strings.Join(failed, ", "), first)
+	}
+	if len(failed) < len(settingsAllowlist) {
+		data, _ = json.Marshal(values)
+	}
+	return values, data, err
 }
 
 // featureRow's bool fields carry NO `omitempty`: "off" (false) and "not

@@ -10,6 +10,7 @@ exec rancher create resource -f webhook-pod.yaml --cluster local --apply
 
 exec rancher support-bundle --targets webhook --clusters local --output-file bundle.tar.gz -o json
 jsonquery stdout data.path bundle.tar.gz
+jsonquery stdout data.errors 0
 
 exec tar -tzf bundle.tar.gz
 stdout 'manifest\.json'
