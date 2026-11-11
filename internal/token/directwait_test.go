@@ -23,6 +23,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -700,6 +701,6 @@ func TestDirectWaitCancelledReportsTheFate(t *testing.T) {
 		require.True(t, ok)
 		details, ok := ce.Details.(clierr.TextDetails)
 		require.True(t, ok)
-		assert.Equal(t, []string{tc.detail}, details.TextDetails(), tc.name)
+		assert.Equal(t, []string{tc.detail}, remedytest.DetailTexts(details.TextDetails()), tc.name)
 	}
 }

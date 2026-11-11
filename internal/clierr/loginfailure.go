@@ -286,53 +286,51 @@ type ConfigRecovery struct {
 
 // caShape names the prior CA's shape for the text projection without
 // carrying its bytes.
-func (p *PriorEntry) caShape() string {
+func (p *PriorEntry) caShape() []DetailPart {
 	switch {
 	case p.CA == "":
-		return "system roots"
+		return []DetailPart{LabelPart("system roots")}
 	case strings.Contains(p.CA, "-----BEG"):
-		return fmt.Sprintf("inline PEM (%d bytes)", len(p.CA))
+		return []DetailPart{LabelPart(fmt.Sprintf("inline PEM (%d bytes)", len(p.CA)))}
 	default:
-		return "path " + p.CA
+		return []DetailPart{ValuePart("path ", p.CA)}
 	}
 }
 
-// text renders the prior entry on one line: URL, CA shape and fingerprint,
+// text is the prior entry on one line: URL, CA shape and fingerprint,
 // provenance, the token it named with owner and expiry, and how many
 // superseded records it carried.
-func (p *PriorEntry) text() string {
-	parts := []string{p.URL, "CA " + p.caShape()}
+func (p *PriorEntry) text() []DetailPart {
+	parts := []DetailPart{ValuePart("", p.URL), LabelPart(", CA ")}
+	parts = append(parts, p.caShape()...)
 	if p.CAFingerprint != "" {
-		parts[1] += " fingerprint " + p.CAFingerprint
+		parts = append(parts, ValuePart(" fingerprint ", p.CAFingerprint))
 	}
 	if p.CAFromEnvironment {
-		parts[1] += ", last login connected with RANCHER_CLI_CACERT"
+		parts = append(parts, LabelPart(", last login connected with RANCHER_CLI_CACERT"))
 	}
 	if p.Provenance != "" {
-		parts = append(parts, "provenance "+string(p.Provenance))
+		parts = append(parts, ValuePart(", provenance ", string(p.Provenance)))
 	}
 	if p.TokenRef != nil {
-		tok := "token " + p.TokenRef.String()
-		var facts []string
-		if p.TokenUserID != "" {
-			facts = append(facts, "user "+IDText(p.TokenUserID))
+		parts = append(parts, TokenRefParts(", token ", *p.TokenRef)...)
+		switch {
+		case p.TokenUserID != "" && p.CredentialExpiresAt != "":
+			parts = append(parts, ValuePart(" (user ", p.TokenUserID), ValuePart(", expires ", p.CredentialExpiresAt), LabelPart(")"))
+		case p.TokenUserID != "":
+			parts = append(parts, ValuePart(" (user ", p.TokenUserID), LabelPart(")"))
+		case p.CredentialExpiresAt != "":
+			parts = append(parts, ValuePart(" (expires ", p.CredentialExpiresAt), LabelPart(")"))
 		}
-		if p.CredentialExpiresAt != "" {
-			facts = append(facts, "expires "+p.CredentialExpiresAt)
-		}
-		if len(facts) > 0 {
-			tok += " (" + strings.Join(facts, ", ") + ")"
-		}
-		parts = append(parts, tok)
 	}
 	switch n := len(p.SupersededTokens); n {
 	case 0:
 	case 1:
-		parts = append(parts, "1 superseded token")
+		parts = append(parts, LabelPart(", 1 superseded token"))
 	default:
-		parts = append(parts, fmt.Sprintf("%d superseded tokens", n))
+		parts = append(parts, LabelPart(fmt.Sprintf(", %d superseded tokens", n)))
 	}
-	return strings.Join(parts, ", ")
+	return parts
 }
 
 // LoginFailureDetails is the details payload of every auth login failure
@@ -374,80 +372,87 @@ func DataLossRiskText(server string) string {
 }
 
 // TextDetails projects the payload onto indented lines, primary first.
-func (d LoginFailureDetails) TextDetails() []string {
-	lines := []string{fmt.Sprintf("failed: %s (%s)", d.Primary.Message, d.Primary.Code)}
+func (d LoginFailureDetails) TextDetails() []DetailLine {
+	lines := []DetailLine{Line(ValuePart("failed: ", d.Primary.Message), ValuePart(" (", d.Primary.Code), LabelPart(")"))}
 	// The primary's own details keep their default-format projection: a
 	// TLS classification's certificate facts must not vanish because the
 	// login schema now wraps them.
 	if td, ok := d.Primary.Details.(TextDetails); ok {
 		lines = append(lines, td.TextDetails()...)
 	}
-	lines = append(lines, "stage: "+string(d.Stage))
+	lines = append(lines, Line(ValuePart("stage: ", string(d.Stage))))
 	if d.ConfigState != "" {
-		lines = append(lines, "config: "+string(d.ConfigState))
+		lines = append(lines, Line(ValuePart("config: ", string(d.ConfigState))))
 	}
 	if d.CredentialState != "" {
-		line := "credential store"
+		parts := []DetailPart{LabelPart("credential store")}
 		if d.CredentialRecovery != nil {
-			line += " (" + string(d.CredentialRecovery.Backend) + ")"
+			parts = append(parts, ValuePart(" (", string(d.CredentialRecovery.Backend)), LabelPart(")"))
 		}
-		line += ": " + string(d.CredentialState)
+		parts = append(parts, ValuePart(": ", string(d.CredentialState)))
 		if d.CredentialRecovery != nil && d.CredentialRecovery.CompensationError != "" {
-			line += "; undo failed: " + d.CredentialRecovery.CompensationError
+			parts = append(parts, ValuePart("; undo failed: ", d.CredentialRecovery.CompensationError))
 		}
-		lines = append(lines, line)
+		lines = append(lines, Line(parts...))
 	}
 	if d.CredentialRecovery != nil && d.CredentialRecovery.Command != "" {
-		lines = append(lines, "clear the local credential with: "+d.CredentialRecovery.Command+"; that command "+d.CredentialRecovery.DataLossRisk)
+		lines = append(lines, Line(
+			ValuePart("clear the local credential with: ", d.CredentialRecovery.Command),
+			ValuePart("; that command ", d.CredentialRecovery.DataLossRisk)))
 	}
 	if d.OperationMarker != "" {
-		lines = append(lines, "operation marker: [op:"+d.OperationMarker+"]")
+		lines = append(lines, Line(ValuePart("operation marker: [op:", d.OperationMarker), LabelPart("]")))
 	}
 	if d.SessionToken != nil {
-		lines = append(lines, fateLine(d.SessionToken.LoginTokenNoun(), d.SessionToken))
+		lines = append(lines, fateLine(LabelPart(d.SessionToken.LoginTokenNoun()), d.SessionToken))
 	}
 	if d.DerivedToken != nil {
-		lines = append(lines, fateLine("derived token", d.DerivedToken))
+		lines = append(lines, fateLine(LabelPart("derived token"), d.DerivedToken))
 	}
 	if d.ClusterToken != nil {
-		lines = append(lines, fateLine("cluster token", d.ClusterToken))
+		lines = append(lines, fateLine(LabelPart("cluster token"), d.ClusterToken))
 	}
 	if d.ConfigRecovery != nil {
-		line := "config entry " + d.ConfigRecovery.Entry + " could not be restored"
+		parts := []DetailPart{ValuePart("config entry ", d.ConfigRecovery.Entry), LabelPart(" could not be restored")}
 		if d.ConfigRecovery.Command != "" {
-			line += "; remove it with: " + d.ConfigRecovery.Command
+			parts = append(parts, ValuePart("; remove it with: ", d.ConfigRecovery.Command))
 		}
-		lines = append(lines, line)
+		lines = append(lines, Line(parts...))
 		if d.ConfigRecovery.Prior != nil {
-			lines = append(lines, "  prior entry: "+d.ConfigRecovery.Prior.text())
+			lines = append(lines, DetailLine{
+				Indent: "  ",
+				Parts:  append([]DetailPart{LabelPart("prior entry: ")}, d.ConfigRecovery.Prior.text()...),
+			})
 		}
 	}
-	return append(lines, "recover: "+d.Recovery)
+	return append(lines, Line(ValuePart("recover: ", d.Recovery)))
 }
 
-func fateLine(label string, f *TokenFate) string {
-	name := label
+// fateLine is one token's line: noun, the reference when there is one, the
+// outcome and the cleanup result.
+func fateLine(noun DetailPart, f *TokenFate) DetailLine {
+	parts := []DetailPart{noun}
 	if f.Ref != nil {
-		name += " " + f.Ref.String()
+		parts = append(parts, TokenRefParts(" ", *f.Ref)...)
 	}
-	line := name + ": " + string(f.Outcome)
+	parts = append(parts, ValuePart(": ", string(f.Outcome)))
 	if f.Ref == nil && f.Kind != "" {
-		line += " (" + string(f.Kind) + ")"
+		parts = append(parts, ValuePart(" (", string(f.Kind)), LabelPart(")"))
 	}
 	if f.Ref == nil && f.Kind == "" && f.Outcome != CreateNotCreated {
-		line += " (kind unknown)"
+		parts = append(parts, LabelPart(" (kind unknown)"))
 	}
 	if f.Marked {
-		line += ", marked"
+		parts = append(parts, LabelPart(", marked"))
 	}
 	// Every cleanup result the payload carries is rendered: a notAttempted
 	// or notApplicable cleanup is a fact, not an omission.
 	if f.Cleanup != nil && f.Cleanup.Result != "" {
 		if f.Cleanup.Result == ResultFailed {
-			line += "; cleanup failed: " + f.Cleanup.Error
+			parts = append(parts, ValuePart("; cleanup failed: ", f.Cleanup.Error))
 		} else {
-			line += "; cleanup: " + string(f.Cleanup.Result)
+			parts = append(parts, ValuePart("; cleanup: ", string(f.Cleanup.Result)))
 		}
 	}
-	return line
+	return Line(parts...)
 }

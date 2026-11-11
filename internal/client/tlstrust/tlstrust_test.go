@@ -22,6 +22,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -206,7 +207,7 @@ func TestDetailsTextDetailsAllFieldsPresent(t *testing.T) {
 		"issuer: CN=test-ca",
 		"fingerprint: deadbeef",
 		"valid: 2020-01-01T00:00:00Z to 2020-02-01T00:00:00Z",
-	}, d.TextDetails())
+	}, remedytest.DetailTexts(d.TextDetails()))
 }
 
 // TestDetailsTextDetailsNullableFieldsOmitLines asserts the nullable-details
@@ -587,7 +588,7 @@ func TestClassifyUnknownAuthorityLeafOnlyLabelsServingCertificate(t *testing.T) 
 	assert.True(t, details.IsLeafCertificate())
 	require.NotNil(t, details.Certificate())
 	assert.Equal(t, cert.Raw, details.Certificate().Raw)
-	assert.Contains(t, details.TextDetails(), "serving certificate: "+details.Subject)
+	assert.Contains(t, remedytest.DetailTexts(details.TextDetails()), "serving certificate: "+details.Subject)
 	assert.NotContains(t, ce.Message, "obtain its CA", "a bare leaf is never called the server's CA")
 	assert.Contains(t, ce.Message, "no separate certificate authority")
 	assert.Contains(t, ce.Message, "such as a proxy, is replacing its certificate",
@@ -608,7 +609,7 @@ func TestClassifyUnknownAuthorityWithAnchorLabelsCertificateAuthority(t *testing
 	assert.False(t, details.IsLeafCertificate())
 	require.NotNil(t, details.Certificate())
 	assert.Equal(t, ca.Raw, details.Certificate().Raw)
-	assert.Contains(t, details.TextDetails(), "certificate authority: "+details.Subject)
+	assert.Contains(t, remedytest.DetailTexts(details.TextDetails()), "certificate authority: "+details.Subject)
 	assert.Contains(t, ce.Message, "obtain its CA")
 	assert.Contains(t, ce.Message, "such as a proxy, is replacing its certificate",
 		"an unrecognized certificate on a server that worked before can mean a proxy; the message says so")

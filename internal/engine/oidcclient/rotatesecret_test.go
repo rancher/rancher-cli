@@ -11,6 +11,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -455,7 +456,7 @@ func TestRotateSecretExecTimeoutIsRetryable(t *testing.T) {
 	assert.Equal(t, []string{
 		"committed: OIDCClient my-app - the change may already be on the server",
 		"recover: " + details.Recovery,
-	}, details.TextDetails())
+	}, remedytest.DetailTexts(details.TextDetails()))
 }
 
 // TestRotateSecretUnchangedValueProjectsCommittedDetails asserts the
@@ -474,7 +475,7 @@ func TestRotateSecretUnchangedValueProjectsCommittedDetails(t *testing.T) {
 	assert.Equal(t, []string{
 		"committed: OIDCClient my-app - the change may already be on the server",
 		"recover: " + recovery,
-	}, details.TextDetails())
+	}, remedytest.DetailTexts(details.TextDetails()))
 }
 
 func (f stubClusterClientFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {

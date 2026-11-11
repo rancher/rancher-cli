@@ -11,6 +11,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -771,7 +772,7 @@ func TestDeleteProjectFlagStopsAtTheFirstFailedNamespace(t *testing.T) {
 		"  not attempted: zeta",
 		"projects:",
 		"  not attempted: p-1",
-	}, detailsOf(t, err).TextDetails())
+	}, remedytest.DetailTexts(detailsOf(t, err).TextDetails()))
 }
 
 // TestDeleteProjectFlagFailureCounts asserts the counts in the partial

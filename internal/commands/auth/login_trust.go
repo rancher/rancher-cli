@@ -138,7 +138,7 @@ func trustCard(d tlstrust.Details, priorFingerprint string) string {
 			fmt.Sprintf("warning: this server previously presented a certificate with fingerprint %s; it now presents a different one - the certificate may have been replaced, or another server may be answering in its place", priorFingerprint))
 	}
 	for _, l := range d.TextDetails() {
-		lines = append(lines, output.Printable(l))
+		lines = append(lines, output.Printable(l.String()))
 	}
 	if strings.Contains(strings.ToLower(d.Subject), dynamiclistenerCAMarker) {
 		lines = append(lines, "the certificate identifies itself as "+dynamiclistenerCAMarker+" (Rancher's generated CA)")

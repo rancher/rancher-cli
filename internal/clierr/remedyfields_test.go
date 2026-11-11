@@ -15,7 +15,7 @@ import (
 // when its owner has to map it.
 type markedDetails struct{ Text string }
 
-func (d markedDetails) TextDetails() []string { return []string{d.Text} }
+func (d markedDetails) TextDetails() []DetailLine { return []DetailLine{Line(ValuePart("", d.Text))} }
 
 func (d markedDetails) MapText(f func(string) string) TextDetails {
 	d.Text = f(d.Text)

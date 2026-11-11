@@ -32,8 +32,8 @@ func cutTexts(t *testing.T) map[string][]string {
 	for _, line := range (clierr.LoginFailureDetails{CredentialRecovery: &clierr.CredentialRecovery{
 		Command: clierr.Rancher + " auth logout 'prod'", DataLossRisk: "deletes the stored login",
 	}}).TextDetails() {
-		if clierr.HasRemedy(line) {
-			credentialLines = append(credentialLines, line)
+		if text := line.String(); clierr.HasRemedy(text) {
+			credentialLines = append(credentialLines, text)
 		}
 	}
 	return map[string][]string{

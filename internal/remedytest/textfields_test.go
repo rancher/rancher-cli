@@ -18,7 +18,7 @@ func TestMarkedDetailsMapTextMapsTheText(t *testing.T) {
 	upper := func(s string) string { return "<" + s + ">" }
 	assert.Equal(t, MarkedDetails{Text: "<" + d.Text + ">"}, d.MapText(upper))
 	assert.Equal(t, MarkedDetails{Text: "<" + d.Text + ">"}, d.MapCommands(upper))
-	assert.Equal(t, []string{d.Text}, d.TextDetails())
+	assert.Equal(t, []string{d.Text}, DetailTexts(d.TextDetails()))
 }
 
 // TestTextFieldHelpersWalkEveryTextField asserts the walk finds the text

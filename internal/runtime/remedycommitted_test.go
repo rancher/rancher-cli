@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 )
 
 // TestCommittedContextRecoveryForAnUnprintableDirectory asserts the recovery
@@ -43,7 +44,7 @@ func TestCommittedContextRecoveryForAnUnprintableDirectory(t *testing.T) {
 			details, ok := got.Details.(clierr.CommittedContextDetails)
 			require.True(t, ok)
 			assert.Equal(t, tc.want, details.Recovery)
-			lines := details.TextDetails()
+			lines := remedytest.DetailTexts(details.TextDetails())
 			assert.Equal(t, "recover: "+tc.want, lines[len(lines)-1])
 			assert.NotContains(t, details.Recovery, clierr.RemedyMarker)
 		})

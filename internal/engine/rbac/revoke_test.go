@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/output/style"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -392,7 +393,7 @@ func TestRevokePartialFailure(t *testing.T) {
 		"failed: crtb-beta (CONFLICT: rv conflict)",
 		"not attempted: crtb-gamma",
 		"bindings already deleted stay deleted; run the same revoke command again to delete the rest",
-	}, pf.TextDetails())
+	}, remedytest.DetailTexts(pf.TextDetails()))
 }
 
 // TestRevokePartialFailureTextDetailsOmitsEmptyLines asserts the two
@@ -407,7 +408,7 @@ func TestRevokePartialFailureTextDetailsOmitsEmptyLines(t *testing.T) {
 	assert.Equal(t, []string{
 		"failed: crtb-alpha (CONFLICT: rv conflict)",
 		"bindings already deleted stay deleted; run the same revoke command again to delete the rest",
-	}, pf.TextDetails())
+	}, remedytest.DetailTexts(pf.TextDetails()))
 }
 
 func TestRevokeStaleHashIDOccupiedConflict(t *testing.T) {

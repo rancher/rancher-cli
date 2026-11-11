@@ -98,7 +98,7 @@ func TestErrorMapTextCoversEveryRenderedString(t *testing.T) {
 	assert.Empty(t, emptied.CredentialRecovery.Command)
 	assert.Empty(t, emptied.ConfigRecovery.Command)
 	assert.Equal(t, d.Recovery, emptied.Recovery)
-	assert.Contains(t, emptied.TextDetails(), "config entry p could not be restored", "no dangling remove-it-with when there is no command")
+	assert.Contains(t, detailTexts(emptied.TextDetails()), "config entry p could not be restored", "no dangling remove-it-with when there is no command")
 
 	// A marker only in the details is still found.
 	onlyDetails := New(CodeAuth, "failed").WithDetails(LoginFailureDetails{Recovery: Rancher + " auth login 'p'"})

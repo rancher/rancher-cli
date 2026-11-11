@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 )
 
@@ -31,7 +32,7 @@ func TestAReportedCertificateFailureKeepsTheMarkerOfItsCommands(t *testing.T) {
 	assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), "rancher config update-server 'prod' --cacert <file>")
 	for name, text := range map[string]string{
 		"the message":      n.Error,
-		"the text details": strings.Join(rep.TextDetails(), "\n"),
+		"the text details": strings.Join(remedytest.DetailTexts(rep.TextDetails()), "\n"),
 		"the text lines":   strings.Join(d.TextLines(), "\n"),
 	} {
 		assert.True(t, clierr.HasRemedy(text), "%s holds a marked command: %q", name, text)
@@ -57,7 +58,7 @@ func TestACertificateFailureOfARevokeNamesItsCommandsWithTheMarker(t *testing.T)
 				cert := tlsCert(t, "private-ca")
 				_, rep := x.runSeeded(req, "prod", fromVariable, tlsFailure(unknownAuthorityFailure(cert)), tlsFailure(unknownAuthorityFailure(cert)), nil)
 				n := notRevoked(t, rep, token)
-				text := strings.Join(rep.TextDetails(), "\n")
+				text := strings.Join(remedytest.DetailTexts(rep.TextDetails()), "\n")
 				if strings.Contains(want, "rancher config update-server") {
 					assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), "rancher config update-server", "the message holds the command")
 					assert.Contains(t, clierr.ExpandRemedies(text, " --config '/d'"), "rancher --config '/d' config update-server", "the report text holds the command")

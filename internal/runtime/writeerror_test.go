@@ -50,7 +50,9 @@ type unencodableDetails struct {
 	Channel chan int `json:"channel"`
 }
 
-func (unencodableDetails) TextDetails() []string { return []string{"details line"} }
+func (unencodableDetails) TextDetails() []clierr.DetailLine {
+	return []clierr.DetailLine{clierr.Line(clierr.LabelPart("details line"))}
+}
 
 func validationError() *clierr.Error {
 	return clierr.New(clierr.CodeValidation, "message")

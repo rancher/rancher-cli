@@ -76,8 +76,8 @@ func certificateFacts(ce *clierr.Error) string {
 	}
 	var facts []string
 	for _, line := range td.TextDetails() {
-		if !strings.HasPrefix(line, "valid: ") {
-			facts = append(facts, line)
+		if text := line.String(); !strings.HasPrefix(text, "valid: ") {
+			facts = append(facts, text)
 		}
 	}
 	if len(facts) == 0 {

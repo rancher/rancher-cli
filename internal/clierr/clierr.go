@@ -2,7 +2,6 @@ package clierr
 
 import (
 	"errors"
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -37,11 +36,14 @@ const LearnMorePrimeURL = "https://www.rancher.com/products/rancher-prime"
 
 // TextDetails is the projection a details payload owes the default-format
 // error text: the indented lines rendered after the message/hint/candidates
-// block. WithDetails accepts only a value implementing it, so an unprojected
-// details type fails to compile rather than silently rendering nothing on
-// the default format.
+// block. A line holds the CLI's own text as labels and every string read from
+// the payload as a value; the renderer shows each value the way IDText shows
+// a user id, so a payload never escapes or filters a value itself.
+// WithDetails accepts only a value implementing it, so an unprojected details
+// type fails to compile rather than silently rendering nothing on the
+// default format.
 type TextDetails interface {
-	TextDetails() []string
+	TextDetails() []DetailLine
 }
 
 // PrimeRequiredDetails is PRIME_REQUIRED's structured details payload: the
@@ -54,8 +56,8 @@ type PrimeRequiredDetails struct {
 
 // TextDetails projects the checked feature and server onto one indented
 // line.
-func (d PrimeRequiredDetails) TextDetails() []string {
-	return []string{fmt.Sprintf("feature: %s (checked against server %s)", d.Feature, d.Server)}
+func (d PrimeRequiredDetails) TextDetails() []DetailLine {
+	return []DetailLine{Line(ValuePart("feature: ", d.Feature), ValuePart(" (checked against server ", d.Server), LabelPart(")"))}
 }
 
 // CapabilityUnsupportedDetails is CAPABILITY_UNSUPPORTED's structured
@@ -69,8 +71,8 @@ type CapabilityUnsupportedDetails struct {
 
 // TextDetails projects the checked capability and server onto one indented
 // line.
-func (d CapabilityUnsupportedDetails) TextDetails() []string {
-	return []string{fmt.Sprintf("capability: %s (checked against server %s)", d.Feature, d.Server)}
+func (d CapabilityUnsupportedDetails) TextDetails() []DetailLine {
+	return []DetailLine{Line(ValuePart("capability: ", d.Feature), ValuePart(" (checked against server ", d.Server), LabelPart(")"))}
 }
 
 // CommittedContextDetails is the details payload for a non-retryable error
@@ -96,14 +98,14 @@ type CommittedContextDetails struct {
 // guidance comes from the error's own Retryable/Recovery fields, never a
 // generic line here - a blind "do not retry" would contradict a producer
 // whose stated recovery is exactly a re-run.
-func (d CommittedContextDetails) TextDetails() []string {
-	lines := []string{
-		fmt.Sprintf("committed: %s %s - the change may already be on the server", d.ResourceKind, d.ResourceName),
+func (d CommittedContextDetails) TextDetails() []DetailLine {
+	lines := []DetailLine{
+		Line(ValuePart("committed: ", d.ResourceKind), ValuePart(" ", d.ResourceName), LabelPart(" - the change may already be on the server")),
 	}
 	if d.PartialOutput {
-		lines = append(lines, "partial output may already be on stdout")
+		lines = append(lines, Line(LabelPart("partial output may already be on stdout")))
 	}
-	lines = append(lines, "recover: "+d.Recovery)
+	lines = append(lines, Line(ValuePart("recover: ", d.Recovery)))
 	return lines
 }
 

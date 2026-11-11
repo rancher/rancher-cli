@@ -146,9 +146,9 @@ func (terminalValue) Columns() []string { return []string{"VALUE"} }
 func (v terminalValue) Rows() [][]string { return [][]string{{v.Value}} }
 
 // terminalDetails is an error's details payload that holds the given lines.
-type terminalDetails struct{ lines []string }
+type terminalDetails struct{ lines []clierr.DetailLine }
 
-func (d terminalDetails) TextDetails() []string { return d.lines }
+func (d terminalDetails) TextDetails() []clierr.DetailLine { return d.lines }
 
 // terminalDescriptor is the descriptor of a read command that returns the
 // given shape.
@@ -488,15 +488,16 @@ var terminalRows = []terminalRow{
 		failure := clierr.New(clierr.CodeGeneric, remedyText("error message")).
 			WithHint(remedyText("error hint")).
 			WithCandidates([]clierr.Candidate{{ID: terminalHostile("candidate id"), Name: terminalHostile("candidate name")}}).
-			WithDetails(terminalDetails{lines: []string{terminalHostile("error details")}})
+			WithDetails(terminalDetails{lines: []clierr.DetailLine{clierr.Line(clierr.ValuePart("", terminalHostile("error details")))}})
 		out, errOut, ce := e.runFailing(terminalRead{d: terminalDescriptor(runtime.ShapeText), err: failure}, nil)
 		require.NotNil(t, ce)
 		assertBothClean(t, out, errOut, terminalSequences)
 		assertNoForgedLine(t, "standard error", errOut)
 		assert.Equal(t, 2, strings.Count(errOut, e.expanded), "the message and the hint expand their command: %q", errOut)
-		for _, p := range []string{"error message", "error hint", "candidate id", "candidate name", "error details"} {
+		for _, p := range []string{"error message", "error hint", "candidate id", "candidate name"} {
 			assert.Contains(t, errOut, terminalFilteredLine(p))
 		}
+		assert.Contains(t, errOut, strconv.Quote(terminalHostile("error details")), "a details value shows its hidden characters as escapes")
 	}},
 	{"notice", func(e terminalEnv) {
 		t := e.t

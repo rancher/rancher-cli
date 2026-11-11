@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 )
 
 // noCAEntry is a derived-login entry with no saved CA.
@@ -145,11 +146,11 @@ func TestAFailedRollbackOfAMarkedEntryReportsTheRecord(t *testing.T) {
 			require.NoError(t, json.Unmarshal(raw, &env))
 			if marked {
 				assert.Equal(t, true, env.ConfigRecovery.Prior["caFromEnvironment"])
-				assert.Contains(t, strings.Join(details.TextDetails(), "\n"), "last login connected with RANCHER_CLI_CACERT")
+				assert.Contains(t, strings.Join(remedytest.DetailTexts(details.TextDetails()), "\n"), "last login connected with RANCHER_CLI_CACERT")
 				return
 			}
 			assert.NotContains(t, env.ConfigRecovery.Prior, "caFromEnvironment")
-			assert.NotContains(t, strings.Join(details.TextDetails(), "\n"), "RANCHER_CLI_CACERT")
+			assert.NotContains(t, strings.Join(remedytest.DetailTexts(details.TextDetails()), "\n"), "RANCHER_CLI_CACERT")
 		})
 	}
 }

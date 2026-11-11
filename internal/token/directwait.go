@@ -302,18 +302,19 @@ type directWaitDetails struct {
 	unscoped bool
 }
 
-func (d directWaitDetails) TextDetails() []string {
+func (d directWaitDetails) TextDetails() []clierr.DetailLine {
 	if d.Fate == nil || d.Fate.Cleanup == nil {
 		return nil
 	}
-	line := clusterTokenNoun(!d.unscoped) + " cleanup: " + string(d.Fate.Cleanup.Result)
+	parts := []clierr.DetailPart{clierr.ValuePart(clusterTokenNoun(!d.unscoped)+" cleanup: ", string(d.Fate.Cleanup.Result))}
 	if d.Fate.Ref != nil {
-		line += " (" + d.Fate.Ref.String() + ")"
+		parts = append(parts, clierr.TokenRefParts(" (", *d.Fate.Ref)...)
+		parts = append(parts, clierr.LabelPart(")"))
 	}
 	if d.Fate.Cleanup.Error != "" {
-		line += ": " + d.Fate.Cleanup.Error
+		parts = append(parts, clierr.ValuePart(": ", d.Fate.Cleanup.Error))
 	}
-	return []string{line}
+	return []clierr.DetailLine{clierr.Line(parts...)}
 }
 
 // directWaitCancelled is the error for a caller cancellation during the

@@ -158,7 +158,7 @@ type stubDetails struct {
 	Deleted []string `json:"deleted"`
 }
 
-func (stubDetails) TextDetails() []string { return nil }
+func (stubDetails) TextDetails() []DetailLine { return nil }
 
 func TestErrorDetailsSerialization(t *testing.T) {
 	e := New(CodeConflict, "partial failure").WithDetails(stubDetails{

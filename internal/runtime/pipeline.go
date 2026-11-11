@@ -1225,7 +1225,8 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 // naming the code (and "retryable" when the error is retryable), an indented
 // hint line when present, an indented candidates line - each candidate
 // rendered "name (id)" - when present, and finally the details payload's own
-// projected lines (detailsTextLines) when one is attached. s styles the
+// projected lines (detailsTextLines) when one is attached, each value of which
+// is shown with its hidden characters as escapes. s styles the
 // "error (CODE):" and "hint:" prefixes only, never the message/hint body.
 func errorText(ce *clierr.Error, s style.Style) string {
 	retry := ""
@@ -1235,7 +1236,9 @@ func errorText(ce *clierr.Error, s style.Style) string {
 	prefix := fmt.Sprintf("error (%s%s):", ce.Code, retry)
 	// Message, hint, candidates, and details may all carry server text
 	// (an admission message, a display name), so each line passes the
-	// terminal-safety boundary before it reaches stderr.
+	// terminal-safety boundary before it reaches stderr. A details line shows
+	// each value with its hidden characters as escapes (detailLineText);
+	// the other lines have them removed.
 	header := s.Red(prefix) + " " + output.Printable(ce.Message)
 
 	var lines []string
@@ -1254,7 +1257,7 @@ func errorText(ce *clierr.Error, s style.Style) string {
 		lines = append(lines, label+": "+strings.Join(names, ", "))
 	}
 	for _, l := range detailsTextLines(ce.Details) {
-		lines = append(lines, output.Printable(l))
+		lines = append(lines, detailLineText(l))
 	}
 	return TextLines(header, lines...).Text
 }
@@ -1266,16 +1269,35 @@ func errorText(ce *clierr.Error, s style.Style) string {
 const detailsFallbackLine = "the error has more details - re-run with -o json to see them"
 
 // detailsTextLines projects an error's Details field onto its default-format
-// text lines: the payload's own TextDetails() when it implements the
-// interface, detailsFallbackLine otherwise, nothing when Details is unset.
-func detailsTextLines(details any) []string {
+// lines: the payload's own TextDetails() when it implements the interface,
+// detailsFallbackLine otherwise, nothing when Details is unset. The lines hold
+// the payload's values as they are; detailLineText writes them.
+func detailsTextLines(details any) []clierr.DetailLine {
 	if details == nil {
 		return nil
 	}
 	if td, ok := details.(clierr.TextDetails); ok {
 		return td.TextDetails()
 	}
-	return []string{detailsFallbackLine}
+	return []clierr.DetailLine{clierr.Line(clierr.LabelPart(detailsFallbackLine))}
+}
+
+// detailLineText is l as the default format prints it: the indent, then each
+// part's label as written and its value through clierr.IDText, so a value that
+// holds a control character, an invisible format character or a line or
+// paragraph separator shows as a double-quoted string with escapes, and two
+// values that differ by a hidden character print differently. The indent stays
+// outside the quotes.
+// output.Printable then writes each invalid UTF-8 byte as U+FFFD; it removes no
+// rune from the result, whose labels hold none.
+func detailLineText(l clierr.DetailLine) string {
+	var b strings.Builder
+	b.WriteString(l.Indent)
+	for _, p := range l.Parts {
+		b.WriteString(p.Label)
+		b.WriteString(clierr.IDText(p.Value))
+	}
+	return output.Printable(b.String())
 }
 
 // finishResult enforces the SuccessExitCodes declaration, renders the

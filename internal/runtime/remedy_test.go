@@ -14,6 +14,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output/style"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
 
@@ -385,7 +386,7 @@ func TestAnUnprintableDirectorySaysWhyOnce(t *testing.T) {
 	assert.Empty(t, d.CredentialRecovery.Command)
 	assert.Empty(t, d.ConfigRecovery.Command)
 	assert.Equal(t, "the login failed; "+UnprintableConfigDirNote, details.Message)
-	for _, line := range d.TextDetails() {
+	for _, line := range remedytest.DetailTexts(d.TextDetails()) {
 		assert.NotContains(t, line, "remove it with", "no line offers a command that is not there: %q", line)
 		assert.NotContains(t, line, "clear the local credential with", "no line offers a command that is not there: %q", line)
 	}

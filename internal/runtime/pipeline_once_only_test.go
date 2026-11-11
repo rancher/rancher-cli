@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -163,7 +164,7 @@ func TestFinishOnceOnlyResultFailingStdoutWriterProjectsCreateTokenDetails(t *te
 	assert.Equal(t, []string{
 		"committed: Token t-abc123 - the change may already be on the server",
 		"recover: delete token t-abc123, then create again",
-	}, details.TextDetails())
+	}, remedytest.DetailTexts(details.TextDetails()))
 }
 
 // TestFinishOnceOnlyResultFailingStdoutAndStderr proves the failure is

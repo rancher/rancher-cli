@@ -379,30 +379,32 @@ type LogoutAllPartialFailure struct {
 // kubectl credentials went and what the server did with each token,
 // closing, when the local delete did not complete, with the logout to run
 // again: a failed run never undoes what it already deleted.
-func (p LogoutAllPartialFailure) TextDetails() []string {
-	lines := []string{"already logged out: " + strings.Join(p.LoggedOut, ", ")}
+func (p LogoutAllPartialFailure) TextDetails() []clierr.DetailLine {
+	lines := []clierr.DetailLine{clierr.Line(clierr.ListParts("already logged out: ", p.LoggedOut)...)}
 	servers := make([]string, 0, len(p.DeletedFrom))
 	for s := range p.DeletedFrom {
 		servers = append(servers, s)
 	}
 	sort.Strings(servers)
 	for _, s := range servers {
-		lines = append(lines, fmt.Sprintf("credentials removed: %s: %s", s, strings.Join(p.DeletedFrom[s], ", ")))
+		parts := []clierr.DetailPart{clierr.ValuePart("credentials removed: ", s)}
+		lines = append(lines, clierr.Line(append(parts, clierr.ListParts(": ", p.DeletedFrom[s])...)...))
 	}
 	if len(p.DeletedCache) > 0 {
-		lines = append(lines, "cached kubectl credentials removed: "+strings.Join(p.DeletedCache, ", "))
+		lines = append(lines, clierr.Line(clierr.ListParts("cached kubectl credentials removed: ", p.DeletedCache)...))
 	}
 	for _, r := range p.Revoked {
-		lines = append(lines, "revoked: "+r.Ref.String()+" on "+r.Server)
+		parts := clierr.TokenRefParts("revoked: ", r.Ref)
+		lines = append(lines, clierr.Line(append(parts, clierr.ValuePart(" on ", r.Server))...))
 	}
 	for _, n := range p.NotRevoked {
 		lines = append(lines, n.DetailLines()...)
 	}
 	switch {
 	case p.Rerun != "":
-		lines = append(lines, "those credentials are gone regardless of this failure; to finish, run: "+p.Rerun)
+		lines = append(lines, clierr.Line(clierr.ValuePart("those credentials are gone regardless of this failure; to finish, run: ", p.Rerun)))
 	case p.rerunOmitted:
-		lines = append(lines, "those credentials are gone regardless of this failure")
+		lines = append(lines, clierr.Line(clierr.LabelPart("those credentials are gone regardless of this failure")))
 	}
 	return lines
 }

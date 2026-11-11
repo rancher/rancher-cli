@@ -25,6 +25,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 )
 
@@ -397,7 +398,7 @@ func TestACertificateFailureOfAKeptEntryOpensItsCommandsWithTheMarker(t *testing
 	n := notRevoked(t, rep, login.Ref.Name)
 	assert.Contains(t, clierr.ExpandRemedies(n.Error, ""), "rancher config update-server 'prod' --cacert <file>")
 	assert.Contains(t, n.Error, clierr.Rancher)
-	assert.Contains(t, strings.Join(rep.TextDetails(), "\n"), clierr.Rancher)
+	assert.Contains(t, strings.Join(remedytest.DetailTexts(rep.TextDetails()), "\n"), clierr.Rancher)
 	assert.Contains(t, strings.Join(d.TextLines(), "\n"), clierr.Rancher)
 }
 
@@ -659,7 +660,7 @@ func certificateFailureToken(t *testing.T) NotRevokedToken {
 // DetailLines.
 func TestTheDetailLinesOfACertificateFailureFollowTheTokenLine(t *testing.T) {
 	n := certificateFailureToken(t)
-	lines := n.DetailLines()
+	lines := remedytest.DetailTexts(n.DetailLines())
 	require.Len(t, lines, 6, "%q", lines)
 	assert.Equal(t, "not revoked: ext/token-a on https://r.example (failed, TLS_TRUST, retry nextLogin)", lines[0])
 	assert.True(t, strings.HasPrefix(lines[1], "  the server presented a certificate signed by an unknown authority"), lines[1])
@@ -667,7 +668,7 @@ func TestTheDetailLinesOfACertificateFailureFollowTheTokenLine(t *testing.T) {
 	assert.Equal(t, "  fingerprint: "+n.Certificate.Fingerprint, lines[4])
 
 	plain := NotRevokedToken{Ref: n.Ref, Source: n.Source, Server: n.Server, Reason: "failed", Error: "boom", Retry: retryManual}
-	assert.Equal(t, []string{"not revoked: ext/token-a on https://r.example (failed, retry manual)"}, plain.DetailLines())
+	assert.Equal(t, []string{"not revoked: ext/token-a on https://r.example (failed, retry manual)"}, remedytest.DetailTexts(plain.DetailLines()))
 }
 
 // TestARevocationReportsDetailsPrintTheCertificateFailure asserts
@@ -676,7 +677,7 @@ func TestTheDetailLinesOfACertificateFailureFollowTheTokenLine(t *testing.T) {
 // keep TextLine in RevocationReport.TextDetails.
 func TestARevocationReportsDetailsPrintTheCertificateFailure(t *testing.T) {
 	n := certificateFailureToken(t)
-	text := strings.Join(RevocationReport{NotRevoked: []NotRevokedToken{n}}.TextDetails(), "\n")
+	text := strings.Join(remedytest.DetailTexts(RevocationReport{NotRevoked: []NotRevokedToken{n}}.TextDetails()), "\n")
 	assert.Contains(t, text, "the server presented a certificate signed by an unknown authority")
 	assert.Contains(t, text, "fingerprint: "+n.Certificate.Fingerprint)
 }
@@ -687,7 +688,7 @@ func TestARevocationReportsDetailsPrintTheCertificateFailure(t *testing.T) {
 // DeleteTokenFailure.TextDetails.
 func TestAuthDeleteTokensFailureDetailsPrintTheCertificateFailure(t *testing.T) {
 	n := certificateFailureToken(t)
-	text := strings.Join(DeleteTokenFailure{Deleted: []string{"k"}, NotRevoked: []NotRevokedToken{n}}.TextDetails(), "\n")
+	text := strings.Join(remedytest.DetailTexts(DeleteTokenFailure{Deleted: []string{"k"}, NotRevoked: []NotRevokedToken{n}}.TextDetails()), "\n")
 	assert.Contains(t, text, "deleted: k")
 	assert.Contains(t, text, "the server presented a certificate signed by an unknown authority")
 	assert.Contains(t, text, "fingerprint: "+n.Certificate.Fingerprint)
@@ -725,7 +726,7 @@ func TestTheSignInFailureCarriesTheCertificateFacts(t *testing.T) {
 		require.NoError(t, json.Unmarshal(b, &doc))
 		details, _ := doc.Primary["details"].(map[string]any)
 		assert.Equal(t, tlstrust.Fingerprint(cert), details["fingerprint"])
-		assert.Contains(t, strings.Join(d.TextDetails(), "\n"), "fingerprint: "+tlstrust.Fingerprint(cert))
+		assert.Contains(t, strings.Join(remedytest.DetailTexts(d.TextDetails()), "\n"), "fingerprint: "+tlstrust.Fingerprint(cert))
 	})
 	for name, err := range map[string]error{
 		"an owner mismatch": clierr.New(clierr.CodeAuth, "the sign-in was made as another user").WithDetails(directWaitDetails{Fate: fate}),

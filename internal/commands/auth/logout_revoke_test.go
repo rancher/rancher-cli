@@ -22,6 +22,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/token"
@@ -198,7 +199,7 @@ func TestALogoutThatFailsCarriesBothLists(t *testing.T) {
 	assert.Equal(t, r.cache.Ref.Name, details.Revoked[0].Ref.Name)
 	require.Len(t, details.NotRevoked, 1)
 	assert.Equal(t, "notDeleted", details.NotRevoked[0].Reason)
-	lines := details.TextDetails()
+	lines := remedytest.DetailTexts(details.TextDetails())
 	assert.Contains(t, lines, "not revoked: "+r.login.Ref.String()+" on "+config.CanonicalServerIdentity(r.url)+" (notDeleted, retry manual)")
 	assert.Equal(t, "those credentials are gone regardless of this failure; to finish, run: "+clierr.Rancher+" auth logout 'prod'",
 		lines[len(lines)-1], "a single-entry logout names that entry's rerun")
@@ -300,7 +301,7 @@ func TestALogoutInterruptedDuringTheRevokesReportsBothLists(t *testing.T) {
 	require.Len(t, details.NotRevoked, 1)
 	assert.Equal(t, "cancelled", details.NotRevoked[0].Reason)
 	assert.Contains(t, strings.Join(ce.Warnings(), "\n"), "1 token(s) recorded on prod are revoked by the next login of prod", "the warnings carry what revokes the cancelled token")
-	assert.NotContains(t, strings.Join(details.TextDetails(), "\n"), "to finish", "nothing is left to finish once the local delete completed")
+	assert.NotContains(t, strings.Join(remedytest.DetailTexts(details.TextDetails()), "\n"), "to finish", "nothing is left to finish once the local delete completed")
 	_, terr := config.NewFileStore(r.dir).GetToken(config.ServerRef{Name: "prod", URL: r.url})
 	require.ErrorIs(t, terr, config.ErrNoToken, "the local delete completed")
 }
@@ -451,7 +452,7 @@ func TestALogoutWhoseLoginDeleteFailedAfterTheTokenWentCountsItDeleted(t *testin
 			report, ok := ce.Details.(LogoutAllPartialFailure)
 			require.True(t, ok)
 			assert.Empty(t, report.LoggedOut, "the logout did not complete")
-			assert.Contains(t, strings.Join(report.TextDetails(), "\n"), "to finish, run: "+clierr.Rancher+" auth logout 'prod'")
+			assert.Contains(t, strings.Join(remedytest.DetailTexts(report.TextDetails()), "\n"), "to finish, run: "+clierr.Rancher+" auth logout 'prod'")
 			assert.Contains(t, report.DeletedFrom["prod"], "keychain")
 			e, ok := mustLoad(t, r.dir).Servers["prod"]
 			require.True(t, ok)

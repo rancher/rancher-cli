@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output/style"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -550,7 +551,7 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 	assert.Contains(t, details.DeletedFrom["acme"], "file", "acme's credential was really deleted before the failing step")
 	assert.NotNil(t, details.DeletedCache, "the exec-cache wipe completed before the failing step")
 
-	lines := details.TextDetails()
+	lines := remedytest.DetailTexts(details.TextDetails())
 	require.NotEmpty(t, lines)
 	assert.Equal(t, "already logged out: acme", lines[0])
 	assert.Contains(t, lines, "credentials removed: acme: file")
@@ -640,7 +641,7 @@ func TestDeleteFailureKeepsWhatWasDeleted(t *testing.T) {
 	require.ErrorAs(t, real, &ce)
 	details, ok := ce.Details.(LogoutAllPartialFailure)
 	require.True(t, ok)
-	assert.Contains(t, details.TextDetails()[0], "already logged out")
+	assert.Contains(t, remedytest.DetailTexts(details.TextDetails())[0], "already logged out")
 }
 
 // TestDeleteFailureCarriesNoticesFromASuccessfulEarlierStep asserts that a
@@ -667,7 +668,7 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 	t.Run("no deletedFrom entries and no cache", func(t *testing.T) {
 		t.Parallel()
 		pf := LogoutAllPartialFailure{LoggedOut: []string{"prod"}}
-		assert.Equal(t, []string{"already logged out: prod"}, pf.TextDetails())
+		assert.Equal(t, []string{"already logged out: prod"}, remedytest.DetailTexts(pf.TextDetails()))
 	})
 
 	t.Run("multiple servers sorted, and non-empty cache", func(t *testing.T) {
@@ -684,7 +685,7 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 			"credentials removed: staging: keychain",
 			"cached kubectl credentials removed: k1, k2",
 			"those credentials are gone regardless of this failure; to finish, run: rancher auth logout --all",
-		}, pf.TextDetails())
+		}, remedytest.DetailTexts(pf.TextDetails()))
 	})
 }
 
@@ -706,7 +707,7 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	assert.Contains(t, ce.Message, "failed to log out")
 	details, ok := ce.Details.(LogoutAllPartialFailure)
 	require.True(t, ok)
-	assert.Contains(t, details.TextDetails()[0], "already logged out")
+	assert.Contains(t, remedytest.DetailTexts(details.TextDetails())[0], "already logged out")
 }
 
 // TestLogoutTextAndCurrentServerClearedReported verifies the TTY story: logout

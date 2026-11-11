@@ -1,6 +1,7 @@
 package token
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 )
 
@@ -87,8 +89,9 @@ func walkStrings(v any, path string, out, all *[]string, exact *[]exactValue) {
 // textOfEnvelope renders one error, or one warning, in the JSON envelope,
 // decodes it, and returns every string under error.message, error.hint,
 // error.details and warnings, with the paths of those that hold a hidden rune.
-// When the error's details project onto text lines of their own, which the
-// JSON envelope never holds, each line is checked as a text too. The values of
+// An error is also rendered in the default format, and each line of it other
+// than the one that opens with the code is checked as a text too, alone: the
+// details lines the JSON envelope never holds are among them. The values of
 // the data fields in exactIDPaths come back as exact.
 func textOfEnvelope(t *testing.T, st sourceText) (hidden, all []string, exact []exactValue) {
 	t.Helper()
@@ -106,10 +109,13 @@ func textOfEnvelope(t *testing.T, st sourceText) (hidden, all []string, exact []
 		}
 	}
 	if st.err != nil {
-		if td, ok := st.err.Details.(clierr.TextDetails); ok {
-			for _, l := range td.TextDetails() {
-				walkStrings(l, "error.details text line", &hidden, &all, &exact)
+		var text bytes.Buffer
+		require.NoError(t, runtime.RenderError(&text, "", st.err))
+		for line := range strings.SplitSeq(strings.TrimSuffix(text.String(), "\n"), "\n") {
+			if strings.HasPrefix(line, "error (") {
+				continue
 			}
+			walkStrings(line, "error text line", &hidden, &all, &exact)
 		}
 	}
 	for _, w := range got.Warnings {

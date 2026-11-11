@@ -46,8 +46,8 @@ type DeleteProjectPartialFailure struct {
 }
 
 // TextDetails lists each outcome with the names that have it.
-func (p DeleteProjectPartialFailure) TextDetails() []string {
-	return runtime.ObjectLines(p.Objects, "")
+func (p DeleteProjectPartialFailure) TextDetails() []clierr.DetailLine {
+	return runtime.ObjectDetailLines(p.Objects, "")
 }
 
 // MapText maps the message of every object, which can hold the text of the

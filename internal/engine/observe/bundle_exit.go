@@ -108,13 +108,12 @@ func firstCertificate(details any) *tlstrust.Details {
 	return nil
 }
 
-// TextDetails lists the path, shown as the CLI shows an id that may hold
-// runes it never prints raw, and the counts on their own lines, then the
+// TextDetails lists the path and the counts on their own lines, then the
 // lines of the certificate details.
-func (d BundleFailureDetails) TextDetails() []string {
-	lines := []string{"archive: " + clierr.IDText(d.OutputFile)}
+func (d BundleFailureDetails) TextDetails() []clierr.DetailLine {
+	lines := []clierr.DetailLine{clierr.Line(clierr.ValuePart("archive: ", d.OutputFile))}
 	if d.Attempted > 0 {
-		lines = append(lines, fmt.Sprintf("items attempted: %d, failed: %d", d.Attempted, d.Failed))
+		lines = append(lines, clierr.Line(clierr.LabelPart(fmt.Sprintf("items attempted: %d, failed: %d", d.Attempted, d.Failed))))
 	}
 	if d.First != nil {
 		lines = append(lines, d.First.TextDetails()...)

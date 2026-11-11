@@ -26,9 +26,10 @@ import (
 // is handled by each caller.
 //
 // The callers' rule: output.Printable removes these runes from displayed
-// text, a new server entry name may not hold them, and a user id the CLI did
+// text, a new server entry name may not hold them, a user id the CLI did
 // not validate goes into error, hint, warning and recovery text through
-// IDText, which shows the id with these runes as escapes.
+// IDText, which shows the id with these runes as escapes, and each value in
+// the details lines of an error is shown the same way by the renderer.
 //
 // The source scan in test/conformance refuses any other test of these classes
 // through the unicode package outside its allowlist, so every caller shares
@@ -39,9 +40,10 @@ func IsUnsafeToDisplay(r rune) bool {
 
 // WithoutUnsafeToDisplay is s with every rune IsUnsafeToDisplay reports
 // removed. Its only caller is output.Printable, which applies it to
-// displayed text. A user id never goes through it: removing runes could turn
-// one id into another real id, so IDText writes them as escapes. An input
-// that holds only such runes comes back empty.
+// displayed text. A user id and a value in the details lines of an error never
+// go through it: removing runes could turn one value into another real value,
+// so IDText writes them as escapes. An input that holds only such runes comes
+// back empty.
 func WithoutUnsafeToDisplay(s string) string {
 	return strings.Map(func(r rune) rune {
 		if IsUnsafeToDisplay(r) {

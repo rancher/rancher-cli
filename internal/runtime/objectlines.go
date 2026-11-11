@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
@@ -28,16 +29,15 @@ var objectOutcomeOrder = []string{
 	safety.OutcomeNotAttempted,
 }
 
-// ObjectLines renders the objects of a preview or result as text lines for
-// TextLines: per kind other than headlineKind (the kind the command's own
-// headline already names), a "<kind>s:" line, then one line per outcome
-// with at most five names and a count of the rest. A name whose object
-// carries a Message shows it in parentheses for the outcomes that give a
-// reason (not deleted, failed). Kind, outcome, name and message all pass
-// output.Printable for printing; the grouping by kind, the match of an outcome
-// and the condition on a message use the values as given. The caller indents
-// the lines.
-func ObjectLines(objs []safety.Object, headlineKind string) []string {
+// ObjectDetailLines renders the objects of a preview or result as lines, with
+// every kind, outcome, name and message as a value and nothing removed or
+// escaped: per kind other than headlineKind (the kind the command's own
+// headline already names), a "<kind>s:" line, then one line per outcome two
+// spaces in, with at most five names and a count of the rest. A name whose
+// object carries a Message shows it in parentheses for the outcomes that give
+// a reason (not deleted, failed). The grouping by kind, the match of an
+// outcome and the condition on a message use the values as given.
+func ObjectDetailLines(objs []safety.Object, headlineKind string) []clierr.DetailLine {
 	var kindOrder []string
 	byKind := map[string][]safety.Object{}
 	for _, o := range objs {
@@ -49,23 +49,44 @@ func ObjectLines(objs []safety.Object, headlineKind string) []string {
 		}
 		byKind[o.Kind] = append(byKind[o.Kind], o)
 	}
-	var lines []string
+	var lines []clierr.DetailLine
 	for _, kind := range kindOrder {
-		lines = append(lines, output.Printable(kind)+"s:")
+		lines = append(lines, clierr.Line(clierr.ValuePart("", kind), clierr.LabelPart("s:")))
 		for _, outcome := range outcomesOf(byKind[kind]) {
-			var names []string
+			parts := []clierr.DetailPart{clierr.ValuePart("", outcome)}
+			shown := 0
 			for _, o := range byKind[kind] {
 				if o.Outcome != outcome {
 					continue
 				}
-				name := output.Printable(o.Name)
-				if o.Message != "" && (outcome == safety.OutcomeNotDeleted || outcome == safety.OutcomeFailed) {
-					name += " (" + output.Printable(o.Message) + ")"
+				shown++
+				if shown > maxNamesPerOutcome {
+					continue
 				}
-				names = append(names, name)
+				sep := ", "
+				if shown == 1 {
+					sep = ": "
+				}
+				parts = append(parts, clierr.ValuePart(sep, o.Name))
+				if o.Message != "" && (outcome == safety.OutcomeNotDeleted || outcome == safety.OutcomeFailed) {
+					parts = append(parts, clierr.ValuePart(" (", o.Message), clierr.LabelPart(")"))
+				}
 			}
-			lines = append(lines, "  "+output.Printable(outcome)+": "+NameList(names))
+			if shown > maxNamesPerOutcome {
+				parts = append(parts, clierr.LabelPart(fmt.Sprintf(" and %d more", shown-maxNamesPerOutcome)))
+			}
+			lines = append(lines, clierr.DetailLine{Indent: "  ", Parts: parts})
 		}
+	}
+	return lines
+}
+
+// ObjectLines is ObjectDetailLines as text lines for TextLines, each passed
+// through output.Printable for printing. The caller indents the lines.
+func ObjectLines(objs []safety.Object, headlineKind string) []string {
+	var lines []string
+	for _, l := range ObjectDetailLines(objs, headlineKind) {
+		lines = append(lines, output.Printable(l.String()))
 	}
 	return lines
 }

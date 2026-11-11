@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/gofrs/flock"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // Verdict classifies one target for `skill status`.
@@ -47,30 +49,33 @@ type Report struct {
 // TextDetails projects the first three outcomes onto one line each, a
 // "… and N more" line when there are more, and a pointer at the full report -
 // the default format stays one screen even for a large batch.
-func (r Report) TextDetails() []string {
+func (r Report) TextDetails() []clierr.DetailLine {
 	shown := min(len(r.Outcomes), 3)
-	lines := make([]string, 0, shown+2)
+	lines := make([]clierr.DetailLine, 0, shown+2)
 	for _, o := range r.Outcomes[:shown] {
-		label := o.Action
-		if label == "" {
-			label = string(o.Verdict)
+		state := o.Action
+		if state == "" {
+			state = string(o.Verdict)
 		}
+		parts := []clierr.DetailPart{clierr.ValuePart("", o.Target.Dir), clierr.ValuePart(": ", state)}
 		if o.Reason != "" {
-			label += ", " + o.Reason
+			parts = append(parts, clierr.ValuePart(", ", o.Reason))
 		}
-		lines = append(lines, fmt.Sprintf("%s: %s", o.Target.Dir, label))
+		lines = append(lines, clierr.Line(parts...))
 	}
 	if n := len(r.Outcomes) - shown; n > 0 {
-		lines = append(lines, fmt.Sprintf("… and %d more", n))
+		lines = append(lines, clierr.Line(clierr.LabelPart(fmt.Sprintf("… and %d more", n))))
 	}
-	lines = append(lines, "to see each target's state, run: "+r.statusCommand()+"; to see every reason, run the command again with -o json")
-	return lines
+	parts := []clierr.DetailPart{clierr.LabelPart("to see each target's state, run: ")}
+	parts = append(parts, r.statusCommand()...)
+	parts = append(parts, clierr.LabelPart("; to see every reason, run the command again with -o json"))
+	return append(lines, clierr.Line(parts...))
 }
 
 // statusCommand is the skill status command for the targets of the report:
 // --agent names the harness when the targets have one, --scope the scope
 // when they have one.
-func (r Report) statusCommand() string {
+func (r Report) statusCommand() []clierr.DetailPart {
 	var harness, scope string
 	harnesses, scopes := map[string]bool{}, map[Scope]bool{}
 	for _, o := range r.Outcomes {
@@ -78,12 +83,12 @@ func (r Report) statusCommand() string {
 		scopes[o.Target.Scope] = true
 		harness, scope = o.Target.Harness, string(o.Target.Scope)
 	}
-	cmd := "rancher skill status"
+	cmd := []clierr.DetailPart{clierr.LabelPart("rancher skill status")}
 	if len(harnesses) == 1 {
-		cmd += " --agent " + harness
+		cmd = append(cmd, clierr.ValuePart(" --agent ", harness))
 	}
 	if len(scopes) == 1 {
-		cmd += " --scope " + scope
+		cmd = append(cmd, clierr.ValuePart(" --scope ", scope))
 	}
 	return cmd
 }

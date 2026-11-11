@@ -3,8 +3,6 @@ package clierr
 import (
 	"encoding/json"
 	"reflect"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,7 +13,18 @@ import (
 // primary's own projection survives composition.
 type probeTextDetails struct{}
 
-func (probeTextDetails) TextDetails() []string { return []string{"  probe line"} }
+func (probeTextDetails) TextDetails() []DetailLine {
+	return []DetailLine{{Indent: "  ", Parts: []DetailPart{LabelPart("probe line")}}}
+}
+
+// detailTexts is the text of each line, with the values as they are.
+func detailTexts(lines []DetailLine) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = l.String()
+	}
+	return out
+}
 
 // TestRecoveryCommandsByKind asserts the one source of token recovery text:
 // an ext token is the `token` kind, a v3 token is the deprecated
@@ -88,7 +97,7 @@ func TestLoginFailureDetailsTextDetailsOrder(t *testing.T) {
 			Cleanup: &RevokeOutcome{Ref: &TokenRef{Kind: TokenKindExt, Name: "ext-1"}, Result: ResultFailed, Error: "503"}},
 		Recovery: "revoke ext/ext-1 with: rancher delete token ext-1 --apply --yes",
 	}
-	lines := d.TextDetails()
+	lines := detailTexts(d.TextDetails())
 	require.GreaterOrEqual(t, len(lines), 6)
 	assert.Equal(t, "failed: disk full (GENERIC)", lines[0])
 	assert.Equal(t, "stage: commit", lines[1])
@@ -111,7 +120,7 @@ func TestLoginFailureDetailsTextCarriesEveryUnnamedFate(t *testing.T) {
 			Cleanup: &RevokeOutcome{Result: ResultNotAttempted}},
 		Recovery: "list both collections",
 	}
-	lines := d.TextDetails()
+	lines := detailTexts(d.TextDetails())
 	assert.Contains(t, lines, "session token: unknown (kind unknown); cleanup: notAttempted")
 	assert.Contains(t, lines, "derived token: unidentified (ext), marked; cleanup: notAttempted")
 }
@@ -148,7 +157,7 @@ func TestFateLineRendersEveryCleanupResult(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, fateLine("session token", tt.fate))
+			assert.Equal(t, tt.want, fateLine(LabelPart("session token"), tt.fate).String())
 		})
 	}
 }
@@ -199,7 +208,7 @@ func TestLoginFailureDetailsTextNamesALoginTokenByItsKind(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			d := LoginFailureDetails{Primary: PrimaryFailure{Code: CodeGeneric, Message: "lost"}, Stage: StageAuthentication, SessionToken: tc.fate, Recovery: "r"}
-			assert.Contains(t, d.TextDetails(), tc.want)
+			assert.Contains(t, detailTexts(d.TextDetails()), tc.want)
 		})
 	}
 }
@@ -213,14 +222,14 @@ func TestLoginFailureDetailsTextIncludesThePrimaryDetails(t *testing.T) {
 		Primary: PrimaryFailure{Code: CodeGeneric, Message: "m", Details: probeTextDetails{}},
 		Stage:   StageCommit,
 	}
-	lines := d.TextDetails()
+	lines := detailTexts(d.TextDetails())
 	require.GreaterOrEqual(t, len(lines), 3)
 	assert.Equal(t, "failed: m (GENERIC)", lines[0])
 	assert.Equal(t, "  probe line", lines[1])
 	assert.Equal(t, "stage: commit", lines[2])
 	assert.Equal(t, 1, countLines(lines, "  probe line"))
 
-	plain := LoginFailureDetails{Primary: PrimaryFailure{Code: CodeGeneric, Message: "m"}, Stage: StageCommit}.TextDetails()
+	plain := detailTexts(LoginFailureDetails{Primary: PrimaryFailure{Code: CodeGeneric, Message: "m"}, Stage: StageCommit}.TextDetails())
 	assert.Equal(t, []string{"failed: m (GENERIC)", "stage: commit", "recover: "}, plain)
 }
 
@@ -289,7 +298,7 @@ func TestLoginFailureDetailsCarriesClusterTokenAndConfigRecovery(t *testing.T) {
 	_, hasRef := last["ref"]
 	assert.False(t, hasRef, "lastAttempt carries no ref: the record's ref is the token")
 
-	lines := d.TextDetails()
+	lines := detailTexts(d.TextDetails())
 	assert.Contains(t, lines, "stage: clusterToken")
 	assert.Contains(t, lines, "config: rollbackFailed")
 	assert.Contains(t, lines, "cluster token ext/token-c1: known, marked; cleanup: revoked")
@@ -304,39 +313,34 @@ func TestLoginFailureDetailsCarriesClusterTokenAndConfigRecovery(t *testing.T) {
 // name in text: system roots, a path, and an inline PEM.
 func TestPriorEntryTextShapes(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "system roots", (&PriorEntry{}).caShape())
-	assert.Equal(t, "path /etc/ca.pem", (&PriorEntry{CA: "/etc/ca.pem"}).caShape())
-	assert.Equal(t, "inline PEM (8 bytes)", (&PriorEntry{CA: "-----BEG"}).caShape())
+	assert.Equal(t, "system roots", Line((&PriorEntry{}).caShape()...).String())
+	assert.Equal(t, "path /etc/ca.pem", Line((&PriorEntry{CA: "/etc/ca.pem"}).caShape()...).String())
+	assert.Equal(t, "inline PEM (8 bytes)", Line((&PriorEntry{CA: "-----BEG"}).caShape()...).String())
 }
 
-// TestPriorEntryTextEscapesAnOwnerWithHiddenRunes asserts the prior entry line
-// writes an owner with a rune the terminal hides as a double-quoted string
-// with escapes, never with the runes removed (which would read as another
-// id), and that the owner of a safe id stays as it is. The data field keeps
-// the exact owner.
-func TestPriorEntryTextEscapesAnOwnerWithHiddenRunes(t *testing.T) {
+// TestPriorEntryTextCarriesTheOwnerAsOneValue asserts the prior entry's
+// owner is its own value in the line, exactly as stored: the renderer shows a
+// value with hidden runes as escapes, so the payload neither escapes nor
+// removes them. The data field keeps the exact owner.
+func TestPriorEntryTextCarriesTheOwnerAsOneValue(t *testing.T) {
 	t.Parallel()
 	const hostile = "u-abc\u200b12"
-	for _, tc := range []struct{ owner, want string }{
-		{"u-abc12", "token ext/token-old (user u-abc12)"},
-		{hostile, "token ext/token-old (user " + strconv.Quote(hostile) + ")"},
-	} {
+	for _, owner := range []string{"u-abc12", hostile} {
 		d := LoginFailureDetails{
 			Primary: PrimaryFailure{Code: CodeGeneric, Message: "boom"},
 			Stage:   StageClusterToken,
 			ConfigRecovery: &ConfigRecovery{Entry: "prod", Command: "c", Prior: &PriorEntry{
-				URL: "https://r.ex", TokenRef: &TokenRef{Kind: TokenKindExt, Name: "token-old"}, TokenUserID: tc.owner}},
+				URL: "https://r.ex", TokenRef: &TokenRef{Kind: TokenKindExt, Name: "token-old"}, TokenUserID: owner}},
 			Recovery: "r",
 		}
-		var prior string
+		var prior []DetailPart
 		for _, l := range d.TextDetails() {
-			if strings.HasPrefix(l, "  prior entry: ") {
-				prior = l
+			if l.Indent == "  " && len(l.Parts) > 0 && l.Parts[0].Label == "prior entry: " {
+				prior = l.Parts
 			}
 		}
-		assert.Contains(t, prior, tc.want)
-		assert.Equal(t, prior, WithoutUnsafeToDisplay(prior), "the line holds no rune the terminal hides")
-		assert.Equal(t, tc.owner, d.ConfigRecovery.Prior.TokenUserID)
+		assert.Contains(t, prior, ValuePart(" (user ", owner))
+		assert.Equal(t, owner, d.ConfigRecovery.Prior.TokenUserID)
 	}
 }
 
@@ -386,7 +390,7 @@ func TestPriorEntryCarriesWhetherTheLastLoginUsedTheVariable(t *testing.T) {
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(raw, &got))
 	assert.Equal(t, true, got["caFromEnvironment"])
-	assert.Equal(t, "https://r.ex, CA system roots, last login connected with RANCHER_CLI_CACERT", marked.text())
+	assert.Equal(t, "https://r.ex, CA system roots, last login connected with RANCHER_CLI_CACERT", Line(marked.text()...).String())
 
 	plain := PriorEntry{URL: "https://r.ex"}
 	raw, err = json.Marshal(plain)
@@ -394,5 +398,5 @@ func TestPriorEntryCarriesWhetherTheLastLoginUsedTheVariable(t *testing.T) {
 	got = nil
 	require.NoError(t, json.Unmarshal(raw, &got))
 	assert.NotContains(t, got, "caFromEnvironment")
-	assert.Equal(t, "https://r.ex, CA system roots", plain.text())
+	assert.Equal(t, "https://r.ex, CA system roots", Line(plain.text()...).String())
 }

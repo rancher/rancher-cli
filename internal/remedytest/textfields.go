@@ -18,8 +18,10 @@ import (
 // when its owner has to map it.
 type MarkedDetails struct{ Text string }
 
-// TextDetails is the one line the payload holds.
-func (d MarkedDetails) TextDetails() []string { return []string{d.Text} }
+// TextDetails is the one line the payload holds, its text as one value.
+func (d MarkedDetails) TextDetails() []clierr.DetailLine {
+	return []clierr.DetailLine{clierr.Line(clierr.ValuePart("", d.Text))}
+}
 
 // MapText maps the text.
 func (d MarkedDetails) MapText(f func(string) string) clierr.TextDetails {
@@ -31,6 +33,16 @@ func (d MarkedDetails) MapText(f func(string) string) clierr.TextDetails {
 func (d MarkedDetails) MapCommands(f func(string) string) clierr.TextDetails {
 	d.Text = f(d.Text)
 	return d
+}
+
+// DetailTexts is each line of a details payload as plain text, with every
+// value written as it is: the text a test compares with a string.
+func DetailTexts(lines []clierr.DetailLine) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = l.String()
+	}
+	return out
 }
 
 // errorPointer is the type of a nested error, which is one text field of its

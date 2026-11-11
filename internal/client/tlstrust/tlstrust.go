@@ -23,7 +23,6 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -94,8 +93,8 @@ func (d Details) IsLeafCertificate() bool { return d.leaf }
 // fingerprint describes - "certificate authority" or, when the chain
 // carried no valid issuer, "serving certificate" - so the card is never
 // read as naming a CA it cannot check against a fetched CA file.
-func (d Details) TextDetails() []string {
-	var lines []string
+func (d Details) TextDetails() []clierr.DetailLine {
+	var lines []clierr.DetailLine
 	if d.Subject != "" {
 		label := "certificate"
 		if d.Kind == KindUnknownAuthority {
@@ -104,16 +103,16 @@ func (d Details) TextDetails() []string {
 				label = "serving certificate"
 			}
 		}
-		lines = append(lines, label+": "+d.Subject)
+		lines = append(lines, clierr.Line(clierr.ValuePart(label+": ", d.Subject)))
 	}
 	if d.Issuer != "" {
-		lines = append(lines, "issuer: "+d.Issuer)
+		lines = append(lines, clierr.Line(clierr.ValuePart("issuer: ", d.Issuer)))
 	}
 	if d.Fingerprint != "" {
-		lines = append(lines, "fingerprint: "+d.Fingerprint)
+		lines = append(lines, clierr.Line(clierr.ValuePart("fingerprint: ", d.Fingerprint)))
 	}
 	if d.NotBefore != "" && d.NotAfter != "" {
-		lines = append(lines, fmt.Sprintf("valid: %s to %s", d.NotBefore, d.NotAfter))
+		lines = append(lines, clierr.Line(clierr.ValuePart("valid: ", d.NotBefore), clierr.ValuePart(" to ", d.NotAfter)))
 	}
 	return lines
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +49,7 @@ func TestFailLoginRendersThreeFatesInOrderAndRevokesTheCredentialLast(t *testing
 	assert.Contains(t, d.Recovery, "run the kubectl command again")
 	assert.Empty(t, ce.Hint, "no paste-invalid hint for a plugin entry")
 	assert.Empty(t, d.ConfigState, "no persistence system was reached at this stage")
-	lines := d.TextDetails()
+	lines := remedytest.DetailTexts(d.TextDetails())
 	sIdx, dIdx, cIdx := indexOfPrefix(lines, "session token"), indexOfPrefix(lines, "derived token"), indexOfPrefix(lines, "cluster token")
 	assert.True(t, sIdx < dIdx && dIdx < cIdx, "%v", lines)
 }

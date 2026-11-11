@@ -34,6 +34,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/register"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/testrancher"
@@ -2200,11 +2201,11 @@ func TestLoginTLSFailureKeepsCertificateFactsInText(t *testing.T) {
 
 	composed := token.FailLogin(primary, clierr.StageCommit, token.LoginStates{}, token.UserSupplied("id:secret"), "prod")
 	_, d := decodeLoginFailure(t, composed)
-	lines := d.TextDetails()
-	for _, want := range inner.TextDetails() {
+	lines := remedytest.DetailTexts(d.TextDetails())
+	for _, want := range remedytest.DetailTexts(inner.TextDetails()) {
 		assert.Equal(t, 1, countOf(lines, want), "certificate fact %q rendered exactly once", want)
 	}
-	assert.Less(t, indexOf(lines, inner.TextDetails()[0]), indexOf(lines, "stage: "+string(d.Stage)), "certificate facts precede the login stage")
+	assert.Less(t, indexOf(lines, remedytest.DetailTexts(inner.TextDetails())[0]), indexOf(lines, "stage: "+string(d.Stage)), "certificate facts precede the login stage")
 }
 
 // TestLoginLostResponseRecoveryNamesBothCollections asserts recovery for a
@@ -2242,7 +2243,7 @@ func TestLoginLostResponseRecoveryNamesBothCollections(t *testing.T) {
 			assert.Contains(t, d.Recovery, v3List)
 			assert.Contains(t, d.Recovery, extList)
 			assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
-			assert.Contains(t, strings.Join(d.TextDetails(), "\n"), "(kind unknown)")
+			assert.Contains(t, strings.Join(remedytest.DetailTexts(d.TextDetails()), "\n"), "(kind unknown)")
 			assert.Len(t, f.TokensWithDescriptionContaining(tc.shape, "[op:"+d.OperationMarker+"]"), 1, "the leftover is in the collection the server chose")
 		})
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	rt "github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/rancher/rancher-cli/internal/token"
@@ -159,7 +160,7 @@ func TestTheRemediesOfTheOtherPackagesParseAndPassTheGates(t *testing.T) {
 	credential := clierr.LoginFailureDetails{CredentialRecovery: &clierr.CredentialRecovery{
 		Command: config.LogoutHintFor("prod"), DataLossRisk: "deletes the stored login",
 	}}
-	texts = append(texts, credential.TextDetails()...)
+	texts = append(texts, remedytest.DetailTexts(credential.TextDetails())...)
 
 	var commands []string
 	for _, text := range texts {

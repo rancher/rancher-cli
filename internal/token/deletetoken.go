@@ -130,10 +130,10 @@ type DeleteTokenFailure struct {
 
 // TextDetails lists what was deleted and each token that may still be
 // live.
-func (p DeleteTokenFailure) TextDetails() []string {
-	var lines []string
+func (p DeleteTokenFailure) TextDetails() []clierr.DetailLine {
+	var lines []clierr.DetailLine
 	if len(p.Deleted) > 0 {
-		lines = append(lines, "deleted: "+strings.Join(p.Deleted, ", "))
+		lines = append(lines, clierr.Line(clierr.ListParts("deleted: ", p.Deleted)...))
 	}
 	for _, n := range p.NotRevoked {
 		lines = append(lines, n.DetailLines()...)

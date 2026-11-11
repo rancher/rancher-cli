@@ -19,6 +19,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -353,7 +354,7 @@ func TestOtherProducersKeepTheirCancelledWaitDetails(t *testing.T) {
 				if tc.shim {
 					label = "token cleanup: "
 				}
-				lines := details.TextDetails()
+				lines := remedytest.DetailTexts(details.TextDetails())
 				require.Len(t, lines, 1)
 				assert.True(t, strings.HasPrefix(lines[0], label+"failed ("+details.Fate.Ref.String()+")"), "got %q", lines[0])
 				msg := clierr.ExpandRemedies(ce.Message, "")

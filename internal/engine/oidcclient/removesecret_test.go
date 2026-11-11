@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -132,5 +133,5 @@ func TestRemoveSecretExecTimeoutIsNonRetryable(t *testing.T) {
 	assert.Equal(t, []string{
 		"committed: OIDCClient my-app - the change may already be on the server",
 		"recover: " + details.Recovery,
-	}, details.TextDetails())
+	}, remedytest.DetailTexts(details.TextDetails()))
 }

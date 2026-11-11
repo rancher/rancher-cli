@@ -19,7 +19,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
-	"github.com/rancher/rancher-cli/internal/output"
+	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -717,14 +717,14 @@ func TestBundleFailureDetailsTextDetailsProjectsThePathAndTheCounts(t *testing.T
 	t.Parallel()
 	cert := tlstrust.Details{Kind: tlstrust.KindExpired}
 	d := BundleFailureDetails{OutputFile: "b.tar.gz", Attempted: 5, Failed: 5, First: &cert}
-	assert.Equal(t, slices.Concat([]string{"archive: b.tar.gz", "items attempted: 5, failed: 5"}, cert.TextDetails()), d.TextDetails())
-	assert.Equal(t, []string{"archive: b.tar.gz"}, BundleFailureDetails{OutputFile: "b.tar.gz"}.TextDetails())
+	assert.Equal(t, slices.Concat([]string{"archive: b.tar.gz", "items attempted: 5, failed: 5"}, remedytest.DetailTexts(cert.TextDetails())), remedytest.DetailTexts(d.TextDetails()))
+	assert.Equal(t, []string{"archive: b.tar.gz"}, remedytest.DetailTexts(BundleFailureDetails{OutputFile: "b.tar.gz"}.TextDetails()))
 }
 
 // TestBundleFailureDetailsTextShowsAnUnsafePathWithEscapes asserts a path
 // that holds a control character or a bidirectional mark is shown escaped in
-// the text form, as the renderer prints it, while the JSON form keeps the
-// exact value.
+// the default-format error text, as the renderer prints it, while the JSON
+// form keeps the exact value.
 func TestBundleFailureDetailsTextShowsAnUnsafePathWithEscapes(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, path, shown string }{
@@ -735,10 +735,9 @@ func TestBundleFailureDetailsTextShowsAnUnsafePathWithEscapes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			d := BundleFailureDetails{OutputFile: tc.path}
-			lines := d.TextDetails()
-			require.Len(t, lines, 1)
-			assert.Equal(t, "archive: "+tc.shown, lines[0])
-			assert.Equal(t, lines[0], output.Printable(lines[0]), "the renderer removes nothing from the escaped path")
+			var text strings.Builder
+			require.NoError(t, runtime.RenderError(&text, "", clierr.New(clierr.CodeGeneric, "m").WithDetails(d)))
+			assert.Equal(t, "error (GENERIC): m\n  archive: "+tc.shown+"\n", text.String())
 
 			raw, err := json.Marshal(d)
 			require.NoError(t, err)

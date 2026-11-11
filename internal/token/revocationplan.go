@@ -106,40 +106,56 @@ func MapLiveTokens(list []NotRevokedToken, errorFn, recoveryFn func(string) stri
 
 // TextLine is the line a failure's text details give a token that may
 // still be live.
-func (n NotRevokedToken) TextLine() string {
-	what := n.Source + " token"
+func (n NotRevokedToken) TextLine() clierr.DetailLine {
+	var parts []clierr.DetailPart
 	if n.Ref != nil {
-		what = n.Ref.String()
+		parts = clierr.TokenRefParts("not revoked: ", *n.Ref)
+	} else {
+		parts = []clierr.DetailPart{clierr.ValuePart("not revoked: ", n.Source), clierr.LabelPart(" token")}
 	}
+	parts = append(parts, clierr.ValuePart(" on ", n.Server), clierr.ValuePart(" (", n.Reason))
 	if n.Code != "" {
-		return fmt.Sprintf("not revoked: %s on %s (%s, %s, retry %s)", what, n.Server, n.Reason, n.Code, n.Retry)
+		parts = append(parts, clierr.ValuePart(", ", n.Code))
 	}
-	return fmt.Sprintf("not revoked: %s on %s (%s, retry %s)", what, n.Server, n.Reason, n.Retry)
+	return clierr.Line(append(parts, clierr.ValuePart(", retry ", n.Retry), clierr.LabelPart(")"))...)
 }
 
 // DetailLines is TextLine and, for a certificate failure, the message and
 // the certificate's facts two spaces deeper.
-func (n NotRevokedToken) DetailLines() []string {
-	lines := []string{n.TextLine()}
+func (n NotRevokedToken) DetailLines() []clierr.DetailLine {
+	lines := []clierr.DetailLine{n.TextLine()}
 	if n.Code == "" {
 		return lines
 	}
-	for _, l := range certificateFailureLines(n.Error, n.Certificate) {
-		lines = append(lines, "  "+l)
+	for _, l := range certificateFailureDetailLines(n.Error, n.Certificate) {
+		l.Indent = "  " + l.Indent
+		lines = append(lines, l)
+	}
+	return lines
+}
+
+// certificateFailureDetailLines is the message of a certificate failure and
+// the facts about the certificate, one line each, with every value as it is:
+// the renderer shows them with their hidden characters as escapes.
+func certificateFailureDetailLines(message string, cert *tlstrust.Details) []clierr.DetailLine {
+	lines := []clierr.DetailLine{clierr.Line(clierr.ValuePart("", message))}
+	if cert != nil {
+		lines = append(lines, cert.TextDetails()...)
 	}
 	return lines
 }
 
 // certificateFailureLines is the message of a certificate failure and the
-// facts about the certificate, one line each. The certificate comes from a
-// server that just failed verification, so every line passes through
-// output.Printable; the message keeps the markers of the remedy commands it
-// holds, which the invocation expands when it prints the line.
+// facts about the certificate, one line each, for a success text. The
+// certificate comes from a server that just failed verification, so every
+// line passes through output.Printable; the message keeps the markers of the
+// remedy commands it holds, which the invocation expands when it prints the
+// line.
 func certificateFailureLines(message string, cert *tlstrust.Details) []string {
 	lines := []string{runtime.PrintableRemedies(message)}
 	if cert != nil {
 		for _, l := range cert.TextDetails() {
-			lines = append(lines, output.Printable(l))
+			lines = append(lines, output.Printable(l.String()))
 		}
 	}
 	return lines
@@ -167,8 +183,8 @@ func (r RevocationReport) MapCommands(f func(string) string) clierr.TextDetails 
 }
 
 // TextDetails lists each token that may still be live.
-func (r RevocationReport) TextDetails() []string {
-	var lines []string
+func (r RevocationReport) TextDetails() []clierr.DetailLine {
+	var lines []clierr.DetailLine
 	for _, n := range r.NotRevoked {
 		lines = append(lines, n.DetailLines()...)
 	}

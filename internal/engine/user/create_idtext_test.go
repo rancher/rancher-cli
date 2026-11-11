@@ -1,6 +1,8 @@
 package user
 
 import (
+	"bytes"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/remedytest"
+	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
 // hiddenRunesName holds a direction override, a zero-width space, a bell, a
@@ -78,5 +81,59 @@ func TestTheGrantPreviewOfAUserNameWithHiddenRunesIsLeftOut(t *testing.T) {
 	assert.True(t, found, "a warning says no grant command is printed: %v", eff.Warnings)
 	for _, w := range eff.Warnings {
 		assert.NotContains(t, strings.ReplaceAll(w, clierr.Rancher, "rancher"), "rancher grant", "no grant command for the name")
+	}
+}
+
+// TestACreatedUserNameInTheRecoveryIsEscapedOnce asserts the recover line of
+// the default-format error text of a failed Secret create and of a failed
+// binding holds the user name with its escapes, inside the quotes of the
+// command line, never escaped a second time by the renderer: the line is the
+// recovery text as the command builds it, and json carries the same text.
+func TestACreatedUserNameInTheRecoveryIsEscapedOnce(t *testing.T) {
+	t.Parallel()
+	roles := []*unstructured.Unstructured{defaultRole("alpha")}
+	for _, tc := range []struct {
+		name   string
+		client *fakeUserClient
+	}{
+		{"the Secret create fails", &fakeUserClient{userPreviewName: "u-preview1", userRealName: hiddenRunesName, roles: roles,
+			secretCreateErr: clierr.New(clierr.CodeGeneric, "boom")}},
+		{"the binding fails", &fakeUserClient{userPreviewName: "u-preview1", userRealName: hiddenRunesName, roles: roles,
+			bindingRealErr: map[string]error{"alpha": clierr.New(clierr.CodeGeneric, "boom")}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, exec, err := plan(t, tc.client, fakeSrc{body: []byte(testPassword)}, planInput("alice"))
+			require.NoError(t, err)
+			_, err = exec(t.Context())
+			ce, details := committedDetails(t, err)
+			recovery, _ := details["recovery"].(string)
+
+			var text bytes.Buffer
+			require.NoError(t, runtime.RenderError(&text, "", ce))
+			var line string
+			for l := range strings.SplitSeq(text.String(), "\n") {
+				if rest, ok := strings.CutPrefix(l, "  recover: "); ok {
+					line = rest
+				}
+			}
+			require.NotEmpty(t, line, "%q", text.String())
+			assert.Contains(t, line, strconv.Quote(hiddenRunesName))
+			assert.Equal(t, strings.ReplaceAll(recovery, clierr.Rancher, "rancher"), line, "the renderer leaves the recovery text as the command builds it")
+
+			var out bytes.Buffer
+			require.NoError(t, runtime.RenderError(&out, "json", ce))
+			var env struct {
+				Data struct {
+					Error struct {
+						Details struct {
+							Recovery string `json:"recovery"`
+						} `json:"details"`
+					} `json:"error"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(out.Bytes(), &env))
+			assert.Equal(t, recovery, env.Data.Error.Details.Recovery)
+		})
 	}
 }

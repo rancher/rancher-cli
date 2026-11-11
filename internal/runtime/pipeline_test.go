@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1435,9 +1436,9 @@ func TestRenderErrRetryableHeader(t *testing.T) {
 
 // stubTextDetails is a minimal clierr.TextDetails implementation for
 // exercising the details block in isolation from any real producer's shape.
-type stubTextDetails struct{ lines []string }
+type stubTextDetails struct{ lines []clierr.DetailLine }
 
-func (s stubTextDetails) TextDetails() []string { return s.lines }
+func (s stubTextDetails) TextDetails() []clierr.DetailLine { return s.lines }
 
 // TestRenderErrDetailsBlock asserts that a details payload implementing
 // clierr.TextDetails renders its projected lines after hint/candidates, and
@@ -1446,7 +1447,10 @@ func TestRenderErrDetailsBlock(t *testing.T) {
 	t.Parallel()
 	ce := clierr.New(clierr.CodeConflict, "boom").
 		WithHint("retry").
-		WithDetails(stubTextDetails{lines: []string{"committed: Widget w1 - the change may already be on the server", "recover: get widget w1 -o json"}})
+		WithDetails(stubTextDetails{lines: []clierr.DetailLine{
+			clierr.Line(clierr.ValuePart("committed: ", "Widget w1"), clierr.LabelPart(" - the change may already be on the server")),
+			clierr.Line(clierr.ValuePart("recover: ", "get widget w1 -o json")),
+		}})
 	var errBuf bytes.Buffer
 	_ = renderErr(IO{Err: &errBuf, Format: ""}, ce)
 	assert.Equal(t, "error (CONFLICT): boom\n"+
@@ -1457,6 +1461,35 @@ func TestRenderErrDetailsBlock(t *testing.T) {
 	errBuf.Reset()
 	_ = renderErr(IO{Err: &errBuf, Format: ""}, clierr.New(clierr.CodeConflict, "boom"))
 	assert.Equal(t, "error (CONFLICT): boom\n", errBuf.String())
+}
+
+// TestRenderErrDetailsShowHiddenCharactersAsEscapes asserts a details value
+// that holds a control character, an invisible format character or a line
+// separator prints as a double-quoted string with escapes, in place, with the
+// label before it and the indent outside the quotes; that a value whose only
+// problem is an invalid UTF-8 byte prints with U+FFFD for the byte; and that
+// the value of a part after a label with no value is shown the same way.
+func TestRenderErrDetailsShowHiddenCharactersAsEscapes(t *testing.T) {
+	t.Parallel()
+	render := func(lines ...clierr.DetailLine) string {
+		var errBuf bytes.Buffer
+		_ = renderErr(IO{Err: &errBuf, Format: ""}, clierr.New(clierr.CodeConflict, "boom").WithDetails(stubTextDetails{lines: lines}))
+		return errBuf.String()
+	}
+	const hidden = "CN=rancher\u200b.example"
+	assert.Equal(t, "error (CONFLICT): boom\n  certificate: "+strconv.Quote(hidden)+"\n",
+		render(clierr.Line(clierr.ValuePart("certificate: ", hidden))))
+	assert.Equal(t, "error (CONFLICT): boom\n    prior entry: "+strconv.Quote(hidden)+", CA system roots\n",
+		render(clierr.DetailLine{Indent: "  ", Parts: []clierr.DetailPart{clierr.ValuePart("prior entry: ", hidden), clierr.LabelPart(", CA system roots")}}))
+	assert.Equal(t, "error (CONFLICT): boom\n  a "+strconv.Quote("x\ny")+" b "+strconv.Quote("\x1b[2J")+" c\n",
+		render(clierr.Line(clierr.ValuePart("a ", "x\ny"), clierr.ValuePart(" b ", "\x1b[2J"), clierr.LabelPart(" c"))))
+
+	got := render(clierr.Line(clierr.ValuePart("value: ", "a\x9bb")))
+	assert.Equal(t, "error (CONFLICT): boom\n  value: a\ufffdb\n", got)
+	assert.NotContains(t, got, "\x9b")
+
+	assert.Equal(t, "error (CONFLICT): boom\n  value: plain text, with spaces\n",
+		render(clierr.Line(clierr.ValuePart("value: ", "plain text, with spaces"))))
 }
 
 // TestRenderErrFallsBackForUnprojectedDetails asserts the defense against an internal error:
