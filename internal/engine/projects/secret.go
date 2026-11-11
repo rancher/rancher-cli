@@ -60,8 +60,8 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 			{Name: "type", Type: "string", Desc: "secret `type` (default Opaque)"},
 		},
 		Examples: []string{
-			"rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply",
-			"rancher create secret shared-cred --project p-x --cluster c-x --from-literal token=abc --apply",
+			"rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply --yes",
+			"rancher create secret shared-cred --project p-x --cluster c-x --from-literal token=abc --apply --yes",
 		},
 		Destructive: "true",
 		Auth:        true,

@@ -3,8 +3,11 @@ package extres
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -44,7 +47,7 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 			{Name: "include-default-entry", Type: "string", Enum: []string{"true", "false"}, Desc: "include the Rancher server's default entry (server default true; pass false, with --clusters, to leave it out)"},
 		},
 		Examples: []string{
-			"rancher create kubeconfig --clusters prod,staging --ttl 30d --apply > ci.yaml",
+			"rancher create kubeconfig --clusters prod,staging --ttl 30d --apply --yes > ci.yaml",
 		},
 		Destructive: "true", // the kubeconfig kind is Sensitive
 		Auth:        true,
@@ -172,26 +175,68 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 				})
 		}
 		return runtime.Result{
-			RawBytes:         append([]byte(kubeconfigHeader(name)), []byte(value)...),
+			RawBytes:         append([]byte(kubeconfigHeader(name, created)), []byte(value)...),
 			CommittedContext: &runtime.CommittedContext{ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery},
 		}, nil
 	}
 	return eff, exec, nil
 }
 
-// kubeconfigHeader returns the comment line that starts the file: the name
-// in the server's reply in Go's quoted form, so a line break or a control
-// character in it cannot end the line, and the command that revokes the
-// kubeconfig with the name quoted for a POSIX shell, and after "--" when the
-// name starts with a dash, so the command reads it as the name and not as a
-// flag. A name that is empty or that output.Printable would change gets no
-// command, because a command built from a changed name would name another
-// object.
-func kubeconfigHeader(name string) string {
+// kubeconfigHeader returns the two comment lines that start the file. The
+// first holds the name in the server's reply in Go's quoted form, so a line
+// break or a control character in it cannot end the line, and the command that
+// revokes the kubeconfig with the name quoted for a POSIX shell, and after
+// "--" when the name starts with a dash, so the command reads it as the name
+// and not as a flag. A name that is empty or that output.Printable would
+// change gets no command, because a command built from a changed name would
+// name another object. The second line holds the token names of the reply,
+// each in Go's quoted form, and the expiry the reply gives; a reply that
+// lists no token gets a line that says so.
+func kubeconfigHeader(name string, created *unstructured.Unstructured) string {
+	var first string
 	if name != "" && output.Printable(name) == name {
-		return fmt.Sprintf("# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n", name, clierr.ShellQuoteArgs(" --apply --yes", name))
+		first = fmt.Sprintf("# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n", name, clierr.ShellQuoteArgs(" --apply --yes", name))
+	} else {
+		first = fmt.Sprintf("# Kubeconfig %q - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show\n", name)
 	}
-	return fmt.Sprintf("# Kubeconfig %q - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show\n", name)
+	var quoted []string
+	tokens, _, _ := unstructured.NestedSlice(created.Object, "status", "tokens")
+	for _, token := range tokens {
+		if tokenName, ok := token.(string); ok && tokenName != "" {
+			quoted = append(quoted, strconv.Quote(tokenName))
+		}
+	}
+	if len(quoted) == 0 {
+		return first + "# Tokens: none listed by the server\n"
+	}
+	return first + fmt.Sprintf("# Tokens: %s - expiry %s\n", strings.Join(quoted, ", "), kubeconfigExpiry(created))
+}
+
+// maxKubeconfigTTLSeconds bounds the ttl the expiry is computed from, so the
+// ttl fits a time.Duration and the sum with the creation time stays a year
+// RFC 3339 can write.
+const maxKubeconfigTTLSeconds = 1 << 33
+
+// kubeconfigExpiry returns the creation time of the reply plus its spec.ttl
+// (seconds) in RFC 3339 and UTC, or the statement that the server returned no
+// expiry when the reply has no creation time or no ttl that is a whole number
+// of seconds above zero (the server writes an integer). The ttl is the one in
+// the reply, never the one the caller asked for: the server fills in a default
+// when the request has none.
+func kubeconfigExpiry(created *unstructured.Unstructured) string {
+	const notReturned = "not returned by the server"
+	var ttl float64
+	switch v, _, _ := unstructured.NestedFieldNoCopy(created.Object, "spec", "ttl"); n := v.(type) {
+	case int64:
+		ttl = float64(n)
+	case float64:
+		ttl = n
+	}
+	createdAt := created.GetCreationTimestamp()
+	if createdAt.IsZero() || !(ttl > 0 && ttl <= maxKubeconfigTTLSeconds && ttl == math.Trunc(ttl)) {
+		return notReturned
+	}
+	return createdAt.Add(time.Duration(ttl) * time.Second).UTC().Format(time.RFC3339)
 }
 
 // kubeconfigRecovery is the text that says how to create the kubeconfig

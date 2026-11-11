@@ -1849,7 +1849,8 @@ func (f *Facade) deleteMode(rec *record) string {
 // label naming the Kubeconfig, valid 30 days, listed in the answer's
 // status.tokens. A requested spec.ttl is in seconds; above 30 days or
 // negative it is refused with 400, and the answer's spec.ttl is the 30 day
-// default when none was sent. The refusal follows Rancher 2.14 and 2.15,
+// default when none was sent. The answer carries metadata.creationTimestamp
+// in RFC 3339, UTC, to the second. The refusal follows Rancher 2.14 and 2.15,
 // where the cap is the kubeconfig-default-token-ttl-minutes setting (30 days
 // by default); Rancher main, the v2.16 pre-release, caps at
 // kubeconfig-max-token-ttl-minutes (90 days) and words the negative ttl
@@ -1934,6 +1935,7 @@ func (f *Facade) handleKubeconfigsPOST(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		obj["status"] = map[string]any{"value": value, "summary": "Complete", "tokens": []string{rec.name}}
+		obj["metadata"].(map[string]any)["creationTimestamp"] = time.Now().UTC().Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusCreated, obj)
 }

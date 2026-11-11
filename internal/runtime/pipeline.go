@@ -269,8 +269,7 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 		return 0, renderEffect(streams, eff)
 	}
 	if missing := missingFlags(streams, eff, b); len(missing) > 0 {
-		return 0, renderErr(streams, clierr.New(clierr.CodeConfirmationRequired,
-			"confirmation required for this mutation; re-run with "+strings.Join(missing, " ")))
+		return 0, renderErr(streams, clierr.New(clierr.CodeConfirmationRequired, confirmationMessage(streams, missing)))
 	}
 	res, err := exec(ctx)
 	if err != nil {
@@ -726,6 +725,18 @@ func ValidCapabilityShape(req CapabilityRequirement, name string) string {
 	default:
 		return ""
 	}
+}
+
+// confirmationMessage is the text of the refusal for the missing flags. A run
+// without --apply has not previewed the change yet, so the text names
+// --dry-run as the preview and asks for the flags after the caller has read
+// it; a run with --apply names only the flags still missing.
+func confirmationMessage(streams IO, missing []string) string {
+	flags := strings.Join(missing, " ")
+	if !streams.Apply {
+		return "confirmation required for this mutation; preview it with --dry-run, then re-run with " + flags + " after reading the preview"
+	}
+	return "confirmation required for this mutation; re-run with " + flags
 }
 
 // missingFlags computes the confirmation flags absent for this Effect and binding.

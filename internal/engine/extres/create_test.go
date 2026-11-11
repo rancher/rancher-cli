@@ -27,6 +27,11 @@ type fakeClient struct {
 
 	name   string         // assigned to the object on the real (non-dry-run) create
 	status map[string]any // merged into status on the real (non-dry-run) create
+	// spec replaces the request's spec fields it names, and creationTimestamp
+	// sets metadata.creationTimestamp, on the real (non-dry-run) create, the
+	// way the server fills the default ttl and the creation time.
+	spec              map[string]any
+	creationTimestamp string
 
 	createErr error
 	// realCreateErr fails only the real (non-dry-run) create.
@@ -65,6 +70,12 @@ func (f *fakeClient) Create(_ context.Context, _ schema.GroupVersionResource, ns
 		}
 		if f.status != nil {
 			_ = unstructured.SetNestedMap(out.Object, f.status, "status")
+		}
+		for k, v := range f.spec {
+			_ = unstructured.SetNestedField(out.Object, v, "spec", k)
+		}
+		if f.creationTimestamp != "" {
+			_ = unstructured.SetNestedField(out.Object, f.creationTimestamp, "metadata", "creationTimestamp")
 		}
 	}
 	return out, nil

@@ -453,13 +453,25 @@ var commentLineLiterals = []commentLineEntry{
 		file: "internal/engine/extres/kubeconfig.go", class: classHeader,
 		text:   "# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n",
 		reason: "header: the name in the server's reply, in Go's quoted form, and in the command only when it prints as it is",
-		test:   "TestCreateKubeconfigHeaderStaysOneCommentLine", covers: "NewCreateKubeconfig",
+		test:   "TestCreateKubeconfigHeaderLinesStayComments", covers: "NewCreateKubeconfig",
 	},
 	{
 		file: "internal/engine/extres/kubeconfig.go", class: classHeader,
 		text:   "# Kubeconfig %q - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show\n",
 		reason: "header: the name in the server's reply, in Go's quoted form, with no command",
-		test:   "TestCreateKubeconfigHeaderStaysOneCommentLine", covers: "NewCreateKubeconfig",
+		test:   "TestCreateKubeconfigHeaderLinesStayComments", covers: "NewCreateKubeconfig",
+	},
+	{
+		file: "internal/engine/extres/kubeconfig.go", class: classHeader,
+		text:   "# Tokens: %s - expiry %s\n",
+		reason: "header: the token names in the server's reply, each in Go's quoted form, and the expiry the reply gives",
+		test:   "TestCreateKubeconfigHeaderLinesStayComments", covers: "NewCreateKubeconfig",
+	},
+	{
+		file: "internal/engine/extres/kubeconfig.go", class: classHeader,
+		text:   "# Tokens: none listed by the server\n",
+		reason: "header: the line for a reply that lists no token",
+		test:   "TestCreateKubeconfigHeaderLinesStayComments", covers: "NewCreateKubeconfig",
 	},
 }
 

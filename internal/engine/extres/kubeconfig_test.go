@@ -163,7 +163,12 @@ func TestCreateKubeconfigIsDestructive(t *testing.T) {
 func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	t.Parallel()
 	rawKC := "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\ncurrent-context: \"\"\n"
-	client := &fakeClient{name: "kubeconfig-abc", status: map[string]any{"value": rawKC}}
+	client := &fakeClient{
+		name:              "kubeconfig-abc",
+		status:            map[string]any{"value": rawKC, "tokens": []any{"kubeconfig-u-abc"}},
+		spec:              map[string]any{"ttl": int64(2592000)},
+		creationTimestamp: "2026-11-11T00:00:00Z",
+	}
 	cmd := NewCreateKubeconfig(stubFactory{c: client})
 
 	_, exec, err := planKubeconfig(t, cmd, in{s: map[string]string{}})
@@ -174,7 +179,8 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res.RawBytes)
 
-	wantHeader := `# Kubeconfig "kubeconfig-abc" - shown once; revoke with: rancher delete kubeconfig 'kubeconfig-abc' --apply --yes` + "\n"
+	wantHeader := `# Kubeconfig "kubeconfig-abc" - shown once; revoke with: rancher delete kubeconfig 'kubeconfig-abc' --apply --yes` + "\n" +
+		`# Tokens: "kubeconfig-u-abc" - expiry 2026-12-11T00:00:00Z` + "\n"
 	assert.True(t, strings.HasPrefix(string(res.RawBytes), wantHeader))
 	assert.Equal(t, wantHeader+rawKC, string(res.RawBytes), "status.value must travel verbatim after the header")
 

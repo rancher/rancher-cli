@@ -977,7 +977,9 @@ in `from` or `to`, and a side that has no value stays null.
 The `--apply` result of a mutating command in json, yaml and template leaves
 out the same values. The exceptions are the commands that show a secret once on
 purpose: `create token`, `create oidc-client`, `oidc-client add-secret` and
-`oidc-client rotate-secret`. `create kubeconfig` prints its kubeconfig and
+`oidc-client rotate-secret`. `create kubeconfig` prints its kubeconfig, after
+a header that names its tokens and when they expire (the kubeconfig's creation
+time plus its ttl; each token's own expiry can be a few seconds later), and
 accepts only table output. `get` in json, yaml and template leaves out the same
 values, except that `get secret` shows `data` and `stringData`. kubectl with a
 kubeconfig from `rancher create kubeconfig` shows a value the server returns
@@ -1988,6 +1990,13 @@ The CLI cannot delete a cluster-scoped v3 token (Rancher refuses it on every
 request that names no cluster) or a superseded v3 record whose bearer it does
 not store (a standard user cannot delete a v3 token with another token's
 bearer). Both are reported with reason `v3`.
+
+These commands revoke only tokens the CLI created and recorded. The tokens in
+a kubeconfig from `rancher create kubeconfig` are not in `rancher auth
+list-tokens` and `rancher auth logout --all` leaves them. They stay valid
+until they expire or the kubeconfig is deleted with `rancher delete kubeconfig
+<name> --apply --yes`, which deletes its tokens; `rancher get kubeconfigs`
+lists the kubeconfigs.
 
 Every revoke runs after the local delete, outside the config lock, one at a
 time, under one 10 s budget. A request goes only to a server a current config

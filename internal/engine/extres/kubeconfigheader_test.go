@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -16,6 +17,8 @@ const (
 	headerStart       = "# Kubeconfig "
 	headerRevokeText  = " - shown once; revoke with: rancher delete kubeconfig"
 	headerNoRevokeEnd = " - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show"
+	tokensStart       = "# Tokens: "
+	tokensNoExpiry    = " - expiry not returned by the server\n"
 )
 
 // readShellWord reads the one word a POSIX sh command line holds in s: an
@@ -97,9 +100,10 @@ func TestReadShellWord(t *testing.T) {
 	}
 }
 
-// hostileKubeconfigNames are names a server can send in its reply. plain is
-// true for a name that prints as it is and is not empty, the only names the
-// header gives a revoke command for.
+// hostileKubeconfigNames are names a server can send in its reply, as the
+// name of the kubeconfig and as the name of a token. plain is true for a name
+// that prints as it is and is not empty, the only names the first header line
+// gives a revoke command for.
 var hostileKubeconfigNames = []struct {
 	row   string
 	name  string
@@ -124,6 +128,7 @@ var hostileKubeconfigNames = []struct {
 	{"doubleQuote", `a"b`, true},
 	{"space", "kc x", true},
 	{"backslash", `a\b`, true},
+	{"quoteAndComma", `a", "b`, true},
 	{"shellMetacharacters", "$(id);rm", true},
 	{"dollarSign", "a$b", true},
 	{"leadingDash", "-h", true},
@@ -132,13 +137,15 @@ var hostileKubeconfigNames = []struct {
 	{"long", strings.Repeat("a", 5000), true},
 }
 
-// TestCreateKubeconfigHeaderStaysOneCommentLine asserts that whatever name
-// the server sends, the output is one comment line followed by the document
-// byte for byte: the first line shows the name in Go's quoted form, holds no
-// character a terminal acts on, and gives a revoke command that reads as the
-// one name only for a name that prints as it is. Any other name gets a line
-// with no command.
-func TestCreateKubeconfigHeaderStaysOneCommentLine(t *testing.T) {
+// TestCreateKubeconfigHeaderLinesStayComments asserts that whatever name the
+// server sends for the kubeconfig and for a token, the output is two comment
+// lines followed by the document byte for byte. The first line shows the name
+// in Go's quoted form, holds no character a terminal acts on, and gives a
+// revoke command that reads as the one name only for a name that prints as it
+// is; any other name gets a line with no command. The second line shows the
+// token name in Go's quoted form and holds no character a terminal acts on;
+// an empty token name names no token, and the line says none is listed.
+func TestCreateKubeconfigHeaderLinesStayComments(t *testing.T) {
 	t.Parallel()
 	rawKC := "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\ncurrent-context: \"\"\n"
 	for _, tc := range hostileKubeconfigNames {
@@ -146,7 +153,7 @@ func TestCreateKubeconfigHeaderStaysOneCommentLine(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.plain, tc.name != "" && output.Printable(tc.name) == tc.name, "the row's plain flag")
 
-			cmd := NewCreateKubeconfig(stubFactory{c: &fakeClient{name: tc.name, status: map[string]any{"value": rawKC}}})
+			cmd := NewCreateKubeconfig(stubFactory{c: &fakeClient{name: tc.name, status: map[string]any{"value": rawKC, "tokens": []any{tc.name}}}})
 			_, exec, err := planKubeconfig(t, cmd, in{s: map[string]string{}})
 			require.NoError(t, err)
 			require.NotNil(t, exec)
@@ -155,9 +162,24 @@ func TestCreateKubeconfigHeaderStaysOneCommentLine(t *testing.T) {
 			require.NotNil(t, res.RawBytes)
 			out := string(res.RawBytes)
 
-			before, after, ok := strings.Cut(out, "\n")
+			before, afterFirst, ok := strings.Cut(out, "\n")
 			require.True(t, ok, "the output has no line end")
-			assert.Equal(t, rawKC, after, "everything after the first line is the document, byte for byte")
+			tokensLine, after, ok := strings.Cut(afterFirst, "\n")
+			require.True(t, ok, "the output has no second line end")
+			assert.Equal(t, rawKC, after, "everything after the second line is the document, byte for byte")
+
+			require.True(t, strings.HasPrefix(tokensLine, tokensStart), "line 2 is %q", tokensLine)
+			assert.Equal(t, tokensLine, output.Printable(tokensLine), "line 2 holds a character a terminal acts on")
+			if tc.name == "" {
+				assert.Equal(t, "# Tokens: none listed by the server", tokensLine, "an empty token name names no token")
+			} else {
+				tokenQuoted, err := strconv.QuotedPrefix(strings.TrimPrefix(tokensLine, tokensStart))
+				require.NoError(t, err, "line 2 does not start with the quoted token name")
+				tokenName, err := strconv.Unquote(tokenQuoted)
+				require.NoError(t, err)
+				assert.Equal(t, tc.name, tokenName, "the quoted token name is the whole name")
+				assert.Equal(t, tokensStart+tokenQuoted+tokensNoExpiry, tokensLine+"\n")
+			}
 
 			require.True(t, strings.HasPrefix(before, headerStart), "line 1 is %q", before)
 			assert.Equal(t, before, output.Printable(before), "line 1 holds a character a terminal acts on")
@@ -193,7 +215,7 @@ func TestCreateKubeconfigHeaderStaysOneCommentLine(t *testing.T) {
 	}
 }
 
-// TestCreateKubeconfigHeaderForARancherName records the first line of the
+// TestCreateKubeconfigHeaderForARancherName records the header lines of the
 // output for a name Rancher generates.
 func TestCreateKubeconfigHeaderForARancherName(t *testing.T) {
 	t.Parallel()
@@ -203,11 +225,12 @@ func TestCreateKubeconfigHeaderForARancherName(t *testing.T) {
 	require.NoError(t, err)
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	want := `# Kubeconfig "kubeconfig-abc12" - shown once; revoke with: rancher delete kubeconfig 'kubeconfig-abc12' --apply --yes` + "\n" + rawKC
+	want := `# Kubeconfig "kubeconfig-abc12" - shown once; revoke with: rancher delete kubeconfig 'kubeconfig-abc12' --apply --yes` + "\n" +
+		"# Tokens: none listed by the server\n" + rawKC
 	assert.Equal(t, want, string(res.RawBytes))
 }
 
-// TestCreateKubeconfigHeaderForANameWithALeadingDash records the first line
+// TestCreateKubeconfigHeaderForANameWithALeadingDash records the header lines
 // of the output for a name that starts with a dash: the command puts the flags
 // first and -- before the quoted name.
 func TestCreateKubeconfigHeaderForANameWithALeadingDash(t *testing.T) {
@@ -218,6 +241,130 @@ func TestCreateKubeconfigHeaderForANameWithALeadingDash(t *testing.T) {
 	require.NoError(t, err)
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	want := `# Kubeconfig "-h" - shown once; revoke with: rancher delete kubeconfig --apply --yes -- '-h'` + "\n" + rawKC
+	want := `# Kubeconfig "-h" - shown once; revoke with: rancher delete kubeconfig --apply --yes -- '-h'` + "\n" +
+		"# Tokens: none listed by the server\n" + rawKC
 	assert.Equal(t, want, string(res.RawBytes))
+}
+
+// kubeconfigReply builds the object a create returns, with the fields the
+// tokens line reads.
+func kubeconfigReply(tokens []any, spec map[string]any, creationTimestamp string) *unstructured.Unstructured {
+	obj := map[string]any{"metadata": map[string]any{}, "spec": spec}
+	if tokens != nil {
+		obj["status"] = map[string]any{"tokens": tokens}
+	}
+	if creationTimestamp != "" {
+		obj["metadata"] = map[string]any{"creationTimestamp": creationTimestamp}
+	}
+	return &unstructured.Unstructured{Object: obj}
+}
+
+// tokensLineOf returns the second line of the header for a reply.
+func tokensLineOf(reply *unstructured.Unstructured) string {
+	lines := strings.SplitN(kubeconfigHeader("kubeconfig-abc", reply), "\n", 3)
+	return lines[1] + "\n"
+}
+
+// TestKubeconfigTokensLine asserts the exact second header line for each
+// reply: the token names in Go's quoted form, and the expiry as the creation
+// time plus the ttl of the reply, or a statement that the server returned no
+// expiry.
+func TestKubeconfigTokensLine(t *testing.T) {
+	t.Parallel()
+	const created = "2026-11-11T00:00:00Z"
+	two := []any{"kubeconfig-u-abc", "kubeconfig-u-def"}
+	for _, tc := range []struct {
+		row   string
+		reply *unstructured.Unstructured
+		want  string
+	}{
+		{"twoTokensAndATtl", kubeconfigReply(two, map[string]any{"ttl": int64(2592000)}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry 2026-12-11T00:00:00Z` + "\n"},
+		{"ttlAsFloat", kubeconfigReply(two, map[string]any{"ttl": float64(3600)}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry 2026-11-11T01:00:00Z` + "\n"},
+		{"creationTimeWithAnOffset", kubeconfigReply(two, map[string]any{"ttl": int64(3600)}, "2026-11-11T02:00:00+02:00"),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry 2026-11-11T01:00:00Z` + "\n"},
+		{"noTokens", kubeconfigReply([]any{}, map[string]any{"ttl": int64(2592000)}, created),
+			"# Tokens: none listed by the server\n"},
+		{"noTokensField", kubeconfigReply(nil, map[string]any{"ttl": int64(2592000)}, created),
+			"# Tokens: none listed by the server\n"},
+		{"onlyNamesThatAreNotStrings", kubeconfigReply([]any{int64(1), nil}, map[string]any{"ttl": int64(2592000)}, created),
+			"# Tokens: none listed by the server\n"},
+		{"onlyEmptyNames", kubeconfigReply([]any{"", ""}, map[string]any{"ttl": int64(2592000)}, created),
+			"# Tokens: none listed by the server\n"},
+		{"namesMixedWithANumberAndAnEmptyName", kubeconfigReply([]any{int64(1), "kubeconfig-u-abc", "", nil}, map[string]any{"ttl": int64(3600)}, created),
+			`# Tokens: "kubeconfig-u-abc" - expiry 2026-11-11T01:00:00Z` + "\n"},
+		{"ttlNotAWholeNumberOfSeconds", kubeconfigReply(two, map[string]any{"ttl": float64(0.5)}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"ttlWithAFraction", kubeconfigReply(two, map[string]any{"ttl": float64(3600.5)}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"noTtl", kubeconfigReply(two, map[string]any{}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"ttlZero", kubeconfigReply(two, map[string]any{"ttl": int64(0)}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"ttlNegative", kubeconfigReply(two, map[string]any{"ttl": int64(-1)}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"ttlNotANumber", kubeconfigReply(two, map[string]any{"ttl": "30d"}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"ttlTooLarge", kubeconfigReply(two, map[string]any{"ttl": int64(1) << 60}, created),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"noCreationTimestamp", kubeconfigReply(two, map[string]any{"ttl": int64(2592000)}, ""),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"creationTimestampNotATime", kubeconfigReply(two, map[string]any{"ttl": int64(2592000)}, "yesterday"),
+			`# Tokens: "kubeconfig-u-abc", "kubeconfig-u-def" - expiry not returned by the server` + "\n"},
+		{"tokenWithAControlCharacter", kubeconfigReply([]any{"kc\x1b[2Jx"}, map[string]any{"ttl": int64(3600)}, created),
+			`# Tokens: "kc\x1b[2Jx" - expiry 2026-11-11T01:00:00Z` + "\n"},
+		{"tokenWithALineBreak", kubeconfigReply([]any{"a\nb", "c\r\nd"}, map[string]any{"ttl": int64(3600)}, created),
+			`# Tokens: "a\nb", "c\r\nd" - expiry 2026-11-11T01:00:00Z` + "\n"},
+		{"tokenWithAQuoteAndAComma", kubeconfigReply([]any{`a", "b`}, map[string]any{"ttl": int64(3600)}, created),
+			`# Tokens: "a\", \"b" - expiry 2026-11-11T01:00:00Z` + "\n"},
+	} {
+		t.Run(tc.row, func(t *testing.T) {
+			t.Parallel()
+			got := tokensLineOf(tc.reply)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, 1, strings.Count(got, "\n"), "the tokens line is one line")
+			line := strings.TrimSuffix(got, "\n")
+			assert.Equal(t, line, output.Printable(line), "the tokens line holds a character a terminal acts on")
+		})
+	}
+}
+
+// TestCreateKubeconfigHeaderExpiryComesFromTheReply asserts that the expiry in
+// the header is the creation time plus the ttl the server returned, never the
+// ttl the caller asked for.
+func TestCreateKubeconfigHeaderExpiryComesFromTheReply(t *testing.T) {
+	t.Parallel()
+	rawKC := "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\ncurrent-context: \"\"\n"
+	for _, tc := range []struct {
+		row   string
+		input map[string]string
+		spec  map[string]any
+		want  string
+	}{
+		{"askedForAnHourReplyHasThirtyDays", map[string]string{"ttl": "1h"}, map[string]any{"ttl": int64(2592000)},
+			`# Tokens: "kubeconfig-u-abc" - expiry 2026-12-11T00:00:00Z` + "\n"},
+		{"askedForNothingReplyHasTheDefault", map[string]string{}, map[string]any{"ttl": int64(7776000)},
+			`# Tokens: "kubeconfig-u-abc" - expiry 2027-02-09T00:00:00Z` + "\n"},
+		{"askedForAnHourReplyHasNoTtl", map[string]string{"ttl": "1h"}, map[string]any{"ttl": nil},
+			`# Tokens: "kubeconfig-u-abc" - expiry not returned by the server` + "\n"},
+	} {
+		t.Run(tc.row, func(t *testing.T) {
+			t.Parallel()
+			client := &fakeClient{
+				name:              "kubeconfig-abc",
+				status:            map[string]any{"value": rawKC, "tokens": []any{"kubeconfig-u-abc"}},
+				spec:              tc.spec,
+				creationTimestamp: "2026-11-11T00:00:00Z",
+			}
+			cmd := NewCreateKubeconfig(stubFactory{c: client})
+			_, exec, err := planKubeconfig(t, cmd, in{s: tc.input})
+			require.NoError(t, err)
+			res, err := exec(t.Context())
+			require.NoError(t, err)
+			lines := strings.SplitN(string(res.RawBytes), "\n", 3)
+			require.Len(t, lines, 3)
+			assert.Equal(t, tc.want, lines[1]+"\n")
+		})
+	}
 }
