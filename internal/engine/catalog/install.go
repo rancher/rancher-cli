@@ -297,20 +297,26 @@ func (p installPlan) diff() []safety.DiffEntry {
 	return d
 }
 
-// readRepo reads the ClusterRepo; a missing one names the command that
-// lists them, and a disabled one is refused.
+// readRepo reads the ClusterRepo the plan installs from.
 func (p installPlan) readRepo(ctx context.Context) (*unstructured.Unstructured, error) {
-	obj, err := p.client.Get(ctx, kind("clusterrepo").GVR, "", p.repo)
+	return readClusterRepo(ctx, p.client, p.repo, p.target.typedCluster)
+}
+
+// readClusterRepo reads the ClusterRepo a command takes with --repo; a missing
+// one names the command that lists them, and a disabled one is refused.
+// typedCluster is the cluster as the user typed it.
+func readClusterRepo(ctx context.Context, client engine.ClusterClient, repo, typedCluster string) (*unstructured.Unstructured, error) {
+	obj, err := client.Get(ctx, kind("clusterrepo").GVR, "", repo)
 	if err != nil {
 		if notFound(err) {
-			return nil, clierr.New(clierr.CodeNotFound, "ClusterRepo "+clierr.ShellQuote(p.repo)+" not found").
-				WithHint(clierr.Rancher + " get clusterrepos --cluster " + clierr.ShellQuote(p.target.typedCluster))
+			return nil, clierr.New(clierr.CodeNotFound, "ClusterRepo "+clierr.ShellQuote(repo)+" not found").
+				WithHint(clierr.Rancher + " get clusterrepos --cluster " + clierr.ShellQuote(typedCluster))
 		}
 		return nil, err
 	}
 	if enabled, found, _ := unstructured.NestedBool(obj.Object, "spec", "enabled"); found && !enabled {
-		return nil, clierr.New(clierr.CodeValidation, "ClusterRepo "+clierr.ShellQuote(p.repo)+" is disabled").
-			WithHint(clierr.Rancher + " get clusterrepo" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(p.target.typedCluster), p.repo))
+		return nil, clierr.New(clierr.CodeValidation, "ClusterRepo "+clierr.ShellQuote(repo)+" is disabled").
+			WithHint(clierr.Rancher + " get clusterrepo" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(typedCluster), repo))
 	}
 	return obj, nil
 }

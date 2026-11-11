@@ -138,9 +138,9 @@ func ClusterRepoSource() completion.Source { return ClusterRepoSourceFor(ChartsC
 // ClusterRepoSourceFor is the live source of the --repo flag of command, a
 // registered command name (charts, app install): the names of the typed cluster's ClusterRepos whose
 // spec.enabled is not false (a missing spec.enabled counts as enabled),
-// because Rancher answers a read of a disabled ClusterRepo's index as not
-// found. It claims no other command's --repo and no other site, and a line
-// with no --cluster typed completes nothing.
+// because both commands refuse a disabled ClusterRepo. It claims no other
+// command's --repo and no other site, and a line with no --cluster typed
+// completes nothing.
 func ClusterRepoSourceFor(command string) completion.Source {
 	k, known := kinds.ByKey("clusterrepo")
 	return completion.Source{

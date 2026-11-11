@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/catalog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	ucli "github.com/urfave/cli/v3"
 )
 
 const (
@@ -26,14 +28,14 @@ const (
 )
 
 // chartsServer is one Rancher answering what `charts` reads: the cluster
-// collection, the ClusterRepos of the local cluster and of c-aaa11 and
-// each ClusterRepo's index link. The ClusterRepos are rancher-charts (no
-// spec.enabled), partner-charts (enabled), off-charts (disabled; its index
-// answers 500 ServerError "clusterrepo off-charts is disabled: NotFound" as
-// Rancher main does, rancher main pkg/catalogv2/content/content.go:323-325)
-// and, when broken is set, three enabled ClusterRepos whose index cannot be
-// read: unavailable-charts (503), empty-charts (500, the index ConfigMap ""
-// does not exist) and unowned-charts (401). It records the request URIs.
+// collection, the ClusterRepos of the local cluster and of c-aaa11, each
+// ClusterRepo object and each ClusterRepo's index link. The ClusterRepos are
+// rancher-charts (no spec.enabled), partner-charts (enabled), off-charts
+// (disabled; its index answers a server error, so a command that read it
+// would fail) and, when broken is set, three enabled ClusterRepos whose index
+// cannot be read: unavailable-charts (503), empty-charts (500, the index
+// ConfigMap "" does not exist) and unowned-charts (401). It records the
+// request URIs.
 type chartsServer struct {
 	srv  *httptest.Server
 	mu   sync.Mutex
@@ -61,6 +63,7 @@ func newChartsServer(t *testing.T, broken bool) *chartsServer {
 		`{"apiVersion":"catalog.cattle.io/v1","kind":"ClusterRepo","metadata":{"name":"partner-charts"},"spec":{"enabled":true}}`,
 		`{"apiVersion":"catalog.cattle.io/v1","kind":"ClusterRepo","metadata":{"name":"off-charts"},"spec":{"enabled":false}}`,
 	}
+	repoNames := []string{"rancher-charts", "partner-charts", "off-charts"}
 	failures := map[string]struct {
 		status int
 		body   string
@@ -72,6 +75,7 @@ func newChartsServer(t *testing.T, broken bool) *chartsServer {
 	if broken {
 		for _, name := range []string{"unavailable-charts", "empty-charts", "unowned-charts"} {
 			repos = append(repos, `{"apiVersion":"catalog.cattle.io/v1","kind":"ClusterRepo","metadata":{"name":"`+name+`"},"spec":{"enabled":true}}`)
+			repoNames = append(repoNames, name)
 		}
 	}
 	indexes := map[string]string{"rancher-charts": rancherChartsIndex, "partner-charts": partnerChartsIndex}
@@ -91,6 +95,20 @@ func newChartsServer(t *testing.T, broken bool) *chartsServer {
 				_, _ = w.Write([]byte(`{"apiVersion":"catalog.cattle.io/v1","kind":"ClusterRepoList","items":[` + strings.Join(repos, ",") + `]}`))
 				return
 			}
+		}
+		for _, prefix := range []string{localProxyPrefix, downProxyPrefix} {
+			name, ok := strings.CutPrefix(path, prefix+catalogGroupPath+"/")
+			if !ok {
+				continue
+			}
+			i := slices.Index(repoNames, name)
+			if i < 0 {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"type":"error","status":404,"code":"NotFound","message":"clusterrepos.catalog.cattle.io \"` + name + `\" not found"}`))
+				return
+			}
+			_, _ = w.Write([]byte(repos[i]))
+			return
 		}
 		for _, prefix := range []string{"", downProxyPrefix} {
 			name, ok := strings.CutPrefix(path, prefix+catalogIndexType)
@@ -112,7 +130,7 @@ func newChartsServer(t *testing.T, broken bool) *chartsServer {
 			}
 			if name == "off-charts" {
 				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(`{"type":"error","status":500,"code":"ServerError","message":"clusterrepo ` + name + ` is disabled: NotFound"}`))
+				_, _ = w.Write([]byte(`{"type":"error","status":500,"code":"ServerError","message":"the index of ` + name + ` is not served"}`))
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
@@ -127,7 +145,8 @@ func newChartsServer(t *testing.T, broken bool) *chartsServer {
 }
 
 // catalogRequests returns the recorded request URIs of the ClusterRepo
-// collection and of the index links, and drops the cluster collection reads.
+// collection, of each ClusterRepo object and of the index links, and drops the
+// cluster collection reads.
 func (s *chartsServer) catalogRequests() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -276,7 +295,10 @@ func TestChartsLocalAllVersions(t *testing.T) {
 		"rancher-charts rancher-monitoring 105.0.0-rc.1",
 		"rancher-charts rancher-monitoring 104.1.0",
 	}, chartsLines(env))
-	assert.Equal(t, []string{catalogIndexType + "rancher-charts?link=index"}, s.catalogRequests())
+	assert.Equal(t, []string{
+		localProxyPrefix + catalogGroupPath + "/rancher-charts",
+		catalogIndexType + "rancher-charts?link=index",
+	}, s.catalogRequests())
 }
 
 // TestChartsIncludeDeprecated asserts --include-deprecated lists the
@@ -319,11 +341,11 @@ type chartsErrorEnvelope struct {
 
 // TestChartsRepoErrors asserts a failed --repo read is the command's error:
 // a missing repository is NOT_FOUND with the command that lists the
-// repositories of the cluster as typed; a disabled one (500 with "is
-// disabled: NotFound", as Rancher main answers), a 503 and a 500 for an
-// index that is not stored are retryable GENERIC errors with no hint; a 401
-// says Rancher refused to serve the index and sends no one to sign in; and
-// each names the repository.
+// repositories of the cluster as typed; a disabled one is VALIDATION with exit
+// code 2, no retry and the command that shows it, and the command reads no
+// index for it; a 503 and a 500 for an index that is not stored are
+// retryable GENERIC errors with no hint; a 401 says Rancher refused to serve
+// the index and sends no one to sign in; and each names the repository.
 func TestChartsRepoErrors(t *testing.T) {
 	s := newChartsServer(t, true)
 	chartsFixture(t, s.srv)
@@ -331,32 +353,39 @@ func TestChartsRepoErrors(t *testing.T) {
 	for _, tc := range []struct {
 		repo      string
 		code      string
-		hint      bool
+		exit      int
+		message   string
+		hint      string
 		retryable bool
 	}{
-		{"nope", "NOT_FOUND", true, false},
-		{"off-charts", "GENERIC", false, true},
-		{"unavailable-charts", "GENERIC", false, true},
-		{"empty-charts", "GENERIC", false, true},
-		{"unowned-charts", "GENERIC", false, false},
+		{"nope", "NOT_FOUND", 4, "ClusterRepo 'nope' not found", "get clusterrepos --cluster 'prod'", false},
+		{"off-charts", "VALIDATION", 2, "ClusterRepo 'off-charts' is disabled", "get clusterrepo 'off-charts' --cluster 'prod'", false},
+		{"unavailable-charts", "GENERIC", 1, "ClusterRepo 'unavailable-charts'", "", true},
+		{"empty-charts", "GENERIC", 1, "ClusterRepo 'empty-charts'", "", true},
+		{"unowned-charts", "GENERIC", 1, "ClusterRepo 'unowned-charts'", "", false},
 	} {
 		t.Run(tc.repo, func(t *testing.T) {
 			stdout, stderr, err := runChartsCommand(t, "charts", "--cluster", "prod", "--repo", tc.repo, "-o", "json")
 			require.Error(t, err)
+			coder, ok := errors.AsType[ucli.ExitCoder](err)
+			require.True(t, ok, "the error carries an exit code")
+			assert.Equal(t, tc.exit, coder.ExitCode())
 			assert.Empty(t, stdout)
 			var env chartsErrorEnvelope
 			require.NoError(t, json.Unmarshal(stderr, &env))
 			assert.Equal(t, tc.code, env.Data.Error.Code)
-			assert.Contains(t, env.Data.Error.Message, "ClusterRepo '"+tc.repo+"'")
+			assert.Contains(t, env.Data.Error.Message, tc.message)
 			assert.Equal(t, tc.retryable, env.Data.Error.Retryable)
-			if tc.repo == "off-charts" {
-				assert.Contains(t, env.Data.Error.Message, "clusterrepo off-charts is disabled: NotFound")
+			if tc.repo == "off-charts" || tc.repo == "nope" {
+				for _, uri := range s.catalogRequests() {
+					assert.NotContains(t, uri, "/"+tc.repo+"?link=", "no index read for %s", tc.repo)
+				}
 			}
 			if tc.repo == "unowned-charts" {
 				assert.Contains(t, env.Data.Error.Message, "Rancher refused to serve its index")
 			}
-			if tc.hint {
-				assert.Contains(t, env.Data.Error.Hint, "get clusterrepos --cluster 'prod'")
+			if tc.hint != "" {
+				assert.Contains(t, env.Data.Error.Hint, tc.hint)
 			} else {
 				assert.Empty(t, env.Data.Error.Hint)
 			}
@@ -365,9 +394,8 @@ func TestChartsRepoErrors(t *testing.T) {
 }
 
 // TestChartsRepoSuggestionsAreAccepted asserts each suggestion of --repo is
-// accepted by the command on the same server, which answers 500 for the
-// index of a disabled repository as Rancher main does: no suggestion is
-// refused, and the disabled repository is not offered.
+// accepted by the command on the same server: no suggestion is refused, and
+// the disabled repository, which the command refuses, is not offered.
 func TestChartsRepoSuggestionsAreAccepted(t *testing.T) {
 	s := newChartsServer(t, false)
 	chartsFixture(t, s.srv)
@@ -379,7 +407,7 @@ func TestChartsRepoSuggestionsAreAccepted(t *testing.T) {
 		require.NoError(t, err, "suggestion %q", repo)
 	}
 	_, _, err := runChartsCommand(t, "charts", "--cluster", "c-aaa11", "--repo", "off-charts", "-o", "json")
-	require.Error(t, err, "the fake refuses a disabled repository, so offering it would fail this test")
+	require.Error(t, err, "the command refuses a disabled repository, so offering it would fail this test")
 }
 
 // chartsFlagCompletion says how each value-taking flag of `charts`

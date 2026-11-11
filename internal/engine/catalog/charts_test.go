@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const (
@@ -69,14 +70,15 @@ func TestChartsDescribe(t *testing.T) {
 
 // TestChartsRepoPaths asserts --repo reads one index at the path the
 // cluster picks: /v1/... for the local cluster and the cluster proxy for any
-// other, resolved from the name the user typed.
+// other, resolved from the name the user typed, after one read of the
+// ClusterRepo on that cluster.
 func TestChartsRepoPaths(t *testing.T) {
 	t.Parallel()
 	body := indexOf(map[string][]string{"nginx": {"1.0.0"}})
-	for _, tc := range []struct{ name, typed, want string }{
-		{"local", "local", localIndexPrefix + "r1?link=index"},
-		{"downstream by id", "c-test", downIndexPrefix + "r1?link=index"},
-		{"downstream by name", "testcluster", downIndexPrefix + "r1?link=index"},
+	for _, tc := range []struct{ name, typed, id, want string }{
+		{"local", "local", "local", localIndexPrefix + "r1?link=index"},
+		{"downstream by id", "c-test", "c-test", downIndexPrefix + "r1?link=index"},
+		{"downstream by name", "testcluster", "c-test", downIndexPrefix + "r1?link=index"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -87,18 +89,19 @@ func TestChartsRepoPaths(t *testing.T) {
 			assert.Equal(t, []string{tc.want}, root.requests())
 			assert.Equal(t, "ChartList", res.Kind)
 			assert.Equal(t, chartList{{Repository: "r1", Name: "nginx", Version: "1.0.0", AppVersion: "app-1.0.0", Description: "d-nginx"}}, resultItems(t, res))
-			assert.Empty(t, clients.asked, "--repo lists no ClusterRepos")
+			assert.Equal(t, []string{tc.id}, clients.asked, "--repo asks once for the client of the resolved cluster")
+			assert.Equal(t, []string{"r1"}, clients.cluster.gets)
 		})
 	}
 }
 
-// TestChartsRepoNameIsEscaped asserts a --repo value that is not a plain
-// name stays one path segment.
-func TestChartsRepoNameIsEscaped(t *testing.T) {
+// TestReadIndexEscapesTheRepositoryName asserts a repository name that is not
+// a plain name stays one path segment of the index request.
+func TestReadIndexEscapesTheRepositoryName(t *testing.T) {
 	t.Parallel()
 	want := downIndexPrefix + "a%20b%2Fc?link=index"
 	root := newFakeRoot(map[string]rootAnswer{want: {status: 200, body: indexOf(nil)}})
-	_, err := runCharts(t, &fakeClients{cluster: &fakeCluster{}}, root, input{s: map[string]string{"cluster": "c-test", "repo": "a b/c"}})
+	_, err := ReadIndex(t.Context(), root, "c-test", "a b/c")
 	require.NoError(t, err)
 	assert.Equal(t, []string{want}, root.requests())
 }
@@ -404,15 +407,69 @@ func TestChartsMissingRepoIsNotFoundWithTheListCommand(t *testing.T) {
 		t.Run(tc.typed, func(t *testing.T) {
 			t.Parallel()
 			root := newFakeRoot(nil)
-			clients := &fakeClients{resolve: map[string]string{tc.typed: tc.id}, cluster: &fakeCluster{}}
+			cluster := &fakeCluster{missing: []string{"nope"}}
+			clients := &fakeClients{resolve: map[string]string{tc.typed: tc.id}, cluster: cluster}
 			_, err := runCharts(t, clients, root, input{s: map[string]string{"cluster": tc.typed, "repo": "nope"}})
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeNotFound, ce.Code)
 			assert.Equal(t, tc.hint, ce.Hint)
-			require.ErrorContains(t, err, "ClusterRepo 'nope'")
+			assert.Equal(t, "ClusterRepo 'nope' not found", ce.Message)
+			assert.Equal(t, []string{"nope"}, cluster.gets)
+			assert.Empty(t, root.requests(), "a missing ClusterRepo reads no index")
 		})
 	}
+}
+
+// TestChartsRepoReadsTheClusterRepoFirst asserts --repo reads the ClusterRepo
+// before its index: a disabled one is refused with VALIDATION, the command that
+// shows it and no index read; one with no spec.enabled and an enabled one are
+// read as enabled.
+func TestChartsRepoReadsTheClusterRepoFirst(t *testing.T) {
+	t.Parallel()
+	body := indexOf(map[string][]string{"nginx": {"1.0.0"}})
+	for _, tc := range []struct {
+		name    string
+		enabled *bool
+		refused bool
+	}{
+		{"disabled", new(false), true},
+		{"enabled", new(true), false},
+		{"no spec.enabled", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := &fakeCluster{items: []*unstructured.Unstructured{repoObject("r1", tc.enabled)}}
+			root := newFakeRoot(map[string]rootAnswer{downIndexPrefix + "r1?link=index": {status: 200, body: body}})
+			clients := &fakeClients{resolve: map[string]string{"testcluster": "c-test"}, cluster: cluster}
+			res, err := runCharts(t, clients, root, input{s: map[string]string{"cluster": "testcluster", "repo": "r1"}})
+			assert.Equal(t, []string{"r1"}, cluster.gets)
+			if !tc.refused {
+				require.NoError(t, err)
+				assert.Equal(t, []string{downIndexPrefix + "r1?link=index"}, root.requests())
+				assert.Len(t, resultItems(t, res), 1)
+				return
+			}
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.False(t, ce.Retryable)
+			assert.Equal(t, "ClusterRepo 'r1' is disabled", ce.Message)
+			assert.Equal(t, clierr.Rancher+" get clusterrepo 'r1' --cluster 'testcluster'", ce.Hint)
+			assert.Empty(t, root.requests(), "a disabled ClusterRepo reads no index")
+		})
+	}
+}
+
+// TestChartsRepoReadFailureIsTheError asserts a failed read of the
+// ClusterRepo is the command's error, with no index read.
+func TestChartsRepoReadFailureIsTheError(t *testing.T) {
+	t.Parallel()
+	boom := clierr.New(clierr.CodeRBAC, "the server refused get clusterrepos")
+	root := newFakeRoot(nil)
+	_, err := runCharts(t, &fakeClients{cluster: &fakeCluster{err: boom}}, root, input{s: map[string]string{"cluster": "c-test", "repo": "r1"}})
+	require.ErrorIs(t, err, boom)
+	assert.Empty(t, root.requests())
 }
 
 // TestChartsClusterRepoListFailureIsTheError asserts a failed ClusterRepo

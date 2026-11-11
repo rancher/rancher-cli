@@ -99,6 +99,7 @@ func (*chartsCmd) Describe() runtime.Descriptor {
 			"--include-deprecated lists them, with a DEPRECATED column and deprecated in JSON; " +
 			"it only widens the list and is not the gate flag --allow-deprecated of the commands that change things. " +
 			"--repo reads one ClusterRepo, and its failure is the command's error. " +
+			"--repo naming a disabled ClusterRepo (spec.enabled is false) is refused with VALIDATION. " +
 			"Without --repo every ClusterRepo whose spec.enabled is not false is read, one after another in name order. " +
 			"A disabled ClusterRepo (spec.enabled is false) is skipped, " +
 			"and one whose index cannot be read is left out with a warning that names it; the exit code stays 0. " +
@@ -134,6 +135,13 @@ func (c *chartsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	deprecated := in.Bool(flagIncludeDeprecated)
 
 	if repo := in.String(flagRepo); repo != "" {
+		client, err := c.clients.Cluster(ctx, clusterID)
+		if err != nil {
+			return runtime.Result{}, err
+		}
+		if _, err := readClusterRepo(ctx, client, repo, in.String(engine.FlagCluster)); err != nil {
+			return runtime.Result{}, err
+		}
 		idx, err := ReadIndex(ctx, root, clusterID, repo)
 		if err != nil {
 			return runtime.Result{}, withRepoRemedy(err, in.String(engine.FlagCluster))

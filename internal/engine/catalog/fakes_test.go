@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"net/http"
+	"slices"
 	"sync"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -67,13 +68,34 @@ type fakeRoots struct {
 
 func (f fakeRoots) Root() (engine.RootClient, error) { return f.root, f.err }
 
-// fakeCluster lists ClusterRepos and records the kind and namespace asked.
+// fakeCluster lists and gets ClusterRepos. A List records the kind and
+// namespace asked and a Get records the name. A Get answers the listed
+// object for a listed name, NOT_FOUND for a name in missing, and an
+// enabled ClusterRepo for any other name.
 type fakeCluster struct {
 	engine.ClusterClient
-	items []*unstructured.Unstructured
-	err   error
-	gvrs  []schema.GroupVersionResource
-	nss   []string
+	items   []*unstructured.Unstructured
+	missing []string
+	err     error
+	gvrs    []schema.GroupVersionResource
+	nss     []string
+	gets    []string
+}
+
+func (c *fakeCluster) Get(_ context.Context, _ schema.GroupVersionResource, _, name string) (*unstructured.Unstructured, error) {
+	c.gets = append(c.gets, name)
+	if c.err != nil {
+		return nil, c.err
+	}
+	if slices.Contains(c.missing, name) {
+		return nil, clierr.New(clierr.CodeNotFound, "clusterrepos.catalog.cattle.io "+clierr.ShellQuote(name)+" not found")
+	}
+	for _, it := range c.items {
+		if it.GetName() == name {
+			return it, nil
+		}
+	}
+	return repoObject(name, new(true)), nil
 }
 
 func (c *fakeCluster) List(_ context.Context, gvr schema.GroupVersionResource, ns, _ string) (*unstructured.UnstructuredList, error) {

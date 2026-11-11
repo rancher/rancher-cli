@@ -139,20 +139,13 @@ var chartIndexes = map[string]string{
 }
 
 // chartIndexRoute answers GET
-// <cluster>/v1/catalog.cattle.io.clusterrepos/<name> with link=index for a
-// ClusterRepo the envtest apiserver holds, on the local cluster and on
-// c-test. A ClusterRepo with spec.enabled false answers 500 with a ServerError
-// object, as Rancher main does: its content manager returns the error
-// "clusterrepo <name> is disabled: NotFound" wrapped (rancher main
-// pkg/catalogv2/content/content.go:323-325), and the apiserver answers an
-// error that is neither a bare validation.ErrorCode nor an APIError with 500
-// ServerError and the error's text (rancher/apiserver v0.9.10
-// pkg/handlers/error.go:18-23, :33-38). A name no ClusterRepo has answers 404
-// with the Kubernetes error text (rancher/steve v0.9.23
-// pkg/stores/proxy/error_wrapper.go:57-64).
+// <cluster>/v1/catalog.cattle.io.clusterrepos/<name> with link=index on the
+// local cluster and on c-test, from the index the test holds for the name. The
+// commands that take --repo read the ClusterRepo from the apiserver first and
+// refuse a missing or disabled one, so only an enabled ClusterRepo reaches this
+// route.
 func chartIndexRoute(next http.Handler) http.Handler {
 	const typePath = "/v1/catalog.cattle.io.clusterrepos/"
-	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "clusterrepos"}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/k8s/clusters/c-test")
 		name, ok := strings.CutPrefix(path, typePath)
@@ -165,16 +158,6 @@ func chartIndexRoute(next http.Handler) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		repo, err := dynCli.Resource(gvr).Get(r.Context(), name, metav1.GetOptions{})
-		if err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"type":"error","status":404,"code":"NotFound","message":"clusterrepos.catalog.cattle.io \"` + name + `\" not found"}`))
-			return
-		}
-		if enabled, found, _ := unstructured.NestedBool(repo.Object, "spec", "enabled"); found && !enabled {
-			appServerError(w, "clusterrepo "+name+" is disabled: NotFound")
-			return
-		}
 		body, ok := chartIndexes[name]
 		if !ok {
 			body = `{"apiVersion":"v1","entries":{}}`

@@ -68,14 +68,15 @@ exec rancher charts --cluster local --repo charts-second -o json
 jsonquery stdout 'data.0.name' second-app
 
 # A ClusterRepo that does not exist is NOT_FOUND and names the command that
-# lists the repositories. A disabled one makes Rancher main answer 500 with
-# "clusterrepo <name> is disabled: NotFound", which is a GENERIC error.
+# lists the repositories. A disabled one is refused with VALIDATION and names
+# the command that shows it.
 ! exec rancher charts --cluster testcluster --repo charts-nope -o json
 jsonquery stderr data.error.code NOT_FOUND
 stderr 'get clusterrepos --cluster .testcluster.'
 ! exec rancher charts --cluster testcluster --repo charts-off -o json
-jsonquery stderr data.error.code GENERIC
-stderr 'clusterrepo charts-off is disabled: NotFound'
+jsonquery stderr data.error.code VALIDATION
+stderr 'ClusterRepo .charts-off. is disabled'
+stderr 'get clusterrepo .charts-off. --cluster .testcluster.'
 
 # --cluster is required.
 ! exec rancher charts -o json

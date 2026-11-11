@@ -760,9 +760,12 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   them, with a DEPRECATED column in the table and `deprecated` in JSON. It only
   widens the list, unlike `--allow-deprecated` of the commands that change
   things. A ClusterRepo with `spec.enabled` false is skipped when `--repo` is
-  not given. On Rancher main the index of a disabled ClusterRepo answers HTTP
-  500 with the message `clusterrepo <name> is disabled: NotFound`, so `--repo`
-  of one fails with `GENERIC` and that message; older minors serve it.
+  not given. `--repo` reads the ClusterRepo before its index and refuses a
+  missing one with `NOT_FOUND` and one with `spec.enabled` false with
+  `VALIDATION` (exit code 2, not retryable): the message is `ClusterRepo
+  '<name>' is disabled`, the hint is the `get clusterrepo` command that shows
+  it, and the index is not read. `--repo` therefore needs `get` on the
+  ClusterRepo.
   Without `--repo`, a ClusterRepo whose index cannot be read (for example one
   that answers 503, or one with no stored index yet, which answers 500) is left
   out and named in one warning, and the exit code is 0; with `--repo` the same
