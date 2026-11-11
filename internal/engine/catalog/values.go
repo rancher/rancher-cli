@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	yamlv3 "gopkg.in/yaml.v3"
 	"sigs.k8s.io/yaml"
 )
@@ -27,8 +29,9 @@ const hiddenText = "<hidden>"
 const flagValues = "values"
 
 // Values holds the chart values a command sends: the --values files merged
-// in order. Its content is read only by the request body builder, the path
-// listing of the preview and the server-text filter. Every printing and
+// in order, or those with the values app install adds (compose). Its content
+// is read only by the request body builder, the value composition, the
+// preview's listing and the server-text filter. Every printing and
 // encoding method returns <hidden>. The methods have value receivers, so a
 // Values inside another value prints <hidden> too; on a nil *Values the
 // method wrappers Go generates refuse the call before any memory is read,
@@ -202,6 +205,13 @@ func mergeValues(dst, src map[string]any) {
 // values.a.b, values["a.b"].c.
 func (v Values) paths() []string {
 	var out []string
+	v.leaves(func(path string, _ any) { out = append(out, path) })
+	return out
+}
+
+// leaves calls fn for every leaf of the values in the order paths lists
+// them, with its path and value.
+func (v Values) leaves(fn func(path string, value any)) {
 	var walk func(prefix string, m map[string]any)
 	walk = func(prefix string, m map[string]any) {
 		for _, k := range slices.Sorted(maps.Keys(m)) {
@@ -210,10 +220,185 @@ func (v Values) paths() []string {
 				walk(p, sub)
 				continue
 			}
-			out = append(out, p)
+			fn(p, m[k])
 		}
 	}
 	walk("values", v.tree)
+}
+
+// valuePath is the path of one value in a values tree, one key per element.
+type valuePath []string
+
+// String writes the path as paths does: values.global.cattle.clusterId.
+func (p valuePath) String() string {
+	var b strings.Builder
+	b.WriteString("values")
+	for _, k := range p {
+		b.WriteString(keySegment(k))
+	}
+	return b.String()
+}
+
+// pathState is what a values tree holds at a path.
+type pathState int
+
+const (
+	// pathAbsent: the tree holds no value at the path, and every parent on
+	// it that the tree holds is a mapping.
+	pathAbsent pathState = iota
+	// pathPresent: the tree holds a value at the path, null included.
+	pathPresent
+	// pathBlocked: a parent on the path holds a value that is not a
+	// mapping (null, a scalar or a list), so nothing can be set below it.
+	pathBlocked
+)
+
+// lookup reads tree at path: the value and the state, and for a blocked
+// path the path of the parent that blocks it.
+func lookup(tree map[string]any, path valuePath) (any, pathState, valuePath) {
+	m := tree
+	for i, k := range path {
+		x, ok := m[k]
+		if !ok {
+			return nil, pathAbsent, nil
+		}
+		if i == len(path)-1 {
+			return x, pathPresent, nil
+		}
+		sub, ok := x.(map[string]any)
+		if !ok {
+			return nil, pathBlocked, path[:i+1]
+		}
+		m = sub
+	}
+	return nil, pathAbsent, nil
+}
+
+// state reports what the files' values hold at path, and for a blocked
+// path the parent that blocks it.
+func (v Values) state(path valuePath) (pathState, valuePath) {
+	_, st, parent := lookup(v.tree, path)
+	return st, parent
+}
+
+// mergedString is the string at path in the files' values merged over
+// defaults, the chart's default values: the files' value when they hold
+// one at path, else the default's. Anything but a string is "".
+func (v Values) mergedString(defaults map[string]any, path valuePath) string {
+	x, st, _ := lookup(v.tree, path)
+	switch st {
+	case pathBlocked:
+		return ""
+	case pathAbsent:
+		x, _, _ = lookup(defaults, path)
+	}
+	s, _ := x.(string)
+	return s
+}
+
+// addedValue is a value the CLI adds to the files' values at path. It is
+// set only where the files hold no value on its path; with replace it also
+// replaces a value the files hold at path itself. Nothing is set below a
+// parent the files set to anything but a mapping.
+type addedValue struct {
+	path    valuePath
+	value   any
+	replace bool
+}
+
+// compose returns the values a request sends: the files' values with each
+// added value set by its rule, missing parents created as mappings, and the
+// value at each path of drop removed. added lists, in the order paths lists
+// them, the leaves the CLI set to a value other than the files' own;
+// dropped lists the paths of drop the files held a value at. v itself is
+// not changed, so the filter and paths keep covering the files' values.
+func (v Values) compose(add []addedValue, drop []valuePath) (sent Values, added, dropped []string) {
+	tree, _ := deepCopy(v.tree).(map[string]any)
+	if tree == nil {
+		tree = map[string]any{}
+	}
+	for _, path := range drop {
+		_, st, _ := lookup(tree, path)
+		if st != pathPresent {
+			continue
+		}
+		parent, _, _ := lookup(tree, path[:len(path)-1])
+		if len(path) == 1 {
+			parent = tree
+		}
+		delete(parent.(map[string]any), path[len(path)-1])
+		dropped = append(dropped, path.String())
+	}
+	set := map[string]bool{}
+	for _, a := range add {
+		old, st, _ := lookup(tree, a.path)
+		if st == pathBlocked || (st == pathPresent && !a.replace) {
+			continue
+		}
+		if st == pathPresent && reflect.DeepEqual(old, a.value) {
+			continue
+		}
+		m := tree
+		for _, k := range a.path[:len(a.path)-1] {
+			sub, ok := m[k].(map[string]any)
+			if !ok {
+				sub = map[string]any{}
+				m[k] = sub
+			}
+			m = sub
+		}
+		m[a.path[len(a.path)-1]] = a.value
+		set[a.path.String()] = true
+	}
+	sent = Values{tree: tree}
+	sent.leaves(func(path string, _ any) {
+		if set[path] {
+			added = append(added, path)
+		}
+	})
+	return sent, added, dropped
+}
+
+// deepCopy copies the maps and lists of a decoded values tree.
+func deepCopy(x any) any {
+	switch t := x.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, e := range t {
+			out[k] = deepCopy(e)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = deepCopy(e)
+		}
+		return out
+	}
+	return x
+}
+
+// previewEntries lists the leaves of v, the values a request sends, for the
+// preview: an added leaf shows its value, a leaf at one of shown shows its
+// value when it is a string, and every other leaf shows <hidden>.
+func (v Values) previewEntries(added []string, shown []valuePath) []safety.DiffEntry {
+	show := map[string]bool{}
+	for _, p := range added {
+		show[p] = true
+	}
+	shownString := map[string]bool{}
+	for _, p := range shown {
+		shownString[p.String()] = true
+	}
+	var out []safety.DiffEntry
+	v.leaves(func(path string, value any) {
+		_, isString := value.(string)
+		if show[path] || (shownString[path] && isString) {
+			out = append(out, safety.DiffEntry{Path: path, To: value})
+			return
+		}
+		out = append(out, safety.DiffEntry{Path: path, To: hiddenText})
+	})
 	return out
 }
 

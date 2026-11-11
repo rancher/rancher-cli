@@ -234,6 +234,7 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "app install --values is left to the shell", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--values"}, hits: map[string]int{}},
 		{name: "app install --helm-timeout offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--helm-timeout"}, hits: map[string]int{}},
 		{name: "app install --description offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--description"}, hits: map[string]int{}},
+		{name: "app install --system-default-registry offers nothing", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--system-default-registry"}, hits: map[string]int{}},
 		{name: "app install release names a new release", words: []string{"app", "install"}, hits: map[string]int{}},
 		{name: "app uninstall --helm-timeout offers nothing", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--helm-timeout"}, hits: map[string]int{}},
 		// create user --global-role

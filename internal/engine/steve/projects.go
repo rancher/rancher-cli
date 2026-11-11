@@ -21,12 +21,21 @@ const ProjectsType = "management.cattle.io.projects"
 
 // Project is one project the caller can read. ID is the bare
 // metadata.name, the form the project label and the backing namespace use.
-type Project struct{ Cluster, ID, DisplayName string }
+// System is true for the cluster's System project: the project whose
+// authz.management.cattle.io/system-project label is "true".
+type Project struct {
+	Cluster, ID, DisplayName string
+	System                   bool
+}
+
+// systemProjectLabel marks the System project of a cluster.
+const systemProjectLabel = "authz.management.cattle.io/system-project"
 
 type projectItem struct {
 	ID       string `json:"id"`
 	Metadata struct {
-		Name string `json:"name"`
+		Name   string            `json:"name"`
+		Labels map[string]string `json:"labels"`
 	} `json:"metadata"`
 	Spec struct {
 		ClusterName string `json:"clusterName"`
@@ -60,7 +69,7 @@ func Projects(ctx context.Context, get Getter, clusterID string) ([]Project, err
 		case item.Metadata.Name != "" && item.Metadata.Name != name:
 			return "", Project{}, protocolError(path, fmt.Sprintf("item %q has metadata.name %q, which differs from its id", item.ID, item.Metadata.Name))
 		}
-		return item.ID, Project{Cluster: cluster, ID: name, DisplayName: item.Spec.DisplayName}, nil
+		return item.ID, Project{Cluster: cluster, ID: name, DisplayName: item.Spec.DisplayName, System: item.Metadata.Labels[systemProjectLabel] == "true"}, nil
 	})
 	if err != nil {
 		return nil, collectionRefusal(r, err)

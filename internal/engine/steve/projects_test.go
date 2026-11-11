@@ -100,6 +100,29 @@ func TestProjectsAllClustersKeepsCollectionOrder(t *testing.T) {
 	assert.Equal(t, []string{"/v1/management.cattle.io.projects"}, srv.requests())
 }
 
+// TestProjectsMarksTheSystemProjectByItsLabel asserts System is true only
+// for a project whose authz.management.cattle.io/system-project label is
+// "true": not for a project displayed as System without the label, nor for
+// the label with another value.
+func TestProjectsMarksTheSystemProjectByItsLabel(t *testing.T) {
+	t.Parallel()
+	labeled := func(project, display, value string) map[string]any {
+		p := steveProject("c-abc", project, display)
+		p["metadata"] = map[string]any{"name": project, "labels": map[string]any{"authz.management.cattle.io/system-project": value}}
+		return p
+	}
+	srv := projectsServer(t, abcProjectsPath, onePage(
+		steveProject("c-abc", "p-a", "System"), labeled("p-b", "Ops", "true"), labeled("p-c", "Default", "false"),
+	))
+	rows, err := Projects(t.Context(), srv.getter(), "c-abc")
+	require.NoError(t, err)
+	assert.Equal(t, []Project{
+		{Cluster: "c-abc", ID: "p-a", DisplayName: "System"},
+		{Cluster: "c-abc", ID: "p-b", DisplayName: "Ops", System: true},
+		{Cluster: "c-abc", ID: "p-c", DisplayName: "Default"},
+	}, rows)
+}
+
 func TestProjectsFollowsContinueAndDeduplicates(t *testing.T) {
 	t.Parallel()
 	srv := projectsServer(t, allProjectsPath, map[string]stevePage{

@@ -61,7 +61,7 @@ func addAppCompletionBodies(bodies map[string]string) map[string]string {
 
 // appChartExceptionReason is the one reason --chart carries beside a live
 // source.
-const appChartExceptionReason = "the index does not show global.cattle, requires-gvr or permits-os: a chart refused for one of them may be offered"
+const appChartExceptionReason = "the index does not show requires-gvr or permits-os: a chart refused for one of them may be offered"
 
 // appCompletionSite is one value-taking flag or argument of app install or
 // app uninstall with how it completes: "live" (a source answers it, and words
@@ -91,6 +91,8 @@ var appCompletionSites = map[string]appCompletionSite{
 	"app install --values":       {completion: "file", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--values"}},
 	"app install --helm-timeout": {completion: "none", reason: "a free duration, as --timeout", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--helm-timeout"}},
 	"app install --description":  {completion: "none", reason: "free text", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--description"}},
+
+	"app install --system-default-registry": {completion: "none", reason: "a registry host; there is no list to complete from", words: []string{"app", "install", "my-rel", "--cluster", "c-aaa11", "--system-default-registry"}},
 
 	"app uninstall <release>":      {completion: "live", words: []string{"app", "uninstall", "--cluster", "c-aaa11", "--namespace", "default"}},
 	"app uninstall --cluster":      {completion: "live", words: []string{"app", "uninstall", "my-app", "--cluster"}},

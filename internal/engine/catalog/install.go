@@ -92,10 +92,12 @@ func (*installCmd) Describe() runtime.Descriptor {
 			"before it sends the request, and nothing checks for a change after that. " +
 			"--version names one exact version from the index; without it the version is the one `rancher charts` shows. " +
 			"Values come only from files (--values, repeatable, merged in order; - reads stdin once); " +
-			"the preview lists their paths, never the values. " +
+			"the preview lists their paths, never the values, except the values rancher-cli adds and the registry host, which show the value sent (the host only for a chart that declares a registry path). " +
+			"As the Rancher UI does, rancher-cli adds to every chart's values global.cattle.clusterId, clusterName, systemProjectId, url, rkePathPrefix, rkeWindowsPathPrefix and windows.enabled (only with Windows workers), " +
+			"each unless the values files set that path; for a chart whose default values declare global.cattle.systemDefaultRegistry or global.systemDefaultRegistry it also sets both to one registry: " +
+			"--system-default-registry <host>, else the non-empty registry in the values files merged over the chart's default values (global.cattle.systemDefaultRegistry first), else the cluster's, else the system-default-registry setting; --no-system-default-registry sends neither. " +
 			"Neither Rancher nor rancher-cli checks the values against the chart's values schema (Helm does, in the pod) or the chart's signature. " +
-			"Refused: a chart whose default values declare global.cattle (install it from the Rancher UI), " +
-			"a chart that names another chart to install first (catalog.cattle.io/auto-install or auto-install-gvr), " +
+			"Refused: a chart that names another chart to install first (catalog.cattle.io/auto-install or auto-install-gvr), " +
 			"and a chart whose catalog.cattle.io/namespace, release-name, requires-gvr or permits-os annotation the target does not meet. " +
 			"--helm-wait (default true; --helm-wait=false sends false) makes Helm wait for the chart's resources; " +
 			"--helm-timeout (default 10m, at least 1s, at most 15m) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. " +
@@ -116,6 +118,8 @@ func (*installCmd) Describe() runtime.Descriptor {
 			{Name: flagNoHooks, Type: "bool", Desc: "do not run the chart's hooks"},
 			{Name: flagDisableOpenAPIValidation, Type: "bool", Desc: "do not validate the rendered resources against the OpenAPI schema"},
 			{Name: flagDescription, Type: "string", Desc: "release `description`"},
+			{Name: flagSystemDefaultRegistry, Type: "string", Desc: "registry `host` to send at values.global.cattle.systemDefaultRegistry and values.global.systemDefaultRegistry"},
+			{Name: flagNoSystemDefaultRegistry, Type: "bool", Desc: "send neither registry value, also when a values file sets one"},
 		},
 		Examples: []string{
 			"rancher app install my-nginx --cluster prod --namespace web --repo bitnami --chart nginx --values values.yaml --dry-run",
@@ -151,6 +155,7 @@ type installPlan struct {
 	digest  string
 	body    installBody
 	values  Values
+	sent    composition
 	canRead bool
 }
 
@@ -162,6 +167,11 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	timeout, err := helmTimeout(in.String(flagHelmTimeout), defaultHelmTimeout)
 	if err != nil {
 		return safety.Effect{}, nil, err
+	}
+	reg := registryFlags{host: in.String(flagSystemDefaultRegistry), none: in.Bool(flagNoSystemDefaultRegistry)}
+	if reg.host != "" && reg.none {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			"--"+flagSystemDefaultRegistry+" and --"+flagNoSystemDefaultRegistry+" are given together; give at most one of them")
 	}
 	values, err := ReadValues(c.src, in.Strings(flagValues), stdinTerminal(in))
 	if err != nil {
@@ -200,7 +210,16 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	if err != nil {
 		return safety.Effect{}, nil, withRepoRemedy(err, p.target.typedCluster)
 	}
-	w, err = p.checkChart(ctx, entry, info, repoObj)
+	if err := p.checkRegistryFlags(reg, info); err != nil {
+		return safety.Effect{}, nil, err
+	}
+	// The management Cluster is read once: the permits-os check and the
+	// cluster values both use it. A 403 leaves it nil.
+	mgmt, err := steve.GetCluster(ctx, steve.RootGetter(p.root), p.cluster)
+	if err != nil && !forbidden(err) {
+		return safety.Effect{}, nil, err
+	}
+	w, err = p.checkChart(ctx, entry, info, repoObj, mgmt)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -226,6 +245,11 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	idWarning, canRead := identityOf(ctx, p.client, serviceAccountIdentity(repoObj), p.target.namespace)
 	p.canRead = canRead
 
+	if p.sent, err = p.composeValues(ctx, info.Values, mgmt, reg); err != nil {
+		return safety.Effect{}, nil, err
+	}
+	warnings = append(warnings, p.sent.warnings...)
+
 	p.body = installBody{
 		Timeout:                  timeout,
 		Wait:                     !in.IsSet(flagHelmWait) || in.Bool(flagHelmWait),
@@ -237,7 +261,7 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 			Version:     p.version,
 			ReleaseName: release,
 			Description: in.String(flagDescription),
-			Values:      values.request(),
+			Values:      p.sent.sent.request(),
 			Annotations: map[string]string{
 				annotationRequestID:      p.target.requestID,
 				annotationSourceRepoType: sourceRepoTypeCluster,
@@ -271,7 +295,9 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 }
 
 // diff lists what the request sends: the source, the release, the Helm
-// options and the value paths, never a value.
+// options and the path of every value. A value from the values files shows
+// as <hidden>, except a string at a registry path of a chart that declares
+// one; a value the CLI added shows as sent.
 func (p installPlan) diff() []safety.DiffEntry {
 	d := []safety.DiffEntry{
 		{Path: "repo", To: p.repo},
@@ -291,10 +317,7 @@ func (p installPlan) diff() []safety.DiffEntry {
 	if desc := p.body.Charts[0].Description; desc != "" {
 		d = append(d, safety.DiffEntry{Path: "description", To: desc})
 	}
-	for _, path := range p.values.paths() {
-		d = append(d, safety.DiffEntry{Path: path, To: hiddenText})
-	}
-	return d
+	return append(d, p.sent.sent.previewEntries(p.sent.added, p.sent.shown)...)
 }
 
 // readRepo reads the ClusterRepo the plan installs from.
@@ -374,17 +397,11 @@ func versionList(versions []ChartVersion) string {
 	return strings.Join(out, ", ")
 }
 
-// checkChart applies the refusals the chart's default values and
-// annotations call for, and returns the warnings of the checks it could not
-// make.
-func (p installPlan) checkChart(ctx context.Context, entry ChartVersion, info Info, repo *unstructured.Unstructured) ([]string, error) {
+// checkChart applies the refusals the chart's annotations call for, and
+// returns the warnings of the checks it could not make. mgmt is the
+// management Cluster, nil when the caller cannot read it.
+func (p installPlan) checkChart(ctx context.Context, entry ChartVersion, info Info, repo, mgmt *unstructured.Unstructured) ([]string, error) {
 	name := fmt.Sprintf("chart %s %s", clierr.ShellQuote(p.chart), clierr.ShellQuote(p.version))
-	if global, ok := info.Values["global"].(map[string]any); ok {
-		if _, ok := global["cattle"]; ok {
-			return nil, clierr.New(clierr.CodeValidation, name+
-				" reads cluster values under global.cattle that the Rancher UI sets when it installs a chart; rancher-cli cannot install it; install it from the Rancher UI")
-		}
-	}
 	// The Rancher UI reads the annotations of the index entry; the info
 	// link's chart metadata stands in only for an entry that carries none.
 	ann := entry.Annotations
@@ -414,7 +431,7 @@ func (p installPlan) checkChart(ctx context.Context, entry ChartVersion, info In
 		}
 		warnings = append(warnings, w...)
 	}
-	w, err := p.checkPermitsOS(ctx, name, ann, repo)
+	w, err := p.checkPermitsOS(name, ann, repo, mgmt)
 	if err != nil {
 		return nil, err
 	}
@@ -524,9 +541,9 @@ func (g incompleteGroups) hasGroupOf(id string) bool {
 // checkPermitsOS refuses the chart when the cluster has workers of an OS
 // that catalog.cattle.io/permits-os does not list. Without the annotation a
 // chart from a Rancher repository permits linux only and any other chart
-// every OS. The workers' OSes come from the management cluster, which the
-// caller may not be able to read: the check is then skipped with a warning.
-func (p installPlan) checkPermitsOS(ctx context.Context, name string, ann map[string]string, repo *unstructured.Unstructured) ([]string, error) {
+// every OS. The workers' OSes come from the management cluster mgmt, nil
+// when the caller cannot read it: the check is then skipped with a warning.
+func (p installPlan) checkPermitsOS(name string, ann map[string]string, repo, mgmt *unstructured.Unstructured) ([]string, error) {
 	var permitted []string
 	if v, ok := ann[annotationPermitsOS]; ok && v != "" {
 		for e := range strings.SplitSeq(v, ",") {
@@ -540,11 +557,7 @@ func (p installPlan) checkPermitsOS(ctx context.Context, name string, ann map[st
 	if len(permitted) == 0 {
 		return nil, nil
 	}
-	mgmt, err := steve.GetCluster(ctx, steve.RootGetter(p.root), p.cluster)
-	if err != nil && !forbidden(err) {
-		return nil, err
-	}
-	if err != nil {
+	if mgmt == nil {
 		return []string{fmt.Sprintf("cannot read cluster %s; %s permits only %s nodes (annotation %s), which was not checked against its workers",
 			clierr.ShellQuote(p.target.typedCluster), name, strings.Join(permitted, ", "), annotationPermitsOS)}, nil
 	}

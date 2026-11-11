@@ -150,15 +150,38 @@ func newAppFake(t *testing.T) *appFake {
 		indexPath(): {status: 200, body: indexJSON(map[string][]ChartVersion{testChart: {
 			{Version: "2.0.0", Digest: "sha256:aaa"}, {Version: "1.0.0", Digest: "sha256:bbb"},
 		}})},
-		infoPath(testChart, "2.0.0"):                       {status: 200, body: `{"values":{"replicaCount":1},"chart":{"annotations":{}}}`},
-		infoPath(testChart, "1.0.0"):                       {status: 200, body: `{"values":{"replicaCount":1},"chart":{"annotations":{}}}`},
-		"/v1/management.cattle.io.clusters/" + testCluster: {status: 200, body: `{"status":{"linuxWorkerCount":2}}`},
+		infoPath(testChart, "2.0.0"):              {status: 200, body: `{"values":{"replicaCount":1},"chart":{"annotations":{}}}`},
+		infoPath(testChart, "1.0.0"):              {status: 200, body: `{"values":{"replicaCount":1},"chart":{"annotations":{}}}`},
+		clusterPath:                               {status: 200, body: testClusterObject},
+		settingPath(settingServerURL):             {status: 200, body: `{"id":"server-url","value":"` + testServerURL + `","default":""}`},
+		settingPath(settingSystemDefaultRegistry): {status: 200, body: `{"id":"system-default-registry","value":"","default":"` + testSettingRegistry + `"}`},
+		projectsPath:                              {status: 200, body: testProjects},
 	})
 	f.postAnswer = func(string) ([]byte, error) {
 		return []byte(`{"type":"chartActionOutput","links":{},"operationName":"helm-operation-abcde","operationNamespace":"web"}`), nil
 	}
 	return f
 }
+
+// The server reads app install makes for the cluster values: the
+// management Cluster (display name "Production", Linux workers), the two
+// Settings on the Rancher server and the cluster's projects, where a
+// project displayed as System but without the System project label is
+// listed before the labeled one.
+const (
+	clusterPath         = "/v1/management.cattle.io.clusters/" + testCluster
+	projectsPath        = "/v1/management.cattle.io.projects/" + testCluster
+	testServerURL       = "https://rancher.example.test"
+	testSettingRegistry = "setting-registry.example.test"
+	testSystemProject   = "p-system"
+	testClusterObject   = `{"id":"c-1","metadata":{"name":"c-1"},"spec":{"displayName":"Production"},"status":{"linuxWorkerCount":2}}`
+	testProjects        = `{"data":[` +
+		`{"id":"c-1/p-aaaaa","metadata":{"name":"p-aaaaa"},"spec":{"clusterName":"c-1","displayName":"System"}},` +
+		`{"id":"c-1/p-system","metadata":{"name":"p-system","labels":{"authz.management.cattle.io/system-project":"true"}},"spec":{"clusterName":"c-1","displayName":"Platform"}}` +
+		`],"count":2,"revision":"1"}`
+)
+
+func settingPath(name string) string { return "/v1/management.cattle.io.settings/" + name }
 
 func indexPath() string {
 	return "/k8s/clusters/" + testCluster + "/v1/catalog.cattle.io.clusterrepos/" + testRepo + "?link=index"

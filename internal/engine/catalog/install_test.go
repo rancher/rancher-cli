@@ -31,8 +31,8 @@ func diffPaths(eff safety.Effect) map[string]any {
 
 // TestInstallPreview asserts the Effect of an install: a create of the
 // App previewed from server reads, with no precondition, the request's
-// fields and value paths in the diff, the warnings every install carries,
-// and no request sent.
+// fields, the files' value paths hidden and the added cluster values shown
+// in the diff, the warnings every install carries, and no request sent.
 func TestInstallPreview(t *testing.T) {
 	t.Parallel()
 	f := newAppFake(t)
@@ -52,12 +52,20 @@ func TestInstallPreview(t *testing.T) {
 	assert.Equal(t, map[string]any{
 		"repo": testRepo, "chart": testChart, "version": "2.0.0", "namespace": testNS,
 		"releaseName": testRelease, "wait": true, "timeout": "10m0s",
-		"values.auth.password": "<hidden>",
+		"values.auth.password":                      "<hidden>",
+		"values.global.cattle.clusterId":            testCluster,
+		"values.global.cattle.clusterName":          "Production",
+		"values.global.cattle.rkePathPrefix":        "",
+		"values.global.cattle.rkeWindowsPathPrefix": "",
+		"values.global.cattle.systemProjectId":      testSystemProject,
+		"values.global.cattle.url":                  testServerURL,
 	}, diffPaths(eff))
 	assert.Equal(t, []string{
 		"Rancher runs Helm in a pod as you; the chart's own writes are checked only when Helm runs them",
 		"this preview comes from server reads; the server has no dry-run for this action",
 		"uninstalling the release leaves the CRDs of the chart's crds/ directory and the resources marked helm.sh/resource-policy: keep",
+		"rancher-cli adds the values the Rancher UI adds when it installs a chart: values.global.cattle.clusterId, values.global.cattle.clusterName, " +
+			"values.global.cattle.rkePathPrefix, values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.systemProjectId, values.global.cattle.url",
 		"Rancher may create, change or delete image pull secrets for this release; the preview cannot list them",
 	}, eff.Warnings)
 	assert.Zero(t, f.postCount())
@@ -117,6 +125,8 @@ var installFlagFields = map[string]bodyField{
 	flagNoHooks:                  {"ChartInstallAction", "noHooks"},
 	flagDisableOpenAPIValidation: {"ChartInstallAction", "disableOpenAPIValidation"},
 	flagDescription:              {"ChartInstall", "description"},
+	flagSystemDefaultRegistry:    {},
+	flagNoSystemDefaultRegistry:  {},
 }
 
 // uninstallFlagFields is installFlagFields for app uninstall.
@@ -177,7 +187,7 @@ func TestInstallBodyPerFlag(t *testing.T) {
 		{flagChart, nil, "chartName", true, testChart},
 		{flagNamespace(), nil, "namespace", false, testNS},
 		{flagVersion, func(in *appInput) { in.s[flagVersion] = "1.0.0" }, "version", true, "1.0.0"},
-		{flagValues, func(in *appInput) { in.strs[flagValues] = []string{"v.yaml"} }, "values", true, map[string]any{"a": float64(1)}},
+		{flagValues, func(in *appInput) { in.strs[flagValues] = []string{"v.yaml"} }, "values", true, map[string]any{"a": float64(1), "global": testCattleValues()}},
 		{flagHelmWait, func(in *appInput) { in.b[flagHelmWait] = false }, "wait", false, false},
 		{flagHelmTimeout, func(in *appInput) { in.s[flagHelmTimeout] = "90s" }, "timeout", false, "1m30s"},
 		{flagNoHooks, func(in *appInput) { in.b[flagNoHooks] = true }, "noHooks", false, true},
@@ -205,9 +215,19 @@ func TestInstallBodyPerFlag(t *testing.T) {
 
 func flagNamespace() string { return engine.FlagNamespace }
 
+// testCattleValues is the global value app install adds for the fake's
+// cluster when the files set nothing under it and the chart declares no
+// registry path.
+func testCattleValues() map[string]any {
+	return map[string]any{"cattle": map[string]any{
+		"clusterId": testCluster, "clusterName": "Production", "systemProjectId": testSystemProject,
+		"url": testServerURL, "rkePathPrefix": "", "rkeWindowsPathPrefix": "",
+	}}
+}
+
 // TestInstallBodyDefaults asserts the body of a bare install: Helm waits,
-// with a 10m timeout, the chart entry carries the request id and the two
-// source annotations, and no other field is sent.
+// with a 10m timeout, the chart entry carries the request id, the two
+// source annotations and the cluster values, and no other field is sent.
 func TestInstallBodyDefaults(t *testing.T) {
 	t.Parallel()
 	f := newAppFake(t)
@@ -217,6 +237,7 @@ func TestInstallBodyDefaults(t *testing.T) {
 		"timeout": "10m0s", "wait": true, "namespace": testNS,
 		"charts": []any{map[string]any{
 			"chartName": testChart, "version": "2.0.0", "releaseName": testRelease,
+			"values": map[string]any{"global": testCattleValues()},
 			"annotations": map[string]any{
 				"cli.rancher.io/request-id":             testRequestID,
 				"catalog.cattle.io/ui-source-repo-type": "cluster",
@@ -246,8 +267,8 @@ func TestInstallHelmWait(t *testing.T) {
 }
 
 // TestInstallRefusedBeforeAnyRead asserts the refusals that need no server
-// read: an invalid release name and a --helm-timeout out of bounds, each
-// VALIDATION with no request sent.
+// read: an invalid release name, a --helm-timeout out of bounds and both
+// registry flags together, each VALIDATION with no request sent.
 func TestInstallRefusedBeforeAnyRead(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
@@ -264,6 +285,10 @@ func TestInstallRefusedBeforeAnyRead(t *testing.T) {
 		"timeout over 15m":  {func(in *appInput) { in.s[flagHelmTimeout] = "16m" }, "Rancher removes a run's access one hour after the operation starts"},
 		"timeout not Go":    {func(in *appInput) { in.s[flagHelmTimeout] = "ten" }, "is not a duration such as 90s or 10m"},
 		"stdin is terminal": {func(in *appInput) { in.strs[flagValues] = []string{"-"}; in.terminal = true }, "stdin is a terminal"},
+		"both registry flags": {func(in *appInput) {
+			in.s[flagSystemDefaultRegistry] = "r.example.test"
+			in.b[flagNoSystemDefaultRegistry] = true
+		}, "--system-default-registry and --no-system-default-registry are given together; give at most one of them"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -385,8 +410,6 @@ func TestInstallChartRefusals(t *testing.T) {
 		name, info, want string
 		setup            func(*appFake)
 	}{
-		{name: "global.cattle", info: `{"values":{"global":{"cattle":{"clusterId":""}}}}`,
-			want: "chart 'nginx' '2.0.0' reads cluster values under global.cattle that the Rancher UI sets when it installs a chart; rancher-cli cannot install it; install it from the Rancher UI"},
 		{name: "auto-install", info: `{"chart":{"annotations":{"catalog.cattle.io/auto-install":" nginx-crd=match , other=1.0 "}}}`,
 			want: "chart 'nginx' '2.0.0' names nginx-crd, other to install first (annotation catalog.cattle.io/auto-install)"},
 		{name: "auto-install-gvr", info: `{"chart":{"annotations":{"catalog.cattle.io/auto-install-gvr":"example.io/v1/Thing"}}}`,
@@ -774,17 +797,19 @@ func TestInstallPlanDisplayIdentity(t *testing.T) {
 	assert.True(t, strings.HasPrefix(res.Text, "app "+testRelease+":"), res.Text)
 }
 
-// TestInstallManagementReadFailure asserts only a refused read of the
-// management cluster turns the permits-os check into a warning; any other
-// failure is the command's error.
+// TestInstallManagementReadFailure asserts the management cluster is read
+// for every install, with or without permits-os: only a refused read turns
+// into warnings; any other failure is the command's error.
 func TestInstallManagementReadFailure(t *testing.T) {
 	t.Parallel()
-	f := newAppFake(t)
-	chartWith(f, `{"chart":{"annotations":{"catalog.cattle.io/permits-os":"linux"}}}`)
-	f.root.answers["/v1/management.cattle.io.clusters/"+testCluster] = rootAnswer{status: http.StatusInternalServerError, body: `{"message":"boom"}`}
-	_, _, err := newTestInstall(f, nil).Plan(t.Context(), installInput())
-	require.Error(t, err)
-	assert.Equal(t, clierr.CodeGeneric, clierr.From(err).Code)
+	for _, info := range []string{`{"chart":{"annotations":{"catalog.cattle.io/permits-os":"linux"}}}`, `{"chart":{}}`} {
+		f := newAppFake(t)
+		chartWith(f, info)
+		f.root.answers["/v1/management.cattle.io.clusters/"+testCluster] = rootAnswer{status: http.StatusInternalServerError, body: `{"message":"boom"}`}
+		_, _, err := newTestInstall(f, nil).Plan(t.Context(), installInput())
+		require.Error(t, err)
+		assert.Equal(t, clierr.CodeGeneric, clierr.From(err).Code, info)
+	}
 }
 
 // TestInstallExecuteIndexReadFailure asserts a failed read of the index in

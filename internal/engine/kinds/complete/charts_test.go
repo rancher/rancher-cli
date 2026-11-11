@@ -78,7 +78,7 @@ func TestInstallSourceRoutesByFlag(t *testing.T) {
 		_, ok := src.Claim(completion.Request{Command: InstallCommand, Flag: flag})
 		assert.True(t, ok, flag)
 	}
-	for _, flag := range []string{"", "cluster", "namespace", "values", "helm-timeout", "description"} {
+	for _, flag := range []string{"", "cluster", "namespace", "values", "helm-timeout", "description", "system-default-registry"} {
 		_, ok := src.Claim(completion.Request{Command: InstallCommand, Flag: flag})
 		assert.False(t, ok, "flag %q", flag)
 	}

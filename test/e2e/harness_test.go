@@ -103,12 +103,12 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	// The index link of a ClusterRepo, which the envtest apiserver does not
 	// serve.
 	"charts": func(o *testrancher.Options) { o.Fallthrough = chartIndexRoute(o.Fallthrough) },
-	// The index and info links of a ClusterRepo and the install and
-	// uninstall actions, none of which the envtest apiserver serves; every
-	// action body is kept for the script's check.
+	// The index and info links of a ClusterRepo, the install and uninstall
+	// actions and the Settings app install reads, none of which the envtest
+	// apiserver serves; every action body is kept for the script's check.
 	"app-install": func(o *testrancher.Options) {
 		appActions = &appActionLog{}
-		o.Fallthrough = appActionRoutes(appActions, chartIndexRoute(o.Fallthrough))
+		o.Fallthrough = appActionRoutes(appActions, chartIndexRoute(appSettingRoutes(o.Fallthrough)))
 	},
 }
 
@@ -135,7 +135,9 @@ var chartIndexes = map[string]string{
 	"app-install-repo": `{"apiVersion":"v1","generated":"2026-01-02T03:04:05Z","entries":{
 	  "app-install-chart":[
 	    {"name":"app-install-chart","version":"1.2.0","appVersion":"12","description":"the chart","digest":"a2","urls":["app-install-chart-1.2.0.tgz"]},
-	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"older","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}]}}`,
+	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"older","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}],
+	  "app-registry-chart":[
+	    {"name":"app-registry-chart","version":"1.0.0","appVersion":"10","description":"declares the registry values","digest":"a3","urls":["app-registry-chart-1.0.0.tgz"]}]}}`,
 }
 
 // chartIndexRoute answers GET
@@ -219,6 +221,43 @@ func cmdAppActions(ts *testscript.TestScript, neg bool, args []string) {
 var appInfos = map[string]string{
 	"app-install-chart/1.2.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.2.0"}}`,
 	"app-install-chart/1.1.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.1.0"}}`,
+	appRegistryChart + "/1.0.0": `{"values":{"replicaCount":1,"global":{"systemDefaultRegistry":"","cattle":{"systemDefaultRegistry":""}}},` +
+		`"chart":{"apiVersion":"v2","name":"` + appRegistryChart + `","version":"1.0.0"}}`,
+}
+
+// appRegistryChart is the chart of app-install-repo whose default values
+// declare both global.systemDefaultRegistry and
+// global.cattle.systemDefaultRegistry.
+const appRegistryChart = "app-registry-chart"
+
+// appSettings are the Settings the app-install scenario's Rancher serves at
+// /v1/management.cattle.io.settings/<name>, with the fields app install
+// reads: the value and the default. The system-default-registry Setting has
+// no value, so the install sends its default.
+var appSettings = map[string]string{
+	"server-url":              `{"id":"server-url","type":"management.cattle.io.setting","value":"https://rancher.e2e.example.test","default":""}`,
+	"system-default-registry": `{"id":"system-default-registry","type":"management.cattle.io.setting","value":"","default":"setting-registry.e2e.example.test"}`,
+}
+
+// appSettingRoutes answers GET /v1/management.cattle.io.settings/<name> for
+// the names in appSettings; the facade serves no Settings path. Every other
+// request goes on.
+func appSettingRoutes(next http.Handler) http.Handler {
+	const settingsPath = "/v1/management.cattle.io.settings/"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name, ok := strings.CutPrefix(r.URL.Path, settingsPath)
+		body, known := appSettings[name]
+		if !ok || !known || r.Method != http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+testToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	})
 }
 
 // appActionRoutes answers, on c-test, GET

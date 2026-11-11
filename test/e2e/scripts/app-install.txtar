@@ -5,8 +5,10 @@ seedobj core/v1/namespaces . namespace.yaml
 seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
 
 # --dry-run reads the server and sends no action: the preview is from server
-# reads, the version is the one `rancher charts` shows, and the values appear
-# by path, never by content.
+# reads, the version is the one `rancher charts` shows, and the values from a
+# file appear by path, never by content. The values the command adds, the ones
+# the Rancher UI adds when it installs a chart, appear with their values; the
+# facade's projects carry no System project label, so systemProjectId is "".
 exec rancher app install app-install-rel --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-install-chart --values values.yaml --dry-run -o json
 cp stdout dry.json
 jsonquery dry.json data.previewSource serverReads
@@ -15,6 +17,16 @@ jsonquery dry.json data.displayName app-install-rel
 jsonquery dry.json 'data.diff.#(path="version").to' 1.2.0
 jsonquery dry.json 'data.diff.#(path="chart").to' app-install-chart
 jsonquery dry.json 'data.diff.#(path="values.replicaCount").to' '<hidden>'
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.clusterId").to' c-test
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.clusterName").to' testcluster
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.url").to' https://rancher.e2e.example.test
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.systemProjectId").path' values.global.cattle.systemProjectId
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.systemProjectId").to' ''
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.rkePathPrefix").path' values.global.cattle.rkePathPrefix
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.rkeWindowsPathPrefix").path' values.global.cattle.rkeWindowsPathPrefix
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.windows.enabled").path' ''
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.systemDefaultRegistry").path' ''
+jsonquery dry.json 'warnings.#(%"rancher-cli adds the values the Rancher UI adds when it installs a chart: *")' 'rancher-cli adds the values the Rancher UI adds when it installs a chart: values.global.cattle.clusterId, values.global.cattle.clusterName, values.global.cattle.rkePathPrefix, values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.systemProjectId, values.global.cattle.url'
 ! stdout 'topsecret'
 appactions actions.json
 jsonquery actions.json '#' 0
@@ -52,6 +64,13 @@ jsonquery actions.json '0.body.charts.0.version' 1.1.0
 jsonquery actions.json '0.body.charts.0.description' 'first install'
 jsonquery actions.json '0.body.charts.0.values.replicaCount' 3
 jsonquery actions.json '0.body.charts.0.values.image.tag' topsecret-tag
+jsonquery actions.json '0.body.charts.0.values.global.cattle.clusterId' c-test
+jsonquery actions.json '0.body.charts.0.values.global.cattle.clusterName' testcluster
+jsonquery actions.json '0.body.charts.0.values.global.cattle.url' https://rancher.e2e.example.test
+jsonquery actions.json '0.body.charts.0.values.global.cattle.rkePathPrefix' ''
+jsonquery actions.json '0.body.charts.0.values.global.cattle.rkeWindowsPathPrefix' ''
+jsonquery actions.json '0.body.charts.0.values.global.cattle.systemProjectId' ''
+jsonquery actions.json '0.body.charts.0.values.global.cattle.@keys' '["clusterId","clusterName","rkePathPrefix","rkeWindowsPathPrefix","systemProjectId","url"]'
 jsonquery actions.json '0.body.charts.0.annotations.cli\.rancher\.io/request-id' $REQID
 jsonquery actions.json '0.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo' app-install-repo
 jsonquery actions.json '0.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo-type' cluster
@@ -113,6 +132,31 @@ jsonquery actions.json '1.body.dryRun' ''
 exec rancher get operation $UNOPNAME --cluster testcluster --namespace app-install-ns -o json
 jsonquery stdout data.status.action uninstall
 jsonquery stdout data.status.releaseName app-install-rel
+
+# A chart whose default values declare both registry paths gets both set to
+# one value: the system-default-registry Setting has no value, so its default.
+exec rancher app install app-install-reg --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-registry-chart --dry-run -o json
+cp stdout regdry.json
+jsonquery regdry.json 'data.diff.#(path="values.global.systemDefaultRegistry").to' setting-registry.e2e.example.test
+jsonquery regdry.json 'data.diff.#(path="values.global.cattle.systemDefaultRegistry").to' setting-registry.e2e.example.test
+
+# --no-system-default-registry sends neither.
+exec rancher app install app-install-reg --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-registry-chart --no-system-default-registry --dry-run -o json
+cp stdout noregdry.json
+jsonquery noregdry.json 'data.diff.#(path="values.global.systemDefaultRegistry").path' ''
+jsonquery noregdry.json 'data.diff.#(path="values.global.cattle.systemDefaultRegistry").path' ''
+jsonquery noregdry.json 'data.diff.#(path="values.global.cattle.clusterId").to' c-test
+appactions actions.json
+jsonquery actions.json '#' 2
+
+# --system-default-registry sends the host at both paths.
+exec rancher app install app-install-reg --cluster testcluster --namespace app-install-ns --repo app-install-repo --chart app-registry-chart --system-default-registry registry.e2e.example.test --apply -o json
+appactions actions.json
+jsonquery actions.json '#' 3
+jsonquery actions.json '2.body.charts.0.chartName' app-registry-chart
+jsonquery actions.json '2.body.charts.0.values.global.systemDefaultRegistry' registry.e2e.example.test
+jsonquery actions.json '2.body.charts.0.values.global.cattle.systemDefaultRegistry' registry.e2e.example.test
+jsonquery actions.json '2.body.charts.0.values.global.cattle.clusterId' c-test
 
 -- namespace.yaml --
 apiVersion: v1

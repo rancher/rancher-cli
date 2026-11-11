@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,8 +31,9 @@ func withArgs(base []string, more ...string) []string {
 
 // TestAppInstallDryRunEnvelope asserts the decoded --dry-run envelope of an
 // install through the real root: a create of the App from server reads,
-// with the request's fields and value paths, the preview's warnings, and no
-// action request sent.
+// with the request's fields, the value paths (a value from a file hidden, a
+// value the CLI adds shown), the preview's warnings, and no action request
+// sent.
 func TestAppInstallDryRunEnvelope(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	s := newAppServer(t, "community")
@@ -56,7 +60,16 @@ func TestAppInstallDryRunEnvelope(t *testing.T) {
 	assert.Equal(t, map[string]any{
 		"repo": appRepo, "chart": appChart, "version": "2.0.0", "namespace": appNS, "releaseName": appRelease,
 		"wait": true, "timeout": "10m0s", "values.auth.password": "<hidden>",
+		"values.global.cattle.clusterId":            "c-aaa11",
+		"values.global.cattle.clusterName":          appClusterName,
+		"values.global.cattle.rkePathPrefix":        "",
+		"values.global.cattle.rkeWindowsPathPrefix": "",
+		"values.global.cattle.systemProjectId":      appSystemProject,
+		"values.global.cattle.url":                  appServerURL,
 	}, paths)
+	assert.Contains(t, env.Warnings, "rancher-cli adds the values the Rancher UI adds when it installs a chart: "+
+		"values.global.cattle.clusterId, values.global.cattle.clusterName, values.global.cattle.rkePathPrefix, "+
+		"values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.systemProjectId, values.global.cattle.url")
 	assert.Contains(t, env.Warnings, "this preview comes from server reads; the server has no dry-run for this action")
 	assert.Contains(t, env.Warnings, "Rancher may create, change or delete image pull secrets for this release; the preview cannot list them")
 	assert.Zero(t, s.postCount())
@@ -143,7 +156,13 @@ func TestAppInstallApply(t *testing.T) {
 		"timeout": "5m0s", "wait": true, "namespace": appNS,
 		"charts": []any{map[string]any{
 			"chartName": appChart, "version": "1.0.0", "releaseName": appRelease, "description": "first",
-			"values": map[string]any{"image": map[string]any{"tag": "2"}},
+			"values": map[string]any{
+				"image": map[string]any{"tag": "2"},
+				"global": map[string]any{"cattle": map[string]any{
+					"clusterId": "c-aaa11", "clusterName": appClusterName, "rkePathPrefix": "", "rkeWindowsPathPrefix": "",
+					"systemProjectId": appSystemProject, "url": appServerURL,
+				}},
+			},
 			"annotations": map[string]any{
 				"cli.rancher.io/request-id":             id,
 				"catalog.cattle.io/ui-source-repo-type": "cluster",
@@ -239,11 +258,16 @@ func decodeErrorEnvelope(t *testing.T, raw string) appError {
 // whose outcome is unknown, a values file whose top level is a scalar, a
 // YAML syntax error on the value's line and a repeated key holding the
 // value; no refusal carries the YAML decoders' own text. Each run is
-// checked in stdout, stderr and the decoded envelope.
+// checked in stdout, stderr and the decoded envelope. The values file also
+// sets every path app install adds a cluster value at, so the canary there
+// is a file's value too. A second canary at the two registry paths of a
+// chart that declares them is shown only as those two paths' to in the
+// preview, and nowhere else (registryValuesShownOnlyAsTheirTo).
 func TestAppCommandsNeverPrintValues(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	multi := "first-" + appCanary + "\nsecond-line-" + appCanary
-	values := "password: " + appCanary + "\nquoted: 'say \"" + appCanary + "\" <now>'\nmulti: |\n  first-" + appCanary + "\n  second-line-" + appCanary + "\n"
+	values := "password: " + appCanary + "\nquoted: 'say \"" + appCanary + "\" <now>'\nmulti: |\n  first-" + appCanary + "\n  second-line-" + appCanary + "\n" +
+		clusterCanaryValues("")
 	answer := func(code int, message string) func(http.ResponseWriter, *http.Request) {
 		return func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, code, map[string]any{"type": "error", "status": code, "message": message})
@@ -291,6 +315,140 @@ func TestAppCommandsNeverPrintValues(t *testing.T) {
 			})
 		}
 	}
+	registryValuesShownOnlyAsTheirTo(t, answer)
+}
+
+// registryCanary is the value a values file sets at both registry paths.
+const registryCanary = "registryCanaryH0st.example.test"
+
+// appRegistryPaths are the two registry paths, the only file values the
+// preview shows, as strings and for a chart that declares one. A third path
+// shown needs a change here.
+var appRegistryPaths = []string{"values.global.cattle.systemDefaultRegistry", "values.global.systemDefaultRegistry"}
+
+// clusterCanaryValues is a values file's global mapping with appCanary at
+// every path app install adds a cluster value at, and registry, when not
+// empty, at both registry paths.
+func clusterCanaryValues(registry string) string {
+	out := "global:\n"
+	if registry != "" {
+		out += "  systemDefaultRegistry: " + registry + "\n"
+	}
+	out += "  cattle:\n"
+	for _, k := range []string{"clusterId", "clusterName", "systemProjectId", "url", "rkePathPrefix", "rkeWindowsPathPrefix"} {
+		out += "    " + k + ": " + appCanary + "\n"
+	}
+	out += "    windows:\n      enabled: " + appCanary + "\n"
+	if registry != "" {
+		out += "    systemDefaultRegistry: " + registry + "\n"
+	}
+	return out
+}
+
+// registryValuesShownOnlyAsTheirTo runs app install of the chart that
+// declares both registry paths with registryCanary at them. In the decoded
+// JSON envelope of the dry run and the apply, the canary appears only as
+// the to of the two registry Diff entries in the dry run, and not at all in
+// the applied result, which carries no Diff; it is absent from stderr and
+// from every refused or unknown answer in every format; appCanary is absent
+// from every output. A canary inside a list at a registry path, on that
+// chart and on one that declares neither path, and a canary string at a
+// registry path of the chart that declares neither, appear in no output.
+func registryValuesShownOnlyAsTheirTo(t *testing.T, answer func(int, string) func(http.ResponseWriter, *http.Request)) {
+	t.Helper()
+	values := "password: " + appCanary + "\n" + clusterCanaryValues(registryCanary)
+	args := slices.Clone(appInstallArgs)
+	args[slices.Index(args, appChart)] = appRegistryChart
+	args = append(args, "--version", appRegistryVersion, "--values", "-")
+	for _, mode := range []string{"--dry-run", "--apply"} {
+		t.Run("registry "+mode, func(t *testing.T) {
+			s := newAppServer(t, "community")
+			stdout, stderr, err := appRunStdin(t, s, values, withArgs(args, mode, "-o", "json")...)
+			require.NoError(t, err, stderr)
+			assert.NotContains(t, stdout+stderr, appCanary)
+			assert.NotContains(t, stderr, registryCanary)
+			var env any
+			require.NoError(t, json.Unmarshal([]byte(stdout), &env), stdout)
+			shown := registryCanaryPlaces(t, env, "")
+			if mode == "--dry-run" {
+				assert.ElementsMatch(t, appRegistryPaths, shown)
+			} else {
+				assert.Empty(t, shown, "the applied result carries no Diff")
+			}
+			for _, yamlOrTable := range []string{"yaml", "table"} {
+				stdout, stderr, _ := appRunStdin(t, newAppServer(t, "community"), values, withArgs(args, mode, "-o", yamlOrTable)...)
+				assert.NotContains(t, stdout+stderr, appCanary, yamlOrTable)
+				assert.NotContains(t, stderr, registryCanary, yamlOrTable)
+			}
+		})
+	}
+	hidden := map[string]struct {
+		chart  []string
+		values string
+	}{
+		"list, chart declares a path": {args, "password: " + appCanary + "\nglobal:\n  systemDefaultRegistry:\n    - " + registryCanary + "\n"},
+		// global.cattle: null makes the CLI add neither registry path,
+		// so the file's list is the value sent.
+		"list kept, chart declares a path": {args, "password: " + appCanary + "\nglobal:\n  cattle: null\n  systemDefaultRegistry:\n    - " + registryCanary + "\n"},
+		"list, chart declares neither":     {withArgs(appInstallArgs, "--values", "-"), "password: " + appCanary + "\nglobal:\n  systemDefaultRegistry:\n    - " + registryCanary + "\n"},
+		"string, chart declares neither":   {withArgs(appInstallArgs, "--values", "-"), "password: " + appCanary + "\nglobal:\n  systemDefaultRegistry: " + registryCanary + "\n"},
+	}
+	for name, h := range hidden {
+		for _, mode := range []string{"--dry-run", "--apply"} {
+			for _, format := range []string{"json", "yaml", "table"} {
+				t.Run("registry hidden "+name+" "+mode+" "+format, func(t *testing.T) {
+					stdout, stderr, err := appRunStdin(t, newAppServer(t, "community"), h.values, withArgs(h.chart, mode, "-o", format)...)
+					require.NoError(t, err, stderr)
+					assert.NotContains(t, stdout+stderr, registryCanary)
+					assert.NotContains(t, stdout+stderr, appCanary)
+				})
+			}
+		}
+	}
+	failures := map[string]func(http.ResponseWriter, *http.Request){"unknown outcome": hangUp}
+	for _, code := range []int{400, 403, 404, 409, 500, 503} {
+		failures[http.StatusText(code)] = answer(code, "refused "+registryCanary+" and "+appCanary)
+	}
+	for name, a := range failures {
+		for _, format := range []string{"json", "yaml", "table"} {
+			t.Run("registry "+name+" "+format, func(t *testing.T) {
+				s := newAppServer(t, "community")
+				s.action = a
+				stdout, stderr, _ := appRunStdin(t, s, values, withArgs(args, "--apply", "-o", format)...)
+				assert.NotContains(t, stdout+stderr, registryCanary)
+				assert.NotContains(t, stdout+stderr, appCanary)
+			})
+		}
+	}
+}
+
+// registryCanaryPlaces walks a decoded envelope and returns the Diff paths
+// whose to is registryCanary, failing the test on any other string that
+// holds it.
+func registryCanaryPlaces(t *testing.T, x any, at string) []string {
+	t.Helper()
+	switch v := x.(type) {
+	case map[string]any:
+		if path, ok := v["path"].(string); ok && slices.Contains(appRegistryPaths, path) && v["to"] == registryCanary {
+			rest := maps.Clone(v)
+			delete(rest, "to")
+			return append(registryCanaryPlaces(t, rest, at), path)
+		}
+		var out []string
+		for k, e := range v {
+			out = append(out, registryCanaryPlaces(t, e, at+"."+k)...)
+		}
+		return out
+	case []any:
+		var out []string
+		for i, e := range v {
+			out = append(out, registryCanaryPlaces(t, e, at+"["+strconv.Itoa(i)+"]")...)
+		}
+		return out
+	case string:
+		assert.NotContains(t, v, registryCanary, "at %s", at)
+	}
+	return nil
 }
 
 // TestAppInstallHelmWaitSpellings asserts, through the real parser, the
@@ -471,3 +629,104 @@ func TestAppInstallRefusalHidesValuesBeforeTheCut(t *testing.T) {
 // minPrefix is the length of the shortest part of a value the filter
 // replaces.
 const minPrefix = 4
+
+// installedValues is the values of the one install request the server
+// read.
+func installedValues(t *testing.T, s *appServer) map[string]any {
+	t.Helper()
+	posts := s.recorded()
+	require.Len(t, posts, 1)
+	charts, _ := posts[0].body["charts"].([]any)
+	require.Len(t, charts, 1)
+	values, _ := charts[0].(map[string]any)["values"].(map[string]any)
+	return values
+}
+
+// TestAppInstallRegistryValues asserts the two registry values of a chart
+// whose default values declare both: the Setting's default when it has no
+// value, the cluster's private registry over it, the flag over both,
+// neither with --no-system-default-registry; and a registry flag on a
+// chart that declares neither is refused.
+func TestAppInstallRegistryValues(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	chart := []string{"app", "install", appRelease, "--cluster", "prod", "--namespace", appNS, "--repo", appRepo, "--chart", appRegistryChart, "--apply", "-o", "json"}
+	const clusterRegistry = "cluster-registry.example.test"
+	withClusterRegistry := func(s *appServer) {
+		s.answer(appClusterPath, http.StatusOK, `{"id":"c-aaa11","metadata":{"name":"c-aaa11"},"spec":{"displayName":"prod","importedConfig":{"privateRegistryURL":"`+clusterRegistry+`"}},"status":{"linuxWorkerCount":2}}`)
+	}
+	cases := map[string]struct {
+		setup func(*appServer)
+		flags []string
+		want  any
+	}{
+		"setting default":  {nil, nil, appSettingRegistry},
+		"cluster registry": {withClusterRegistry, nil, clusterRegistry},
+		"flag":             {withClusterRegistry, []string{"--system-default-registry", "flag-registry.example.test"}, "flag-registry.example.test"},
+		"none":             {nil, []string{"--no-system-default-registry"}, nil},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := newAppServer(t, "community")
+			if tc.setup != nil {
+				tc.setup(s)
+			}
+			_, stderr, err := appRun(t, s, withArgs(chart, tc.flags...)...)
+			require.NoError(t, err, stderr)
+			global, _ := installedValues(t, s)["global"].(map[string]any)
+			cattle, _ := global["cattle"].(map[string]any)
+			assert.Equal(t, tc.want, global["systemDefaultRegistry"])
+			assert.Equal(t, tc.want, cattle["systemDefaultRegistry"])
+		})
+	}
+	t.Run("flag on a chart that declares neither", func(t *testing.T) {
+		s := newAppServer(t, "community")
+		_, stderr, err := appRun(t, s, withArgs(appInstallArgs, "--system-default-registry", "r.example.test", "--apply", "-o", "json")...)
+		require.Error(t, err)
+		assert.Equal(t, "VALIDATION", decodeErrorEnvelope(t, stderr).Code)
+		assert.Zero(t, s.postCount())
+	})
+}
+
+// TestAppInstallDeniedSource asserts a source the caller cannot read (403)
+// leaves its values out of the request with a warning, and the install goes
+// on; a 404 on the management Cluster is the command's error.
+func TestAppInstallDeniedSource(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Run("server-url", func(t *testing.T) {
+		s := newAppServer(t, "community")
+		s.deny(appServerURLPath)
+		stdout, stderr, err := appRun(t, s, withArgs(appInstallArgs, "--apply", "-o", "json")...)
+		require.NoError(t, err, stderr)
+		assert.Contains(t, decodeApp(t, stdout).Warnings, "cannot read the server-url setting; values.global.cattle.url was not sent")
+		cattle, _ := installedValues(t, s)["global"].(map[string]any)["cattle"].(map[string]any)
+		assert.NotContains(t, cattle, "url")
+		assert.Equal(t, "c-aaa11", cattle["clusterId"])
+	})
+	t.Run("projects", func(t *testing.T) {
+		s := newAppServer(t, "community")
+		s.deny(appProjectsPath)
+		stdout, stderr, err := appRun(t, s, withArgs(appInstallArgs, "--apply", "-o", "json")...)
+		require.NoError(t, err, stderr)
+		assert.Contains(t, decodeApp(t, stdout).Warnings, "cannot list the projects of cluster 'prod'; values.global.cattle.systemProjectId was not sent")
+		cattle, _ := installedValues(t, s)["global"].(map[string]any)["cattle"].(map[string]any)
+		assert.NotContains(t, cattle, "systemProjectId")
+	})
+	t.Run("management cluster", func(t *testing.T) {
+		s := newAppServer(t, "community")
+		s.deny(appClusterPath)
+		stdout, stderr, err := appRun(t, s, withArgs(appInstallArgs, "--apply", "-o", "json")...)
+		require.NoError(t, err, stderr)
+		assert.Equal(t, 1, s.getCount(appClusterPath))
+		assert.Contains(t, decodeApp(t, stdout).Warnings, "cannot read cluster 'prod'; values.global.cattle.clusterName, values.global.cattle.rkePathPrefix, values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.windows.enabled were not sent")
+		cattle, _ := installedValues(t, s)["global"].(map[string]any)["cattle"].(map[string]any)
+		assert.NotContains(t, cattle, "clusterName")
+	})
+	t.Run("management cluster not found", func(t *testing.T) {
+		s := newAppServer(t, "community")
+		s.answer(appClusterPath, http.StatusNotFound, `{"type":"error","status":404,"code":"NotFound","message":"not found"}`)
+		_, stderr, err := appRun(t, s, withArgs(appInstallArgs, "--apply", "-o", "json")...)
+		require.Error(t, err)
+		assert.Equal(t, "NOT_FOUND", decodeErrorEnvelope(t, stderr).Code)
+		assert.Zero(t, s.postCount())
+	})
+}

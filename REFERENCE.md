@@ -1164,15 +1164,22 @@ What the preview proves, each from a server answer:
   does and this command enforces, pass: the fixed namespace and release name,
   `catalog.cattle.io/requires-gvr` and `catalog.cattle.io/permits-os`. The
   annotations come from the chart's entry in the index; only an entry with none
-  falls back to the chart metadata of the version's info link. When the server
-  refuses the read of the management cluster, the `permits-os` check is skipped
-  with a warning; any other failure of that read is the command's error;
+  falls back to the chart metadata of the version's info link. The management
+  cluster is read once for every install. When the server refuses that read,
+  the `permits-os` check is skipped with a warning when it applies, and the
+  cluster values and the cluster's registry are left out with a warning of
+  their own (see "Values added by the CLI"); any other failure of that read is
+  the command's error;
 - the App is absent for an install, and present for an uninstall;
 - no operation for the release is running or was just created (for an
   uninstall, under the App's `spec.name`), when you can list operations in the
   namespace (otherwise a warning says it was not checked);
 - the namespace exists and you can read it;
 - who Helm runs as.
+
+The Diff of the values sent shows the path of every value, `<hidden>` for a
+value from your files, and the value itself for a value the CLI added and for
+a string registry host, for a chart that declares a registry path.
 
 What it cannot prove:
 
@@ -1210,29 +1217,71 @@ annotations (`cli.rancher.io/request-id`) and prints it in this error.
 in the order given (maps merge key by key; any other value replaces the earlier
 one). `--values -` reads stdin, once, and is refused when stdin is a terminal.
 There is no flag that takes a value on the command line. The preview lists the
-path of every value sent (`values.auth.password: <hidden>`), never the value. An
-error about a values file names the file and at most a line number, never text
-from the file.
+path of every value from your files (`values.auth.password: <hidden>`), never
+the value, except the registry host, for a chart that declares a registry path
+(below), where it shows the value sent when it is a string. An error about a
+values file names the file and at most a line number, never text from the file.
+
+**Values added by the CLI.** As the Rancher UI does, `app install` adds these
+values to every chart, each unless your files set a value on that path (a value
+set to `""`, `null`, `false` or `0` counts as set and is sent as the file has
+it); a parent your files set to anything but a mapping (`global`,
+`global.cattle`, `global.cattle.windows`) blocks every path below it:
+
+| Value | Source |
+|---|---|
+| `global.cattle.clusterId` | the cluster id |
+| `global.cattle.clusterName` | the management Cluster's `spec.displayName`, else `metadata.name` |
+| `global.cattle.systemProjectId` | the name of the cluster's Project labeled `authz.management.cattle.io/system-project=true` among the Projects you can list, `""` when none is listed |
+| `global.cattle.url` | the `server-url` Setting: its value, else its default |
+| `global.cattle.rkePathPrefix` | the management Cluster's `spec.rancherKubernetesEngineConfig.prefixPath`, else `""` |
+| `global.cattle.rkeWindowsPathPrefix` | the management Cluster's `spec.rancherKubernetesEngineConfig.winPrefixPath`, else `""` |
+| `global.cattle.windows.enabled` | `true`, only when the cluster has Windows workers |
+
+For a chart whose default values declare `global.cattle.systemDefaultRegistry`
+or `global.systemDefaultRegistry` (with any value), the CLI also sets both paths
+to one registry value, the first of:
+
+1. `--system-default-registry <host>`;
+2. the non-empty string at `global.cattle.systemDefaultRegistry`, else at
+   `global.systemDefaultRegistry`, in your files' values merged over the chart's
+   default values;
+3. the management Cluster's `spec.importedConfig.privateRegistryURL`, else
+   `spec.clusterSecrets.privateRegistryURL`;
+4. the `system-default-registry` Setting: its value, else its default (which can
+   be `""`).
+
+`--no-system-default-registry` sends neither path, also when a values file sets
+one; the preview then warns. The two flags together, and either flag on a chart
+that declares neither path, are `VALIDATION`; `--system-default-registry` is also
+`VALIDATION` where your files set a parent of a registry path to a value that is
+not a mapping. When your files block either registry path that way and no flag is
+given, the CLI adds neither path.
+
+A source you cannot read (HTTP 403) leaves its values out, with one warning
+that names the source and the values: the management Cluster (and the cluster's
+registry), the `server-url` Setting, the Projects of the cluster, and the
+`system-default-registry` Setting (the registry values are then sent empty). A
+Setting or a list of Projects that is not found counts as `""`. One warning lists
+the paths the CLI added.
 
 Where values live on the server: the operation's Secret in `cattle-system`
 until Rancher removes the operation, and the release's Secret in the release
 namespace. Anyone who can read those Secrets reads the values.
 
 The CLI replaces a value with `<hidden>` in the error answer of the install or
-uninstall action: each string value of 4 characters or more, each line of 4 characters or more of a multi-line string,
-and the JSON-escaped form of each. It does not cover numbers, booleans, strings
+uninstall action: each string value from your files of 4 characters or more, each line of 4 characters or more of a multi-line string,
+and the JSON-escaped form of each. A value the CLI added is not hidden unless your files hold the same text. It does not cover numbers, booleans, strings
 under 4 characters, or a value the chart changes before it is printed.
 
 **Stated limits.** The CLI does not check the values against the chart's values
 schema. Helm does, in the pod, and a rejected value shows only as an exit code.
-Neither Rancher nor the CLI checks a chart signature.
+A chart whose `values.schema.json` forbids unknown keys under `global` fails in
+Helm's pod, as it does from the Rancher UI. Neither Rancher nor the CLI checks a
+chart signature.
 
 **What `app install` refuses.** Each refusal is a typed error before any request.
 
-- A chart whose default values declare `global.cattle` (`VALIDATION`): the
-  Rancher UI sets these values when it installs a chart, and rancher-cli cannot.
-  Install it from the Rancher UI. This covers most charts of Rancher's own
-  repository; `rancher charts` still lists them.
 - A chart that names another chart to install first, through the annotations
   `catalog.cattle.io/auto-install` or `catalog.cattle.io/auto-install-gvr`
   (`VALIDATION`, naming that chart). Install it from the Rancher UI.
@@ -1246,6 +1295,7 @@ Neither Rancher nor the CLI checks a chart signature.
   `--version` the version is the one `rancher charts` shows for the chart.
 - A release name that already has an App in the namespace (`CONFLICT`, naming
   `rancher get app`, and for a failed release `rancher app uninstall --dry-run`).
+- A registry flag that cannot apply (`VALIDATION`; see Values added by the CLI).
 
 `app uninstall` refuses an App that does not exist (`NOT_FOUND`) and
 `--keep-history` on an App already uninstalled with its history kept

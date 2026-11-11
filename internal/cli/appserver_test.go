@@ -27,6 +27,45 @@ const (
 	appOpName  = "helm-operation-abcde"
 )
 
+// appRegistryChart at appRegistryVersion is a chart of the repository whose
+// default values declare both global.systemDefaultRegistry and
+// global.cattle.systemDefaultRegistry, each with the value "". The index
+// lists it, and its info answers like the info of nginx.
+const (
+	appRegistryChart   = "regchart"
+	appRegistryVersion = "3.0.0"
+)
+
+// The paths of the reads app install makes for the values it adds, and
+// what the server answers at each of them. The cluster is the management
+// Cluster c-aaa11, the Settings are read through the Rancher server, never
+// through the cluster, and the projects are the steve collection of the
+// cluster. The projects list a Project displayed as System but without the
+// System project label, first and with the lower name, before the labeled
+// one named appSystemProject.
+const (
+	appClusterPath         = steveClustersPath + "/c-aaa11"
+	appServerURLPath       = "/v1/management.cattle.io.settings/server-url"
+	appRegistrySettingPath = "/v1/management.cattle.io.settings/system-default-registry"
+	appProjectsPath        = "/v1/management.cattle.io.projects/c-aaa11"
+
+	appClusterName     = "prod"
+	appServerURL       = "https://rancher.example.test"
+	appSettingRegistry = "setting-registry.example.test"
+	appSystemProject   = "p-system"
+)
+
+const appProjectsBody = `{"data":[` +
+	`{"id":"c-aaa11/p-aaaaa","metadata":{"name":"p-aaaaa"},"spec":{"clusterName":"c-aaa11","displayName":"System"}},` +
+	`{"id":"c-aaa11/p-system","metadata":{"name":"p-system","labels":{"authz.management.cattle.io/system-project":"true"}},"spec":{"clusterName":"c-aaa11","displayName":"Platform"}}` +
+	`],"count":2,"revision":"1"}`
+
+// appAnswer is a status and a body a test sets for one path.
+type appAnswer struct {
+	status int
+	body   string
+}
+
 // appPost is one action request the server read.
 type appPost struct {
 	path  string
@@ -54,6 +93,10 @@ type appServer struct {
 	infos   map[string]string
 	allowed bool
 	posts   []appPost
+	// answers replace the answer to a GET of a path, by path.
+	answers map[string]appAnswer
+	// gets are the paths of the GET requests, in the order they came.
+	gets []string
 	// action answers each action request after the hooks; nil answers 201.
 	action func(w http.ResponseWriter, r *http.Request)
 	// plant changes an object answer before it is sent, by resource.
@@ -76,18 +119,22 @@ func appOperationPath(ns, name string) string {
 func appNamespacePath(name string) string { return appDown + "/api/v1/namespaces/" + name }
 
 // newAppServer serves the ClusterRepo, its index with nginx 2.0.0 and
-// 1.0.0, their info, and the namespace; no App and no Operation. edition is
-// community (v2.15.2) or prime (v2.14.5).
+// 1.0.0 and appRegistryChart appRegistryVersion, their info, the namespace,
+// and the reads for the values app install adds (appClusterPath,
+// appServerURLPath, appRegistrySettingPath and appProjectsPath); no App and
+// no Operation. edition is community (v2.15.2) or prime (v2.14.5).
 func newAppServer(t *testing.T, edition string) *appServer {
 	t.Helper()
 	s := &appServer{t: t, edition: edition, objects: map[string]map[string]any{}, allowed: true,
 		fields: appGoldenFields(t),
 		index: `{"apiVersion":"v1","entries":{"nginx":[` +
-			`{"name":"nginx","version":"2.0.0","digest":"sha256:aaa"},{"name":"nginx","version":"1.0.0","digest":"sha256:bbb"}]}}`,
+			`{"name":"nginx","version":"2.0.0","digest":"sha256:aaa"},{"name":"nginx","version":"1.0.0","digest":"sha256:bbb"}],` +
+			`"` + appRegistryChart + `":[{"name":"` + appRegistryChart + `","version":"` + appRegistryVersion + `","digest":"sha256:ccc"}]}}`,
 		infos: map[string]string{
 			"2.0.0": `{"values":{"replicaCount":1},"chart":{"name":"nginx","annotations":{}}}`,
 			"1.0.0": `{"values":{"replicaCount":1},"chart":{"name":"nginx","annotations":{}}}`,
 		},
+		answers: map[string]appAnswer{},
 	}
 	s.put(appRepoPath(appRepo), map[string]any{
 		"apiVersion": "catalog.cattle.io/v1", "kind": "ClusterRepo",
@@ -122,6 +169,32 @@ func (s *appServer) put(path string, obj map[string]any) {
 	s.mu.Lock()
 	s.objects[path] = obj
 	s.mu.Unlock()
+}
+
+// answer makes the server answer a GET of path with status and body, over
+// the answer it serves.
+func (s *appServer) answer(path string, status int, body string) {
+	s.mu.Lock()
+	s.answers[path] = appAnswer{status: status, body: body}
+	s.mu.Unlock()
+}
+
+// deny makes the server answer a GET of path with 403.
+func (s *appServer) deny(path string) {
+	s.answer(path, http.StatusForbidden, `{"type":"error","status":403,"code":"Forbidden","message":"forbidden"}`)
+}
+
+// getCount is the number of GET requests of path so far.
+func (s *appServer) getCount(path string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, g := range s.gets {
+		if g == path {
+			n++
+		}
+	}
+	return n
 }
 
 func (s *appServer) postCount() int {
@@ -172,6 +245,16 @@ func (s *appServer) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no write", http.StatusMethodNotAllowed)
 		return
 	}
+	s.mu.Lock()
+	s.gets = append(s.gets, path)
+	planted, isPlanted := s.answers[path]
+	s.mu.Unlock()
+	if isPlanted {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(planted.status)
+		_, _ = io.WriteString(w, planted.body)
+		return
+	}
 	switch path {
 	case "/rancherversion":
 		version, prime := "v2.15.2", "false"
@@ -181,8 +264,16 @@ func (s *appServer) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"Version": version, "RancherPrime": prime})
 	case steveClustersPath:
 		writeJSON(w, http.StatusOK, steveClustersPages[r.URL.Query().Get("continue")])
-	case steveClustersPath + "/c-aaa11":
-		writeJSON(w, http.StatusOK, map[string]any{"id": "c-aaa11", "status": map[string]any{"linuxWorkerCount": 2}})
+	case appClusterPath:
+		writeJSON(w, http.StatusOK, map[string]any{"id": "c-aaa11", "metadata": map[string]any{"name": "c-aaa11"},
+			"spec": map[string]any{"displayName": appClusterName}, "status": map[string]any{"linuxWorkerCount": 2}})
+	case appServerURLPath:
+		writeJSON(w, http.StatusOK, map[string]any{"id": "server-url", "value": appServerURL, "default": ""})
+	case appRegistrySettingPath:
+		writeJSON(w, http.StatusOK, map[string]any{"id": "system-default-registry", "value": "", "default": appSettingRegistry})
+	case appProjectsPath:
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, appProjectsBody)
 	case appDown + "/v1/catalog.cattle.io.clusterrepos/" + appRepo:
 		s.serveLink(w, r)
 	case appDown + "/apis/catalog.cattle.io/v1/namespaces/" + appNS + "/operations":
@@ -254,7 +345,13 @@ func (s *appServer) serveLink(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		body, ok := s.infos[q.Get("version")]
 		s.mu.Unlock()
-		if q.Get("chartName") != appChart || !ok {
+		if q.Get("chartName") == appRegistryChart && q.Get("version") == appRegistryVersion {
+			body, ok = `{"values":{"replicaCount":1,"global":{"systemDefaultRegistry":"","cattle":{"systemDefaultRegistry":""}}},`+
+				`"chart":{"name":"`+appRegistryChart+`","annotations":{}}}`, true
+		} else if q.Get("chartName") != appChart {
+			ok = false
+		}
+		if !ok {
 			writeJSON(w, http.StatusNotFound, map[string]any{"type": "error", "status": 404, "code": "NotFound", "message": "chart not found"})
 			return
 		}
