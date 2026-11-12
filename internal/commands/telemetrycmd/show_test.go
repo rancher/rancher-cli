@@ -41,7 +41,7 @@ func TestShowListsTheParsableDistinctEventsOldestFirst(t *testing.T) {
 	assert.Equal(t, uidOf(3), list[2]["log.record.uid"])
 	assert.NotContains(t, list[0], "local_format")
 
-	assert.Equal(t, []string{"TIME", "EVENT", "COMMAND", "OUTCOME", "EXIT CODE"}, list.Columns())
+	assert.Equal(t, []string{"HOUR", "EVENT", "COMMAND", "OUTCOME", "EXIT CODE"}, list.Columns())
 	assert.Equal(t, [][]string{
 		{"2026-10-20T10:00:00Z", "io.rancher.cli.command.run", "get project", "ok", "0"},
 		{"2026-10-20T11:00:00Z", "io.rancher.cli.command.run", "auth login", "error", "1"},

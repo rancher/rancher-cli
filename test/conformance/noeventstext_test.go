@@ -34,6 +34,15 @@ var stayOnTheMachinePhrases = []string{
 	"records events on the local machine only",
 }
 
+// statusSendingLines are the two lines `telemetry status` prints when this
+// build sends nothing. They are true as written: one for a release build, one
+// for a development build with no upload endpoint. The phrase is allowed only
+// inside these exact lines; they are removed from a text before it is matched.
+var statusSendingLines = []string{
+	"sending: none - this build sends no event; recorded events stay on this machine",
+	"sending: none - no upload endpoint is set; recorded events stay on this machine",
+}
+
 // phraseExempt are the files that name the phrases on purpose: this test, and
 // the scan of file headers, whose allowlist holds the heading a generated
 // file once had.
@@ -43,7 +52,8 @@ var phraseExempt = []string{
 }
 
 // phraseFindings returns one line per phrase found in a text file of files
-// (path to content), other than the exempt files.
+// (path to content), other than the exempt files. The two status lines are
+// removed first. The phrase counts only outside them.
 func phraseFindings(files map[string]string) []string {
 	var out []string
 	for _, path := range slices.Sorted(maps.Keys(files)) {
@@ -51,6 +61,9 @@ func phraseFindings(files map[string]string) []string {
 			continue
 		}
 		text := strings.ToLower(strings.Join(strings.Fields(files[path]), " "))
+		for _, line := range statusSendingLines {
+			text = strings.ReplaceAll(text, line, "")
+		}
 		for _, phrase := range stayOnTheMachinePhrases {
 			if strings.Contains(text, phrase) {
 				out = append(out, path+": "+phrase)
@@ -62,8 +75,11 @@ func phraseFindings(files map[string]string) []string {
 
 // TestNoTextSaysEventsStayOnTheMachine asserts no tracked text file says that
 // recorded events stay on the machine or that nothing is sent, in any of the
-// wordings listed, wrapped over lines or not. The fixtures assert each phrase
-// is found when a line break splits it, and that the exempt files are skipped.
+// wordings listed, wrapped over lines or not, except inside the two status
+// lines. The fixtures assert each phrase is found when a line break splits it,
+// that the exempt files are skipped, that each status line is allowed whole
+// (also wrapped over lines) and that a status line with one word changed, or
+// the bare phrase beside it, is found.
 func TestNoTextSaysEventsStayOnTheMachine(t *testing.T) {
 	paths, err := repositoryFiles()
 	require.NoError(t, err)
@@ -82,5 +98,14 @@ func TestNoTextSaysEventsStayOnTheMachine(t *testing.T) {
 		wrapped := strings.Replace(phrase, " ", "\n  ", 1)
 		assert.Equal(t, []string{"a.md: " + phrase}, phraseFindings(map[string]string{"a.md": "x " + strings.ToUpper(wrapped) + " y"}), phrase)
 		assert.Empty(t, phraseFindings(map[string]string{phraseExempt[0]: phrase, phraseExempt[1]: phrase}))
+	}
+
+	for _, line := range statusSendingLines {
+		assert.Empty(t, phraseFindings(map[string]string{"a.md": "x `" + line + "` y"}), line)
+		assert.Empty(t, phraseFindings(map[string]string{"a.md": strings.ReplaceAll(line, " ", "\n  ")}), line)
+		assert.Equal(t, []string{"a.md: recorded events stay on this machine"},
+			phraseFindings(map[string]string{"a.md": line + "\nrecorded events stay on this machine"}), line)
+		changed := strings.Replace(line, "none", "nothing", 1)
+		assert.Equal(t, []string{"a.md: recorded events stay on this machine"}, phraseFindings(map[string]string{"a.md": changed}), changed)
 	}
 }

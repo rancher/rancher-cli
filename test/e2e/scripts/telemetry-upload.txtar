@@ -16,6 +16,13 @@ jsonquery stdout data.timeLimitReached false
 exec rancher telemetry show -o json
 jsonquery stdout 'data.#' 0
 
+# With the endpoint accepted and recording on, status reports that this build
+# sends and prints no sending line.
+exec rancher telemetry status
+! stdout 'sending:'
+exec rancher telemetry status -o json
+jsonquery stdout data.sendsEvents true
+
 env KUBERNETES_EXEC_INFO={}
 ! exec rancher telemetry upload -o json
 env KUBERNETES_EXEC_INFO=

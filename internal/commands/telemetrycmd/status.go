@@ -18,14 +18,20 @@ import (
 type statusCmd struct {
 	dir  string
 	view telemetry.ExperimentView
+	// development is true when the build's version is a development version.
+	// Only a development build sends events.
+	development bool
 }
 
 // NewStatus builds `telemetry status` (local): whether recording is on,
 // what decided it, and what is recorded. It also lists the experiments the
 // view holds. It creates nothing and works while recording is off. The zero
-// view lists nothing.
-func NewStatus(dir string, view telemetry.ExperimentView) runtime.Command {
-	return &statusCmd{dir: dir, view: view}
+// view lists nothing. It also says whether this build sends the events that
+// later recorded runs store: a release build sends none whatever the view
+// holds. The build's version decides first, and is reduced to the build kind
+// once, here.
+func NewStatus(dir string, view telemetry.ExperimentView, version string) runtime.Command {
+	return &statusCmd{dir: dir, view: view, development: telemetry.IsDevelopmentVersion(version)}
 }
 
 func (statusCmd) Describe() runtime.Descriptor {
@@ -36,6 +42,9 @@ func (statusCmd) Describe() runtime.Descriptor {
 			"the telemetry key of config.yaml, or the default), the number of recorded events, the number of " +
 			"dropped events, the contract version (the version of the event format) and the config directory id " +
 			"(a random id stored for this config directory). " +
+			"It also says whether this build sends the events that later recorded runs store in this config directory " +
+			"(sendsEvents in -o json): a release build sends none, and a development build sends only with an " +
+			"upload endpoint and recording on; with no endpoint, the text has a sending: none line that gives the reason. " +
 			"In a development build with RANCHER_CLI_EXPERIMENT set, it also lists the active experiments and the " +
 			"upload endpoint. A development build with the telemetryupload experiment sends the stored events of " +
 			"finished hours to that endpoint at most once an hour, after a recorded run, never from the kubectl exec plugin; " +
@@ -93,6 +102,7 @@ func (c statusCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompte
 		"eventsLimitReached":    limitReached,
 		"droppedEvents":         dropped,
 		"contractVersion":       telemetry.ContractVersion,
+		"sendsEvents":           c.development && c.view.Endpoint != "" && st.decision.On,
 	}
 	if st.key != nil {
 		data["configKey"] = *st.key
@@ -125,6 +135,12 @@ func (c statusCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompte
 	)
 	if haveID {
 		lines = append(lines, "config directory id: "+id)
+	}
+	switch {
+	case !c.development:
+		lines = append(lines, "sending: none - this build sends no event; recorded events stay on this machine")
+	case c.view.Endpoint == "":
+		lines = append(lines, "sending: none - no upload endpoint is set; recorded events stay on this machine")
 	}
 
 	if c.view.Active() {

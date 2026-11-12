@@ -24,7 +24,7 @@ const (
 type eventList []map[string]any
 
 func (eventList) Columns() []string {
-	return []string{"TIME", "EVENT", "COMMAND", "OUTCOME", "EXIT CODE"}
+	return []string{"HOUR", "EVENT", "COMMAND", "OUTCOME", "EXIT CODE"}
 }
 
 func (l eventList) Rows() [][]string {
@@ -63,7 +63,7 @@ func (showCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "telemetry show",
 		Usage: "List the recorded events",
-		Desc: "Lists the recorded events, oldest first. The table shows the time, event name, command, outcome and exit " +
+		Desc: "Lists the recorded events, oldest first. The table shows the hour (UTC; each event stores only the hour), event name, command, outcome and exit " +
 			"code; -o json and -o yaml carry every stored field of each event. " +
 			"Events that cannot be read are skipped. " +
 			"In a development build with the telemetryupload experiment, a sent event is listed until the file that holds it is deleted. " +

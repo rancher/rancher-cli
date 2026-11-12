@@ -81,7 +81,7 @@ func buildEntries() []entry {
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewInstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewUninstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewStatus(d.version) }},
-		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewStatus(d.dir, d.experiments) }},
+		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewStatus(d.dir, d.experiments, d.version) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewUpload(d.dir, d.upload) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewOn(d.dir) }},
 		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewOff(d.dir) }},

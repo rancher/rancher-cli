@@ -1,11 +1,15 @@
 # telemetry status creates nothing, works while off, and names the control
-# that decided. The config directory is not created by the harness.
+# that decided. The config directory is not created by the harness. The test
+# binary is a development build with no upload endpoint: status says recorded
+# events stay on this machine and sendsEvents is false.
 env RANCHER_CLI_TELEMETRY=
 
 ! exists $RANCHER_CLI_CONFIG_DIR
 exec rancher telemetry status
 stdout 'recording is on; nothing is recorded because the config directory does not exist'
+stdout 'sending: none - no upload endpoint is set; recorded events stay on this machine'
 exec rancher telemetry status -o json
+jsonquery stdout data.sendsEvents false
 jsonquery stdout data.state on
 jsonquery stdout data.decidedBy default
 jsonquery stdout data.configDirectoryExists false

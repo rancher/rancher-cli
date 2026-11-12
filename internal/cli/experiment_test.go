@@ -353,7 +353,9 @@ func TestNoUploadWithoutAnEndpoint(t *testing.T) {
 	assert.NotContains(t, data, "experiments")
 	assert.NotContains(t, data, "uploadEndpoint")
 	text := runBuilt(t, "dev", "telemetry", "status")
-	assert.NotContains(t, text.stdout, "upload")
+	assert.NotContains(t, text.stdout, "upload endpoint:")
+	assert.NotContains(t, text.stdout, "last upload attempt")
+	assert.NotContains(t, text.stdout, "experiments:")
 	assert.NotContains(t, run.combined(), "://")
 
 	setExperiment(t, "telemetryupload", true)

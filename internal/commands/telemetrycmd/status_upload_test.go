@@ -60,7 +60,7 @@ func putCompacted(t *testing.T, dir string, hoursAgo, first, n int) {
 
 func statusOf(t *testing.T, dir string, view telemetry.ExperimentView) (text string, data map[string]any, warnings []string) {
 	t.Helper()
-	res, err := execute(t, NewStatus(dir, view))
+	res, err := execute(t, NewStatus(dir, view, developmentVersion))
 	require.NoError(t, err)
 	return res.Text, dataMap(t, res), res.Warnings
 }
@@ -303,9 +303,10 @@ func TestStatusShowsTheUploadState(t *testing.T) {
 		dir := newDir(t)
 		putSlots(t, dir, 3, 1, 2)
 		putState(t, dir, telemetry.UploadState{LastAttempt: at, HTTPStatus: 200})
-		text, data, _ := statusOf(t, dir, telemetry.ExperimentView{})
-		assert.NotContains(t, text, "upload")
-		for key := range data {
+		res, err := execute(t, NewStatus(dir, telemetry.ExperimentView{}, releaseVersion))
+		require.NoError(t, err)
+		assert.NotContains(t, res.Text, "upload")
+		for key := range dataMap(t, res) {
 			assert.NotContains(t, key, "upload")
 		}
 	})

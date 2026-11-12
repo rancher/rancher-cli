@@ -11806,7 +11806,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Lists the recorded events, oldest first. The table shows the time, event name, command, outcome and exit code; -o json and -o yaml carry every stored field of each event. Events that cannot be read are skipped. In a development build with the telemetryupload experiment, a sent event is listed until the file that holds it is deleted. Creates nothing and works while recording is off.",
+      "desc": "Lists the recorded events, oldest first. The table shows the hour (UTC; each event stores only the hour), event name, command, outcome and exit code; -o json and -o yaml carry every stored field of each event. Events that cannot be read are skipped. In a development build with the telemetryupload experiment, a sent event is listed until the file that holds it is deleted. Creates nothing and works while recording is off.",
       "examples": [
         "rancher telemetry show",
         "rancher telemetry show -o json"
@@ -11821,7 +11821,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). In a development build with RANCHER_CLI_EXPERIMENT set, it also lists the active experiments and the upload endpoint. A development build with the telemetryupload experiment sends the stored events of finished hours to that endpoint at most once an hour, after a recorded run, never from the kubectl exec plugin; with an endpoint, status shows the last upload attempt, the next attempt, the events waiting, the events of the current hour, and a warning for an upload lock that cannot be read. Creates nothing and works while recording is off.",
+      "desc": "Shows whether recording is on, what decided it (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). It also says whether this build sends the events that later recorded runs store in this config directory (sendsEvents in -o json): a release build sends none, and a development build sends only with an upload endpoint and recording on; with no endpoint, the text has a sending: none line that gives the reason. In a development build with RANCHER_CLI_EXPERIMENT set, it also lists the active experiments and the upload endpoint. A development build with the telemetryupload experiment sends the stored events of finished hours to that endpoint at most once an hour, after a recorded run, never from the kubectl exec plugin; with an endpoint, status shows the last upload attempt, the next attempt, the events waiting, the events of the current hour, and a warning for an upload lock that cannot be read. Creates nothing and works while recording is off.",
       "examples": [
         "rancher telemetry status",
         "rancher telemetry status -o json"
