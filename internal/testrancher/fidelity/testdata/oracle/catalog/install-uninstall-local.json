@@ -1,0 +1,175 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "install",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "links": "\u003clinks\u003e",
+        "operationName": "{installop}",
+        "operationNamespace": "default",
+        "type": "chartActionOutput"
+      }
+    },
+    {
+      "name": "install-operation",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "kind": "Operation",
+        "metadata": {
+          "generation": 1,
+          "name": "{installop}",
+          "namespace": "default",
+          "ownerReferences": [
+            {
+              "apiVersion": "rbac.authorization.k8s.io/v1",
+              "kind": "ClusterRole"
+            }
+          ]
+        },
+        "status": {
+          "action": "install",
+          "conditions": [
+            {
+              "lastUpdateTime": "\u003cts\u003e",
+              "status": "False",
+              "type": "Reconciling"
+            },
+            {
+              "lastUpdateTime": "\u003cts\u003e",
+              "status": "False",
+              "type": "Stalled"
+            }
+          ],
+          "namespace": "default",
+          "observedGeneration": 1,
+          "podCreated": true,
+          "podName": "{installop}",
+          "podNamespace": "cattle-system",
+          "releaseName": "harvester-rbac"
+        }
+      }
+    },
+    {
+      "name": "install-app",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "kind": "App",
+        "metadata": {
+          "name": "harvester-rbac",
+          "namespace": "default",
+          "ownerReferences": [
+            {
+              "apiVersion": "v1",
+              "blockOwnerDeletion": false,
+              "controller": true,
+              "kind": "Secret"
+            }
+          ]
+        },
+        "spec": {
+          "chart": {
+            "metadata": {
+              "annotations": {
+                "catalog.cattle.io/ui-source-repo": "rancher-charts",
+                "catalog.cattle.io/ui-source-repo-type": "cluster",
+                "cli.rancher.io/request-id": "{requestid}"
+              },
+              "name": "harvester-rbac",
+              "version": "110.0.0+up0.1.1"
+            }
+          },
+          "helmVersion": 4,
+          "info": {
+            "description": "Install complete",
+            "status": "deployed"
+          },
+          "name": "harvester-rbac",
+          "namespace": "default",
+          "version": 1
+        },
+        "status": {
+          "summary": {
+            "state": "deployed"
+          }
+        }
+      }
+    },
+    {
+      "name": "uninstall",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "links": "\u003clinks\u003e",
+        "operationName": "{uninstallop}",
+        "operationNamespace": "default",
+        "type": "chartActionOutput"
+      }
+    },
+    {
+      "name": "uninstall-operation",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "kind": "Operation",
+        "metadata": {
+          "generation": 1,
+          "name": "{uninstallop}",
+          "namespace": "default",
+          "ownerReferences": [
+            {
+              "apiVersion": "rbac.authorization.k8s.io/v1",
+              "kind": "ClusterRole"
+            }
+          ]
+        },
+        "status": {
+          "action": "uninstall",
+          "conditions": [
+            {
+              "lastUpdateTime": "\u003cts\u003e",
+              "status": "False",
+              "type": "Reconciling"
+            },
+            {
+              "lastUpdateTime": "\u003cts\u003e",
+              "status": "False",
+              "type": "Stalled"
+            }
+          ],
+          "namespace": "default",
+          "observedGeneration": 1,
+          "podCreated": true,
+          "podName": "{uninstallop}",
+          "podNamespace": "cattle-system",
+          "releaseName": "harvester-rbac"
+        }
+      }
+    },
+    {
+      "name": "app-gone",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 404,
+        "details": {
+          "group": "catalog.cattle.io",
+          "kind": "apps",
+          "name": "harvester-rbac"
+        },
+        "kind": "Status",
+        "message": "apps.catalog.cattle.io \"harvester-rbac\" not found",
+        "metadata": {},
+        "reason": "NotFound",
+        "status": "Failure"
+      }
+    }
+  ]
+}

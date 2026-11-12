@@ -19,21 +19,25 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// The index link of a ClusterRepo is read in two places, and neither read
+// The index link of a ClusterRepo is read in three places, and no read
 // asks Rancher for more or other than it lists for the cluster. In
 // non-test Go code a string literal that holds "link=" or is exactly "link"
 // belongs only to catalogLinkFile, which the commands read through, and to
-// the completion path builder named in catalogLinkAllowlist, which the
-// --chart and --version completion read through; no literal holds
-// "skipFilter" or "k8sVersion" anywhere: the first two spellings build a
-// link request, the others change which versions the server answers with.
+// the files named in catalogLinkAllowlist: the completion path builder,
+// which the --chart and --version completion read through, the fidelity
+// probes' wait for the chart they install, and the telemetry file system
+// root, which holds the name of the file system operation Link. No literal
+// holds "skipFilter" or "k8sVersion" anywhere: the first two spellings build
+// a link request, the others change which versions the server answers with.
 const catalogLinkFile = "internal/engine/catalog/index.go"
 
-// catalogLinkAllowlist names the files whose "link" literal is not a link
-// request, each with its reason.
+// catalogLinkAllowlist names the files outside catalogLinkFile that send the
+// index link request, or hold a "link" literal for another reason, each with
+// its reason.
 var catalogLinkAllowlist = map[string]string{
-	"internal/telemetry/fsroot.go":        "the name of the file system operation Link, passed to the operation observer",
-	"internal/runtime/completion/path.go": "the completion read of the same filtered index, for --chart and --version of app install; it never sets skipFilter or k8sVersion",
+	"internal/telemetry/fsroot.go":                    "the name of the file system operation Link, passed to the operation observer",
+	"internal/runtime/completion/path.go":             "the completion read of the same filtered index, for --chart and --version of app install; it never sets skipFilter or k8sVersion",
+	"internal/testrancher/fidelity/catalogcleanup.go": "the fidelity probes' wait for the chart in the same filtered index before they install it; it never sets skipFilter or k8sVersion",
 }
 
 // catalogLiteralFinding is one constant string the scan reports.

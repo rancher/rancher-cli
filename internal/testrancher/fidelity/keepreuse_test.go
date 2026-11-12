@@ -376,6 +376,7 @@ func (k *keepRun) run() runResult {
 	k.canned("/v3/clusters/c-m-abc", "200", `{"state":"active"}`)
 	k.canned("/rancherversion", "200", `{"Version":"v2.15.2","GitCommit":"abc"}`)
 	k.canned("/k8s/clusters/c-m-abc/version", "200", "{}")
+	k.canned("/v1/management.cattle.io.settings/install-uuid", "200", `{"value":"`+testPairInstallUUID+`"}`)
 	if !k.noKeep {
 		s.env["E2E_FIDELITY_KEEP"] = "1"
 	}
@@ -2280,7 +2281,7 @@ func TestKeepRunStopsOnAFailedDownstreamCheck(t *testing.T) {
 
 				requireKeptRunDockerCalls(t, slot.container, res.log)
 				requireNoRequestOptions(t, requests)
-				allowed := []string{k.base() + "/ping", k.base() + "/v3/users?me=true", k.base() + keepClusterRead}
+				allowed := []string{k.base() + "/ping", k.base() + "/v3/users?me=true", k.base() + keepClusterRead, k.base() + "/v1/management.cattle.io.settings/install-uuid"}
 				if row.proxyRead {
 					allowed = append(allowed, k.base()+"/k8s/clusters/c-m-abc/version")
 				}

@@ -1,0 +1,78 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "install",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "links": "\u003clinks\u003e",
+        "operationName": "{failop}",
+        "operationNamespace": "default",
+        "type": "chartActionOutput"
+      }
+    },
+    {
+      "name": "install-operation",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "kind": "Operation",
+        "metadata": {
+          "generation": 1,
+          "name": "{failop}",
+          "namespace": "default",
+          "ownerReferences": [
+            {
+              "apiVersion": "rbac.authorization.k8s.io/v1",
+              "kind": "ClusterRole"
+            }
+          ]
+        },
+        "status": {
+          "action": "install",
+          "conditions": [
+            {
+              "lastUpdateTime": "\u003cts\u003e",
+              "status": "False",
+              "type": "Reconciling"
+            },
+            {
+              "lastUpdateTime": "\u003cts\u003e",
+              "message": " exit code: 123",
+              "reason": "Stalled",
+              "status": "True",
+              "type": "Stalled"
+            }
+          ],
+          "namespace": "default",
+          "observedGeneration": 1,
+          "podCreated": true,
+          "podName": "{failop}",
+          "podNamespace": "cattle-system",
+          "releaseName": "harvester-rbac"
+        }
+      }
+    },
+    {
+      "name": "app",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 404,
+        "details": {
+          "group": "catalog.cattle.io",
+          "kind": "apps",
+          "name": "harvester-rbac"
+        },
+        "kind": "Status",
+        "message": "apps.catalog.cattle.io \"harvester-rbac\" not found",
+        "metadata": {},
+        "reason": "NotFound",
+        "status": "Failure"
+      }
+    }
+  ]
+}

@@ -2186,6 +2186,7 @@ import sys
 state = {"containerId": sys.argv[1], "adminToken": os.environ["ADMIN_TOKEN"]}
 state.update(zip(("oracleImage", "k3sContainerId", "k3sImage", "downstream"), sys.argv[2:6]))
 state["boot"] = sys.argv[7]
+state["installUuid"] = sys.argv[14]
 if sys.argv[7] == "helm":
     state["chart"] = sys.argv[8]
     state["localK3sImage"] = sys.argv[9]
@@ -2195,8 +2196,24 @@ if sys.argv[7] == "helm":
 json.dump(state, open(sys.argv[6], "w"))
 ' \
       "${cid}" "${ORACLE_IMAGE}" "${k3s_cid}" "${K3S_IMAGE}" "${DOWNSTREAM_ID}" "${STATE_FILE}" \
-      "${BOOT}" "${CHART_PIN}" "${LOCAL_K3S_PIN}" "${LOCAL_K3S_SOURCE}" "${CERT_MANAGER_MANIFEST}" "${CERT_MANAGER_IMAGES}" "${HELM_ASSETS_IMAGE}"
+      "${BOOT}" "${CHART_PIN}" "${LOCAL_K3S_PIN}" "${LOCAL_K3S_SOURCE}" "${CERT_MANAGER_MANIFEST}" "${CERT_MANAGER_IMAGES}" "${HELM_ASSETS_IMAGE}" \
+      "${PAIR_INSTALL_UUID}"
   )
+}
+
+# read_pair_install_uuid sets PAIR_INSTALL_UUID to the pair's install-uuid
+# setting, the value the catalog write probes compare with the server they
+# write to; they run only when the two are equal. A failed read or an answer
+# that is not JSON leaves the value empty, and an empty value stops the run
+# before the suite.
+read_pair_install_uuid() {
+  local body
+  body="$(api "${BASE_URL}/v1/management.cattle.io.settings/install-uuid" || true)"
+  PAIR_INSTALL_UUID="$(printf '%s' "${body}" | python3 -I -c 'import json,sys; s=json.load(sys.stdin); v=s.get("value") or s.get("default"); print(v if isinstance(v, str) else "")' 2>/dev/null || true)"
+  if [ -z "${PAIR_INSTALL_UUID}" ]; then
+    echo "error: cannot read the install-uuid setting of the pair" >&2
+    exit 1
+  fi
 }
 
 # boot_helm_node starts the node container: the k3s image of the profile with
@@ -2411,6 +2428,11 @@ if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && reuse_state; then
   ORACLE_BOOTED=1
   require_disk
   echo "==> reusing healthy kept container"
+  # A state file written before the install id was recorded has no
+  # installUuid key: the value is read from the server and the file is left
+  # as it is.
+  PAIR_INSTALL_UUID="$(state_value installUuid)"
+  [ -n "${PAIR_INSTALL_UUID}" ] || read_pair_install_uuid
   if ! reuse_downstream; then
     [ -n "${downstream_pin_changed:-}" ] || refuse_reuse
     rebuild_downstream
@@ -2486,6 +2508,7 @@ else
 {"description":"e2e-fid oracle"}
 JSON
 )"
+  read_pair_install_uuid
   prime_ip_san
   boot_k3s
   import_downstream
@@ -2497,6 +2520,7 @@ export E2E_FIDELITY_ADMIN_TOKEN="${ADMIN_TOKEN}"
 E2E_FIDELITY_CACERT="$(cat "${CA_FILE}")"
 export E2E_FIDELITY_CACERT
 export E2E_FIDELITY_ORACLE_IMAGE="${ORACLE_IMAGE}"
+export E2E_FIDELITY_PAIR_INSTALL_UUID="${PAIR_INSTALL_UUID}"
 export E2E_FIDELITY_DOWNSTREAM="${DOWNSTREAM_ID}"
 
 if [ -n "${SMOKE_PROFILE}" ]; then
@@ -2532,7 +2556,7 @@ if [ -n "${SMOKE_PROFILE}" ]; then
     export E2E_FIDELITY_GOLDEN_IMAGE="${GOLDEN_ORACLE_IMAGE}"
     export E2E_FIDELITY_GOLDEN_K3S_IMAGE="${GOLDEN_K3S_IMAGE}"
     export E2E_FIDELITY_DOWNSTREAM_IMAGE="${K3S_IMAGE}"
-    go test -tags e2e_fidelity -count=1 ./test/e2e/fidelity/ || suite_status=$?
+    go test -tags e2e_fidelity -count=1 -timeout=20m ./test/e2e/fidelity/ || suite_status=$?
     drift_result "${suite_status}" "${REPORT}" "${ORACLE_IMAGE}" "${STARTED}"
   fi
 else
@@ -2540,5 +2564,5 @@ else
   # E2E_FIDELITY_UPDATE_FLAG is a fixed internal value ("" or "-update"), never
   # user-supplied, so the intentional word-splitting here is safe.
   # shellcheck disable=SC2086
-  go test -tags e2e_fidelity -count=1 ./test/e2e/fidelity/ ${UPDATE_FLAG}
+  go test -tags e2e_fidelity -count=1 -timeout=20m ./test/e2e/fidelity/ ${UPDATE_FLAG}
 fi

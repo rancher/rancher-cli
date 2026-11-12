@@ -63,6 +63,10 @@ type OracleTarget struct {
 	client     *http.Client
 	admin      string
 	downstream string
+	// pairInstallUUID is the install-uuid setting of the pair
+	// scripts/e2e-fidelity booted or kept, from
+	// E2E_FIDELITY_PAIR_INSTALL_UUID; empty for any other server.
+	pairInstallUUID string
 
 	standard LazyBearer
 	member   LazyBearer
@@ -80,6 +84,8 @@ const systemCACert = "system"
 // "system" to trust the OS root store). The CA is mandatory: this harness
 // never skips TLS verification. E2E_FIDELITY_DOWNSTREAM, if set, names a
 // downstream cluster the target can reach through the proxy.
+// E2E_FIDELITY_PAIR_INSTALL_UUID, if set, is the install id of the pair
+// scripts/e2e-fidelity booted or kept.
 func NewOracleTargetFromEnv() (*OracleTarget, error) {
 	base := os.Getenv("E2E_FIDELITY_URL")
 	admin := os.Getenv("E2E_FIDELITY_ADMIN_TOKEN")
@@ -96,10 +102,11 @@ func NewOracleTargetFromEnv() (*OracleTarget, error) {
 		return nil, fmt.Errorf("E2E_FIDELITY_CACERT: %w", err)
 	}
 	return &OracleTarget{
-		baseURL:    strings.TrimSuffix(base, "/"),
-		admin:      admin,
-		client:     client,
-		downstream: os.Getenv("E2E_FIDELITY_DOWNSTREAM"),
+		baseURL:         strings.TrimSuffix(base, "/"),
+		admin:           admin,
+		client:          client,
+		downstream:      os.Getenv("E2E_FIDELITY_DOWNSTREAM"),
+		pairInstallUUID: os.Getenv("E2E_FIDELITY_PAIR_INSTALL_UUID"),
 	}, nil
 }
 
@@ -138,6 +145,11 @@ func (t *OracleTarget) BaseURL() string { return t.baseURL }
 // Downstream is the id of the downstream cluster named by
 // E2E_FIDELITY_DOWNSTREAM, or empty when it is unset.
 func (t *OracleTarget) Downstream() string { return t.downstream }
+
+// PairInstallUUID is the install id named by E2E_FIDELITY_PAIR_INSTALL_UUID,
+// or empty when it is unset. An OwnPairOnly probe runs only on a server
+// whose install-uuid setting equals it.
+func (t *OracleTarget) PairInstallUUID() string { return t.pairInstallUUID }
 
 // Client is an HTTP client that trusts the oracle's CA (TLS verification is
 // never skipped), refuses cross-origin redirects, and honours the proxy

@@ -27,6 +27,11 @@ for var in E2E_FIDELITY_DRIFT_PROFILE E2E_FIDELITY_DRIFT_REPORT E2E_FIDELITY_DRI
   fi
 done
 
+# The catalog write probes run only on the pair scripts/e2e-fidelity booted
+# or kept, which that script names with this variable. A value the caller's
+# shell holds must not make them write to the server this script compares.
+unset E2E_FIDELITY_PAIR_INSTALL_UUID
+
 # E2E_FIDELITY_DOWNSTREAM_UPDATE_FLAG is a fixed internal value ("" or
 # "-update"), set only by scripts/e2e-fidelity-downstream-update, never
 # user-supplied, so the intentional word-splitting here is safe.

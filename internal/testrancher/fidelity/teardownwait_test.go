@@ -512,12 +512,13 @@ func checkTeardownWithin(t *testing.T, p Probe, allow map[stepKey]string, budget
 	return projectDeletes, problems, used
 }
 
-// teardownAllowlist holds the teardown steps that return an error or send
-// no request when run against the test server with only the captures the
-// guard can seed: a probe's observations declare some, and its setup steps
-// store the rest, which the guard never runs. Every other teardown step
-// sends its requests and succeeds. Each entry names the capture its setup
-// step stores and what the step deletes.
+// teardownAllowlist holds the teardown steps that return an error or send no
+// request when run against the test server with only the captures the guard
+// can seed: a probe's observations declare some, and its setup steps store
+// the rest, which the guard never runs. It also holds steps whose request the
+// test server answers 404. Every other teardown step sends its requests and
+// succeeds. Each entry names the capture its setup step stores and what the
+// step deletes.
 var teardownAllowlist = map[stepKey]string{
 	{"access-downstream/member-cluster-token", "member cluster token"}:                                        "token is stored by the setup step that creates the member's cluster token; the step deletes that token",
 	{"access-downstream/owner-management-gate", "cluster owner login token"}:                                  "clusterownerlogin is stored by the cluster owner setup step; the step deletes that login token",
@@ -540,6 +541,16 @@ var teardownAllowlist = map[stepKey]string{
 	{"authproviders/external-providers-enabled", "restore auth config openldap"}:                              "the marker unrecorded.authconfig.openldap.wrote is stored by the step that enables it and the original by the step that reads the originals; the guard seeds none; the step restores that config",
 	{"authproviders/external-providers-enabled", "read back the auth configs"}:                                "the markers unrecorded.authconfig.<name>.wrote are stored by the steps that enable the configs; the guard seeds none; the step reads the written configs back",
 	{"authproviders/external-providers-enabled", "wait for the auth provider list to hold local alone"}:       "the markers unrecorded.authconfig.<name>.wrote are stored by the steps that enable the configs; the guard seeds none; the step waits for the list after the restores",
+	{"catalog/install-uninstall-local", stepRecord}:                                                           "the test server answers 404 for the seeded Operation name; the step reads each Operation this run recorded and deletes nothing",
+	{"catalog/install-uninstall-local", stepUninstall}:                                                        "the request id is stored by the setup step that generates it, which the guard never runs, so the step sends nothing; it uninstalls the App this run installed",
+	{"catalog/install-uninstall-local", stepRemove}:                                                           "the objects to remove are stored by the record step, which finds none in the guard's run, so the step sends nothing; it deletes the objects this run's Operations created",
+	{"catalog/install-uninstall-local", stepGone}:                                                             "the recorded objects are stored by the record step, which finds none in the guard's run, so the step sends nothing; it waits until those objects answer 404",
+	{"catalog/install-uninstall-local", stepCompare}:                                                          "the before snapshot is stored by the setup step that records the names, which the guard never runs, so the step sends nothing; it compares the names before and after the run",
+	{"catalog/failing-install-downstream", stepRecord}:                                                        "the test server answers 404 for the seeded Operation name; the step reads each Operation this run recorded and deletes nothing",
+	{"catalog/failing-install-downstream", stepUninstall}:                                                     "the request id is stored by the setup step that generates it, which the guard never runs, so the step sends nothing; it uninstalls the App this run installed",
+	{"catalog/failing-install-downstream", stepRemove}:                                                        "the objects to remove are stored by the record step, which finds none in the guard's run, so the step sends nothing; it deletes the objects this run's Operations created",
+	{"catalog/failing-install-downstream", stepGone}:                                                          "the recorded objects are stored by the record step, which finds none in the guard's run, so the step sends nothing; it waits until those objects answer 404",
+	{"catalog/failing-install-downstream", stepCompare}:                                                       "the before snapshot is stored by the setup step that records the names, which the guard never runs, so the step sends nothing; it compares the names before and after the run",
 }
 
 // assertGuardTotals asserts the project delete count the probes' teardowns

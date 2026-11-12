@@ -111,7 +111,10 @@ Gotchas:
   cluster, against the same goldens: `E2E_FIDELITY_URL`,
   `E2E_FIDELITY_ADMIN_TOKEN`, `E2E_FIDELITY_CACERT` (a PEM, or the literal
   `system` to trust your OS root store), `E2E_FIDELITY_DOWNSTREAM` (the
-  cluster id). Never on PRs.
+  cluster id). It never runs the catalog write probes, which install charts:
+  they run only on a pair `scripts/e2e-fidelity` booted or kept. Of the two,
+  only the failing install on the downstream is in its test set, and the
+  comparison lists that probe as not checked. Never on PRs.
 - **A test the Windows jobs run takes no recovered hardware fault.** On
   Windows a fault the runtime recovers from (a nil dereference that `fmt`
   catches) can corrupt memory on some hosts. The Linux job `fault-check`

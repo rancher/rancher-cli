@@ -633,7 +633,9 @@ func FetchRancherVersion(ctx context.Context, tgt Target) (RancherVersion, error
 // ProbeRun is one probe's drift result: its differences and the error it
 // returned, if any (the differences then cover only the observations that
 // completed). A probe is not checked when the server's minor is newer than its
-// MaxMinor: NotCheckedReason says why, and there are no differences or error.
+// MaxMinor, or when it sets OwnPairOnly and the server is not the pair
+// scripts/e2e-fidelity booted or kept: NotCheckedReason says why, and there
+// are no differences or error.
 type ProbeRun struct {
 	Suite            string
 	Probe            string

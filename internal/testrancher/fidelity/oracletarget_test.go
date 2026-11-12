@@ -182,6 +182,7 @@ func TestNewOracleTargetFromEnv(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "admin-tok", bearer)
 		assert.Empty(t, tgt.Downstream(), "E2E_FIDELITY_DOWNSTREAM is unset")
+		assert.Empty(t, tgt.PairInstallUUID(), "E2E_FIDELITY_PAIR_INSTALL_UUID is unset")
 	})
 
 	t.Run("E2E_FIDELITY_DOWNSTREAM names the downstream cluster", func(t *testing.T) {
@@ -189,9 +190,11 @@ func TestNewOracleTargetFromEnv(t *testing.T) {
 		t.Setenv("E2E_FIDELITY_ADMIN_TOKEN", "admin-tok")
 		t.Setenv("E2E_FIDELITY_CACERT", caPEM)
 		t.Setenv("E2E_FIDELITY_DOWNSTREAM", "c-abc123")
+		t.Setenv("E2E_FIDELITY_PAIR_INSTALL_UUID", "5d3c1c8e-0000-4000-8000-000000000002")
 		tgt, err := NewOracleTargetFromEnv()
 		require.NoError(t, err)
 		assert.Equal(t, "c-abc123", tgt.Downstream())
+		assert.Equal(t, "5d3c1c8e-0000-4000-8000-000000000002", tgt.PairInstallUUID(), "E2E_FIDELITY_PAIR_INSTALL_UUID names the pair's install id")
 	})
 
 	t.Run("E2E_FIDELITY_CACERT=system trusts the OS root store, not a self-signed test cert", func(t *testing.T) {

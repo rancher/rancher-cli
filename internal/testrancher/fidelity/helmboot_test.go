@@ -767,7 +767,7 @@ func stateProgram(t *testing.T, body string) (stateFile string, stdout string) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "ids"), []byte("pair oracle-id\npair-k3s k3s-id\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "log"), nil, 0o600))
 	program := "set -euo pipefail\n" +
-		"STATE_FILE=" + stateFile + " CONTAINER=pair K3S_CONTAINER=pair-k3s ORACLE_IMAGE=oracle K3S_IMAGE=k3s ADMIN_TOKEN=token DOWNSTREAM_ID=c-1\n" +
+		"STATE_FILE=" + stateFile + " CONTAINER=pair K3S_CONTAINER=pair-k3s ORACLE_IMAGE=oracle K3S_IMAGE=k3s ADMIN_TOKEN=token DOWNSTREAM_ID=c-1 PAIR_INSTALL_UUID=" + testPairInstallUUID + "\n" +
 		"CHART_PIN=chart LOCAL_K3S_PIN=node-k3s CERT_MANAGER_MANIFEST=manifest\n" +
 		shellFunction(t, "state_value") + shellFunction(t, "load_helm_state") + shellFunction(t, "write_state") + body + "\n"
 	cmd := exec.CommandContext(t.Context(), "bash", "-c", program)
@@ -802,6 +802,7 @@ func TestWriteStateRecordsTheBoot(t *testing.T) {
 		assert.Equal(t, map[string]any{
 			"containerId": "oracle-id", "adminToken": "token", "oracleImage": "oracle",
 			"k3sContainerId": "k3s-id", "k3sImage": "k3s", "downstream": "c-1", "boot": "container",
+			"installUuid": testPairInstallUUID,
 		}, read(t, path))
 	})
 
@@ -811,7 +812,8 @@ func TestWriteStateRecordsTheBoot(t *testing.T) {
 		assert.Equal(t, map[string]any{
 			"containerId": "oracle-id", "adminToken": "token", "oracleImage": "oracle",
 			"k3sContainerId": "k3s-id", "k3sImage": "k3s", "downstream": "c-1", "boot": "helm",
-			"chart": "chart", "localK3sImage": "node-k3s", "localK3sSource": "embedded", "assetsImage": "tag@sha256:aa",
+			"installUuid": testPairInstallUUID,
+			"chart":       "chart", "localK3sImage": "node-k3s", "localK3sSource": "embedded", "assetsImage": "tag@sha256:aa",
 			"certManager": map[string]any{"manifest": "manifest", "images": []any{"quay.io/x@sha256:bb"}},
 		}, read(t, path))
 	})

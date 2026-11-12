@@ -36,6 +36,22 @@ var (
 	waitForStatusInterval = 250 * time.Millisecond
 )
 
+// untilTimeout, untilInterval and untilReadTimeout pace an observation that
+// sets Until: the longest the observation waits, the pause between its
+// reads, and the limit of each read. The wait runs on a context of its own,
+// not the step deadline, and a setup step can end it earlier through
+// waitDeadlineCapture. Tests shorten them.
+var (
+	untilTimeout     = 2 * time.Minute
+	untilInterval    = 2 * time.Second
+	untilReadTimeout = 5 * time.Second
+)
+
+// waitDeadlineCapture names the capture a setup step stores an RFC 3339 time
+// under to end every Until wait of the probe at that time. A probe's waits
+// then share one budget, counted from the step that stored it.
+const waitDeadlineCapture = unrecordedPrefix + "waitdeadline"
+
 // RunOptions changes how RunProbeWith executes a probe.
 type RunOptions struct {
 	// KeepLastAnswer records the last answer of an observation whose
@@ -63,18 +79,25 @@ func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (
 
 // runProbeWith is RunProbeWith with an injectable per-step deadline. When the
 // server's minor is newer than the probe's MaxMinor it returns an error that
-// wraps ErrNotForMinor before any other request, setup or teardown. Teardown is
-// installed BEFORE setup runs and always executes - after a partial setup
-// failure, an observation failure, a capture failure, or success - with the
-// captures resolved so far. Every teardown error is collected and joined
-// with the primary error; none is dropped. Teardown steps run on their own
-// context and time limit, so the caller's context ending does not skip them.
+// wraps ErrNotForMinor before any other request, setup or teardown. For a
+// probe with OwnPairOnly, when the target names no install id of the pair
+// scripts/e2e-fidelity booted or kept, or the server's install-uuid setting
+// differs from it, it returns a not-checked error after at most that one
+// read, before any setup or teardown. Teardown is installed BEFORE setup runs
+// and always executes - after a partial setup failure, an observation
+// failure, a capture failure, or success - with the captures resolved so far.
+// Every teardown error is collected and joined with the primary error; none
+// is dropped. Teardown steps run on their own context and time limit, so the
+// caller's context ending does not skip them.
 func runProbeWith(ctx context.Context, tgt Target, p Probe, timeout time.Duration, opts RunOptions) (results []ObservationResult, err error) {
 	if verr := p.Validate(); verr != nil {
 		return nil, verr
 	}
 	if merr := checkMaxMinor(ctx, tgt, p, timeout); merr != nil {
 		return nil, merr
+	}
+	if perr := checkOwnPair(ctx, tgt, p); perr != nil {
+		return nil, perr
 	}
 	captured := map[string]string{}
 	if p.Downstream {
@@ -98,8 +121,9 @@ func runProbeWith(ctx context.Context, tgt Target, p Probe, timeout time.Duratio
 		}
 	}
 
-	rules := append(DefaultNormalizeRules(), p.Normalize...)
+	probeRules := append(DefaultNormalizeRules(), p.Normalize...)
 	for _, o := range p.Observations {
+		rules := append(slices.Clone(probeRules), o.Normalize...)
 		res, raw, oerr := runObservation(ctx, tgt, o, captured, timeout, opts)
 		if oerr != nil {
 			return results, fmt.Errorf("probe %s: observation %s: %w", p.Name, o.Name, oerr)
@@ -176,34 +200,146 @@ func resolveCapture(raw map[string]any, c Capture) (string, error) {
 }
 
 func runObservation(ctx context.Context, tgt Target, o Observation, captured map[string]string, timeout time.Duration, opts RunOptions) (ObservationResult, map[string]any, error) {
-	octx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	resp, waitRanOut, err := attemptUntilStatus(octx, tgt, o, captured, opts.KeepLastAnswer)
+	var ans answer
+	var err error
+	if o.Until != nil {
+		ans, err = readUntil(ctx, tgt, o, captured)
+	} else {
+		ans, err = sendOnce(ctx, tgt, o, captured, timeout, opts.KeepLastAnswer)
+	}
 	if err != nil {
 		return ObservationResult{}, nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	rawBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ObservationResult{}, nil, fmt.Errorf("reading response: %w", err)
 	}
 
 	res := ObservationResult{
 		Name:        o.Name,
-		Status:      resp.StatusCode,
-		ContentType: strings.Split(resp.Header.Get("Content-Type"), ";")[0],
-		WaitRanOut:  waitRanOut,
+		Status:      ans.status,
+		ContentType: ans.contentType,
+		WaitRanOut:  ans.waitRanOut,
 	}
 	var decoded map[string]any
-	if len(rawBody) > 0 {
-		if json.Unmarshal(rawBody, &decoded) == nil {
+	if len(ans.body) > 0 {
+		if json.Unmarshal(ans.body, &decoded) == nil {
 			res.Body = decoded
 		} else {
-			res.Text = strings.TrimSpace(string(rawBody))
+			res.Text = strings.TrimSpace(string(ans.body))
 		}
 	}
 	return res, decoded, nil
+}
+
+// answer is one read response: its status, its media type without
+// parameters and its body.
+type answer struct {
+	status      int
+	contentType string
+	body        []byte
+	waitRanOut  bool
+}
+
+// readAnswer reads resp whole and closes its body.
+func readAnswer(resp *http.Response) (answer, error) {
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return answer{}, fmt.Errorf("reading response: %w", err)
+	}
+	return answer{
+		status:      resp.StatusCode,
+		contentType: strings.Split(resp.Header.Get("Content-Type"), ";")[0],
+		body:        raw,
+	}, nil
+}
+
+// sendOnce runs an observation without Until within the step deadline.
+func sendOnce(ctx context.Context, tgt Target, o Observation, captured map[string]string, timeout time.Duration, keepLast bool) (answer, error) {
+	octx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	resp, waitRanOut, err := attemptUntilStatus(octx, tgt, o, captured, keepLast)
+	if err != nil {
+		return answer{}, err
+	}
+	ans, err := readAnswer(resp)
+	ans.waitRanOut = waitRanOut
+	return ans, err
+}
+
+// readUntil sends the observation every untilInterval until o.Until reports
+// done and returns that answer. The wait ends at the earlier of untilTimeout
+// after the first read and the time stored under waitDeadlineCapture; a
+// deadline that has already passed fails before any request. Each read is
+// limited to untilReadTimeout. A read that runs past its limit or gets a
+// transport error is sent again, as any answer that is not done is: the
+// request is a GET. A wait that ends fails the observation and names the
+// last read error, if any. An error building the request or resolving its
+// bearer, and an error from Until, fail it at once. A wait that ran out is
+// never returned as an answer.
+func readUntil(ctx context.Context, tgt Target, o Observation, captured map[string]string) (answer, error) {
+	start := time.Now()
+	deadline := start.Add(untilTimeout)
+	if raw, ok := captured[waitDeadlineCapture]; ok {
+		stored, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return answer{}, fmt.Errorf("the wait deadline in %s is not an RFC 3339 time", waitDeadlineCapture)
+		}
+		if !stored.After(start) {
+			return answer{}, fmt.Errorf("the wait deadline in %s passed before the first read", waitDeadlineCapture)
+		}
+		if stored.Before(deadline) {
+			deadline = stored
+		}
+	}
+	wctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	state, last := "without an answer", "no status"
+	var lastErr error
+	ranOut := func(reads int) error {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("still %s after %d reads (last status %s): %w", state, reads, last, err)
+		}
+		if lastErr != nil {
+			return fmt.Errorf("still %s after %d reads in %s (last status %s; last read error: %w)", state, reads, time.Since(start).Round(time.Millisecond), last, lastErr)
+		}
+		return fmt.Errorf("still %s after %d reads in %s (last status %s)", state, reads, time.Since(start).Round(time.Millisecond), last)
+	}
+	for reads := 1; ; reads++ {
+		rctx, rcancel := context.WithTimeout(wctx, untilReadTimeout)
+		resp, err := attempt(rctx, tgt, o, captured)
+		if _, ok := errors.AsType[*requestError](err); ok {
+			rcancel()
+			return answer{}, err
+		}
+		var ans answer
+		if err == nil {
+			ans, err = readAnswer(resp)
+		}
+		rcancel()
+		if err == nil {
+			lastErr = nil
+			last = strconv.Itoa(ans.status)
+			var decoded map[string]any
+			_ = json.Unmarshal(ans.body, &decoded)
+			done, seen, uerr := o.Until(decoded, ans.status, captured)
+			if uerr != nil {
+				return answer{}, uerr
+			}
+			if done {
+				return ans, nil
+			}
+			state = seen
+		} else if wctx.Err() == nil {
+			// A read the wait's own end cut short is not a read error.
+			lastErr = err
+		}
+		if wctx.Err() != nil {
+			return answer{}, ranOut(reads)
+		}
+		select {
+		case <-wctx.Done():
+			return answer{}, ranOut(reads)
+		case <-time.After(untilInterval):
+		}
+	}
 }
 
 // attemptUntilStatus sends the observation once, or, when it sets
@@ -284,8 +420,23 @@ func attempt(ctx context.Context, tgt Target, o Observation, captured map[string
 		}
 		return req, nil
 	}
-	return doResilient(tgt.Client(), build)
+	return doResilient(tgt.Client(), func() (*http.Request, error) {
+		req, err := build()
+		if err != nil {
+			return nil, &requestError{err: err}
+		}
+		return req, nil
+	})
 }
+
+// requestError is an error building an observation's request or resolving
+// its bearer, before anything is sent. Sending again cannot change it. Its
+// text is the error it wraps.
+type requestError struct{ err error }
+
+func (e *requestError) Error() string { return e.err.Error() }
+
+func (e *requestError) Unwrap() error { return e.err }
 
 // doResilient sends the request build produces and, on a transport-level
 // connection reset (errors.Is(err, syscall.ECONNRESET)), retries exactly once -

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strconv"
 	"testing"
@@ -91,18 +92,104 @@ func checkMaxMinor(ctx context.Context, tgt Target, p Probe, timeout time.Durati
 	return nil
 }
 
+// notOwnPair is the error checkOwnPair returns for an OwnPairOnly probe run
+// against a server that is not the pair scripts/e2e-fidelity booted or
+// kept, or against a target that names no install id. It names the probe
+// only, never an install id.
+type notOwnPair struct {
+	probe string
+	why   string
+}
+
+// reason says why the probe is not checked, without the probe's name.
+func (e *notOwnPair) reason() string {
+	return "runs only on the Rancher scripts/e2e-fidelity booted or kept; " + e.why
+}
+
+func (e *notOwnPair) Error() string { return "probe " + e.probe + " " + e.reason() }
+
+// notChecked is the error of a probe that did not run on this server: its
+// MaxMinor is older than the server's minor, or it writes only to the pair
+// scripts/e2e-fidelity booted or kept.
+type notChecked interface {
+	error
+	reason() string
+}
+
+// pairInstallUUIDer is a target that names the install id of the pair
+// scripts/e2e-fidelity booted or kept.
+type pairInstallUUIDer interface {
+	PairInstallUUID() string
+}
+
+// ownPairReadTimeout bounds the read of the server's install-uuid setting.
+const ownPairReadTimeout = 5 * time.Second
+
+// installUUIDPath is the setting that holds a Rancher's install id.
+const installUUIDPath = "/v1/management.cattle.io.settings/install-uuid"
+
+// checkOwnPair returns nil for a probe without OwnPairOnly, or when the
+// server's install-uuid setting equals the install id the target names.
+// A target that names none sends nothing and gets a notOwnPair; so does a
+// server whose setting differs, after the one admin read of the setting.
+// A failed read is an error that is not notOwnPair: the probe fails.
+func checkOwnPair(ctx context.Context, tgt Target, p Probe) error {
+	if !p.OwnPairOnly {
+		return nil
+	}
+	named, ok := tgt.(pairInstallUUIDer)
+	if !ok || named.PairInstallUUID() == "" {
+		return &notOwnPair{probe: p.Name, why: "the target names no install id of that pair"}
+	}
+	rctx, cancel := context.WithTimeout(ctx, ownPairReadTimeout)
+	defer cancel()
+	setting, status, err := adminJSON(rctx, tgt, http.MethodGet, installUUIDPath, "")
+	if err != nil {
+		return fmt.Errorf("probe %s: reading the install-uuid setting: %w", p.Name, err)
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("probe %s: reading the install-uuid setting: status %d", p.Name, status)
+	}
+	value, _ := setting["value"].(string)
+	if value == "" {
+		value, _ = setting["default"].(string)
+	}
+	if value != named.PairInstallUUID() {
+		return &notOwnPair{probe: p.Name, why: "the server's install-uuid setting differs from that pair's"}
+	}
+	return nil
+}
+
+// logKey is the context key of the function a step logs through.
+type logKey struct{}
+
+// withLog returns ctx carrying log, the function steps log a line through.
+func withLog(ctx context.Context, log func(line string)) context.Context {
+	return context.WithValue(ctx, logKey{}, log)
+}
+
+// stepLog logs one line through the function ctx carries; with none it
+// logs nothing.
+func stepLog(ctx context.Context, line string) {
+	if log, ok := ctx.Value(logKey{}).(func(line string)); ok && log != nil {
+		log(line)
+	}
+}
+
 // RunProbeOrSkip is RunProbeWith for a test. When the server's minor is
-// newer than the probe's MaxMinor, it records the probe in drift, the drift
-// collector, under suite, when drift is not nil, and skips the test with a
-// message that starts "not checked:". The test stops there; the code after
-// the call never runs. Any other error is returned to the caller, as
-// RunProbeWith returns it.
+// newer than the probe's MaxMinor, or the probe sets OwnPairOnly and the
+// server is not the pair scripts/e2e-fidelity booted or kept, it records
+// the probe in drift, the drift collector, under suite, when drift is not
+// nil, and skips the test with a message that starts "not checked:". The
+// test stops there; the code after the call never runs. Any other error is
+// returned to the caller, as RunProbeWith returns it. The probe's steps log
+// through tb.Log.
 func RunProbeOrSkip(ctx context.Context, tb testing.TB, tgt Target, p Probe, opts RunOptions, drift *DriftCollector, suite string) ([]ObservationResult, error) {
 	tb.Helper()
-	results, err := RunProbeWith(ctx, tgt, p, opts)
-	if nfm, ok := errors.AsType[*notForMinor](err); ok {
+	results, err := RunProbeWith(withLog(ctx, func(line string) { tb.Log(line) }), tgt, p, opts)
+	if nc, ok := errors.AsType[notChecked](err); ok {
 		if drift != nil {
-			drift.AddNotCheckedProbe(suite, p.Name, p.Downstream, nfm.reason())
+			drift.AddNotCheckedProbe(suite, p.Name, p.Downstream, nc.reason())
 		}
 		tb.Skipf("not checked: %v", err)
 	}

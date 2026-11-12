@@ -19,8 +19,8 @@ import (
 // Kubernetes API and two namespaces created on the downstream with the
 // project annotation, one of them also with a creatorId annotation. The
 // second probe deletes the project in its setup and waits for Rancher to
-// finish with both namespaces, because an observation cannot wait for a
-// field to change; its observations read the end state by name.
+// finish with both namespaces, because the delete is the probe's fixture;
+// its observations read the end state by name.
 func projectNamespaceProbes() []Probe {
 	const (
 		mgmtProjects   = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/{downstream}/projects/"

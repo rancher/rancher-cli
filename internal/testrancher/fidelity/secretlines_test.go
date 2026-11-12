@@ -106,6 +106,7 @@ ADMIN_TOKEN=`+token+`; BOOT=container; HELM_ASSETS_IMAGE=""; LOCAL_K3S_SOURCE=""
 	assert.Equal(t, map[string]any{
 		"containerId": "oracle-id", "adminToken": token, "oracleImage": "oracle",
 		"k3sContainerId": "k3s-id", "k3sImage": "k3s", "downstream": "c-1", "boot": "container",
+		"installUuid": testPairInstallUUID,
 	}, state)
 
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))

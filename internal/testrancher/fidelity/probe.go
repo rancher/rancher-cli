@@ -96,6 +96,22 @@ type Observation struct {
 	// create, delete or logout. An observation that captures never waits:
 	// it must not be sent twice.
 	WaitForStatus int
+	// Until, when set, sends the request again every untilInterval until it
+	// reports done, on a context of its own: the observation ends at the earlier
+	// of untilTimeout after its first read and the time a setup step stored
+	// under waitDeadlineCapture. state describes what the answer showed
+	// (condition types and statuses, an App status), never a body or a value; a
+	// wait that ends first fails the probe and names it. A read that runs past
+	// its limit or gets a transport error is sent again until the wait ends. An
+	// err, or an error building the request or resolving its bearer, fails the
+	// observation at once. The recorded answer is the one Until accepted; a wait
+	// that ran out is never recorded, whatever the RunOptions. Only a GET can
+	// set it, because the request is sent again, and never with Captures or
+	// WaitForStatus.
+	Until func(decoded map[string]any, status int, captured map[string]string) (done bool, state string, err error)
+	// Normalize holds rules for this observation's body only, applied
+	// after DefaultNormalizeRules and the probe's own rules.
+	Normalize []NormalizeRule
 }
 
 // waitingFor returns o with WaitForStatus set to status.
@@ -195,6 +211,14 @@ type Probe struct {
 	// teardown step. Only an OracleOnly or a Downstream probe can set it,
 	// because the facade has no Rancher version.
 	MaxMinor string
+	// OwnPairOnly marks a probe that writes objects only the pair
+	// scripts/e2e-fidelity booted or kept may hold. Before any setup step
+	// the executor compares the server's install-uuid setting with the
+	// install id the target names (OracleTarget.PairInstallUUID); when the
+	// target names none or the two differ, the probe is not checked and
+	// sends nothing else. Only an OracleOnly or a Downstream probe can set
+	// it.
+	OwnPairOnly bool
 }
 
 // maxMinorPattern is the form of Probe.MaxMinor: major.minor, no leading v, no
@@ -232,6 +256,20 @@ func (p Probe) Validate() error {
 				return fmt.Errorf("probe %s: observation %q: capture %q: the %q prefix is reserved for setup values that are never recorded", p.Name, o.Name, name, unrecordedPrefix)
 			}
 		}
+		if o.Until != nil {
+			if o.Request.Method != http.MethodGet {
+				return fmt.Errorf("probe %s: observation %q: Until sends the request again and needs method GET, not %s", p.Name, o.Name, o.Request.Method)
+			}
+			if len(o.Captures) > 0 {
+				return fmt.Errorf("probe %s: observation %q: an observation with captures cannot set Until", p.Name, o.Name)
+			}
+			if o.WaitForStatus != 0 {
+				return fmt.Errorf("probe %s: observation %q: Until and WaitForStatus are mutually exclusive", p.Name, o.Name)
+			}
+		}
+		if err := validateRules(o.Normalize); err != nil {
+			return fmt.Errorf("probe %s: observation %q: %w", p.Name, o.Name, err)
+		}
 	}
 	if p.OracleOnly && p.FacadeDivergence != "" {
 		return fmt.Errorf("probe %s: OracleOnly and FacadeDivergence are mutually exclusive", p.Name)
@@ -250,24 +288,35 @@ func (p Probe) Validate() error {
 			return fmt.Errorf("probe %s: MaxMinor can be set only on an OracleOnly or a Downstream probe, because the facade has no Rancher version", p.Name)
 		}
 	}
-	for _, r := range p.Normalize {
+	if p.OwnPairOnly && !p.OracleOnly && !p.Downstream {
+		return fmt.Errorf("probe %s: OwnPairOnly can be set only on an OracleOnly or a Downstream probe, because only the oracle has an install id", p.Name)
+	}
+	if err := validateRules(p.Normalize); err != nil {
+		return fmt.Errorf("probe %s: %w", p.Name, err)
+	}
+	return nil
+}
+
+// validateRules checks the normalize rules of a probe or of one observation.
+func validateRules(rules []NormalizeRule) error {
+	for _, r := range rules {
 		if r.Replace != "" && r.KeepPrefix != "" {
-			return fmt.Errorf("probe %s: normalize rule %s: Replace and KeepPrefix are mutually exclusive", p.Name, r.Path)
+			return fmt.Errorf("normalize rule %s: Replace and KeepPrefix are mutually exclusive", r.Path)
 		}
 		if r.SortBy != "" && (r.Replace != "" || r.KeepPrefix != "") {
-			return fmt.Errorf("probe %s: normalize rule %s: SortBy is exclusive with Replace and KeepPrefix", p.Name, r.Path)
+			return fmt.Errorf("normalize rule %s: SortBy is exclusive with Replace and KeepPrefix", r.Path)
 		}
 		if r.DropPrefix != "" && r.DropBy == "" {
-			return fmt.Errorf("probe %s: normalize rule %s: DropPrefix needs DropBy", p.Name, r.Path)
+			return fmt.Errorf("normalize rule %s: DropPrefix needs DropBy", r.Path)
 		}
 		if r.DropPrefix != "" && (r.Replace != "" || r.KeepPrefix != "" || r.SortBy != "") {
-			return fmt.Errorf("probe %s: normalize rule %s: DropPrefix is exclusive with Replace, KeepPrefix and SortBy", p.Name, r.Path)
+			return fmt.Errorf("normalize rule %s: DropPrefix is exclusive with Replace, KeepPrefix and SortBy", r.Path)
 		}
 		if len(r.KeepKeys) > 0 && (r.Replace != "" || r.KeepPrefix != "" || r.SortBy != "" || r.DropPrefix != "") {
-			return fmt.Errorf("probe %s: normalize rule %s: KeepKeys is exclusive with Replace, KeepPrefix, SortBy and DropPrefix", p.Name, r.Path)
+			return fmt.Errorf("normalize rule %s: KeepKeys is exclusive with Replace, KeepPrefix, SortBy and DropPrefix", r.Path)
 		}
 		if slices.Contains(r.KeepKeys, "") {
-			return fmt.Errorf("probe %s: normalize rule %s: KeepKeys has an empty entry", p.Name, r.Path)
+			return fmt.Errorf("normalize rule %s: KeepKeys has an empty entry", r.Path)
 		}
 	}
 	return nil

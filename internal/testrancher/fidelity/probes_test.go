@@ -76,6 +76,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"catalog/discovery-downstream", "catalog/clusterrepos-downstream", "catalog/apps-downstream",
 		"catalog/operations-downstream", "catalog/clusterrepos-local", "catalog/standard-user-local",
 		"catalog/webhook-app-local",
+		"catalog/install-uninstall-local", "catalog/failing-install-downstream",
 		"etcdsnapshot/discovery-local", "etcdsnapshot/list-local", "etcdsnapshot/crd-local",
 		"etcdsnapshot/standard-user-local",
 		"authproviders/only-local-enabled", "authproviders/external-providers-enabled",
@@ -401,7 +402,8 @@ func TestAccessProbesAreRegistered(t *testing.T) {
 // an observation can record the cache delay instead of the behavior. It also
 // covers the catalog reads, which wait for Rancher to serve the catalog CRDs
 // after a boot or import, and the etcd snapshot reads that wait for the
-// rke.cattle.io group and CRD, and asserts that no other observation waits.
+// rke.cattle.io group and CRD, and asserts that no other observation sets
+// WaitForStatus.
 func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing.T) {
 	t.Parallel()
 	type key struct{ probe, observation string }

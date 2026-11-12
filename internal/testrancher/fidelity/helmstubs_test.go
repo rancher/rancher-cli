@@ -430,6 +430,7 @@ func (s *scenario) cannedHealthy(downstream string) {
 	s.canned("/v3/clusters/"+downstream, 200, `{"state":"active"}`)
 	s.canned("/rancherversion", 200, `{"Version":"v2.15.2","GitCommit":"abc"}`)
 	s.canned("/k8s/clusters/"+downstream+"/version", 200, "{}")
+	s.canned("/v1/management.cattle.io.settings/install-uuid", 200, `{"value":"`+testPairInstallUUID+`"}`)
 }
 
 func readLines(t *testing.T, path string) []string {

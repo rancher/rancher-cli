@@ -1294,6 +1294,21 @@ different server. The node container runs the k3s that the image names in
 `CATTLE_K3S_VERSION`. The default boot of an upcoming minor stays
 `container`.
 
+**The catalog install probes write only to the pair the fidelity script
+booted or kept, and remove only what their own run created.** A probe
+marked `OwnPairOnly` installs and uninstalls a real Helm release, so it
+runs only when the server's `install-uuid` setting equals the install id
+`scripts/e2e-fidelity` read from that pair. On any other server, a
+Rancher you run yourself included, it is listed as not checked. Before
+the install it stops on a leftover of an earlier run and records the
+names and uids of every object set the run can touch. After the
+observations it uninstalls the release, then deletes each object the
+run's Operations created (the Operation, its pod, and the RBAC objects
+and ConfigMaps Rancher made for that pod) by name, with its recorded uid
+as the delete precondition. Nothing is deleted only because its name is
+new: the names before and after are compared, and a new name the run's
+Operations or Rancher's system charts do not account for fails the probe.
+
 **Dynamic client, not typed Rancher structs.** Every resource flows through
 the Kubernetes dynamic client and unstructured objects; the CLI imports no
 rancher/rancher code. One binary serves many server versions - the CLI
