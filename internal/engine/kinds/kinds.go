@@ -204,6 +204,10 @@ type Kind struct {
 	// through a higher-level command that handles key generation, lifecycle
 	// derivation, or other invariants that a raw manifest write cannot satisfy.
 	NoCreateViaManifest string
+	// SetsCreatorID marks a kind whose create sets the creator annotation
+	// before the dry-run: `create project` and `create resource` call the
+	// projects package's SetCreatorID for it.
+	SetsCreatorID bool
 	// SystemFilter, when set, marks objects matching it as system-managed:
 	// LIST hides them by default (announced via a warning and reversible
 	// with the generated --include-system flag); a NAMED get always
@@ -438,7 +442,7 @@ var table = []Kind{
 	{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"},
-		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true,
+		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true, SetsCreatorID: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
 		ArgDesc: "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",

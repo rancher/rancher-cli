@@ -1141,6 +1141,20 @@ dry-run also stops `--apply`, which runs the same dry-run first. Log in
 again, or check that you may create `selfusers.ext.cattle.io`, then
 retry.
 
+`create project`, and `create resource -f` with a Project manifest, set the
+`field.cattle.io/creatorId` annotation to your user ID, from a SelfUser
+request, before the server-side dry-run; the preview lists it. Rancher then
+gives you the project's creator default roles (Project Owner unless an
+administrator changed them) shortly after the create. A `creatorId annotation
+not set` warning means the CLI could not get a valid user ID: the project is
+created without the annotation, and Rancher adds no owner binding for you on it.
+A manifest that sets `field.cattle.io/creatorId` to your own user ID keeps it,
+and one that sets another value is refused. When the CLI cannot get your user
+ID, a manifest that sets `field.cattle.io/creatorId` is refused too. A manifest
+that sets `field.cattle.io/no-creator-rbac` gets nothing added. A project
+created earlier keeps no owner binding: a cluster owner or an administrator
+grants the role.
+
 ## Installing and uninstalling apps
 
 `rancher app install <release>` installs a chart from a ClusterRepo as a Helm

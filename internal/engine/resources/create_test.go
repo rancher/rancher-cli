@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -53,6 +54,11 @@ func (c *createClient) Logs(context.Context, string, string, engine.LogOptions) 
 	return "", nil
 }
 func (c *createClient) Create(_ context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	if gvr == selfuser.GVR {
+		answer := obj.DeepCopy()
+		_ = unstructured.SetNestedField(answer.Object, "u-self", "status", "userID")
+		return answer, nil
+	}
 	c.creates = append(c.creates, createCall{gvr: gvr, ns: ns, dryRun: dryRun, obj: obj})
 	if c.createErr != nil {
 		return nil, c.createErr

@@ -3,6 +3,10 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # create project object; a fixed (non-generateName) name lands as the id.
 exec rancher create project web --cluster testcluster --apply
+# The envtest harness has no SelfUser store, so setting the creatorId
+# annotation degrades to a warning. This assertion asserts the degrade
+# path on a project create.
+stderr 'creatorId annotation not set'
 
 # a display name resolves through the cluster's steve project collection: the
 # fixture project p-empty is displayed as Empty and holds no namespace.

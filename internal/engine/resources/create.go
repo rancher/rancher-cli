@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	yamlv3 "gopkg.in/yaml.v3"
@@ -57,8 +58,12 @@ func NewCreate(clients engine.ClusterClientFactory, src engine.FileSource) runti
 
 func (*createCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "create resource",
-		Usage:       "Create a resource from a manifest file",
+		Name:  "create resource",
+		Usage: "Create a resource from a manifest file",
+		Desc: "A Project manifest gets the field.cattle.io/creatorId annotation set to your user ID, as " +
+			"`rancher create project` does. A manifest that sets it to your own user ID keeps it; one that sets another " +
+			"user's ID is refused. When the command cannot get your user ID, a manifest that sets " +
+			"field.cattle.io/creatorId is refused. A manifest that sets field.cattle.io/no-creator-rbac gets nothing added.",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
 			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}, Desc: "manifest `file`, or - for stdin"},
@@ -160,9 +165,25 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	// namespace decision, so the object is normalized to it (cleared for a
 	// cluster-scoped kind).
 	obj.SetNamespace(ns)
+	var creatorWarning string
+	if k.SetsCreatorID {
+		creatorWarning, err = projects.SetCreatorID(ctx, client, obj)
+		if err != nil {
+			return safety.Effect{}, nil, err
+		}
+	}
 	eff, exec, err := engine.PlanCreate(ctx, client, k.GVR, ns, obj, k.Redaction(), effectCluster, k.Name, k.K8sKind, k.Sensitive)
 	if err != nil {
+		// A server refusal of the dry-run can follow from the missing
+		// annotation (a manifest with creator-principal-name needs creatorId),
+		// so the warning rides the error.
+		if ce, ok := errors.AsType[*clierr.Error](err); ok && creatorWarning != "" {
+			return safety.Effect{}, nil, ce.WithWarnings(creatorWarning)
+		}
 		return safety.Effect{}, nil, err
+	}
+	if creatorWarning != "" {
+		eff.Warnings = append(eff.Warnings, creatorWarning)
 	}
 	return eff, exec, nil
 }

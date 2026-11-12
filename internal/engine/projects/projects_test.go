@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -32,7 +33,12 @@ func (r *recClient) List(context.Context, schema.GroupVersionResource, string, s
 func (r *recClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", nil
 }
-func (r *recClient) Create(_ context.Context, _ schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+func (r *recClient) Create(_ context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	if gvr == selfuser.GVR {
+		answer := obj.DeepCopy()
+		_ = unstructured.SetNestedField(answer.Object, "u-self", "status", "userID")
+		return answer, nil
+	}
 	r.created, r.createdNS = obj, ns
 	r.dryRuns = append(r.dryRuns, dryRun)
 	return obj, nil

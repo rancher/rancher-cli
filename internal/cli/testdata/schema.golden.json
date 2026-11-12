@@ -1743,7 +1743,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "--container-default-resource-limit sets spec.containerDefaultResourceLimit, the default CPU and memory requests and limits for each container in the project's namespaces, as comma-separated key=value pairs; keys: limitsCpu, limitsMemory, requestsCpu, requestsMemory; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once.",
+      "desc": "--container-default-resource-limit sets spec.containerDefaultResourceLimit, the default CPU and memory requests and limits for each container in the project's namespaces, as comma-separated key=value pairs; keys: limitsCpu, limitsMemory, requestsCpu, requestsMemory; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once. Before the dry-run the command gets your user ID with a SelfUser request (ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it; Rancher then gives you the project's creator default roles (Project Owner unless an administrator changed them) shortly after the create. The preview lists the annotation. If the command cannot get your user ID, it warns \"creatorId annotation not set\" and continues without the annotation, and Rancher then adds no owner binding for you.",
       "destructive": "false",
       "examples": [
         "rancher create project web --cluster c-x --dry-run",
@@ -1792,6 +1792,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "A Project manifest gets the field.cattle.io/creatorId annotation set to your user ID, as `rancher create project` does. A manifest that sets it to your own user ID keeps it; one that sets another user's ID is refused. When the command cannot get your user ID, a manifest that sets field.cattle.io/creatorId is refused. A manifest that sets field.cattle.io/no-creator-rbac gets nothing added.",
       "destructive": "dependsOnInput",
       "examples": [
         "rancher create resource -f deploy.yaml --cluster prod --dry-run",

@@ -372,6 +372,18 @@ checking that the account may create `selfusers.ext.cattle.io`, then
 re-run. When the dry-run passes despite the warning, the create proceeds
 and the warning rides along.
 
+`create project` and `create resource -f` with a Project manifest give a
+`creatorId annotation not set` warning when the CLI could not get your user
+ID from the SelfUser request. The project is still created, without the
+annotation, and Rancher then adds no owner binding for you on it: you may not
+be able to see or manage the project afterwards. The warning shows on the
+dry-run: log in again, or check that the account may create
+`selfusers.ext.cattle.io`, and re-run the dry-run before `--apply`. A project
+already created keeps no owner binding: a cluster owner or an administrator
+grants the role. A Project manifest that sets `field.cattle.io/creatorId` to
+another user is refused, and so is one that sets it when the SelfUser request
+fails.
+
 Follow through to readiness and access - and read the registration
 (join) commands from `inspect cluster --registration`, never from the UI:
 

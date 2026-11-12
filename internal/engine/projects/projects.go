@@ -187,7 +187,12 @@ func (createCmd) Describe() runtime.Descriptor {
 		Desc: "--container-default-resource-limit sets spec.containerDefaultResourceLimit, the default " +
 			"CPU and memory requests and limits for each container in the project's namespaces, as " +
 			"comma-separated key=value pairs; keys: " + strings.Join(ContainerDefaultResourceLimitKeys(), ", ") +
-			"; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once.",
+			"; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once. " +
+			"Before the dry-run the command gets your user ID with a SelfUser request (ext.cattle.io) and sets the " +
+			"field.cattle.io/creatorId annotation to it; Rancher then gives you the project's creator default roles " +
+			"(Project Owner unless an administrator changed them) shortly after the create. The preview lists the " +
+			"annotation. If the command cannot get your user ID, it warns \"creatorId annotation not set\" and " +
+			"continues without the annotation, and Rancher then adds no owner binding for you.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
@@ -267,5 +272,16 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	if !ok {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: no kind row for project")
 	}
-	return engine.PlanCreate(ctx, client, gvr, cluster, obj, projectKind.Redaction(), cluster, "project", "Project", false)
+	warning, err := SetCreatorID(ctx, client, obj)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	eff, exec, err := engine.PlanCreate(ctx, client, gvr, cluster, obj, projectKind.Redaction(), cluster, "project", "Project", false)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	if warning != "" {
+		eff.Warnings = append(eff.Warnings, warning)
+	}
+	return eff, exec, nil
 }

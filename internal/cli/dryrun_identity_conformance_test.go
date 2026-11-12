@@ -19,7 +19,8 @@ import (
 // tested wrapper that only appends to the Result/Effect those planners
 // already returned (membership.go's indented context line, secret.go's
 // project-scoped propagation warning, provisioning's stamped-identity and
-// version warnings) - none of which ever assigns to DisplayKind or
+// version warnings, the creator annotation warning of `create project` and
+// `create resource`) - none of which ever assigns to DisplayKind or
 // DisplayName. Those three planners set both fields unconditionally:
 // DisplayKind from a kind-table Name (internal/engine/kinds's
 // TestAllKindsHaveNonEmptyName proves that value is never empty for any
