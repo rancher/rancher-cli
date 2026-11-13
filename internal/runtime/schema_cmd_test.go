@@ -858,7 +858,64 @@ func TestSchemaSearch(t *testing.T) {
 		_, ce := Run(t.Context(), cmd, tin{strs: map[string]string{"search": "zzz"}},
 			IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
 		require.Nil(t, ce, "zero hits are not an error")
-		assert.Equal(t, "no commands match --search \"zzz\"\n", out.String())
+		assert.Equal(t, "no commands match --search 'zzz'\n", out.String())
+	})
+}
+
+// TestSchemaFiltersDescribeSearchText asserts the filter description writes
+// the --search text as one single-quoted word that a POSIX shell reads
+// literally. A hidden character, a newline or an invalid byte is written as
+// an escape, in a double-quoted string that replaces the piece of the text
+// (the text is cut at each single quote) that holds it. It also asserts that
+// the no-matches message shows the search text, written the same way, on one
+// line.
+func TestSchemaFiltersDescribeSearchText(t *testing.T) {
+	t.Parallel()
+	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
+	cases := []struct {
+		name  string
+		input string
+		want  []string
+		run   string
+	}{
+		{"plain", "zzz", []string{"--search 'zzz'"}, "no commands match --search 'zzz'\n"},
+		{"space", "a b", []string{"--search 'a b'"}, ""},
+		{"empty", "", nil, ""},
+		{"command substitution", "$(touch x)", []string{"--search '$(touch x)'"}, ""},
+		{"backquote", "a`b", []string{"--search 'a`b'"}, ""},
+		{"double quote", `a"b`, []string{`--search 'a"b'`}, ""},
+		{"backslash", `a\b`, []string{`--search 'a\b'`}, ""},
+		{"single quote", "a'b", []string{`--search 'a'\''b'`}, ""},
+		{"hidden character", "a\u200bb", []string{`--search '"a\u200bb"'`}, `no commands match --search '"a\u200bb"'` + "\n"},
+		{"newline", "a\nb", []string{`--search '"a\nb"'`}, `no commands match --search '"a\nb"'` + "\n"},
+		{"remedy marker character", "a\u2063b", []string{`--search '"a\u2063b"'`}, ""},
+		{"invalid byte", "a\xffb", []string{`--search '"a\xffb"'`}, `no commands match --search '"a\xffb"'` + "\n"},
+		{"single quote and hidden character", "o'b\u200b", []string{`--search 'o'\''"b\u200b"'`}, `no commands match --search 'o'\''"b\u200b"'` + "\n"},
+		{"command substitution and hidden character", "$(touch x)\u200b", []string{`--search '"$(touch x)\u200b"'`}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, schemaFilters{search: tc.input}.describe())
+			if tc.run == "" {
+				return
+			}
+			var out, errBuf bytes.Buffer
+			_, ce := Run(t.Context(), cmd, tin{strs: map[string]string{"search": tc.input}},
+				IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
+			require.Nil(t, ce, "zero hits are not an error")
+			assert.Equal(t, tc.run, out.String())
+			assert.NotContains(t, out.String(), "\ufffd")
+		})
+	}
+
+	t.Run("header of a hit", func(t *testing.T) {
+		t.Parallel()
+		res, err := cmd.(ReadCommand).Execute(t.Context(),
+			tin{strs: map[string]string{"search": "MANAGEMENT"}}, nil)
+		require.NoError(t, err)
+		first, _, _ := strings.Cut(res.Text, "\n")
+		assert.Equal(t, "1 commands match --search 'MANAGEMENT'", first)
 	})
 }
 
@@ -887,7 +944,7 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Message, "--search")
+		assert.Equal(t, "--search 'pod' cannot combine with an argument; filters and --search search all commands; remove the argument or the filter", ce.Message)
 	})
 
 	t.Run("--kind plus a filter", func(t *testing.T) {
@@ -1135,7 +1192,7 @@ func TestSchemaAllConflicts(t *testing.T) {
 		want string
 	}{
 		{tin{flags: map[string]bool{"all": true}, a: []string{"get", "pod"}}, lead + "remove the argument or remove --all"},
-		{tin{flags: map[string]bool{"all": true}, strs: map[string]string{"search": "pod"}}, lead + `remove --search "pod" or remove --all`},
+		{tin{flags: map[string]bool{"all": true}, strs: map[string]string{"search": "pod"}}, lead + `remove --search 'pod' or remove --all`},
 		{tin{flags: map[string]bool{"all": true, "kind": true}}, lead + "remove --kind or remove --all"},
 		{tin{flags: map[string]bool{"all": true, "destructive": true}}, lead + "remove --destructive or remove --all"},
 	}

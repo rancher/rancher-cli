@@ -1406,6 +1406,12 @@ never quoted around: the command is left out with one sentence, a left-out
 revoke keeps the command that lists tokens, and steps that depend on each
 other are left out together. `ShellQuote` stays for prose. Source scans in
 test/conformance refuse a command built any other way.
+test/conformance/quotedform_test.go also refuses a Go-quoted form (a strconv
+quoting function, or a `%q` or `%#v` verb) of a value from `ShellQuote`,
+`clierr.Rancher` or the command builder: Go quoting wraps the value in double
+quotes, where a shell expands `$` and a backquote, reads a backslash as an
+escape and keeps the single quotes of `ShellQuote` as part of the value. Such
+a value is printed with `%s`.
 
 **A server URL with an @ after the host is refused, and a cache record is served
 only through an entry whose URL can be used.** Such a URL is most likely a user

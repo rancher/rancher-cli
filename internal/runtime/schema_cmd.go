@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -276,7 +275,11 @@ func (f schemaFilters) active() bool {
 }
 
 // describe names the active flags as typed, for conflict errors and the
-// filtered TOC's header/no-matches message.
+// filtered TOC's header/no-matches message. The search text is written
+// through clierr.IDText and clierr.ShellQuote. A POSIX shell that reads the
+// pasted line passes the text to the command as one word, with no expansion.
+// A hidden character, a newline or an invalid byte in the text is written as
+// an escape, and the shell passes the escape, not the character.
 func (f schemaFilters) describe() []string {
 	var out []string
 	if f.verb != "" {
@@ -292,7 +295,7 @@ func (f schemaFilters) describe() []string {
 		out = append(out, "--mutating")
 	}
 	if f.search != "" {
-		out = append(out, "--search "+strconv.Quote(f.search))
+		out = append(out, "--search "+clierr.ShellQuote(clierr.IDText(f.search)))
 	}
 	return out
 }

@@ -16,12 +16,12 @@ stdout '(?m)^  patch: refused - read-only: the CLI only reads it, never edits it
 
 # --search finds matches and exits 0
 exec rancher schema --search kubeconfig
-stdout 'commands match --search "kubeconfig"'
+stdout 'commands match --search ''kubeconfig'''
 stdout '(?m)^  create kubeconfig - '
 
 # Zero hits print the no-matches message naming the filter, exit 0
 exec rancher schema --search zzz-no-such-term
-stdout 'no commands match --search "zzz-no-such-term"'
+stdout 'no commands match --search ''zzz-no-such-term'''
 
 # A command/kind collision resolves as the command card, footnoting
 # the way to see the kind; --kind forces the kind card
