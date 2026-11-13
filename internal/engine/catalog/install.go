@@ -97,10 +97,12 @@ func (*installCmd) Describe() runtime.Descriptor {
 			"the preview lists their paths, never the values, except the values rancher-cli adds and the registry host, which show the value sent (the host only for a chart that declares a registry path). " +
 			"As the Rancher UI does, rancher-cli adds to every chart's values global.cattle.clusterId, clusterName, systemProjectId, url, rkePathPrefix, rkeWindowsPathPrefix and windows.enabled (only with Windows workers), " +
 			"each unless the values files set that path; for a chart whose default values declare global.cattle.systemDefaultRegistry or global.systemDefaultRegistry it also sets both to one registry: " +
-			"--system-default-registry <host>, else the non-empty registry in the values files merged over the chart's default values (global.cattle.systemDefaultRegistry first), else the cluster's, else the system-default-registry setting; --no-system-default-registry sends neither. " +
+			"--system-default-registry <host>, else the non-empty registry in the values files merged over the chart's default values (global.cattle.systemDefaultRegistry first), else the cluster's (the private registry of an RKE1 cluster, which the Rancher UI reads, is not read), else the system-default-registry setting; --no-system-default-registry sends neither. " +
 			"Neither Rancher nor rancher-cli checks the values against the chart's values schema (Helm does, in the pod) or the chart's signature. " +
 			"Refused: a chart that names another chart to install first (catalog.cattle.io/auto-install or auto-install-gvr), " +
 			"and a chart whose catalog.cattle.io/namespace, release-name, requires-gvr or permits-os annotation the target does not meet. " +
+			"There is no upgrade: uninstall the release and install it again. The namespace must exist; the Rancher UI creates it when it does not exist. " +
+			"It creates no image pull secret for a repo such as SUSE Application Collection. " +
 			"--helm-wait (default true; --helm-wait=false sends false) makes Helm wait for the chart's resources; " +
 			"--helm-timeout (default 10m, at least 1s, at most 15m) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. " +
 			"Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. " +

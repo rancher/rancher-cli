@@ -1128,9 +1128,13 @@ fields; credential fields are always rejected. Multi-pool node-driver clusters
 go through `create resource -f`.
 
 Imported and custom clusters need no machine config: `create cluster
-<name> --import` or `--custom`. Custom-cluster nodes join with the
-registration commands that `inspect cluster <name> --registration`
-fetches.
+<name> --import` or `--custom`. A custom cluster gets its nodes from the node
+commands (`nodeCommand`, `insecureNodeCommand`) that `inspect cluster <name>
+--registration` fetches. Those commands carry no role flag, and run as printed
+they stop with `You must select at least one role.` Add at least one role flag
+(`--etcd`, `--controlplane`, `--worker`; the script also takes `--all-roles`,
+and `--no-roles` for a node with no role). The Rancher UI adds `--etcd
+--controlplane --worker` unless the role checkboxes are cleared.
 
 A `creatorId annotation not set` warning from `create cluster` means the
 CLI could not set the `field.cattle.io/creatorId` annotation: the
@@ -1154,6 +1158,40 @@ ID, a manifest that sets `field.cattle.io/creatorId` is refused too. A manifest
 that sets `field.cattle.io/no-creator-rbac` gets nothing added. A project
 created earlier keeps no owner binding: a cluster owner or an administrator
 grants the role.
+
+**What `create cluster` leaves to defaults.** The Rancher UI cluster form sets
+more than the CLI does for a custom or machine-pool cluster. The CLI does not
+set the items below; each stays unset unless a full manifest sent with
+`create resource -f` sets it:
+
+- Machine pool: the UI sets `drainBeforeDelete: true`. With `drainBeforeDelete`
+  unset, Rancher ignores the drain when it deletes a machine of the pool. The
+  flags set one pool (name, roles, quantity, machine config); several pools
+  need `create resource -f` with a full manifest.
+- `cni` (for RKE2, Rancher uses `calico` when nothing sets it; the UI sets the
+  default of the Kubernetes version), and for RKE2 `ingress-controller` (the UI
+  sets `traefik` on create); `chartValues` (the UI sends only the values edited
+  in the form).
+- The Pod Security Admission template: the UI sets `rancher-restricted` when a
+  compliance profile is chosen. The CLI has no flag for it.
+- Etcd snapshot retention and schedule: the UI sets both; the CLI sets neither,
+  which leaves them to RKE2's or K3s's own default.
+- `localClusterAuthEndpoint`, registries, agent environment variables, agent
+  scheduling customization and data directories: the CLI has no flag for them.
+- Cluster members: the UI adds the members chosen in its form when it creates
+  the cluster; the CLI adds none (`rancher grant` afterwards).
+- Cloud credentials: the UI creates one from its form; the CLI has no command or
+  flag to create one, and `rancher get cloud-credentials` lists the ones that
+  exist.
+- Hosted clusters: the CLI has no command or flag for hosted clusters (EKS, AKS,
+  GKE). `create machine-config` covers five node drivers (`amazonec2config`,
+  `azureconfig`, `digitaloceanconfig`, `harvesterconfig`,
+  `vmwarevsphereconfig`).
+
+Rancher creates the management cluster, its default and system projects, and the
+registration token `default-token` with its node and import commands. For a
+cluster created without the `field.cattle.io/no-creator-rbac` annotation it
+also creates the creator's owner binding on the cluster.
 
 ## Installing and uninstalling apps
 
@@ -1274,6 +1312,10 @@ to one registry value, the first of:
 4. the `system-default-registry` Setting: its value, else its default (which can
    be `""`).
 
+For the registry, the private registry of an RKE1 cluster
+(`rancherKubernetesEngineConfig.privateRegistries`) is not read, which the
+Rancher UI does read.
+
 `--no-system-default-registry` sends neither path, also when a values file sets
 one; the preview then warns. The two flags together, and either flag on a chart
 that declares neither path, are `VALIDATION`; `--system-default-registry` is also
@@ -1326,6 +1368,24 @@ chart signature.
 kept history, and the preview says so. When the chart installed another chart
 with it, a warning names that chart and the command that lists the apps to find
 it; the other chart stays installed.
+
+**What `app install` does not do.** The Rancher UI does more in one install:
+
+- Upgrade. The UI sends upgrade options (`force`, `historyMax`,
+  `cleanupOnFail`, `resetValues`) and the server has an upgrade action, but the
+  CLI has `app install` and `app uninstall` only. To change a release,
+  uninstall it and install it again; `app install` refuses a release name that
+  already has an App (`CONFLICT`).
+- A chart that names another chart to install first (rancher-monitoring is an
+  example). The UI installs the dependency chart in the same request, in the
+  same namespace, with the main chart's `global` values. `app install` refuses
+  such a chart; install it from the Rancher UI.
+- The namespace. The CLI refuses a namespace that does not exist, before it
+  sends anything; the UI creates the namespace when it does not exist.
+- Pull secrets. For a repo with `defaultImagePullSecrets`, the UI offers a pull
+  secret and sets `global.imagePullSecrets` to the one chosen; for a SUSE
+  Application Collection repo it can create the secret from the repo's
+  credentials. The CLI creates none.
 
 **Helm options.** `--helm-wait` makes Helm wait for the chart's resources
 (default true; `--helm-wait=false` sends false). `--helm-timeout` is a
