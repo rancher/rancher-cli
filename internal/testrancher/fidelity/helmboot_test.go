@@ -323,7 +323,7 @@ func TestHelmCheckStopsBeforeTheLock(t *testing.T) {
 		s.helm.files["k3s_version"] = "k3s version v1.36.3+k3s1 (0000000)\n"
 		s.slotScript()
 		res := s.run()
-		stopsBeforeTheLock(t, s, res, "error: "+s.helm.oracleImage+" embeds k3s v1.36.3-k3s1, but the k3s image of the node container is tagged v1.36.2-k3s1;")
+		stopsBeforeTheLock(t, s, res, "error: "+s.helm.oracleImage+" embeds k3s v1.36.3-k3s1, but the k3s image of the node container is tagged "+imageTag(k3sPin)+";")
 		assert.Contains(t, res.log, "run --rm --entrypoint k3s "+s.helm.oracleImage+" --version")
 	})
 	t.Run("image whose k3s version line names no version", func(t *testing.T) {

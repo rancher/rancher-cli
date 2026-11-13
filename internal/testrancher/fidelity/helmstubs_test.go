@@ -318,6 +318,13 @@ func chartArchive(t *testing.T, appVersion, assets string) []byte {
 	return buf.Bytes()
 }
 
+// imageTag returns the tag of an image reference: the text after the last
+// colon of the part before any @digest.
+func imageTag(ref string) string {
+	name, _, _ := strings.Cut(ref, "@")
+	return name[strings.LastIndex(name, ":")+1:]
+}
+
 // installHelmDocker puts the helm docker stub in place of the plain one and
 // creates the files it returns from with the defaults of a healthy boot of
 // the pinned image: a Rancher pod that runs it, a k3s binary that matches the
@@ -329,7 +336,10 @@ func (s *scenario) installHelmDocker() *helmFixture {
 	testfs.WriteExecutable(s.t, filepath.Join(s.stubDir, "docker"), []byte(helmDockerStubScript))
 	f.files["ids"] = ""
 	f.files["pull_fail"] = ""
-	f.files["k3s_version"] = "k3s version v1.36.2+k3s1 (0000000)\ngo version go1.24.0\n"
+	pinTag := imageTag(scriptLiteral(s.t, "HELMCHECK_LOCAL_K3S_IMAGE"))
+	i := strings.LastIndex(pinTag, "-k3s")
+	require.GreaterOrEqual(s.t, i, 0, "the k3s pin tag %q has no -k3s part", pinTag)
+	f.files["k3s_version"] = "k3s version " + pinTag[:i] + "+k3s" + pinTag[i+len("-k3s"):] + " (0000000)\ngo version go1.24.0\n"
 	f.files["cm_imageids"] = "quay.io/jetstack/cert-manager-controller@sha256:" + strings.Repeat("c", 64) + "\n" +
 		"quay.io/jetstack/cert-manager-cainjector@sha256:" + strings.Repeat("d", 64) + "\n" +
 		"quay.io/jetstack/cert-manager-webhook@sha256:" + strings.Repeat("e", 64) + "\n"

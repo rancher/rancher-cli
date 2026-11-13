@@ -23,7 +23,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # The upcoming-minor oracle uses the container boot unless
 # E2E_FIDELITY_UPCOMING_BOOT=helm, which boots rancher/rancher-server from its
 # chart in a node container.
-ORACLE_IMAGE="rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea"
+ORACLE_IMAGE="rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b"
 ORACLE_BOOT="container"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
 PRIME_ORACLE_BOOT="container"
@@ -31,8 +31,8 @@ PRIME_ORACLE_BOOT="container"
 # compares it with the goldens recorded from the same image under container.
 # Its chart is the Rancher chart of the same version as ORACLE_IMAGE's tag; its
 # node container runs the k3s the image embeds.
-HELMCHECK_CHART="https://releases.rancher.com/server-charts/latest/rancher-2.15.2.tgz@sha256:855cb9be954f65a31b9a8c77f7aebce125c2d7797425257d21d35e3380816ac8"
-HELMCHECK_LOCAL_K3S_IMAGE="rancher/k3s:v1.36.2-k3s1@sha256:6a47cea22c4b834d4ba72c89d291696b79ebe406251f90b446e4dff03513dd87"
+HELMCHECK_CHART="https://releases.rancher.com/server-charts/latest/rancher-2.15.3.tgz@sha256:343888c66421a9f5666b562cdfeca751d63da994edbe7b1b36752f8ffcf5ecd4"
+HELMCHECK_LOCAL_K3S_IMAGE="rancher/k3s:v1.36.5-k3s1@sha256:057cfd5a9d51b89f1f0ee139c28d5d5fdd5aa7ddeac2742a0ba90c6dbc0329bb"
 # CERT_MANAGER_MANIFEST is the cert-manager release every helm boot applies
 # before the chart; bumped through a reviewed change like the pins above.
 CERT_MANAGER_MANIFEST="https://github.com/cert-manager/cert-manager/releases/download/v1.15.3/cert-manager.yaml@sha256:10b0b5ea875cd62c8ce39b4b6b488f032788cc6aa7d1c5437c4ff38d8304c2c0"

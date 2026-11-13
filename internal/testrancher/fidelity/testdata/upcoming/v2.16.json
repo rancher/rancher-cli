@@ -435,131 +435,6 @@
       "ruling": "expected-at-ga"
     },
     {
-      "probe": "access-downstream/owner-steve",
-      "pointer": "/own-cluster-namespaces/body/count",
-      "want": 8,
-      "got": 7,
-      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
-      "cause": "rancher",
-      "ruling": "newer-patch"
-    },
-    {
-      "probe": "access-downstream/owner-steve",
-      "pointer": "/own-cluster-namespaces/body/data",
-      "want": [
-        {
-          "apiVersion": "v1",
-          "id": "cattle-fleet-system",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "cattle-impersonation-system",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "cattle-system",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "default",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "kube-node-lease",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "kube-public",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "kube-system",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "local",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        }
-      ],
-      "got": [
-        {
-          "apiVersion": "v1",
-          "id": "cattle-fleet-system",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "cattle-impersonation-system",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "cattle-system",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "default",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "kube-node-lease",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "kube-public",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        },
-        {
-          "apiVersion": "v1",
-          "id": "kube-system",
-          "kind": "Namespace",
-          "spec": "\u003cspec\u003e",
-          "type": "namespace"
-        }
-      ],
-      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
-      "cause": "rancher",
-      "ruling": "newer-patch"
-    },
-    {
       "probe": "access/explain-management-shapes",
       "pointer": "/roletemplate-edit/body/metadata/labels/management.cattle.io~1roletemplate-aggregation",
       "got": "true",
@@ -596,7 +471,7 @@
     {
       "probe": "capability/edition-and-oidc-provider-classification",
       "pointer": "/edition/body/GitCommit",
-      "want": "272e65580ca92b9dc51e0f0f0f9ae9d6d356e3b8",
+      "want": "99ab89e90bf1d048f3f7acf7f05b132bf5a23a8e",
       "gotVaries": true,
       "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
       "cause": "rancher",
@@ -605,7 +480,7 @@
     {
       "probe": "capability/edition-and-oidc-provider-classification",
       "pointer": "/edition/body/Version",
-      "want": "v2.15.2",
+      "want": "v2.15.3",
       "gotVaries": true,
       "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
       "cause": "rancher",

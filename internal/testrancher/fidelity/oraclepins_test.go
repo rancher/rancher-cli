@@ -199,11 +199,13 @@ func TestPinGuardMutations(t *testing.T) {
 		}},
 		{"d", func(t *testing.T, script string) string {
 			t.Helper()
-			return replaceLine(t, script, `ORACLE_IMAGE=`, `ORACLE_IMAGE="rancher/rancher-server:v2.15.2@sha256:`+sampleHex+`"`)
+			tag := imageTag(parseScriptImagePin(t, script, "ORACLE_IMAGE"))
+			return replaceLine(t, script, `ORACLE_IMAGE=`, `ORACLE_IMAGE="rancher/rancher-server:`+tag+`@sha256:`+sampleHex+`"`)
 		}},
 		{"e1", func(t *testing.T, script string) string {
 			t.Helper()
-			return replaceLine(t, script, `HELMCHECK_CHART=`, `HELMCHECK_CHART="https://releases.rancher.com/server-charts/latest/rancher-2.15.2.tgz"`)
+			chartURL, _, _ := strings.Cut(parseScriptImagePin(t, script, "HELMCHECK_CHART"), "@")
+			return replaceLine(t, script, `HELMCHECK_CHART=`, `HELMCHECK_CHART="`+chartURL+`"`)
 		}},
 		{"e2", func(t *testing.T, script string) string {
 			t.Helper()
@@ -215,7 +217,7 @@ func TestPinGuardMutations(t *testing.T) {
 		}},
 		{"e4", func(t *testing.T, script string) string {
 			t.Helper()
-			return replaceLine(t, script, `HELMCHECK_CHART=`, `HELMCHECK_CHART="https://releases.rancher.com/server-charts/latest/rancher-2.15.3.tgz@sha256:`+sampleHex+`"`)
+			return replaceLine(t, script, `HELMCHECK_CHART=`, `HELMCHECK_CHART="https://releases.rancher.com/server-charts/latest/rancher-1.0.0.tgz@sha256:`+sampleHex+`"`)
 		}},
 	}
 	script := realScriptText(t)
