@@ -185,7 +185,7 @@ func TestChartSourceOffersNothingWithoutWhatItNeeds(t *testing.T) {
 		assert.Empty(t, ls.Requested())
 	})
 	for _, repo := range []string{"A", "a_b", "a."} {
-		t.Run("a repo that is no ClusterRepo name "+repo, func(t *testing.T) {
+		t.Run("a repo that is not a ClusterRepo name "+repo, func(t *testing.T) {
 			t.Parallel()
 			for name, src := range map[string]completion.Source{"chart": ChartSource(InstallCommand), "version": VersionSource(InstallCommand)} {
 				ls := chartServer(t, enabledRepo)

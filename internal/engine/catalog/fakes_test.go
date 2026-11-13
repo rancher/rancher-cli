@@ -118,12 +118,9 @@ type fakeClients struct {
 	resolve map[string]string
 	cluster *fakeCluster
 	asked   []string
-	// resolved is every name ResolveCluster was asked for.
-	resolved []string
 }
 
 func (f *fakeClients) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
-	f.resolved = append(f.resolved, nameOrID)
 	if id, ok := f.resolve[nameOrID]; ok {
 		return id, nil
 	}

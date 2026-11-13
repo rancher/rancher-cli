@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -37,7 +38,8 @@ func takesRepo(d runtime.Descriptor) bool {
 
 // repoFlagFailures drives every command in cmds that has a --repo flag, and
 // is not in allow, through run with line(descriptor) as its command line. It
-// returns the names of the commands it drove and one text per failure: a bad
+// returns the names of the commands it drove and one text per failure (an
+// allowlist entry that names no command with a --repo flag is one too): a bad
 // value must give VALIDATION, exit 2, a message that names --repo and says it
 // is not a ClusterRepo name, and no request; a ClusterRepo name must send a
 // request, so that "no request" shows the check and not a command that sends
@@ -73,6 +75,14 @@ func repoFlagFailures(cmds []runtime.Command, allow map[string]string, line func
 		}
 		if r := run(withRepo(base, "rancher-charts")...); len(r.requests) == 0 {
 			failures = append(failures, fmt.Sprintf("%s: --repo rancher-charts sent no request, so the zero requests of a bad value show nothing", d.Name))
+		}
+	}
+	for name := range allow {
+		if !slices.ContainsFunc(cmds, func(c runtime.Command) bool {
+			d := c.Describe()
+			return d.Name == name && takesRepo(d)
+		}) {
+			failures = append(failures, fmt.Sprintf("allowlist entry %q names no command with a --repo flag", name))
 		}
 	}
 	return driven, failures
@@ -125,19 +135,87 @@ func (fakeRepoCommand) Describe() runtime.Descriptor {
 	return runtime.Descriptor{Name: "fake", Flags: []runtime.ArgSpec{{Name: "repo", Type: "string"}}}
 }
 
-// TestRepoFlagGuardCatchesACommandWithoutTheCheck asserts the guard reports a
-// failure for a new command with a --repo flag that sends a request and
-// succeeds for a bad value, and none when the command is on the allowlist.
-func TestRepoFlagGuardCatchesACommandWithoutTheCheck(t *testing.T) {
+// stubRefusal is the run of a command that refuses with code and message,
+// exit 2, and sends nothing.
+func stubRefusal(code, message string) contractRun {
+	r := contractRun{exit: validationExit}
+	body, err := json.Marshal(map[string]string{"code": code, "message": message})
+	if err != nil {
+		panic(err)
+	}
+	if err := json.Unmarshal(body, &r.err); err != nil {
+		panic(err)
+	}
+	return r
+}
+
+// repoValueOf is the value after --repo in args.
+func repoValueOf(args []string) string {
+	i := slices.Index(args, "--repo")
+	if i < 0 || i+1 >= len(args) {
+		return ""
+	}
+	return args[i+1]
+}
+
+// TestRepoFlagGuardCatchesWhatItMustCatch asserts, with stub runners, that
+// the guard reports a failure for each way a command can miss the rule, and
+// none for a command that meets it.
+func TestRepoFlagGuardCatchesWhatItMustCatch(t *testing.T) {
+	const refusalText = "--repo 'x' is not a ClusterRepo name: details"
 	cmds := []runtime.Command{fakeRepoCommand{}}
 	line := func(d runtime.Descriptor) []string { return []string{d.Name} }
-	run := func(...string) contractRun { return contractRun{requests: []string{"GET /v1/x"}} }
+	sends := contractRun{requests: []string{"GET /v1/x"}}
 
-	driven, failures := repoFlagFailures(cmds, nil, line, run)
-	assert.Equal(t, []string{"fake"}, driven)
-	assert.NotEmpty(t, failures)
-
-	driven, failures = repoFlagFailures(cmds, map[string]string{"fake": "takes a URL"}, line, run)
-	assert.Empty(t, driven)
-	assert.Empty(t, failures)
+	t.Run("no check: the command sends a request and succeeds", func(t *testing.T) {
+		driven, failures := repoFlagFailures(cmds, nil, line, func(...string) contractRun { return sends })
+		assert.Equal(t, []string{"fake"}, driven)
+		require.NotEmpty(t, failures)
+		assert.Contains(t, failures[0], "gave no error envelope")
+		assert.True(t, slices.ContainsFunc(failures, func(f string) bool { return strings.Contains(f, "sent 1 requests") }), "%v", failures)
+	})
+	t.Run("another validation refusal does not pass", func(t *testing.T) {
+		_, failures := repoFlagFailures(cmds, nil, line, func(args ...string) contractRun {
+			if repoValueOf(args) == "rancher-charts" {
+				return sends
+			}
+			return stubRefusal("VALIDATION", "--cluster is required")
+		})
+		require.Len(t, failures, len(badRepoValues))
+		for _, f := range failures {
+			assert.Contains(t, f, "another VALIDATION refusal")
+		}
+	})
+	t.Run("a command that sends nothing for a ClusterRepo name shows nothing", func(t *testing.T) {
+		_, failures := repoFlagFailures(cmds, nil, line, func(...string) contractRun {
+			return stubRefusal("VALIDATION", refusalText)
+		})
+		require.Len(t, failures, 1)
+		assert.Contains(t, failures[0], "--repo rancher-charts sent no request")
+	})
+	t.Run("a command that meets the rule passes", func(t *testing.T) {
+		driven, failures := repoFlagFailures(cmds, nil, line, func(args ...string) contractRun {
+			if repoValueOf(args) == "rancher-charts" {
+				return sends
+			}
+			return stubRefusal("VALIDATION", refusalText)
+		})
+		assert.Equal(t, []string{"fake"}, driven)
+		assert.Empty(t, failures)
+	})
+	t.Run("an allowlisted command is not driven", func(t *testing.T) {
+		driven, failures := repoFlagFailures(cmds, map[string]string{"fake": "takes a URL"}, line, func(...string) contractRun { return sends })
+		assert.Empty(t, driven)
+		assert.Empty(t, failures)
+	})
+	t.Run("an allowlist entry for no command with the flag fails", func(t *testing.T) {
+		_, failures := repoFlagFailures(cmds, map[string]string{"gone": "no such command"}, line, func(args ...string) contractRun {
+			if repoValueOf(args) == "rancher-charts" {
+				return sends
+			}
+			return stubRefusal("VALIDATION", refusalText)
+		})
+		require.Len(t, failures, 1)
+		assert.Contains(t, failures[0], `allowlist entry "gone"`)
+	})
 }
