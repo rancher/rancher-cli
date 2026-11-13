@@ -39,11 +39,11 @@ func takesRepo(d runtime.Descriptor) bool {
 // repoFlagFailures drives every command in cmds that has a --repo flag, and
 // is not in allow, through run with line(descriptor) as its command line. It
 // returns the names of the commands it drove and one text per failure (an
-// allowlist entry that names no command with a --repo flag is one too): a bad
-// value must give VALIDATION, exit 2, a message that names --repo and says it
-// is not a ClusterRepo name, and no request; a ClusterRepo name must send a
-// request, so that "no request" shows the check and not a command that sends
-// nothing.
+// allowlist entry that names no command with a --repo flag is one too). A bad
+// value must give VALIDATION, exit code 2, a message that names --repo and
+// says it is not a ClusterRepo name, and no request. A ClusterRepo name must
+// send a request: otherwise zero requests for a bad value would not prove the
+// check ran.
 func repoFlagFailures(cmds []runtime.Command, allow map[string]string, line func(runtime.Descriptor) []string, run func(args ...string) contractRun) (driven, failures []string) {
 	for _, c := range cmds {
 		d := c.Describe()
@@ -74,7 +74,7 @@ func repoFlagFailures(cmds []runtime.Command, allow map[string]string, line func
 			}
 		}
 		if r := run(withRepo(base, "rancher-charts")...); len(r.requests) == 0 {
-			failures = append(failures, fmt.Sprintf("%s: --repo rancher-charts sent no request, so the zero requests of a bad value show nothing", d.Name))
+			failures = append(failures, fmt.Sprintf("%s: --repo rancher-charts sent no request; zero requests for a bad value do not prove the check ran", d.Name))
 		}
 	}
 	for name := range allow {
@@ -135,8 +135,8 @@ func (fakeRepoCommand) Describe() runtime.Descriptor {
 	return runtime.Descriptor{Name: "fake", Flags: []runtime.ArgSpec{{Name: "repo", Type: "string"}}}
 }
 
-// stubRefusal is the run of a command that refuses with code and message,
-// exits with exit and sends nothing.
+// stubRefusal returns the result of a command that refuses with the given code
+// and message, ends with the given exit code and sends no request.
 func stubRefusal(t *testing.T, code, message string, exit int) contractRun {
 	t.Helper()
 	r := contractRun{exit: exit}
@@ -171,7 +171,7 @@ func TestRepoFlagGuardCatchesWhatItMustCatch(t *testing.T) {
 		assert.Contains(t, failures[0], "gave no error envelope")
 		assert.True(t, slices.ContainsFunc(failures, func(f string) bool { return strings.Contains(f, "sent 1 requests") }), "%v", failures)
 	})
-	t.Run("another validation refusal does not pass", func(t *testing.T) {
+	t.Run("a VALIDATION refusal with another message is a failure", func(t *testing.T) {
 		_, failures := repoFlagFailures(cmds, nil, line, func(args ...string) contractRun {
 			if repoValueOf(args) == "rancher-charts" {
 				return sends
@@ -183,7 +183,7 @@ func TestRepoFlagGuardCatchesWhatItMustCatch(t *testing.T) {
 			assert.Contains(t, f, "another VALIDATION refusal")
 		}
 	})
-	t.Run("another code does not pass", func(t *testing.T) {
+	t.Run("a refusal with another code is a failure", func(t *testing.T) {
 		_, failures := repoFlagFailures(cmds, nil, line, func(args ...string) contractRun {
 			if repoValueOf(args) == "rancher-charts" {
 				return sends
@@ -195,7 +195,7 @@ func TestRepoFlagGuardCatchesWhatItMustCatch(t *testing.T) {
 			assert.Contains(t, f, "gave NOT_FOUND, want VALIDATION")
 		}
 	})
-	t.Run("another exit code does not pass", func(t *testing.T) {
+	t.Run("a refusal with another exit code is a failure", func(t *testing.T) {
 		_, failures := repoFlagFailures(cmds, nil, line, func(args ...string) contractRun {
 			if repoValueOf(args) == "rancher-charts" {
 				return sends
@@ -207,7 +207,7 @@ func TestRepoFlagGuardCatchesWhatItMustCatch(t *testing.T) {
 			assert.Contains(t, f, "exit 1, want 2")
 		}
 	})
-	t.Run("a command that sends nothing for a ClusterRepo name shows nothing", func(t *testing.T) {
+	t.Run("a command that sends no request for a ClusterRepo name is a failure", func(t *testing.T) {
 		_, failures := repoFlagFailures(cmds, nil, line, func(...string) contractRun {
 			return stubRefusal(t, "VALIDATION", refusalText, validationExit)
 		})

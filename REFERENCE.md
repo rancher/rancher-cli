@@ -772,8 +772,8 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   '<name>' is disabled`, the hint is the `get clusterrepo` command that shows
   it, and the index is not read. `--repo` therefore needs `get` on the
   ClusterRepo. A `--repo` value that is not a ClusterRepo name (`a/b`, for
-  example) is `VALIDATION` before any request; `app install --repo` refuses it
-  the same way.
+  example) is refused with `VALIDATION` before any request; `app install --repo`
+  refuses it the same way. A ClusterRepo name is a DNS subdomain name.
   Without `--repo`, a ClusterRepo whose index cannot be read (for example one
   that answers 503, or one with no stored index yet, which answers 500) is left
   out and named in one warning, and the exit code is 0; with `--repo` the same

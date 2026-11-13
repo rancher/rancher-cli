@@ -27,10 +27,11 @@ func TestClusterRepoNameTable(t *testing.T) {
 	}
 }
 
-// TestClusterRepoNameCorpus is a smoke check over generated names built from
-// the accepted alphabet: a name that starts and ends with a letter or digit
-// and has no empty part between dots is accepted.
-func TestClusterRepoNameCorpus(t *testing.T) {
+// TestClusterRepoNameGeneratedNames asserts that generated names are accepted
+// when every part between dots is made of lowercase letters, digits and "-"
+// and starts and ends with a letter or digit, and that the same name with an
+// upper case letter or a slash added is refused.
+func TestClusterRepoNameGeneratedNames(t *testing.T) {
 	t.Parallel()
 	rng := rand.New(rand.NewPCG(1, 2))
 	const alnum = "abcdefghijklmnopqrstuvwxyz0123456789"

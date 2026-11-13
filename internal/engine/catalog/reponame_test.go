@@ -64,7 +64,7 @@ func TestChartsRepoNameMessage(t *testing.T) {
 	t.Parallel()
 	_, err := runCharts(t, &fakeClients{cluster: &fakeCluster{}}, newFakeRoot(nil), input{s: map[string]string{"cluster": "c-test", "repo": "a/b"}})
 	ce := clierr.From(err)
-	assert.Equal(t, `--repo 'a/b' is not a ClusterRepo name: a ClusterRepo name has at most 253 characters of lowercase letters, digits, "-" and ".", each part between dots starting and ending with a letter or digit`, ce.Message)
+	assert.Equal(t, `--repo 'a/b' is not a ClusterRepo name: a ClusterRepo name is a DNS subdomain name, at most 253 characters of lowercase letters, digits, "-" and ".", each part between dots starting and ending with a letter or digit`, ce.Message)
 	assert.Empty(t, ce.Hint)
 }
 
@@ -139,6 +139,6 @@ func TestInstallRepoNameMessage(t *testing.T) {
 	t.Parallel()
 	_, _, err := newTestInstall(newAppFake(t), nil).Plan(t.Context(), installInput(func(in *appInput) { in.s[flagRepo] = "a/b" }))
 	ce := clierr.From(err)
-	assert.Equal(t, `--repo 'a/b' is not a ClusterRepo name: a ClusterRepo name has at most 253 characters of lowercase letters, digits, "-" and ".", each part between dots starting and ending with a letter or digit`, ce.Message)
+	assert.Equal(t, `--repo 'a/b' is not a ClusterRepo name: a ClusterRepo name is a DNS subdomain name, at most 253 characters of lowercase letters, digits, "-" and ".", each part between dots starting and ending with a letter or digit`, ce.Message)
 	assert.Empty(t, ce.Hint)
 }

@@ -412,8 +412,9 @@ func TestChartsRepoSuggestionsAreAccepted(t *testing.T) {
 }
 
 // TestRepoSuggestionsAreClusterRepoNames asserts every suggestion of --repo,
-// for charts and for app install, passes the name rule the commands apply
-// before any request, so the command never refuses what completion offers.
+// for charts and for app install, is a ClusterRepo name. The commands refuse
+// any other value before any request, and never refuse what completion
+// offers.
 func TestRepoSuggestionsAreClusterRepoNames(t *testing.T) {
 	s := newChartsServer(t, true)
 	chartsFixture(t, s.srv)

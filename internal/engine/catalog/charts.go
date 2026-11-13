@@ -32,7 +32,7 @@ func validateRepoName(v string) error {
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"--%s %s is not a ClusterRepo name: a ClusterRepo name has at most 253 characters of lowercase letters, digits, \"-\" and \".\", "+
+		"--%s %s is not a ClusterRepo name: a ClusterRepo name is a DNS subdomain name, at most 253 characters of lowercase letters, digits, \"-\" and \".\", "+
 			"each part between dots starting and ending with a letter or digit", flagRepo, clierr.ShellQuote(clierr.IDText(v))))
 }
 
