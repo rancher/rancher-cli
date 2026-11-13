@@ -1527,6 +1527,22 @@ applies - this is Rancher behavior, not a CLI choice. For both commands,
 partial failures leave already-created (or already-deleted) bindings in
 place. Omitting `--role` on `revoke` revokes every role at the scope.
 
+When Rancher refuses the read of a user (you may create role bindings but not read users, for
+example as a project owner), `grant` and `revoke` warn and use the subject exactly as typed if it is
+`local://<id>` or an id that looks like `u-lpnxw`: `u-`, `m-` or `user-` followed by at least five
+characters from the set Kubernetes uses to generate names (`bcdfghjklmnpqrstvwxz2456789`). `grant`
+then sends `userName` with that id, and `userPrincipalName` too for `local://<id>`; for an id
+without `local://` it sends no `userPrincipalName`, and Rancher fills that in when the user exists.
+The preview shows the warning, and the server-side dry-run checks only that Rancher accepts the
+create. If no user has that id, the create still succeeds and the binding has no effect. A username,
+a display name or an external principal can be found only by reading users: the command fails with
+Rancher's refusal and advice to pass the user id as `local://<id>`; an administrator can list ids
+with `rancher get users`. `grant` also continues, with a warning, when Rancher refuses the read of
+the existing bindings; `grant` then cannot check whether the subject already has the role. `revoke`
+must list the bindings, and it fails when Rancher refuses the read of them. It matches `userName`
+equal to the id, and `userPrincipalName` equal to the `local://<id>` you typed; a binding that has
+only `userPrincipalName` is not found when you pass an id without `local://`.
+
 `access can` and `access list` ask the cluster's own authorizer through
 the Rancher proxy (SelfSubjectAccessReview, SubjectAccessReview,
 SelfSubjectRulesReview); nothing is inferred from bindings. For

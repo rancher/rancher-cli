@@ -86,7 +86,10 @@ func (revokeCmd) Describe() runtime.Descriptor {
 		Desc: "Finds the subject's bindings at the scope (only those for --role when it is given), " +
 			"checks each deletion with a server-side dry-run, and previews deleting them one at a time. " +
 			"List the available roles with: `rancher get roletemplates` (project and cluster scopes) " +
-			"or `rancher get globalroles` (global scope).",
+			"or `rancher get globalroles` (global scope). " +
+			"When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw " +
+			"(u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). " +
+			"A username, a display name or an external principal can be found only by reading users: pass the user id instead.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
 		Flags: []runtime.ArgSpec{
@@ -130,6 +133,10 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	rs, err := ResolveSubject(ctx, c.clients, sub)
 	if err != nil {
 		return safety.Effect{}, nil, err
+	}
+	var unreadWarnings []string
+	if rs.UserReadRefused {
+		unreadWarnings = append(unreadWarnings, userReadRefusedWarning(rs))
 	}
 
 	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
@@ -200,20 +207,20 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 		if len(heldCands) > 0 {
 			e = e.WithCandidates(heldCands)
 		}
-		return safety.Effect{}, nil, e
+		return safety.Effect{}, nil, e.WithWarnings(unreadWarnings...)
 	}
 
 	// Admission preview: per-object dry-run delete with rv preconditions.
 	for _, name := range names {
 		if err := client.Delete(ctx, bindKind.GVR, scope.NS, name, rvByName[name], true); err != nil {
-			return safety.Effect{}, nil, err
+			return safety.Effect{}, nil, errorWithWarnings(err, unreadWarnings)
 		}
 	}
 
 	target := bindKind.GVR.Resource + "/" + names[0]
 	displayName := names[0]
 	var rv string
-	var warnings []string
+	warnings := unreadWarnings
 	if len(names) > 1 {
 		target = fmt.Sprintf("%s (%d) for %s", bindKind.GVR.Resource, len(names), args[0])
 		displayName = fmt.Sprintf("(%d) for %s", len(names), args[0])

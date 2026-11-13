@@ -448,7 +448,9 @@ func TestGrantDuplicateAliasConflict(t *testing.T) {
 	assert.Contains(t, ce.Hint, "okta_user://alice")
 }
 
-func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
+// TestGrantDuplicateForbiddenDegrades asserts a refused list of the existing
+// bindings skips the duplicate check: the create goes, with one warning.
+func TestGrantDuplicateForbiddenDegrades(t *testing.T) {
 	t.Parallel()
 	forbidden := clierr.New(clierr.CodeRBAC, "projectroletemplatebindings is forbidden")
 	client := &fakeClient{
@@ -461,6 +463,37 @@ func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
 		listErrByGVR: map[string]error{
 			"projectroletemplatebindings": forbidden,
 		},
+		allowCreate: true,
+	}
+	cmd := NewGrant(fakeFactory{c: client})
+
+	eff, exec, err := planGrant(t, cmd, stubInput{
+		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "project-member"},
+		args:    []string{"u-abc"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+	assert.Equal(t, []string{bindingListRefusedWarning}, eff.Warnings)
+	require.NotNil(t, client.created, "the dry-run create is the check")
+}
+
+// TestGrantDuplicateOtherListErrorStaysFatal asserts only a refused list
+// skips the duplicate check: any other failure of the list fails the grant
+// before a create.
+func TestGrantDuplicateOtherListErrorStaysFatal(t *testing.T) {
+	t.Parallel()
+	failure := clierr.New(clierr.CodeGeneric, "the server answered 500")
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		gets: map[string]*unstructured.Unstructured{
+			"c-x/p-x":         projectGetObj("p-x"),
+			"/project-member": roleGet("project-member"),
+		},
+		listsByGVR: map[string]*unstructured.UnstructuredList{},
+		listErrByGVR: map[string]error{
+			"projectroletemplatebindings": failure,
+		},
+		allowCreate: true,
 	}
 	cmd := NewGrant(fakeFactory{c: client})
 
@@ -470,8 +503,8 @@ func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
 	})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeRBAC, ce.Code)
-	assert.Nil(t, client.created, "forbidden list must not proceed to create")
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.Nil(t, client.created, "a failed list must not proceed to create")
 }
 
 func TestGrantStaleHashIDOccupiedConflict(t *testing.T) {

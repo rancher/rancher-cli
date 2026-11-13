@@ -7110,7 +7110,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope).",
+      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope). When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw (u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). A username, a display name or an external principal can be found only by reading users: pass the user id instead.",
       "destructive": "true",
       "examples": [
         "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
@@ -11454,7 +11454,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Finds the subject's bindings at the scope (only those for --role when it is given), checks each deletion with a server-side dry-run, and previews deleting them one at a time. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope).",
+      "desc": "Finds the subject's bindings at the scope (only those for --role when it is given), checks each deletion with a server-side dry-run, and previews deleting them one at a time. List the available roles with: `rancher get roletemplates` (project and cluster scopes) or `rancher get globalroles` (global scope). When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw (u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). A username, a display name or an external principal can be found only by reading users: pass the user id instead.",
       "destructive": "true",
       "examples": [
         "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",

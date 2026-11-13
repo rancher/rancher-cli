@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -444,32 +445,119 @@ func TestResolveSubjectBareSameUserBothFields(t *testing.T) {
 	assert.Equal(t, "local://u-ops", got.Principal)
 }
 
+// TestResolveSubjectErrorPassthrough asserts a refused read that cannot
+// continue stays the RBAC error and gains the sentence that says to pass the
+// user id, and that a refused read never provisions.
 func TestResolveSubjectErrorPassthrough(t *testing.T) {
 	forbidden := clierr.New(clierr.CodeRBAC, "users is forbidden")
 	tests := []struct {
-		name string
-		sub  Subject
-		c    *fakeClient
+		name    string
+		sub     Subject
+		c       *fakeClient
+		subject string
 	}{
 		{name: "bare get forbidden", sub: Subject{Kind: SubjectUser, Bare: "u-abc"},
-			c: &fakeClient{getErrs: map[string]error{"u-abc": forbidden}}},
+			c: &fakeClient{getErrs: map[string]error{"u-abc": forbidden}}, subject: "u-abc"},
 		{name: "bare list forbidden", sub: Subject{Kind: SubjectUser, Bare: "jane"},
-			c: &fakeClient{listErr: forbidden}},
-		{name: "local get forbidden", sub: Subject{Kind: SubjectUser, Principal: "local://u-abc"},
-			c: &fakeClient{getErrs: map[string]error{"u-abc": forbidden}}},
+			c: &fakeClient{listErr: forbidden}, subject: "jane"},
 		{name: "hash get forbidden never provisions", sub: Subject{Kind: SubjectUser, Principal: "okta_user://alice"},
-			c: &fakeClient{getErrs: map[string]error{ProvisionedUserID("okta_user://alice"): forbidden}}},
+			c: &fakeClient{getErrs: map[string]error{ProvisionedUserID("okta_user://alice"): forbidden}}, subject: "okta_user://alice"},
 		{name: "principal list forbidden never provisions", sub: Subject{Kind: SubjectUser, Principal: "okta_user://alice"},
-			c: &fakeClient{listErr: forbidden}},
+			c: &fakeClient{listErr: forbidden}, subject: "okta_user://alice"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ResolveSubject(t.Context(), fakeFactory{c: tt.c}, tt.sub)
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
-			assert.Equal(t, clierr.CodeRBAC, ce.Code, "non-NOT_FOUND errors return unchanged")
+			assert.Equal(t, clierr.CodeRBAC, ce.Code, "a refused read stays the RBAC error")
+			require.ErrorContains(t, err, "users is forbidden")
+			require.ErrorContains(t, err, fmt.Sprintf("the CLI could not read users to find %q; pass the user id as local://<id> (the id is the name of the User object, for example u-lpnxw); an administrator", tt.subject))
+			assert.True(t, strings.HasSuffix(ce.Message, "an administrator can list ids with: "+clierr.Rancher+" get users"))
+			assert.Empty(t, ce.Hint)
 			assert.False(t, got.Provision)
+			assert.False(t, got.UserReadRefused)
 		})
+	}
+}
+
+// TestResolveSubjectRefusedLocalPrincipalContinues asserts a local://
+// principal whose user the server refuses to read is returned as typed with
+// UserReadRefused set.
+func TestResolveSubjectRefusedLocalPrincipalContinues(t *testing.T) {
+	t.Parallel()
+	forbidden := clierr.New(clierr.CodeRBAC, "users is forbidden")
+	c := &fakeClient{getErrs: map[string]error{"u-abc": forbidden}}
+	got, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: "local://u-abc"})
+	require.NoError(t, err)
+	assert.Equal(t, ResolvedSubject{UserID: "u-abc", Principal: "local://u-abc", UserReadRefused: true}, got)
+}
+
+// TestResolveSubjectRefusedBareIDContinues asserts a bare value shaped like a
+// generated id, whose user the server refuses to read, is returned as typed
+// with no principal.
+func TestResolveSubjectRefusedBareIDContinues(t *testing.T) {
+	t.Parallel()
+	forbidden := clierr.New(clierr.CodeRBAC, "users is forbidden")
+	c := &fakeClient{getErrs: map[string]error{"u-lpnxw": forbidden}}
+	got, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "u-lpnxw"})
+	require.NoError(t, err)
+	assert.Equal(t, ResolvedSubject{UserID: "u-lpnxw", UserReadRefused: true}, got)
+}
+
+// TestResolveSubjectRefusedOtherErrorsStayFatal asserts only an RBAC refusal
+// continues: any other failure of the read is returned unchanged.
+func TestResolveSubjectRefusedOtherErrorsStayFatal(t *testing.T) {
+	t.Parallel()
+	for _, sub := range []Subject{
+		{Kind: SubjectUser, Bare: "u-lpnxw"},
+		{Kind: SubjectUser, Principal: "local://u-lpnxw"},
+	} {
+		failure := clierr.New(clierr.CodeGeneric, "the server answered 500")
+		c := &fakeClient{getErrs: map[string]error{"u-lpnxw": failure}}
+		got, err := ResolveSubject(t.Context(), fakeFactory{c: c}, sub)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.Equal(t, "the server answered 500", ce.Message)
+		assert.False(t, got.UserReadRefused)
+	}
+}
+
+// TestResolveSubjectRefusedLocalInvalidNameFails asserts a local:// value
+// that is not a valid object name is never used as typed.
+func TestResolveSubjectRefusedLocalInvalidNameFails(t *testing.T) {
+	t.Parallel()
+	forbidden := clierr.New(clierr.CodeRBAC, "users is forbidden")
+	for _, principal := range []string{"local://Jane", "local://a/b"} {
+		id := strings.TrimPrefix(principal, "local://")
+		c := &fakeClient{getErrs: map[string]error{id: forbidden}}
+		got, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: principal})
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce, principal)
+		assert.Equal(t, clierr.CodeRBAC, ce.Code)
+		require.ErrorContains(t, err, fmt.Sprintf("the CLI could not read users to find %q", principal))
+		assert.False(t, got.UserReadRefused)
+	}
+}
+
+// TestContinuesUnreadShape asserts the values a refused read lets the command
+// go on with. The shape cannot tell a username from an id by anything but its
+// characters: the alphabet has no vowels, so look-alikes of a username fail.
+func TestContinuesUnreadShape(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"u-lpnxw", "u-ksjbl", "u-ghbw5", "m-bcdfg", "user-bcdfg", "u-bcdfghjklm"} {
+		assert.True(t, continuesUnread(id, false), id)
+	}
+	for _, id := range []string{"u-abcde", "u-abc", "user-a", "user-b", "user-alice", "u-admin", "m-smith", "jane",
+		"Jane", "u-LPNXW", "u-lpn/xw", "", strings.Repeat("u", 300),
+		"u-wx3sx2pm3y", "u-ffq6mgr5je", "u-" + strings.Repeat("b", 300)} {
+		assert.False(t, continuesUnread(id, false), id)
+	}
+	assert.True(t, continuesUnread("jane", true), "a local:// principal continues with any valid object name")
+	assert.True(t, continuesUnread("u-abc", true))
+	for _, id := range []string{"Jane", "a/b", "", strings.Repeat("u", 300)} {
+		assert.False(t, continuesUnread(id, true), id)
 	}
 }
 

@@ -39,7 +39,10 @@ func (grantCmd) Describe() runtime.Descriptor {
 			"a globalrole for global scope), finds the subject, checks that the subject does not already " +
 			"have the role there, and previews creating the binding. " +
 			"List the available roles with: `rancher get roletemplates` (project and cluster scopes) " +
-			"or `rancher get globalroles` (global scope).",
+			"or `rancher get globalroles` (global scope). " +
+			"When Rancher refuses the read of users, the command warns and uses the subject exactly as typed if it is `local://<id>` or an id that looks like u-lpnxw " +
+			"(u-, m- or user- followed by at least five characters from bcdfghjklmnpqrstvwxz2456789). " +
+			"A username, a display name or an external principal can be found only by reading users: pass the user id instead.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
 		Flags: []runtime.ArgSpec{
@@ -73,8 +76,10 @@ func (grantCmd) LiveSource() completion.Source { return complete.GrantSource() }
 // degrades on non-cancellation, non-NotFound errors - the server enforces the
 // role constraint regardless, so blocking an RBAC-restricted granter from an
 // unreadable role object would be worse than a missed client-side check. Subject
-// resolution (ResolveSubject) is fatal on any error: the binding requires a
-// resolved subject, and there is no safe fallback without one.
+// resolution (ResolveSubject) is fatal on any error, except that a user id the
+// server refuses to read is used as typed, with a warning. The duplicate
+// check degrades only when the server refuses to list the bindings, with a
+// warning; any other list error is fatal.
 func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
@@ -113,11 +118,26 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
+	var warnings []string
+	if rs.UserReadRefused {
+		warnings = append(warnings, userReadRefusedWarning(rs))
+	}
 
 	// Best-effort duplicate preflight (a check/use race is accepted).
 	list, err := client.List(ctx, bindKind.GVR, scope.NS, "")
 	if err != nil {
-		return safety.Effect{}, nil, err
+		// A caller who may create bindings but not list them (the server
+		// refused the read) continues: the server-side dry-run create is the
+		// only check. Any other failure stays fatal, and cancellation always
+		// propagates.
+		if ctx.Err() != nil {
+			return safety.Effect{}, nil, ctx.Err()
+		}
+		if !isRefusedRead(err) {
+			return safety.Effect{}, nil, err
+		}
+		warnings = append(warnings, bindingListRefusedWarning)
+		list = &unstructured.UnstructuredList{}
 	}
 	for i := range list.Items {
 		b := &list.Items[i]
@@ -169,7 +189,11 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		fields["userPrincipalName"] = rs.Principal
 	} else {
 		fields["userName"] = rs.UserID
-		fields["userPrincipalName"] = rs.Principal
+		// An id without local:// that Rancher refused to read has no principal;
+		// an empty userPrincipalName is never sent.
+		if rs.Principal != "" {
+			fields["userPrincipalName"] = rs.Principal
+		}
 	}
 
 	obj := &unstructured.Unstructured{Object: map[string]any{
@@ -191,7 +215,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	}
 	eff, exec, err := engine.PlanCreate(ctx, client, bindKind.GVR, scope.NS, obj, bindKind.Redaction(), effCluster, bindKind.Name, bindKind.K8sKind, bindKind.Sensitive)
 	if err != nil {
-		return safety.Effect{}, nil, err
+		return safety.Effect{}, nil, errorWithWarnings(err, warnings)
 	}
 	// generateName: the dry-run name is a throwaway server suffix; show
 	// the prefix pattern (same reasoning as project add-member did). The
@@ -205,8 +229,25 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 			"no user exists for principal %q; Rancher will provision user %q when the binding is created",
 			rs.Principal, ProvisionedUserID(rs.Principal)))
 	}
+	eff.Warnings = append(eff.Warnings, warnings...)
 	return eff, exec, nil
 }
+
+// errorWithWarnings returns err carrying warnings when it is a *clierr.Error,
+// so a failed dry-run still says which check the command skipped; any other
+// error is returned as it is.
+func errorWithWarnings(err error, warnings []string) error {
+	if ce, ok := errors.AsType[*clierr.Error](err); ok && len(warnings) > 0 {
+		return ce.WithWarnings(warnings...)
+	}
+	return err
+}
+
+// bindingListRefusedWarning is the preview warning for a grant when the check
+// for an existing binding was skipped because Rancher refused to list the
+// existing bindings.
+const bindingListRefusedWarning = "cannot list the existing bindings (Rancher refused the read); " +
+	"the CLI could not check whether the subject already has this role; the server-side dry-run checks only that Rancher accepts the create"
 
 // candidatesWithFallback returns every item whose hay(i) contains needle
 // (case-insensitive substring, in list order) as candidates, or, when none

@@ -2,7 +2,9 @@ package rbac
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // ResolvedSubject is the binding-ready form of a Subject.
@@ -21,6 +24,66 @@ type ResolvedSubject struct {
 	// match identity aliases of the same user.
 	PrincipalIDs []string
 	Provision    bool
+	// UserReadRefused is set when the server refused the read of the user:
+	// UserID is the value as typed, and Principal and PrincipalIDs hold
+	// nothing the server said.
+	UserReadRefused bool
+}
+
+// userIDShape is the form of the ids that generateName gives to users at
+// creation: u- and a suffix of characters from the set Kubernetes uses to
+// generate names (bcdfghjklmnpqrstvwxz2456789, no vowels); m- and user- are
+// also accepted. The id Rancher derives from an external principal (u- and ten
+// lowercase base32 characters) need not match it; pass such an id as
+// local://<id>.
+//
+// A refused read says nothing about whether a value is a user id: Rancher
+// answers 403 for a user that exists, for one that does not and for a
+// username alike. The shape, and the local:// form, decide only whether the
+// command continues with the value as typed or fails; they classify nothing,
+// and the shape cannot tell a username from an id by anything but its
+// characters. A wrong guess is a binding for a user that does not exist,
+// which the warning says; a refusal is recovered by passing local://<id>.
+var userIDShape = regexp.MustCompile(`^(u|user|m)-[bcdfghjklmnpqrstvwxz2456789]{5,}$`)
+
+// continuesUnread reports whether a user whose read was refused is used as
+// typed. id must be a valid object name; a local:// principal always
+// continues, a value without local:// only when it looks like u-lpnxw
+// (userIDShape).
+func continuesUnread(id string, isLocal bool) bool {
+	if len(validation.IsDNS1123Subdomain(id)) > 0 {
+		return false
+	}
+	return isLocal || userIDShape.MatchString(id)
+}
+
+// isRefusedRead reports whether err is the structured RBAC error of a
+// refused read.
+func isRefusedRead(err error) bool {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	return ok && ce.Code == clierr.CodeRBAC
+}
+
+// userReadRefusedWarning is the preview warning for a subject used as typed
+// because the server refused the read of the user.
+func userReadRefusedWarning(rs ResolvedSubject) string {
+	return fmt.Sprintf("cannot read user %[1]q (Rancher refused the read); using %[1]q as the user id, exactly as typed; "+
+		"the CLI could not check that a user with this id exists, and a binding for a user that does not exist has no effect; "+
+		"the CLI does not find bindings made with another principal of the same user", rs.UserID)
+}
+
+// unreadableUserError is the error for a refused read of users when the
+// subject cannot be used as typed: the server's own error with one added
+// sentence that says to pass the user id as local://<id>. Any other error is
+// returned as it is.
+func unreadableUserError(err error, subject string) error {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok || ce.Code != clierr.CodeRBAC {
+		return err
+	}
+	return ce.WithMessage(clierr.Text(
+		fmt.Sprintf("%s; the CLI could not read users to find %q; pass the user id as local://<id> (the id is the name of the User object, for example u-lpnxw); an administrator can list ids", ce.Message, subject),
+		clierr.Lead(" with: "), clierr.NewCommand("get users")))
 }
 
 // CandidateLimit is how many candidates a NOT_FOUND error lists; a longer
@@ -51,7 +114,11 @@ func preferredPrincipal(principalIDs []string) string {
 // groups pass through; bare user names resolve against existing users
 // only; fully qualified user principals resolve via deterministic-id and
 // principalIds lookups and fall through to the provisioning path when no
-// user exists. Only structured NOT_FOUND advances a lookup step.
+// user exists. Only structured NOT_FOUND advances a lookup step. When the
+// server refuses the read of a user (RBAC), a user id typed as local://<id>,
+// or a value without local:// that looks like u-lpnxw, is returned as typed
+// with UserReadRefused set; every other refused read is the RBAC error with a
+// sentence that says to pass the user id.
 func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, sub Subject) (ResolvedSubject, error) {
 	if sub.Kind == SubjectGroup {
 		return ResolvedSubject{Principal: sub.Principal}, nil
@@ -70,7 +137,10 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		}
 		obj, err := client.Get(ctx, userKind.GVR, "", id)
 		if err != nil && !clierr.IsNotFound(err) {
-			return ResolvedSubject{}, err
+			if isLocal && isRefusedRead(err) && continuesUnread(id, true) {
+				return ResolvedSubject{UserID: id, Principal: sub.Principal, UserReadRefused: true}, nil
+			}
+			return ResolvedSubject{}, unreadableUserError(err, sub.Principal)
 		}
 		if err == nil {
 			// A successful Get hit on a system user is TERMINAL for both
@@ -110,7 +180,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 
 		list, lerr := client.List(ctx, userKind.GVR, "", "")
 		if lerr != nil {
-			return ResolvedSubject{}, lerr
+			return ResolvedSubject{}, unreadableUserError(lerr, sub.Principal)
 		}
 		var owners []*unstructured.Unstructured
 		for i := range list.Items {
@@ -163,12 +233,15 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		return resolvedFromUser(obj)
 	}
 	if !clierr.IsNotFound(err) {
-		return ResolvedSubject{}, err
+		if isRefusedRead(err) && continuesUnread(sub.Bare, false) {
+			return ResolvedSubject{UserID: sub.Bare, UserReadRefused: true}, nil
+		}
+		return ResolvedSubject{}, unreadableUserError(err, sub.Bare)
 	}
 
 	list, err := client.List(ctx, userKind.GVR, "", "")
 	if err != nil {
-		return ResolvedSubject{}, err
+		return ResolvedSubject{}, unreadableUserError(err, sub.Bare)
 	}
 	// nameMatches collects users where displayName == input OR username == input.
 	// Each list item is evaluated once, so a user whose both fields equal the

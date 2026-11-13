@@ -816,12 +816,25 @@ Never present a role list as permissions.
   disambiguates principals whose provider prefix cannot be inferred.
   Principals with no matching user trigger a provisioning warning;
   Rancher auto-creates the user when the binding applies. Dry-run/apply --yes.
+  When Rancher refuses the read of users (a project owner, for example), the CLI
+  warns and uses the subject exactly as typed if it is `local://<id>` or an id
+  that looks like `u-lpnxw` (`u-`, `m-` or `user-` followed by at least five
+  characters from `bcdfghjklmnpqrstvwxz2456789`). The server-side dry-run checks
+  only that Rancher accepts the create: if no user has that id, the create still
+  succeeds and the binding has no effect. A username, a display name or an
+  external principal then fails: pass the user id as `local://<id>`; an
+  administrator can list ids with `rancher get users`. When Rancher refuses the
+  read of the existing bindings, grant continues with a warning and does not
+  check whether the subject already has the role.
 - `rancher revoke <subject> (--project <p> --cluster <c> | --cluster <c> | --global) [--role <r>]` -
   revoke role binding(s). Omitting --role revokes every role at the scope
   (destructive, needs `--yes`). Partial failures leave already-removed
   bindings gone. Revoke removes the binding only; an auto-provisioned user
   is removed with `rancher delete user <id> --apply --yes` (destructive,
-  cascades role bindings).
+  cascades role bindings). When Rancher refuses the read of the user, revoke
+  warns and uses the id exactly as typed. It must also list the bindings (it
+  fails if Rancher refuses that), and for an id without `local://` it matches
+  `userName` only.
 - `rancher get users` hides Rancher's internal system accounts (cluster agent
   and provisioning accounts) by default, matching what Rancher itself hides;
   pass `--include-system` to see them. Cluster teardown removes its agent
