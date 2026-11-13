@@ -136,16 +136,13 @@ func (fakeRepoCommand) Describe() runtime.Descriptor {
 }
 
 // stubRefusal is the run of a command that refuses with code and message,
-// exit 2, and sends nothing.
-func stubRefusal(code, message string) contractRun {
-	r := contractRun{exit: validationExit}
+// exits with exit and sends nothing.
+func stubRefusal(t *testing.T, code, message string, exit int) contractRun {
+	t.Helper()
+	r := contractRun{exit: exit}
 	body, err := json.Marshal(map[string]string{"code": code, "message": message})
-	if err != nil {
-		panic(err)
-	}
-	if err := json.Unmarshal(body, &r.err); err != nil {
-		panic(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(body, &r.err))
 	return r
 }
 
@@ -179,16 +176,40 @@ func TestRepoFlagGuardCatchesWhatItMustCatch(t *testing.T) {
 			if repoValueOf(args) == "rancher-charts" {
 				return sends
 			}
-			return stubRefusal("VALIDATION", "--cluster is required")
+			return stubRefusal(t, "VALIDATION", "--cluster is required", validationExit)
 		})
 		require.Len(t, failures, len(badRepoValues))
 		for _, f := range failures {
 			assert.Contains(t, f, "another VALIDATION refusal")
 		}
 	})
+	t.Run("another code does not pass", func(t *testing.T) {
+		_, failures := repoFlagFailures(cmds, nil, line, func(args ...string) contractRun {
+			if repoValueOf(args) == "rancher-charts" {
+				return sends
+			}
+			return stubRefusal(t, "NOT_FOUND", refusalText, validationExit)
+		})
+		require.Len(t, failures, len(badRepoValues))
+		for _, f := range failures {
+			assert.Contains(t, f, "gave NOT_FOUND, want VALIDATION")
+		}
+	})
+	t.Run("another exit code does not pass", func(t *testing.T) {
+		_, failures := repoFlagFailures(cmds, nil, line, func(args ...string) contractRun {
+			if repoValueOf(args) == "rancher-charts" {
+				return sends
+			}
+			return stubRefusal(t, "VALIDATION", refusalText, 1)
+		})
+		require.Len(t, failures, len(badRepoValues))
+		for _, f := range failures {
+			assert.Contains(t, f, "exit 1, want 2")
+		}
+	})
 	t.Run("a command that sends nothing for a ClusterRepo name shows nothing", func(t *testing.T) {
 		_, failures := repoFlagFailures(cmds, nil, line, func(...string) contractRun {
-			return stubRefusal("VALIDATION", refusalText)
+			return stubRefusal(t, "VALIDATION", refusalText, validationExit)
 		})
 		require.Len(t, failures, 1)
 		assert.Contains(t, failures[0], "--repo rancher-charts sent no request")
@@ -198,7 +219,7 @@ func TestRepoFlagGuardCatchesWhatItMustCatch(t *testing.T) {
 			if repoValueOf(args) == "rancher-charts" {
 				return sends
 			}
-			return stubRefusal("VALIDATION", refusalText)
+			return stubRefusal(t, "VALIDATION", refusalText, validationExit)
 		})
 		assert.Equal(t, []string{"fake"}, driven)
 		assert.Empty(t, failures)
@@ -213,7 +234,7 @@ func TestRepoFlagGuardCatchesWhatItMustCatch(t *testing.T) {
 			if repoValueOf(args) == "rancher-charts" {
 				return sends
 			}
-			return stubRefusal("VALIDATION", refusalText)
+			return stubRefusal(t, "VALIDATION", refusalText, validationExit)
 		})
 		require.Len(t, failures, 1)
 		assert.Contains(t, failures[0], `allowlist entry "gone"`)
