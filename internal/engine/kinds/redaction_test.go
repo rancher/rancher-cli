@@ -85,15 +85,17 @@ func TestRowlessRedactionNeedsAReason(t *testing.T) {
 
 // TestRedactionCovers asserts the path rules: the Secret payload of a
 // Sensitive row, a RedactPaths path and everything under it, the last-applied
-// annotation of any row that hides something, and a machine config secret
-// name, each name compared with its case folded.
+// and objectset applied annotations of any row that hides something, and a
+// machine config secret name, each name compared with its case folded.
 func TestRedactionCovers(t *testing.T) {
 	t.Parallel()
 	secret, _ := Lookup("secret")
 	user, _ := Lookup("user")
 	namespace, _ := Lookup("namespace")
 	aws, _ := Lookup("amazonec2config")
+	bundle, _ := Lookup("bundle")
 	lastApplied := []string{"metadata", "annotations", LastAppliedAnnotation}
+	applied := []string{"metadata", "annotations", "objectset.rio.cattle.io/applied"}
 	for _, tc := range []struct {
 		name string
 		k    Kind
@@ -133,8 +135,55 @@ func TestRedactionCovers(t *testing.T) {
 		{"user Password", user, []string{"Password"}, true},
 		{"user PASSWORD below", user, []string{"PASSWORD", "x"}, true},
 		{"user PasswordHint", user, []string{"PasswordHint"}, false},
+		{"namespace applied", namespace, applied, false},
 	} {
 		assert.Equal(t, tc.want, tc.k.Redaction().Covers(tc.keys), tc.name)
+	}
+	for _, k := range []Kind{secret, user, aws, bundle} {
+		assert.True(t, k.Redaction().Covers(applied), k.Name+" applied")
+		assert.True(t, k.Redaction().Covers([]string{"Metadata", "Annotations", "Objectset.Rio.Cattle.Io/Applied"}), k.Name+" applied cased")
+		assert.True(t, k.Redaction().Covers(append(slices.Clone(applied), "x")), k.Name+" applied below")
+		for _, name := range []string{
+			"objectset.rio.cattle.io/id",
+			"objectset.rio.cattle.io/owner-gvk",
+			"objectset.rio.cattle.io/owner-name",
+			"objectset.rio.cattle.io/owner-namespace",
+			"objectset.rio.cattle.io/hash",
+			"objectset.rio.cattle.io/applied-by",
+		} {
+			assert.False(t, k.Redaction().Covers([]string{"metadata", "annotations", name}), k.Name+" "+name)
+		}
+	}
+}
+
+// TestEveryRowHidesTheHiddenAnnotationsWhenItHidesAnything asserts, for every
+// row and every annotation that holds a copy of the applied object, that a
+// preview redaction and a read redaction cover the annotation exactly when the
+// row hides anything, and that the list of those annotations is the two known
+// names, without duplicates, and is returned as a copy.
+func TestEveryRowHidesTheHiddenAnnotationsWhenItHidesAnything(t *testing.T) {
+	t.Parallel()
+	names := HiddenAnnotations()
+	assert.Equal(t, []string{"kubectl.kubernetes.io/last-applied-configuration", "objectset.rio.cattle.io/applied"}, names)
+	folded := map[string]bool{}
+	for _, name := range names {
+		assert.False(t, folded[strings.ToLower(name)], "%s listed twice", name)
+		folded[strings.ToLower(name)] = true
+	}
+	names[0] = "changed"
+	assert.Equal(t, LastAppliedAnnotation, HiddenAnnotations()[0], "the returned slice is a copy")
+
+	require.NotEmpty(t, All())
+	for _, k := range All() {
+		want := k.Redaction().Hides()
+		for _, name := range HiddenAnnotations() {
+			path := []string{"metadata", "annotations", name}
+			cased := []string{"METADATA", "Annotations", strings.ToUpper(name)}
+			assert.Equal(t, want, k.Redaction().Covers(path), "%s preview %s", k.Name, name)
+			assert.Equal(t, want, k.ReadRedaction().Covers(path), "%s read %s", k.Name, name)
+			assert.Equal(t, want, k.Redaction().Covers(cased), "%s preview cased %s", k.Name, name)
+			assert.Equal(t, want, k.ReadRedaction().Covers(cased), "%s read cased %s", k.Name, name)
+		}
 	}
 }
 
@@ -232,8 +281,9 @@ func TestMachineConfigSecretListsAreComplete(t *testing.T) {
 
 // TestReadRedactionKeepsOnlyASecretPayload asserts the read redaction of the
 // secret row leaves data and stringData in any letter case visible and
-// still covers the last-applied annotation, so it still hides something,
-// while the redaction of the same row for a preview covers all three.
+// still covers the last-applied and objectset applied annotations, so it
+// still hides something, while the redaction of the same row for a preview
+// covers all four.
 func TestReadRedactionKeepsOnlyASecretPayload(t *testing.T) {
 	t.Parallel()
 	secret, ok := Lookup("secret")
@@ -250,6 +300,8 @@ func TestReadRedactionKeepsOnlyASecretPayload(t *testing.T) {
 	lastApplied := []string{"metadata", "annotations", LastAppliedAnnotation}
 	assert.True(t, read.Covers(lastApplied))
 	assert.True(t, read.Covers([]string{"Metadata", "Annotations", "Kubectl.Kubernetes.io/Last-Applied-Configuration"}))
+	assert.True(t, read.Covers([]string{"metadata", "annotations", "objectset.rio.cattle.io/applied"}))
+	assert.True(t, read.Covers([]string{"Metadata", "Annotations", "Objectset.Rio.Cattle.Io/Applied"}))
 	assert.False(t, read.Covers([]string{"metadata", "annotations", "owner"}))
 	assert.False(t, read.Covers([]string{"type"}))
 	assert.Equal(t, secret.GVR, read.GVR())

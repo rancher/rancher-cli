@@ -13,14 +13,16 @@ import (
 )
 
 // TestScrubResultRemovesWhatTheRedactionCovers asserts the result scrub
-// removes the Secret payload, the last-applied annotation and a machine
-// config's secret field, in any letter case, and keeps every other entry.
+// removes the Secret payload, the last-applied and objectset applied
+// annotations and a machine config's secret field, in any letter case, and
+// keeps every other entry.
 func TestScrubResultRemovesWhatTheRedactionCovers(t *testing.T) {
 	t.Parallel()
 	annotations := func() map[string]any {
 		return map[string]any{
-			kinds.LastAppliedAnnotation: `{"data":{"k":"s3cretA"}}`,
-			"example.invalid/outside":   "outsideA",
+			kinds.LastAppliedAnnotation:       `{"data":{"k":"s3cretA"}}`,
+			"objectset.rio.cattle.io/applied": "s3cretB",
+			"example.invalid/outside":         "outsideA",
 		}
 	}
 	for name, tc := range map[string]struct {
@@ -221,14 +223,14 @@ func TestScrubResultLeavesTheOriginalObjectUnchanged(t *testing.T) {
 		"data": map[string]any{"k": "czNjcmV0QQ=="},
 		"metadata": map[string]any{
 			"name":        "s",
-			"annotations": map[string]any{kinds.LastAppliedAnnotation: "s3cretA", "keep": "v"},
+			"annotations": map[string]any{kinds.LastAppliedAnnotation: "s3cretA", "objectset.rio.cattle.io/applied": "s3cretB", "keep": "v"},
 		},
 	}
 	before := map[string]any{
 		"data": map[string]any{"k": "czNjcmV0QQ=="},
 		"metadata": map[string]any{
 			"name":        "s",
-			"annotations": map[string]any{kinds.LastAppliedAnnotation: "s3cretA", "keep": "v"},
+			"annotations": map[string]any{kinds.LastAppliedAnnotation: "s3cretA", "objectset.rio.cattle.io/applied": "s3cretB", "keep": "v"},
 		},
 	}
 	got := scrubResult(obj, rowRedaction(t, "secret"))
@@ -282,7 +284,7 @@ func TestPlanUpdateObservedResultHidesWhatThePreviewHides(t *testing.T) {
 	obj := newObj(map[string]any{
 		"apiVersion": "v1", "kind": "Secret",
 		"metadata": map[string]any{"name": "s", "namespace": "ns", "resourceVersion": "3",
-			"annotations": map[string]any{kinds.LastAppliedAnnotation: "s3cretA", "example.invalid/outside": "outsideA"}},
+			"annotations": map[string]any{kinds.LastAppliedAnnotation: "s3cretA", "objectset.rio.cattle.io/applied": "s3cretB", "example.invalid/outside": "outsideA"}},
 		"data": map[string]any{"k": "czNjcmV0QQ=="},
 	})
 	_, _, exec, err := PlanUpdateObserved(t.Context(), &obsClient{}, r.GVR(), "ns", obj, r, "c-x", "secret", "Secret", nil, true)
@@ -298,8 +300,8 @@ func TestPlanUpdateObservedResultHidesWhatThePreviewHides(t *testing.T) {
 
 // TestScrubObjectWithAReadRedactionKeepsASecretPayload asserts a read
 // redaction of the secret row leaves data and stringData in any letter case
-// and still removes the last-applied annotation, while the redaction of the
-// same row for a preview removes all three.
+// and still removes the last-applied and objectset applied annotations, while
+// the redaction of the same row for a preview removes all four.
 func TestScrubObjectWithAReadRedactionKeepsASecretPayload(t *testing.T) {
 	t.Parallel()
 	secret, ok := kinds.ByKey("secret")
@@ -309,8 +311,9 @@ func TestScrubObjectWithAReadRedactionKeepsASecretPayload(t *testing.T) {
 			"data":       map[string]any{"k": "czNjcmV0QQ=="},
 			"StringData": map[string]any{"k": "s3cretA"},
 			"metadata": map[string]any{"annotations": map[string]any{
-				kinds.LastAppliedAnnotation: `{"data":{"k":"s3cretA"}}`,
-				"example.invalid/outside":   "outsideA",
+				kinds.LastAppliedAnnotation:       `{"data":{"k":"s3cretA"}}`,
+				"objectset.rio.cattle.io/applied": "s3cretB",
+				"example.invalid/outside":         "outsideA",
 			}},
 		}
 	}

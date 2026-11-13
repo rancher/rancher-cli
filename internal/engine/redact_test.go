@@ -78,12 +78,18 @@ func TestRedactDiffHidesKindPathsAtOrUnder(t *testing.T) {
 		[]any{got[0].To, got[1].To, got[2].To, got[3].To, got[4].To})
 }
 
-// TestRedactDiffHidesTheLastAppliedAnnotation asserts the annotation that
-// holds a copy of the applied object is hidden for every kind that hides
-// anything, and for none that hides nothing.
+// TestRedactDiffHidesTheLastAppliedAnnotation asserts the last-applied and
+// objectset applied annotations, which each hold a copy of the applied object,
+// are hidden for every kind that hides anything, and for none that hides
+// nothing.
 func TestRedactDiffHidesTheLastAppliedAnnotation(t *testing.T) {
 	t.Parallel()
-	entry := safety.DiffEntry{Path: "/metadata/annotations/" + escapePointerToken(kinds.LastAppliedAnnotation), To: `{"data":{"k":"v"}}`}
+	entries := func() []safety.DiffEntry {
+		return []safety.DiffEntry{
+			{Path: "/metadata/annotations/" + escapePointerToken(kinds.LastAppliedAnnotation), To: `{"data":{"k":"v"}}`},
+			{Path: "/metadata/annotations/" + escapePointerToken("objectset.rio.cattle.io/applied"), To: "H4sIAAAA"},
+		}
+	}
 	for name, r := range map[string]kinds.Redaction{
 		"sensitive":    secretRedaction,
 		"redact paths": rowRedaction(t, "user"),
@@ -91,22 +97,26 @@ func TestRedactDiffHidesTheLastAppliedAnnotation(t *testing.T) {
 			"no kind row", []string{"spec", "newPassword"}),
 		"machine config": rowRedaction(t, "amazonec2config"),
 	} {
-		got := RedactDiff([]safety.DiffEntry{entry}, r)
+		got := RedactDiff(entries(), r)
 		assert.Equal(t, "<redacted>", got[0].To, name)
+		assert.Equal(t, "<redacted>", got[1].To, name)
 	}
-	got := RedactDiff([]safety.DiffEntry{entry}, rowRedaction(t, "namespace"))
+	got := RedactDiff(entries(), rowRedaction(t, "namespace"))
 	assert.Equal(t, `{"data":{"k":"v"}}`, got[0].To, "a kind with nothing to hide shows the annotation")
+	assert.Equal(t, "H4sIAAAA", got[1].To, "a kind with nothing to hide shows the annotation")
 }
 
 // TestRedactDiffReplacesHiddenValuesInsideAnAncestorEntry asserts an entry
 // above a hidden path (a patch that adds or removes /metadata/annotations,
 // /metadata or the whole object in one step) carries a copy of its value with
-// only the hidden values replaced, and leaves the original value untouched.
+// only the hidden values replaced, the last-applied and objectset applied
+// annotations among them, and leaves the original value untouched.
 func TestRedactDiffReplacesHiddenValuesInsideAnAncestorEntry(t *testing.T) {
 	t.Parallel()
 	annotations := map[string]any{
-		kinds.LastAppliedAnnotation: `{"data":{"k":"v"}}`,
-		"owner":                     "team-a",
+		kinds.LastAppliedAnnotation:       `{"data":{"k":"v"}}`,
+		"objectset.rio.cattle.io/applied": "H4sIAAAA",
+		"owner":                           "team-a",
 	}
 	whole := map[string]any{
 		"metadata": map[string]any{"name": "s", "annotations": annotations},
@@ -120,7 +130,11 @@ func TestRedactDiffReplacesHiddenValuesInsideAnAncestorEntry(t *testing.T) {
 		{Path: "", From: whole, To: nil},
 	}, secretRedaction)
 
-	wantAnnotations := map[string]any{kinds.LastAppliedAnnotation: "<redacted>", "owner": "team-a"}
+	wantAnnotations := map[string]any{
+		kinds.LastAppliedAnnotation:       "<redacted>",
+		"objectset.rio.cattle.io/applied": "<redacted>",
+		"owner":                           "team-a",
+	}
 	assert.Equal(t, wantAnnotations, got[0].To)
 	assert.Equal(t, wantAnnotations, got[1].From)
 	assert.Nil(t, got[0].From)
@@ -132,6 +146,7 @@ func TestRedactDiffReplacesHiddenValuesInsideAnAncestorEntry(t *testing.T) {
 		"type":     "Opaque",
 	}, got[3].From)
 	assert.Equal(t, `{"data":{"k":"v"}}`, annotations[kinds.LastAppliedAnnotation], "the original annotation is not changed")
+	assert.Equal(t, "H4sIAAAA", annotations["objectset.rio.cattle.io/applied"], "the original annotation is not changed")
 	assert.Equal(t, map[string]any{"k": "dg=="}, whole["data"], "the original object is not changed")
 }
 

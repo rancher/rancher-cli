@@ -454,6 +454,13 @@ func TestCreatePreviewHidesSecretValues(t *testing.T) {
 		}, []string{"helm-secret-19", "helm-secret-20", "helm-secret-21", "helm-secret-22"},
 			[]string{"/spec/targets/0/helm/values/password", "/spec/targets/0/helm/templateValues/token",
 				"/spec/targets/1/helm/values/password", "/spec/targets/1/helm/templateValues/token"}},
+		{"bundle manifest", func(t *testing.T) previewResult {
+			t.Helper()
+			in := fieldCoverageInput{values: map[string]string{"filename": "m.yaml"}}
+			return planPreview(t, t.Context(), resources.NewCreate(&fieldRecorder{}, fieldCoverageSource{
+				"apiVersion: fleet.cattle.io/v1alpha1\nkind: Bundle\nmetadata:\n  name: b\n  namespace: fleet-default\n  annotations:\n    objectset.rio.cattle.io/applied: 'annot-secret-23'\nspec:\n  helm:\n    values:\n      password: helm-secret-24\n"}), in)
+		}, []string{"annot-secret-23", "helm-secret-24"},
+			[]string{"/metadata/annotations/objectset.rio.cattle.io~1applied", "/spec/helm/values/password"}},
 		{"ssh key", func(t *testing.T) previewResult {
 			t.Helper()
 			return machineConfigCase("", []string{"digitaloceanconfig", "w"}, nil, []string{"sshKeyContents=ssh-secret-9"}, nil).plan(t)

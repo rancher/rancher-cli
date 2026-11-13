@@ -308,12 +308,16 @@ func TestTableMarshalJSONRedactsListItems(t *testing.T) {
 
 // TestTableMarshalJSONHidesWhatThePreviewHides verifies the table hides a
 // path in any letter case, a machine config Secret field in any letter
-// case, the last-applied annotation of a row that hides anything, and
-// nothing of a row that hides nothing.
+// case, the last-applied and objectset applied annotations of a row that hides
+// anything, and nothing of a row that hides nothing.
 func TestTableMarshalJSONHidesWhatThePreviewHides(t *testing.T) {
 	t.Parallel()
 	annotations := func() map[string]any {
-		return map[string]any{kinds.LastAppliedAnnotation: `{"x":"s3cretA"}`, "example.invalid/outside": "outsideA"}
+		return map[string]any{
+			kinds.LastAppliedAnnotation:       `{"x":"s3cretA"}`,
+			"objectset.rio.cattle.io/applied": "s3cretB",
+			"example.invalid/outside":         "outsideA",
+		}
 	}
 	outside := map[string]any{"example.invalid/outside": "outsideA"}
 
@@ -330,26 +334,24 @@ func TestTableMarshalJSONHidesWhatThePreviewHides(t *testing.T) {
 	assert.NotContains(t, decoded, "SSHKeyContents", "a machine config Secret field in another letter case is hidden")
 	assert.NotContains(t, decoded, "sessiontoken")
 	assert.Equal(t, "us-east-1", decoded["region"])
-	assert.Equal(t, map[string]any{"name": "w", "annotations": outside}, decoded["metadata"], "the last-applied annotation is hidden")
+	assert.Equal(t, map[string]any{"name": "w", "annotations": outside}, decoded["metadata"], "the last-applied and objectset applied annotations are hidden")
 
 	decoded = marshalTableObject(t, registeredKind(t, "namespace"), map[string]any{
 		"metadata": map[string]any{"name": "ns", "annotations": annotations()},
 	})
-	assert.Equal(t, map[string]any{"name": "ns", "annotations": map[string]any{
-		kinds.LastAppliedAnnotation: `{"x":"s3cretA"}`, "example.invalid/outside": "outsideA",
-	}}, decoded["metadata"], "a row that hides nothing shows the annotation")
+	assert.Equal(t, map[string]any{"name": "ns", "annotations": annotations()}, decoded["metadata"], "a row that hides nothing shows the annotations")
 }
 
 // TestTableMarshalJSONKeepsASecretPayload verifies a get of a secret shows
-// data and stringData in any letter case and hides the last-applied
-// annotation, for one object and for each item of a list; any other
-// Sensitive row hides its payload.
+// data and stringData in any letter case and hides the last-applied and
+// objectset applied annotations, for one object and for each item of a list;
+// any other Sensitive row hides its payload.
 func TestTableMarshalJSONKeepsASecretPayload(t *testing.T) {
 	t.Parallel()
 	obj := func() map[string]any {
 		return map[string]any{
 			"metadata": map[string]any{"name": "s", "annotations": map[string]any{
-				kinds.LastAppliedAnnotation: `{"x":"s3cretA"}`, "example.invalid/outside": "outsideA",
+				kinds.LastAppliedAnnotation: `{"x":"s3cretA"}`, "objectset.rio.cattle.io/applied": "s3cretB", "example.invalid/outside": "outsideA",
 			}},
 			"data": map[string]any{"k": "czNjcmV0QQ=="}, "StringData": map[string]any{"k": "s3cretA"},
 		}
@@ -382,7 +384,8 @@ func TestTableMarshalJSONDoesNotMutateOriginal(t *testing.T) {
 	for _, key := range []string{"user", "secret", "namespace"} {
 		obj := unstructured.Unstructured{Object: map[string]any{
 			"metadata": map[string]any{"name": "w1", "annotations": map[string]any{
-				kinds.LastAppliedAnnotation: "must-survive-in-original",
+				kinds.LastAppliedAnnotation:       "must-survive-in-original",
+				"objectset.rio.cattle.io/applied": "must-survive-in-original",
 			}},
 			"password": "must-survive-in-original",
 			"data":     map[string]any{"k": "must-survive-in-original"},

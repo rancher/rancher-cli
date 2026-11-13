@@ -502,6 +502,8 @@ func TestHiddenColumnSourcesReportsAColumnOverAHiddenPath(t *testing.T) {
 		"payload":        {secret, kinds.Column{Header: "DATA", Path: []string{"StringData", "k"}}, nil},
 		"annotation": {user, kinds.Column{Header: "APPLIED", Path: []string{"metadata", "annotations", kinds.LastAppliedAnnotation}},
 			[]string{"APPLIED: metadata.annotations." + kinds.LastAppliedAnnotation}},
+		"applied annotation": {user, kinds.Column{Header: "APPLIED", Path: []string{"metadata", "annotations", "objectset.rio.cattle.io/applied"}},
+			[]string{"APPLIED: metadata.annotations.objectset.rio.cattle.io/applied"}},
 		"count": {user, kinds.Column{Header: "PW", Count: []string{"password"}}, []string{"PW: password"}},
 	} {
 		k := tc.k

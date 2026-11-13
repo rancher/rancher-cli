@@ -11,6 +11,22 @@ import (
 // of the applied object, secret values included.
 const LastAppliedAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
 
+// ObjectSetAppliedAnnotation is the annotation the apply package of Rancher's
+// wrangler library writes with a gzip-compressed, base64-encoded copy of the
+// applied object. Strings longer than 64 bytes are cut to their first 64
+// bytes, except the values of a few keys in list items (such as name and
+// kind), which are kept whole.
+const ObjectSetAppliedAnnotation = "objectset.rio.cattle.io/applied"
+
+// hiddenAnnotations are the annotations that hold a copy of the applied
+// object, hidden for every kind whose redaction hides anything.
+var hiddenAnnotations = []string{LastAppliedAnnotation, ObjectSetAppliedAnnotation}
+
+// HiddenAnnotations returns the names of the annotations that hold a copy of
+// the applied object and are hidden for every kind whose redaction hides
+// anything. The caller may change the returned slice.
+func HiddenAnnotations() []string { return slices.Clone(hiddenAnnotations) }
+
 // Redaction is the set of paths whose values a preview or a read never
 // shows, for one resource. Kind.Redaction builds the one a preview and the
 // result of an apply use. Kind.ReadRedaction builds the one a read (get)
@@ -29,8 +45,8 @@ type Redaction struct {
 	// secretData hides the Secret payload: /data and /stringData.
 	secretData bool
 	// keepSecretData leaves /data and /stringData visible although
-	// secretData is set, so the redaction still hides the last-applied
-	// annotation. Only Kind.ReadRedaction sets it.
+	// secretData is set, so the redaction still hides the annotations that
+	// hold a copy of the applied object. Only Kind.ReadRedaction sets it.
 	keepSecretData bool
 	// read marks a redaction built by Kind.ReadRedaction.
 	read bool
@@ -77,7 +93,8 @@ var secretsGVR = schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
 // shows of an object a caller asked the server for. It hides the same
 // values as Redaction, except that a Secret keeps its top-level data and
 // stringData, because a secret's data is what get secret is for and kubectl
-// shows the same. The last-applied annotation stays hidden for a Secret too.
+// shows the same. The annotations that hold a copy of the applied object stay
+// hidden for a Secret too.
 // A kind that is not a registered row returns the zero value, as Redaction
 // does. A read redaction reports IsRead and no preview or apply result is
 // built from one.
@@ -120,9 +137,10 @@ func (r Redaction) Hides() bool {
 // A "*" segment of a hidden path is a wildcard: it matches any one segment
 // of keys, such as a list index "0", the "-" of a JSON patch append, or a
 // map key. A "*" in keys is an ordinary name: it matches only a "*" segment
-// of the hidden path. The last-applied annotation is hidden for every kind
-// whose redaction hides anything, because it holds a copy of the applied
-// object.
+// of the hidden path. The annotations
+// kubectl.kubernetes.io/last-applied-configuration and
+// objectset.rio.cattle.io/applied are hidden for every kind whose redaction
+// hides anything, because each holds a copy of the applied object.
 func (r Redaction) Covers(keys []string) bool {
 	if len(keys) == 0 || !r.Hides() {
 		return false
@@ -140,11 +158,22 @@ func (r Redaction) Covers(keys []string) bool {
 			return true
 		}
 	}
-	return hasFoldedPrefix(keys, lastAppliedPath)
+	for _, p := range hiddenAnnotationPaths {
+		if hasFoldedPrefix(keys, p) {
+			return true
+		}
+	}
+	return false
 }
 
-// lastAppliedPath is the path of the last-applied annotation.
-var lastAppliedPath = []string{"metadata", "annotations", LastAppliedAnnotation}
+// hiddenAnnotationPaths are the object paths of hiddenAnnotations.
+var hiddenAnnotationPaths = func() [][]string {
+	paths := make([][]string, 0, len(hiddenAnnotations))
+	for _, name := range hiddenAnnotations {
+		paths = append(paths, []string{"metadata", "annotations", name})
+	}
+	return paths
+}()
 
 // wildcardSegment is the segment of a hidden path that matches any one
 // segment of an object path: a list index or a map key.

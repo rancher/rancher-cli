@@ -1840,6 +1840,11 @@ raw API for
 [server-side-apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/)
 forensics). The structured output of `get` also leaves out the values a
 preview hides, except that `get secret` shows `data` and `stringData`.
+The structured output of `get` also hides the annotations
+`kubectl.kubernetes.io/last-applied-configuration` and
+`objectset.rio.cattle.io/applied` of every sensitive kind and every kind with
+hidden fields, `get secret` included, because both annotations hold a copy of
+the object as it was last applied. Every other kind shows them.
 
 Five commands are exceptions to the versioned-envelope rule, all for the
 same reason: their consumer parses a specific format, not the envelope.

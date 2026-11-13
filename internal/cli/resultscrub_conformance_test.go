@@ -199,6 +199,11 @@ func (p *plantSet) plantOutsideItems(paths [][]string) {
 	}
 }
 
+// hiddenAnnotationNames are the annotations every row that hides anything
+// hides, written out so that dropping one from kinds.HiddenAnnotations fails
+// the tests that plant them.
+var hiddenAnnotationNames = []string{kinds.LastAppliedAnnotation, "objectset.rio.cattle.io/applied"}
+
 // newPlantSet plants what the redaction of kind k hides, with a list of
 // length `items` at each wildcard segment. A nil k plants only the outside
 // values.
@@ -239,16 +244,21 @@ func newPlantSet(k *kinds.Kind, items int) *plantSet {
 			}
 		}
 		if hides {
-			p.plantValue([]string{"metadata", "annotations", kinds.LastAppliedAnnotation})
+			for _, name := range hiddenAnnotationNames {
+				p.plantValue([]string{"metadata", "annotations", name})
+			}
 		}
 	}
 	setNested(p.fragment, []string{"metadata", "annotations", scrubOutsideAnnotation}, "outsideA")
 	setNested(p.fragment, []string{"spec", scrubOutsideSpec}, "outsideB")
 	p.outside = append(p.outside, "outsideA", "outsideB")
 	if k != nil && !hides {
-		// A kind that hides nothing shows the annotation by design.
-		setNested(p.fragment, []string{"metadata", "annotations", kinds.LastAppliedAnnotation}, "appliedC")
-		p.outside = append(p.outside, "appliedC")
+		// A kind that hides nothing shows the annotations by design.
+		for i, name := range hiddenAnnotationNames {
+			v := fmt.Sprintf("applied%d", i)
+			setNested(p.fragment, []string{"metadata", "annotations", name}, v)
+			p.outside = append(p.outside, v)
+		}
 	}
 	return p
 }

@@ -300,9 +300,10 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   and `status.value`, an ext kubeconfig's `status.value`, a password change
   request's `spec.newPassword` and the password and key fields of a machine
   config (for example `secretKey`, `sshKeyContents`, `sessionToken`,
-  `sshPassword`). The `kubectl.kubernetes.io/last-applied-configuration`
-  annotation, which holds a copy of the applied object, is hidden too for every
-  sensitive kind and every kind with hidden fields. Field names match in any
+  `sshPassword`). The `kubectl.kubernetes.io/last-applied-configuration` and
+  `objectset.rio.cattle.io/applied` annotations, which hold a copy of the
+  object as it was last applied, are hidden too for every sensitive kind and
+  every kind with hidden fields. Field names match in any
   case. Other fields print as given, so a description or a cloud-init text shows
   in full. The `--apply` result in json, yaml and template leaves out the same
   values. The exceptions are the commands that show a secret once on purpose:
