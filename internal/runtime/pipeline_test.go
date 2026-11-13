@@ -1376,6 +1376,25 @@ func TestRenderErrCandidatesTotal(t *testing.T) {
 	}
 }
 
+// TestErrorEnvelopeCandidatesVerbatim asserts the json envelope of an error
+// carries a candidate's name and id as they are, hidden characters included.
+func TestErrorEnvelopeCandidatesVerbatim(t *testing.T) {
+	t.Parallel()
+	want := []clierr.Candidate{{Name: "n\x1b[0m\u200b", ID: "id\n"}}
+	ce := clierr.New(clierr.CodeNotFound, "not found").WithCandidates(want)
+	var errBuf bytes.Buffer
+	_ = renderErr(IO{Err: &errBuf, Format: "json"}, ce)
+	var env struct {
+		Data struct {
+			Error struct {
+				Candidates []clierr.Candidate `json:"candidates"`
+			} `json:"error"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
+	assert.Equal(t, want, env.Data.Error.Candidates)
+}
+
 // TestRenderErrFormatAware asserts renderErr's format switch: default, table,
 // wide, name, and template all render the short operator-facing text block
 // to stderr; json and yaml render the structured envelope, each in its own

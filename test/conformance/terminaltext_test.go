@@ -494,8 +494,13 @@ var terminalRows = []terminalRow{
 		assertBothClean(t, out, errOut, terminalSequences)
 		assertNoForgedLine(t, "standard error", errOut)
 		assert.Equal(t, 2, strings.Count(errOut, e.expanded), "the message and the hint expand their command: %q", errOut)
-		for _, p := range []string{"error message", "error hint", "candidate id", "candidate name"} {
+		for _, p := range []string{"error message", "error hint"} {
 			assert.Contains(t, errOut, terminalFilteredLine(p))
+		}
+		assert.Contains(t, errOut, "candidates: "+strconv.Quote(terminalHostile("candidate name"))+" ("+strconv.Quote(terminalHostile("candidate id"))+")",
+			"a candidate shows its hidden characters as escapes")
+		for _, p := range []string{"candidate name", "candidate id"} {
+			assert.NotContains(t, errOut, terminalFilteredLine(p), "a candidate is not shown with its hidden characters removed")
 		}
 		assert.Contains(t, errOut, strconv.Quote(terminalHostile("error details")), "a details value shows its hidden characters as escapes")
 	}},

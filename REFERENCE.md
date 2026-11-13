@@ -1836,9 +1836,10 @@ user id is the exception in these texts: one that holds a control character,
 an invisible format character or a line or paragraph separator is written as a
 double-quoted string with each of them as an escape; no character is removed.
 The same holds for each value in the details lines under an `error (...)`
-line: one that holds a control character, an invisible format character or a
-line or paragraph separator is written in place as a double-quoted string with
-escapes, as a user id is, and nothing is removed.
+line, and for the name and id of each candidate in the `candidates` line under
+it: one that holds a control character, an invisible format character or a line
+or paragraph separator is written as a double-quoted string with escapes, as a
+user id is, and nothing is removed.
 Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
 `template=` (the bytes are
 the data), `logs` (container output whose newlines are its structure), and the

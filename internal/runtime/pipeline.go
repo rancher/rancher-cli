@@ -1227,9 +1227,10 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 // errorText renders ce as the default-format stderr block: a header line
 // naming the code (and "retryable" when the error is retryable), an indented
 // hint line when present, an indented candidates line - each candidate
-// rendered "name (id)" - when present, and finally the details payload's own
-// projected lines (detailsTextLines) when one is attached, each value of which
-// is shown with its hidden characters as escapes. s styles the
+// rendered "name (id)", its name and id shown with their hidden characters as
+// escapes - when present, and finally the details payload's own projected
+// lines (detailsTextLines) when one is attached, each value of which is shown
+// the same way. s styles the
 // "error (CODE):" and "hint:" prefixes only, never the message/hint body.
 func errorText(ce *clierr.Error, s style.Style) string {
 	retry := ""
@@ -1239,9 +1240,11 @@ func errorText(ce *clierr.Error, s style.Style) string {
 	prefix := fmt.Sprintf("error (%s%s):", ce.Code, retry)
 	// Message, hint, candidates, and details may all carry server text
 	// (an admission message, a display name), so each line passes the
-	// terminal-safety boundary before it reaches stderr. A details line shows
-	// each value with its hidden characters as escapes (detailLineText);
-	// the other lines have them removed.
+	// terminal-safety boundary before it reaches stderr. A candidate's name
+	// and id, and each details value, show their hidden characters as
+	// escapes (clierr.IDText, detailLineText); two values that differ only
+	// by a hidden character print differently. The message and the hint
+	// have them removed.
 	header := s.Red(prefix) + " " + output.Printable(ce.Message)
 
 	var lines []string
@@ -1251,7 +1254,9 @@ func errorText(ce *clierr.Error, s style.Style) string {
 	if len(ce.Candidates) > 0 {
 		names := make([]string, len(ce.Candidates))
 		for i, c := range ce.Candidates {
-			names[i] = fmt.Sprintf("%s (%s)", output.Printable(c.Name), output.Printable(c.ID))
+			// The text IDText returns holds no character Printable removes
+			// and no invalid UTF-8 byte; Printable would not change it.
+			names[i] = clierr.IDText(c.Name) + " (" + clierr.IDText(c.ID) + ")"
 		}
 		label := "candidates"
 		if ce.CandidatesTotal > 0 {
