@@ -53,6 +53,17 @@ jsonquery stdout 'data.#' 0
 exec rancher config status -o json
 jsonquery stdout data.currentServer ''
 
+# a URL with an @ after the host is refused, as one with userinfo is: a
+# password that holds a / reads as host:port and a path. Nothing is saved, and
+# the message holds no part of the URL after the host.
+! exec rancher config add-server qa0 --url https://admin:1234/x@h -o json
+jsonquery stderr data.error.code VALIDATION
+stderr 'it holds an @ after the host'
+! stderr '%40'
+! stderr 'x@h'
+exec rancher config list-servers -o json
+jsonquery stdout 'data.#' 0
+
 # config edit: the only path this harness can honestly drive without
 # scripting an interactive editor is the no-TTY gate - `exec` here has no
 # terminal attached.

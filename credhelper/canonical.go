@@ -41,11 +41,12 @@ func CanonicalServerURL(raw string) (string, error) {
 }
 
 // CheckServerURL refuses a server URL that carries userinfo (a user name,
-// with or without a password) or that does not parse into a scheme and a
-// host, and returns the canonical form CanonicalServerURL returns for every
-// URL it accepts. A scheme other than http or https is not refused here: the
-// callers that need http or https check that themselves. The error text
-// carries no part of the input, because the input may hold a password.
+// with or without a password), that holds an @ after the host, or that does
+// not parse into a scheme and a host, and returns the canonical form
+// CanonicalServerURL returns for every URL it accepts. A scheme other than
+// http or https is not refused here: the callers that need http or https
+// check that themselves. The error text carries no part of the input, because
+// the input may hold a password.
 func CheckServerURL(raw string) (string, error) {
 	u, err := parseServerURL(raw)
 	if err != nil {
@@ -54,7 +55,19 @@ func CheckServerURL(raw string) (string, error) {
 	if u.User != nil {
 		return "", errServerURLUserinfo
 	}
-	return canonicalFromURL(u)
+	canonical, err := canonicalFromURL(u)
+	if err != nil {
+		return "", err
+	}
+	// The raw input is checked, not u.Path or the escaped path and fragment:
+	// the decoded path holds the @ of a %40, and the escaped forms of a path
+	// or fragment that is not valid encoding turn %40 into @. For a URL that
+	// passed the checks above every @ of the input is after the host, because
+	// url.Parse ends the authority at the first /, ? or #.
+	if strings.Contains(raw, "@") {
+		return "", errServerURLRawAt
+	}
+	return canonical, nil
 }
 
 // The error texts below carry no part of the URL they refuse. They are
@@ -65,6 +78,11 @@ var (
 	errServerURLNoHost   = errors.New("it has no host name")
 	errServerURLUserinfo = errors.New("it holds a user name or password")
 	errServerURLRebuild  = errors.New("it does not parse as scheme://host")
+
+	// errServerURLRawAt is the reason CheckServerURL returns for an @ after
+	// the host, in the path, the query or the fragment. The explanation is
+	// part of the reason, so it shows in every refusal text that carries it.
+	errServerURLRawAt = errors.New("it holds an @ after the host, which usually means a password with a /, ? or # in it")
 )
 
 func parseServerURL(raw string) (*url.URL, error) {

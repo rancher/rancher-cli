@@ -97,6 +97,46 @@ func TestCanonicalizeServerURLRefusesAndLeavesTheURLOut(t *testing.T) {
 	}
 }
 
+// TestCanonicalizeServerURLRefusesAnAtSignAfterTheHost asserts that a URL
+// with an @ after the host (in the path, the query or the fragment) is
+// refused as VALIDATION with exit status 2, with the repair of the origin it
+// came from, and that no part of the URL after the host appears in the
+// message or the hint.
+func TestCanonicalizeServerURLRefusesAnAtSignAfterTheHost(t *testing.T) {
+	const reason = "it holds an @ after the host, which usually means a password with a /, ? or # in it"
+	for _, tc := range []struct{ name, raw, after string }{
+		{"a password with a slash", "https://admin:1234/CaNaRy-9x@rancher.invalid", "CaNaRy-9x"},
+		{"a password with a question mark", "https://admin:1234?CaNaRy-9x@rancher.invalid", "CaNaRy-9x"},
+		{"a password with a hash", "https://admin:1234#CaNaRy-9x@rancher.invalid", "CaNaRy-9x"},
+		{"an at sign in the path", "https://rancher.invalid/CaNaRy-9x@x", "CaNaRy-9x"},
+		{"an at sign in the query", "https://rancher.invalid/?e=CaNaRy-9x@x", "CaNaRy-9x"},
+		{"an at sign in the fragment", "https://rancher.invalid/#CaNaRy-9x@x", "CaNaRy-9x"},
+	} {
+		for _, entry := range []string{"", "prod"} {
+			t.Run(tc.name+" "+entry, func(t *testing.T) {
+				_, err := CanonicalizeServerURL(tc.raw, entry)
+				ce, ok := errors.AsType[*clierr.Error](err)
+				require.True(t, ok)
+				assert.Equal(t, clierr.CodeValidation, ce.Code)
+				assert.Equal(t, 2, ce.ExitCode())
+				if entry == "" {
+					assert.Equal(t, "the server URL in --url cannot be used: "+reason+
+						"; give a URL like https://host, without a user name or password", ce.Message)
+				} else {
+					assert.Equal(t, "the server URL in server entry 'prod' cannot be used: "+reason+
+						"; change the entry's URL with "+clierr.Rancher+" config update-server 'prod' --url <url>", ce.Message)
+				}
+				for _, text := range []string{ce.Message, ce.Hint} {
+					assert.NotContains(t, text, tc.after)
+					assert.NotContains(t, text, "rancher.invalid")
+					assert.NotContains(t, text, "1234")
+					assert.NotContains(t, text, "admin")
+				}
+			})
+		}
+	}
+}
+
 // TestPrepareRegistrationRejectsUnsupportedScheme asserts that a scheme
 // CanonicalServerURL accepts but config.Effective's credential-read path
 // would later refuse (anything but http/https) must never reach a

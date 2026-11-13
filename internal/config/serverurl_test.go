@@ -30,7 +30,8 @@ var unusableURLs = []struct{ name, in string }{
 // TestDisplayServerURL asserts the display form of a server URL: scheme and
 // host for a URL that parses, whatever userinfo, path, query and fragment it
 // holds; the same form of the text left after the userinfo is removed for one
-// that does not parse; "<unusable URL>" otherwise.
+// that does not parse; "<unusable URL>" otherwise, and for a URL that holds an
+// @ after the host.
 func TestDisplayServerURL(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, in, want string }{
@@ -38,7 +39,11 @@ func TestDisplayServerURL(t *testing.T) {
 		{"plain", "https://hostzq7", "https://hostzq7"},
 		{"a port", "https://hostzq7:8443", "https://hostzq7:8443"},
 		{"userinfo", "https://u:pwzq7@hostzq7:8443/pathzq7?q=1#f", "https://hostzq7:8443"},
-		{"an at sign in the path", "https://hostzq7/p@th", "https://hostzq7"},
+		{"an at sign in the path", "https://hostzq7/p@th", "<unusable URL>"},
+		{"an at sign after a host that reads as a user name and a port", "https://admin:1234/pwzq7@hostzq7", "<unusable URL>"},
+		{"an at sign in the query", "https://hostzq7?e=pwzq7@x", "<unusable URL>"},
+		{"an at sign in the fragment", "https://hostzq7#pwzq7@x", "<unusable URL>"},
+		{"an encoded at sign in the path", "https://hostzq7/p%40th", "https://hostzq7"},
 		{"a space in the user name", "https://a b:pwzq7@Hostzq7:443", "https://Hostzq7:443"},
 		{"a bad port with userinfo", "https://u:pwzq7@hostzq7:abc", "<unusable URL>"},
 		{"no scheme", "u:pwzq7@hostzq7:1", "<unusable URL>"},
@@ -59,6 +64,7 @@ func TestDisplayServerURL(t *testing.T) {
 			assert.NotContains(t, got, "@")
 			assert.NotContains(t, got, "pwzq7")
 			assert.NotContains(t, got, "leakzq7")
+			assert.NotContains(t, got, "admin")
 		})
 	}
 }
@@ -129,6 +135,9 @@ func TestCanonicalServerIdentityFallbackKeepsServersApart(t *testing.T) {
 func TestServerURLOriginTexts(t *testing.T) {
 	t.Parallel()
 	_, userinfo := credhelper.CheckServerURL("https://u:pwzq7@hostzq7")
+	_, rawAt := credhelper.CheckServerURL("https://admin:1234/pwzq7@hostzq7")
+	require.Error(t, rawAt)
+	const rawAtText = "it holds an @ after the host, which usually means a password with a /, ? or # in it"
 	rancher := clierr.Rancher
 	const form = "the server URL in "
 	for _, tc := range []struct {
@@ -155,6 +164,19 @@ func TestServerURLOriginTexts(t *testing.T) {
 		{"an exec plugin entry", EntryOrigin(ExecLoginPrefix + "abc"), userinfo,
 			form + "server entry '" + ExecLoginPrefix + "abc' cannot be used: it holds a user name or password; " +
 				"if the entry holds a login, run: " + rancher + " auth logout '" + ExecLoginPrefix + "abc'; then remove the entry with: " + rancher + " config delete-server '" + ExecLoginPrefix + "abc'"},
+		{"a typed flag and an at sign after the host", ServerURLOrigin{Source: "--url"}, rawAt,
+			form + "--url cannot be used: " + rawAtText + "; give a URL like https://host, without a user name or password"},
+		{"the variable and an at sign after the host", ServerURLOrigin{Source: EnvURL}, rawAt,
+			form + EnvURL + " cannot be used: " + rawAtText + "; give a URL like https://host, without a user name or password"},
+		{"the server flag of a command kubectl runs and an at sign after the host", ServerURLOrigin{Source: "--server", ExecEntryArgument: true}, rawAt,
+			form + "--server cannot be used: " + rawAtText + "; give a URL like https://host, without a user name or password; " +
+				"when kubectl runs this command, the URL is the --server argument of the kubeconfig's exec block"},
+		{"an ordinary entry and an at sign after the host", EntryOrigin("prod"), rawAt,
+			form + "server entry 'prod' cannot be used: " + rawAtText + "; change the entry's URL with " +
+				rancher + " config update-server 'prod' --url <url>"},
+		{"an exec plugin entry and an at sign after the host", EntryOrigin(ExecLoginPrefix + "abc"), rawAt,
+			form + "server entry '" + ExecLoginPrefix + "abc' cannot be used: " + rawAtText + "; " +
+				"if the entry holds a login, run: " + rancher + " auth logout '" + ExecLoginPrefix + "abc'; then remove the entry with: " + rancher + " config delete-server '" + ExecLoginPrefix + "abc'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -165,15 +187,40 @@ func TestServerURLOriginTexts(t *testing.T) {
 			assert.Empty(t, ce.Hint, "the repair holds a placeholder: no hint")
 			assert.NotContains(t, ce.Message, "pwzq7")
 			assert.NotContains(t, ce.Message, "hostzq7")
+			assert.NotContains(t, ce.Message, "1234")
+			assert.NotContains(t, ce.Message, "admin")
 		})
 	}
+}
+
+// TestRefusalWithoutRepairIsTheFirstClauseOfText asserts the refusal without
+// the repair is what Text starts with, for every origin, and holds neither the
+// repair nor a part of a URL.
+func TestRefusalWithoutRepairIsTheFirstClauseOfText(t *testing.T) {
+	t.Parallel()
+	_, reason := credhelper.CheckServerURL("https://admin:1234/pwzq7@x")
+	require.Error(t, reason)
+	for _, o := range []ServerURLOrigin{
+		{Source: "--url"}, {Source: EnvURL}, {Source: "--server", ExecEntryArgument: true},
+		EntryOrigin("prod"), EntryOrigin(ExecLoginPrefix + "abc"),
+	} {
+		got := o.RefusalWithoutRepair(reason)
+		assert.True(t, strings.HasPrefix(o.Text(reason), got+"; "), "%q", got)
+		assert.NotContains(t, got, ";")
+		assert.NotContains(t, got, "admin")
+		assert.NotContains(t, got, "1234")
+	}
+	assert.Equal(t, "the server URL in server entry 'prod' cannot be used: "+reason.Error(), EntryOrigin("prod").RefusalWithoutRepair(reason))
+	assert.Equal(t, EntryOrigin("prod").RefusalWithoutRepair(reason)+"; this command removes the entry", EntryOrigin("prod").RemovedText(reason))
 }
 
 // TestAdviseRecord asserts the one decision about a token record's server, in
 // order: no server recorded; the entry's repair while the entry exists, when
 // the record's server is its own URL and that URL fails the check (with the
 // reason of the URL as stored); the token stays when the identity does not
-// canonicalize (the reason is the entry's own URL's when the record is at it)
+// canonicalize (the reason is the entry's own URL's when the record is at it),
+// when the record's server, the entry's URL or the URL it held before the
+// command holds an @ after the host and is the one the identity was read from,
 // or when a stored user name or password sits on a scheme other than http and
 // https; else the recovery sequence built from the identity, never from the
 // text as stored. A plain server with another scheme is not judged by it.
@@ -187,6 +234,7 @@ func TestAdviseRecord(t *testing.T) {
 	}
 	sequence := func(server string) []string { return clierr.RecoverySequence(server, ref).Lines() }
 	const userinfo = "it holds a user name or password"
+	const rawAt = "it holds an @ after the host, which usually means a password with a /, ? or # in it"
 	for _, tc := range []struct {
 		name             string
 		site             RecordSite
@@ -219,6 +267,17 @@ func TestAdviseRecord(t *testing.T) {
 		{"an entry whose own URL is plain on another scheme", RecordSite{Entry: "prod", EntryURL: "ftp://hostzq7:21"}, "ftp://hostzq7:21", "", "ftp://hostzq7:21"},
 		{"an entry whose own URL has userinfo on another scheme", RecordSite{Entry: "prod", EntryURL: "ftp://u:pwzq7@hostzq7:21"}, "ftp://u:pwzq7@hostzq7:21",
 			EntryOrigin("prod").Text(mustProblem(t, "ftp://u:pwzq7@hostzq7:21")), ""},
+		{"an entry changed to a usable URL from one that held an at sign after the host", RecordSite{Entry: "prod", EntryURL: "https://hostzq7", PriorEntryURL: "https://admin:1234/pwzq7@x"}, "https://admin:1234",
+			stays(rawAt), ""},
+		{"an entry changed from a URL that held an at sign after the host to the host it was read as", RecordSite{Entry: "prod", EntryURL: "https://admin:1234", PriorEntryURL: "https://admin:1234/pwzq7@x"}, "https://admin:1234",
+			stays(rawAt), ""},
+		{"an entry changed from a URL that held an at sign after the host, a record at another server", RecordSite{Entry: "prod", EntryURL: "https://hostzq7", PriorEntryURL: "https://admin:1234/pwzq7@x"}, "https://other.example", "", "https://other.example"},
+		{"an entry changed from a URL with userinfo: the host is the server", RecordSite{Entry: "prod", EntryURL: "https://hostzq7", PriorEntryURL: "https://u:pwzq7@other.example"}, "https://other.example", "", "https://other.example"},
+		{"an entry changed from a plain URL", RecordSite{Entry: "prod", EntryURL: "https://hostzq7", PriorEntryURL: "https://other.example/p%40q"}, "https://other.example", "", "https://other.example"},
+		{"a removed entry whose URL held an at sign after the host", RecordSite{EntryURL: "https://admin:1234/pwzq7@x", Removed: true}, "https://admin:1234", stays(rawAt), ""},
+		{"an entry whose own URL holds an at sign after the host", RecordSite{Entry: "prod", EntryURL: "https://admin:1234/pwzq7@x"}, "https://admin:1234",
+			EntryOrigin("prod").Text(mustProblem(t, "https://admin:1234/pwzq7@x")), ""},
+		{"a record whose server holds an at sign after the host", RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}, "https://admin:1234/pwzq7@x", stays(rawAt), ""},
 		{"a record that names no server", RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}, "",
 			"no server is recorded for token 'token-abc12'; delete it as user 'u-abc12', signed in to the server that issued it: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes", ""},
 	} {
@@ -235,6 +294,100 @@ func TestAdviseRecord(t *testing.T) {
 				assert.Empty(t, got.LoginAs)
 				assert.NotContains(t, got.Text, "pwzq7")
 			}
+		})
+	}
+}
+
+// TestDisplayRecordServer asserts the server of a token shows as the identity
+// does, except that one read from a URL that holds an @ after the host (the
+// record's stored server, the entry's URL or the URL it held before) shows as
+// unusable.
+func TestDisplayRecordServer(t *testing.T) {
+	t.Parallel()
+	const misread = "https://admin:1234/pwzq7@x"
+	for _, tc := range []struct {
+		name     string
+		site     RecordSite
+		recorded string
+		identity string
+		want     string
+	}{
+		{"a plain identity", RecordSite{EntryURL: "https://hostzq7"}, "", "https://hostzq7", "https://hostzq7"},
+		{"an entry URL with userinfo", RecordSite{EntryURL: "https://u:pwzq7@hostzq7"}, "", "https://hostzq7", "https://hostzq7"},
+		{"an entry URL that holds an at sign after the host", RecordSite{EntryURL: misread}, "", "https://admin:1234", "<unusable URL>"},
+		{"the URL the entry held before", RecordSite{EntryURL: "https://hostzq7", PriorEntryURL: misread}, "", "https://admin:1234", "<unusable URL>"},
+		{"the URL the entry held before, a record at another server", RecordSite{EntryURL: "https://hostzq7", PriorEntryURL: misread}, "", "https://other.example", "https://other.example"},
+		{"a record's stored server", RecordSite{EntryURL: "https://hostzq7"}, misread, "https://admin:1234", "<unusable URL>"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := DisplayRecordServer(tc.site, tc.recorded, tc.identity)
+			assert.Equal(t, tc.want, got)
+			assert.NotContains(t, got, "pwzq7")
+		})
+	}
+}
+
+// TestDisplayStoredRecordServer asserts the server a stored record names
+// shows as DisplayServerURL does, except that the identity of an entry URL that
+// holds an @ after the host shows as unusable.
+func TestDisplayStoredRecordServer(t *testing.T) {
+	t.Parallel()
+	const misread = "https://admin:1234/pwzq7@x"
+	for _, tc := range []struct{ name, entryURL, recorded, want string }{
+		{"a plain server", "https://hostzq7", "https://other.example", "https://other.example"},
+		{"the entry's own server", "https://hostzq7", "https://hostzq7", "https://hostzq7"},
+		{"a server read from the entry's URL", misread, "https://admin:1234", "<unusable URL>"},
+		{"another server of an entry that holds the URL", misread, "https://other.example", "https://other.example"},
+		{"the unusable identity", "https://hostzq7", misreadIdentity, "<unusable URL>"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, DisplayStoredRecordServer(tc.entryURL, tc.recorded))
+		})
+	}
+}
+
+// TestRecordServerIdentity asserts the identity stored as the server of a
+// token record is the identity of the server, except that one read from a URL
+// that holds an @ after the host is the unusable identity: it holds no part of
+// the URL, identityProblem refuses it, it is its own identity, and it shows as
+// unusable.
+func TestRecordServerIdentity(t *testing.T) {
+	t.Parallel()
+	const misread = "https://admin:1234/pwzq7@x"
+	id := CanonicalServerIdentity(misread)
+	for _, tc := range []struct {
+		name     string
+		site     RecordSite
+		recorded string
+		identity string
+		wantSame bool
+	}{
+		{"a plain URL", RecordSite{PriorEntryURL: "https://hostzq7"}, "", "https://hostzq7", true},
+		{"a URL with userinfo", RecordSite{PriorEntryURL: "https://u:pwzq7@hostzq7"}, "", "https://hostzq7", true},
+		{"the URL the entry held", RecordSite{PriorEntryURL: misread}, "", id, false},
+		{"the URL the entry holds", RecordSite{EntryURL: misread}, "", id, false},
+		{"the server as the record stored it", RecordSite{}, misread, id, false},
+		{"another server", RecordSite{PriorEntryURL: misread}, "", "https://other.example", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := RecordServerIdentity(tc.site, tc.recorded, tc.identity)
+			if tc.wantSame {
+				assert.Equal(t, tc.identity, got)
+				return
+			}
+			assert.NotContains(t, got, "admin")
+			assert.NotContains(t, got, "1234")
+			assert.NotContains(t, got, "pwzq7")
+			require.ErrorContains(t, identityProblem(got), "it holds an @ after the host")
+			assert.Equal(t, got, CanonicalServerIdentity(got), "a second pass gives the same identity")
+			assert.Equal(t, "<unusable URL>", DisplayServerIdentity(got))
+			assert.Equal(t, "<unusable URL>", DisplayServerURL(got))
+			advice := AdviseRecord(RecordSite{Entry: "prod", EntryURL: "https://hostzq7"}, got, "u-abc12", clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc12"})
+			assert.Empty(t, advice.Sequence)
+			assert.Contains(t, advice.Text, "the server recorded for token 'token-abc12' cannot be used: it holds an @ after the host")
 		})
 	}
 }

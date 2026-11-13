@@ -33,12 +33,15 @@ func (l credList) Rows() [][]string {
 	return rows
 }
 
-type listTokensCmd struct{ store config.CredStore }
+type listTokensCmd struct {
+	dir   string
+	store config.CredStore
+}
 
 // NewListTokensCommand builds `auth list-tokens` (local): list cached
 // exec-credential entries by name and expiry.
-func NewListTokensCommand(_ string, store config.CredStore) runtime.Command {
-	return &listTokensCmd{store: store}
+func NewListTokensCommand(dir string, store config.CredStore) runtime.Command {
+	return &listTokensCmd{dir: dir, store: store}
 }
 
 func (listTokensCmd) Describe() runtime.Descriptor {
@@ -55,6 +58,18 @@ func (c listTokensCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	list, err := c.store.ListCachedCreds()
 	if err != nil {
 		return runtime.Result{}, err
+	}
+	cfg, err := config.Load(config.FilePath(c.dir))
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	// A record of an earlier build names the host read from the URL of an
+	// entry that holds an @ after the host: its server and key show as unusable.
+	// auth delete-token takes the shown key as it takes the stored one.
+	for i, rec := range list {
+		if shown, masked := maskedCacheServer(cfg, rec.Server); masked {
+			list[i].Server, list[i].Key = shown, maskedCacheKey(cfg, rec.Server, rec.Key)
+		}
 	}
 	return runtime.Result{Kind: "TokenList", Data: credList(list)}, nil
 }

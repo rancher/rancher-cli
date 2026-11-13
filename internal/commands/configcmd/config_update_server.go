@@ -2,6 +2,7 @@ package configcmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -119,6 +120,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		if verr != nil {
 			return verr
 		}
+		after := register.PlannedEntry(cfg.Servers[name], plan)
 		if plan.CredentialsCleared {
 			// Delete-first ordering, as delete-server: a purge failure must
 			// leave config.yaml untouched but for the change's first write,
@@ -147,7 +149,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			cache := config.NewFileStore(c.dir)
 			var lerr error
 			del, lerr = token.DeleteAndRecord(ctx, cfg, token.LocalDelete{
-				Dir: c.dir, Command: token.DeleteForUpdateServer, Targets: []string{name}, Cache: cache,
+				Dir: c.dir, Command: token.DeleteForUpdateServer, Targets: []string{name}, Updated: &after, Cache: cache,
 				Rerun: clierr.NewCommand("config update-server").Arg(name).FlagValue("--url", canonicalResultURL),
 				DeleteLogin: func(ctx context.Context, ref config.ServerRef) ([]string, []string, error) {
 					return config.DeleteLoginToken(ctx, c.dir, ref, policy)
@@ -174,6 +176,24 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			// The entry write that follows is the change's last.
 			config.ResumeCacheWrites(c.dir, cfg, name)
 		}
+		if plan.RewriteURL && !plan.CredentialsCleared {
+			// Only the user information leaves the URL, so no credential is
+			// cleared and no revoke plan runs. The entry becomes usable at its
+			// server, which stops the plugin from serving the cached tokens
+			// bound to the other usable entries there, and the next read would
+			// delete them. They are kept under keys no read deletes, before the
+			// entry is written; nothing is sent.
+			kept, kerr := config.KeepStaleCachedCreds(c.dir, cfg, name, after)
+			if kerr != nil {
+				if _, unreadable := errors.AsType[*config.CacheReadError](kerr); !unreadable {
+					return kerr
+				}
+				notices = append(notices, "the token cache could not be read; no cached token was kept: "+kerr.Error())
+			}
+			for _, k := range kept {
+				notices = append(notices, keptTokenNotice(k))
+			}
+		}
 		out, err = register.ApplyUpdate(cfg, plan)
 		if err == nil && del != nil {
 			// The warnings of the purge judge the entry by the config as it
@@ -193,6 +213,10 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 				"credentials for %q were cleared, but writing the updated server entry failed: %v",
 				name, err)).WithHintCommand(clierr.NewCommand(config.LoginWords).Arg(name)).
 				WithWarnings(notices...)
+		}
+		if err != nil && plan.RewriteURL {
+			// The records the move kept stay kept; the warnings say which.
+			return config.WithNotices(err, notices)
 		}
 		return err
 	}); err != nil {
@@ -289,4 +313,19 @@ func execLoginURLChangeRefused(name string) error {
 // use-server/delete-server.
 func (configUpdateServerCmd) CompleteArgs(_ context.Context, view runtime.ConfigView, _ []string) []string {
 	return view.ServerNames()
+}
+
+// keptTokenNotice is the warning for a token the rewrite of a URL kept in the
+// token cache: the record is no longer served, and auth list-tokens shows it.
+// A record of a call with a user has no entry that could send a revoke, so
+// only the others name auth delete-token, which revokes the token through a
+// usable entry at its server.
+func keptTokenNotice(k config.KeptCachedCred) string {
+	text := "the token " + clierr.IDText(k.Ref.String()) + " of a cached credential for " + config.DisplayServerURL(k.Server) +
+		" stays in the token cache and is no longer served; "
+	list := clierr.NewCommand("auth list-tokens")
+	if k.Kind == config.CacheRecordOwner {
+		return clierr.Text(text, clierr.Lead("to list it, run: "), list)
+	}
+	return clierr.Text(text, clierr.Lead("to list it, run: "), list, clierr.Lead("; to revoke it, run: "), clierr.NewCommand("auth delete-token").Arg(k.Key))
 }

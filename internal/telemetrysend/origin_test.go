@@ -99,6 +99,7 @@ func TestOriginRefuses(t *testing.T) {
 		{"an IP address with a trailing dot", "https://1.2.3.4.", hostReason},
 		{"a user name", "https://user@h.example", "it holds a user name or password"},
 		{"a user name and password", "https://user:s3cr3t@h.example", "it holds a user name or password"},
+		{"an at sign in the path", "https://h.example/s3cr3t@x", "it holds an @ after the host, which usually means a password with a /, ? or # in it"},
 		{"no scheme", "h.example", "it must be absolute (scheme://host)"},
 		{"no host", "https://", "it must be absolute (scheme://host)"},
 		{"not a URL", "https://h.example/%zz", "it is not a valid URL"},

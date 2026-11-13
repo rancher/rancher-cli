@@ -28,8 +28,9 @@ func TestRecordTextsNameTheTokenTheCommandAndWhoRunsIt(t *testing.T) {
 	}{
 		{"config.noServerText", "a known owner", noServerText(ref, "u-abc12"), "user 'u-abc12'"},
 		{"config.noServerText", "no known owner", noServerText(ref, ""), "its owner or an administrator"},
-		{"config.recordServerText", "a known owner", recordServerText(ref, bad, "u-abc12"), "user 'u-abc12'"},
-		{"config.recordServerText", "no known owner", recordServerText(ref, bad, ""), "its owner or an administrator"},
+		{"config.TokenStaysText", "a known owner", TokenStaysText(ref, "u-abc12"), "user 'u-abc12'"},
+		{"config.TokenStaysText", "no known owner", TokenStaysText(ref, ""), "its owner or an administrator"},
+		{"config.TokenStaysText", "as the text of a record", recordServerText(ref, bad, "u-abc12"), "user 'u-abc12'"},
 	} {
 		t.Run(tc.key+", "+tc.name, func(t *testing.T) {
 			t.Parallel()

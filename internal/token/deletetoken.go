@@ -51,6 +51,16 @@ func (d deleteTokenCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 		if err != nil {
 			return err
 		}
+		if !all {
+			if m := maskedOnlyMatches(d.store, cfg, name); m.n > 1 {
+				return maskedKeyConflict(m)
+			}
+		}
+		if sel := req.Select; sel != nil {
+			// The key list-tokens shows for a record names its server in the
+			// masked form; it selects the record the stored key does.
+			req.Select = func(r config.CachedRecord) bool { return sel(r) || maskedCacheKey(cfg, r.Server, r.Key) == name }
+		}
 		del, localErr = DeleteAndRecord(ctx, cfg, req)
 		if del == nil {
 			return localErr
@@ -158,4 +168,18 @@ func (p DeleteTokenFailure) MapText(f func(string) string) clierr.TextDetails {
 func (p DeleteTokenFailure) MapCommands(f func(string) string) clierr.TextDetails {
 	p.NotRevoked = MapLiveTokens(p.NotRevoked, nil, f)
 	return p
+}
+
+// maskedKeyConflict is the refusal of a key as list-tokens shows it that
+// selects several records and no stored key: nothing is deleted. The repair
+// is auth delete-token with the record name, which selects every record of that
+// name; the name is filled in only when it selects exactly the matched records.
+func maskedKeyConflict(m maskedMatch) *clierr.Error {
+	head := fmt.Sprintf("the key matches %d cached credentials that differ only in the server they name, and no stored key matches; nothing was deleted; ", m.n)
+	if m.name != "" {
+		return clierr.New(clierr.CodeConflict, clierr.Text(head+fmt.Sprintf("to remove the %d cached credentials named %s", m.n, clierr.ShellQuote(clierr.IDText(m.name))),
+			clierr.Lead(", run: "), clierr.NewCommand("auth delete-token").Arg(m.name)))
+	}
+	return clierr.New(clierr.CodeConflict, clierr.Text(head+"to remove them", clierr.Lead(", run: "), clierr.NewCommand("auth delete-token").Placeholder("<name>"),
+		clierr.Lead("; <name> is the NAME column of: "), clierr.NewCommand("auth list-tokens"), "; that also removes other credentials of that name"))
 }

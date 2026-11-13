@@ -3,6 +3,7 @@ package token
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -19,7 +20,21 @@ func identifyEntry(cfg *config.Config, server, wantName, clusterID string, ignor
 	if id.OtherURL {
 		return "", entryOnOtherServerError(cfg, id.Entry, server, clusterID)
 	}
+	if id.Entry != "" {
+		// An entry whose URL cannot be used is refused whatever URL the call
+		// runs for: its stored login is never read or sent for the host read
+		// from the URL.
+		if err := unusableEntryError(cfg, id.Entry, server, clusterID, true); err != nil {
+			return "", err
+		}
+	}
 	return id.Entry, nil
+}
+
+// usableEntry reports whether the URL of the entry passes the server URL
+// check, so the entry's stored login may be read for a call.
+func usableEntry(cfg *config.Config, name string) bool {
+	return config.CheckServerURL(cfg.Servers[name].URL) == nil
 }
 
 // entryChoice is an identification made at one moment: the entry a call's
@@ -97,6 +112,9 @@ func identifiedCredential(cfg *config.Config, store CredentialReader, server, id
 // user entry) is an error.
 func pluginEntryFor(cfg *config.Config, server, identified string, user userCheck) (string, error) {
 	found := cfg.AnsweringPluginEntries(server, user.userID, user.authConfig)
+	// An entry whose URL cannot be used answers no call, and does not make one
+	// ambiguous: its login is never read for the host read from that URL.
+	found = slices.DeleteFunc(found, func(n string) bool { return !usableEntry(cfg, n) })
 	switch {
 	case config.PluginFallbackRefused(false, len(found)):
 		return "", pluginEntriesError(server, found, cfg, identified, user)
@@ -248,6 +266,9 @@ func entryNameFragment(clusterID string) (string, bool) {
 // at the call's URL is the other route, offered only when one exists.
 func entryOnOtherServerError(cfg *config.Config, name, server, clusterID string) *clierr.Error {
 	entry := clierr.ShellQuote(name)
+	if err := unusableEntryError(cfg, name, server, clusterID, true); err != nil {
+		return err
+	}
 	entryURL, current := config.DisplayServerURL(cfg.Servers[name].URL), cfg.CurrentServer
 	// auth login refuses a plugin login entry's name, so its route logs in
 	// a new entry at its URL, with its CA, and regenerates from that one.
@@ -284,6 +305,65 @@ func entryOnOtherServerError(cfg *config.Config, name, server, clusterID string)
 		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, %s; to use %s, regenerate it from an entry registered there",
 		entry, entryURL, server, entry, route, server), clierr.Lead(" with: "), regenerate)
 	return clierr.New(clierr.CodeConflict, clierr.NoteOnce(msg+useServerNote(current)))
+}
+
+// unusableEntryError is the refusal when the entry a call names holds a URL
+// that cannot be used, nil when it can; named is set when the call named the
+// entry, and the text then says so, else it says the call runs for the server
+// the entry is registered at. No command can name the entry's URL:
+// its refusal and repair come first, and no login or regeneration is suggested
+// from it. The repair of a plugin login entry removes the entry, so that form
+// gives the reason alone and leaves the entry as it is. The route that
+// regenerates the kubeconfig from an entry at the call's URL is kept when a
+// usable entry is registered there.
+func unusableEntryError(cfg *config.Config, name, server, clusterID string, named bool) *clierr.Error {
+	err := config.CheckServerURL(cfg.Servers[name].URL)
+	if err == nil {
+		return nil
+	}
+	text := config.EntryOrigin(name).Text(err)
+	if config.IsExecLoginEntryName(name) {
+		text = config.EntryOrigin(name).RefusalWithoutRepair(err)
+	}
+	vouched := usableEntryAtServer(cfg, server)
+	shown := server
+	if masked, hidden := maskedCacheServer(cfg, server); hidden && !vouched {
+		// The call's server is the host read from the entry's URL: the start of
+		// a user name and password, shown as the list of cached tokens shows it.
+		shown = masked
+	}
+	msg := fmt.Sprintf("the call names server entry %s and runs for %s; %s", clierr.ShellQuote(name), shown, text)
+	if !named {
+		msg = fmt.Sprintf("the call runs for %s, where server entry %s is registered; %s", shown, clierr.ShellQuote(name), text)
+	}
+	if vouched {
+		regenerate := clierr.NewSequence().
+			Then("", useServerCommand("")).
+			Then("then ", kubeconfigRemedy(clusterID))
+		msg = clierr.NoteOnce(clierr.Text(msg+"; to use "+server+", regenerate it from an entry registered there", clierr.Lead(" with: "), regenerate) +
+			useServerNote(cfg.CurrentServer))
+	}
+	return clierr.New(clierr.CodeConflict, msg)
+}
+
+// usableEntryAtServer reports whether a usable entry is registered at the
+// identity of server: the server is then a host its own entry's URL names.
+func usableEntryAtServer(cfg *config.Config, server string) bool {
+	return slices.ContainsFunc(cfg.MatchingServerNames(server), func(n string) bool { return usableEntry(cfg, n) })
+}
+
+// unusableEntryAtServer is the first entry (by name) at the identity of
+// server whose URL cannot be used, "" when there is none. The lookups leave
+// such an entry out of their candidates; a call none of the others answers
+// is refused with this entry's refusal, never sent on to a sign-in at the
+// host read from its URL.
+func unusableEntryAtServer(cfg *config.Config, server string) string {
+	for _, n := range cfg.MatchingServerNames(server) {
+		if !usableEntry(cfg, n) {
+			return n
+		}
+	}
+	return ""
 }
 
 // namedEntryRoute is the steps that regenerate the kubeconfig from the named

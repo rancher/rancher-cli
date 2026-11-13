@@ -42,7 +42,7 @@ func cutRows(t *testing.T) map[string]cutRow {
 	require.True(t, ok)
 	return map[string]cutRow{
 		"tokenRecovery":     {lines: tokenRecovery("exec-login-r.example.test", server, server, "user-b", ext)},
-		"administratorLine": {lines: []string{administratorLine(server, v3)}, kept: "an administrator logged in to"},
+		"administratorLine": {lines: []string{administratorLine(server, server, v3)}, kept: "an administrator logged in to"},
 		"recordLines":       {lines: recordLines("exec-login-r.example.test", entry, "  "), kept: "log in as user 'user-b' (the token's owner)"},
 		"recoveryField":     {lines: recovery, kept: "log in as user 'user-b' (the token's owner)"},
 		"pauseReasonText":   {lines: []string{pauseReasonText("/x", "prod", config.PauseReasonNoLock)}, kept: "noLock - the change ran with"},

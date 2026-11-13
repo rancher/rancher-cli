@@ -318,7 +318,7 @@ func CacheBindingForIdentified(dir string, cfg *Config, server, entry, userID, a
 		identifiedIsPlugin: s.Provenance == clierr.ProvenanceExecLogin,
 		reuseBound:         true, reuse: cfg.TokenReuse, built: true, load: cfg}
 	if cfg.TokenReuse {
-		b.listed, b.list = true, boundEntriesOf(cfg, cfg.PluginLoginEntriesOf(server, userID, authConfig))
+		b.listed, b.list = true, boundEntriesOf(cfg, cfg.usableEntryNames(cfg.PluginLoginEntriesOf(server, userID, authConfig)))
 	}
 	if b.refusesPluginEntries() {
 		return CacheBinding{refused: true}
@@ -376,7 +376,7 @@ func CacheBindingForServer(dir string, cfg *Config, server string, legacyShim bo
 	if cfg == nil {
 		return CacheBinding{}
 	}
-	names := cfg.MatchingServerNames(server)
+	names := cfg.usableEntryNames(cfg.MatchingServerNames(server))
 	b := CacheBinding{dir: dir, kind: recordServer, listed: true, list: boundEntriesOf(cfg, names), reuseBound: true, reuse: cfg.TokenReuse, built: true, load: cfg}
 	if !legacyShim {
 		b.currentBound, b.current = true, currentAmong(cfg.CurrentServer, names)
@@ -397,7 +397,7 @@ func CacheBindingForOwner(dir string, cfg *Config, server, userID, authConfig st
 	if cfg == nil || userID == "" {
 		return CacheBinding{}
 	}
-	names := cfg.OwnedServerNames(server, userID, authConfig)
+	names := cfg.usableEntryNames(cfg.OwnedServerNames(server, userID, authConfig))
 	return CacheBinding{dir: dir, kind: recordOwner, userID: userID, authConfig: authConfig, listed: true, list: boundEntriesOf(cfg, names),
 		currentBound: true, current: currentAmong(cfg.CurrentServer, names), reuseBound: true, reuse: cfg.TokenReuse, built: true, load: cfg}
 }
@@ -873,6 +873,11 @@ func (c *Config) servesRecord(rec cachedCred) bool {
 	if id.OtherURL || id.Entry != rec.Identified {
 		return false
 	}
+	// An entry whose URL cannot be used is refused by the lookup, so a record
+	// bound to it is a miss and the call reaches that refusal.
+	if id.Entry != "" && CheckServerURL(c.Servers[id.Entry].URL) != nil {
+		return false
+	}
 	if rec.TokenReuse != nil && *rec.TokenReuse != c.TokenReuse {
 		return false
 	}
@@ -881,7 +886,7 @@ func (c *Config) servesRecord(rec cachedCred) bool {
 		if rec.UserID != "" || rec.AuthConfig != "" || rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || (rec.CurrentServer == nil) != legacyShim {
 			return false
 		}
-		names := c.MatchingServerNames(rec.Server)
+		names := c.usableEntryNames(c.MatchingServerNames(rec.Server))
 		if rec.CurrentServer != nil && currentAmong(c.CurrentServer, names) != *rec.CurrentServer {
 			return false
 		}
@@ -890,7 +895,7 @@ func (c *Config) servesRecord(rec cachedCred) bool {
 		if rec.UserID == "" || rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || rec.CurrentServer == nil || legacyShim {
 			return false
 		}
-		names := c.OwnedServerNames(rec.Server, rec.UserID, rec.AuthConfig)
+		names := c.usableEntryNames(c.OwnedServerNames(rec.Server, rec.UserID, rec.AuthConfig))
 		if currentAmong(c.CurrentServer, names) != *rec.CurrentServer {
 			return false
 		}
@@ -911,11 +916,46 @@ func (c *Config) servesRecord(rec cachedCred) bool {
 		if rec.Entries == nil {
 			return true
 		}
-		plugins := c.PluginLoginEntriesOf(rec.Server, rec.UserID, rec.AuthConfig)
+		plugins := c.usableEntryNames(c.PluginLoginEntriesOf(rec.Server, rec.UserID, rec.AuthConfig))
 		if PluginFallbackRefused(s.Provenance == clierr.ProvenanceExecLogin, len(c.answeringPluginEntries(plugins, rec.AuthConfig))) {
 			return false
 		}
 		return c.sameEntries(plugins, *rec.Entries, rec.AuthConfig != "")
+	}
+	return false
+}
+
+// usableEntryNames is names without the entries whose URL cannot be used. The
+// exec plugin's lookups leave those entries out, so a record is bound to, and
+// compared with, the list of the others.
+func (c *Config) usableEntryNames(names []string) []string {
+	return slices.DeleteFunc(slices.Clone(names), func(n string) bool { return CheckServerURL(c.Servers[n].URL) != nil })
+}
+
+// namesUnusableEntry reports whether a live record names an entry whose URL
+// cannot be used, as its identified entry or in a list it is bound to. The
+// lookup serves such a record to nobody, a reader does not delete it, and a
+// write that would replace it keeps it apart (KeptTokenKey): the token it
+// caches can be revoked only through the record.
+func (a *CacheAnchor) namesUnusableEntry(rec cachedCred) bool {
+	return a.judgeable() && a.Cfg.recordNamesUnusableEntry(rec)
+}
+
+// recordNamesUnusableEntry is namesUnusableEntry over the entries of c.
+func (c *Config) recordNamesUnusableEntry(rec cachedCred) bool {
+	unusable := func(n string) bool {
+		s, ok := c.Servers[n]
+		return n != "" && ok && CheckServerURL(s.URL) != nil
+	}
+	if unusable(rec.Identified) || unusable(rec.Entry) {
+		return true
+	}
+	if rec.Entries != nil {
+		for _, e := range *rec.Entries {
+			if unusable(e.Name) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -957,7 +997,7 @@ func (c *Config) sameEntries(names []string, listed []cachedEntry, withAuthConfi
 // not its own to serve, which is the only case a reader deletes as
 // cleanup.
 func (a *CacheAnchor) staleRecord(key string, rec cachedCred) bool {
-	return a.judgeable() && !a.validFor(key, rec)
+	return a.judgeable() && !a.validFor(key, rec) && !a.namesUnusableEntry(rec)
 }
 
 // Confirm re-reads the binding stamp and reports whether it is still the

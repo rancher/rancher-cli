@@ -100,9 +100,9 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 
 // entryLoginTarget is the target of a login to an entry already registered:
 // its URL and saved CA, and RANCHER_CLI_CACERT where it applies to that URL.
-// An entry whose stored URL is unusable (it holds userinfo or does not
-// parse; only a hand-edited config.yaml can make one) is refused, naming the
-// entry and never the URL.
+// An entry whose stored URL is unusable (it holds userinfo or an @ after the
+// host, or does not parse; only a hand-edited config.yaml can make one) is
+// refused, naming the entry and never the URL.
 func entryLoginTarget(name string, entry config.Server) (loginTarget, error) {
 	if err := config.CheckServerURL(entry.URL); err != nil {
 		return loginTarget{}, config.EntryOrigin(name).Refusal(err)

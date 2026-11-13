@@ -79,6 +79,7 @@ var serverWriteRows = []serverWriteRow{
 	{"internal/token/revocation.go", "Deletion.Settle", "updates", "rewrites an entry read from the same config", ""},
 	{"internal/token/revocationplan.go", "Deletion.firstWrite", "updates", "rewrites entries read from the same config", ""},
 	{"internal/config/cachepause.go", "resumeWith", "updates", "rewrites an entry read from the same config", ""},
+	{"internal/config/cacherevoke.go", "Config.StaleAfterURLChange", "updates", "rewrites an entry read from the same config, in a copy that only a lookup rule reads", ""},
 	{"internal/config/cachebinding.go", "CacheBinding.RecordAuthConfig", "updates", "rewrites an entry read from the same config", ""},
 	{"internal/commands/cmdtest/fakehelper.go", "SeedExecLogout", "test support", "seeds a test directory", ""},
 	{"internal/commands/cmdtest/lock.go", "WriteSentinelServer", "test support", "seeds a test directory", ""},

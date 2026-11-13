@@ -212,6 +212,20 @@ type revocationItem struct {
 	entry  string
 	record bool
 	wrote  bool
+	// priorURL is the URL the entry held when the delete loaded it, before a
+	// command that changes the URL (update-server) wrote the new one. It is set
+	// for a superseded or login item of an entry the command targets and empty
+	// for every other item, a cache item included. The shown server, the advice
+	// and the stored identity are judged by it, which makes it part of what
+	// decides a stored server.
+	priorURL string
+	// maskURL is the URL of an entry that holds an @ after the host at the
+	// server of a cache item, decided when the item was planned and before the
+	// delete changed any entry, and cleared when the item is recorded on a
+	// usable entry that names that server. It decides what is shown and what
+	// the advice says. No revoke decision reads it, and it does not decide a
+	// stored server unless no entry of the item is usable at that server.
+	maskURL string
 	// loginTarget is the target whose login token this is.
 	loginTarget string
 	// matchLogin names the target whose stored login this superseded
@@ -323,12 +337,17 @@ func (d *Deletion) selects(cfg *config.Config, r config.CachedRecord) bool {
 	case DeleteForDeleteToken:
 		return d.req.Select == nil || d.req.Select(r)
 	}
+	if d.req.Command == DeleteForUpdateServer && d.req.Updated != nil && len(d.req.Targets) == 1 &&
+		cfg.StaleAfterURLChange(r, d.req.Targets[0], *d.req.Updated) {
+		return true
+	}
 	return slices.ContainsFunc(d.req.Targets, func(t string) bool { return cfg.InDeleteScope(r, t) })
 }
 
 func (d *Deletion) planCacheRecord(cfg *config.Config, r config.CachedRecord) *revocationItem {
 	it := &revocationItem{source: sourceCache, ref: r.TokenRef, server: config.CanonicalServerIdentity(r.Server), recorded: r.Server, cluster: r.Cluster,
 		owner: r.TokenUserID, cacheKey: r.Key, cacheToken: r.Token}
+	it.maskURL, _ = misreadEntryURL(cfg, r.Server)
 	if !r.Expiry.IsZero() {
 		it.expiresAt = r.Expiry.UTC().Format(time.RFC3339)
 	}
@@ -348,7 +367,21 @@ func (d *Deletion) planCacheRecord(cfg *config.Config, r config.CachedRecord) *r
 		it.reason = reasonNoEntry
 		return it
 	}
+	if d.req.Command == DeleteForUpdateServer && slices.Contains(d.req.Targets, parent) && !usableEntry(cfg, parent) {
+		// The entry the change repairs cannot be used as loaded, so no login of
+		// it retires the token: a usable entry at the record's server, when
+		// there is one, is where the token is recorded.
+		if other := d.usableParentAt(cfg, r); other != "" {
+			parent = other
+		}
+	}
 	it.entry, it.record = parent, true
+	if usableEntry(cfg, parent) && config.SameServerURL(cfg.Servers[parent].URL, r.Server) {
+		// The token is recorded on an entry that can be used and names the
+		// record's server, so the URL of the entry that cannot be used is not
+		// what the item or its advice says.
+		it.maskURL = ""
+	}
 	switch {
 	case r.TokenRef.Kind == TokenKindV3 && (d.req.Command == DeleteForUpdateServer || r.Cluster != "" || !v3NameRE.MatchString(r.TokenRef.Name)):
 		// Only an unscoped token is deleted with its own bearer: Rancher
@@ -449,18 +482,49 @@ func (d *Deletion) serverRecordParent(cfg *config.Config, r config.CachedRecord)
 	return ""
 }
 
+// usableParentAt is the usable entry, other than the targets, that a record
+// of the server is recorded on: among the entries that name the server, the
+// one recording the token's owner, else the first by name. Empty for none.
+func (d *Deletion) usableParentAt(cfg *config.Config, r config.CachedRecord) string {
+	var names []string
+	for _, n := range cfg.MatchingServerNames(r.Server) {
+		if usableEntry(cfg, n) && !slices.Contains(d.req.Targets, n) {
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	slices.Sort(names)
+	if r.TokenUserID != "" {
+		if i := slices.IndexFunc(names, func(n string) bool { return cfg.Servers[n].TokenUserID == r.TokenUserID }); i >= 0 {
+			return names[i]
+		}
+	}
+	return names[0]
+}
+
 // trustFor is the entry whose URL and CA a request for server uses: the
 // record's parent when it names that server, else among the entries that
 // do the one with a CA fingerprint, then one with a CA, then one that
 // connects with RANCHER_CLI_CACERT, then the first by name. None means no current entry names the server, and nothing is
 // sent.
 func trustFor(cfg *config.Config, parent, server string) (string, bool) {
-	if s, ok := cfg.Servers[parent]; ok && config.SameServerURL(s.URL, server) {
+	if s, ok := cfg.Servers[parent]; ok && usableEntry(cfg, parent) && config.SameServerURL(s.URL, server) {
 		return parent, true
 	}
 	names := cfg.MatchingServerNames(server)
 	if len(names) == 0 {
 		return "", false
+	}
+	// A parent whose URL cannot be used does not send its token to the host
+	// read from that URL. A usable entry registered at the server is where the
+	// token lives, so it sends; with none, the unusable entry is the trust, its
+	// refusal says why nothing was sent, and the token stays.
+	if usable := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return !usableEntry(cfg, n) }); len(usable) > 0 {
+		names = usable
+	} else if slices.Contains(names, parent) {
+		return parent, true
 	}
 	for _, pick := range []func(config.Server) bool{
 		func(s config.Server) bool { return s.CAFingerprint != "" },
@@ -485,7 +549,7 @@ func (d *Deletion) planEntry(name string, s config.Server) {
 		}
 		ref := rec.Ref
 		it := &revocationItem{source: sourceSuperseded, ref: &ref, owner: rec.UserID, expiresAt: rec.ExpiresAt, entry: name,
-			server: cmp.Or(config.CanonicalServerIdentity(rec.Server), server), recorded: rec.Server}
+			server: cmp.Or(config.CanonicalServerIdentity(rec.Server), server), recorded: rec.Server, priorURL: s.URL}
 		d.items = append(d.items, it)
 		matchesLogin := login != "" && usableBearer(rec.Ref.Kind, rec.Ref.Name, login) && it.server == server && s.CLICreated()
 		switch {
@@ -518,7 +582,7 @@ func (d *Deletion) planEntry(name string, s config.Server) {
 
 // planLogin classifies a target's login token.
 func (d *Deletion) planLogin(name string, s config.Server, server, login string) {
-	it := &revocationItem{source: sourceLogin, server: server, owner: s.TokenUserID, expiresAt: s.CredentialExpiresAt, loginTarget: name}
+	it := &revocationItem{source: sourceLogin, server: server, owner: s.TokenUserID, expiresAt: s.CredentialExpiresAt, loginTarget: name, priorURL: s.URL}
 	switch {
 	case s.CLIOwned():
 		// An entry an earlier version's logout stamped keeps the name but
@@ -568,10 +632,24 @@ func (d *Deletion) firstWrite(cfg *config.Config) (bool, error) {
 			changed = true
 		}
 		if d.req.Command == DeleteForUpdateServer {
-			old := config.CanonicalServerIdentity(e.URL)
-			for i := range e.SupersededTokens {
-				if e.SupersededTokens[i].Server == "" {
-					e.SupersededTokens[i].Server, changed = old, true
+			// A record with no server is filled with the identity of the URL
+			// the entry held; one that names that identity is stored again
+			// the same way, so a URL that holds an @ after the host leaves
+			// no server a later command could log in to.
+			site := config.RecordSite{PriorEntryURL: e.URL}
+			old := config.RecordServerIdentity(site, "", config.CanonicalServerIdentity(e.URL))
+			for i, rec := range e.SupersededTokens {
+				want := old
+				if rec.Server != "" {
+					id := config.CanonicalServerIdentity(rec.Server)
+					if stored := config.RecordServerIdentity(site, rec.Server, id); stored != id {
+						want = stored
+					} else {
+						want = rec.Server
+					}
+				}
+				if want != rec.Server {
+					e.SupersededTokens[i].Server, changed = want, true
 				}
 			}
 		}
@@ -592,7 +670,7 @@ func (d *Deletion) firstWrite(cfg *config.Config) (bool, error) {
 			continue
 		}
 		e.SupersededTokens = append(e.SupersededTokens, config.SupersededToken{Ref: *it.ref, UserID: it.owner, ExpiresAt: it.expiresAt,
-			SupersededAt: stamp, Server: it.server})
+			SupersededAt: stamp, Server: config.RecordServerIdentity(d.site(it), it.recorded, it.server)})
 		cfg.Servers[it.entry] = e
 		it.wrote, changed = true, true
 	}
@@ -651,11 +729,11 @@ func (d *Deletion) Report() RevocationReport {
 			continue
 		}
 		if it.revoked {
-			rep.Revoked = append(rep.Revoked, RevokedToken{Ref: *it.ref, Source: it.source, Server: config.DisplayServerIdentity(it.server)})
+			rep.Revoked = append(rep.Revoked, RevokedToken{Ref: *it.ref, Source: it.source, Server: d.shownServer(it)})
 			continue
 		}
 		recovery, loginAs := d.recovery(it)
-		n := NotRevokedToken{Ref: it.ref, Source: it.source, Server: config.DisplayServerIdentity(it.server),
+		n := NotRevokedToken{Ref: it.ref, Source: it.source, Server: d.shownServer(it),
 			Entry: d.reportedEntry(it), Reason: it.reason, Error: it.errText, Retry: d.retry(it), Recovery: recovery, LoginAs: loginAs}
 		if it.tlsErr != nil {
 			n.Code, n.Error, n.Certificate = clierr.CodeTLSTrust, d.tlsMessage(it), it.cert
@@ -760,6 +838,12 @@ func (d *Deletion) retry(it *revocationItem) string {
 	if !ok || it.owner == "" || e.TokenUserID != it.owner || config.CanonicalServerIdentity(e.URL) != it.server {
 		return retryManual
 	}
+	if config.CheckServerURL(e.URL) != nil {
+		// A login of an entry whose URL cannot be used is refused, so none
+		// revokes the token now. After the repair of the URL a login retires it
+		// only when the record's server is then the entry's.
+		return retryManual
+	}
 	return retryNextLogin
 }
 
@@ -792,16 +876,47 @@ func (d *Deletion) recovery(it *revocationItem) (commands []string, loginAs stri
 	return advice.Sequence.Field(), advice.LoginAs
 }
 
-// advise is what config.AdviseRecord says about the server of a manual
-// token: where it is reported (the entry it is recorded on, that entry's URL
-// as stored, and whether the entry was removed) and the token's server.
-func (d *Deletion) advise(it *revocationItem) config.RecordAdvice {
+// site is where the item is reported: the entry it is recorded on, that
+// entry's URL as stored and the URL it held when the delete was planned, and
+// whether the entry was removed.
+func (d *Deletion) site(it *revocationItem) config.RecordSite {
 	e, exists := d.view.Servers[it.entry]
 	if !exists && d.cfg != nil {
 		e = d.cfg.Servers[it.entry]
 	}
-	site := config.RecordSite{Entry: d.reportedEntry(it), EntryURL: e.URL, Removed: it.entry != "" && (d.removed[it.entry] || !exists)}
-	return config.AdviseRecord(site, cmp.Or(it.recorded, it.server), it.owner, *it.ref)
+	return config.RecordSite{Entry: d.reportedEntry(it), EntryURL: e.URL, PriorEntryURL: it.priorURL, MisreadURL: it.maskURL,
+		Removed: it.entry != "" && (d.removed[it.entry] || !exists)}
+}
+
+// shownKeys is the cache keys as output may show them: a key holds the
+// server of its record, so it shows that server as shownServer does.
+func (d *Deletion) shownKeys(keys []string) []string {
+	if keys == nil {
+		return nil
+	}
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = k
+		for _, it := range d.items {
+			if it.source == sourceCache && it.cacheKey == k && it.server != "" {
+				out[i] = strings.Replace(k, it.server, d.shownServer(it), 1)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// shownServer is the server of an item as output may show it. Every field of
+// a report or a key that names the server of an item takes it from here.
+func (d *Deletion) shownServer(it *revocationItem) string {
+	return config.DisplayRecordServer(d.site(it), it.recorded, it.server)
+}
+
+// advise is what config.AdviseRecord says about the server of a manual
+// token: where it is reported and the token's server.
+func (d *Deletion) advise(it *revocationItem) config.RecordAdvice {
+	return config.AdviseRecord(d.site(it), cmp.Or(it.recorded, it.server), it.owner, *it.ref)
 }
 
 // serverCATail says how a login connects to a server whose certificate a
@@ -867,7 +982,17 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	}
 	advice := d.advise(it)
 	if advice.Text != "" {
-		return fmt.Sprintf("the %s was not revoked (%s); %s", what, reasonText(it), advice.Text)
+		text := fmt.Sprintf("the %s was not revoked (%s); %s", what, reasonText(it), advice.Text)
+		if site := d.site(it); site.Entry != "" && config.CheckServerURL(site.EntryURL) != nil && it.ref != nil {
+			// A login of the entry the token is recorded on is refused while its
+			// URL cannot be used, so none revokes the token now: it is deleted
+			// where it lives. The advice already says so for a record of a server
+			// that cannot be used.
+			if !strings.Contains(advice.Text, config.TokenStaysClause) {
+				text += "; " + config.TokenStaysText(*it.ref, it.owner)
+			}
+		}
+		return clierr.NoteOnce(text)
 	}
 	who := config.RecordOwnerOrAdministrator
 	if advice.LoginAs != "" {
@@ -953,14 +1078,15 @@ func reasonText(it *revocationItem) string {
 // TextLines renders the report under each server: one line per token.
 func (d *Deletion) TextLines() []string {
 	var lines []string
-	server := "\x00"
+	server, shownHeader := "\x00", ""
 	for _, it := range d.ordered() {
 		if !d.listed(it) {
 			continue
 		}
-		if it.server != server {
-			server = it.server
-			header := "tokens on " + config.DisplayServerIdentity(server) + ":"
+		shown := d.shownServer(it)
+		if it.server != server || shown != shownHeader {
+			server, shownHeader = it.server, shown
+			header := "tokens on " + shown + ":"
 			if server == "" {
 				header = "tokens with no server recorded:"
 			}

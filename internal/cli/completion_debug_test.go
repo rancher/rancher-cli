@@ -201,11 +201,11 @@ func TestCompletionDebugSilentOutsideCompletion(t *testing.T) {
 }
 
 // TestCompletionTraceAndRefusalForAServerURLWithUserinfo asserts that a
-// completion request with a server URL that carries userinfo (the variable,
-// or the current server entry) is treated like a missing URL: the trace holds
-// no part of the userinfo, the capability is the zero value, no credential is
-// read and no request reaches the server. A URL without userinfo is traced as
-// scheme and host only.
+// completion request with a server URL that carries userinfo or an @ after
+// the host (the variable, or the current server entry) is treated like a
+// missing URL: the trace holds no part of the userinfo or of the path, the
+// capability is the zero value, no credential is read and no request reaches
+// the server. A URL without userinfo is traced as scheme and host only.
 // NOT parallel: it mutates env globals and the stored config.
 func TestCompletionTraceAndRefusalForAServerURLWithUserinfo(t *testing.T) {
 	var requests int
@@ -216,12 +216,18 @@ func TestCompletionTraceAndRefusalForAServerURLWithUserinfo(t *testing.T) {
 	t.Cleanup(srv.Close)
 	host := strings.TrimPrefix(srv.URL, "http://")
 	withUserinfo := "http://u:" + urlCanary + "@" + host + "/pathzq7"
+	withRawAt := "http://" + host + "/pathzq7/" + urlCanary + "@x"
 
 	for _, tc := range []struct {
 		name, stored, variable string
+		// traced is the URL the trace shows: scheme and host, or the unusable
+		// text for a URL whose host is not the server it names.
+		traced string
 	}{
-		{"the variable", srv.URL, withUserinfo},
-		{"the current server entry", withUserinfo, ""},
+		{"the variable", srv.URL, withUserinfo, srv.URL},
+		{"the current server entry", withUserinfo, "", srv.URL},
+		{"the variable holds an at sign after the host", srv.URL, withRawAt, "<unusable URL>"},
+		{"the current server entry holds an at sign after the host", withRawAt, "", "<unusable URL>"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requests = 0
@@ -252,7 +258,8 @@ func TestCompletionTraceAndRefusalForAServerURLWithUserinfo(t *testing.T) {
 			lower := strings.ToLower(trace.String())
 			assert.NotContains(t, lower, strings.ToLower(urlCanary))
 			assert.NotContains(t, lower, "pathzq7")
-			assert.Contains(t, lower, "connection: url="+strings.ToLower(srv.URL), "the URL is traced as scheme and host")
+			assert.NotContains(t, lower, "@x")
+			assert.Contains(t, lower, "connection: url="+strings.ToLower(tc.traced), "the URL is traced as scheme and host")
 		})
 	}
 

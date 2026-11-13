@@ -104,6 +104,13 @@ func lookupStoredLogin(cfg *config.Config, store CredentialReader, server, name,
 				return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: user.entryAuthConfigRefused(cfg, identified, s.TokenAuthConfig, true, false)}
 			}
 		}
+		if n := unusableEntryAtServer(cfg, server); n != "" && !usableEntryAtServer(cfg, server) {
+			// The server the call names is only the host read from the URL of an
+			// entry that cannot be used: the call is refused, and never signs in
+			// at that host. With a usable entry registered at the server, the
+			// call goes on to that entry's sign-in.
+			return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: unusableEntryError(cfg, n, server, clusterID, false)}
+		}
 		return StoredLogin{Outcome: LookupNone, Identified: identified}
 	}
 	plugin := sc.entry.Provenance == clierr.ProvenanceExecLogin

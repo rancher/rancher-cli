@@ -20,6 +20,7 @@ const (
 	CacheRecordOwnCredential CacheRecordKind = recordOwnCredential
 	CacheRecordIdentified    CacheRecordKind = recordIdentified
 	CacheRecordServer        CacheRecordKind = recordServer
+	CacheRecordOwner         CacheRecordKind = recordOwner
 )
 
 // CachedRecord is one exec-credential cache record as a delete that
@@ -45,11 +46,14 @@ type CachedRecord struct {
 	// present and empty).
 	Entries []string
 	Listed  bool
+
+	// bound is the record as stored, which StaleAfterURLChange judges.
+	bound cachedCred
 }
 
 func cachedRecordOf(key string, c cachedCred) CachedRecord {
 	r := CachedRecord{Key: key, Token: c.Token, Expiry: c.Expiry, Name: c.Name, Server: c.Server, Cluster: c.Cluster,
-		TokenUserID: c.TokenUserID, Identified: c.Identified}
+		TokenUserID: c.TokenUserID, Identified: c.Identified, bound: c}
 	if c.TokenRef != nil {
 		ref := *c.TokenRef
 		r.TokenRef = &ref
@@ -188,6 +192,87 @@ func CacheRecordForServer(recordServer, serverURL string) bool {
 		scheme = strings.ToLower(u.Scheme)
 	}
 	return canonicalServerHost(scheme+"://"+recordServer) == canonicalServerHost(identity)
+}
+
+// ServerAfterUpdate is the entry config update-server writes for e: with the
+// credentials cleared (the URL changes to another server) only the address,
+// the trust, the cache binding id, the pause and the superseded tokens
+// stay; with other fields changed (a CA) the URL and the CA are set and the
+// CA fingerprint is cleared; otherwise only the URL changes (the user
+// information left it). It is the one function the write and the judgement
+// of the cache records it makes stale share.
+func ServerAfterUpdate(e Server, canonicalURL, ca string, credentialsCleared, fieldsChanged bool) Server {
+	switch {
+	case credentialsCleared:
+		return Server{URL: canonicalURL, CA: ca,
+			CacheBindingID: e.CacheBindingID, CacheWritesPaused: e.CacheWritesPaused, SupersededTokens: e.SupersededTokens}
+	case fieldsChanged:
+		e.URL, e.CA, e.CAFingerprint, e.CAFromEnvironment = canonicalURL, ca, "", false
+	default:
+		e.URL = canonicalURL
+	}
+	return e
+}
+
+// StaleAfterURLChange reports whether the exec plugin's lookup serves rec over c
+// and stops serving it once entry is after, the entry config update-server
+// writes (ServerAfterUpdate): a record bound to the usable entries at its
+// server, when the change makes the entry usable there, or one that names the
+// entry. Nothing in c changes.
+func (c *Config) StaleAfterURLChange(rec CachedRecord, entry string, after Server) bool {
+	if _, ok := c.Servers[entry]; !ok || rec.bound.Version != cacheRecordVersion || !c.servesRecord(rec.bound) {
+		return false
+	}
+	changed := *c
+	changed.Servers = maps.Clone(c.Servers)
+	changed.Servers[entry] = after
+	return !changed.servesRecord(rec.bound)
+}
+
+// KeptCachedCred is a record KeepStaleCachedCreds moved: its new key, the
+// token it holds, the kind of record and the server of the call that cached
+// it.
+type KeptCachedCred struct {
+	Key    string
+	Ref    clierr.TokenRef
+	Kind   CacheRecordKind
+	Server string
+}
+
+// KeepStaleCachedCreds moves, in one write under the token-cache lock, each
+// live record with a token reference that the update of entry to after makes
+// the lookup stop serving (StaleAfterURLChange over cfg, the config as it is
+// before the update) to its kept key, where no read deletes it and the revoke
+// plan still finds it. A record with no token reference, an expired one and
+// one the update keeps serving stay as they are. It sends nothing.
+func KeepStaleCachedCreds(dir string, cfg *Config, entry string, after Server) ([]KeptCachedCred, error) {
+	f := newFileStore(dir, &noticeBuffer{})
+	var kept []KeptCachedCred
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	err := f.withCacheLock(func() error {
+		m, err := f.readCache()
+		if err != nil {
+			return &CacheReadError{Err: err}
+		}
+		for _, key := range slices.Sorted(maps.Keys(m)) {
+			c := m[key]
+			if c.TokenRef == nil || (!c.Expiry.IsZero() && time.Now().After(c.Expiry)) ||
+				!cfg.StaleAfterURLChange(cachedRecordOf(key, c), entry, after) {
+				continue
+			}
+			delete(m, key)
+			kept = append(kept, KeptCachedCred{Key: keepCachedRecord(m, c), Ref: *c.TokenRef, Kind: CacheRecordKind(c.Kind), Server: c.Server})
+		}
+		if len(kept) == 0 {
+			return nil
+		}
+		return f.writeCache(m)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return kept, nil
 }
 
 // InDeleteScope reports whether deleting entry's credential deletes rec:

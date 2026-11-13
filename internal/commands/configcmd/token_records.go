@@ -28,9 +28,11 @@ func tokenRecovery(entry, entryURL, serverURL, userID string, ref clierr.TokenRe
 }
 
 // administratorLine is the text that replaces the recovery sequence and
-// its assumption for a v3 token.
-func administratorLine(serverURL string, ref clierr.TokenRef) string {
-	return clierr.Text("an administrator logged in to "+config.DisplayServerURL(serverURL)+" can delete it",
+// its assumption for a v3 token. serverURL is the server the token names and
+// entryURL the URL of the entry it is reported on: a server read from an entry
+// URL that holds an @ after the host shows as unusable.
+func administratorLine(entryURL, serverURL string, ref clierr.TokenRef) string {
+	return clierr.Text("an administrator logged in to "+config.DisplayStoredRecordServer(entryURL, serverURL)+" can delete it",
 		clierr.Lead("; run: "), clierr.Revoke(ref))
 }
 
@@ -58,7 +60,7 @@ func recordReport(entry string, s config.Server, rec config.SupersededToken) map
 	m["supersededAt"] = rec.SupersededAt
 	m["state"] = recordState(s, rec)
 	if rec.Server != "" {
-		m["server"] = config.DisplayServerURL(rec.Server)
+		m["server"] = config.DisplayStoredRecordServer(s.URL, rec.Server)
 	}
 	if rec.LastAttempt != nil {
 		m["lastAttempt"] = map[string]any{"result": string(rec.LastAttempt.Result), "error": rec.LastAttempt.Error}
@@ -124,7 +126,7 @@ func recordLines(entry string, s config.Server, indent string) []string {
 		ref := r.Ref
 		userID := r.UserID
 		if r.Ref.Kind == clierr.TokenKindV3 {
-			lines = append(lines, indent+"  "+administratorLine(cmp.Or(r.Server, s.URL), ref))
+			lines = append(lines, indent+"  "+administratorLine(s.URL, cmp.Or(r.Server, s.URL), ref))
 			continue
 		}
 		advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: s.URL}, cmp.Or(r.Server, s.URL), userID, ref)

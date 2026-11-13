@@ -27,7 +27,17 @@ exec rancher auth login e2e-noverify --url https://127.0.0.1:1 --token-stdin --n
 stdout 'token stored for e2e-noverify \(https://127.0.0.1:1\) - not verified'
 grep e2e-noverify $RANCHER_CLI_CONFIG_DIR/config.yaml
 
+# a URL with an @ after the host is refused before anything is saved or sent.
+stdin rawat-token.txt
+! exec rancher auth login e2e-rawat --url https://admin:1234/x@h --token-stdin -o json
+jsonquery stderr data.error.code VALIDATION
+stderr 'it holds an @ after the host'
+! stderr 'x@h'
+! grep e2e-rawat $RANCHER_CLI_CONFIG_DIR/config.yaml
+
 -- token.txt --
 e2e:secret
 -- noverify-token.txt --
 noverify:secret
+-- rawat-token.txt --
+rawat:secret

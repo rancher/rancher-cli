@@ -25,8 +25,16 @@ const urlCanary = "CaNaRy-9x"
 
 // The forms of a server URL carrying the canary, each of which a command
 // refuses: dialable, with a bad port, schemeless, and with a user name only.
+// canaryURLRawAt holds an @ after the host. Its host is the stub's, so a
+// missing refusal dials the stub; the scheme is https because the stub is a
+// TLS server and the cache hit rows seed its https URL.
 const (
-	canaryURL        = "https://u:" + urlCanary + "@{host}"
+	canaryURL = "https://u:" + urlCanary + "@{host}"
+	// canaryURLMisread holds an @ after a host that reads as a user name and
+	// the start of a password with a port: the host url.Parse takes from it
+	// is admin:1234, a server the operator never named.
+	canaryURLMisread = "https://admin:1234/" + urlCanary + "@x"
+	canaryURLRawAt   = "https://{host}/" + urlCanary + "@x"
 	canaryURLBadPort = "https://u:" + urlCanary + "@127.0.0.1:abc"
 	canaryURLNoHost  = "u:" + urlCanary + "@127.0.0.1:1"
 )
@@ -167,6 +175,7 @@ func secretURLRows() []secretRow {
 	}
 	const (
 		userinfo = "it holds a user name or password"
+		rawAt    = "it holds an @ after the host, which usually means a password with a /, ? or # in it"
 		badPort  = "it is not a valid URL"
 		noHost   = "it must be absolute (scheme://host)"
 		entry    = "server entry 'x'"
@@ -181,6 +190,7 @@ func secretURLRows() []secretRow {
 	add := func(r ...secretRow) { rows = append(rows, r...) }
 	forms := []struct{ name, url, why string }{
 		{"userinfo", canaryURL, userinfo},
+		{"a raw @ in the path", canaryURLRawAt, rawAt},
 		{"a bad port", canaryURLBadPort, badPort},
 		{"no scheme", canaryURLNoHost, noHost},
 	}
@@ -253,6 +263,12 @@ func secretURLRows() []secretRow {
 			refusal(env, userinfo)+plain, "", env),
 		hit("token, a cache hit, --server holds userinfo", []string{"token", "--server", canaryURL, "--user", "kube", "--cluster", "c-1"}, nil,
 			refusal("--server", userinfo)+plain+kubectl, "server", ""),
+		hit("auth get-token, a cache hit, --server holds a raw @ in the path", []string{"auth", "get-token", "--name", "prod", "--server", canaryURLRawAt, "--cluster", "c-1"}, nil,
+			refusal("--server", rawAt)+plain+kubectl, "server", ""),
+		hit("auth get-token, a cache hit, the variable holds a raw @ in the path", []string{"auth", "get-token", "--name", "prod", "--cluster", "c-1"}, []string{env, canaryURLRawAt},
+			refusal(env, rawAt)+plain, "", env),
+		hit("token, a cache hit, --server holds a raw @ in the path", []string{"token", "--server", canaryURLRawAt, "--user", "kube", "--cluster", "c-1"}, nil,
+			refusal("--server", rawAt)+plain+kubectl, "server", ""),
 	)
 
 	// The name collision and CONFLICT refusals keep their own codes. The
@@ -268,6 +284,13 @@ func secretURLRows() []secretRow {
 		secretRow{flag: "url", name: "auth login with a derived name on a stored entry with userinfo", argv: []string{"auth", "login", "--token-stdin", "--url", "{url}"},
 			stdin: "id:y", stored: &secretStored{name: "127.0.0.1", url: canaryURL}, canary: urlCanary, code: validation,
 			message: refusal("server entry '127.0.0.1'", userinfo) + "; " + derived, forbid: []string{"is already registered at", "config update-server"}},
+		secretRow{flag: "url", name: "config add-server on a stored entry with a raw @ in the path, with another URL", argv: []string{"config", "add-server", "x", "--url", "{url}", "--cacert", "{pem}"},
+			stored: &secretStored{url: canaryURLRawAt}, canary: urlCanary, code: string(clierr.CodeConflict), message: refusal(entry, rawAt) + update, forbid: []string{"already points at"}},
+		secretRow{flag: "url", name: "auth login x on a stored entry with a raw @ in the path, with another URL", argv: []string{"auth", "login", "x", "--token-stdin", "--url", "{url}"},
+			stdin: "id:y", stored: &secretStored{url: canaryURLRawAt}, canary: urlCanary, code: validation, message: refusal(entry, rawAt) + update, forbid: []string{"is registered at"}},
+		secretRow{flag: "url", name: "auth login with a derived name on a stored entry with a raw @ in the path", argv: []string{"auth", "login", "--token-stdin", "--url", "{url}"},
+			stdin: "id:y", stored: &secretStored{name: "127.0.0.1", url: canaryURLRawAt}, canary: urlCanary, code: validation,
+			message: refusal("server entry '127.0.0.1'", rawAt) + "; " + derived, forbid: []string{"is already registered at", "config update-server"}},
 	)
 
 	// An entry the exec plugin made for itself cannot be repaired with
@@ -283,6 +306,13 @@ func secretURLRows() []secretRow {
 		secretRow{flag: "url", name: "config update-server --cacert, the plugin's own entry holds a bad port", argv: []string{"config", "update-server", "exec-login-abc", "--cacert", "{pem}"},
 			stored: &secretStored{name: "exec-login-abc", url: canaryURLBadPort}, canary: urlCanary, code: validation,
 			message: refusal(pluginEntry, badPort) + pluginRepair, forbid: []string{"update-server"}},
+		secretRow{env: env, name: "get cluster, the only entry is the plugin's own and holds a raw @ in the path", argv: []string{"get", "cluster"},
+			setEnv: map[string]string{env: ""}, stored: &secretStored{name: "exec-login-abc", url: canaryURLRawAt, noCurrent: true}, canary: urlCanary,
+			code: string(clierr.CodeNotLoggedIn), message: "not logged in - no current server; the only server entry, 'exec-login-abc', is the exec plugin's own login entry, which auth login refuses; " +
+				refusal(pluginEntry, rawAt) + pluginRepair, forbid: []string{"update-server"}},
+		secretRow{flag: "url", name: "config update-server --cacert, the plugin's own entry holds a raw @ in the path", argv: []string{"config", "update-server", "exec-login-abc", "--cacert", "{pem}"},
+			stored: &secretStored{name: "exec-login-abc", url: canaryURLRawAt}, canary: urlCanary, code: validation,
+			message: refusal(pluginEntry, rawAt) + pluginRepair, forbid: []string{"update-server"}},
 	)
 
 	// A URL with a scheme other than http or https is refused with the same
@@ -331,6 +361,12 @@ func secretURLRows() []secretRow {
 			setEnv: map[string]string{env: canaryURL}, stored: &secretStored{url: "{url}"}, canary: urlCanary, code: validation, message: refusal(env, userinfo) + plain},
 		secretRow{flag: "server", name: "auth get-token, a bad variable under a good --server", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1"},
 			setEnv: map[string]string{env: canaryURL}, canary: urlCanary, noRefusal: true, forbid: []string{env}, instead: "interactive login required for auth config local"},
+		secretRow{env: env, name: "get cluster, a stored entry with a raw @ in the path under a good variable", argv: []string{"get", "cluster"},
+			stored: &secretStored{url: canaryURLRawAt}, canary: urlCanary, noRefusal: true, reaches: true},
+		secretRow{env: env, name: "get cluster, a good stored entry under a variable with a raw @ in the path", argv: []string{"get", "cluster"},
+			setEnv: map[string]string{env: canaryURLRawAt}, stored: &secretStored{url: "{url}"}, canary: urlCanary, code: validation, message: refusal(env, rawAt) + plain},
+		secretRow{flag: "server", name: "auth get-token, a variable with a raw @ in the path under a good --server", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1"},
+			setEnv: map[string]string{env: canaryURLRawAt}, canary: urlCanary, noRefusal: true, forbid: []string{env}, instead: "interactive login required for auth config local"},
 	)
 
 	// Credential errors name the source and never the value, nor the next
@@ -348,7 +384,11 @@ func secretURLRows() []secretRow {
 			message: "reading --cacerts: the file does not exist"}),
 		row(secretRow{flag: "cacert", name: "auth login --cacert takes the next word, a URL with a password", argv: []string{"auth", "login", "x", "--token-stdin", "--url", "{url}", "--cacert", canaryURL},
 			stdin: "id:y", message: "reading --cacert: the file does not exist"}),
+		row(secretRow{flag: "cacert", name: "auth login --cacert takes the next word, a URL with a raw @ in the path", argv: []string{"auth", "login", "x", "--token-stdin", "--url", "{url}", "--cacert", canaryURLRawAt},
+			stdin: "id:y", message: "reading --cacert: the file does not exist"}),
 		row(secretRow{flag: "cacert", name: "auth get-token --cacert takes the next word, a URL with a password", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--cacert", canaryURL},
+			message: "reading --cacert: the file does not exist"}),
+		row(secretRow{flag: "cacert", name: "auth get-token --cacert takes the next word, a URL with a raw @ in the path", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--cacert", canaryURLRawAt},
 			message: "reading --cacert: the file does not exist"}),
 		row(secretRow{env: "RANCHER_CLI_CACERT", name: "auth get-token, the variable holds the canary", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1"},
 			setEnv: map[string]string{config.EnvCACert: urlCanary}, message: "reading RANCHER_CLI_CACERT: the file does not exist"}),
@@ -357,6 +397,8 @@ func secretURLRows() []secretRow {
 		row(secretRow{flag: "credential-store", name: "auth login --credential-store holds the canary", argv: []string{"auth", "login", "x", "--token-stdin", "--url", "{url}", "--credential-store", urlCanary},
 			stdin: "id:y", message: "--credential-store: unknown credential store (valid: keychain, file, auto, exec:<name>)"}),
 		row(secretRow{flag: "credential-store", name: "auth login --credential-store takes the next word, a URL with a password", argv: []string{"auth", "login", "x", "--token-stdin", "--credential-store", canaryURL},
+			stdin: "id:y", message: "--credential-store: unknown credential store"}),
+		row(secretRow{flag: "credential-store", name: "auth login --credential-store takes the next word, a URL with a raw @ in the path", argv: []string{"auth", "login", "x", "--token-stdin", "--credential-store", canaryURLRawAt},
 			stdin: "id:y", message: "--credential-store: unknown credential store"}),
 		row(secretRow{flag: "credential-store", name: "auth login --credential-store holds an invalid helper name", argv: []string{"auth", "login", "x", "--token-stdin", "--url", "{url}", "--credential-store", "exec:" + urlCanary},
 			stdin: "id:y", message: "--credential-store: invalid credential helper name"}),
@@ -386,6 +428,8 @@ func secretURLRows() []secretRow {
 		row(secretRow{flag: "user-id", name: "auth get-token --user-id holds the canary", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--user-id", urlCanary},
 			message: "--user-id is not a Rancher user id"}),
 		row(secretRow{flag: "user-id", name: "auth get-token --user-id takes the next word, a URL with a password", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--user-id", canaryURL},
+			message: "--user-id is not a Rancher user id"}),
+		row(secretRow{flag: "user-id", name: "auth get-token --user-id takes the next word, a URL with a raw @ in the path", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--user-id", canaryURLRawAt},
 			message: "--user-id is not a Rancher user id"}),
 		row(secretRow{flag: "auth-provider", name: "auth get-token --auth-provider holds the canary", argv: []string{"auth", "get-token", "--server", "{url}", "--cluster", "c-1", "--user-id", "u-abc12", "--auth-provider", urlCanary},
 			message: "--auth-provider is not an auth config name"}),
@@ -427,6 +471,7 @@ func secretOKRows() []secretOKRow {
 	var rows []secretOKRow
 	const (
 		userinfo      = "it holds a user name or password"
+		rawAt         = "it holds an @ after the host, which usually means a password with a /, ? or # in it"
 		badPortReason = "it is not a valid URL"
 		entryName     = "server entry 'x'"
 		update        = "; change the entry's URL with rancher config update-server 'x' --url <url>"
@@ -434,7 +479,7 @@ func secretOKRows() []secretOKRow {
 	for _, form := range []struct {
 		name, url, reason string
 		badPort           bool
-	}{{"userinfo", canaryURL, userinfo, false}, {"a bad port", canaryURLBadPort, badPortReason, true}} {
+	}{{"userinfo", canaryURL, userinfo, false}, {"a raw @ in the path", canaryURLRawAt, rawAt, false}, {"a bad port", canaryURLBadPort, badPortReason, true}} {
 		unusableEntry := "the server URL in " + entryName + " cannot be used: " + form.reason + update
 		st := secretStored{url: form.url}
 		withToken := secretStored{url: form.url, token: true}
@@ -588,6 +633,14 @@ func secretRecordRows() []secretOKRow {
 				assert.Contains(t, stdout+stderr, "the server URL in server entry 'exec-login-abc' cannot be used: it is not a valid URL; if the entry holds a login, run: rancher auth logout 'exec-login-abc'; then remove the entry with: rancher config delete-server 'exec-login-abc'")
 				assert.NotContains(t, stdout+stderr, "config update-server")
 			}},
+		{name: "config set-token-reuse off, a plugin entry with a raw @ in the path and a record that names no server", argv: []string{"config", "set-token-reuse", "off"},
+			stored: secretStored{name: "exec-login-abc", url: canaryURLRawAt, provenance: clierr.ProvenanceExecLogin,
+				records: []config.SupersededToken{{Ref: oldRecord.Ref, UserID: oldRecord.UserID, SupersededAt: oldRecord.SupersededAt}}},
+			check: func(t *testing.T, stdout, stderr string, _ []string) {
+				t.Helper()
+				assert.Contains(t, stdout+stderr, "the server URL in server entry 'exec-login-abc' cannot be used: "+rawAtReason+"; if the entry holds a login, run: rancher auth logout 'exec-login-abc'; then remove the entry with: rancher config delete-server 'exec-login-abc'")
+				assert.NotContains(t, stdout+stderr, "config update-server")
+			}},
 		{name: "auth logout x, a usable entry and a record with an unusable server", argv: []string{"auth", "logout", "x"}, stored: usable, check: text},
 		{name: "config delete-server x, a usable entry and a record with an unusable server", argv: []string{"config", "delete-server", "x"}, stored: usable, check: text},
 		{name: "auth login x, a pasted token, a usable entry and a record with an unusable server", argv: []string{"auth", "login", "x", "--token-stdin", "--no-verify"}, stdin: "id:y",
@@ -609,6 +662,72 @@ func secretRecordRows() []secretOKRow {
 				t.Helper()
 				assert.NotContains(t, stdout+stderr, "config update-server", "the entry is repaired by this run")
 				assert.Contains(t, stdout+stderr, "the server recorded for token 'token-abc12' cannot be used: ")
+			}},
+		{name: "config update-server x --url, an entry with a raw @ in the path and a recorded token", argv: []string{"config", "update-server", "x", "--url", "{url}", "--cacert", "{pem}"},
+			stored: secretStored{url: canaryURLMisread, stubCA: true, token: true},
+			check: func(t *testing.T, stdout, stderr string, _ []string) {
+				t.Helper()
+				assert.NotContains(t, stdout+stderr, "config update-server", "the entry is repaired by this run")
+				assert.Contains(t, stdout+stderr, "the server recorded for token 'token-abc12' cannot be used: "+rawAtReason+"; ")
+				assertNoMisreadURL(t, stdout+stderr)
+			}},
+		{name: "config update-server x --url, json, an entry with a raw @ in the path, a recorded token and a superseded record", argv: []string{"-o", "json", "config", "update-server", "x", "--url", "{url}", "--cacert", "{pem}"},
+			stored: secretStored{url: canaryURLMisread, stubCA: true, token: true, records: []config.SupersededToken{{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old77"}, UserID: "u-abc12", SupersededAt: "2026-10-01T00:00:00Z"}}},
+			check: func(t *testing.T, stdout, stderr string, _ []string) {
+				t.Helper()
+				data := dataOf(t, stdout).(map[string]any)
+				assert.Equal(t, true, data["credentialsCleared"], "the credentials are cleared as before")
+				assert.Equal(t, []any{"url"}, data["changed"])
+				notRevoked := notRevokedOf(t, stdout)
+				require.Len(t, notRevoked, 2)
+				for _, n := range notRevoked {
+					assert.Equal(t, "otherServer", n["reason"])
+					assert.Equal(t, "<unusable URL>", n["server"], "the host read from the URL is not shown")
+					assert.Empty(t, n["recovery"], "no login is built for the host read from the URL")
+					assert.NotContains(t, n, "loginAs")
+				}
+				warnings := strings.Join(envelopeWarnings(t, stdout), "\n")
+				assert.Contains(t, warnings, "the server recorded for token 'token-abc12' cannot be used: "+rawAtReason+"; ")
+				assert.Contains(t, warnings, "the server recorded for token 'token-old77' cannot be used: "+rawAtReason+"; ")
+				assertNoMisreadURL(t, stdout+stderr)
+			}},
+		{name: "config status, a usable entry and a record whose server holds a raw @ in the path", argv: []string{"config", "status"},
+			stored: secretStored{url: "{url}", stubCA: true, token: true, records: []config.SupersededToken{{
+				Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-rawr1"}, UserID: "u-abc12", SupersededAt: "2026-10-01T00:00:00Z", Server: canaryURLMisread}}},
+			check: func(t *testing.T, stdout, stderr string, _ []string) {
+				t.Helper()
+				assert.Contains(t, stdout+stderr, "the server recorded for token 'token-rawr1' cannot be used: "+rawAtReason+"; ")
+				// The entry's own login keeps its sequence, so only the host and
+				// the path of the record are asserted absent.
+				for _, part := range []string{"admin", "1234", "@x"} {
+					assert.NotContains(t, stdout+stderr, part)
+				}
+			}},
+		{name: "config update-server x --url, json, an entry with a raw @ in the path at the host of the new URL", argv: []string{"-o", "json", "config", "update-server", "x", "--url", "{url}"},
+			stored: secretStored{url: canaryURLRawAt, stubCA: true, token: true},
+			check: func(t *testing.T, stdout, stderr string, _ []string) {
+				t.Helper()
+				data := dataOf(t, stdout).(map[string]any)
+				assert.Equal(t, false, data["unchanged"])
+				assert.Equal(t, true, data["credentialsCleared"], "an @ after the host is not user information: the login is not kept")
+				assert.Equal(t, []any{"url"}, data["changed"])
+				notRevoked := notRevokedOf(t, stdout)
+				require.Len(t, notRevoked, 1)
+				assert.Equal(t, "otherServer", notRevoked[0]["reason"])
+				assert.Equal(t, "<unusable URL>", notRevoked[0]["server"])
+				assert.Empty(t, notRevoked[0]["recovery"], "no login is built from the URL the entry held")
+				assert.Contains(t, strings.Join(envelopeWarnings(t, stdout), "\n"), "the server recorded for token 'token-abc12' cannot be used: "+rawAtReason+"; ")
+				assert.NotContains(t, stdout+stderr, "@x")
+			}},
+		{name: "config update-server x --url, text, an entry with a raw @ in the path at the host of the new URL", argv: []string{"config", "update-server", "x", "--url", "{url}"},
+			stored: secretStored{url: canaryURLRawAt, stubCA: true, token: true},
+			check: func(t *testing.T, stdout, stderr string, _ []string) {
+				t.Helper()
+				assert.Contains(t, stdout+stderr, "tokens on <unusable URL>:")
+				assert.Contains(t, stdout+stderr, "the server recorded for token 'token-abc12' cannot be used: "+rawAtReason+"; ")
+				assert.NotContains(t, stdout, "user name and password removed")
+				assert.NotContains(t, stdout+stderr, "recover-")
+				assert.NotContains(t, stdout+stderr, "@x")
 			}},
 		{name: "config update-server x --url, only the user name and password are removed, json", argv: []string{"-o", "json", "config", "update-server", "x", "--url", "{url}"},
 			stored: secretStored{url: "https://u:" + urlCanary + "@{host}", stubCA: true, token: true},
@@ -1010,11 +1129,50 @@ func secretRemovedEntryRows() []secretOKRow {
 				}},
 		)
 	}
+	misread := secretStored{url: canaryURLMisread, token: true, stubCA: true}
+	rows = append(rows,
+		secretOKRow{name: "config delete-server x, text, the entry holds a raw @ in the path and a login", argv: []string{"config", "delete-server", "x"}, stored: misread,
+			check: func(t *testing.T, stdout, stderr string, seen []string) {
+				t.Helper()
+				assert.Empty(t, seen, "no request reaches the host read from the URL")
+				assert.Contains(t, stdout+stderr, "the server recorded for token 'token-abc12' cannot be used: "+rawAtReason+"; ")
+				assertNoMisreadURL(t, stdout+stderr)
+			}},
+		secretOKRow{name: "config delete-server x, json, the entry holds a raw @ in the path and a login", argv: []string{"-o", "json", "config", "delete-server", "x"}, stored: misread,
+			check: func(t *testing.T, stdout, stderr string, seen []string) {
+				t.Helper()
+				assert.Empty(t, seen, "no request reaches the host read from the URL")
+				notRevoked := notRevokedOf(t, stdout)
+				require.NotEmpty(t, notRevoked)
+				for _, n := range notRevoked {
+					assert.Equal(t, "<unusable URL>", n["server"])
+					assert.Empty(t, n["recovery"])
+					assert.NotContains(t, n, "loginAs")
+				}
+				assert.Contains(t, strings.Join(envelopeWarnings(t, stdout), "\n"), "the server recorded for token 'token-abc12' cannot be used: "+rawAtReason+"; ")
+				assertNoMisreadURL(t, stdout+stderr)
+			}},
+		secretOKRow{name: "auth logout x, json, the entry holds a raw @ in the path and a login", argv: []string{"-o", "json", "auth", "logout", "x"}, stored: misread,
+			check: func(t *testing.T, stdout, stderr string, seen []string) {
+				t.Helper()
+				assert.Empty(t, seen, "no request reaches the host read from the URL")
+				notRevoked := notRevokedOf(t, stdout)
+				require.NotEmpty(t, notRevoked)
+				for _, n := range notRevoked {
+					assert.Equal(t, "<unusable URL>", n["server"])
+					assert.Empty(t, n["recovery"])
+				}
+				assertNoMisreadURL(t, stdout+stderr)
+			}},
+	)
 	rawRecord := config.SupersededToken{
 		Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-raw11"}, UserID: "u-other77",
 		SupersededAt: "2026-10-01T00:00:00Z", Server: "https://u:" + urlCanary + "@{host}",
 	}
 	atRaw := secretStored{url: "https://u:" + urlCanary + "@{host}", token: true, stubCA: true, records: []config.SupersededToken{rawRecord}}
+	rawAtRecord := rawRecord
+	rawAtRecord.Server = canaryURLRawAt
+	atRawAt := secretStored{url: canaryURLRawAt, token: true, stubCA: true, records: []config.SupersededToken{rawAtRecord}}
 	rows = append(rows,
 		secretOKRow{name: "auth logout x, json, a record at the entry's own URL with user information", argv: []string{"-o", "json", "auth", "logout", "x"}, stored: atRaw,
 			check: func(t *testing.T, stdout, _ string, _ []string) {
@@ -1027,6 +1185,20 @@ func secretRemovedEntryRows() []secretOKRow {
 			check: func(t *testing.T, stdout, _ string, _ []string) {
 				t.Helper()
 				assertRecoveryIs(t, stdout, "token-raw11", secretServerURL, rawRecord)
+			}},
+		secretOKRow{name: "auth logout x, json, a record at the entry's own URL with a raw @ in the path", argv: []string{"-o", "json", "auth", "logout", "x"}, stored: atRawAt,
+			check: func(t *testing.T, stdout, _ string, _ []string) {
+				t.Helper()
+				assertRecoveryIs(t, stdout, "token-raw11", "", rawAtRecord)
+				assert.Contains(t, strings.Join(envelopeWarnings(t, stdout), "\n"),
+					"the server URL in server entry 'x' cannot be used: "+rawAtReason+"; change the entry's URL with rancher config update-server 'x' --url <url>")
+			}},
+		secretOKRow{name: "config delete-server x, json, a record at the entry's own URL with a raw @ in the path", argv: []string{"-o", "json", "config", "delete-server", "x"}, stored: atRawAt,
+			check: func(t *testing.T, stdout, _ string, _ []string) {
+				t.Helper()
+				assertRecoveryIs(t, stdout, "token-raw11", "", rawAtRecord)
+				assert.Contains(t, strings.Join(envelopeWarnings(t, stdout), "\n"),
+					"the server recorded for token 'token-raw11' cannot be used: "+rawAtReason+"; ")
 			}},
 	)
 
@@ -1143,4 +1315,17 @@ func seedCachedTokenWithNoServer(tb testing.TB, dir string) {
 	binding := config.CacheBindingFor(config.CanonicalDir(dir), cfg, "x").WithCreatedToken(ref, "u-abc12")
 	require.NoError(tb, config.NewFileStore(dir).SetCachedCred(config.CacheKey("x", "", "c-1"), "ext/token-nosrv1:secret",
 		time.Now().Add(time.Hour), "x", "", "c-1", binding))
+}
+
+// rawAtReason is the reason of a URL that holds an @ after the host.
+const rawAtReason = "it holds an @ after the host, which usually means a password with a /, ? or # in it"
+
+// assertNoMisreadURL asserts text holds no part of canaryURLMisread: not the
+// host read from it (the user name and the start of the password), not the
+// path after it, and not a login built for it.
+func assertNoMisreadURL(t *testing.T, text string) {
+	t.Helper()
+	for _, part := range []string{"admin", "1234", "recover-", "@x"} {
+		assert.NotContains(t, text, part)
+	}
 }

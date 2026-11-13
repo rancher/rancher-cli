@@ -920,6 +920,22 @@ loses a report, never a record. `config update-server --url` runs steps 2-5 with
 reading a login, sends nothing, and records the tokens left at the old server on the moved
 entry, naming that server, or on another entry that still names it.
 
+A URL change also changes what the exec plugin serves at the new server: a cache record is
+bound to the entries of its server whose URL can be used, and the moved entry joins or leaves
+that list. `config update-server` takes out of the cache each record the change stops the
+plugin from serving, and only those, with the records that name the entry. A record of a call
+that identified no entry is recorded on another usable entry at its server: for that entry's
+next login when the entry records the token's owner, else listed with the command that deletes
+the token. With no such entry it is recorded on the moved entry with that command. When the
+moved entry's URL could not be used, a token cached from its own login is recorded on a usable
+entry at the server when there is one. The change that only removes a user name and password
+from a URL clears no credential and runs no delete: it moves each such record to a kept key,
+`kept-token:<server>/<kind>/<name>` (a numeric suffix keeps two tokens apart), under the
+config lock and before it writes the entry, sends nothing and warns with the token's name. A
+kept key is one no lookup builds, so no read deletes it, and `auth list-tokens` and every
+delete plan read it. A cache write that would replace a record naming an entry whose URL
+cannot be used moves that record to its kept key the same way.
+
 The cache scope narrowed with this: `auth logout <name>` deletes only the records its login
 made (`Config.InDeleteScope`: records naming that entry and records of removed entries),
 not every record at the same host: a record another entry still reads stays. `--all` still
@@ -1389,6 +1405,18 @@ never quoted around: the command is left out with one sentence, a left-out
 revoke keeps the command that lists tokens, and steps that depend on each
 other are left out together. `ShellQuote` stays for prose. Source scans in
 test/conformance refuse a command built any other way.
+
+**A server URL with an @ after the host is refused, and a cache record is served
+only through an entry whose URL can be used.** Such a URL is most likely a user
+name and a password with a `/`, `?` or `#` in it, and Go reads the text up to
+that character as the host: accepting it would send a login to a host the
+operator never named. It is refused the way a URL with a user name and password
+is, and an entry that still holds one is shown as `<unusable URL>`, never as the
+host read from it. A cache record is bound to the entries of its server whose
+URL can be used. A change of an entry's URL never deletes a record the exec
+plugin still serves. Each live token whose record the change stops serving is
+revoked, recorded for a later login that revokes it, or listed with the command
+that deletes it. `config update-server` itself sends no delete request.
 
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or

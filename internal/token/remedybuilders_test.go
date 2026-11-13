@@ -149,8 +149,19 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			return errText(entryNotNamedError(cfg, []storedCredential{{name: name, entry: userNamed}, {name: "prod", entry: cfg.Servers["prod"]}}, "c-1", false))
 		},
 		"entryOnOtherServerError": func() []string {
-			return append(errText(entryOnOtherServerError(elsewhere, name, url, "c-1")),
+			misread := map[string]config.Server{name: {URL: "https://admin:1234/pwzq7@x"}}
+			here := map[string]config.Server{name: {URL: "https://admin:1234/pwzq7@x"}, "staging": {URL: url}}
+			plugin := map[string]config.Server{"exec-login-o": {URL: "https://admin:1234/pwzq7@x", Provenance: clierr.ProvenanceExecLogin}}
+			out := append(errText(entryOnOtherServerError(elsewhere, name, url, "c-1")),
 				errText(entryOnOtherServerError(&config.Config{Servers: map[string]config.Server{name: elsewhere.Servers[name]}}, name, url, "c-1"))...)
+			for _, servers := range []map[string]config.Server{misread, here} {
+				out = append(out, errText(entryOnOtherServerError(&config.Config{CurrentServer: name, Servers: servers}, name, url, "c-1"))...)
+			}
+			return append(out, errText(entryOnOtherServerError(&config.Config{CurrentServer: name, Servers: plugin}, "exec-login-o", url, "c-1"))...)
+		},
+		"maskedKeyConflict": func() []string {
+			return []string{maskedKeyConflict(maskedMatch{n: 2, name: "x"}).Message, maskedKeyConflict(maskedMatch{n: 2, name: "-dash"}).Message,
+				maskedKeyConflict(maskedMatch{n: 3}).Message}
 		},
 		"keptWarning": func() []string {
 			return []string{
@@ -177,6 +188,11 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			} {
 				out = append(out, d.manualWarning(it))
 			}
+			// A token recorded on an entry whose URL cannot be used also says
+			// that it stays on the server that issued it.
+			unusable := &config.Config{Servers: map[string]config.Server{name: {URL: url + "/p@x"}}}
+			du := &Deletion{cfg: unusable, view: unusable, req: LocalDelete{Rerun: clierr.NewCommand("auth logout").Arg(name)}}
+			out = append(out, du.manualWarning(&revocationItem{source: sourceCache, ref: ref, server: url, owner: "u-abc12", entry: name, reason: reasonFailed}))
 			return out
 		},
 		"Deletion.revokeTLSRemedy": func() []string {

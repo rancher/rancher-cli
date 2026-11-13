@@ -75,9 +75,9 @@ func resolveCompletionConnection() completionConnection {
 
 // completionServerURL validates a server URL before any request or stored
 // credential read of a completion: it returns the canonical form, and false
-// for a URL that carries userinfo or does not parse (treated as a missing
-// URL) or one with a scheme other than http and https. Completion is
-// best-effort, so the refusal is silent.
+// for a URL that carries userinfo, holds an @ after the host or does not
+// parse (treated as a missing URL) or one with a scheme other than http and
+// https. Completion is best-effort, so the refusal is silent.
 func completionServerURL(raw string) (string, bool) {
 	canonical, err := credhelper.CheckServerURL(raw)
 	if err != nil {

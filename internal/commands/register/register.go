@@ -590,6 +590,20 @@ func ValidateUpdate(cfg *config.Config, name string, src UpdateSource, probe Pro
 	}, nil
 }
 
+// PlannedEntry is the entry ApplyUpdate writes for plan, from the entry e as
+// loaded. A URL change clears the entry's credentials, so the entry keeps
+// only its address, its trust and what its change's first write gave it: the
+// advanced cache binding id, the pause, which the caller has cleared when it
+// may, and the records of the tokens it left on the old server, each naming
+// that server so no login of the new address tries them. A CA-only update
+// changes no credential: every other field is kept, a pause a change left
+// included, and the fingerprint, which belonged to the certificate being
+// replaced, is cleared. When only the user information left the URL, the
+// server, its trust and every credential are the same.
+func PlannedEntry(e config.Server, plan UpdatePlan) config.Server {
+	return config.ServerAfterUpdate(e, plan.CanonicalURL, plan.CASelector, plan.CredentialsCleared, len(plan.ChangedFields) > 0)
+}
+
 // ApplyUpdate writes plan's result (only when something changed) and
 // bootstraps/repairs the pointer when empty or dangling - even on a
 // same-value update, for the same reason commitCreate's entry no-op does.
@@ -597,28 +611,7 @@ func ValidateUpdate(cfg *config.Config, name string, src UpdateSource, probe Pro
 // ValidateUpdate and ApplyUpdate.
 func ApplyUpdate(cfg *config.Config, plan UpdatePlan) (UpdateOutcome, error) {
 	if len(plan.ChangedFields) > 0 || plan.RewriteURL {
-		e := cfg.Servers[plan.Name]
-		switch {
-		case plan.CredentialsCleared:
-			// A URL change clears the entry's credentials, so the entry
-			// keeps only its address, its trust and what its change's first
-			// write gave it: the advanced cache binding id, the pause, which
-			// the caller has cleared when it may, and the records of the
-			// tokens it left on the old server, each naming that server so
-			// no login of the new address tries them.
-			e = config.Server{URL: plan.CanonicalURL, CA: plan.CASelector,
-				CacheBindingID: e.CacheBindingID, CacheWritesPaused: e.CacheWritesPaused, SupersededTokens: e.SupersededTokens}
-		case len(plan.ChangedFields) > 0:
-			// A CA-only update changes no credential: every other field
-			// is kept, a pause a change left included. The fingerprint
-			// belonged to the certificate being replaced.
-			e.URL, e.CA, e.CAFingerprint, e.CAFromEnvironment = plan.CanonicalURL, plan.CASelector, "", false
-		default:
-			// Only the user information left the URL: the server, its
-			// trust and every credential are the same.
-			e.URL = plan.CanonicalURL
-		}
-		cfg.Servers[plan.Name] = e
+		cfg.Servers[plan.Name] = PlannedEntry(cfg.Servers[plan.Name], plan)
 	}
 	repaired := bootstrapPointer(cfg, plan.Name)
 	if len(plan.ChangedFields) > 0 || plan.RewriteURL || repaired {

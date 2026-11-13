@@ -44,7 +44,7 @@ func TestConfigTokenRecoveryTextsNameTheTokenTheCommandAndWhoRunsIt(t *testing.T
 		command string
 		person  string
 	}{
-		{"configcmd.administratorLine", "a v3 token", administratorLine(server, v3), "kubeconfig-u-x", deleteV3, "an administrator logged in to"},
+		{"configcmd.administratorLine", "a v3 token", administratorLine(server, server, v3), "kubeconfig-u-x", deleteV3, "an administrator logged in to"},
 
 		{"configcmd.sequenceLines", "a known owner", strings.Join(sequenceLines("", "u-abc12", clierr.RecoverySequence(server, ext)), "\n"),
 			"token-abc12", deleteExt, "log in as user 'u-abc12' (the token's owner), then revoke it with:"},

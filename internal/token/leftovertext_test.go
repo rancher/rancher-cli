@@ -471,6 +471,7 @@ var leftoverNotMessages = map[string]string{
 	"clierr.RecoverySequence":                  "a list of commands to run in order, not a message about a token",
 	"config.AdviseRecord":                      "chooses between the sequence of RecoverySequence and the text of noServerText, recordServerText or EntryOrigin, and writes no text of its own",
 	"configcmd.configDeleteServerCmd.Describe": "the help text of config delete-server; it names no token",
+	"configcmd.keptTokenNotice":                "the warning for a token the rewrite of a URL keeps in the cache: it names auth list-tokens and, for a record not of the owner kind, auth delete-token with the shown key, which need no person: the token is revoked through a usable entry; TestCacheRecordsAcrossConfigChanges asserts that the warning names each token it keeps once and the commands it names",
 	"configcmd.tokenRecovery":                  "returns the recovery commands for the recovery list of config status -o json: commands alone, no sentence",
 	"token.Deletion.advise":                    "returns the advice of config.AdviseRecord for a delete plan item and writes no text of its own",
 	"token.Deletion.recovery":                  "returns the commands of a deletion for the result data, not a message",
@@ -503,8 +504,8 @@ type leftoverTestRow struct {
 // and internal/commands/configcmd. Keys are package.Function or
 // package.Receiver.Method.
 var leftoverRowsInTests = map[string]leftoverTestRow{
-	"config.noServerText":     {"../config", "TestRecordTextsNameTheTokenTheCommandAndWhoRunsIt", []string{"user 'u-abc12'", "its owner or an administrator"}},
-	"config.recordServerText": {"../config", "TestRecordTextsNameTheTokenTheCommandAndWhoRunsIt", []string{"user 'u-abc12'", "its owner or an administrator"}},
+	"config.noServerText":   {"../config", "TestRecordTextsNameTheTokenTheCommandAndWhoRunsIt", []string{"user 'u-abc12'", "its owner or an administrator"}},
+	"config.TokenStaysText": {"../config", "TestRecordTextsNameTheTokenTheCommandAndWhoRunsIt", []string{"user 'u-abc12'", "its owner or an administrator"}},
 	"configcmd.administratorLine": {"../commands/configcmd", "TestConfigTokenRecoveryTextsNameTheTokenTheCommandAndWhoRunsIt",
 		[]string{"an administrator logged in to"}},
 	"configcmd.recordLines": {"../commands/configcmd", "TestConfigTokenRecoveryTextsNameTheTokenTheCommandAndWhoRunsIt",

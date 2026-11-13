@@ -71,6 +71,16 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	plugin := map[string]config.Server{"exec-login-o": {URL: "https://other.example.com", CA: "/etc/rancher/other-ca.pem", Provenance: clierr.ProvenanceExecLogin}}
 	add("a plugin login entry at another URL", entryOnOtherServerError(elsewhere("prod", false, plugin), "exec-login-o", "https://r.example.com", "c-1"))
 	add("a plugin login entry at another URL with one here", entryOnOtherServerError(elsewhere("staging", true, plugin), "exec-login-o", "https://r.example.com", "c-1"))
+	misread := map[string]config.Server{
+		"prod":         {URL: "https://admin:1234/pwzq7@x"},
+		"exec-login-o": {URL: "https://admin:1234/pwzq7@x", Provenance: clierr.ProvenanceExecLogin},
+		"exec-login-b": {URL: "https://hostzq7:abc", Provenance: clierr.ProvenanceExecLogin},
+	}
+	add("an entry with an at sign after the host", entryOnOtherServerError(elsewhere("prod", false, misread), "prod", "https://r.example.com", "c-1"))
+	add("an entry with an at sign after the host, one here", entryOnOtherServerError(elsewhere("staging", true, misread), "prod", "https://r.example.com", "c-1"))
+	add("a plugin login entry with an at sign after the host", entryOnOtherServerError(elsewhere("prod", false, misread), "exec-login-o", "https://r.example.com", "c-1"))
+	add("a plugin login entry with an at sign after the host, one here", entryOnOtherServerError(elsewhere("staging", true, misread), "exec-login-o", "https://r.example.com", "c-1"))
+	add("a plugin login entry with a bad port, one here", entryOnOtherServerError(elsewhere("staging", true, misread), "exec-login-b", "https://r.example.com", "c-1"))
 	add("not logged in, blank", config.ErrNotLoggedInFor(nil, nil))
 	add("not logged in, one entry", config.ErrNotLoggedInFor(map[string]string{"prod": "https://r.example.com"}, nil))
 	add("not logged in, several entries", config.ErrNotLoggedInFor(map[string]string{"prod": "a", "staging": "b"}, nil))

@@ -881,8 +881,9 @@ func directNotReadyWarning(server, entry string) string {
 // resolved key" invariant and the notice-once suppression both depend on the two
 // probes producing identical keys. Returns ("", false) when the probe is
 // impossible: the server is empty, the name and userID are both empty, the URL
-// is not parseable or carries userinfo (the run then reaches connectionTarget,
-// which refuses it), or the scheme is not http/https.
+// is not parseable, carries userinfo or holds an @ after the host (the run
+// then reaches connectionTarget, which refuses it), or the scheme is not
+// http/https.
 func computeCacheProbeKey(name, server, cluster, userID, authConfig string) (string, bool) {
 	if (name == "" && userID == "") || server == "" {
 		return "", false
@@ -1842,8 +1843,8 @@ func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName st
 }
 
 // checkServerOrigin refuses a server URL the plugin cannot use: one that
-// carries userinfo or does not parse, or whose scheme is not http or https.
-// origin names where the URL came from.
+// carries userinfo, holds an @ after the host or does not parse, or whose
+// scheme is not http or https. origin names where the URL came from.
 func checkServerOrigin(server string, origin config.ServerURLOrigin) error {
 	canonical, cerr := credhelper.CheckServerURL(server)
 	if cerr != nil {
@@ -2148,6 +2149,9 @@ func storedTokenForServer(cfg *config.Config, store CredentialReader, server, id
 // entry that records no owner is never a candidate.
 func ownerCredential(cfg *config.Config, store CredentialReader, server string, user userCheck) (storedCredential, bool, error) {
 	candidates := cfg.OwnedServerNames(server, user.userID, user.authConfig)
+	// An entry whose URL cannot be used answers no call: its login is never
+	// read for the host read from that URL.
+	candidates = slices.DeleteFunc(candidates, func(n string) bool { return !usableEntry(cfg, n) })
 	if !cfg.TokenReuse {
 		candidates = slices.DeleteFunc(candidates, func(n string) bool {
 			return cfg.Servers[n].Provenance == clierr.ProvenanceExecLogin
@@ -2175,6 +2179,9 @@ func ownerCredential(cfg *config.Config, store CredentialReader, server string, 
 // user.
 func rankedCredential(cfg *config.Config, store CredentialReader, server, clusterID string, ignoreCurrentContext bool, user userCheck) (storedCredential, bool, error) {
 	candidates := cfg.MatchingServerNames(server)
+	// An entry whose URL cannot be used answers no call: its login is never
+	// read for the host read from that URL.
+	candidates = slices.DeleteFunc(candidates, func(n string) bool { return !usableEntry(cfg, n) })
 	// Plugin login entries are the last resort: none is read while a user
 	// entry answers, and several refuse the call whichever hold a
 	// credential, since nothing says which user's login the call should

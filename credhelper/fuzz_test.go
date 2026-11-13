@@ -26,9 +26,31 @@ func FuzzCanonicalServerURL(f *testing.F) {
 	f.Add("https://")
 	f.Add("https://:443")
 	f.Add("example.com")
+	for _, tc := range serverURLCases {
+		f.Add(tc.in)
+	}
 
 	f.Fuzz(func(t *testing.T, raw string) {
 		result, err := CanonicalServerURL(raw) // (a): no panic
+
+		// (f) CheckServerURL accepts only an input with no @, with the
+		// result CanonicalServerURL returns.
+		checked, cerr := CheckServerURL(raw)
+		assert.Equal(t, cerr == nil, checked != "", "raw=%q checked=%q err=%v", raw, checked, cerr)
+		if cerr == nil {
+			assert.NotContains(t, raw, "@")
+			require.NoError(t, err, "raw=%q", raw)
+			assert.Equal(t, result, checked, "raw=%q", raw)
+		}
+
+		// (g) an input CanonicalServerURL accepts with no userinfo and no
+		// @ anywhere is accepted by CheckServerURL with the same result.
+		if err == nil {
+			if u, perr := url.Parse(raw); perr == nil && u.User == nil && !strings.Contains(raw, "@") {
+				require.NoError(t, cerr, "raw=%q", raw)
+				assert.Equal(t, result, checked, "raw=%q", raw)
+			}
+		}
 
 		// (b) error/output exclusivity - mechanical shape only.
 		assert.Equal(t, err == nil, result != "", "raw=%q result=%q err=%v", raw, result, err)

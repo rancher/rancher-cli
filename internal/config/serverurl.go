@@ -22,9 +22,9 @@ const unusableIdentityPrefix = "unusable:"
 var urlSchemePrefixRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+\-.]*://`)
 
 // CheckServerURL is credhelper.CheckServerURL's verdict alone, for packages
-// that have no other use for credhelper: nil for a URL with no userinfo that
-// parses into a scheme and a host, else an error whose text holds no part of
-// the URL.
+// that have no other use for credhelper: nil for a URL that parses into a
+// scheme and a host and holds no userinfo and no @ after the host, else an
+// error whose text holds no part of the URL.
 func CheckServerURL(raw string) error {
 	_, err := credhelper.CheckServerURL(raw)
 	return err
@@ -60,13 +60,20 @@ func (o ServerURLOrigin) source() string {
 	return o.Source
 }
 
+// RefusalWithoutRepair is the refusal of a server URL from this origin for
+// reason, the first clause of Text: where the URL came from and why it cannot
+// be used. The text holds no part of the URL.
+func (o ServerURLOrigin) RefusalWithoutRepair(reason error) string {
+	return "the server URL in " + o.source() + " cannot be used: " + reason.Error()
+}
+
 // Text is the refusal of a server URL from this origin for reason, the error
 // credhelper.CheckServerURL returned or ErrServerURLScheme. The caller
 // already knows the URL cannot be used. The text holds no part of the URL. A
 // command in it is left out, with a note, when the entry name cannot be
 // printed.
 func (o ServerURLOrigin) Text(reason error) string {
-	head := "the server URL in " + o.source() + " cannot be used: " + reason.Error() + "; "
+	head := o.RefusalWithoutRepair(reason) + "; "
 	switch {
 	case o.Entry == "":
 		repair := "give a URL like https://host, without a user name or password"
@@ -90,7 +97,7 @@ func (o ServerURLOrigin) Text(reason error) string {
 // RemovedText is the refusal text for the current URL of an entry that the
 // running command removes: nothing is left to repair.
 func (o ServerURLOrigin) RemovedText(reason error) string {
-	return "the server URL in " + o.source() + " cannot be used: " + reason.Error() + "; this command removes the entry"
+	return o.RefusalWithoutRepair(reason) + "; this command removes the entry"
 }
 
 // Refusal is Text as a validation error.
@@ -103,15 +110,35 @@ func (o ServerURLOrigin) Refusal(reason error) *clierr.Error {
 // stays on the server that issued it, and the delete runs there, as the
 // token's owner (owner, when known) or an administrator.
 func recordServerText(ref clierr.TokenRef, reason error, owner string) string {
-	return clierr.Text("the server recorded for token "+clierr.ShellQuote(clierr.IDText(ref.Name))+" cannot be used: "+reason.Error()+
-		"; the token stays on the server that issued it; delete it there as "+recordPerson(owner)+" while signed in to that server",
+	return clierr.NoteOnce("the server recorded for token " + clierr.ShellQuote(clierr.IDText(ref.Name)) + " cannot be used: " + reason.Error() + "; " + TokenStaysText(ref, owner))
+}
+
+// TokenStaysClause begins TokenStaysText.
+const TokenStaysClause = "the token stays on the server that issued it"
+
+// TokenStaysText says that a token stays on the server that issued it and how
+// to delete it there, as the token's owner (owner, when known) or an
+// administrator.
+func TokenStaysText(ref clierr.TokenRef, owner string) string {
+	return clierr.Text(TokenStaysClause+"; delete it there as "+recordPerson(owner)+" while signed in to that server",
 		clierr.Lead(": "), clierr.Revoke(ref))
 }
 
+// misreadIdentity is the identity stored for a server read from a URL that
+// holds an @ after the host, and errMisread the reason of that URL.
+const misreadIdentity = unusableIdentityPrefix + UnusableURLDisplay
+
+var errMisread = CheckServerURL("https://h/x@y")
+
 // identityProblem is why the identity of a server cannot go into a command:
-// it holds userinfo or does not parse into a scheme and a host. The reason is
-// the one of the URL the identity stands for, not of its prefix.
+// it holds userinfo, holds an @ after the host, or does not parse into a scheme
+// and a host. The reason is the one of the URL the identity stands for, not of
+// its prefix; the identity stored for a URL that holds an @ after the host
+// gives that reason.
 func identityProblem(identity string) error {
+	if identity == misreadIdentity {
+		return errMisread
+	}
 	err := CheckServerURL(identity)
 	if err == nil {
 		return nil
@@ -170,6 +197,19 @@ type RecordSite struct {
 	// EntryURL is the entry's current URL as stored; set for an entry that
 	// was removed as well, so the reason stays the one of that URL.
 	EntryURL string
+	// PriorEntryURL is the URL the entry held when the command loaded it, for a
+	// record of an entry the command targets; it is the same as EntryURL unless
+	// the command changed the URL, and empty for any other record. The identity
+	// of a record made on that URL names the server the URL was read as, which
+	// AdviseRecord and the identity stored judge as they do EntryURL.
+	PriorEntryURL string
+	// MisreadURL is the URL of an entry that holds an @ after the host at the
+	// server a cache record names, decided when the record was planned and
+	// cleared when the record is recorded on a usable entry that names that
+	// server. It changes what is shown and what AdviseRecord says. It is not
+	// what a record's stored identity is judged by, unless no entry of the
+	// site is usable at that server.
+	MisreadURL string
 	// Removed is set when the entry was removed: nothing is left to repair.
 	Removed bool
 }
@@ -178,6 +218,87 @@ type RecordSite struct {
 func holdsUserinfo(raw string) bool {
 	u, err := url.Parse(raw)
 	return err == nil && u.User != nil
+}
+
+// misreadURLProblem is why raw, a URL an entry holds or held or a record
+// stores, cannot stand for the server identity names, though identity is a
+// usable URL: raw holds an @ after the host, so the host url.Parse read is the
+// start of a user name and password and not the server the URL was typed for.
+// It is nil for any other URL, userinfo included: the host of a URL with
+// userinfo is its server.
+func misreadURLProblem(identity, raw string) error {
+	if raw == "" || holdsUserinfo(raw) || identity != CanonicalServerIdentity(raw) || identityProblem(identity) != nil {
+		return nil
+	}
+	return CheckServerURL(raw)
+}
+
+// misreadRecordServer is why the identity of a token's server cannot be used
+// as it is: it is the identity of a URL that holds an @ after the host, the
+// server as the record stored it, EntryURL, PriorEntryURL or MisreadURL of
+// site, and so the start of a user name and password. It is nil when no such
+// URL gives the identity. Every decision about the server of a token record
+// that depends on this (the advice, the form shown, the identity stored) asks
+// it. MisreadURL counts for the form shown and the advice; with forStore, for
+// the identity stored, it counts only when no entry of the site is usable at
+// that server.
+func misreadRecordServer(site RecordSite, recorded, identity string, forStore bool) error {
+	for _, raw := range []string{recorded, site.EntryURL, site.PriorEntryURL} {
+		if err := misreadURLProblem(identity, raw); err != nil {
+			return err
+		}
+	}
+	if site.MisreadURL != "" && (!forStore || !site.vouchesFor(identity)) {
+		return misreadURLProblem(identity, site.MisreadURL)
+	}
+	return nil
+}
+
+// vouchesFor reports whether an entry of the site is usable at the server
+// identity names: its URL passes the check and has that identity. A record the
+// entry owns is then stored with that server whatever other entry holds an @
+// after the host at it.
+func (s RecordSite) vouchesFor(identity string) bool {
+	for _, raw := range []string{s.EntryURL, s.PriorEntryURL} {
+		if raw != "" && CanonicalServerIdentity(raw) == identity && CheckServerURL(raw) == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// DisplayRecordServer is the form of the identity of a token's server that
+// output may show on the site the token is reported on: DisplayServerIdentity,
+// except that an identity read from a URL that holds an @ after the host shows
+// as unusable (see misreadRecordServer).
+func DisplayRecordServer(site RecordSite, recorded, identity string) string {
+	if misreadRecordServer(site, recorded, identity, false) != nil {
+		return UnusableURLDisplay
+	}
+	return DisplayServerIdentity(identity)
+}
+
+// DisplayStoredRecordServer is the form of the server a stored token record
+// names that output may show: DisplayServerURL, except that a server that is
+// the identity of the entry's URL (entryURL) when that URL holds an @ after the
+// host shows as unusable, because it is the start of a user name and password.
+func DisplayStoredRecordServer(entryURL, recorded string) string {
+	if misreadRecordServer(RecordSite{EntryURL: entryURL}, recorded, CanonicalServerIdentity(recorded), false) != nil {
+		return UnusableURLDisplay
+	}
+	return DisplayServerURL(recorded)
+}
+
+// RecordServerIdentity is the identity to store as the server of a token
+// record: identity, except that one read from a URL that holds an @ after the
+// host is the unusable identity, which holds no part of that URL and names no
+// server a later command could log in to. A reader judges it with
+// identityProblem and shows it as DisplayServerIdentity does.
+func RecordServerIdentity(site RecordSite, recorded, identity string) string {
+	if misreadRecordServer(site, recorded, identity, true) != nil {
+		return misreadIdentity
+	}
+	return identity
 }
 
 // AdviseRecord is the one place that decides what to say about a token record
@@ -190,6 +311,11 @@ func holdsUserinfo(raw string) bool {
 //     own URL;
 //   - the identity does not canonicalize: the token stays, with the reason of
 //     the entry's own URL when the record is at it, else of the identity;
+//   - the identity is a usable URL that the record's stored server, the
+//     entry's URL or its URL before the command (site.PriorEntryURL) was read
+//     as, and that URL holds an @ after the host: the token stays, with the
+//     reason of that URL, because no login can name the server it was meant
+//     for;
 //   - the identity is a usable URL, the stored text held a user name or
 //     password and the scheme is not http or https: the token stays (no login
 //     takes such a URL), with the reason of the entry's own URL when that URL
@@ -218,6 +344,9 @@ func AdviseRecord(site RecordSite, recordServer, userID string, ref clierr.Token
 		if entryProblem != nil {
 			err = entryProblem
 		}
+		return RecordAdvice{Text: recordServerText(ref, err, owner)}
+	}
+	if err := misreadRecordServer(site, recordServer, id, false); err != nil {
 		return RecordAdvice{Text: recordServerText(ref, err, owner)}
 	}
 	if (holdsUserinfo(recordServer) || (atEntry && holdsUserinfo(site.EntryURL))) && !IsSupportedScheme(id) {
@@ -251,7 +380,9 @@ func stripURLUserinfo(raw string) string {
 // that output may show: scheme://host[:port] when the URL parses into a
 // scheme and a host (userinfo, path, query and fragment dropped), the same
 // form of the text left after the userinfo is removed when it does not parse
-// and that text parses, else "<unusable URL>". An empty URL shows as empty.
+// and that text parses, else "<unusable URL>". A URL that holds an @ after the
+// host also shows as unusable: its host is the start of a user name and
+// password. An empty URL shows as empty.
 // For a URL that does not parse, the userinfo is looked for only before the
 // first "/", "?" or "#": an "@" in a path or query is not the end of a
 // userinfo, and what follows it is no host.
@@ -260,6 +391,9 @@ func DisplayServerURL(raw string) string {
 		return ""
 	}
 	if shown, ok := schemeAndHost(raw); ok {
+		if !holdsUserinfo(raw) && strings.Contains(raw, "@") {
+			return UnusableURLDisplay
+		}
 		return shown
 	}
 	scheme := urlSchemePrefixRE.FindString(raw)

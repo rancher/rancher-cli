@@ -285,7 +285,7 @@ func entrySection(name string, s config.Server) []field {
 				sec = append(sec, field{"userId", clierr.IDText(r.UserID)})
 			}
 			if r.Server != "" {
-				sec = append(sec, field{"server", config.DisplayServerURL(r.Server)})
+				sec = append(sec, field{"server", config.DisplayStoredRecordServer(s.URL, r.Server)})
 			}
 			if r.ExpiresAt != "" {
 				sec = append(sec, field{"expiresAt", output.Printable(r.ExpiresAt)})
@@ -323,7 +323,7 @@ func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresA
 // entryReport, whose recovery value stays the commands alone.
 func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) field {
 	if ref.Kind == clierr.TokenKindV3 {
-		return field{"recovery", []string{administratorLine(serverURL, ref)}}
+		return field{"recovery", []string{administratorLine(entryURL, serverURL, ref)}}
 	}
 	advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: entryURL}, serverURL, userID, ref)
 	if advice.Text != "" {

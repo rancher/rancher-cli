@@ -47,7 +47,9 @@ const (
 	// entry, which the command removes afterwards.
 	DeleteForDeleteServer
 	// DeleteForUpdateServer is config update-server's URL change: nothing
-	// is read or revoked, the old server's tokens are recorded.
+	// is read or revoked, the old server's tokens are recorded, and so are
+	// the tokens of the cache records the new URL stops the plugin from
+	// serving.
 	DeleteForUpdateServer
 )
 
@@ -68,6 +70,12 @@ type LocalDelete struct {
 	// logout --all a name with no entry (an identity record left behind)
 	// is deleted too.
 	Targets []string
+	// Updated is the entry config update-server writes for its one target
+	// (config.ServerAfterUpdate). Its plan also takes the records that
+	// entry stops the lookup from serving (config.StaleAfterURLChange): the
+	// next read would delete them, and their tokens would be in no revoke
+	// source.
+	Updated *config.Server
 	// Cache is the store whose cache the two holds run on.
 	Cache config.CredStore
 	// Select picks auth delete-token's records by name; nil for --all
@@ -379,7 +387,7 @@ func (d *Deletion) deleteCacheRecords() error {
 		d.cacheFailed = true
 		return err
 	}
-	d.DeletedCache, d.Kept = append([]string{}, deleted...), changed
+	d.DeletedCache, d.Kept = d.shownKeys(deleted), d.shownKeys(changed)
 	for k := range want {
 		d.cacheDeleted[k] = true
 	}

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -587,8 +588,14 @@ func (f *fileStore) GetCachedCredDetail(key string, anchor *CacheAnchor) (Cached
 		if !ok {
 			return nil
 		}
-		if (c.Expiry.IsZero() || !time.Now().After(c.Expiry)) && anchor.validFor(key, c) {
+		live := c.Expiry.IsZero() || !time.Now().After(c.Expiry)
+		if live && anchor.validFor(key, c) {
 			refreshed = &c
+			return nil
+		}
+		if live && anchor.namesUnusableEntry(c) {
+			// Served to nobody and not deleted by a read: only the revoke plan
+			// reaches the token the record caches.
 			return nil
 		}
 		delete(m2, key)
@@ -627,6 +634,39 @@ func (f *fileStore) MarkCachedCredReady(key, token, fingerprint string) (bool, e
 	return marked, err
 }
 
+// KeptTokenKeyPrefix starts the key of a record kept apart from the call that
+// made it. No lookup builds such a key, so nothing serves or replaces it, and
+// the revoke plan still reads it.
+const KeptTokenKeyPrefix = "kept-token:"
+
+// KeptTokenKey is the key a record of the token ref at the server is kept
+// under. Token names are made per server, so the server's identity is part of
+// the key: the same kind and name at two servers are two tokens.
+func KeptTokenKey(server string, ref clierr.TokenRef) string {
+	identity := CanonicalServerIdentity(server)
+	if identity == "" {
+		identity = server
+	}
+	return KeptTokenKeyPrefix + identity + "/" + string(ref.Kind) + "/" + ref.Name
+}
+
+// keepCachedRecord stores the record, which has a token reference, under its
+// kept key in m and returns that key. A key that holds another token is
+// never overwritten: the record takes the next free key with a numeric
+// suffix. The same token again takes its own key.
+func keepCachedRecord(m map[string]cachedCred, rec cachedCred) string {
+	base := KeptTokenKey(rec.Server, *rec.TokenRef)
+	kept := base
+	for i := 2; ; i++ {
+		if prev, taken := m[kept]; !taken || prev.Token == rec.Token {
+			break
+		}
+		kept = base + "-" + strconv.Itoa(i)
+	}
+	m[kept] = rec
+	return kept
+}
+
 func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error {
 	// Refused before the cache lock: the refusal needs nothing but the
 	// binding, and a paused entry's writer goes on to try the config lock,
@@ -643,6 +683,14 @@ func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, ser
 		}
 		if setCachedLock != nil {
 			setCachedLock()
+		}
+		if old, ok := m[key]; ok && binding.load != nil && old.TokenRef != nil && old.Token != token &&
+			(old.Expiry.IsZero() || !time.Now().After(old.Expiry)) && binding.load.recordNamesUnusableEntry(old) {
+			// The record names an entry whose URL cannot be used, so no lookup
+			// serves it, and the token it caches is revoked only through the
+			// record. The write that replaces it moves it, in this same write,
+			// to a key no lookup reads, where the revoke plan still finds it.
+			keepCachedRecord(m, old)
 		}
 		m[key] = binding.record(token, expiry, name, serverHost, cluster)
 		return f.writeCache(m)
