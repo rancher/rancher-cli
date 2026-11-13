@@ -117,6 +117,18 @@ var scriptOptions = map[string]func(*testrancher.Options){
 		appWaitActions = &appActionLog{outcome: appDeployed}
 		o.Fallthrough = appActionRoutes(appWaitActions, chartIndexRoute(appSettingRoutes(o.Fallthrough)))
 	},
+	// The same routes, with the actions complete at once, and the release
+	// Secrets an upgrade reads: an upgrade writes the App at the next
+	// revision with the request id, and the Secret of that revision with
+	// the values it sent.
+	"app-upgrade": func(o *testrancher.Options) {
+		appUpgradeActions = &appActionLog{outcome: appDeployed}
+		appUpgradeActions.putSecret("app-upgrade-ns", "upgrade-rel", 3, appDeployed, map[string]any{
+			"replicaCount": 3, "image": map[string]any{"tag": "topsecret-tag"},
+		})
+		appUpgradeActions.denySecret("app-upgrade-ns", appReleaseSecretName("upgrade-denied", 1))
+		o.Fallthrough = appActionRoutes(appUpgradeActions, chartIndexRoute(appSettingRoutes(o.Fallthrough)))
+	},
 }
 
 // chartIndexes are the Helm repository indexes the charts scenario's Rancher
@@ -145,6 +157,10 @@ var chartIndexes = map[string]string{
 	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"older","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}],
 	  "app-registry-chart":[
 	    {"name":"app-registry-chart","version":"1.0.0","appVersion":"10","description":"declares the registry values","digest":"a3","urls":["app-registry-chart-1.0.0.tgz"]}]}}`,
+	"app-upgrade-repo": `{"apiVersion":"v1","generated":"2026-01-02T03:04:05Z","entries":{
+	  "app-upgrade-chart":[
+	    {"name":"app-upgrade-chart","version":"1.2.0","appVersion":"12","description":"the chart","digest":"u2","urls":["app-upgrade-chart-1.2.0.tgz"]},
+	    {"name":"app-upgrade-chart","version":"1.1.0","appVersion":"11","description":"older","digest":"u1","urls":["app-upgrade-chart-1.1.0.tgz"]}]}}`,
 	"app-wait-repo": `{"apiVersion":"v1","generated":"2026-01-02T03:04:05Z","entries":{
 	  "app-install-chart":[
 	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"the chart","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}]}}`,
@@ -186,6 +202,9 @@ var appActions *appActionLog
 // appActions so that the two scenarios run side by side.
 var appWaitActions *appActionLog
 
+// appUpgradeActions is the log of the app-upgrade scenario's Rancher.
+var appUpgradeActions *appActionLog
+
 // appActionEntry is one accepted action: the action name, the request path,
 // the fieldManager query value and the JSON body as sent.
 type appActionEntry struct {
@@ -208,6 +227,54 @@ type appActionLog struct {
 	// outcome is empty when an action only creates its Operation, as for a
 	// Rancher whose Helm run has not ended; otherwise appDeployed or appFailed.
 	outcome string
+	// secrets are the release Secrets of the app-upgrade scenario's Rancher,
+	// by "<namespace>/<name>".
+	secrets map[string]appReleaseSecret
+}
+
+// appReleaseSecret is the Secret Helm keeps one revision of a release in: the
+// decoded release steve returns for it with includeHelmData=true, or a
+// refusal of the read.
+type appReleaseSecret struct {
+	release  string
+	revision int64
+	status   string
+	config   map[string]any
+	denied   bool
+}
+
+// appReleaseSecretName is the name of the Secret Helm keeps revision n of a
+// release in.
+func appReleaseSecretName(release string, revision int64) string {
+	return fmt.Sprintf("sh.helm.release.v1.%s.v%d", release, revision)
+}
+
+// putSecret stores the Secret of a revision of a release.
+func (l *appActionLog) putSecret(ns, release string, revision int64, status string, config map[string]any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.secrets == nil {
+		l.secrets = map[string]appReleaseSecret{}
+	}
+	l.secrets[ns+"/"+appReleaseSecretName(release, revision)] = appReleaseSecret{release: release, revision: revision, status: status, config: config}
+}
+
+// denySecret makes the read of a Secret answer 403.
+func (l *appActionLog) denySecret(ns, name string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.secrets == nil {
+		l.secrets = map[string]appReleaseSecret{}
+	}
+	l.secrets[ns+"/"+name] = appReleaseSecret{denied: true}
+}
+
+// secret returns the Secret stored at "<namespace>/<name>".
+func (l *appActionLog) secret(key string) (appReleaseSecret, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	sec, ok := l.secrets[key]
+	return sec, ok
 }
 
 func (l *appActionLog) completion() string {
@@ -240,12 +307,25 @@ func cmdAppActions(ts *testscript.TestScript, neg bool, args []string) {
 	if neg || len(args) != 1 || appActions == nil {
 		ts.Fatalf("usage: appactions <file> (in the app-install scenario)")
 	}
-	b, err := appActions.json()
-	if err != nil {
-		ts.Fatalf("appactions: %v", err)
+	writeAppActions(ts, "appactions", appActions, args[0])
+}
+
+// cmdAppUpgradeActions is cmdAppActions for the app-upgrade scenario's
+// Rancher: appupgradeactions <file>.
+func cmdAppUpgradeActions(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 || appUpgradeActions == nil {
+		ts.Fatalf("usage: appupgradeactions <file> (in the app-upgrade scenario)")
 	}
-	if err := os.WriteFile(ts.MkAbs(args[0]), b, 0o644); err != nil {
-		ts.Fatalf("appactions: write %s: %v", args[0], err)
+	writeAppActions(ts, "appupgradeactions", appUpgradeActions, args[0])
+}
+
+func writeAppActions(ts *testscript.TestScript, name string, log *appActionLog, file string) {
+	b, err := log.json()
+	if err != nil {
+		ts.Fatalf("%s: %v", name, err)
+	}
+	if err := os.WriteFile(ts.MkAbs(file), b, 0o644); err != nil {
+		ts.Fatalf("%s: write %s: %v", name, file, err)
 	}
 }
 
@@ -266,6 +346,8 @@ func cmdAppOutcome(ts *testscript.TestScript, neg bool, args []string) {
 var appInfos = map[string]string{
 	"app-install-chart/1.2.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.2.0"}}`,
 	"app-install-chart/1.1.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.1.0"}}`,
+	"app-upgrade-chart/1.2.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-upgrade-chart","version":"1.2.0"}}`,
+	"app-upgrade-chart/1.1.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-upgrade-chart","version":"1.1.0"}}`,
 	appRegistryChart + "/1.0.0": `{"values":{"replicaCount":1,"global":{"systemDefaultRegistry":"","cattle":{"systemDefaultRegistry":""}}},` +
 		`"chart":{"apiVersion":"v2","name":"` + appRegistryChart + `","version":"1.0.0"}}`,
 }
@@ -306,15 +388,18 @@ func appSettingRoutes(next http.Handler) http.Handler {
 }
 
 // appActionRoutes answers, on c-test, GET
-// /v1/catalog.cattle.io.clusterrepos/<name>?link=info, and POST
-// /v1/catalog.cattle.io.clusterrepos/<name>?action=install and
+// /v1/catalog.cattle.io.clusterrepos/<name>?link=info, GET
+// /v1/secrets/<ns>/<name> for the release Secrets the log holds, and POST
+// /v1/catalog.cattle.io.clusterrepos/<name>?action=install,
+// /v1/catalog.cattle.io.clusterrepos/<name>?action=upgrade and
 // /v1/catalog.cattle.io.apps/<ns>/<name>?action=uninstall. An action keeps
 // its body, creates the Operation Rancher creates, and answers 201 as
 // Rancher does. Every other request goes on.
 func appActionRoutes(log *appActionLog, next http.Handler) http.Handler {
 	const (
-		repoPath = "/v1/catalog.cattle.io.clusterrepos/"
-		appPath  = "/v1/catalog.cattle.io.apps/"
+		repoPath   = "/v1/catalog.cattle.io.clusterrepos/"
+		appPath    = "/v1/catalog.cattle.io.apps/"
+		secretPath = "/v1/secrets/"
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path, ok := strings.CutPrefix(r.URL.Path, "/k8s/clusters/c-test")
@@ -328,6 +413,12 @@ func appActionRoutes(log *appActionLog, next http.Handler) http.Handler {
 		case r.Method == http.MethodPost && q.Get("action") == "install" && strings.HasPrefix(path, repoPath):
 			serve = func(w http.ResponseWriter, r *http.Request, name string) { serveAppInstall(w, r, log, name) }
 			path = strings.TrimPrefix(path, repoPath)
+		case r.Method == http.MethodPost && q.Get("action") == "upgrade" && strings.HasPrefix(path, repoPath):
+			serve = func(w http.ResponseWriter, r *http.Request, name string) { serveAppUpgrade(w, r, log, name) }
+			path = strings.TrimPrefix(path, repoPath)
+		case r.Method == http.MethodGet && strings.HasPrefix(path, secretPath) && log.holdsSecret(strings.TrimPrefix(path, secretPath)):
+			serve = func(w http.ResponseWriter, r *http.Request, key string) { serveAppSecret(w, q, log, key) }
+			path = strings.TrimPrefix(path, secretPath)
 		case r.Method == http.MethodPost && q.Get("action") == "uninstall" && strings.HasPrefix(path, appPath):
 			serve = func(w http.ResponseWriter, r *http.Request, name string) { serveAppUninstall(w, r, log, name) }
 			path = strings.TrimPrefix(path, appPath)
@@ -369,7 +460,9 @@ func appServerError(w http.ResponseWriter, message string) {
 
 // isAppRepo reports whether a ClusterRepo is one of the app scenarios'
 // repositories, whose charts appInfos describes.
-func isAppRepo(repo string) bool { return repo == "app-install-repo" || repo == "app-wait-repo" }
+func isAppRepo(repo string) bool {
+	return repo == "app-install-repo" || repo == "app-wait-repo" || repo == "app-upgrade-repo"
+}
 
 // serveAppInfo answers the info link. An empty chartName is the bare
 // validation.NotFound, which answers 404 with an empty message (rancher
@@ -449,7 +542,7 @@ func appOperation(ctx context.Context, action, release, ns, outcome string) (*un
 	}
 	if outcome != "" {
 		stalled := map[string]any{"type": "Stalled", "status": "False"}
-		if action == "install" && outcome == appFailed {
+		if (action == "install" || action == "upgrade") && outcome == appFailed {
 			stalled = map[string]any{"type": "Stalled", "status": "True", "message": " exit code: 1"}
 		}
 		conditions := []any{map[string]any{"type": "Reconciling", "status": "False"}, stalled}
@@ -541,6 +634,135 @@ func serveAppInstall(w http.ResponseWriter, r *http.Request, log *appActionLog, 
 	}
 	log.add(appActionEntry{Action: "install", Path: r.URL.Path, FieldManager: r.URL.Query().Get("fieldManager"), Body: raw})
 	appActionAnswer(w, op)
+}
+
+// holdsSecret reports whether the log holds the Secret "<namespace>/<name>".
+func (l *appActionLog) holdsSecret(key string) bool {
+	_, ok := l.secret(key)
+	return ok
+}
+
+// serveAppSecret answers the read of a release Secret as steve does: with
+// includeHelmData=true the release under data.release is decoded, and without
+// it the release stays the encoded string of the Secret. A denied Secret
+// answers 403.
+func serveAppSecret(w http.ResponseWriter, q url.Values, log *appActionLog, key string) {
+	sec, _ := log.secret(key)
+	ns, name, _ := strings.Cut(key, "/")
+	if sec.denied {
+		appError(w, http.StatusForbidden, "Forbidden", `secrets "`+name+`" is forbidden: User "e2e" cannot get resource "secrets" in API group "" in the namespace "`+ns+`"`)
+		return
+	}
+	var release any = "H4sIAAAAAAAA/wAAAP//AAAAAAAAAAA="
+	if q.Get("includeHelmData") == "true" {
+		release = map[string]any{
+			"name": sec.release, "namespace": ns, "version": sec.revision,
+			"info":     map[string]any{"status": sec.status},
+			"config":   sec.config,
+			"manifest": "kind: ConfigMap\n",
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": key, "type": "secret",
+		"metadata": map[string]any{"name": name, "namespace": ns, "labels": map[string]any{
+			"owner": "helm", "name": sec.release, "version": strconv.FormatInt(sec.revision, 10),
+		}},
+		"data": map[string]any{"release": release},
+	})
+}
+
+// serveAppUpgrade answers the upgrade action for an App that exists: the
+// action reads the ClusterRepo first, as install does; the Operation names the
+// release, and with an outcome the App moves to the next revision with the
+// chart entry's version and annotations (Rancher copies the chart entry's
+// annotations into the App's chart metadata, which carries the request id)
+// and the Secret of that revision holds the values the request sent. An
+// upgrade of a release the App does not show is Helm's install; this
+// Rancher answers it with an error.
+func serveAppUpgrade(w http.ResponseWriter, r *http.Request, log *appActionLog, repo string) {
+	gvr := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "clusterrepos"}
+	if _, err := dynCli.Resource(gvr).Get(r.Context(), repo, metav1.GetOptions{}); err != nil {
+		appNotFound(w, "clusterrepos.catalog.cattle.io "+strconv.Quote(repo))
+		return
+	}
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	var body struct {
+		Namespace string `json:"namespace"`
+		Charts    []struct {
+			ReleaseName string            `json:"releaseName"`
+			ChartName   string            `json:"chartName"`
+			Version     string            `json:"version"`
+			Values      map[string]any    `json:"values"`
+			Annotations map[string]string `json:"annotations"`
+		} `json:"charts"`
+	}
+	if err := decodeAppBody(raw, &body); err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	ns, release, chart := cmp.Or(body.Namespace, "default"), "", ""
+	var chartVersion string
+	var annotations map[string]string
+	var values map[string]any
+	if len(body.Charts) > 0 {
+		last := body.Charts[len(body.Charts)-1]
+		release, chart, chartVersion, annotations, values = last.ReleaseName, last.ChartName, last.Version, last.Annotations, last.Values
+	}
+	apps := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "apps"}
+	app, err := dynCli.Resource(apps).Namespace(ns).Get(r.Context(), release, metav1.GetOptions{})
+	if err != nil {
+		appServerError(w, "release "+release+" has no App: this Rancher installs nothing on an upgrade")
+		return
+	}
+	outcome := log.completion()
+	if outcome != "" {
+		if err := moveAppToNextRevision(r.Context(), log, app, ns, release, chart, chartVersion, outcome, annotations, values); err != nil {
+			appServerError(w, err.Error())
+			return
+		}
+	}
+	op, err := appOperation(r.Context(), "upgrade", release, ns, outcome)
+	if err != nil {
+		appServerError(w, err.Error())
+		return
+	}
+	log.add(appActionEntry{Action: "upgrade", Path: r.URL.Path, FieldManager: r.URL.Query().Get("fieldManager"), Body: raw})
+	appActionAnswer(w, op)
+}
+
+// moveAppToNextRevision writes the App an upgrade leaves: the next revision of
+// the release, deployed or failed, whose owner reference names the Secret of
+// that revision, and stores that Secret with the values the request sent.
+func moveAppToNextRevision(ctx context.Context, log *appActionLog, app *unstructured.Unstructured, ns, release, chart, version, outcome string, annotations map[string]string, values map[string]any) error {
+	revision, _, _ := unstructured.NestedInt64(app.Object, "spec", "version")
+	revision++
+	annotationValues := map[string]any{}
+	for k, v := range annotations {
+		annotationValues[k] = v
+	}
+	info := map[string]any{"status": outcome}
+	if outcome == appFailed {
+		info["description"] = fmt.Sprintf("Upgrade %q failed: a test failure", release)
+	}
+	app.Object["spec"].(map[string]any)["version"] = revision
+	app.Object["spec"].(map[string]any)["info"] = info
+	app.Object["spec"].(map[string]any)["chart"] = map[string]any{"metadata": map[string]any{
+		"name": chart, "version": version, "annotations": annotationValues,
+	}}
+	app.SetOwnerReferences([]metav1.OwnerReference{{
+		APIVersion: "v1", Kind: "Secret", Name: appReleaseSecretName(release, revision), UID: types.UID("00000000-0000-0000-0000-000000000001"),
+	}})
+	apps := schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "apps"}
+	if _, err := dynCli.Resource(apps).Namespace(ns).Update(ctx, app, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+	log.putSecret(ns, release, revision, outcome, values)
+	return nil
 }
 
 func serveAppUninstall(w http.ResponseWriter, r *http.Request, log *appActionLog, name string) {
@@ -1870,20 +2092,21 @@ func TestScenarios(t *testing.T) {
 			return false, fmt.Errorf("unknown condition %q", cond)
 		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
-			"jsonquery":     cmdJSONQuery,
-			"jsonvalue":     cmdJSONValue,
-			"waitwatchopen": cmdWaitWatchOpen,
-			"shimwaits":     cmdShimWaits,
-			"pathmatch":     cmdPathmatch,
-			"flipstatus":    cmdFlipStatus,
-			"rawget":        cmdRawGet,
-			"seedexeccache": cmdSeedExecCache,
-			"seedobj":       cmdSeedObj,
-			"jsonget":       cmdJSONGet,
-			"setenvfrom":    cmdSetenvFrom,
-			"waitobj":       cmdWaitObj,
-			"appactions":    cmdAppActions,
-			"appoutcome":    cmdAppOutcome,
+			"jsonquery":         cmdJSONQuery,
+			"jsonvalue":         cmdJSONValue,
+			"waitwatchopen":     cmdWaitWatchOpen,
+			"shimwaits":         cmdShimWaits,
+			"pathmatch":         cmdPathmatch,
+			"flipstatus":        cmdFlipStatus,
+			"rawget":            cmdRawGet,
+			"seedexeccache":     cmdSeedExecCache,
+			"seedobj":           cmdSeedObj,
+			"jsonget":           cmdJSONGet,
+			"setenvfrom":        cmdSetenvFrom,
+			"waitobj":           cmdWaitObj,
+			"appactions":        cmdAppActions,
+			"appoutcome":        cmdAppOutcome,
+			"appupgradeactions": cmdAppUpgradeActions,
 		},
 	})
 }

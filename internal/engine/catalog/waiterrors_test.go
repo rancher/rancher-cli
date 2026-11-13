@@ -30,6 +30,7 @@ var waitErrorBuilders = map[string]func(w *appWait) error{
 	"cancelledError":                 func(w *appWait) error { return w.cancelledError() },
 	"timeoutError":                   func(w *appWait) error { return w.timeoutError(clierr.Retryable(clierr.CodeGeneric, "500")) },
 	"failureError":                   func(w *appWait) error { return w.failureError(revision{status: "failed"}, &stall{}) },
+	"upgradeFailureError":            func(w *appWait) error { return w.upgradeFailureError(revision{status: "failed"}, &stall{}) },
 	"anotherChangeError":             func(w *appWait) error { return w.anotherChangeError(2) },
 	"anotherChangeAfterFailureError": func(w *appWait) error { return w.anotherChangeAfterFailureError(stall{}, 2) },
 	"leftPendingError":               func(w *appWait) error { return w.leftPendingError(nil) },
@@ -200,7 +201,7 @@ func TestWaitPassThroughErrorsAreCommitted(t *testing.T) {
 			t.Parallel()
 			w := &appWait{t: actionTarget{typedCluster: testTypedCluster, namespace: testNS, release: testRelease, requestID: testRequestID},
 				op: actionAnswer{OperationName: testOperation, OperationNamespace: testNS}, filter: Values{}.filterFunc(),
-				install: true, timeout: time.Minute, interval: time.Second}
+				mode: modeInstall, timeout: time.Minute, interval: time.Second}
 			ce, ok := errors.AsType[*clierr.Error](tc.run(w))
 			require.True(t, ok)
 			assert.Equal(t, tc.code, ce.Code)

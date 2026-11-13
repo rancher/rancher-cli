@@ -63,7 +63,7 @@ func (w *appWait) cancelledError() *clierr.Error {
 	msg := fmt.Sprintf("the wait for release %s ended before Helm's run did; operation %s in namespace %s may still run Helm",
 		clierr.ShellQuote(w.t.release), clierr.ShellQuote(w.op.OperationName), clierr.ShellQuote(w.op.OperationNamespace))
 	if w.t.requestID != "" {
-		msg += fmt.Sprintf("; this request's id is %s, and an app whose spec.chart.metadata.annotations hold %s: %s is the revision this request installed",
+		msg += fmt.Sprintf("; this request's id is %s, and an app whose spec.chart.metadata.annotations hold %s: %s is the revision this request created",
 			w.t.requestID, annotationRequestID, w.t.requestID)
 	}
 	return w.committedError(msg, w.t.getApp())
@@ -88,6 +88,9 @@ func (w *appWait) timeoutError(lastErr *clierr.Error) *clierr.Error {
 // error from spec.info.description, the status, and the exit code when the
 // Operation was read Stalled.
 func (w *appWait) failureError(r revision, s *stall) *clierr.Error {
+	if w.mode == modeUpgrade {
+		return w.upgradeFailureError(r, s)
+	}
 	msg := "release " + clierr.ShellQuote(w.t.release) + " failed"
 	if desc := w.clean(r.description); desc != "" {
 		msg += ": " + desc
@@ -96,11 +99,30 @@ func (w *appWait) failureError(r revision, s *stall) *clierr.Error {
 	return w.committedError(clierr.Text(msg, clierr.Lead("; to remove it, add --apply --yes after reading the preview of "), uninstallPreview(w.t)), w.t.getApp())
 }
 
+// upgradeFailureError is the error of an upgrade whose revision is at
+// failed: Helm stored it and did not roll back.
+func (w *appWait) upgradeFailureError(r revision, s *stall) *clierr.Error {
+	msg := "the upgrade of release " + clierr.ShellQuote(w.t.release) + " failed"
+	if desc := w.clean(r.description); desc != "" {
+		msg += ": " + desc
+	}
+	msg += fmt.Sprintf(" (revision %d, status %s%s); Helm does not roll back: the resources this upgrade already changed stay changed, "+
+		"and in the release's history the last deployed revision still has the status deployed", r.version, w.clean(r.status), s.listClause(w))
+	if w.cleanupOnFail {
+		msg += "; with --cleanup-on-fail, Helm was asked to delete the resources this upgrade created"
+	}
+	text := clierr.Text(msg,
+		clierr.Lead("; to upgrade again with a change, add the change to this preview command, read the preview, then add --apply --yes: "), upgradePreview(w.t),
+		fmt.Sprintf("; the next upgrade sends the values of revision %d, the revision that failed", r.version),
+		clierr.Lead("; to remove the release, add --apply --yes after reading the preview of "), uninstallPreview(w.t))
+	return w.committedError(text, w.t.getApp())
+}
+
 // anotherChangeError is the error of a revision past the recorded one that
 // carries another request's id or none.
 func (w *appWait) anotherChangeError(version int64) *clierr.Error {
-	return w.committedError(fmt.Sprintf("the install ran; another change to %s also ran (revision %d)",
-		clierr.ShellQuote(w.t.release), version), w.t.getApp())
+	return w.committedError(fmt.Sprintf("the %s ran; another change to %s also ran (revision %d)",
+		w.mode.verb(), clierr.ShellQuote(w.t.release), version), w.t.getApp())
 }
 
 // anotherChangeAfterFailureError is anotherChangeError after a Stalled
@@ -200,21 +222,30 @@ func operationGoneWarning(name string) string {
 // skipWarning is the warning when the caller cannot read the Operation: the
 // wait reads the App alone, and what that cannot see. reviewed is false
 // when the access review request itself failed.
-func skipWarning(install, reviewed bool, ns string) string {
+func skipWarning(mode waitMode, reviewed bool, ns string) string {
 	who := "you cannot get operations in namespace " + clierr.ShellQuote(ns)
 	if !reviewed {
 		who = "rancher-cli could not check whether you can get operations in namespace " + clierr.ShellQuote(ns)
 	}
-	return fmt.Sprintf("%s; the wait reads the app only, and %s; a shorter --timeout ends that wait sooner", who, skipFactOf(install))
+	return fmt.Sprintf("%s; the wait reads the app only, and %s; a shorter --timeout ends that wait sooner", who, skipFactOf(mode))
 }
 
-func (w *appWait) skipFact() string { return skipFactOf(w.install) }
+func (w *appWait) skipFact() string { return skipFactOf(w.mode) }
 
-func skipFactOf(install bool) string {
-	if install {
+func skipFactOf(mode waitMode) string {
+	switch mode {
+	case modeInstall:
 		return "a chart Helm refuses before it stores a release is seen only as the wait timeout"
+	case modeUpgrade:
+		return "an upgrade Helm refuses before it stores a revision is seen only as the wait timeout"
 	}
 	return "an uninstall that fails and leaves the app unchanged is seen only as the wait timeout"
+}
+
+// upgradePreview is the preview command of the upgrade of the release.
+func upgradePreview(t actionTarget) clierr.Command {
+	return clierr.NewCommand("app upgrade").Arg(t.release).
+		FlagValue("--cluster", t.typedCluster).FlagValue("--namespace", t.namespace).Flag("--dry-run")
 }
 
 // uninstallPreview is the preview command of the uninstall of the release.

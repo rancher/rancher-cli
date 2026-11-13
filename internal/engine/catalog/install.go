@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -101,7 +100,7 @@ func (*installCmd) Describe() runtime.Descriptor {
 			"Neither Rancher nor rancher-cli checks the values against the chart's values schema (Helm does, in the pod) or the chart's signature. " +
 			"Refused: a chart that names another chart to install first (catalog.cattle.io/auto-install or auto-install-gvr), " +
 			"and a chart whose catalog.cattle.io/namespace, release-name, requires-gvr or permits-os annotation the target does not meet. " +
-			"There is no upgrade: uninstall the release and install it again. The namespace must exist; the Rancher UI creates it when it does not exist. " +
+			"To change a release, use `rancher app upgrade`. The namespace must exist; the Rancher UI creates it when it does not exist. " +
 			"It creates no image pull secret for a repo such as SUSE Application Collection. " +
 			"--helm-wait (default true; --helm-wait=false sends false) makes Helm wait for the chart's resources; " +
 			"--helm-timeout (default 10m, at least 1s, at most 15m) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. " +
@@ -151,16 +150,9 @@ func stdinTerminal(in runtime.Input) bool {
 
 // installPlan is what Plan read and decided, for Execute.
 type installPlan struct {
-	client  engine.ClusterClient
-	root    engine.RootClient
-	cluster string
-	target  actionTarget
-	repo    string
-	chart   string
-	version string
+	chartPlan
 	digest  string
 	body    installBody
-	values  Values
 	sent    composition
 	canRead bool
 	wait    waitRequest
@@ -192,8 +184,8 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 		repo:   in.String(flagRepo),
 		chart:  in.String(flagChart),
 		values: values,
-		wait:   wait,
 		target: actionTarget{typedCluster: in.String(engine.FlagCluster), namespace: in.String(engine.FlagNamespace), release: release, requestID: c.newID()},
+		wait:   wait,
 	}
 	var warnings []string
 
@@ -231,7 +223,7 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	if err != nil && !forbidden(err) {
 		return safety.Effect{}, nil, err
 	}
-	w, err = p.checkChart(ctx, entry, info, repoObj, mgmt)
+	w, err = p.checkChart(ctx, entry, info, repoObj, mgmt, false)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -259,7 +251,7 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	// The Effect's warnings reach the result too: the skip warning is added
 	// here only.
 	if p.wait.on && !canRead {
-		warnings = append(warnings, skipWarning(true, reviewed, p.target.namespace))
+		warnings = append(warnings, skipWarning(modeInstall, reviewed, p.target.namespace))
 	}
 
 	if p.sent, err = p.composeValues(ctx, info.Values, mgmt, reg); err != nil {
@@ -361,16 +353,6 @@ func readClusterRepo(ctx context.Context, client engine.ClusterClient, repo, typ
 	return obj, nil
 }
 
-// chartsHint is the command that lists the repository's charts, with the
-// flags it is given.
-func (p installPlan) chartsHint(flags ...clierr.CommandWord) clierr.Command {
-	c := clierr.NewCommand("charts").FlagValue("--cluster", p.target.typedCluster).FlagValue("--repo", p.repo)
-	for _, f := range flags {
-		c = c.Flag(f)
-	}
-	return c
-}
-
 // resolveVersion finds the chart version to install in the index Rancher
 // serves for the cluster: the exact --version, or the version rancher
 // charts shows.
@@ -419,51 +401,6 @@ func versionList(versions []ChartVersion) string {
 	return strings.Join(out, ", ")
 }
 
-// checkChart applies the refusals the chart's annotations call for, and
-// returns the warnings of the checks it could not make. mgmt is the
-// management Cluster, nil when the caller cannot read it.
-func (p installPlan) checkChart(ctx context.Context, entry ChartVersion, info Info, repo, mgmt *unstructured.Unstructured) ([]string, error) {
-	name := fmt.Sprintf("chart %s %s", clierr.ShellQuote(p.chart), clierr.ShellQuote(p.version))
-	// The Rancher UI reads the annotations of the index entry; the info
-	// link's chart metadata stands in only for an entry that carries none.
-	ann := entry.Annotations
-	if len(ann) == 0 {
-		ann = info.Chart.Annotations
-	}
-	if first := autoInstallCharts(ann); len(first) > 0 {
-		return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"%s names %s to install first (annotation %s); rancher-cli does not install a chart that names another chart to install first; install it from the Rancher UI",
-			name, strings.Join(first, ", "), firstAnnotation(ann)))
-	}
-	if want := ann[annotationNamespace]; want != "" && want != p.target.namespace {
-		msg := fmt.Sprintf("%s installs only in namespace %s (annotation %s)", name, clierr.ShellQuote(want), annotationNamespace)
-		if fragment, ok := clierr.FlagFragment("--namespace", want); ok {
-			msg += "; run it with " + fragment
-		} else {
-			msg = clierr.WithLeftOutNote(msg)
-		}
-		return nil, clierr.New(clierr.CodeValidation, msg)
-	}
-	if want := ann[annotationReleaseName]; want != "" && want != p.target.release {
-		return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"%s installs only as release %s (annotation %s); run it with that release name",
-			name, clierr.ShellQuote(want), annotationReleaseName))
-	}
-	var warnings []string
-	if entries := trimmedList(ann[annotationRequiresGVR]); len(entries) > 0 {
-		w, err := p.checkRequires(ctx, name, entries)
-		if err != nil {
-			return nil, err
-		}
-		warnings = append(warnings, w...)
-	}
-	w, err := p.checkPermitsOS(name, ann, repo, mgmt)
-	if err != nil {
-		return nil, err
-	}
-	return append(warnings, w...), nil
-}
-
 // autoInstallCharts names what a chart asks to install first: the chart of
 // each catalog.cattle.io/auto-install entry (<chart>=<constraint>), else
 // each catalog.cattle.io/auto-install-gvr entry.
@@ -491,34 +428,6 @@ func firstAnnotation(ann map[string]string) string {
 		return annotationAutoInstall
 	}
 	return annotationAutoInstallGVR
-}
-
-// checkRequires refuses the chart when the cluster serves no resource for
-// an entry of catalog.cattle.io/requires-gvr: <schema id>[/<version>],
-// where the schema id is the lowercased <group>.<kind>, or the lowercased
-// kind of the core group, and the version is compared with the group's
-// preferred version, as the Rancher UI compares it.
-func (p installPlan) checkRequires(ctx context.Context, name string, entries []string) ([]string, error) {
-	resources, err := p.client.ServerResources(ctx)
-	incomplete, partial := errorsAsIncomplete(err)
-	if err != nil && !partial {
-		return nil, err
-	}
-	var warnings []string
-	for _, e := range entries {
-		id, version, _ := strings.Cut(e, "/")
-		id = strings.ToLower(id)
-		if served(resources, id, version) {
-			continue
-		}
-		if partial && incomplete.hasGroupOf(id) {
-			warnings = append(warnings, fmt.Sprintf("the cluster could not list every API group; %s needs %s (annotation %s), which was not checked", name, e, annotationRequiresGVR))
-			continue
-		}
-		return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"%s needs the resource %s on the cluster (annotation %s), and the cluster does not serve it", name, e, annotationRequiresGVR))
-	}
-	return warnings, nil
 }
 
 // served reports whether one discovered resource gives the schema id, and
@@ -562,39 +471,6 @@ func (g incompleteGroups) hasGroupOf(id string) bool {
 		return g[""]
 	}
 	return g[group]
-}
-
-// checkPermitsOS refuses the chart when the cluster has workers of an OS
-// that catalog.cattle.io/permits-os does not list. Without the annotation a
-// chart from a Rancher repository permits linux only and any other chart
-// every OS. The workers' OSes come from the management cluster mgmt, nil
-// when the caller cannot read it: the check is then skipped with a warning.
-func (p installPlan) checkPermitsOS(name string, ann map[string]string, repo, mgmt *unstructured.Unstructured) ([]string, error) {
-	var permitted []string
-	if v, ok := ann[annotationPermitsOS]; ok && v != "" {
-		for e := range strings.SplitSeq(v, ",") {
-			if e != "" {
-				permitted = append(permitted, e)
-			}
-		}
-	} else if rancherSource(repo) {
-		permitted = []string{"linux"}
-	}
-	if len(permitted) == 0 {
-		return nil, nil
-	}
-	if mgmt == nil {
-		return []string{fmt.Sprintf("cannot read cluster %s; %s permits only %s nodes (annotation %s), which was not checked against its workers",
-			clierr.ShellQuote(p.target.typedCluster), name, strings.Join(permitted, ", "), annotationPermitsOS)}, nil
-	}
-	for _, workerOS := range workerOSes(mgmt) {
-		if !slices.Contains(permitted, workerOS) {
-			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-				"%s permits only %s nodes (annotation %s), and cluster %s has %s workers",
-				name, strings.Join(permitted, ", "), annotationPermitsOS, clierr.ShellQuote(p.target.typedCluster), workerOS))
-		}
-	}
-	return nil, nil
 }
 
 // workerOSes reads the OSes of a management cluster's workers as the
@@ -715,22 +591,9 @@ func (c *installCmd) execute(ctx context.Context, p installPlan) (runtime.Result
 	if err := recheckOperations(ctx, p.client, t, c.now()); err != nil {
 		return runtime.Result{}, err
 	}
-	var warnings []string
-	idx, err := ReadIndex(ctx, p.root, p.cluster, p.repo)
+	warnings, err := p.recheckIndex(ctx, p.digest)
 	if err != nil {
-		return runtime.Result{}, changedBeforeRequest(fmt.Sprintf("the index of ClusterRepo %s could not be read again (%s)",
-			clierr.ShellQuote(p.repo), clierr.From(err).Message))
-	}
-	i := slices.IndexFunc(idx.Entries[p.chart], func(v ChartVersion) bool { return v.Version == p.version })
-	if i < 0 {
-		return runtime.Result{}, changedBeforeRequest(fmt.Sprintf("version %s of chart %s left the index", clierr.ShellQuote(p.version), clierr.ShellQuote(p.chart)))
-	}
-	now := idx.Entries[p.chart][i].Digest
-	switch {
-	case p.digest != "" && now != "" && p.digest != now:
-		return runtime.Result{}, changedBeforeRequest(fmt.Sprintf("the content of chart %s %s changed in the index", clierr.ShellQuote(p.chart), clierr.ShellQuote(p.version)))
-	case p.digest == "" || now == "":
-		warnings = append(warnings, fmt.Sprintf("the index gives no digest for chart %s %s; its content was not compared with the preview's", p.chart, p.version))
+		return runtime.Result{}, err
 	}
 	a, err := postAction(ctx, c.actions, installPath(p.cluster, p.repo), p.body, t, p.values)
 	if err != nil {
@@ -742,7 +605,7 @@ func (c *installCmd) execute(ctx context.Context, p installPlan) (runtime.Result
 		return res, nil
 	}
 	w := &appWait{client: p.client, interval: c.interval, timeout: p.wait.timeout, t: t, op: a,
-		filter: p.values.filterFunc(), install: true, skip: !p.canRead}
+		filter: p.values.filterFunc(), mode: modeInstall, skip: !p.canRead}
 	end, err := w.run(ctx)
 	if err != nil {
 		return runtime.Result{}, err

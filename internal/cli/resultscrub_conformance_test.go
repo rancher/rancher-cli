@@ -1042,6 +1042,11 @@ func handWrittenScrubRows() []scrubRow {
 		{command: "app uninstall", kind: "app", class: classNames, reason: appResultReason,
 			input: in([]string{appRelease}, map[string]string{"cluster": "prod", "namespace": appNS}),
 			deps:  appScrubDeps(func(s *appServer) { s.putApp("deployed") })},
+		{command: "app upgrade", kind: "app", class: classNames, reason: appResultReason,
+			input: in([]string{appRelease}, map[string]string{"cluster": "prod", "namespace": appNS}),
+			deps: appScrubDeps(func(s *appServer) {
+				s.putRelease("deployed", 3, map[string]any{"replicaCount": 3})
+			})},
 		{command: "grant", kind: "globalrolebinding", class: classEcho,
 			input: func(*plantSet) fieldCoverageInput {
 				return fieldCoverageInput{args: []string{"local://u-abc"}, values: map[string]string{"role": "admin"}, bools: map[string]bool{"global": true}}

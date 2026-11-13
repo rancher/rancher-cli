@@ -89,7 +89,7 @@ func refusalCases() []refusalCase {
 			"clusterrepo: patch is not supported - this CLI does not change repositories; read it with "+clierr.Rancher+" get 'clusterrepo' --cluster 'local'",
 			"--cluster", "local"),
 		patchRefusal("app", "app",
-			"app: patch is not supported - Rancher creates and manages app objects from the Helm release; this CLI does not change them; read it with "+clierr.Rancher+" get 'app' --cluster 'local' --namespace 'default'",
+			"app: patch is not supported - Rancher creates and manages app objects from the Helm release; to change a release (<name> is its name, <c> the cluster and <ns> its namespace), run `"+clierr.Rancher+" app upgrade <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview; read it with "+clierr.Rancher+" get 'app' --cluster 'local' --namespace 'default'",
 			"--cluster", "local", "--namespace", "default"),
 		patchRefusal("operation", "operation",
 			"operation: patch is not supported - Rancher creates and manages operation objects; this CLI does not change them; read it with "+clierr.Rancher+" get 'operation' --cluster 'local' --namespace 'default'",

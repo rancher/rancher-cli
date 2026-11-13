@@ -74,6 +74,7 @@ var dryRunBespokeEffectCommands = map[string]string{
 		"TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity asserts the committed identity is the real server-assigned name, never the dry-run preview placeholder",
 	"create password-change-request": "internal/engine/extres/createpasswordchangerequest_test.go: TestCreatePasswordChangeRequestPlanDisplayIdentity asserts DisplayKind/DisplayName (the request resource itself carries no name, so DisplayName names the target user)",
 	"app install":                    "internal/engine/catalog/install_test.go: TestInstallPlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
+	"app upgrade":                    "internal/engine/catalog/upgrade_test.go: TestUpgradePlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
 	"app uninstall":                  "internal/engine/catalog/uninstall_test.go: TestUninstallPlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
 }
 

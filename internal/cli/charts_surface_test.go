@@ -90,6 +90,12 @@ func newChartsServer(t *testing.T, broken bool) *chartsServer {
 			_ = json.NewEncoder(w).Encode(page)
 			return
 		}
+		if path == downProxyPrefix+"/apis/catalog.cattle.io/v1/namespaces/"+appNS+"/apps/"+appRelease {
+			_, _ = w.Write([]byte(`{"apiVersion":"catalog.cattle.io/v1","kind":"App","metadata":{"name":"` + appRelease + `","namespace":"` + appNS +
+				`","resourceVersion":"7"},"spec":{"name":"` + appRelease + `","version":1,"info":{"status":"deployed"},"chart":{"metadata":{"name":"` + appChart +
+				`","version":"2.0.0","annotations":{"catalog.cattle.io/ui-source-repo-type":"cluster","catalog.cattle.io/ui-source-repo":"rancher-charts"}}}}}`))
+			return
+		}
 		for _, prefix := range []string{localProxyPrefix, downProxyPrefix} {
 			if path == prefix+catalogGroupPath {
 				_, _ = w.Write([]byte(`{"apiVersion":"catalog.cattle.io/v1","kind":"ClusterRepoList","items":[` + strings.Join(repos, ",") + `]}`))

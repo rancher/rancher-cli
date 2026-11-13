@@ -374,6 +374,7 @@ var secretExempt = map[string]string{
 	"must-change-password": "a bool",
 	"output-file":          "a path the command writes to",
 	"clear-cacert":         "a bool",
+	"reset-values":         "a bool",
 	"token-ttl":            "a duration",
 	"non-resource-url":     "a request path of the Kubernetes API on the server, never a URL with userinfo",
 }

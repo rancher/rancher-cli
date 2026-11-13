@@ -124,6 +124,9 @@ func buildEntries() []entry {
 		{group: "app", make: func(d runDeps) runtime.Command {
 			return catalog.NewInstall(d.clients, d.roots, d.actions, d.src)
 		}},
+		{group: "app", make: func(d runDeps) runtime.Command {
+			return catalog.NewUpgrade(d.clients, d.roots, d.actions, d.src)
+		}},
 		{group: "app", make: func(d runDeps) runtime.Command { return catalog.NewUninstall(d.clients, d.actions) }},
 		{group: "", make: func(d runDeps) runtime.Command { return catalog.NewCharts(d.clients, d.roots) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewGrant(d.clients) }},
@@ -447,7 +450,7 @@ var groupUsages = map[string]string{
 	"telemetry":   "Local usage recording: status, turn on, turn off, delete, list and send events",
 	"oidc-client": "Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)",
 	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
-	"app":         "Install a chart from a repository as an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)",
+	"app":         "Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 
@@ -692,6 +695,7 @@ var derivedOpKinds = map[string]string{
 	"oidc-client rotate-secret":  "oidcclient",
 	"oidc-client remove-secret":  "oidcclient",
 	"app install":                "app",
+	"app upgrade":                "app",
 	"app uninstall":              "app",
 	"cluster scale":              "provisioningcluster",
 	"cluster set-autoscaling":    "provisioningcluster",
@@ -923,7 +927,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// provisioning-cluster` is the read path for this family's target.
 		"cluster": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; " +
 			"to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
-		"app":     "Install a chart from a ClusterRepo as an app, or uninstall an app, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
+		"app":     "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
 		"inspect": "Show the current state, events and related objects of a cluster, workload or project.",
 		"access": "Questions about access, answered by the server: whether a subject can perform a verb on a resource, the rules a subject has in a namespace, " +
 			"which of the subjects named in the cluster's bindings the authorizer allows to perform a verb on a resource, why the authorizer decided as it did for one subject " +

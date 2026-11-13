@@ -224,7 +224,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	knownShadowings := map[string]string{
 		"project": "the project group wins the selector; the kind card is reachable via --kind and each card hints the other; renaming would churn the TOC layout",
 		"cluster": "the cluster group wins the selector, same as project; the kind card is reachable via --kind and each card hints the other; renaming would churn every agent prompt referencing the family",
-		"app":     "the app group (app install, app uninstall) wins the selector, same as project; the kind card is reachable via --kind and each card hints the other; the group is named for the object Rancher records a release as",
+		"app":     "the app group (app install, app upgrade, app uninstall) wins the selector, same as project; the kind card is reachable via --kind and each card hints the other; the group is named for the object Rancher records a release as",
 	}
 
 	groupNames := map[string]bool{}

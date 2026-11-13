@@ -1,0 +1,212 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj core/v1/namespaces . namespace.yaml
+seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
+seedobj catalog.cattle.io/v1/apps app-upgrade-ns app.yaml
+seedobj catalog.cattle.io/v1/apps app-upgrade-ns app-gone.yaml
+seedobj catalog.cattle.io/v1/apps app-upgrade-ns app-denied.yaml
+
+# --dry-run reads the server and sends no action: the preview is from server
+# reads, an update of the App at the next revision, and the values appear by
+# path, never by content: the ones in the file and the ones the release
+# already holds are hidden, and the version stays the one the release runs.
+exec rancher app upgrade upgrade-rel --cluster testcluster --namespace app-upgrade-ns --values values.yaml --dry-run -o json
+cp stdout dry.json
+jsonquery dry.json data.previewSource serverReads
+jsonquery dry.json data.action update
+jsonquery dry.json data.destructive true
+jsonquery dry.json data.displayName upgrade-rel
+jsonquery dry.json 'data.diff.#(path="version").to' 1.1.0
+jsonquery dry.json 'data.diff.#(path="chart").to' app-upgrade-chart
+jsonquery dry.json 'data.diff.#(path="revision").from' 3
+jsonquery dry.json 'data.diff.#(path="revision").to' 4
+jsonquery dry.json 'data.diff.#(path="values.replicaCount").from' '<hidden>'
+jsonquery dry.json 'data.diff.#(path="values.replicaCount").to' '<hidden>'
+jsonquery dry.json 'data.diff.#(path="values.extra").to' '<hidden>'
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.clusterId").to' c-test
+jsonquery dry.json 'warnings.#(%"the release''s values come from * (status deployed), Secret ''sh.helm.release.v1.upgrade-rel.v3''")#|#' 1
+! stdout 'topsecret'
+appupgradeactions actions.json
+jsonquery actions.json '#' 0
+
+# Without --apply and --yes the command is refused and sends nothing.
+! exec rancher app upgrade upgrade-rel --cluster testcluster --namespace app-upgrade-ns --values values.yaml -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+! exec rancher app upgrade upgrade-rel --cluster testcluster --namespace app-upgrade-ns --values values.yaml --apply -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+jsonquery stderr '[data.error].#(message%"*--yes*").code' CONFIRMATION_REQUIRED
+appupgradeactions actions.json
+jsonquery actions.json '#' 0
+
+# --apply --yes sends the upgrade action once: the release and namespace of
+# the App, the chart and version, the values the release holds with the file
+# merged over them, and the request id the command reports; the body has no
+# install field.
+exec rancher app upgrade upgrade-rel --cluster testcluster --namespace app-upgrade-ns --version 1.2.0 --values values.yaml --helm-timeout 5m --description 'bigger' --apply --yes -o json
+cp stdout apply.json
+jsonquery apply.json data.release upgrade-rel
+jsonquery apply.json data.operationNamespace app-upgrade-ns
+! jsonquery apply.json data.operationName ''
+jsonget apply.json data.operationName opname.txt
+setenvfrom OPNAME opname.txt
+jsonget apply.json data.requestID reqid.txt
+setenvfrom REQID reqid.txt
+! stdout 'topsecret'
+appupgradeactions actions.json
+jsonquery actions.json '#' 1
+jsonquery actions.json '0.action' upgrade
+jsonquery actions.json '0.fieldManager' cli.rancher.io
+jsonquery actions.json '0.path' /k8s/clusters/c-test/v1/catalog.cattle.io.clusterrepos/app-upgrade-repo
+jsonquery actions.json '0.body.namespace' app-upgrade-ns
+jsonquery actions.json '0.body.install' ''
+jsonquery actions.json '0.body.wait' true
+jsonquery actions.json '0.body.timeout' 5m0s
+jsonquery actions.json '0.body.charts.#' 1
+jsonquery actions.json '0.body.charts.0.chartName' app-upgrade-chart
+jsonquery actions.json '0.body.charts.0.releaseName' upgrade-rel
+jsonquery actions.json '0.body.charts.0.version' 1.2.0
+jsonquery actions.json '0.body.charts.0.description' bigger
+jsonquery actions.json '0.body.charts.0.resetValues' ''
+jsonquery actions.json '0.body.charts.0.values.replicaCount' 5
+jsonquery actions.json '0.body.charts.0.values.image.tag' topsecret-tag
+jsonquery actions.json '0.body.charts.0.values.extra' topsecret-new
+jsonquery actions.json '0.body.charts.0.values.global.cattle.clusterId' c-test
+jsonquery actions.json '0.body.charts.0.annotations.cli\.rancher\.io/request-id' $REQID
+jsonquery actions.json '0.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo' app-upgrade-repo
+jsonquery actions.json '0.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo-type' cluster
+
+# The operation Rancher created exists, and the App is at the next revision
+# with the request id.
+exec rancher get operation $OPNAME --cluster testcluster --namespace app-upgrade-ns -o json
+jsonquery stdout data.status.action upgrade
+jsonquery stdout data.status.releaseName upgrade-rel
+exec rancher get app upgrade-rel --cluster testcluster --namespace app-upgrade-ns -o json
+jsonquery stdout data.spec.version 4
+jsonquery stdout data.spec.chart.metadata.version 1.2.0
+jsonquery stdout 'data.spec.chart.metadata.annotations.cli\.rancher\.io/request-id' $REQID
+
+# --wait returns after Helm's run: the App is at the revision this request
+# made, deployed. The values come from the revision before, so what the
+# first upgrade sent is sent again.
+exec rancher app upgrade upgrade-rel --cluster testcluster --namespace app-upgrade-ns --description 'again' --wait --apply --yes -o json
+cp stdout wait.json
+jsonquery wait.json data.release upgrade-rel
+jsonquery wait.json data.status deployed
+jsonquery wait.json 'data.revision' 5
+appupgradeactions actions.json
+jsonquery actions.json '#' 2
+jsonquery actions.json '1.body.charts.0.version' 1.2.0
+jsonquery actions.json '1.body.charts.0.values.replicaCount' 5
+jsonquery actions.json '1.body.charts.0.values.extra' topsecret-new
+
+# With nothing to change the command is refused and sends nothing.
+! exec rancher app upgrade upgrade-rel --cluster testcluster --namespace app-upgrade-ns --apply --yes -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr '[data.error].#(message%"*nothing to change*").code' VALIDATION
+appupgradeactions actions.json
+jsonquery actions.json '#' 2
+
+# An uninstalled release is refused: Helm would install it again.
+! exec rancher app upgrade upgrade-gone --cluster testcluster --namespace app-upgrade-ns --description 'again' --apply --yes -o json
+jsonquery stderr data.error.code CONFLICT
+jsonquery stderr '[data.error].#(message%"*is uninstalled*").code' CONFLICT
+appupgradeactions actions.json
+jsonquery actions.json '#' 2
+
+# A caller who cannot read the release's Secret is refused with the way out,
+# and with --reset-values the upgrade goes on without the stored values.
+! exec rancher app upgrade upgrade-denied --cluster testcluster --namespace app-upgrade-ns --description 'again' --apply --yes -o json
+jsonquery stderr data.error.code RBAC
+jsonquery stderr '[data.error].#(message%"*--reset-values*").code' RBAC
+appupgradeactions actions.json
+jsonquery actions.json '#' 2
+exec rancher app upgrade upgrade-denied --cluster testcluster --namespace app-upgrade-ns --reset-values --values values.yaml --dry-run -o json
+cp stdout reset.json
+jsonquery reset.json 'data.diff.#(path="resetValues").to' true
+jsonquery reset.json 'data.diff.#(path="values.extra").to' '<hidden>'
+jsonquery reset.json 'warnings.#(%"cannot read the release''s values *")' 'cannot read the release''s values (you cannot get Secret ''sh.helm.release.v1.upgrade-denied.v1'' in namespace ''app-upgrade-ns''); the preview cannot list the paths --reset-values removes'
+! stdout 'topsecret'
+appupgradeactions actions.json
+jsonquery actions.json '#' 2
+
+-- namespace.yaml --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app-upgrade-ns
+-- repo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: app-upgrade-repo
+spec:
+  url: https://charts.example.test/app-upgrade
+  enabled: true
+-- values.yaml --
+replicaCount: 5
+extra: topsecret-new
+-- app.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: App
+metadata:
+  name: upgrade-rel
+  namespace: app-upgrade-ns
+  ownerReferences:
+    - apiVersion: v1
+      kind: Secret
+      name: sh.helm.release.v1.upgrade-rel.v3
+      uid: 00000000-0000-0000-0000-000000000001
+spec:
+  name: upgrade-rel
+  version: 3
+  chart:
+    metadata:
+      name: app-upgrade-chart
+      version: 1.1.0
+      annotations:
+        catalog.cattle.io/ui-source-repo-type: cluster
+        catalog.cattle.io/ui-source-repo: app-upgrade-repo
+  info:
+    status: deployed
+-- app-gone.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: App
+metadata:
+  name: upgrade-gone
+  namespace: app-upgrade-ns
+spec:
+  name: upgrade-gone
+  version: 2
+  chart:
+    metadata:
+      name: app-upgrade-chart
+      version: 1.1.0
+      annotations:
+        catalog.cattle.io/ui-source-repo-type: cluster
+        catalog.cattle.io/ui-source-repo: app-upgrade-repo
+  info:
+    status: uninstalled
+-- app-denied.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: App
+metadata:
+  name: upgrade-denied
+  namespace: app-upgrade-ns
+  ownerReferences:
+    - apiVersion: v1
+      kind: Secret
+      name: sh.helm.release.v1.upgrade-denied.v1
+      uid: 00000000-0000-0000-0000-000000000002
+spec:
+  name: upgrade-denied
+  version: 1
+  chart:
+    metadata:
+      name: app-upgrade-chart
+      version: 1.1.0
+      annotations:
+        catalog.cattle.io/ui-source-repo-type: cluster
+        catalog.cattle.io/ui-source-repo: app-upgrade-repo
+  info:
+    status: deployed

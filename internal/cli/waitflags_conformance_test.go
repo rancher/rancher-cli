@@ -107,12 +107,13 @@ func wantGetWaitCommands() []string {
 }
 
 // TestOnlyGetAndAppActionsDeclareTheWaitFlags asserts that the commands
-// declaring --wait are exactly the generic gets plus app install and app
-// uninstall, so delete, patch and the clusterregistrationtoken get do not
-// offer a flag they ignore or refuse, and that every command declaring --for
-// declares --wait. The --timeout of the access and oidc-client commands is a
-// time limit, not a wait, and those commands declare no --wait. App install
-// and app uninstall declare --wait and --timeout for their wait of Helm's run.
+// declaring --wait are exactly the generic gets plus app install, app
+// uninstall and app upgrade, so delete, patch and the clusterregistrationtoken
+// get do not offer a flag they ignore or refuse, and that every command
+// declaring --for declares --wait. The --timeout of the access and oidc-client
+// commands is a time limit, not a wait, and those commands declare no --wait.
+// App install, app uninstall and app upgrade declare --wait and --timeout for
+// their wait of Helm's run.
 func TestOnlyGetAndAppActionsDeclareTheWaitFlags(t *testing.T) {
 	t.Parallel()
 	wr, err := buildWiredRegistry("v-test", nil)
@@ -125,7 +126,7 @@ func TestOnlyGetAndAppActionsDeclareTheWaitFlags(t *testing.T) {
 			got = append(got, c.Describe().Name)
 		}
 	}
-	want := append(wantGetWaitCommands(), "app install", "app uninstall")
+	want := append(wantGetWaitCommands(), "app install", "app uninstall", "app upgrade")
 	assert.ElementsMatch(t, want, got)
 	assert.Empty(t, commandsDeclaringForWithoutWait(cmds))
 }

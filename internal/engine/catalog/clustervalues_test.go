@@ -535,7 +535,7 @@ func TestClusterValueWarningOrder(t *testing.T) {
 		"uninstalling the release leaves the CRDs of the chart's crds/ directory and the resources marked helm.sh/resource-policy: keep",
 		"cannot read cluster 'prod'; chart 'nginx' '2.0.0' permits only linux nodes (annotation catalog.cattle.io/permits-os), which was not checked against its workers",
 		"you cannot list operations in namespace 'web'; a running operation for release 'my-nginx' was not checked",
-		"rancher-cli adds the values the Rancher UI adds when it installs a chart: values.global.cattle.clusterId, " +
+		"rancher-cli adds the values the Rancher UI adds when it installs or upgrades a chart: values.global.cattle.clusterId, " +
 			"values.global.cattle.systemDefaultRegistry, values.global.systemDefaultRegistry",
 		warnClusterDenied + ", and the cluster's registry was not read",
 		warnServerURLDenied,
@@ -548,7 +548,7 @@ func TestClusterValueWarningOrder(t *testing.T) {
 	chartWith(f, registryChartInfo)
 	eff, _ = plan(t, newTestInstall(f, files{"v.yaml": fileAt(globalRegistry, fileRegistry)}), installInput(withValues, func(in *appInput) { in.b[flagNoSystemDefaultRegistry] = true }))
 	assert.Equal(t, []string{
-		"rancher-cli adds the values the Rancher UI adds when it installs a chart: values.global.cattle.clusterId, values.global.cattle.clusterName, " +
+		"rancher-cli adds the values the Rancher UI adds when it installs or upgrades a chart: values.global.cattle.clusterId, values.global.cattle.clusterName, " +
 			"values.global.cattle.rkePathPrefix, values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.systemProjectId, values.global.cattle.url",
 		"--no-system-default-registry leaves out values.global.systemDefaultRegistry set in the values files",
 		warnPullSecretsInstall,

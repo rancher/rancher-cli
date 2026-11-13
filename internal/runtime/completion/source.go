@@ -80,6 +80,9 @@ const (
 	AllowanceSteveProjectPages
 	// AllowanceTwo is two requests: two collections listed.
 	AllowanceTwo
+	// AllowanceThree is three requests: three plain reads, collections
+	// listed or objects read.
+	AllowanceThree
 )
 
 // DiscoveryGroupLimit bounds the group documents a source reads on a
@@ -124,6 +127,13 @@ func ManagementTwoListings() Requirements {
 // management token, one request.
 func ClusterListing() Requirements {
 	return Requirements{Cluster: ClusterResolved, Credential: CredentialManagement, Allowance: AllowanceOne}
+}
+
+// ClusterThreeReads is the declaration of a source that makes three plain
+// reads through the typed cluster's proxy, one after the other: the cluster
+// resolved, any credential, three requests.
+func ClusterThreeReads() Requirements {
+	return Requirements{Cluster: ClusterResolved, Credential: CredentialAny, Allowance: AllowanceThree}
 }
 
 // Result is what a source answers. Names are bare candidates the surface

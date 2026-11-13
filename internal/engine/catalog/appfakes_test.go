@@ -74,6 +74,19 @@ func installInput(edits ...func(*appInput)) appInput {
 	return in
 }
 
+// upgradeInput is the input of `app upgrade my-nginx --cluster prod
+// --namespace web`, changed by edits.
+func upgradeInput(edits ...func(*appInput)) appInput {
+	in := appInput{
+		s: map[string]string{engine.FlagCluster: testTypedCluster, engine.FlagNamespace: testNS},
+		b: map[string]bool{}, strs: map[string][]string{}, args: []string{testRelease},
+	}
+	for _, e := range edits {
+		e(&in)
+	}
+	return in
+}
+
 // uninstallInput is the input of `app uninstall my-nginx --cluster prod
 // --namespace web`, changed by edits.
 func uninstallInput(edits ...func(*appInput)) appInput {
@@ -109,8 +122,9 @@ type post struct {
 // management reads (RootClient) and the action POSTs (ActionClient). Its
 // request hooks apply to every test that builds one: a write through the
 // Kubernetes client fails the test, so does a read of a Secret (the
-// commands read no Secret data), an install POST whose chart entry lacks
-// the request id or the two source annotations, and a POST body with a
+// commands read no Secret data through the cluster client), an install or
+// upgrade POST whose chart entry lacks the request id or the two source
+// annotations, and a POST body with a
 // field the golden does not list for the edition the fake serves.
 type appFake struct {
 	t *testing.T
@@ -211,13 +225,14 @@ func newAppFake(t *testing.T) *appFake {
 		indexPath(): {status: 200, body: indexJSON(map[string][]ChartVersion{testChart: {
 			{Version: "2.0.0", Digest: "sha256:aaa"}, {Version: "1.0.0", Digest: "sha256:bbb"},
 		}})},
-		infoPath(testChart, "2.0.0"):              {status: 200, body: `{"values":{"replicaCount":1},"chart":{"annotations":{}}}`},
-		infoPath(testChart, "1.0.0"):              {status: 200, body: `{"values":{"replicaCount":1},"chart":{"annotations":{}}}`},
+		infoPath(testChart, "2.0.0"):              {status: 200, body: `{"values":{"replicaCount":1},"chart":{"annotations":{},"version":"2.0.0"}}`},
+		infoPath(testChart, "1.0.0"):              {status: 200, body: `{"values":{"replicaCount":1},"chart":{"annotations":{},"version":"1.0.0"}}`},
 		clusterPath:                               {status: 200, body: testClusterObject},
 		settingPath(settingServerURL):             {status: 200, body: `{"id":"server-url","value":"` + testServerURL + `","default":""}`},
 		settingPath(settingSystemDefaultRegistry): {status: 200, body: `{"id":"system-default-registry","value":"","default":"` + testSettingRegistry + `"}`},
 		projectsPath:                              {status: 200, body: testProjects},
 	})
+	f.root.t = t
 	f.postAnswer = func(string) ([]byte, error) {
 		return []byte(`{"type":"chartActionOutput","links":{},"operationName":"helm-operation-abcde","operationNamespace":"web"}`), nil
 	}
@@ -411,31 +426,37 @@ func (f *appFake) postCount() int {
 
 // checkBody is the request hook every POST passes: the body's fields are
 // fields of Rancher's action types for the fake's edition, and an install's
-// chart entry carries the request id and the source annotations.
+// or upgrade's chart entry carries the request id and the source
+// annotations. An upgrade body never carries install, which Rancher sets.
 func (f *appFake) checkBody(path string, body map[string]any) {
 	f.t.Helper()
-	action := "ChartUninstallAction"
-	install := strings.HasSuffix(path, "?action=install")
-	if install {
-		action = "ChartInstallAction"
+	action, chartType := "ChartUninstallAction", ""
+	switch {
+	case strings.HasSuffix(path, "?action=install"):
+		action, chartType = "ChartInstallAction", "ChartInstall"
+	case strings.HasSuffix(path, "?action=upgrade"):
+		action, chartType = "ChartUpgradeAction", "ChartUpgrade"
+		if _, ok := body["install"]; ok {
+			f.t.Errorf("upgrade body carries install, which Rancher always sets")
+		}
 	}
 	f.checkFields(action, body)
-	if !install {
+	if chartType == "" {
 		return
 	}
 	charts, _ := body["charts"].([]any)
 	if len(charts) == 0 {
-		f.t.Errorf("install body has no chart entry")
+		f.t.Errorf("%s body has no chart entry", chartType)
 	}
 	for _, c := range charts {
 		chart, _ := c.(map[string]any)
-		f.checkFields("ChartInstall", chart)
+		f.checkFields(chartType, chart)
 		ann, _ := chart["annotations"].(map[string]any)
 		if id, _ := ann[annotationRequestID].(string); id == "" {
-			f.t.Errorf("install chart entry has no %s annotation", annotationRequestID)
+			f.t.Errorf("%s chart entry has no %s annotation", chartType, annotationRequestID)
 		}
 		if ann[annotationSourceRepoType] != sourceRepoTypeCluster || ann[annotationSourceRepo] == nil || ann[annotationSourceRepo] == "" {
-			f.t.Errorf("install chart entry lacks the source annotations: %v", ann)
+			f.t.Errorf("%s chart entry lacks the source annotations: %v", chartType, ann)
 		}
 	}
 }
@@ -479,6 +500,15 @@ func newTestInstall(f *appFake, src engine.FileSource) *installCmd {
 		src = files{}
 	}
 	return &installCmd{clients: f, roots: f, actions: f, src: src,
+		now: func() time.Time { return testNow }, newID: func() string { return testRequestID }, interval: time.Second}
+}
+
+// newTestUpgrade is app upgrade over f, with a fixed request id and clock.
+func newTestUpgrade(f *appFake, src engine.FileSource) *upgradeCmd {
+	if src == nil {
+		src = files{}
+	}
+	return &upgradeCmd{clients: f, roots: f, actions: f, src: src,
 		now: func() time.Time { return testNow }, newID: func() string { return testRequestID }, interval: time.Second}
 }
 

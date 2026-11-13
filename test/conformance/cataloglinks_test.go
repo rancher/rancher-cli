@@ -20,7 +20,9 @@ import (
 )
 
 // The index link of a ClusterRepo is read in three places, and no read
-// asks Rancher for more or other than it lists for the cluster. In
+// asks Rancher for more or other than it lists for the cluster, except the
+// info of the version an app already runs, which app upgrade reads when the
+// index of the repository the app came from no longer lists it. In
 // non-test Go code a string literal that holds "link=" or is exactly "link"
 // belongs only to catalogLinkFile, which the commands read through, and to
 // the files named in catalogLinkAllowlist: the completion path builder,

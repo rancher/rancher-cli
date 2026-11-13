@@ -158,6 +158,10 @@ func TestKindSitesFullCallback(t *testing.T) {
 		{name: "app uninstall second positional completes nothing", words: []string{"app", "uninstall", "my-app", "--cluster", "c-aaa11", "--namespace", "default"}, hits: map[string]int{}},
 		{name: "app uninstall release with the network off", words: []string{"app", "uninstall", "--cluster", "c-aaa11", "--namespace", "default"}, noNet: true, hits: map[string]int{}},
 		{name: "app install release names a new release", words: []string{"app", "install", "--cluster", "c-aaa11", "--namespace", "default"}, hits: map[string]int{}},
+		// app upgrade's release is answered by the command's own source, which
+		// reads the ClusterRepos after the apps (this server serves none), not by
+		// the app kind's name list
+		{name: "app upgrade release is not the app kind's name list", words: []string{"app", "upgrade", "--cluster", "c-aaa11", "--namespace", "default"}, hits: map[string]int{downAppsPath: 1, downRepos: 1}},
 		// Served by the user kind source: ids, system accounts left out, each
 		// once - the same answer get, patch, delete and inspect user give.
 		{name: "create password-change-request", words: []string{"create", "password-change-request"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},

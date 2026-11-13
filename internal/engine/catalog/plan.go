@@ -25,9 +25,13 @@ const (
 // show when the run fails before Helm stores the release.
 const noAppNote = "a chart that fails before Helm stores the release leaves no app; the operation then shows the failure"
 
-// The warnings the catalog action previews carry. An install preview says
-// the server has no dry-run for its action; an uninstall preview says the
-// CLI does not send the action's dry-run option.
+// unchangedAppNote is the upgrade result's warning on what the follow-up
+// commands show when Helm refuses the upgrade before it stores a revision.
+const unchangedAppNote = "an upgrade Helm refuses before it stores a revision leaves the app unchanged; the operation then shows the failure"
+
+// The warnings the catalog action previews carry. An install or upgrade
+// preview says the server has no dry-run for its action; an uninstall
+// preview says the CLI does not send the action's dry-run option.
 const (
 	warnServerReads          = "this preview comes from server reads; the server has no dry-run for this action"
 	warnServerReadsUninstall = "this preview comes from server reads; the CLI does not send the uninstall action's dry-run option"
@@ -205,9 +209,10 @@ func identityOf(ctx context.Context, client engine.ClusterClient, sa, ns string)
 }
 
 // result is the payload of a catalog action: the operation Rancher created
-// and the commands that follow it. RequestID is set for an install. Status
-// and Revision are set after a wait: the App's spec.info.status at the end
-// (uninstalled when the App is gone) and, for an install, its spec.version.
+// and the commands that follow it. RequestID is set for an install and an
+// upgrade. Status and Revision are set after a wait: the App's
+// spec.info.status at the end (uninstalled when the App is gone) and, for an
+// install or an upgrade, its spec.version.
 type result struct {
 	Release            string   `json:"release"`
 	Namespace          string   `json:"namespace"`
@@ -224,11 +229,16 @@ type result struct {
 // caller can) and the App. The App of an install exists once Helm stores
 // the release and then holds Helm's error when the run fails; a chart that
 // fails before that leaves no App, and only the operation shows the
-// failure, which an install's result warns about.
+// failure, which an install's result warns about. An upgrade Helm refuses
+// before it stores a revision leaves the App as it was, which an upgrade's
+// result warns about.
 func actionResult(verb string, t actionTarget, a actionAnswer, canReadOperation bool) runtime.Result {
 	warnings := []string{warnNoWatch}
-	if verb == "install" {
+	switch verb {
+	case "install":
 		warnings = append(warnings, noAppNote)
+	case "upgrade":
+		warnings = append(warnings, unchangedAppNote)
 	}
 	var commands []clierr.Command
 	if canReadOperation {
@@ -280,8 +290,11 @@ func followUp(commands []clierr.Command) ([]string, string) {
 func waitedResult(verb string, t actionTarget, a actionAnswer, end waitEnd) runtime.Result {
 	commands := []clierr.Command{t.getApp()}
 	line := fmt.Sprintf("app %s: uninstalled\n", t.release)
-	if verb == "install" {
+	switch verb {
+	case "install":
 		line = fmt.Sprintf("app %s: installed (revision %d, status %s)\n", t.release, end.revision, end.status)
+	case "upgrade":
+		line = fmt.Sprintf("app %s: upgraded (revision %d, status %s)\n", t.release, end.revision, end.status)
 	}
 	// An App that is gone has nothing left for get app to show.
 	if end.gone {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -73,15 +74,17 @@ type appPost struct {
 	body  map[string]any
 }
 
-// appServer is one Rancher answering every request app install and app
-// uninstall send: the cluster lookup, the server version, the ClusterRepo,
-// App, Operation and namespace reads, the access review, the index and info
-// links, the management cluster and the two actions. Its request hooks
-// apply to every test that starts one: a write other than the review and
-// the actions fails the test, so does a Secret read that is not a Table
-// read, an install whose chart entry lacks the request id or the source
-// annotations, and a body field the Rancher API fields golden does not list
-// for the edition the server is.
+// appServer is one Rancher answering every request app install, app
+// uninstall and app upgrade send: the cluster lookup, the server version, the
+// ClusterRepo, App, Operation and namespace reads, the access review, the
+// index and info links, the management cluster and the three actions. Its
+// request hooks apply to every test that starts one: a write other than the
+// review and the actions fails the test, so does a Secret read that is not a
+// Table read (the one exception is the GET of releaseSecret with
+// includeHelmData=true, which app upgrade sends for the stored values), an
+// install or upgrade whose chart entry lacks the request id or the source
+// annotations, an upgrade body with an install field, and a body field the
+// Rancher API fields golden does not list for the edition the server is.
 type appServer struct {
 	t   *testing.T
 	srv *httptest.Server
@@ -99,6 +102,10 @@ type appServer struct {
 	gets []string
 	// action answers each action request after the hooks; nil answers 201.
 	action func(w http.ResponseWriter, r *http.Request)
+	// releaseSecret is the path of the release Secret the upgrade tests set,
+	// empty elsewhere: the only Secret a request may read other than as a
+	// Table, and only with includeHelmData=true.
+	releaseSecret string
 	// plant changes an object answer before it is sent, by resource.
 	plant  func(resource string, obj map[string]any)
 	fields map[string]map[string][]string
@@ -131,8 +138,8 @@ func newAppServer(t *testing.T, edition string) *appServer {
 			`{"name":"nginx","version":"2.0.0","digest":"sha256:aaa"},{"name":"nginx","version":"1.0.0","digest":"sha256:bbb"}],` +
 			`"` + appRegistryChart + `":[{"name":"` + appRegistryChart + `","version":"` + appRegistryVersion + `","digest":"sha256:ccc"}]}}`,
 		infos: map[string]string{
-			"2.0.0": `{"values":{"replicaCount":1},"chart":{"name":"nginx","annotations":{}}}`,
-			"1.0.0": `{"values":{"replicaCount":1},"chart":{"name":"nginx","annotations":{}}}`,
+			"2.0.0": `{"values":{"replicaCount":1},"chart":{"name":"nginx","version":"2.0.0","annotations":{}}}`,
+			"1.0.0": `{"values":{"replicaCount":1},"chart":{"name":"nginx","version":"1.0.0","annotations":{}}}`,
 		},
 		answers: map[string]appAnswer{},
 	}
@@ -188,6 +195,65 @@ func appObject(status, id string, version int64, description string) map[string]
 			"chart": map[string]any{"metadata": map[string]any{"name": appChart, "version": "2.0.0", "annotations": ann}},
 		},
 	}
+}
+
+// appReleaseSecretName is the name of the Secret Helm keeps revision n of the
+// release in.
+func appReleaseSecretName(revision int64) string {
+	return fmt.Sprintf("sh.helm.release.v1.%s.v%d", appRelease, revision)
+}
+
+// appStoredSecrets are the values the release Secret holds beside the user
+// values, which an upgrade never prints: the chart's own values, the
+// manifest and the hooks.
+const (
+	appStoredChartValue = "chartValuesS3cr3t"
+	appStoredManifest   = "manifestS3cr3t"
+	appStoredHook       = "hookS3cr3t"
+)
+
+// releaseSecretObject is the Secret steve returns for revision n of the
+// release with includeHelmData=true: the decoded release under data.release,
+// with config as the user values and the chart, manifest and hooks beside
+// them.
+func releaseSecretObject(revision int64, status string, config map[string]any) map[string]any {
+	name := appReleaseSecretName(revision)
+	return map[string]any{
+		"id":       appNS + "/" + name,
+		"type":     "secret",
+		"metadata": map[string]any{"name": name, "namespace": appNS, "labels": map[string]any{"owner": "helm", "name": appRelease, "version": fmt.Sprint(revision)}},
+		"data": map[string]any{"release": map[string]any{
+			"name": appRelease, "namespace": appNS, "version": revision,
+			"info":     map[string]any{"status": status},
+			"config":   config,
+			"chart":    map[string]any{"metadata": map[string]any{"name": appChart}, "values": map[string]any{"chartKey": appStoredChartValue}},
+			"manifest": "kind: ConfigMap\nmetadata:\n  name: " + appStoredManifest + "\n",
+			"hooks":    []any{map[string]any{"name": appStoredHook, "manifest": appStoredHook}},
+		}},
+	}
+}
+
+// upgradeApp is the App of the release at revision with status, naming its
+// release Secret in an owner reference and carrying no request id.
+func upgradeApp(status string, revision int64) map[string]any {
+	app := appObject(status, "", revision, "")
+	app["metadata"].(map[string]any)["resourceVersion"] = "7"
+	app["metadata"].(map[string]any)["ownerReferences"] = []any{map[string]any{
+		"apiVersion": "v1", "kind": "Secret", "name": appReleaseSecretName(revision), "uid": "uid-1",
+	}}
+	return app
+}
+
+// putRelease stores the App at revision with status and the release Secret
+// of that revision holding config, and lets the server answer the read of
+// that Secret with includeHelmData=true.
+func (s *appServer) putRelease(status string, revision int64, config map[string]any) {
+	s.put(appAppPath(appNS, appRelease), upgradeApp(status, revision))
+	path := appDown + "/v1/secrets/" + appNS + "/" + appReleaseSecretName(revision)
+	s.put(path, releaseSecretObject(revision, status, config))
+	s.mu.Lock()
+	s.releaseSecret = path
+	s.mu.Unlock()
 }
 
 // opStatus is an Operation status at observedGeneration 1 with the
@@ -299,7 +365,11 @@ func kubeNotFound(w http.ResponseWriter, what string) {
 func (s *appServer) serve(w http.ResponseWriter, r *http.Request) {
 	t := s.t
 	path := r.URL.Path
-	if strings.Contains(path, "/secrets") && !strings.Contains(r.Header.Get("Accept"), "as=Table") {
+	s.mu.Lock()
+	releaseSecret := s.releaseSecret
+	s.mu.Unlock()
+	releaseRead := releaseSecret != "" && r.Method == http.MethodGet && path == releaseSecret && r.URL.Query().Get("includeHelmData") == "true"
+	if strings.Contains(path, "/secrets") && !releaseRead && !strings.Contains(r.Header.Get("Accept"), "as=Table") {
 		t.Errorf("an app command read Secrets with a request that is not a Table read: %s", r.URL)
 	}
 	switch {
@@ -421,7 +491,7 @@ func (s *appServer) serveLink(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		if q.Get("chartName") == appRegistryChart && q.Get("version") == appRegistryVersion {
 			body, ok = `{"values":{"replicaCount":1,"global":{"systemDefaultRegistry":"","cattle":{"systemDefaultRegistry":""}}},`+
-				`"chart":{"name":"`+appRegistryChart+`","annotations":{}}}`, true
+				`"chart":{"name":"`+appRegistryChart+`","version":"`+appRegistryVersion+`","annotations":{}}}`, true
 		} else if q.Get("chartName") != appChart {
 			ok = false
 		}
@@ -460,6 +530,29 @@ func (s *appServer) serveAction(w http.ResponseWriter, r *http.Request) {
 			}
 			if ann["catalog.cattle.io/ui-source-repo-type"] != "cluster" || ann["catalog.cattle.io/ui-source-repo"] != appRepo {
 				t.Errorf("install chart entry lacks the source annotations: %v", ann)
+			}
+		}
+	case action == "upgrade" && r.URL.Path == appDown+"/v1/catalog.cattle.io.clusterrepos/"+appRepo:
+		s.checkFields("ChartUpgradeAction", body)
+		if _, ok := body["install"]; ok {
+			t.Errorf("upgrade body carries install, which Rancher always sets: %v", body)
+		}
+		charts, _ := body["charts"].([]any)
+		if len(charts) != 1 {
+			t.Errorf("upgrade body has %d chart entries, want 1", len(charts))
+		}
+		for _, c := range charts {
+			chart, _ := c.(map[string]any)
+			s.checkFields("ChartUpgrade", chart)
+			ann, _ := chart["annotations"].(map[string]any)
+			if id, _ := ann["cli.rancher.io/request-id"].(string); id == "" {
+				t.Errorf("upgrade chart entry has no cli.rancher.io/request-id annotation")
+			}
+			if ann["catalog.cattle.io/ui-source-repo-type"] != "cluster" || ann["catalog.cattle.io/ui-source-repo"] != appRepo {
+				t.Errorf("upgrade chart entry lacks the source annotations: %v", ann)
+			}
+			if chart["releaseName"] != appRelease || body["namespace"] != appNS {
+				t.Errorf("upgrade body names release %v in namespace %v, want the App's %s in %s", chart["releaseName"], body["namespace"], appRelease, appNS)
 			}
 		}
 	case action == "uninstall" && r.URL.Path == appDown+"/v1/catalog.cattle.io.apps/"+appNS+"/"+appRelease:

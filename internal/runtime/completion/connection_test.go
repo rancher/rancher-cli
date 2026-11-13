@@ -233,4 +233,5 @@ func TestListingPresets(t *testing.T) {
 	assert.Equal(t, Requirements{Cluster: ClusterNone, Credential: CredentialManagement, Allowance: AllowanceOne}, ManagementListing())
 	assert.Equal(t, Requirements{Cluster: ClusterNone, Credential: CredentialManagement, Allowance: AllowanceTwo}, ManagementTwoListings())
 	assert.Equal(t, Requirements{Cluster: ClusterResolved, Credential: CredentialManagement, Allowance: AllowanceOne}, ClusterListing())
+	assert.Equal(t, Requirements{Cluster: ClusterResolved, Credential: CredentialAny, Allowance: AllowanceThree}, ClusterThreeReads())
 }

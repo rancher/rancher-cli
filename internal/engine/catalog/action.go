@@ -18,10 +18,10 @@ import (
 // AppType is the steve type of an App.
 const AppType = "catalog.cattle.io.apps"
 
-// The annotations an install sends in its chart entry. The two source
+// The annotations an install or upgrade sends in its chart entry. The two source
 // annotations are the ones the Rancher UI sends; with them an uninstall
 // finds the ClusterRepo whose service account runs Helm. The request id
-// marks the App revision this request produced: Rancher copies a chart
+// marks the App revision this request created: Rancher copies a chart
 // entry's annotations into the chart's metadata, which the App shows at
 // spec.chart.metadata.annotations.
 const (
@@ -53,6 +53,35 @@ type installChart struct {
 	Annotations map[string]string `json:"annotations"`
 }
 
+// upgradeBody is the request body of the upgrade action. Its JSON names are
+// the fields of Rancher's upgrade action types; every field sent here exists
+// on every Rancher minor the CLI supports. It never carries install, which
+// Rancher always sets, and carries every other option only when it was
+// typed.
+type upgradeBody struct {
+	Timeout                  string         `json:"timeout"`
+	Wait                     bool           `json:"wait"`
+	NoHooks                  bool           `json:"noHooks,omitempty"`
+	DisableOpenAPIValidation bool           `json:"disableOpenAPIValidation,omitempty"`
+	Force                    bool           `json:"force,omitempty"`
+	TakeOwnership            bool           `json:"takeOwnership,omitempty"`
+	HistoryMax               int            `json:"historyMax,omitempty"`
+	CleanupOnFail            bool           `json:"cleanupOnFail,omitempty"`
+	Namespace                string         `json:"namespace"`
+	Charts                   []upgradeChart `json:"charts"`
+}
+
+// upgradeChart is one chart entry of the upgrade body.
+type upgradeChart struct {
+	ChartName   string            `json:"chartName"`
+	Version     string            `json:"version"`
+	ReleaseName string            `json:"releaseName"`
+	ResetValues bool              `json:"resetValues,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Values      *requestValues    `json:"values,omitempty"`
+	Annotations map[string]string `json:"annotations"`
+}
+
 // uninstallBody is the request body of the uninstall action. It never
 // carries the action's dryRun option.
 type uninstallBody struct {
@@ -71,6 +100,12 @@ type actionAnswer struct {
 // cluster id.
 func installPath(cluster, repo string) string {
 	return actionRequest(cluster, ClusterRepoType, "", repo).Path() + "?action=install"
+}
+
+// upgradePath is the upgrade action of the ClusterRepo repo on cluster, a
+// cluster id.
+func upgradePath(cluster, repo string) string {
+	return actionRequest(cluster, ClusterRepoType, "", repo).Path() + "?action=upgrade"
 }
 
 // uninstallPath is the uninstall action of the App ns/name on cluster.
@@ -280,7 +315,7 @@ func outcomeUnknown(t actionTarget, err error, values Values) error {
 		"before you run the command again, list the operations of the namespace and read the app",
 		clierr.ShellQuote(t.release), cause), clierr.Lead(": "), t.getApp()}
 	if t.requestID != "" {
-		parts = append(parts, fmt.Sprintf("; this request's id is %s, and an app whose spec.chart.metadata.annotations hold %s: %s is the revision this request installed",
+		parts = append(parts, fmt.Sprintf("; this request's id is %s, and an app whose spec.chart.metadata.annotations hold %s: %s is the revision this request created",
 			t.requestID, annotationRequestID, t.requestID))
 	}
 	return clierr.New(clierr.CodeGeneric, clierr.Text(parts...)).WithRetryable(false).

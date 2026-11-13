@@ -126,7 +126,7 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 	// The Effect's warnings reach the result too: the skip warning is added
 	// here only.
 	if wait.on && !canRead {
-		warnings = append(warnings, skipWarning(false, reviewed, t.namespace))
+		warnings = append(warnings, skipWarning(modeUninstall, reviewed, t.namespace))
 	}
 
 	ann, _, _ := unstructured.NestedStringMap(app.Object, "spec", "chart", "metadata", "annotations")
@@ -194,7 +194,7 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 			return actionResult("uninstall", t, a, canRead), nil
 		}
 		w := &appWait{client: client, interval: c.interval, timeout: wait.timeout, t: t, op: a,
-			filter: Values{}.filterFunc(), keepHistory: keep, planStatus: status, skip: !canRead}
+			filter: Values{}.filterFunc(), mode: modeUninstall, keepHistory: keep, planStatus: status, skip: !canRead}
 		end, err := w.run(ctx)
 		if err != nil {
 			return runtime.Result{}, err

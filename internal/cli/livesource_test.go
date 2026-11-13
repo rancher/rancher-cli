@@ -36,7 +36,10 @@ func TestAllowanceLimit(t *testing.T) {
 	n, ok = allowanceLimit(completion.AllowanceTwo)
 	require.True(t, ok)
 	assert.Equal(t, 2, n)
-	for _, a := range []completion.Allowance{0, -1, completion.AllowanceTwo + 1, 100} {
+	n, ok = allowanceLimit(completion.AllowanceThree)
+	require.True(t, ok)
+	assert.Equal(t, 3, n)
+	for _, a := range []completion.Allowance{0, -1, completion.AllowanceThree + 1, 100} {
 		_, ok := allowanceLimit(a)
 		assert.False(t, ok, "allowance %d", a)
 	}
@@ -158,7 +161,8 @@ func TestValidateLiveWiring(t *testing.T) {
 // verbs through the oidcclient one, logs through the observe one, inspect
 // project's positional through the projects one, inspect cluster's
 // through the access one, app install's --repo, --chart and --version
-// through the kinds one, the three sign-in commands through the token
+// and app upgrade's release, --repo, --chart and --version through the kinds
+// one, the three sign-in commands through the token
 // one, every other entry's probe implements nothing, and BuildRoot
 // accepts the wiring.
 func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
@@ -175,7 +179,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		require.NoError(t, checkSourceDeclared("command "+name, lc.LiveSource()))
 	}
 	assert.ElementsMatch(t, []string{
-		"access projects", "grant", "revoke", "charts", "app install",
+		"access projects", "grant", "revoke", "charts", "app install", "app upgrade",
 		"create cluster", "create user", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",

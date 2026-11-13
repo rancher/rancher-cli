@@ -12,7 +12,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Project scope (--project)](#project-scope---project)
 - [Kinds & verbs](#kinds--verbs)
 - [Cluster provisioning](#cluster-provisioning)
-- [Installing and uninstalling apps](#installing-and-uninstalling-apps)
+- [Installing, upgrading and uninstalling apps](#installing-upgrading-and-uninstalling-apps)
 - [Composite commands](#composite-commands)
 - [Access management](#access-management)
 - [Diagnostics & support](#diagnostics--support)
@@ -720,8 +720,9 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   `get clusterregistrationtoken` reads through the Steve API and applies the
   selector itself to the list it gets back.
 - The catalog kinds `clusterrepo`, `app` and `operation` (catalog.cattle.io)
-  are read with `get`; a chart is installed and uninstalled with `app install`
-  and `app uninstall` (see "Installing and uninstalling apps"). Each cluster
+  are read with `get`; a chart is installed, upgraded and uninstalled with
+  `app install`, `app upgrade` and `app uninstall` (see "Installing, upgrading
+  and uninstalling apps"). Each cluster
   has its own repositories, apps and operations,
   so they take `--cluster` (`local` for the local cluster); `app` and
   `operation` take `--namespace`; a `clusterrepo` is not namespaced and takes
@@ -1193,20 +1194,21 @@ registration token `default-token` with its node and import commands. For a
 cluster created without the `field.cattle.io/no-creator-rbac` annotation it
 also creates the creator's owner binding on the cluster.
 
-## Installing and uninstalling apps
+## Installing, upgrading and uninstalling apps
 
 `rancher app install <release>` installs a chart from a ClusterRepo as a Helm
-release, and `rancher app uninstall <release>` removes one. Rancher does the
-work: it fetches the chart, runs Helm in a pod of its own and records the
-release as an App. The CLI renders no chart, stores no release and runs no
-`helm`. Both commands require `--cluster` (`local` for the local cluster) and
-`--namespace`; the namespace `default` is never assumed. `app install` also
-requires `--repo` and `--chart`. Without `--wait` both return once Rancher
-accepts the request. `--wait` and `--timeout` wait for the end of Helm's run
-(see "What follows the request").
+release, `rancher app upgrade <release>` changes an installed release (a newer
+version, an older one or new values), and `rancher app uninstall <release>`
+removes one. Rancher does the work: it fetches the chart, runs Helm in a pod of
+its own and records the release as an App. The CLI renders no chart, stores no
+release and runs no `helm`. All three commands require `--cluster` (`local` for
+the local cluster) and `--namespace`; the namespace `default` is never assumed.
+`app install` also requires `--repo` and `--chart`. Without `--wait` all three
+return once Rancher accepts the request. `--wait` and `--timeout` wait for the
+end of Helm's run (see "What follows the request").
 
-**The preview comes from server reads.** Rancher's install action has no
-dry-run. The CLI never sends the uninstall action's `dryRun` option. `--dry-run`
+**The preview comes from server reads.** Rancher's install and upgrade actions
+have no dry-run. The CLI never sends the uninstall action's `dryRun` option. `--dry-run`
 therefore builds the preview from what the server answers to reads, and the
 Effect says so: `previewSource` is `serverReads` (every other mutation says
 `serverDryRun`), `resourceVersion` is empty and `conflictDetection` is false.
@@ -1215,7 +1217,10 @@ For an install that is the ClusterRepo's `spec.serviceAccount` in its
 `spec.serviceAccountNamespace` (both set, the namespace holding no `:`). For an
 uninstall it is `spec.serviceAccount` of the ClusterRepo the App names in its
 `catalog.cattle.io/ui-source-repo-type` and `catalog.cattle.io/ui-source-repo`
-annotations, in the App's namespace (the same `:` rule). Otherwise it is you.
+annotations, in the App's namespace (the same `:` rule). For an upgrade it is
+the same as for an install, taken from the ClusterRepo `--repo` names, or from
+the ClusterRepo the App came from when you give no `--repo`. Otherwise it is
+you.
 
 What the preview proves, each from a server answer:
 
@@ -1252,26 +1257,29 @@ What it cannot prove:
 - that the chart's content when Helm runs is the content previewed;
 - that nothing changes the release between the request and the start of Helm in
   the pod, which can be minutes;
-- which resources an uninstall deletes;
+- which resources an upgrade or an uninstall changes or deletes, and which
+  hooks an upgrade runs;
 - which image pull secrets Rancher creates, changes or deletes for the
   release: the install preview warns "Rancher may create, change or delete
   image pull secrets for this release; the preview cannot list them", and the
   uninstall preview warns "Rancher may delete image pull secrets for this
   release; the preview cannot list them".
 
-**Gates.** `app install` needs `--apply`. `app uninstall` needs `--apply
---yes`. There is no resourceVersion precondition. With `--apply` the CLI reads
-the App, the operations and, for an install, the index entry of the version
-again, and refuses with `CONFLICT` (retryable) when the App or the chart's
-content changed, the index cannot be read again, or an operation started since
-the preview; run the command again to see a new preview. This is a check before the request, not a
-precondition: without `--wait` nothing checks for a change after the request is
-sent, and the result says so. When the connection fails after the request was written, or the
-server answers 500, 502 or 504, the CLI does not know whether Rancher ran the
-action. Every other status keeps its code from the error codes table. The CLI
-reports `GENERIC`, not retryable, with the command that lists the operations and
-the one that shows the App; read them before you run the command again, because
-a second request runs Helm a second time. An install sends a request id in the chart's
+**Gates.** `app install` needs `--apply`. `app upgrade` and `app uninstall` need
+`--apply --yes`. There is no resourceVersion precondition. With `--apply` the CLI
+reads the App, the operations and, for an install or an upgrade, the index entry
+of the version again (an upgrade that stays on a version the index no longer
+lists has no entry to read), and refuses with `CONFLICT` (retryable) when the
+App or the chart's content changed, the index cannot be read again, or an
+operation started since the preview; run the command again to see a new preview.
+This is a check before the request, not a precondition: without `--wait` nothing
+checks for a change after the request is sent, and the result says so. When the
+connection fails after the request was written, or the server answers 500, 502
+or 504, the CLI does not know whether Rancher ran the action. Every other status
+keeps its code from the error codes table. The CLI reports `GENERIC`, not
+retryable, with the command that lists the operations and the one that shows the
+App; read them before you run the command again, because a second request runs
+Helm a second time. An install or an upgrade sends a request id in the chart's
 annotations (`cli.rancher.io/request-id`) and prints it in this error.
 
 **Values come only from files.** `--values <file>` is repeatable; the files merge
@@ -1334,16 +1342,23 @@ Where values live on the server: the operation's Secret in `cattle-system`
 until Rancher removes the operation, and the release's Secret in the release
 namespace. Anyone who can read those Secrets reads the values.
 
-The CLI replaces a value with `<hidden>` in the error answer of the install or
-uninstall action: each string value from your files of 4 characters or more, each line of 4 characters or more of a multi-line string,
-and the JSON-escaped form of each. A value the CLI added is not hidden unless your files hold the same text. It does not cover numbers, booleans, strings
-under 4 characters, or a value the chart changes before it is printed.
+The CLI replaces a value with `<hidden>` in the error answer of the install,
+upgrade or uninstall action: each string value of 4 characters or more from your
+files (for an upgrade, also from the release's values it sends), each line of 4
+characters or more of a multi-line string, and the JSON-escaped form of each. A
+value the CLI added is not hidden unless your files hold the same text. It does
+not cover numbers, booleans, strings under 4 characters, or a value the chart
+changes before it is printed.
 
 **Stated limits.** The CLI does not check the values against the chart's values
 schema. Helm does, in the pod, and a rejected value shows only as an exit code.
 A chart whose `values.schema.json` forbids unknown keys under `global` fails in
 Helm's pod, as it does from the Rancher UI. Neither Rancher nor the CLI checks a
-chart signature.
+chart signature. There is no rollback: Rancher's catalog has no rollback action,
+and Helm does not roll back a failed upgrade (see "What `app upgrade` does after
+a failure"). The Rancher UI sends only the difference from the chart's defaults
+when it upgrades a release; rancher-cli sends the release's values in full (see
+"Where the values of an upgrade come from").
 
 **What `app install` refuses.** Each refusal is a typed error before any request.
 
@@ -1371,11 +1386,9 @@ it; the other chart stays installed.
 
 **What `app install` does not do.** The Rancher UI does more in one install:
 
-- Upgrade. The UI sends upgrade options (`force`, `historyMax`,
-  `cleanupOnFail`, `resetValues`) and the server has an upgrade action, but the
-  CLI has `app install` and `app uninstall` only. To change a release,
-  uninstall it and install it again; `app install` refuses a release name that
-  already has an App (`CONFLICT`).
+- Upgrade. `app install` refuses a release name that already has an App
+  (`CONFLICT`). To change a release, use `rancher app upgrade` (see
+  "Upgrading" below).
 - A chart that names another chart to install first (rancher-monitoring is an
   example). The UI installs the dependency chart in the same request, in the
   same namespace, with the main chart's `global` values. `app install` refuses
@@ -1393,9 +1406,129 @@ duration such as `10m`, at least 1s and at most 15m, and is Helm's timeout: the
 default is 10m on install, and uninstall sends it only when given. The chart's
 hooks can make a run longer, and Rancher removes a run's access one hour after
 the operation starts. `--no-hooks` skips the chart's hooks,
-`--disable-openapi-validation` (install) skips the validation of the rendered
-resources against the OpenAPI schema, `--description` (install) sets the release
-description, and `--keep-history` (uninstall) keeps the release's history.
+`--disable-openapi-validation` (install, upgrade) skips the validation of the
+rendered resources against the OpenAPI schema, `--description` (install,
+upgrade) sets the release description, and `--keep-history` (uninstall) keeps
+the release's history. `app upgrade` also takes `--force` (Helm replaces the
+release's resources instead of patching them), `--take-ownership` (Helm takes
+ownership of resources that exist; Rancher also sends `--server-side=true` and
+`--force-conflicts`), `--cleanup-on-fail` (Helm deletes the resources the
+upgrade created when it fails) and `--history-max` (how many revisions Helm
+keeps; see "What `app upgrade` refuses").
+
+**Upgrading.** `app upgrade <release>` sends Rancher's upgrade action of a
+ClusterRepo. A newer version, an older one and a change of values are all
+upgrades. The chart is the App's chart (`spec.chart.metadata.name`): `--chart`
+is accepted only with that name. `--repo` defaults to the ClusterRepo the App's
+`catalog.cattle.io/ui-source-repo` annotation names (when
+`catalog.cattle.io/ui-source-repo-type` is `cluster`), and `--version` to the
+App's installed version. A `--repo` other than the ClusterRepo the App came from
+warns that the App records that ClusterRepo from now on. An older `--version`
+than the installed version is a downgrade, and the preview names it; when the
+index does not list the installed version, the preview warns that it could not
+check whether the version is older.
+
+**The upgrade preview.** It reads the App (its status must be `deployed`,
+`failed` or `superseded`), the ClusterRepo (it must be enabled), the chart and
+version in the index Rancher serves for the cluster, the chart's default values
+and annotations from the version's info link, the management cluster as an
+install does, the Helm release Secret the App's owner reference names (it holds
+the release's values) and the operations of the namespace (none may be running
+for the release). The Diff lists the ClusterRepo (repo), the chart, the version,
+the namespace, the release name, the revision (from the App's `spec.version` to
+the next), `wait`, `timeout`, each option you gave, and then the path of every
+value that is added, removed or changed. In `from` and `to`, a value shows as
+`<hidden>`, except a value the CLI added and a string registry host for a chart
+that declares a registry path, which show the value. A warning counts the
+release's values the request sends unchanged ("12 of the release's values are
+sent unchanged"). Every upgrade preview also warns that an upgrade can delete
+resources and run hooks the preview cannot show.
+
+**Where the values of an upgrade come from.** Helm keeps a release's values in a
+Secret for each revision: the values that revision was installed or upgraded
+with (the release's `config`; `helm get values` shows them). The CLI reads the
+Secret the App's owner reference names, which is the Secret of the revision the
+App shows, through the Steve API with `includeHelmData=true`; without that query
+the Steve API does not return the release data. Of that data the CLI uses only
+the release's `config`. The read needs permission to get Secrets in the
+release's namespace. When the CLI cannot get the release's values, the command
+stops and names `--reset-values`.
+
+The request carries the release's values, with each `--values` file merged over
+them in order (maps merge key by key, any other value replaces the earlier one,
+and `null` removes a key; the preview lists the paths a `null` removes, and a
+`null` for a key the release does not have changes nothing). `--reset-values`
+sends instead only the `--values` files and the values the CLI adds; Helm takes
+every other value from the chart's default values. With it the preview lists the
+paths it removes when it can read the release's values, and warns when it
+cannot. The CLI never asks Helm to reuse the release's values. As for an
+install, the CLI adds the cluster values and the registry values that the
+release's values lack (see "Values added by the CLI");
+`--system-default-registry <host>` sets both registry values over the release's
+values, and `--no-system-default-registry` sends neither.
+
+The preview names the revision, its status and the Secret the release's values
+come from. When the App's newest revision failed, its values are the ones that
+failed: the preview warns that the upgrade sends them with your changes. The
+Rancher UI sends only the difference from the chart's default values when it
+upgrades; rancher-cli sends the release's values in full. Helm treats the two
+requests the same, and the values Helm keeps with the next revision then differ
+from the ones the Rancher UI would keep.
+
+**What `app upgrade` refuses.** Each refusal is a typed error before any request.
+
+- An App that does not exist (`NOT_FOUND`, naming `rancher get apps`).
+- An App whose status is not `deployed`, `failed` or `superseded` (`CONFLICT`,
+  naming `rancher get app`): `uninstalled` (Helm would install the release again
+  rather than upgrade it; install the chart under another release name),
+  `uninstalling`, `pending-install`, `pending-upgrade`, `pending-rollback` and
+  any other status. When the status is `pending-install`, `pending-upgrade` or
+  `pending-rollback` and an operation is still running, the refusal is the one
+  for a running operation (the next item).
+- An operation that may still be running for the release (`CONFLICT`, naming
+  `rancher get operation`), when you can list operations in the namespace.
+- A `--chart` other than the App's chart (`VALIDATION`, naming the `rancher app
+  install` command that installs it as a new release).
+- A chart that names another chart to install first, through
+  `catalog.cattle.io/auto-install` or `catalog.cattle.io/auto-install-gvr`
+  (`VALIDATION`). Upgrade it from the Rancher UI, which upgrades the chart it
+  names too.
+- A version whose `catalog.cattle.io/namespace` or `catalog.cattle.io/release-name`
+  annotation does not match the release's namespace or name (`VALIDATION`). The
+  installed version is exempt.
+- A `catalog.cattle.io/requires-gvr` or `catalog.cattle.io/permits-os`
+  annotation the target does not meet (`VALIDATION`).
+- An App that does not say which ClusterRepo it came from, without `--repo`
+  (`VALIDATION`, naming `rancher get clusterrepos`).
+- A ClusterRepo that is disabled, and a version that is not in the index
+  (`VALIDATION`), except the installed version (see "A version the index no
+  longer lists").
+- `--force` with `--take-ownership` (`VALIDATION`): Helm refuses
+  `--force-replace` (sent for `--force`) together with `--force-conflicts` (sent
+  for `--take-ownership`).
+- A `--history-max` below 1 or above 100 (`VALIDATION`). Rancher uses 5 when it
+  is omitted and replaces 0 with 5, although Helm reads 0 as no limit. Helm
+  deletes the oldest revisions before it runs, never the last deployed one, and
+  the preview warns when that applies.
+- A request that changes nothing (`VALIDATION`, naming `rancher get app`): the
+  version is the installed version and the ClusterRepo is the one the App came
+  from; the values sent are the same as the release's values; and no flag that
+  makes a change was given. These flags make no change: `--wait`, `--timeout`,
+  `--cluster`, `--namespace`, `--dry-run`, `--apply` and `--yes`. `--version`
+  and `--repo` make a change only when they differ from the App's, and
+  `--values` only when the merge changes a value. Every other flag you give
+  makes a change, `--chart`, `--reset-values` and `--description` included. This
+  check is skipped when the release's values could not be read.
+
+**A version the index no longer lists.** The index Rancher serves for the
+cluster can stop listing the installed version when the server's Rancher or
+Kubernetes version no longer matches the chart's annotations. The command still
+accepts that version, for a change of values on it. It reads the version's info
+link and sends no request that asks for the versions the server filters out of
+the index. It warns that the chart's content is not compared between the preview
+and the request. A version other than the installed one must be in the index.
+The installed version must also be in the index when you give `--repo` a
+ClusterRepo other than the one the App came from.
 
 **What follows the request.** Without `--wait`, the result names the operation Rancher created and
 the commands that follow it: `rancher get operation <name> --cluster <c>
@@ -1407,7 +1540,9 @@ error) leaves no App, and `rancher get operation <name> --cluster <c> --namespac
 <ns> --wait` shows the failure: its Stalled message is Rancher's text, which
 ends in Helm's exit code when the container ended. The result carries the line
 "a chart that fails before Helm stores the release leaves no app; the operation
-then shows the failure".
+then shows the failure". For an upgrade the App exists already, and the result
+carries the line "an upgrade Helm refuses before it stores a revision leaves the
+app unchanged; the operation then shows the failure".
 
 **`--wait` and `--timeout`.** `--wait` waits until Helm's run finishes and
 reports how it ended. `--timeout <duration>` (default 55m, at most 55m) bounds
@@ -1425,7 +1560,8 @@ non-zero exit code or could not run). The `Stalled` message is Rancher's text,
 which ends in `exit code: <n>` when the container ended; the CLI shows the exit
 code when the message is only that, else the message. The wait then reads the
 App. After `Stalled`, the App is read for at most 30 seconds, or the time left.
-After a done operation, an install reads an App that does not exist yet until
+After a done operation, an install or an upgrade reads an App that does not exist
+yet, or whose revision is not this request's yet, until
 the timeout, and a revision of this request at a status other than `deployed`
 or `failed` for at most 30 seconds more, or the time left; an uninstall reads
 the App for at most 30 seconds, or the time left, and an App still there at
@@ -1437,6 +1573,10 @@ the App was deleted ends an uninstall's wait at once.
   `deployed`. `data.status` is `deployed`, `data.revision` is the App's
   `spec.version`, `data.followUp` holds only `rancher get app ...`, and the text
   is `app <release>: installed (revision <n>, status deployed)`.
+- `app upgrade` is done when the revision that carries this request's id reads
+  `deployed`. `data.status` is `deployed`, `data.revision` is the App's
+  `spec.version`, `data.followUp` holds only `rancher get app ...`, and the text
+  is `app <release>: upgraded (revision <n>, status deployed)`.
 - `app uninstall` is done when the App is gone, or with `--keep-history` when
   its status reads `uninstalled`. `data.status` is `uninstalled` and the text is
   `app <release>: uninstalled`. `data.followUp` is empty when the App is gone,
@@ -1460,6 +1600,18 @@ gone or reads `uninstalled` within the 30 seconds (`release <name> was
 uninstalled; a later step failed`), when the App is still there at the end
 (`the release stays installed`), or when the App reads `uninstalled` without
 `--keep-history` (its kept history was not removed).
+
+**What `app upgrade` does after a failure.** An upgrade ends in an error in the
+cases listed for an install. When the revision of the request reads `failed`,
+the error carries `spec.info.description` (with the values
+hidden), the revision and its status and, when the operation was `Stalled`,
+Helm's exit code. Helm does not roll back: the resources the upgrade already
+changed stay changed, and in the release's history the last deployed revision
+still has the status deployed. With `--cleanup-on-fail` the error says Helm was
+asked to delete the resources the upgrade created. The error names the command
+that previews another upgrade and the one that previews the uninstall. The next
+upgrade sends the release's values from the failed revision, which are the
+values that failed; change them with a `--values` file or send `--reset-values`.
 
 When the operation is not found (Rancher removes it one hour after it starts),
 a warning says the wait reads the app only. A release left pending after the

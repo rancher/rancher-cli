@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 232,
+  "commandCount": 233,
   "effectSchema": {
     "actions": [
       "create",
@@ -422,11 +422,15 @@
           "usage": "Install a chart from a ClusterRepo as a Helm release"
         },
         {
+          "name": "app upgrade",
+          "usage": "Upgrade, downgrade or change the values of a Helm release that Rancher shows as an App"
+        },
+        {
           "name": "app uninstall",
           "usage": "Uninstall a Helm release that Rancher shows as an App"
         }
       ],
-      "desc": "Install a chart from a ClusterRepo as an app, or uninstall an app, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
+      "desc": "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
       "name": "app"
     },
     {

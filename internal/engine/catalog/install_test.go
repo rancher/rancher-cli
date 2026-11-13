@@ -64,7 +64,7 @@ func TestInstallPreview(t *testing.T) {
 		"Rancher runs Helm in a pod as you; the chart's own writes are checked only when Helm runs them",
 		"this preview comes from server reads; the server has no dry-run for this action",
 		"uninstalling the release leaves the CRDs of the chart's crds/ directory and the resources marked helm.sh/resource-policy: keep",
-		"rancher-cli adds the values the Rancher UI adds when it installs a chart: values.global.cattle.clusterId, values.global.cattle.clusterName, " +
+		"rancher-cli adds the values the Rancher UI adds when it installs or upgrades a chart: values.global.cattle.clusterId, values.global.cattle.clusterName, " +
 			"values.global.cattle.rkePathPrefix, values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.systemProjectId, values.global.cattle.url",
 		"Rancher may create, change or delete image pull secrets for this release; the preview cannot list them",
 	}, eff.Warnings)
@@ -73,7 +73,7 @@ func TestInstallPreview(t *testing.T) {
 
 // TestAppCommandsGatesAgree asserts each command's Plan sets
 // eff.Destructive to what its Descriptor declares, which the schema's gates
-// come from: install false, uninstall true.
+// come from: install false, upgrade true, uninstall true.
 func TestAppCommandsGatesAgree(t *testing.T) {
 	t.Parallel()
 	f := newAppFake(t)
@@ -83,6 +83,7 @@ func TestAppCommandsGatesAgree(t *testing.T) {
 		in  runtime.Input
 	}{
 		{newTestInstall(newAppFake(t), nil), installInput()},
+		{newTestUpgrade(upgradeFake(t, nil), nil), upgradeInput()},
 		{newTestUninstall(f), uninstallInput()},
 	}
 	for _, tc := range cases {
@@ -131,6 +132,33 @@ var installFlagFields = map[string]bodyField{
 	flagTimeout:                  {},
 }
 
+// upgradeFlagFields is installFlagFields for app upgrade: the release, the
+// chart name and the namespace of the body are the App's, and --chart sets no
+// field.
+var upgradeFlagFields = map[string]bodyField{
+	"release":                    {"ChartUpgrade", "releaseName"},
+	engine.FlagCluster:           {},
+	engine.FlagNamespace:         {"ChartUpgradeAction", "namespace"},
+	flagRepo:                     {},
+	flagChart:                    {},
+	flagVersion:                  {"ChartUpgrade", "version"},
+	flagValues:                   {"ChartUpgrade", "values"},
+	flagResetValues:              {"ChartUpgrade", "resetValues"},
+	flagForce:                    {"ChartUpgradeAction", "force"},
+	flagTakeOwnership:            {"ChartUpgradeAction", "takeOwnership"},
+	flagCleanupOnFail:            {"ChartUpgradeAction", "cleanupOnFail"},
+	flagHistoryMax:               {"ChartUpgradeAction", "historyMax"},
+	flagHelmWait:                 {"ChartUpgradeAction", "wait"},
+	flagHelmTimeout:              {"ChartUpgradeAction", "timeout"},
+	flagNoHooks:                  {"ChartUpgradeAction", "noHooks"},
+	flagDisableOpenAPIValidation: {"ChartUpgradeAction", "disableOpenAPIValidation"},
+	flagDescription:              {"ChartUpgrade", "description"},
+	flagSystemDefaultRegistry:    {},
+	flagNoSystemDefaultRegistry:  {},
+	flagWait:                     {},
+	flagTimeout:                  {},
+}
+
 // uninstallFlagFields is installFlagFields for app uninstall.
 var uninstallFlagFields = map[string]bodyField{
 	"release":            {},
@@ -144,7 +172,7 @@ var uninstallFlagFields = map[string]bodyField{
 }
 
 // TestEveryAppFlagNamesABodyFieldEveryEditionHas asserts the flag tables
-// list exactly the flags and arguments of both commands, and every body
+// list exactly the flags and arguments of the three commands, and every body
 // field they name is a field of its action type in every edition of the
 // Rancher API fields golden: each flag's oldest Rancher minor is the oldest
 // the golden records.
@@ -156,6 +184,7 @@ func TestEveryAppFlagNamesABodyFieldEveryEditionHas(t *testing.T) {
 		fields map[string]bodyField
 	}{
 		{(&installCmd{}).Describe(), installFlagFields},
+		{(&upgradeCmd{}).Describe(), upgradeFlagFields},
 		{(&uninstallCmd{}).Describe(), uninstallFlagFields},
 	} {
 		var names []string
@@ -706,8 +735,9 @@ func TestInstallExecuteRereads(t *testing.T) {
 	}
 }
 
-// TestActionAnswersSendOnePost asserts each answer of the action and each
-// transport failure after the request was written gives exactly one POST:
+// TestActionAnswersSendOnePost asserts, for app install and app upgrade, each
+// answer of the action and each transport failure after the request was
+// written gives exactly one POST:
 // 429 and 503 keep the status table's code, 500, 502, 504 and a failure after
 // the write are GENERIC, not retryable, carry the request id and name the
 // reads to make before a rerun.
@@ -733,26 +763,44 @@ func TestActionAnswersSendOnePost(t *testing.T) {
 		"reset":     {unknown(0, errors.New("connection reset by peer")), clierr.CodeGeneric, false, true},
 		"timed out": {unknown(0, context.DeadlineExceeded), clierr.CodeGeneric, false, true},
 	}
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			f := newAppFake(t)
-			f.postAnswer = func(string) ([]byte, error) { return nil, tc.err }
+	commands := map[string]func(*testing.T, *appFake) runtime.ExecuteFunc{
+		"install": func(t *testing.T, f *appFake) runtime.ExecuteFunc {
+			t.Helper()
 			_, exec := plan(t, newTestInstall(f, nil), installInput())
-			_, err := exec(t.Context())
-			require.Error(t, err)
-			assert.Equal(t, 1, f.postCount())
-			ce := clierr.From(err)
-			assert.Equal(t, tc.code, ce.Code)
-			assert.Equal(t, tc.retryable, ce.Retryable)
-			if tc.unknown {
-				assert.Contains(t, ce.Message, "the answer did not say whether Rancher ran it")
-				assert.Contains(t, ce.Message, testRequestID)
-				assert.Contains(t, ce.Message, "spec.chart.metadata.annotations")
-				assert.Contains(t, ce.Message, clierr.Rancher+" get app 'my-nginx' --cluster 'prod' --namespace 'web'")
-				assert.Equal(t, clierr.Rancher+" get operations --cluster 'prod' --namespace 'web'", ce.Hint)
-			}
-		})
+			return exec
+		},
+		"upgrade": func(t *testing.T, f *appFake) runtime.ExecuteFunc {
+			t.Helper()
+			_, exec := plan(t, newTestUpgrade(f, nil), upgradeInput())
+			return exec
+		},
+	}
+	for command, start := range commands {
+		for name, tc := range cases {
+			t.Run(command+" "+name, func(t *testing.T) {
+				t.Parallel()
+				f := newAppFake(t)
+				if command == "upgrade" {
+					f = upgradeFake(t, nil)
+				}
+				f.postAnswer = func(string) ([]byte, error) { return nil, tc.err }
+				exec := start(t, f)
+				_, err := exec(t.Context())
+				require.Error(t, err)
+				assert.Equal(t, 1, f.postCount())
+				ce := clierr.From(err)
+				assert.Equal(t, tc.code, ce.Code)
+				assert.Equal(t, tc.retryable, ce.Retryable)
+				if tc.unknown {
+					assert.Contains(t, ce.Message, "the answer did not say whether Rancher ran it")
+					assert.Contains(t, ce.Message, testRequestID)
+					assert.Contains(t, ce.Message, "spec.chart.metadata.annotations")
+					assert.Contains(t, ce.Message, "is the revision this request created")
+					assert.Contains(t, ce.Message, clierr.Rancher+" get app 'my-nginx' --cluster 'prod' --namespace 'web'")
+					assert.Equal(t, clierr.Rancher+" get operations --cluster 'prod' --namespace 'web'", ce.Hint)
+				}
+			})
+		}
 	}
 }
 

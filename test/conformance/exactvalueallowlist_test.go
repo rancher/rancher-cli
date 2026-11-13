@@ -137,6 +137,7 @@ var evFilterRows = []evFilterRow{
 	{"internal/engine/catalog.postAction", evValuesFilterError, true, "", "the values filter over the error of an action"},
 	{"internal/engine/catalog.refused", evValuesFilterFunc, true, "", "the values filter over the body of a refused action"},
 	{"internal/engine/catalog.uninstallCmd.Plan", evValuesFilterFunc, true, "", "the values filter handed to the uninstall wait"},
+	{"internal/engine/catalog.upgradeCmd.execute", evValuesFilterFunc, true, "", "the values filter handed to the upgrade wait"},
 	{"internal/engine/extres.createTokenCmd.Plan", evPrintable, false, "", "the expiry and the name of the created token, named in prose"},
 	{"internal/engine/inspect.clusterCmd.Execute", evPrintable, false, "", "names, states and messages the server sent, named in prose; no command is built from them here"},
 	{"internal/engine/inspect.renderAgentLine", evPrintable, false, "", "names, states and messages the server sent, named in prose; no command is built from them here"},

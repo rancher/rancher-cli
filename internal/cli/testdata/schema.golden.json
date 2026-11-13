@@ -441,7 +441,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Asks Rancher to install --chart from the ClusterRepo --repo on --cluster as the Helm release <release> in --namespace, through the ClusterRepo's install action: Rancher fetches the chart and runs Helm in a pod, and records the release as an App. The server has no dry-run for this action; the preview comes from server reads (previewSource serverReads): the ClusterRepo (it must be enabled), the chart and version in the index Rancher serves for the cluster, the chart's default values and annotations, the App (it must not exist), the operations of the namespace (none may still be running for the release) and the namespace (it must exist). It carries no resourceVersion precondition: --apply reads the App, the operations and the index entry again before it sends the request, and without --wait nothing checks for a change after that. --version names one exact version from the index; without it the version is the one `rancher charts` shows. Values come only from files (--values, repeatable, merged in order; - reads stdin once); the preview lists their paths, never the values, except the values rancher-cli adds and the registry host, which show the value sent (the host only for a chart that declares a registry path). As the Rancher UI does, rancher-cli adds to every chart's values global.cattle.clusterId, clusterName, systemProjectId, url, rkePathPrefix, rkeWindowsPathPrefix and windows.enabled (only with Windows workers), each unless the values files set that path; for a chart whose default values declare global.cattle.systemDefaultRegistry or global.systemDefaultRegistry it also sets both to one registry: --system-default-registry <host>, else the non-empty registry in the values files merged over the chart's default values (global.cattle.systemDefaultRegistry first), else the cluster's (the private registry of an RKE1 cluster, which the Rancher UI reads, is not read), else the system-default-registry setting; --no-system-default-registry sends neither. Neither Rancher nor rancher-cli checks the values against the chart's values schema (Helm does, in the pod) or the chart's signature. Refused: a chart that names another chart to install first (catalog.cattle.io/auto-install or auto-install-gvr), and a chart whose catalog.cattle.io/namespace, release-name, requires-gvr or permits-os annotation the target does not meet. There is no upgrade: uninstall the release and install it again. The namespace must exist; the Rancher UI creates it when it does not exist. It creates no image pull secret for a repo such as SUSE Application Collection. --helm-wait (default true; --helm-wait=false sends false) makes Helm wait for the chart's resources; --helm-timeout (default 10m, at least 1s, at most 15m) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. With --wait (or --timeout, default 55m, at most 55m) it returns when Helm's run has finished: with the release's revision and status, or with Helm's error, the release's state and the command to run next.",
+      "desc": "Asks Rancher to install --chart from the ClusterRepo --repo on --cluster as the Helm release <release> in --namespace, through the ClusterRepo's install action: Rancher fetches the chart and runs Helm in a pod, and records the release as an App. The server has no dry-run for this action; the preview comes from server reads (previewSource serverReads): the ClusterRepo (it must be enabled), the chart and version in the index Rancher serves for the cluster, the chart's default values and annotations, the App (it must not exist), the operations of the namespace (none may still be running for the release) and the namespace (it must exist). It carries no resourceVersion precondition: --apply reads the App, the operations and the index entry again before it sends the request, and without --wait nothing checks for a change after that. --version names one exact version from the index; without it the version is the one `rancher charts` shows. Values come only from files (--values, repeatable, merged in order; - reads stdin once); the preview lists their paths, never the values, except the values rancher-cli adds and the registry host, which show the value sent (the host only for a chart that declares a registry path). As the Rancher UI does, rancher-cli adds to every chart's values global.cattle.clusterId, clusterName, systemProjectId, url, rkePathPrefix, rkeWindowsPathPrefix and windows.enabled (only with Windows workers), each unless the values files set that path; for a chart whose default values declare global.cattle.systemDefaultRegistry or global.systemDefaultRegistry it also sets both to one registry: --system-default-registry <host>, else the non-empty registry in the values files merged over the chart's default values (global.cattle.systemDefaultRegistry first), else the cluster's (the private registry of an RKE1 cluster, which the Rancher UI reads, is not read), else the system-default-registry setting; --no-system-default-registry sends neither. Neither Rancher nor rancher-cli checks the values against the chart's values schema (Helm does, in the pod) or the chart's signature. Refused: a chart that names another chart to install first (catalog.cattle.io/auto-install or auto-install-gvr), and a chart whose catalog.cattle.io/namespace, release-name, requires-gvr or permits-os annotation the target does not meet. To change a release, use `rancher app upgrade`. The namespace must exist; the Rancher UI creates it when it does not exist. It creates no image pull secret for a repo such as SUSE Application Collection. --helm-wait (default true; --helm-wait=false sends false) makes Helm wait for the chart's resources; --helm-timeout (default 10m, at least 1s, at most 15m) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. With --wait (or --timeout, default 55m, at most 55m) it returns when Helm's run has finished: with the release's revision and status, or with Helm's error, the release's state and the command to run next.",
       "destructive": "false",
       "examples": [
         "rancher app install my-nginx --cluster prod --namespace web --repo bitnami --chart nginx --values values.yaml --dry-run",
@@ -613,6 +613,143 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Uninstall a Helm release that Rancher shows as an App"
+    },
+    {
+      "args": [
+        {
+          "desc": "Helm release name",
+          "name": "release",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Asks Rancher to upgrade the Helm release <release> in --namespace on --cluster through the upgrade action of a ClusterRepo: Rancher fetches the chart version and runs Helm in a pod. A newer version, an older version (a downgrade) and a change of values are all upgrades; Rancher has no rollback action. The server has no dry-run for this action; the preview comes from server reads (previewSource serverReads): the App (it must exist, with the status deployed, failed or superseded), the ClusterRepo (it must be enabled), the chart and version in the index Rancher serves for the cluster, the chart's default values and annotations, the Helm release Secret the App's owner reference names (it holds the release's values), and the operations of the namespace (none may still be running for the release). It carries no resourceVersion precondition: --apply reads the App, the operations and the index entry again before it sends the request, and without --wait nothing checks for a change after that. The chart is the App's chart; --chart is accepted only with that name, and another chart is refused: install it as a new release with `rancher app install`. --repo defaults to the ClusterRepo named in the App's catalog.cattle.io/ui-source-repo annotation, and --version to the App's installed version. The upgrade accepts the installed version when the index Rancher serves for the cluster no longer lists it and the ClusterRepo is the one the App came from. The preview and the result then warn that its chart content is not compared between the preview and the request. An older --version than the installed version is a downgrade, which the preview names. Values: the release's values are the values the App's revision was installed or upgraded with. The command reads them from the release Secret through the Steve API with includeHelmData=true. It merges each --values file over them in order (- reads stdin once; null removes a key) and sends the result. That read needs permission to get Secrets in the release's namespace. Without it the command stops and names --reset-values. --reset-values sends only the --values files and the values rancher-cli adds, and Helm takes every other value from the chart's defaults. rancher-cli never asks Helm to reuse the release's values. After a failed upgrade the release's values are the values that failed, and the preview warns. The preview lists the path of every value that is added, removed or changed, never the values, except the values rancher-cli adds and the registry host, and counts the release's values that it sends unchanged. As the Rancher UI does, rancher-cli adds the cluster values and the registry values the release's values lack; --system-default-registry <host> sets both registry values over the release's values, and --no-system-default-registry sends neither. The Rancher UI sends only the difference from the chart's defaults; rancher-cli sends the release's values in full. Helm treats both requests the same, and the values Helm keeps with the next revision then differ from the ones the Rancher UI would keep. Refused: an App with the status uninstalled, uninstalling, pending-install, pending-upgrade, pending-rollback or unknown, an operation still running for the release, a chart that names another chart to install first (catalog.cattle.io/auto-install or auto-install-gvr), a version whose catalog.cattle.io/namespace or release-name annotation does not match the release (the installed version is exempt), a requires-gvr or permits-os annotation the target does not meet, --force with --take-ownership, and a request that changes nothing. These flags make no change: --wait, --timeout, --cluster, --namespace, --dry-run, --apply and --yes. --version and --repo make a change when they differ from the App, and --values when the merge changes a value. Every other flag makes a change. --helm-wait (default true; --helm-wait=false sends false) makes Helm wait for the chart's resources; --helm-timeout (default 10m, at least 1s, at most 15m) is Helm's timeout; the chart's hooks can make a run longer, and Rancher removes a run's access one hour after the operation starts. --history-max (1 to 100; Rancher uses 5 when it is omitted) is the maximum number of revisions Helm keeps for the release; Helm deletes the oldest before the run, never the last deployed one. Helm does not roll back a failed upgrade: the resources it already changed stay changed, and --cleanup-on-fail deletes only the resources the upgrade created. Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. With --wait (or --timeout, default 55m, at most 55m) it returns when Helm's run has finished: with the release's revision and status, or with Helm's error, the release's state and the command to run next.",
+      "destructive": "true",
+      "examples": [
+        "rancher app upgrade my-nginx --cluster prod --namespace web --values change.yaml --dry-run",
+        "rancher app upgrade my-nginx --cluster prod --namespace web --version 1.2.3 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` of the release",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "ClusterRepo `name` to upgrade from (default: the ClusterRepo the app came from)",
+          "name": "repo",
+          "type": "string"
+        },
+        {
+          "desc": "the app's chart `name`; an upgrade cannot change the chart",
+          "name": "chart",
+          "type": "string"
+        },
+        {
+          "desc": "exact chart `version` (default: the app's installed version)",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "desc": "values `file`, repeatable, merged in order over the release's values; - reads stdin",
+          "name": "values",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "do not send the release's values; send only the --values files and the values rancher-cli adds",
+          "name": "reset-values",
+          "type": "bool"
+        },
+        {
+          "desc": "Helm replaces the release's resources instead of patching them; not with --take-ownership",
+          "name": "force",
+          "type": "bool"
+        },
+        {
+          "desc": "Helm takes ownership of existing resources; Rancher also sends --server-side=true and --force-conflicts",
+          "name": "take-ownership",
+          "type": "bool"
+        },
+        {
+          "desc": "Helm deletes the resources this upgrade created when it fails",
+          "name": "cleanup-on-fail",
+          "type": "bool"
+        },
+        {
+          "desc": "maximum number of revisions Helm keeps for the release, 1 to 100 (Rancher uses 5 when it is omitted)",
+          "name": "history-max",
+          "type": "string"
+        },
+        {
+          "desc": "Helm waits for the chart's resources (default true; --helm-wait=false sends false)",
+          "name": "helm-wait",
+          "type": "bool"
+        },
+        {
+          "desc": "Helm `timeout` for each step, 1s to 15m (default 10m)",
+          "name": "helm-timeout",
+          "type": "string"
+        },
+        {
+          "desc": "do not run the chart's hooks",
+          "name": "no-hooks",
+          "type": "bool"
+        },
+        {
+          "desc": "do not validate the rendered resources against the OpenAPI schema",
+          "name": "disable-openapi-validation",
+          "type": "bool"
+        },
+        {
+          "desc": "release `description`",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "desc": "registry `host` to send at values.global.cattle.systemDefaultRegistry and values.global.systemDefaultRegistry",
+          "name": "system-default-registry",
+          "type": "string"
+        },
+        {
+          "desc": "send neither registry value, also when the release's values or a values file set one",
+          "name": "no-system-default-registry",
+          "type": "bool"
+        },
+        {
+          "desc": "wait until Helm's run finishes and report how it ended",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 10m (default 55m, at most 55m; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "app",
+      "name": "app upgrade",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Upgrade, downgrade or change the values of a Helm release that Rancher shows as an App"
     },
     {
       "args": [
@@ -7685,7 +7822,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Always refused before any request: Rancher creates and manages app objects from the Helm release; this CLI does not change them.",
+      "desc": "Always refused before any request: Rancher creates and manages app objects from the Helm release; to change a release (<name> is its name, <c> the cluster and <ns> its namespace), run `rancher app upgrade <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview.",
       "destructive": "false",
       "flags": [
         {
@@ -12540,9 +12677,10 @@
     {
       "commands": [
         "app install",
+        "app upgrade",
         "app uninstall"
       ],
-      "desc": "Install a chart from a ClusterRepo as an app, or uninstall an app, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
+      "desc": "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
       "name": "app"
     },
     {
@@ -14185,7 +14323,7 @@
         },
         "patch": {
           "contract": "internal",
-          "note": "Rancher creates and manages app objects from the Helm release; this CLI does not change them",
+          "note": "Rancher creates and manages app objects from the Helm release; to change a release (<name> is its name, <c> the cluster and <ns> its namespace), run `rancher app upgrade <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview",
           "stability": "beta",
           "state": "refused"
         }

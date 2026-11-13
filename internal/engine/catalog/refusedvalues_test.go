@@ -410,7 +410,7 @@ func TestChartNamespaceAnnotationLeavesOutTheFlagClause(t *testing.T) {
 			t.Parallel()
 			p := installPlan{target: targetWith("", ""), chart: testChart, version: "1.0.0"}
 			entry := ChartVersion{Version: "1.0.0", Annotations: map[string]string{annotationNamespace: v}}
-			_, err := p.checkChart(t.Context(), entry, Info{}, nil, nil)
+			_, err := p.checkChart(t.Context(), entry, Info{}, nil, nil, false)
 			ce := clierr.From(err)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Equal(t, "chart 'nginx' '1.0.0' installs only in namespace "+clierr.ShellQuote(v)+" (annotation "+annotationNamespace+"); "+clierr.LeftOutNote, ce.Message)
@@ -425,7 +425,7 @@ func TestChartNamespaceAnnotationKeepsTheFlagClause(t *testing.T) {
 	t.Parallel()
 	p := installPlan{target: targetWith("", ""), chart: testChart, version: "1.0.0"}
 	entry := ChartVersion{Version: "1.0.0", Annotations: map[string]string{annotationNamespace: "cattle-system"}}
-	_, err := p.checkChart(t.Context(), entry, Info{}, nil, nil)
+	_, err := p.checkChart(t.Context(), entry, Info{}, nil, nil, false)
 	require.ErrorContains(t, err, "installs only in namespace 'cattle-system' (annotation "+annotationNamespace+"); run it with --namespace 'cattle-system'")
 }
 

@@ -131,10 +131,10 @@ func TestLineRejectedAtEveryLevel(t *testing.T) {
 				"rancher %s %v (%s): words reject the line past the %d positional arguments the level takes", path, typed, name, maxWords)
 		}
 		for _, local := range [][]string{{"--version"}, {"-v"}} {
-			// app install declares its own --version, the chart version, so
-			// the line is accepted there; -v stays refused.
-			wantRejected := !atRoot && (path != strings.Join(ownVersionFlag, " ") || local[0] != "--version")
-			assert.Equal(t, wantRejected, lineRejected(node, line(local), maxWords), "rancher %s %v: only the root accepts the version flag, and app install its own --version", path, local)
+			// app install and app upgrade declare their own --version, the chart
+			// version, so the line is accepted there; -v stays refused.
+			wantRejected := !atRoot && (!hasOwnVersionFlag(path) || local[0] != "--version")
+			assert.Equal(t, wantRejected, lineRejected(node, line(local), maxWords), "rancher %s %v: only the root accepts the version flag, and app install and app upgrade their own --version", path, local)
 		}
 		// An empty bool value typed ahead of the command path rejects the
 		// line too.

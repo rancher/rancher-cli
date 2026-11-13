@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
+	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -37,11 +39,22 @@ type fakeRoot struct {
 	mu      sync.Mutex
 	answers map[string]rootAnswer
 	paths   []string
+	// t and secretPath are the Secret check: a request whose path holds
+	// /secrets fails the test unless it is the one GET of secretPath, the
+	// release Secret an upgrade reads. A fake with no t panics instead.
+	t          testing.TB
+	secretPath string
 }
 
 func newFakeRoot(answers map[string]rootAnswer) *fakeRoot { return &fakeRoot{answers: answers} }
 
 func (r *fakeRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
+	if strings.Contains(path, "/secrets") && (r.secretPath == "" || path != r.secretPath) {
+		if r.t == nil {
+			panic("an app command read " + path + " through the root client")
+		}
+		r.t.Errorf("an app command read %s through the root client; only the release Secret of an upgrade may be read", path)
+	}
 	r.mu.Lock()
 	r.paths = append(r.paths, path)
 	a, ok := r.answers[path]

@@ -167,6 +167,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"get vmwarevsphereconfig":           runtime.ShapeTabular,
 	"app install":                       runtime.ShapeText,
 	"app uninstall":                     runtime.ShapeText,
+	"app upgrade":                       runtime.ShapeText,
 	"charts":                            runtime.ShapeTabular,
 	"grant":                             runtime.ShapeText,
 	"images":                            runtime.ShapeTabular,

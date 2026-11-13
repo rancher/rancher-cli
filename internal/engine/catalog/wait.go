@@ -22,9 +22,33 @@ const defaultPollInterval = 5 * time.Second
 // bound.
 const appMargin = 30 * time.Second
 
-// appWait is the wait of one accepted install or uninstall request: the
-// Operation Rancher created for it, then the App. Every read goes through
-// engine.WaitObject, with one deadline for the whole wait.
+// waitMode is the kind of request a wait follows.
+type waitMode int
+
+const (
+	modeInstall waitMode = iota
+	modeUninstall
+	modeUpgrade
+)
+
+// writesRevision reports whether the request stores a new revision of the
+// release: an install and an upgrade do, an uninstall does not.
+func (m waitMode) writesRevision() bool { return m != modeUninstall }
+
+// verb is the request's name in the texts of a wait.
+func (m waitMode) verb() string {
+	switch m {
+	case modeUpgrade:
+		return "upgrade"
+	case modeUninstall:
+		return "uninstall"
+	}
+	return "install"
+}
+
+// appWait is the wait of one accepted install, upgrade or uninstall request:
+// the Operation Rancher created for it, then the App. Every read goes
+// through engine.WaitObject, with one deadline for the whole wait.
 type appWait struct {
 	client   engine.ClusterClient
 	interval time.Duration
@@ -35,8 +59,12 @@ type appWait struct {
 	op actionAnswer
 	// filter hides the values the request sent in server text.
 	filter func(string) string
-	// install is true for an install, false for an uninstall.
-	install bool
+	mode   waitMode
+	// recorded is the App's spec.version Plan read before an upgrade, 0 for
+	// an install, which found no App: a revision past it is a newer one.
+	recorded int64
+	// cleanupOnFail is the upgrade's --cleanup-on-fail.
+	cleanupOnFail bool
 	// keepHistory and planStatus are the uninstall's --keep-history and the
 	// App's spec.info.status Plan read.
 	keepHistory bool
@@ -90,7 +118,7 @@ func (w *appWait) revisionOf(obj *unstructured.Unstructured) revision {
 // pastRecorded reports whether an App's spec.version is past the revision
 // Plan recorded. Plan of an install found no App, so it recorded none: any
 // revision is past it.
-func pastRecorded(version int64) bool { return version > 0 }
+func (w *appWait) pastRecorded(version int64) bool { return version > w.recorded }
 
 func pending(status string) bool { return strings.HasPrefix(status, "pending-") }
 
@@ -131,9 +159,9 @@ func (w *appWait) steps(ctx context.Context) (waitEnd, error) {
 		return w.appOnly(ctx, seen)
 	case err != nil:
 		return waitEnd{}, err
-	case w.install && s != nil:
+	case w.mode.writesRevision() && s != nil:
 		return waitEnd{}, w.installStalled(ctx, *s)
-	case w.install:
+	case w.mode.writesRevision():
 		return w.installDone(ctx)
 	case s != nil:
 		return waitEnd{}, w.uninstallStalled(ctx, *s)
@@ -171,8 +199,8 @@ func (w *appWait) operationStep(ctx context.Context) (s *stall, seen bool, err e
 	return s, seen, err
 }
 
-// installDone reads the App after an Operation that ended without
-// Stalled: done on the revision with this request's id at deployed. A
+// installDone reads the App after an install's or upgrade's Operation that
+// ended without Stalled: done on the revision with this request's id at deployed. A
 // status of that revision other than deployed or failed starts a margin
 // read; an App that is absent at its end is read again.
 func (w *appWait) installDone(ctx context.Context) (waitEnd, error) {
@@ -234,7 +262,7 @@ func (w *appWait) installDone(ctx context.Context) (waitEnd, error) {
 	}
 }
 
-// installRule is the rule an install's App read after a done Operation and
+// installRule is the rule an install's or upgrade's App read after a done Operation and
 // on the App-only path share: done on this revision at deployed, the
 // failure error on this revision at failed, the another-change error on a
 // revision past the recorded one without this id.
@@ -245,7 +273,7 @@ func (w *appWait) installRule(r revision, end **waitEnd) (bool, error) {
 		return true, nil
 	case r.mine && r.status == "failed":
 		return false, w.failureError(r, nil)
-	case !r.mine && pastRecorded(r.version):
+	case !r.mine && w.pastRecorded(r.version):
 		return false, w.anotherChangeError(r.version)
 	}
 	return false, nil
@@ -258,7 +286,8 @@ func derefEnd(end *waitEnd) waitEnd {
 	return *end
 }
 
-// installStalled reads the App after a Stalled Operation for the margin, or
+// installStalled reads the App after a Stalled install or upgrade Operation
+// for the margin, or
 // the time left when that is less, and returns the error that names how
 // the run ended. Every path ends in an error: Helm exited non-zero.
 func (w *appWait) installStalled(ctx context.Context, s stall) error {
@@ -271,7 +300,7 @@ func (w *appWait) installStalled(ctx context.Context, s stall) error {
 				return false, w.failureError(r, &s)
 			case r.mine && r.status == "deployed":
 				return false, w.deployedButFailedError(s)
-			case !r.mine && pastRecorded(r.version):
+			case !r.mine && w.pastRecorded(r.version):
 				return false, w.anotherChangeAfterFailureError(s, r.version)
 			}
 			return false, nil
@@ -382,18 +411,18 @@ func (w *appWait) uninstallStalled(ctx context.Context, s stall) error {
 func (w *appWait) appOnly(ctx context.Context, gone bool) (waitEnd, error) {
 	var end *waitEnd
 	var onDeleted func() (bool, error)
-	if !w.install {
+	if !w.mode.writesRevision() {
 		onDeleted = func() (bool, error) {
 			end = w.goneEnd()
 			return true, nil
 		}
 	}
 	err := w.read(ctx, readStep{
-		gvr: kind("app").GVR, ns: w.t.namespace, name: w.t.release, limit: w.left(), whileAbsent: w.install,
+		gvr: kind("app").GVR, ns: w.t.namespace, name: w.t.release, limit: w.left(), whileAbsent: w.mode.writesRevision(),
 		onDeleted: onDeleted,
 		observe: func(obj *unstructured.Unstructured) (bool, error) {
 			r := w.revisionOf(obj)
-			if !w.install {
+			if !w.mode.writesRevision() {
 				if w.uninstallFinished(r) {
 					end = &waitEnd{status: "uninstalled", warnings: w.warnings}
 					return true, nil
@@ -406,14 +435,14 @@ func (w *appWait) appOnly(ctx context.Context, gone bool) (waitEnd, error) {
 			return w.installRule(r, &end)
 		},
 		end: func(last *unstructured.Unstructured, lastErr *clierr.Error, answered bool) error {
-			if !w.install && answered && last == nil {
+			if !w.mode.writesRevision() && answered && last == nil {
 				end = w.goneEnd()
 				return nil
 			}
 			return w.timeoutError(lastErr)
 		},
 	})
-	if err != nil && !w.install && notFound(err) {
+	if err != nil && !w.mode.writesRevision() && notFound(err) {
 		return *w.goneEnd(), nil
 	}
 	return derefEnd(end), err

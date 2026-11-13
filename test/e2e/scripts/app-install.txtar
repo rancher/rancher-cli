@@ -26,7 +26,7 @@ jsonquery dry.json 'data.diff.#(path="values.global.cattle.rkePathPrefix").path'
 jsonquery dry.json 'data.diff.#(path="values.global.cattle.rkeWindowsPathPrefix").path' values.global.cattle.rkeWindowsPathPrefix
 jsonquery dry.json 'data.diff.#(path="values.global.cattle.windows.enabled").path' ''
 jsonquery dry.json 'data.diff.#(path="values.global.cattle.systemDefaultRegistry").path' ''
-jsonquery dry.json 'warnings.#(%"rancher-cli adds the values the Rancher UI adds when it installs a chart: *")' 'rancher-cli adds the values the Rancher UI adds when it installs a chart: values.global.cattle.clusterId, values.global.cattle.clusterName, values.global.cattle.rkePathPrefix, values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.systemProjectId, values.global.cattle.url'
+jsonquery dry.json 'warnings.#(%"rancher-cli adds the values the Rancher UI adds when it installs or upgrades a chart: *")' 'rancher-cli adds the values the Rancher UI adds when it installs or upgrades a chart: values.global.cattle.clusterId, values.global.cattle.clusterName, values.global.cattle.rkePathPrefix, values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.systemProjectId, values.global.cattle.url'
 ! stdout 'topsecret'
 appactions actions.json
 jsonquery actions.json '#' 0

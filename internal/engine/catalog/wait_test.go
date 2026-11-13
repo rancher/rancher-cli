@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -764,7 +765,31 @@ func TestWaitCancelNamesTheRequest(t *testing.T) {
 		requireCommitted(t, ce, clierr.CodeGeneric)
 		assert.Contains(t, ce.Message, "operation 'helm-operation-abcde' in namespace 'web' may still run Helm")
 		assert.Contains(t, ce.Message, "this request's id is "+testRequestID)
+		assert.Contains(t, ce.Message, "is the revision this request created")
 		assert.NotErrorIs(t, err, context.Canceled, "the runtime keeps the details of an error that is not the context's own")
+	})
+}
+
+// TestUpgradeWaitCancelNamesTheRequest asserts the error of an upgrade wait
+// the caller ended names the request's id and the revision it produced.
+func TestUpgradeWaitCancelNamesTheRequest(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		f := upgradeFake(t, nil)
+		f.script(opKey, opRunning)
+		_, exec := plan(t, newTestUpgrade(f, nil), upgradeInput(waitFor("")))
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() {
+			time.Sleep(7 * time.Second)
+			cancel()
+		}()
+		_, err := exec(ctx)
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "%T", err)
+		requireCommitted(t, ce, clierr.CodeGeneric)
+		assert.Contains(t, ce.Message, "operation 'helm-operation-abcde' in namespace 'web' may still run Helm")
+		assert.Contains(t, ce.Message, "this request's id is "+testRequestID)
+		assert.Contains(t, ce.Message, "is the revision this request created")
 	})
 }
 
@@ -1012,4 +1037,347 @@ func TestAnsweringWatcherDropsEventsAfterItsContextEnds(t *testing.T) {
 	}
 	assert.Empty(t, got)
 	assert.Zero(t, seen)
+}
+
+// The revisions of an upgrade wait: the App the fake serves is at the
+// recorded revision, and this request makes the next one.
+const (
+	recordedRevision = 3
+	upgradedRevision = 4
+)
+
+var upgradeCmdOf = clierr.Rancher + " app upgrade 'my-nginx' --cluster 'prod' --namespace 'web' --dry-run"
+
+// mineAt is the App at revision with this request's id and status.
+func mineAt(status string, revision int64) scripted {
+	return appRev(status, testRequestID, revision, "")
+}
+
+// atRecorded is the App still at the revision Plan read, with another
+// request's id: the app controller has not written this request's revision.
+func atRecorded() scripted { return appRev("deployed", otherID, recordedRevision, "") }
+
+// upgradeAnotherChange is the message of a revision past the recorded one
+// with another request's id.
+func upgradeAnotherChange(version int64) string {
+	return fmt.Sprintf("the upgrade ran; another change to 'my-nginx' also ran (revision %d)", version)
+}
+
+// upgradeFailedText is the error of an upgrade whose revision is at failed:
+// description is Helm's text, list the exit code clause of the parenthesis
+// ("" or ", exit code <n>"), cleanup the clause --cleanup-on-fail adds.
+func upgradeFailedText(description, list string, cleanup bool) string {
+	msg := "the upgrade of release 'my-nginx' failed: " + description + fmt.Sprintf(" (revision %d, status failed", upgradedRevision) + list + "); " +
+		"Helm does not roll back: the resources this upgrade already changed stay changed, and in the release's history the last deployed revision still has the status deployed"
+	if cleanup {
+		msg += "; with --cleanup-on-fail, Helm was asked to delete the resources this upgrade created"
+	}
+	return msg + "; to upgrade again with a change, add the change to this preview command, read the preview, then add --apply --yes: " + upgradeCmdOf +
+		fmt.Sprintf("; the next upgrade sends the values of revision %d, the revision that failed", upgradedRevision) + "; to remove the release, add --apply --yes after reading the preview of " + uninstallCmdOf
+}
+
+// upgradeWait plans app upgrade over f with the edits and executes it.
+func upgradeWait(t *testing.T, f *appFake, edits ...func(*appInput)) waitRun {
+	t.Helper()
+	_, exec := plan(t, newTestUpgrade(f, nil), upgradeInput(edits...))
+	return execute(t, exec)
+}
+
+// TestUpgradeWaitSucceeds asserts the ends of an upgrade wait that succeed:
+// the revision after the recorded one with this request's id reads deployed,
+// after the App showed the recorded revision or pending for a while. The
+// result carries the revision, the status and the request id.
+func TestUpgradeWaitSucceeds(t *testing.T) {
+	t.Parallel()
+	for name, apps := range map[string][]scripted{
+		"deployed":                              {mineAt("deployed", upgradedRevision)},
+		"the app lags at the recorded revision": {atRecorded(), atRecorded(), mineAt("deployed", upgradedRevision)},
+		"pending then deployed":                 {mineAt("pending-upgrade", upgradedRevision), mineAt("pending-upgrade", upgradedRevision), mineAt("deployed", upgradedRevision)},
+		"deployed with a description":           {appRev("deployed", testRequestID, upgradedRevision, "Upgrade complete")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				f := upgradeFake(t, nil)
+				f.script(opKey, opRunning, opBehind, opDone)
+				f.script(appKey, apps...)
+				r := upgradeWait(t, f, waitFor(""))
+				require.NoError(t, r.err)
+				assert.Equal(t, result{
+					Release: testRelease, Namespace: testNS,
+					OperationName: testOperation, OperationNamespace: testNS, RequestID: testRequestID,
+					Status: "deployed", Revision: upgradedRevision,
+					FollowUp: []string{getAppHint},
+				}, r.res.Data)
+				assert.Equal(t, fmt.Sprintf("app my-nginx: upgraded (revision %d, status deployed)\nfollow it with: %s\n", upgradedRevision, getAppHint), r.res.Text)
+				assert.NotContains(t, r.res.Warnings, warnNoWatch)
+				assert.NotContains(t, r.res.Warnings, unchangedAppNote)
+				assert.Less(t, r.elapsed, 30*time.Second)
+				b, err := json.Marshal(r.res.Data)
+				require.NoError(t, err)
+				var fields map[string]any
+				require.NoError(t, json.Unmarshal(b, &fields))
+				assert.Equal(t, float64(upgradedRevision), fields["revision"])
+				assert.Equal(t, "deployed", fields["status"])
+				assert.Equal(t, testRequestID, fields["requestID"])
+			})
+		})
+	}
+}
+
+// TestUpgradeWaitAfterADoneOperation asserts the errors after an Operation
+// that ended without Stalled: this revision failed, with and without
+// --cleanup-on-fail, a revision past the recorded one with another id or none,
+// and a status that stays at the end of the margin. An App that still shows
+// the recorded revision keeps the wait reading until the timeout.
+func TestUpgradeWaitAfterADoneOperation(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		apps    []scripted
+		edit    func(*appInput)
+		timeout string
+		want    string
+		// margin is true when the error comes at the end of the margin.
+		margin bool
+	}{
+		"failed": {
+			apps: []scripted{appRev("failed", testRequestID, upgradedRevision, "Upgrade \"my-nginx\" failed:\n\ttimed out\x07 waiting")},
+			want: upgradeFailedText("Upgrade \"my-nginx\" failed: timed out waiting", "", false),
+		},
+		"failed with --cleanup-on-fail": {
+			apps: []scripted{appRev("failed", testRequestID, upgradedRevision, "post-upgrade hooks failed")},
+			edit: withBool(flagCleanupOnFail, true),
+			want: upgradeFailedText("post-upgrade hooks failed", "", true),
+		},
+		"failed after the app lagged": {
+			apps: []scripted{atRecorded(), appRev("failed", testRequestID, upgradedRevision, "no description")},
+			want: upgradeFailedText("no description", "", false),
+		},
+		"another change": {
+			apps: []scripted{atRecorded(), appRev("deployed", otherID, upgradedRevision, "")},
+			want: upgradeAnotherChange(upgradedRevision),
+		},
+		"another change with no id": {
+			apps: []scripted{appRev("deployed", "", upgradedRevision, "")},
+			want: upgradeAnotherChange(upgradedRevision),
+		},
+		"pending past the margin": {
+			apps:   []scripted{mineAt("pending-upgrade", upgradedRevision)},
+			want:   "Helm stopped and left release 'my-nginx' pending; to remove it, add --apply --yes after reading the preview of " + uninstallCmdOf,
+			margin: true,
+		},
+		"superseded past the margin": {
+			apps:   []scripted{mineAt("superseded", upgradedRevision)},
+			want:   "release 'my-nginx' is at status superseded",
+			margin: true,
+		},
+		"the app stays at the recorded revision": {
+			apps:    []scripted{atRecorded()},
+			timeout: "2m",
+			want:    "timed out after 2m waiting for release 'my-nginx'; last state: operation 'helm-operation-abcde' Reconciling=False, Stalled=False; app status deployed",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				f := upgradeFake(t, nil)
+				f.script(opKey, opDone)
+				f.script(appKey, tc.apps...)
+				edits := []func(*appInput){waitFor(tc.timeout)}
+				if tc.edit != nil {
+					edits = append(edits, tc.edit)
+				}
+				r := upgradeWait(t, f, edits...)
+				requireWaitError(t, r, tc.want)
+				switch {
+				case tc.timeout != "":
+					assert.Equal(t, 2*time.Minute, r.elapsed)
+				case tc.margin:
+					assert.Equal(t, appMargin, r.elapsed, "the margin starts at the first read of that status")
+				default:
+					assert.Less(t, r.elapsed, 5*time.Second)
+				}
+			})
+		})
+	}
+}
+
+// TestUpgradeWaitAfterAStalledOperation asserts the App read after a Stalled
+// Operation: this revision failed (with the exit code), deployed, pending, at
+// another status or absent; an App still at the recorded revision is the
+// no-revision error, which reads the Operation.
+func TestUpgradeWaitAfterAStalledOperation(t *testing.T) {
+	t.Parallel()
+	noRevision := "and no revision of 'my-nginx' carries this request's id; Helm records no revision when it fails before it stores the release, " +
+		"for example on values that fail the chart's values schema, template errors or resources another release owns; release 'my-nginx' is at " + fmt.Sprintf("revision %d", recordedRevision) + ", status deployed; read the operation with " +
+		getOperationHint
+	cases := map[string]struct {
+		message string
+		apps    []scripted
+		edit    func(*appInput)
+		want    string
+		atOnce  bool
+	}{
+		"failed": {
+			message: " exit code: 123",
+			apps:    []scripted{atRecorded(), appRev("failed", testRequestID, upgradedRevision, "Upgrade \"my-nginx\" failed: image pull")},
+			want:    upgradeFailedText("Upgrade \"my-nginx\" failed: image pull", ", exit code 123", false),
+			atOnce:  true,
+		},
+		"failed with --cleanup-on-fail": {
+			message: " exit code: 1",
+			apps:    []scripted{appRev("failed", testRequestID, upgradedRevision, "hook failed")},
+			edit:    withBool(flagCleanupOnFail, true),
+			want:    upgradeFailedText("hook failed", ", exit code 1", true),
+			atOnce:  true,
+		},
+		"pending then failed": {
+			message: " exit code: 1",
+			apps:    []scripted{mineAt("pending-upgrade", upgradedRevision), mineAt("pending-upgrade", upgradedRevision), appRev("failed", testRequestID, upgradedRevision, "hook failed")},
+			want:    upgradeFailedText("hook failed", ", exit code 1", false),
+			atOnce:  true,
+		},
+		"the app stays at the recorded revision": {
+			message: " exit code: 1",
+			apps:    []scripted{atRecorded()},
+			want:    "the operation failed (exit code 1) " + noRevision,
+		},
+		"deployed": {
+			message: " exit code: 1",
+			apps:    []scripted{mineAt("deployed", upgradedRevision)},
+			want:    "operation 'helm-operation-abcde' failed (exit code 1) after release 'my-nginx' was deployed",
+			atOnce:  true,
+		},
+		"pending at the end": {
+			message: " exit code: 137",
+			apps:    []scripted{mineAt("pending-upgrade", upgradedRevision)},
+			want:    "Helm stopped (exit code 137) and left release 'my-nginx' pending; to remove it, add --apply --yes after reading the preview of " + uninstallCmdOf,
+		},
+		"another change": {
+			message: " exit code: 1",
+			apps:    []scripted{appRev("deployed", otherID, upgradedRevision, "")},
+			want:    fmt.Sprintf("this request failed (exit code 1) and another change to 'my-nginx' ran (revision %d)", upgradedRevision),
+			atOnce:  true,
+		},
+		"another status at the end": {
+			message: " exit code: 1",
+			apps:    []scripted{mineAt("superseded", upgradedRevision)},
+			want:    "operation 'helm-operation-abcde' failed (exit code 1); release 'my-nginx' is at status superseded",
+		},
+		"a message with no exit code": {
+			message: "OOMKilled",
+			apps:    []scripted{appRev("failed", testRequestID, upgradedRevision, "out of memory")},
+			want:    upgradeFailedText("out of memory", ", operation message: OOMKilled", false),
+			atOnce:  true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				f := upgradeFake(t, nil)
+				f.script(opKey, opRunning, opStalled(tc.message))
+				f.script(appKey, tc.apps...)
+				edits := []func(*appInput){waitFor("")}
+				if tc.edit != nil {
+					edits = append(edits, tc.edit)
+				}
+				r := upgradeWait(t, f, edits...)
+				ce := r.clierr(t)
+				requireCommitted(t, ce, clierr.CodeGeneric)
+				assert.Equal(t, tc.want, ce.Message)
+				if strings.Contains(tc.want, "no revision of") {
+					assert.Equal(t, getOperationHint, ce.Hint, "the Operation holds the run's result")
+				} else {
+					assert.Equal(t, getAppHint, ce.Hint)
+				}
+				if tc.atOnce {
+					assert.Less(t, r.elapsed, 10*time.Second)
+				} else {
+					assert.Equal(t, time.Second+appMargin, r.elapsed, "the margin starts at the Stalled read")
+				}
+			})
+		})
+	}
+}
+
+// TestUpgradeWaitWithoutTheOperation asserts the wait of an upgrade when the
+// caller cannot get operations: the warning names what the wait cannot see for
+// an upgrade, the App's ends are the same, and an App that stays at the
+// recorded revision ends at the timeout, whose message says the same.
+func TestUpgradeWaitWithoutTheOperation(t *testing.T) {
+	t.Parallel()
+	const fact = "an upgrade Helm refuses before it stores a revision is seen only as the wait timeout"
+	warning := "you cannot get operations in namespace 'web'; the wait reads the app only, and " + fact + "; a shorter --timeout ends that wait sooner"
+	synctest.Test(t, func(t *testing.T) {
+		f := upgradeFake(t, nil)
+		skipOperation(f)
+		f.script(appKey, atRecorded(), mineAt("deployed", upgradedRevision))
+		eff, exec := plan(t, newTestUpgrade(f, nil), upgradeInput(waitFor("")))
+		assert.Contains(t, eff.Warnings, warning)
+		r := execute(t, exec)
+		require.NoError(t, r.err)
+		assert.Equal(t, "deployed", r.res.Data.(result).Status)
+		assert.Equal(t, int64(upgradedRevision), r.res.Data.(result).Revision)
+		assert.NotContains(t, f.reads, opKey)
+	})
+	t.Run("review failed", func(t *testing.T) {
+		t.Parallel()
+		f := upgradeFake(t, nil)
+		skipOperation(f)
+		f.review = errors.New("the review request failed")
+		eff, _, err := newTestUpgrade(f, nil).Plan(t.Context(), upgradeInput(waitFor("")))
+		require.NoError(t, err)
+		assert.Contains(t, eff.Warnings, "rancher-cli could not check whether you can get operations in namespace 'web'; the wait reads the app only, and "+fact+"; a shorter --timeout ends that wait sooner")
+		assert.NotContains(t, eff.Warnings, warning)
+	})
+	synctest.Test(t, func(t *testing.T) {
+		f := upgradeFake(t, nil)
+		skipOperation(f)
+		f.script(appKey, atRecorded())
+		r := upgradeWait(t, f, waitFor("1m"))
+		requireWaitError(t, r, "timed out after 1m waiting for release 'my-nginx'; last state: app status deployed; "+fact)
+		assert.Equal(t, time.Minute, r.elapsed)
+	})
+	for name, tc := range map[string]struct {
+		apps []scripted
+		want string
+	}{
+		"failed":         {[]scripted{appRev("failed", testRequestID, upgradedRevision, "bad values")}, upgradeFailedText("bad values", "", false)},
+		"another change": {[]scripted{appRev("deployed", otherID, upgradedRevision, "")}, upgradeAnotherChange(upgradedRevision)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				f := upgradeFake(t, nil)
+				skipOperation(f)
+				f.script(appKey, tc.apps...)
+				requireWaitError(t, upgradeWait(t, f, waitFor("")), tc.want)
+			})
+		})
+	}
+}
+
+// TestUpgradeWaitWhenTheOperationIsGone asserts a NOT_FOUND of the Operation
+// is a warning with the App read alone, and a pending revision is cut off
+// only when the Operation was read before.
+func TestUpgradeWaitWhenTheOperationIsGone(t *testing.T) {
+	t.Parallel()
+	gone := operationGoneWarning(testOperation)
+	synctest.Test(t, func(t *testing.T) {
+		f := upgradeFake(t, nil)
+		f.script(opKey, opRunning, absent)
+		f.script(appKey, mineAt("pending-upgrade", upgradedRevision))
+		requireWaitError(t, upgradeWait(t, f, waitFor("")),
+			"Helm's run was cut off; release 'my-nginx' stays pending; to remove it, add --apply --yes after reading the preview of "+uninstallCmdOf)
+	})
+	synctest.Test(t, func(t *testing.T) {
+		f := upgradeFake(t, nil)
+		f.script(opKey, opRunning, absent)
+		f.script(appKey, atRecorded(), mineAt("deployed", upgradedRevision))
+		r := upgradeWait(t, f, waitFor(""))
+		require.NoError(t, r.err)
+		assert.Equal(t, []string{gone}, r.res.Warnings)
+	})
 }

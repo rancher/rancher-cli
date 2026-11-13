@@ -74,14 +74,23 @@ func (v indexVersion) installable(namespace, release string) bool {
 // the ClusterRepo, to leave a disabled repository out, then its filtered
 // index. It reports false when anything fails or the repository is disabled.
 func repoIndexOf(ctx context.Context, conn *completion.Connection, req completion.Request) (repoIndex, bool) {
-	repo := completion.TailFlag(req.Tail, "repo")
-	k, known := kinds.ByKey("clusterrepo")
-	if !known || req.ClusterID == "" || repo == "" {
+	if !clusterRepoEnabled(ctx, conn, req.ClusterID, completion.TailFlag(req.Tail, "repo")) {
 		return repoIndex{}, false
 	}
-	obj, err := completion.NamedResourcePath(req.ClusterID, k.GVR.Group, k.GVR.Version, "", k.GVR.Resource, repo)
+	return readRepoIndex(ctx, conn, req.ClusterID, completion.TailFlag(req.Tail, "repo"))
+}
+
+// clusterRepoEnabled reads the ClusterRepo repo of the cluster and reports whether
+// it exists and is not disabled (a missing spec.enabled counts as enabled).
+// It is one request, none for an empty cluster id or an invalid name.
+func clusterRepoEnabled(ctx context.Context, conn *completion.Connection, clusterID, repo string) bool {
+	k, known := kinds.ByKey("clusterrepo")
+	if !known || clusterID == "" || repo == "" {
+		return false
+	}
+	obj, err := completion.NamedResourcePath(clusterID, k.GVR.Group, k.GVR.Version, "", k.GVR.Resource, repo)
 	if err != nil {
-		return repoIndex{}, false
+		return false
 	}
 	var repoObj struct {
 		Spec struct {
@@ -89,12 +98,15 @@ func repoIndexOf(ctx context.Context, conn *completion.Connection, req completio
 		} `json:"spec"`
 	}
 	if err := conn.GetJSON(ctx, obj, "", &repoObj); err != nil {
-		return repoIndex{}, false
+		return false
 	}
-	if repoObj.Spec.Enabled != nil && !*repoObj.Spec.Enabled {
-		return repoIndex{}, false
-	}
-	p, err := completion.ClusterRepoIndexPath(req.ClusterID, repo)
+	return repoObj.Spec.Enabled == nil || *repoObj.Spec.Enabled
+}
+
+// readRepoIndex reads the filtered index of the ClusterRepo repo on the
+// cluster, one request. It reports false when the read fails.
+func readRepoIndex(ctx context.Context, conn *completion.Connection, clusterID, repo string) (repoIndex, bool) {
+	p, err := completion.ClusterRepoIndexPath(clusterID, repo)
 	if err != nil {
 		return repoIndex{}, false
 	}

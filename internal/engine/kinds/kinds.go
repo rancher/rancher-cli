@@ -1000,7 +1000,7 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "apps"},
 		Policy: NSPlain, K8sKind: "App", Scope: Downstream, Deletable: false, Completable: true,
 		NoDeleteReason:      "deleting an app object leaves its Helm release installed; to uninstall it (<name> is its name, <c> the cluster and <ns> its namespace), run `rancher app uninstall <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview",
-		NoPatchReason:       "Rancher creates and manages app objects from the Helm release; this CLI does not change them",
+		NoPatchReason:       "Rancher creates and manages app objects from the Helm release; to change a release (<name> is its name, <c> the cluster and <ns> its namespace), run `" + clierr.Rancher + " app upgrade <name> --cluster <c> --namespace <ns> --dry-run` and add --apply --yes after reading the preview",
 		NoCreateViaManifest: "Rancher creates an app when it installs a chart; to install one (<release> is the Helm release name, <c> the cluster, <ns> the namespace, <repo> the ClusterRepo and <chart> the chart), run `" + clierr.Rancher + " app install <release> --cluster <c> --namespace <ns> --repo <repo> --chart <chart> --dry-run` and add --apply after reading the preview",
 		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{

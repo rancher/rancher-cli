@@ -238,6 +238,8 @@ func missingRows() []missingRow {
 			code: clierr.CodeNotFound, last: namespaceGET},
 		missingRow{name: "app uninstall", class: classChecks, argv: slices.Concat([]string{"app", "uninstall", "web"}, cluster, []string{"--dry-run"}),
 			code: clierr.CodeNotFound, last: "GET " + downstream + "/apis/catalog.cattle.io/v1/namespaces/" + missingNamespace + "/apps/web"},
+		missingRow{name: "app upgrade", class: classChecks, argv: slices.Concat([]string{"app", "upgrade", "web"}, cluster, []string{"--dry-run"}),
+			code: clierr.CodeNotFound, last: "GET " + downstream + "/apis/catalog.cattle.io/v1/namespaces/" + missingNamespace + "/apps/web"},
 	)
 }
 
@@ -448,8 +450,8 @@ func TestEveryNamespaceCommandHasAMissingNamespaceRow(t *testing.T) {
 			"add its row to "+table+" in this file, saying what it does with a namespace that does not exist")
 	}
 	commands, rowCount := len(declaring), len(rows)
-	assert.Equal(t, 126, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
-	assert.Equal(t, 167, rowCount, "the rows; uncovered commands: %v", uncovered)
+	assert.Equal(t, 127, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
+	assert.Equal(t, 168, rowCount, "the rows; uncovered commands: %v", uncovered)
 
 	h := newMissingHarness(t)
 	for _, row := range rows {

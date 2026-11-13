@@ -70,6 +70,10 @@ type Info struct {
 // that the commands use.
 type InfoChart struct {
 	Annotations map[string]string `json:"annotations"`
+	// Version is the chart's own version from Chart.yaml. Rancher looks a
+	// version up in the index as Helm does, which can answer another build
+	// of the same base version.
+	Version string `json:"version"`
 }
 
 // ReadInfo reads the info of one chart version from the ClusterRepo repo of

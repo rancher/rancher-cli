@@ -68,7 +68,7 @@ func TestAppInstallDryRunEnvelope(t *testing.T) {
 		"values.global.cattle.systemProjectId":      appSystemProject,
 		"values.global.cattle.url":                  appServerURL,
 	}, paths)
-	assert.Contains(t, env.Warnings, "rancher-cli adds the values the Rancher UI adds when it installs a chart: "+
+	assert.Contains(t, env.Warnings, "rancher-cli adds the values the Rancher UI adds when it installs or upgrades a chart: "+
 		"values.global.cattle.clusterId, values.global.cattle.clusterName, values.global.cattle.rkePathPrefix, "+
 		"values.global.cattle.rkeWindowsPathPrefix, values.global.cattle.systemProjectId, values.global.cattle.url")
 	assert.Contains(t, env.Warnings, "this preview comes from server reads; the server has no dry-run for this action")
@@ -192,7 +192,7 @@ func TestAppUninstallApply(t *testing.T) {
 
 // TestAppInstallOnePostPerAnswer asserts each answer that is an error, and
 // a connection closed after the request was read, gives exactly one action
-// request: 429 and 503 keep the status table's retry advice; 500, 502, 504 and
+// request, for an install and, in upgradeOnePostPerAnswer, for an upgrade: 429 and 503 keep the status table's retry advice; 500, 502, 504 and
 // the closed connection are GENERIC, not retryable, and carry the request
 // id.
 func TestAppInstallOnePostPerAnswer(t *testing.T) {
@@ -231,6 +231,7 @@ func TestAppInstallOnePostPerAnswer(t *testing.T) {
 			}
 		})
 	}
+	upgradeOnePostPerAnswer(t)
 }
 
 // appError is the decoded error of an envelope.
@@ -252,8 +253,9 @@ func decodeErrorEnvelope(t *testing.T, raw string) appError {
 	return env.Data.Error
 }
 
-// TestAppCommandsNeverPrintValues asserts no path of the two commands
-// prints a value from a values file: the preview, the applied result, each
+// TestAppCommandsNeverPrintValues asserts no path of the three commands
+// prints a value from a values file or, for an upgrade, a stored value (see
+// upgradeNeverPrintsValues): the preview, the applied result, each
 // refused action (400, 403, 404, 409, 500 and 503) whose answer quotes the
 // value plainly, JSON-escaped or one line of a multi-line value, an answer
 // whose outcome is unknown, a values file whose top level is a scalar, a
@@ -389,6 +391,7 @@ func TestAppCommandsNeverPrintValues(t *testing.T) {
 	}
 	registryValuesShownOnlyAsTheirTo(t, answer)
 	uninstallWaitTextIsPrintable(t)
+	upgradeNeverPrintsValues(t, answer)
 }
 
 // uninstallWaitTextIsPrintable asserts the App's spec.info.description and a
