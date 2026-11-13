@@ -1889,8 +1889,10 @@ type keepDownstreamStop struct {
 	// proxyRead is true when the downstream turns active and the run then reads
 	// the proxy path to it; fleetRead when it then reads the fleet agent too.
 	proxyRead, fleetRead bool
-	// watchSleep is true for a case whose wait runs on the real clock with a
-	// limit the case shortens: the sleep stub ends a run that loses its bound.
+	// watchSleep is true for a case whose wait is a loop with a fixed number of
+	// tries, or a wait on the real clock with a limit the case shortens. The sleep
+	// stub ends the script at call number keepRunawayCalls, which only a wait that
+	// ignores its limit reaches.
 	watchSleep bool
 	// stderr is a text the run prints on stderr before the refusal, or empty.
 	stderr string
@@ -1930,38 +1932,50 @@ func (k *keepRun) setFleetLimit(seconds string) {
 	k.editScript("\nFLEET_LIMIT_SECONDS=600\n", "\nFLEET_LIMIT_SECONDS="+seconds+"\n")
 }
 
-// keepRunawaySeconds is the real time a run may keep calling sleep before the
-// sleep stub of a case with a short wait ends the script.
-const keepRunawaySeconds = 30
+// keepRunawayCalls is the cap on calls to sleep and on reads of the kept
+// downstream cluster. A case that uses watchSleep or watchWait has a watchdog
+// stub that acts at the cap: the sleep stub ends the script and the curl stub
+// returns {"state":"active"}. Two waits with a fixed number of tries run one
+// after the other. wait_for_downstream_active makes up to 100 calls to sleep
+// and then wait_for_downstream_proxy up to 60, about 160 calls in all. Two waits
+// on the real clock add a few more calls. In the cases that chain the waits,
+// the wait for the kept downstream cluster runs first and finds the cluster
+// active after one call to sleep. The wait for the fleet agent runs last and
+// stops at a limit of 1 s where the fleet agent is never ready. The cap is about
+// 90 calls more than those 160. It counts calls and not seconds: a slow machine
+// does not reach it and a wait with no limit does.
+const keepRunawayCalls = 250
 
-// keepSleepWatchdog stands in for sleep. It takes no time. When the run has
-// called it for STUB_SLEEP_SECONDS of real time it writes a marker file and ends
-// the script with a termination signal, so a wait that lost its bound fails the
-// case within that time and never hangs.
+// keepSleepWatchdog stands in for sleep. It takes no time. It counts its calls in
+// the file STUB_SLEEP_COUNT, and at STUB_RUNAWAY_CALLS calls it writes the marker
+// file STUB_SLEEP_COUNT.runaway and ends the script with a termination signal.
+// A wait that ignores its limit then fails the case and never hangs.
 const keepSleepWatchdog = `#!/bin/sh
-start="$STUB_SLEEP_START"
-now=$(date +%s)
-[ -f "$start" ] || echo "$now" > "$start"
-if [ $((now - $(cat "$start"))) -ge "$STUB_SLEEP_SECONDS" ]; then
-  echo runaway > "$start.runaway"
+n=$(cat "$STUB_SLEEP_COUNT" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$STUB_SLEEP_COUNT"
+if [ "$n" -ge "$STUB_RUNAWAY_CALLS" ]; then
+  echo runaway > "$STUB_SLEEP_COUNT.runaway"
   kill -TERM "$PPID"
 fi
 exit 0
 `
 
 // keepCurlWatchdog stands in for curl in front of the curl stub (saved as
-// curl-stub). It sends every call to the stub, except that once STUB_SLEEP_SECONDS
-// of real time have passed since the first read of the kept downstream cluster
-// it writes a marker file and answers active, which ends a wait that has no
-// sleep to watch. The answer carries the status line when the call asks for it.
+// curl-stub). It counts the reads of the kept downstream cluster in the file
+// STUB_CURL_COUNT. It passes every call to the stub, except a read that brings
+// the count to STUB_RUNAWAY_CALLS or more. For that read it writes the marker
+// file STUB_CURL_COUNT.runaway and returns {"state":"active"}, which ends a wait
+// even when that wait never calls sleep. When the call asks for the HTTP status
+// code, the response ends with a line that holds 200.
 const keepCurlWatchdog = `#!/bin/sh
 case "$*" in
 */v3/clusters/c-m-abc)
-  start="$STUB_CURL_START"
-  now=$(date +%s)
-  [ -f "$start" ] || echo "$now" > "$start"
-  if [ $((now - $(cat "$start"))) -ge "$STUB_SLEEP_SECONDS" ]; then
-    echo runaway > "$start.runaway"
+  n=$(cat "$STUB_CURL_COUNT" 2>/dev/null || echo 0)
+  n=$((n + 1))
+  echo "$n" > "$STUB_CURL_COUNT"
+  if [ "$n" -ge "$STUB_RUNAWAY_CALLS" ]; then
+    echo runaway > "$STUB_CURL_COUNT.runaway"
     case "$*" in
     *http_code*) printf '{"state":"active"}\n200' ;;
     *) printf '{"state":"active"}' ;;
@@ -1973,35 +1987,38 @@ exec "$STUB_REAL_CURL" "$@"
 `
 
 // watchSleep replaces the sleep stub with the watchdog, which ends the script
-// after keepRunawaySeconds of real time in sleep calls, and returns the path of
-// the marker file it writes then.
+// at call number keepRunawayCalls, and returns the path of the marker file it
+// writes then.
 func (k *keepRun) watchSleep() string {
 	k.t.Helper()
 	testfs.WriteExecutable(k.t, filepath.Join(k.s.stubDir, "sleep"), []byte(keepSleepWatchdog))
-	start := filepath.Join(k.s.stubDir, "sleep.start")
-	k.s.env["STUB_SLEEP_START"] = start
-	k.s.env["STUB_SLEEP_SECONDS"] = strconv.Itoa(keepRunawaySeconds)
-	return start + ".runaway"
+	count := filepath.Join(k.s.stubDir, "sleep.count")
+	k.s.env["STUB_SLEEP_COUNT"] = count
+	k.s.env["STUB_RUNAWAY_CALLS"] = strconv.Itoa(keepRunawayCalls)
+	return count + ".runaway"
 }
 
-// watchWait puts a real-time deadline on a case that waits for the kept
-// downstream cluster: the sleep stub and the curl stub each write a marker file
-// and end the wait after keepRunawaySeconds, whichever the wait calls. It
-// returns the paths of the two marker files, which exist only when the wait did
-// not stop at its limit. The fleet agent rows let the run go on to its end after
-// a marker. A wait that makes no call to either stub is not covered; the test
-// timeout ends it.
+// watchWait watches a case that waits for the kept downstream cluster. Once the
+// wait has made keepRunawayCalls calls to sleep or reads of the kept downstream
+// cluster, a stub ends it. At call number keepRunawayCalls the sleep stub ends
+// the script. From read number keepRunawayCalls on, the curl stub returns
+// {"state":"active"}. Each writes a marker file first. Whichever of the two the
+// wait calls, one stub ends it. watchWait returns the paths of the two marker
+// files, which exist only when the wait did not stop at its limit. It also adds
+// responses that report the fleet agent ready, so that after a marker file the
+// run goes on to its end. A wait that makes no call to either stub is not
+// covered; the test timeout ends it.
 func (k *keepRun) watchWait() []string {
 	k.t.Helper()
 	sleepMarker := k.watchSleep()
 	realCurl := filepath.Join(k.s.stubDir, "curl-stub")
 	require.NoError(k.t, os.Rename(filepath.Join(k.s.stubDir, "curl"), realCurl))
 	testfs.WriteExecutable(k.t, filepath.Join(k.s.stubDir, "curl"), []byte(keepCurlWatchdog))
-	curlStart := filepath.Join(k.s.stubDir, "curl.start")
-	k.s.env["STUB_CURL_START"] = curlStart
+	curlCount := filepath.Join(k.s.stubDir, "curl.count")
+	k.s.env["STUB_CURL_COUNT"] = curlCount
 	k.s.env["STUB_REAL_CURL"] = realCurl
 	k.cannedFleetAgent()
-	return []string{sleepMarker, curlStart + ".runaway"}
+	return []string{sleepMarker, curlCount + ".runaway"}
 }
 
 // keepCurlCounter stands in for curl in front of the curl stub (saved as
@@ -2229,8 +2246,10 @@ func requireKeepRefusal(t *testing.T, k *keepRun, stderr, check, detail, hint st
 // variable named downstream_pin_changed in the environment changes nothing.
 // Each check has one row on every slot; the variants of a state file value, the
 // other words for the last read, the proxy path and the exported variable run on
-// the community and helm-check slots. A wait that loses its bound ends the case
-// after keepRunawaySeconds with a message that says so.
+// the community and helm-check slots. The rows that watch a wait replace sleep
+// and curl with stubs that count their calls. A stub ends a wait that ignores
+// its limit once the wait has made keepRunawayCalls calls to sleep or reads of
+// the kept downstream cluster. The case then fails with a message that says so.
 func TestKeepRunStopsOnAFailedDownstreamCheck(t *testing.T) {
 	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
 	requireKeepSlotsMatchTheScript(t)
@@ -2260,7 +2279,7 @@ func TestKeepRunStopsOnAFailedDownstreamCheck(t *testing.T) {
 
 				for _, marker := range runaway {
 					_, err := os.Stat(marker)
-					require.Truef(t, os.IsNotExist(err), "the wait did not stop at its limit of %s s: the run kept waiting for %d s of real time and was ended\nstdout: %s\nstderr: %s", row.limit, keepRunawaySeconds, res.stdout, res.stderr)
+					require.Truef(t, os.IsNotExist(err), "a wait reached the cap of %d calls to sleep or reads of the kept downstream cluster without stopping, and a stub ended it\nstdout: %s\nstderr: %s", keepRunawayCalls, res.stdout, res.stderr)
 				}
 				require.NotContains(t, res.stdout, keepToken, "the admin token must never be printed")
 				require.NotContains(t, res.stderr, keepToken, "the admin token must never be printed")
@@ -2307,6 +2326,174 @@ func TestKeepRunStopsOnAFailedDownstreamCheck(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestKeepRunawayWatchdogEndsAWaitThatIgnoresItsLimit asserts, on the community
+// slot, that the watchdog stubs end a wait that ignores its limit once it has
+// made keepRunawayCalls calls, and end no other wait. Two waits each run twice:
+// wait_for_downstream_active, a loop of 100 tries, and the wait for the kept
+// downstream cluster, which stops at a limit in seconds. With
+// scripts/e2e-fidelity as it is, each stops at its limit with exit code 4 and its
+// refusal, and no stub writes a marker file. With the loop made endless, or the
+// check of the limit removed from the wait for the kept downstream cluster, a
+// stub writes a marker file. The run then ends without the refusal for the limit.
+func TestKeepRunawayWatchdogEndsAWaitThatIgnoresItsLimit(t *testing.T) {
+	t.Parallel()
+	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
+	slot := keepSlots[0]
+	require.Equal(t, "community", slot.name)
+	const (
+		activeLoop    = "for _ in $(seq 1 100); do\n    state="
+		endlessLoop   = "while :; do\n    state="
+		deadlineCheck = "if [ \"${SECONDS}\" -ge \"${deadline}\" ]; then\n      echo \"error: the downstream cluster"
+		noDeadline    = "if false; then\n      echo \"error: the downstream cluster"
+	)
+	cases := []struct {
+		name    string
+		mutated bool
+		// refusal is the text on stderr when the wait stops at its limit.
+		refusal string
+		setup   func(k *keepRun) []string
+	}{
+		{
+			name: "the loop of 100 tries ends after 100 tries", refusal: "did not become active within 10 minutes",
+			setup: func(k *keepRun) []string {
+				k.activeOnlyOnRead(3, "provisioning")
+				return []string{k.watchSleep()}
+			},
+		},
+		{
+			name: "the loop of 100 tries made endless", mutated: true, refusal: "did not become active within 10 minutes",
+			setup: func(k *keepRun) []string {
+				k.editScript(activeLoop, endlessLoop)
+				k.activeOnlyOnRead(3, "provisioning")
+				return []string{k.watchSleep()}
+			},
+		},
+		{
+			name: "the wait for the kept downstream cluster ends at its limit", refusal: "was not active within 1 s",
+			setup: func(k *keepRun) []string {
+				k.setDownstreamLimit("1")
+				k.canned(keepClusterRead, "200", `{"state":"provisioning"}`)
+				return k.watchWait()
+			},
+		},
+		{
+			name: "the wait for the kept downstream cluster with its limit check removed", mutated: true, refusal: "was not active within 1 s",
+			setup: func(k *keepRun) []string {
+				k.editScript(deadlineCheck, noDeadline)
+				k.setDownstreamLimit("1")
+				k.canned(keepClusterRead, "200", `{"state":"provisioning"}`)
+				return k.watchWait()
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			k := newKeepRun(t, slot)
+			markers := c.setup(k)
+			res := k.run()
+
+			var found []string
+			for _, marker := range markers {
+				if _, err := os.Stat(marker); err == nil {
+					found = append(found, marker)
+				}
+			}
+			if c.mutated {
+				require.NotEmptyf(t, found, "no stub ended the wait that ignores its limit\nstdout: %s\nstderr: %s", res.stdout, res.stderr)
+				assert.NotContains(t, res.stderr, c.refusal, "the wait must not have stopped at its limit")
+				return
+			}
+			require.Emptyf(t, found, "the wait that should stop at its limit reached the cap of %d calls to sleep or reads of the kept downstream cluster, and a stub ended it\nstdout: %s\nstderr: %s", keepRunawayCalls, res.stdout, res.stderr)
+			require.Equalf(t, 4, res.code, "stdout: %s\nstderr: %s", res.stdout, res.stderr)
+			assert.Contains(t, res.stderr, c.refusal)
+		})
+	}
+}
+
+// keepJumpingDate stands in for date. Every call saves the time it prints in the
+// file date.last, in the same directory as this stub. The first call prints the
+// real time. Each later call prints the saved time plus one hour.
+const keepJumpingDate = `#!/bin/sh
+last="$(dirname "$0")/date.last"
+if [ -f "$last" ]; then
+  now=$(($(cat "$last") + 3600))
+else
+  now=$(/bin/date +%s)
+fi
+echo "$now" > "$last"
+echo "$now"
+`
+
+// TestKeepRunawayCapIgnoresTheClock asserts that the sleep and curl stubs act
+// when their count reaches keepRunawayCalls however much time the clock shows
+// has passed, and not before. The test runs them with a date stub
+// (keepJumpingDate) that moves the time forward one hour on every call, and
+// asserts that neither stub calls date. Calls up to keepRunawayCalls-1 write no
+// marker file and end normally. The next call writes the marker file. Then the
+// sleep stub ends its parent with a termination signal, and the curl stub returns
+// {"state":"active"}.
+func TestKeepRunawayCapIgnoresTheClock(t *testing.T) {
+	t.Parallel()
+	testfs.SkipOnWindows(t, "scripts/e2e-fidelity is a bash script")
+	dir := t.TempDir()
+	testfs.WriteExecutable(t, filepath.Join(dir, "date"), []byte(keepJumpingDate))
+	testfs.WriteExecutable(t, filepath.Join(dir, "sleep"), []byte(keepSleepWatchdog))
+	testfs.WriteExecutable(t, filepath.Join(dir, "curl"), []byte(keepCurlWatchdog))
+	testfs.WriteExecutable(t, filepath.Join(dir, "real-curl"), []byte("#!/bin/sh\necho real response\n"))
+	sleepCount := filepath.Join(dir, "sleep.count")
+	curlCount := filepath.Join(dir, "curl.count")
+	env := []string{
+		"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"STUB_SLEEP_COUNT=" + sleepCount,
+		"STUB_RUNAWAY_CALLS=" + strconv.Itoa(keepRunawayCalls),
+		"STUB_CURL_COUNT=" + curlCount,
+		"STUB_REAL_CURL=" + filepath.Join(dir, "real-curl"),
+	}
+	// The stub signals its parent, which must be this shell and never the test.
+	wrapper := func(command string, calls int) (*exec.Cmd, string, error) {
+		cmd := exec.CommandContext(t.Context(), "sh", "-c", `i=0; while [ "$i" -lt "$1" ]; do `+command+`; i=$((i + 1)); done`, "sh", strconv.Itoa(calls))
+		cmd.Env = append(os.Environ(), env...)
+		out, err := cmd.Output()
+		return cmd, string(out), err
+	}
+	exists := func(path string) bool {
+		_, err := os.Stat(path)
+		return err == nil
+	}
+
+	t.Run("sleep", func(t *testing.T) {
+		t.Parallel()
+		cmd, _, err := wrapper("sleep 6", keepRunawayCalls-1)
+		require.NoError(t, err)
+		assert.Equal(t, 0, cmd.ProcessState.ExitCode())
+		require.False(t, exists(sleepCount+".runaway"), "the sleep stub writes no marker file before call number %d", keepRunawayCalls)
+
+		cmd, _, err = wrapper("sleep 6", 1)
+		require.Error(t, err)
+		assert.Equal(t, -1, cmd.ProcessState.ExitCode())
+		assert.Contains(t, cmd.ProcessState.String(), "signal: terminated")
+		require.True(t, exists(sleepCount+".runaway"), "the sleep stub writes the marker file at call number %d", keepRunawayCalls)
+		require.NoFileExists(t, filepath.Join(dir, "date.last"), "the stub read the clock")
+	})
+
+	t.Run("curl", func(t *testing.T) {
+		t.Parallel()
+		const read = "curl -s http://stub" + keepClusterRead
+		_, out, err := wrapper(read, keepRunawayCalls-1)
+		require.NoError(t, err)
+		assert.Equal(t, strings.Repeat("real response\n", keepRunawayCalls-1), out)
+		require.False(t, exists(curlCount+".runaway"), "the curl stub writes no marker file before read number %d", keepRunawayCalls)
+
+		cmd, out, err := wrapper(read, 1)
+		require.NoError(t, err)
+		assert.Equal(t, 0, cmd.ProcessState.ExitCode())
+		assert.Equal(t, `{"state":"active"}`, out)
+		require.True(t, exists(curlCount+".runaway"), "the curl stub writes the marker file at read number %d", keepRunawayCalls)
+		require.NoFileExists(t, filepath.Join(dir, "date.last"), "the stub read the clock")
+	})
 }
 
 // TestKeepRunWaitsForAKeptDownstreamToTurnActive asserts that on every slot a
