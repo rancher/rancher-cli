@@ -14,10 +14,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
-// cutCommandOnly lists the functions of config.go whose result is a command
-// and nothing else.
-var cutCommandOnly = map[string]bool{"LoginHintFor": true, "LogoutHintFor": true}
-
 // notLoggedInTexts are the messages of ErrNotLoggedInFor that hold a command,
 // each with the phrase it keeps when the config directory has characters a
 // terminal cannot show and the commands are left out.
@@ -53,9 +49,9 @@ func TestTheFactBeforeACommandSurvivesTheCutInTheNotLoggedInRemedies(t *testing.
 }
 
 // TestEveryRemedyBuilderOfConfigHasACutRow asserts every function of
-// config.go that writes a command of the CLI is ErrNotLoggedInFor, whose
-// messages the cut table holds, or is listed as a command alone; a new
-// builder fails until it is in one of them.
+// config.go that writes a command of the CLI with the Rancher marker is
+// ErrNotLoggedInFor, whose messages the cut table holds; a new builder fails
+// until it is there.
 func TestEveryRemedyBuilderOfConfigHasACutRow(t *testing.T) {
 	f, err := parser.ParseFile(token.NewFileSet(), "config.go", nil, 0)
 	require.NoError(t, err)
@@ -73,8 +69,6 @@ func TestEveryRemedyBuilderOfConfigHasACutRow(t *testing.T) {
 				if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "clierr" && x.Sel.Name == "Rancher" {
 					writes = true
 				}
-			case *ast.Ident:
-				writes = writes || x.Name == "LoginCommand"
 			}
 			return !writes
 		})
@@ -83,7 +77,8 @@ func TestEveryRemedyBuilderOfConfigHasACutRow(t *testing.T) {
 		}
 	}
 	for _, name := range found {
-		assert.True(t, rows[name] != cutCommandOnly[name], "%s is in exactly one of the cut table and the list of commands", name)
+		assert.True(t, rows[name], "%s is in the cut table", name)
 	}
-	assert.Equal(t, []string{"ErrNotLoggedInFor", "LoginHintFor", "LogoutHintFor"}, slices.Sorted(slices.Values(found)))
+	assert.Equal(t, []string{"ErrNotLoggedInFor"}, slices.Sorted(slices.Values(found)),
+		"LoginHintFor and LogoutHintFor build a Command and name no Rancher marker themselves")
 }

@@ -119,7 +119,7 @@ func ResolveProjectArgument(ctx context.Context, get Getter, local engine.Cluste
 	return resolveProject(ctx, get, local, clusterID, v, "")
 }
 
-func resolveProject(ctx context.Context, get Getter, local engine.ClusterClient, clusterID, v, flag string) (p Project, warning string, err error) {
+func resolveProject(ctx context.Context, get Getter, local engine.ClusterClient, clusterID, v string, flag clierr.CommandWord) (p Project, warning string, err error) {
 	list, err := Projects(ctx, get, clusterID)
 	if err != nil {
 		return Project{}, "", err
@@ -136,11 +136,11 @@ func resolveProject(ctx context.Context, get Getter, local engine.ClusterClient,
 	t := engine.MatchText{Noun: "project", Plural: "projects", Flag: flag,
 		NotFound: fmt.Sprintf("project not found: %s; it is not among the projects you can read on cluster %s; pass a project id or display name",
 			clierr.ShellQuote(v), c),
-		NotFoundHint: clierr.Rancher + " access projects --cluster " + c}
+		NotFoundHint: clierr.NewCommand("access projects").FlagValue("--cluster", clusterID)}
 	if len(list) == 0 {
 		t.NotFound = fmt.Sprintf("project not found: %s; you can read no project on cluster %s; a cluster owner or a Rancher administrator grants project roles",
 			clierr.ShellQuote(v), c)
-		t.NotFoundHint = ""
+		t.NotFoundHint = clierr.Command{}
 	}
 	id, warning, err := engine.MatchOne(v, ids, func(id string) string { return display[id] }, cands, t)
 	if err == nil {
@@ -220,7 +220,7 @@ func ProjectNamespaceObjects(ctx context.Context, downstream engine.ClusterClien
 	if st, ok := clierr.HTTPStatus(err); ok && st == http.StatusUnauthorized {
 		return nil, false, clierr.New(clierr.CodeRBAC, fmt.Sprintf(
 			"Rancher refused access to cluster %s (401 with no body, its answer to a user with no role on that cluster)", clierr.ShellQuote(clusterID))).
-			WithHint(clierr.Rancher + " access clusters").WithCause(err)
+			WithHintCommand(clierr.NewCommand("access clusters")).WithCause(err)
 	}
 	if err != nil {
 		return nil, false, collectionRefusal(r, err)

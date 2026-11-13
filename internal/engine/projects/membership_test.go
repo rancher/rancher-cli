@@ -323,8 +323,9 @@ func TestRemoveNamespaceProjectRefusalHint(t *testing.T) {
 	}{
 		{"namespace and cluster", in{s: map[string]string{"cluster": "c", "project": "p"}, a: []string{"ns"}},
 			clierr.Rancher + " project remove-namespace 'ns' --cluster 'c' --dry-run"},
-		{"values are shell-quoted", in{s: map[string]string{"cluster": "my cluster"}, a: []string{"it's"}},
-			clierr.Rancher + " project remove-namespace " + clierr.ShellQuote("it's") + " --cluster 'my cluster' --dry-run"},
+		{"values are shell-quoted", in{s: map[string]string{"cluster": "my cluster"}, a: []string{"my ns"}},
+			clierr.Rancher + " project remove-namespace 'my ns' --cluster 'my cluster' --dry-run"},
+		{"a name with an apostrophe is left out", in{s: map[string]string{"cluster": "c"}, a: []string{"it's"}}, ""},
 		{"no namespace", in{s: map[string]string{"cluster": "c"}}, ""},
 		{"empty namespace", in{s: map[string]string{"cluster": "c"}, a: []string{""}}, ""},
 		{"no cluster", in{a: []string{"ns"}}, ""},
@@ -332,7 +333,7 @@ func TestRemoveNamespaceProjectRefusalHint(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, hinter.ProjectRefusalHint(tt.in))
+			assert.Equal(t, tt.want, hinter.ProjectRefusalHint(tt.in).Field())
 		})
 	}
 }

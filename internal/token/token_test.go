@@ -206,7 +206,7 @@ func TestGetTokenNoClusterRejectsBeforeCacheProbe(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, clusterRequiredMessageWithUserID+clusterRequiredServerClause("https://r.ex"), ce.Message)
-	assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+	assert.Equal(t, engine.ClusterRequiredHint.Field(), ce.Hint)
 }
 
 // clusterRequiredMessageWithUserID is the refusal of a call with neither
@@ -1606,7 +1606,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		require.ErrorContains(t, ce, clusterRequiredMessageWithUserID)
 		assert.Equal(t, clusterRequiredMessageWithUserID+clusterRequiredServerClause("https://config.example"), ce.Message)
-		assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+		assert.Equal(t, engine.ClusterRequiredHint.Field(), ce.Hint)
 	})
 
 	t.Run("empty cluster with a user id is no error on the native path", func(t *testing.T) {

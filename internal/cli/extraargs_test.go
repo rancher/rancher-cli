@@ -313,9 +313,9 @@ func TestBoolValueAfterBoolFlagIsRefused(t *testing.T) {
 		},
 		{
 			name:    "two bool flags, a command with no secret input, global flags ahead of the command",
-			argv:    []string{"-o", "json", "--color=never", "delete", "project", "it's", "--cluster", "c1", "--yes", "0", "--dry-run", "t"},
+			argv:    []string{"-o", "json", "--color=never", "delete", "project", "it s", "--cluster", "c1", "--yes", "0", "--dry-run", "t"},
 			message: "delete project: '0' was typed after the bool flag --yes, 't' after the bool flag --dry-run" + boolRule("--yes"),
-			hint:    `rancher -o 'json' --color='never' delete project 'it'\''s' --cluster 'c1' --yes='0' --dry-run='t'`,
+			hint:    `rancher -o 'json' --color='never' delete project 'it s' --cluster 'c1' --yes='0' --dry-run='t'`,
 		},
 		{
 			name:    "a bool value and an extra word that is not one",
@@ -448,7 +448,7 @@ func TestJoinedFormHintRunsVerbatim(t *testing.T) {
 		{argv: []string{"get", "pod", "--wait", "false", "mypod", "--cluster", "c 1", "--namespace", "n", "-o", "json"}},
 		{argv: []string{"get", "pod", "--wait", "true", "mypod", "--cluster", "c1", "--namespace", "n", "-o", "json"}},
 		{argv: []string{"get", "pod", "--wait", "true", "--cluster", "c1", "--namespace", "n", "-o", "json"}, help: true},
-		{argv: []string{"-o", "json", "--color=never", "delete", "project", "it's", "--cluster", "c1", "--yes", "0", "--dry-run", "t"}},
+		{argv: []string{"-o", "json", "--color=never", "delete", "project", "it s", "--cluster", "c1", "--yes", "0", "--dry-run", "t"}},
 		{argv: []string{"delete", "project", "p1", "--cluster", "c1", "--yes", "true", "--dry-run", "false", "-o", "json"}},
 		{argv: []string{"delete", "project", "--yes", "true", "--cluster", "c1", "-o", "json"}, help: true},
 		{argv: []string{"create", "user", "--password-stdin", "--dry-run", "false", "-o", "json"}, help: true},

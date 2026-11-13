@@ -12,7 +12,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
-	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -187,17 +186,20 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 // break or a control character in it cannot end the line, and the command that
 // revokes the kubeconfig with the name quoted for a POSIX shell, and after
 // "--" when the name starts with a dash, so the command reads it as the name
-// and not as a flag. A name that is empty or that output.Printable would
-// change gets no command, because a command built from a changed name would
-// name another object. The second line holds the token names of the reply,
-// each in Go's quoted form, and the expiry the reply gives; a reply that
-// lists no token gets a line that says so.
+// and not as a flag. A name clierr.NotQuotable reports true for gets no
+// command, because a command built from a changed name would name another
+// object; the line gives the command that lists the kubeconfigs instead. The
+// second line holds the token names of the reply, each in Go's quoted form,
+// and the expiry the reply gives; a reply that lists no token gets a line that
+// says so.
 func kubeconfigHeader(name string, created *unstructured.Unstructured) string {
 	var first string
-	if name != "" && output.Printable(name) == name {
-		first = fmt.Sprintf("# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n", name, clierr.ShellQuoteArgs(" --apply --yes", name))
+	revoke := clierr.FileRevokeKubeconfig(name)
+	shown := fmt.Sprintf("# Kubeconfig %q - shown once", name)
+	if revoke.OK() {
+		first = clierr.Text(shown, clierr.Lead("; revoke with: "), revoke) + "\n"
 	} else {
-		first = fmt.Sprintf("# Kubeconfig %q - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show\n", name)
+		first = shown + "; no revoke command is shown because the name cannot be printed so that every supported shell reads it as written; find it with: " + revoke.Field() + "\n"
 	}
 	var quoted []string
 	tokens, _, _ := unstructured.NestedSlice(created.Object, "status", "tokens")
@@ -242,5 +244,5 @@ func kubeconfigExpiry(created *unstructured.Unstructured) string {
 // kubeconfigRecovery is the text that says how to create the kubeconfig
 // again: delete the one the server created, which this run recorded.
 func kubeconfigRecovery(name string) string {
-	return "to create it again, delete this one first: " + clierr.Rancher + " delete kubeconfig" + clierr.ShellQuoteArgs(" --apply --yes", name)
+	return clierr.Text("to create it again, delete this one first", clierr.Lead(": "), clierr.RevokeKubeconfig(name))
 }

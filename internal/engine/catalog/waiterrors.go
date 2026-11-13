@@ -19,8 +19,8 @@ import (
 
 // committedError is the GENERIC error of the wait with msg and the remedy
 // hint.
-func (w *appWait) committedError(msg, hint string) *clierr.Error {
-	return clierr.New(clierr.CodeGeneric, msg).WithRetryable(false).WithHint(hint).WithDetails(w.committed(hint))
+func (w *appWait) committedError(msg string, hint clierr.Command) *clierr.Error {
+	return clierr.New(clierr.CodeGeneric, msg).WithRetryable(false).WithHintCommand(hint).WithDetails(w.committed(hint.Field()))
 }
 
 func (w *appWait) committed(recovery string) clierr.CommittedContextDetails {
@@ -39,21 +39,22 @@ func (w *appWait) passThroughError(err error) error {
 			return err
 		}
 	}
-	recovery := w.t.getApp()
 	if ok && ce.Hint != "" {
-		recovery = ce.Hint
+		return engine.CommittedPartialSuccess(err, w.committed(ce.Hint)).WithRetryable(false)
 	}
-	out := engine.CommittedPartialSuccess(err, w.committed(recovery)).WithRetryable(false)
-	if out.Hint == "" {
-		out = out.WithHint(recovery)
-	}
-	return out
+	getApp := w.t.getApp()
+	return engine.CommittedPartialSuccess(err, w.committed(getApp.Field())).WithRetryable(false).WithHintCommand(getApp)
 }
 
 // abortedError is an authentication or certificate failure during the
 // wait: its code and hint are kept.
 func (w *appWait) abortedError(err error) *clierr.Error {
-	return engine.CommittedPartialSuccess(err, w.committed(w.t.getApp())).WithRetryable(false)
+	getApp := w.t.getApp()
+	out := engine.CommittedPartialSuccess(err, w.committed(getApp.Field())).WithRetryable(false)
+	if !getApp.OK() {
+		out = out.WithMessage(clierr.WithLeftOutNote(out.Message))
+	}
+	return out
 }
 
 // cancelledError is the error of a wait the caller ended: the request was
@@ -91,9 +92,8 @@ func (w *appWait) failureError(r revision, s *stall) *clierr.Error {
 	if desc := w.clean(r.description); desc != "" {
 		msg += ": " + desc
 	}
-	msg += fmt.Sprintf(" (status %s%s); the release stays installed; to remove it, add --apply --yes after reading the preview of %s",
-		w.clean(r.status), s.listClause(w), uninstallPreview(w.t))
-	return w.committedError(msg, w.t.getApp())
+	msg += fmt.Sprintf(" (status %s%s); the release stays installed", w.clean(r.status), s.listClause(w))
+	return w.committedError(clierr.Text(msg, clierr.Lead("; to remove it, add --apply --yes after reading the preview of "), uninstallPreview(w.t)), w.t.getApp())
 }
 
 // anotherChangeError is the error of a revision past the recorded one that
@@ -113,8 +113,8 @@ func (w *appWait) anotherChangeAfterFailureError(s stall, version int64) *clierr
 // leftPendingError is the error of this request's revision still pending
 // at the end of the margin.
 func (w *appWait) leftPendingError(s *stall) *clierr.Error {
-	return w.committedError(fmt.Sprintf("Helm stopped%s and left release %s pending; to remove it, add --apply --yes after reading the preview of %s",
-		s.clause(w), clierr.ShellQuote(w.t.release), uninstallPreview(w.t)), w.t.getApp())
+	return w.committedError(clierr.Text(fmt.Sprintf("Helm stopped%s and left release %s pending", s.clause(w), clierr.ShellQuote(w.t.release)),
+		clierr.Lead("; to remove it, add --apply --yes after reading the preview of "), uninstallPreview(w.t)), w.t.getApp())
 }
 
 // atStatusError is the error of this request's revision at a status other
@@ -151,16 +151,16 @@ func (w *appWait) noRevisionError(s stall, r *revision) *clierr.Error {
 	if r != nil {
 		msg += fmt.Sprintf("; release %s is at revision %d, status %s", clierr.ShellQuote(w.t.release), r.version, w.clean(r.status))
 	}
-	getOperation := clierr.Rancher + " get operation" + clierr.ShellQuoteArgs(
-		" --cluster "+clierr.ShellQuote(w.t.typedCluster)+" --namespace "+clierr.ShellQuote(w.op.OperationNamespace), w.op.OperationName)
-	return w.committedError(msg+"; read the operation with "+getOperation, getOperation)
+	getOperation := clierr.NewCommand("get operation").Arg(w.op.OperationName).
+		FlagValue("--cluster", w.t.typedCluster).FlagValue("--namespace", w.op.OperationNamespace)
+	return w.committedError(clierr.Text(msg, clierr.Lead("; read the operation with "), getOperation), getOperation)
 }
 
 // cutOffError is the error of this request's revision pending on the
 // App-only path after the Operation was read and is gone.
 func (w *appWait) cutOffError() *clierr.Error {
-	return w.committedError(fmt.Sprintf("Helm's run was cut off; release %s stays pending; to remove it, add --apply --yes after reading the preview of %s",
-		clierr.ShellQuote(w.t.release), uninstallPreview(w.t)), w.t.getApp())
+	return w.committedError(clierr.Text(fmt.Sprintf("Helm's run was cut off; release %s stays pending", clierr.ShellQuote(w.t.release)),
+		clierr.Lead("; to remove it, add --apply --yes after reading the preview of "), uninstallPreview(w.t)), w.t.getApp())
 }
 
 // uninstalledButFailedError is the error of a Stalled uninstall whose App is
@@ -168,7 +168,7 @@ func (w *appWait) cutOffError() *clierr.Error {
 func (w *appWait) uninstalledButFailedError(s stall, gone bool) *clierr.Error {
 	hint := w.t.getApp()
 	if gone {
-		hint = clierr.Rancher + " get apps --cluster " + clierr.ShellQuote(w.t.typedCluster) + " --namespace " + clierr.ShellQuote(w.t.namespace)
+		hint = clierr.NewCommand("get apps").FlagValue("--cluster", w.t.typedCluster).FlagValue("--namespace", w.t.namespace)
 	}
 	return w.committedError(fmt.Sprintf("release %s was uninstalled; a later step failed%s", clierr.ShellQuote(w.t.release), s.clause(w)), hint)
 }
@@ -218,8 +218,9 @@ func skipFactOf(install bool) string {
 }
 
 // uninstallPreview is the preview command of the uninstall of the release.
-func uninstallPreview(t actionTarget) string {
-	return clierr.Rancher + " app uninstall" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(t.namespace)+" --dry-run", t.release)
+func uninstallPreview(t actionTarget) clierr.Command {
+	return clierr.NewCommand("app uninstall").Arg(t.release).
+		FlagValue("--cluster", t.typedCluster).FlagValue("--namespace", t.namespace).Flag("--dry-run")
 }
 
 // summary is the last state the wait read: the Operation's conditions with

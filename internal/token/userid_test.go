@@ -142,7 +142,7 @@ func TestGetTokenClusterIsRequiredUnlessUserIDIsGiven(t *testing.T) {
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Equal(t, tc.want, ce.Message)
 			if strings.HasPrefix(tc.want, clusterRequiredMessageWithUserID) {
-				assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+				assert.Equal(t, engine.ClusterRequiredHint.Field(), ce.Hint)
 			}
 			assert.Len(t, store.cacheReads(), before, "no cache slot is read")
 			assert.Empty(t, ops, "and nothing else is read: no stamp, no config")

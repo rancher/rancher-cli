@@ -14,8 +14,14 @@ func texts() []string {
 		"to ask, run: rancher access can get pods",     // hit
 		"to ask, run: rancher access can --cluster c1", // hit
 		"to ask, run: rancher get users --nope",        // hit
-		"to ask, run: rancher get nothing-here",        // hit
-		"to ask, run: rancher get user <Name>",         // hit
+		clierr.NewCommand("get pod").Arg(name()).FlagValue("--cluster", name()).String(),
+		clierr.NewCommand("get pod").Arg(name()).FlagValue("--nope", name()).String(), // hit
+		clierr.NewCommand("inspekt cluster").Arg(name()),                              // hit
+		clierr.NewCommand("config update-server"),                                     // hit
+		clierr.NewCommand("config update-server").Arg(name()).FlagText(" --url <url>"),
+		clierr.Text("to ask", clierr.Lead(", run: "), clierr.NewCommand("get nothing-here")), // hit
+		"to ask, run: rancher get nothing-here",                                              // hit
+		"to ask, run: rancher get user <Name>",                                               // hit
 		"to ask, run: rancher get user <name>",
 		"to see the options, run: rancher completion --help",
 		"to ask, run: rancher get users -o json",

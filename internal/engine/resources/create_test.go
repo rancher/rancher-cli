@@ -341,7 +341,7 @@ func TestCreateResourceWithoutClusterGetsTheTextThatFits(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Equal(t, tc.want, ce.Message)
-			assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+			assert.Equal(t, engine.ClusterRequiredHint.Field(), ce.Hint)
 			assert.Empty(t, fac.clusterCalls)
 		})
 	}
@@ -493,6 +493,35 @@ func TestCreateResourceConfigMapOutsideProjectIsValidation(t *testing.T) {
 	require.ErrorContains(t, err, "ns-other")
 	require.ErrorContains(t, err, "p-1")
 	assert.Empty(t, client.creates)
+}
+
+// TestProjectRefusalLeavesOutTheHintForAnUnprintableValue asserts the refusal
+// of --project for creating a namespace keeps its constant command text, and
+// that a namespace name, cluster or project no shell reads as written leaves
+// the hint out and puts the note in the message.
+func TestProjectRefusalLeavesOutTheHintForAnUnprintableValue(t *testing.T) {
+	t.Parallel()
+	ns := mustKind(t, "namespace")
+	for name, v := range map[string]string{
+		"apostrophe":       "x'y",
+		"right quote":      "x\u2019y",
+		"zero width":       "x\u200by",
+		"double backslash": "x\\\\y",
+	} {
+		for field, args := range map[string][3]string{
+			"name":    {v, "prod", "web"},
+			"cluster": {"ns1", v, "web"},
+			"project": {"ns1", "prod", v},
+		} {
+			t.Run(field+" with "+name, func(t *testing.T) {
+				ce, ok := errors.AsType[*clierr.Error](ProjectRefusal(ns, OpCreate, args[0], args[1], args[2]))
+				require.True(t, ok)
+				assert.Empty(t, ce.Hint)
+				assert.Contains(t, ce.Message, "create namespace <name> --cluster <cluster> --project <project> --dry-run")
+				assert.Contains(t, ce.Message, clierr.LeftOutNote)
+			})
+		}
+	}
 }
 
 // TestCreateResourceProjectRefusalPrecedesEveryRequest asserts, through

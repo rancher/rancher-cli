@@ -196,6 +196,54 @@ func TestLookupBothFieldsOfOneObjectJoinsTheLabels(t *testing.T) {
 	assert.Len(t, ce.Candidates, 1)
 }
 
+// TestLookupLeavesOutTheGetCommandForAValueNoShellReadsAsWritten asserts an
+// object id, or a typed --cluster, that cannot be printed as one shell word
+// leaves the get command out of the hint and puts the note in the message, and
+// that the message still names the id.
+func TestLookupLeavesOutTheGetCommandForAValueNoShellReadsAsWritten(t *testing.T) {
+	t.Parallel()
+	values := map[string]string{
+		"apostrophe":       "u'1",
+		"right quote":      "u\u20191",
+		"zero width":       "u\u200b1",
+		"double backslash": "u\\\\1",
+	}
+	for name, id := range values {
+		t.Run("user id with "+name, func(t *testing.T) {
+			t.Parallel()
+			k := mustKind(t, "user")
+			client := &lookupClient{miss: kinds.NotFoundCurated(k, "alice", ""), objects: []unstructured.Unstructured{handleUserObj(id, "alice", "Alice")}}
+			ce := asClierr(t, lookupVerbs["get"](t, k, &recFactory{client: client}, input{args: []string{"alice"}}))
+			assert.Empty(t, ce.Hint)
+			assert.Contains(t, ce.Message, clierr.LeftOutNote)
+			assert.Contains(t, ce.Message, "'alice' is the username of user ")
+			assert.NotContains(t, ce.Message, clierr.Rancher+" get")
+		})
+		t.Run("project id with "+name, func(t *testing.T) {
+			t.Parallel()
+			k := mustKind(t, "project")
+			f := &projectListerFactory{
+				client:   &lookupClient{miss: kinds.NotFoundCurated(k, "Web", "")},
+				projects: []engine.ProjectRef{{ID: id, DisplayName: "Web"}},
+			}
+			ce := asClierr(t, lookupVerbs["get"](t, k, f, input{args: []string{"Web"}, s: map[string]string{"cluster": "c-x"}}))
+			assert.Empty(t, ce.Hint)
+			assert.Contains(t, ce.Message, clierr.LeftOutNote)
+		})
+		t.Run("project cluster with "+name, func(t *testing.T) {
+			t.Parallel()
+			k := mustKind(t, "project")
+			f := &projectListerFactory{
+				client:   &lookupClient{miss: kinds.NotFoundCurated(k, "Web", "")},
+				projects: []engine.ProjectRef{{ID: "p-1", DisplayName: "Web"}},
+			}
+			ce := asClierr(t, lookupVerbs["get"](t, k, f, input{args: []string{"Web"}, s: map[string]string{"cluster": "c" + id}}))
+			assert.Empty(t, ce.Hint)
+			assert.Contains(t, ce.Message, clierr.LeftOutNote)
+		})
+	}
+}
+
 // TestLookupSeveralMatchesStayNotFoundWithCandidates asserts two objects with
 // the typed value stay NOT_FOUND, list both sorted by id with their names, and
 // keep the list hint, for one-field and two-field rows.

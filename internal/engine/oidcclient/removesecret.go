@@ -96,7 +96,8 @@ func (c *removeSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 	// read first, per its contract - Plan-time validation (kept strict)
 	// would fail a naive re-run whose first attempt landed after the last
 	// request.
-	recovery := "read the client first: " + recoveryHint(clientName) + "; the removal landed iff the key is gone; re-run only while the key remains"
+	recovery := clierr.Text("read the client first", clierr.Lead(": "), recoveryCommand(clientName),
+		"; the removal landed iff the key is gone; re-run only while the key remains")
 	_, err := waitForOIDCClient(ctx, client, k.GVR, clientName, timeout, check,
 		func(last *unstructured.Unstructured) *clierr.Error {
 			return clierr.New(clierr.CodeGeneric,

@@ -411,7 +411,7 @@ func TestDoCuratedFlagsMatchKindsCurated(t *testing.T) {
 
 	flagFields := make([]string, 0, len(doCuratedFlags))
 	for _, cf := range doCuratedFlags {
-		flagFields = append(flagFields, cf.field)
+		flagFields = append(flagFields, string(cf.field))
 	}
 	assert.ElementsMatch(t, meta.Curated, flagFields)
 }
@@ -699,5 +699,25 @@ func TestCreateMachineConfigSetForeignKindHintArticle(t *testing.T) {
 			ce := requireValidation(t, err)
 			assert.Contains(t, ce.Message, tc.article+" "+tc.kind, "message article must match kind's initial vowel/consonant")
 		})
+	}
+}
+
+// TestCuratedCollisionMessageLeavesOutTheSetTextForAKeyThatCannotBePrinted
+// asserts a --set key the shell would misread leaves out the --set text,
+// keeps the flag to use instead and puts the left-out note in the message
+// once. A key a shell reads as written keeps its text.
+func TestCuratedCollisionMessageLeavesOutTheSetTextForAKeyThatCannotBePrinted(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "--set region sets the same field as --region; pass --region instead", curatedCollisionMessage("region", "region"))
+	assert.Equal(t, "--set 'my field' sets the same field as --region; pass --region instead", curatedCollisionMessage("my field", "region"))
+	for name, key := range map[string]string{
+		"apostrophe":       "re'gion",
+		"curly apostrophe": "re\u2019gion",
+		"zero width space": "re\u200bgion",
+		"double backslash": "re\\\\gion",
+		"empty":            "",
+	} {
+		msg := curatedCollisionMessage(key, "region")
+		assert.Equal(t, "a --set field sets the same field as --region; pass --region instead; "+clierr.LeftOutNote, msg, name)
 	}
 }

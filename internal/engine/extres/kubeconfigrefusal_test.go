@@ -143,7 +143,7 @@ func TestRefuseUnsupportedTokenLookupMessageHoldsTheLoginCommand(t *testing.T) {
 		login   string
 		command string
 	}{
-		{"prod's", `rancher auth login 'prod'\''s' --token-stdin`},
+		{"my login", `rancher auth login 'my login' --token-stdin`},
 		{"-x", `rancher auth login --token-stdin -- '-x'`},
 	} {
 		var asks int
@@ -152,6 +152,21 @@ func TestRefuseUnsupportedTokenLookupMessageHoldsTheLoginCommand(t *testing.T) {
 		assert.Empty(t, ce.Hint)
 		assert.Equal(t, lead+tc.command, clierr.ExpandRemedies(ce.Message, ""))
 		assert.Equal(t, lead+strings.Replace(tc.command, "rancher", "rancher --config '/d'", 1), clierr.ExpandRemedies(ce.Message, " --config '/d'"))
+	}
+}
+
+// TestRefuseUnsupportedTokenLookupLeavesOutTheLoginCommandForAnEntryAShellMisreads
+// asserts that a stored login name holding a quote, a curly quote, a
+// zero-width space or two backslashes in a row leaves the login command out:
+// the message keeps the RANCHER_CLI_TOKEN advice and carries the note once.
+func TestRefuseUnsupportedTokenLookupLeavesOutTheLoginCommandForAnEntryAShellMisreads(t *testing.T) {
+	t.Parallel()
+	for _, login := range []string{"prod's", "prod\u2019s", "prod\u200bs", `prod\\s`} {
+		var asks int
+		clients := versionFactory{c: &fakeClient{}, version: "v2.14.5", login: login, versionAsks: &asks}
+		ce := refuseUnsupportedTokenLookup(t.Context(), clients, lookupForbidden(t)).(*clierr.Error)
+		assert.Equal(t, "Rancher v2.14.5 cannot create a kubeconfig with the token this command used; use Rancher v2.15 or later, or set RANCHER_CLI_TOKEN to an API token; "+clierr.LeftOutNote, ce.Message, "%q", login)
+		assert.False(t, clierr.HasRemedy(ce.Message), "%q", login)
 	}
 }
 

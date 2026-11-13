@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -313,6 +314,29 @@ func TestPaddedWordsAreReadAsUrfaveReadsThem(t *testing.T) {
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Equal(t, tc.message, ce.Message)
 			assert.Equal(t, tc.hint, ce.Hint)
+			assert.Empty(t, rec.take(), "no request")
+		})
+	}
+}
+
+// TestABoolValueRefusalLeavesTheHintOutForAValueAShellMisreads asserts that a
+// typed flag value holding a quote, a curly quote, a zero-width space or two
+// backslashes in a row leaves the retyped command line out: the refusal keeps
+// its message and has no hint. Not parallel: it sets the process environment
+// and the captured command line.
+func TestABoolValueRefusalLeavesTheHintOutForAValueAShellMisreads(t *testing.T) {
+	restoreRawArgv(t)
+	rec := extraArgsEnv(t)
+	for _, value := range []string{"o'brien", "o\u2019brien", "o\u200bbrien", `o\\brien`} {
+		t.Run(strconv.QuoteToASCII(value), func(t *testing.T) {
+			root, err := BuildRoot("v-test")
+			require.NoError(t, err)
+			stderr, code := runAsMain(t, root, []string{"get", "pod", "p1", "--wait", "true", "--cluster", value, "-o", "json"})
+			assert.Equal(t, 2, code)
+			ce := renderedError(t, "json", stderr)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, "get pod: 'true' was typed after the bool flag --wait"+boolRule("--wait")+"; "+clierr.LeftOutNote, ce.Message)
+			assert.Empty(t, ce.Hint)
 			assert.Empty(t, rec.take(), "no request")
 		})
 	}

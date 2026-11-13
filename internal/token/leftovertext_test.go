@@ -291,7 +291,7 @@ func leftoverRows(t *testing.T) []leftoverRow {
 		return keptWarning(config.SupersededToken{Ref: *ref, UserID: userID}, server, "the server refused")
 	}
 	manual := func(it *revocationItem) string {
-		d := &Deletion{cfg: &config.Config{}, view: &config.Config{}, req: LocalDelete{Rerun: clierr.Rancher + " auth logout 'prod'"}}
+		d := &Deletion{cfg: &config.Config{}, view: &config.Config{}, req: LocalDelete{Rerun: clierr.NewCommand("auth logout").Arg("prod")}}
 		return d.manualWarning(it)
 	}
 	search := FateOf(clierr.CreateKnown, TokenKindV3, nil, false, "", "", RevokeOutcome{}, browser).Search
@@ -465,8 +465,9 @@ func TestEveryLeftoverTokenMessageOfEveryPackageThatBuildsOneNamesTheTokenTheCom
 // says, it builds no message about a token, or it names a person
 // another way. Keys are package.Function or package.Receiver.Method.
 var leftoverNotMessages = map[string]string{
+	"token.FailLogin":                          "calls the Revoke method of the login credential, which deletes the token the login made; the recovery text comes from ResidualRecovery, covered by its rows",
 	"auth.loginCmd.authenticateAndStore":       "builds the warning of auth login through LoginTokenWarning and ResidualRecovery, covered by the rows of those two for an ext, a v3 and a SAML kubeconfig token; login_test.go asserts the warning's noun and command for a v3 session token and a SAML kubeconfig token, and that the warning of an ext session token says it could not be revoked",
-	"clierr.RecoveryCommands":                  "returns the list and delete commands of a token for a message to name; it builds no message",
+	"clierr.Revoke":                            "returns the delete command of a token, with its list command, for a message to name; it builds no message",
 	"clierr.RecoverySequence":                  "a list of commands to run in order, not a message about a token",
 	"config.AdviseRecord":                      "chooses between the sequence of RecoverySequence and the text of noServerText, recordServerText or EntryOrigin, and writes no text of its own",
 	"configcmd.configDeleteServerCmd.Describe": "the help text of config delete-server; it names no token",
@@ -565,7 +566,7 @@ func testRowsHolding(t *testing.T, dir, name string, texts ...string) (rows int,
 // leftoverMessageCalls are the builders every message about a token the CLI
 // could not delete goes through, and the two that build the recovery commands
 // and the advice for a token record.
-var leftoverMessageCalls = []string{"signInLeftover", "v3AdminRemedy", "v3Remedy", "v3AdminDelete", "RecoveryCommands", "RecoverySequence", "AdviseRecord", "LoginTokenWarning", "ResidualRecovery"}
+var leftoverMessageCalls = []string{"signInLeftover", "v3AdminRemedy", "v3Remedy", "v3AdminDelete", "Revoke", "RecoverySequence", "AdviseRecord", "LoginTokenWarning", "ResidualRecovery"}
 
 // leftoverMessageWords are the words of a message about a token the CLI could
 // not delete, or about the command that deletes it: a function that holds a
@@ -703,8 +704,10 @@ func TestEveryLeftoverTokenMessageBuilderOfEveryPackageThatBuildsOneHasARowOrARe
 // leftoverCallersElsewhere lists the directories outside leftoverMessageDirs
 // that use an exported builder of leftoverMessageCalls, each with the
 // reason its texts need no row. Keys are directories relative to the
-// repository root, with forward slashes. None at the time of writing.
-var leftoverCallersElsewhere = map[string]string{}
+// repository root, with forward slashes.
+var leftoverCallersElsewhere = map[string]string{
+	"internal/engine/extres": "tokenRecovery names the delete of the token a create command made and recorded, as the way to create it again; the token is the command's own result, not one the CLI could not delete, and the tests of extres assert the text",
+}
 
 // TestNoPackageOutsideTheScannedOnesCallsAMessageBuilder asserts that every
 // use of an exported builder of leftoverMessageCalls (a call or a function

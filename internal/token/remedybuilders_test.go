@@ -112,7 +112,7 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 	dir := t.TempDir()
 
 	rows := map[string]func() []string{
-		"CreateKubeconfigRemedy": func() []string { return []string{CreateKubeconfigRemedy("c-1")} },
+		"CreateKubeconfigRemedy": func() []string { return []string{CreateKubeconfigRemedy("c-1").String()} },
 		"NoTerminalLogin": func() []string {
 			var out []string
 			for _, login := range []LoginRemedy{
@@ -121,18 +121,18 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 				NoTerminalLogin(cfg, "prod", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false),
 				NoTerminalLogin(cfg, "", "c-1", url, "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n", config.CASource{}, false),
 			} {
-				out = append(out, login.Text(), login.Instruction("to log in, pipe an API token to: "), login.Hint(), login.signIn("corp-ldap"))
+				out = append(out, login.Text(), login.Instruction("to log in, pipe an API token"), login.Hint().String(), login.signIn("corp-ldap").String())
 			}
 			return out
 		},
 		"RegenerateSteps": func() []string {
-			return []string{RegenerateSteps(clierr.Rancher, name, "c-1"), RegenerateSteps(clierr.Rancher, "", "")}
+			return []string{RegenerateSteps(clierr.NewCommand, name, "c-1").String(), RegenerateSteps(clierr.NewCommand, "", "").String()}
 		},
 		"ResidualRecovery": func() []string {
 			a, b := ResidualRecovery(clierr.TokenFate{Ref: ref}, name, "m", false)
 			c, d := ResidualRecovery(clierr.TokenFate{Marked: true}, name, "m", false)
 			e, f := ResidualRecovery(clierr.TokenFate{Ref: &TokenRef{Kind: TokenKindV3, Name: "token-v3"}}, name, "m", false)
-			return []string{a, b, c, d, e, f}
+			return []string{a, b.String(), c, d.String(), e, f.String()}
 		},
 		"signInLeftover": func() []string {
 			var out []string
@@ -160,10 +160,14 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			}
 		},
 		"namedEntryRoute": func() []string {
-			return []string{namedEntryRoute(name, "c-1", "prod"), namedEntryRoute("prod", "c-1", "staging"), namedEntryRoute("prod", "", "prod"), namedEntryNote("prod", "staging")}
+			route := func(name, cluster, current string) string {
+				steps, _ := namedEntryRoute(name, cluster, current)
+				return steps.String()
+			}
+			return []string{route(name, "c-1", "prod"), route("prod", "c-1", "staging"), route("prod", "", "prod"), namedEntryNote("prod", "staging")}
 		},
 		"Deletion.manualWarning": func() []string {
-			d := &Deletion{cfg: cfg, view: cfg, req: LocalDelete{Rerun: clierr.Rancher + " auth logout " + clierr.ShellQuote(name)}}
+			d := &Deletion{cfg: cfg, view: cfg, req: LocalDelete{Rerun: clierr.NewCommand("auth logout").Arg(name)}}
 			var out []string
 			for _, it := range []*revocationItem{
 				{source: sourceCache, ref: ref, server: url, owner: "u-abc12", entry: name, reason: reasonFailed},
@@ -238,9 +242,9 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			return []string{noTokenPermissionText("u-abc12", true), noTokenPermissionText("", true), noTokenPermissionText("u-abc12", false), noTokenPermissionText("", false),
 				noTokenPermissionTextOf("alice@example.com", name, true), noTokenPermissionTextOf("u-a\u202eb", "", false)}
 		},
-		"reLogin":          func() []string { a, b := reLogin(name); return []string{a, b} },
+		"reLogin":          func() []string { a, b := reLogin(name); return []string{a, b.String()} },
 		"revokedClause":    func() []string { return []string{revokedClause("the token", ref, RevokeOutcome{Result: ResultFailed})} },
-		"useServerCommand": func() []string { return []string{useServerCommand(name), useServerCommand("")} },
+		"useServerCommand": func() []string { return []string{useServerCommand(name).String(), useServerCommand("").String()} },
 		"useServerNote":    func() []string { return []string{useServerNote("prod"), useServerNote("")} },
 		"LoginRemedy.signIn": func() []string {
 			var out []string
@@ -252,7 +256,7 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 				NoTerminalLogin(nil, "", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false),
 				NoTerminalLogin(nil, "", "c-1", url, "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n", config.CASource{}, false),
 			} {
-				out = append(out, login.signIn("corp-ldap"))
+				out = append(out, login.signIn("corp-ldap").String())
 			}
 			return out
 		},
@@ -263,16 +267,16 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 				NoTerminalLogin(nil, "-x", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false),
 				NoTerminalLogin(nil, "", "c-1", url, "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n", config.CASource{}, false),
 			} {
-				out = append(out, login.pipedLogin())
+				out = append(out, login.pipedLogin().String())
 			}
 			return out
 		},
-		"kubeconfigRemedy": func() []string { return []string{kubeconfigRemedy("c-1"), kubeconfigRemedy("")} },
+		"kubeconfigRemedy": func() []string { return []string{kubeconfigRemedy("c-1").String(), kubeconfigRemedy("").String()} },
 		"deleteFailureText": func() []string {
-			return []string{deleteFailureText(`"prod"`, errors.New("the lock timed out"), clierr.Rancher+" auth delete-token 'prod'")}
+			return []string{deleteFailureText(`"prod"`, errors.New("the lock timed out"), clierr.NewCommand("auth delete-token").Arg("prod"))}
 		},
 		"Deletion.recovery": func() []string {
-			d := &Deletion{cfg: cfg, view: cfg, req: LocalDelete{Rerun: clierr.Rancher + " auth logout " + clierr.ShellQuote(name)}}
+			d := &Deletion{cfg: cfg, view: cfg, req: LocalDelete{Rerun: clierr.NewCommand("auth logout").Arg(name)}}
 			var out []string
 			for _, it := range []*revocationItem{
 				{source: sourceCache, ref: ref, server: url, owner: "u-abc12", entry: name, reason: reasonFailed},
@@ -285,14 +289,14 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			}
 			return out
 		},
-		"CreateKubeconfigRemedyEmpty": func() []string { return []string{CreateKubeconfigRemedy("")} },
+		"CreateKubeconfigRemedyEmpty": func() []string { return []string{CreateKubeconfigRemedy("").String()} },
 		"userCheck.relogin": func() []string {
 			a, b := u.relogin(cfg, name, true)
 			c, d := u.relogin(cfg, "prod", false)
 			e, f := u.relogin(cfg, name, false)
 			g, h := through.relogin(cfg, name, true)
 			i, j := through.relogin(cfg, "prod", false)
-			return []string{a, b, c, d, e, f, g, h, i, j}
+			return []string{a, b.String(), c, d.String(), e, f.String(), g, h.String(), i, j.String()}
 		},
 		"userCheck.entryNameTooLong": func() []string {
 			return append(errText(u.entryNameTooLong(cfg, config.MaxEntryNameLength+1)), errText(through.entryNameTooLong(cfg, config.MaxEntryNameLength+1))...)
@@ -301,7 +305,7 @@ func remedyBuilderRows(t *testing.T) map[string]func() []string {
 			a, b := through.authConfigRemedy(cfg, name, true)
 			c, d := through.authConfigRemedy(cfg, "prod", false)
 			e, f := through.authConfigRemedy(cfg, name, false)
-			return []string{a, b, c, d, e, f}
+			return []string{a, b.String(), c, d.String(), e, f.String()}
 		},
 		"userCheck.loginOfNewEntry": func() []string { return []string{u.loginOfNewEntry(cfg)} },
 		"userCheck.entryOwnerRefused": func() []string {

@@ -82,11 +82,11 @@ func lookupHandle(ctx context.Context, clients engine.ClusterClientFactory, clie
 	if len(matches) == 1 {
 		m := matches[0]
 		msg := base.Message + "; " + quoted + " is the " + strings.Join(m.labels, " and ") + " of " + k.Name + " " + m.id
-		getHint := clierr.Rancher + " get " + k.Name + clierr.ShellQuoteArgs("", m.id)
+		getHint := clierr.NewCommand("get").Word(k.Word()).Arg(m.id)
 		if k.Key == "project" {
-			getHint = clierr.Rancher + " get " + k.Name + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(ns), m.id)
+			getHint = getHint.FlagValue("--cluster", ns)
 		}
-		return base.WithMessage(msg).WithCandidates(candidates).WithHint(getHint)
+		return base.WithMessage(msg).WithCandidates(candidates).WithHintCommand(getHint)
 	}
 	labels := make([]string, 0, len(k.Handle.Lookup))
 	for _, f := range k.Handle.Lookup {
@@ -96,13 +96,13 @@ func lookupHandle(ctx context.Context, clients engine.ClusterClientFactory, clie
 	out := base.WithMessage(msg).WithCandidates(candidates)
 	switch {
 	case refused:
-		accessHint := clierr.Rancher + " access projects"
+		accessHint := clierr.NewCommand("access projects")
 		if k.Key == "project" {
-			accessHint = clierr.Rancher + " access projects --cluster " + clierr.ShellQuote(ns)
+			accessHint = accessHint.FlagValue("--cluster", ns)
 		}
-		out = out.WithHint(accessHint)
+		out = out.WithHintCommand(accessHint)
 	case out.Hint == "":
-		out = out.WithHint(clierr.Rancher + " get " + k.Aliases[0])
+		out = out.WithHintCommand(clierr.NewCommand("get").Word(k.AliasWord()))
 	}
 	return out
 }

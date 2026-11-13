@@ -30,29 +30,30 @@ func (c *refusePatchCmd) Describe() runtime.Descriptor {
 
 func (c *refusePatchCmd) Plan(_ context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		c.k.Name+": patch is not supported - "+c.k.NoPatchReason+"; read it with "+clierr.Rancher+" get"+c.readFlags(in))
+		clierr.Text(c.k.Name+": patch is not supported - "+c.k.NoPatchReason, clierr.Lead("; read it with "),
+			clierr.NewCommand("get").Arg(c.k.Name).With(c.readFlags(in))))
 }
 
-// readFlags returns what follows `get` in the read command: the row's name,
-// --cluster for a downstream row, and --namespace for a row whose namespace
-// policy is NSPlain or NSWorkspace (a Fleet workspace), when the user typed
-// one. The typed values are shell-quoted so the command works as printed. A
-// downstream row with no typed --cluster gets <cluster> as a placeholder.
-func (c *refusePatchCmd) readFlags(in runtime.Input) string {
-	var flags string
-	if c.k.Scope == kinds.Downstream {
-		cluster := "<cluster>"
-		if typed := in.String(FlagCluster); typed != "" {
-			cluster = clierr.ShellQuote(typed)
+// readFlags returns the flags of the read command: --cluster for a downstream
+// row, and --namespace for a row whose namespace policy is NSPlain or
+// NSWorkspace (a Fleet workspace), when the user typed one. A downstream row
+// with no typed --cluster gets <cluster> as a placeholder.
+func (c *refusePatchCmd) readFlags(in runtime.Input) clierr.CommandOption {
+	return func(cmd clierr.Command) clierr.Command {
+		if c.k.Scope == kinds.Downstream {
+			if typed := in.String(FlagCluster); typed != "" {
+				cmd = cmd.FlagValue("--cluster", typed)
+			} else {
+				cmd = cmd.FlagText(" --cluster <cluster>")
+			}
 		}
-		flags += " --cluster " + cluster
-	}
-	if c.k.Policy == kinds.NSPlain || c.k.Policy == kinds.NSWorkspace {
-		if ns := in.String(FlagNamespace); ns != "" {
-			flags += " --namespace " + clierr.ShellQuote(ns)
+		if c.k.Policy == kinds.NSPlain || c.k.Policy == kinds.NSWorkspace {
+			if ns := in.String(FlagNamespace); ns != "" {
+				cmd = cmd.FlagValue("--namespace", ns)
+			}
 		}
+		return cmd
 	}
-	return clierr.ShellQuoteArgs(flags, c.k.Name)
 }
 
 var _ runtime.MutatingCommand = (*refusePatchCmd)(nil)

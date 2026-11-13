@@ -475,7 +475,7 @@ func (f *clientFactory) ResolveClusterArgument(ctx context.Context, nameOrID str
 
 // resolveCluster is ResolveCluster with its warning naming flag, "" for a
 // positional value or a list entry.
-func (f *clientFactory) resolveCluster(ctx context.Context, nameOrID, flag string) (string, error) {
+func (f *clientFactory) resolveCluster(ctx context.Context, nameOrID string, flag clierr.CommandWord) (string, error) {
 	if nameOrID == "" || nameOrID == engine.LocalCluster {
 		return engine.LocalCluster, nil
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // writableCfg builds a Config backed by a real temp file, so cfg.Write()
@@ -273,15 +275,92 @@ func TestCommitCreateExistingDifferentURLConflictsWithUpdateHint(t *testing.T) {
 func TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint(t *testing.T) {
 	servers := map[string]config.Server{"qa1": {URL: "https://qa1.example.com", CA: cmdtest.CAPem1}}
 	cfg := writableCfg(t, servers, "")
-	probe := Probe{CanonicalURL: "https://qa1.example.com", CASelector: cmdtest.CAPem2, CABytes: cmdtest.CAPem2}
+	path := writeCAFile(t, cmdtest.CAPem2)
+	probe := Probe{CanonicalURL: "https://qa1.example.com", CASelector: path, CABytes: cmdtest.CAPem2}
 
 	_, err := commitCreate(cfg, "qa1", probe)
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Contains(t, ce.Message, "different CA")
-	assert.Equal(t, clierr.Rancher+" config update-server 'qa1' --cacert "+clierr.ShellQuote(cmdtest.CAPem2), ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config update-server 'qa1' --cacert "+clierr.ShellQuote(path), ce.Hint)
 	assert.Equal(t, config.Server{URL: "https://qa1.example.com", CA: cmdtest.CAPem1}, cfg.Servers["qa1"], "never a silent upsert")
+}
+
+// writeCAFile writes pem to a file in a temporary directory and returns its
+// path.
+func writeCAFile(t *testing.T, pem string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	require.NoError(t, os.WriteFile(path, []byte(pem), 0o600))
+	return path
+}
+
+// TestCommitCreateConflictLeavesOutTheCommandForACASelectorThatCannotBePrinted
+// asserts that a --cacert selector that holds a PEM (its newlines cannot be
+// printed in a command), a quote, a right single quotation mark, a zero width
+// space or two backslashes leaves the update-server command out: no hint, the
+// conflict message kept, and the note once.
+func TestCommitCreateConflictLeavesOutTheCommandForACASelectorThatCannotBePrinted(t *testing.T) {
+	dir := t.TempDir()
+	filePath := func(t *testing.T, name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(path, []byte(cmdtest.CAPem2), 0o600))
+		return path
+	}
+	for name, selector := range map[string]func(t *testing.T) string{
+		"an inline PEM":            func(*testing.T) string { return cmdtest.CAPem2 },
+		"a quote":                  func(t *testing.T) string { t.Helper(); return filePath(t, "it's.pem") },
+		"a right single quotation": func(t *testing.T) string { t.Helper(); return filePath(t, "it\u2019s.pem") },
+		"a zero width space":       func(t *testing.T) string { t.Helper(); return filePath(t, "ca\u200b.pem") },
+		"two backslashes": func(t *testing.T) string {
+			t.Helper()
+			testfs.SkipOnWindows(t, "a backslash is a path separator")
+			return filePath(t, `a\\b.pem`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			servers := map[string]config.Server{"qa1": {URL: "https://qa1.example.com", CA: cmdtest.CAPem1}}
+			cfg := writableCfg(t, servers, "")
+			probe := Probe{CanonicalURL: "https://qa1.example.com", CASelector: selector(t), CABytes: cmdtest.CAPem2}
+			_, err := commitCreate(cfg, "qa1", probe)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "%v", err)
+			require.Equal(t, clierr.CodeConflict, ce.Code, ce.Message)
+			assert.Empty(t, ce.Hint)
+			assert.Contains(t, ce.Message, "different CA")
+			assert.NotContains(t, ce.Message, "config update-server")
+			assert.Equal(t, 1, strings.Count(ce.Message, clierr.LeftOutNote))
+			assert.True(t, strings.HasSuffix(ce.Message, "; to add a new server choose a different name; "+clierr.LeftOutNote), ce.Message)
+		})
+	}
+}
+
+// TestCommitCreateURLConflictLeavesOutTheCommandForAValueThatCannotBePrinted
+// asserts the URL conflict of an entry, whose URL or name cannot be printed in
+// a command, has no hint, keeps its message and carries the note once.
+func TestCommitCreateURLConflictLeavesOutTheCommandForAValueThatCannotBePrinted(t *testing.T) {
+	for name, value := range map[string]string{
+		"a quote":                  "https://o'b.example",
+		"a right single quotation": "https://o\u2019b.example",
+		"a zero width space":       "https://o\u200bb.example",
+		"two backslashes":          `https://o\\b.example`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			servers := map[string]config.Server{"qa1": {URL: "https://old.example.com"}}
+			cfg := writableCfg(t, servers, "")
+			_, err := commitCreate(cfg, "qa1", Probe{CanonicalURL: value})
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "%v", err)
+			assert.Equal(t, clierr.CodeConflict, ce.Code)
+			assert.Empty(t, ce.Hint)
+			assert.Contains(t, ce.Message, "already points at https://old.example.com")
+			assert.NotContains(t, ce.Message, "config update-server")
+			assert.Equal(t, 1, strings.Count(ce.Message, clierr.LeftOutNote))
+			assert.True(t, strings.HasSuffix(ce.Message, "; to add a new server choose a different name; "+clierr.LeftOutNote), ce.Message)
+		})
+	}
 }
 
 // TestCommitCreateExistingSameURLClearedCAConflictsWithClearCacertHint asserts
@@ -499,8 +578,9 @@ func TestCommitCreateConflictHintsPutDoubleDashBeforeADashedName(t *testing.T) {
 
 	servers = map[string]config.Server{"-x": {URL: "https://qa1.example.com", CA: cmdtest.CAPem1}}
 	cfg = writableCfg(t, servers, "")
-	_, err = commitCreate(cfg, "-x", Probe{CanonicalURL: "https://qa1.example.com", CASelector: cmdtest.CAPem2, CABytes: cmdtest.CAPem2})
+	path := writeCAFile(t, cmdtest.CAPem2)
+	_, err = commitCreate(cfg, "-x", Probe{CanonicalURL: "https://qa1.example.com", CASelector: path, CABytes: cmdtest.CAPem2})
 	ce, ok = errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
-	assert.Equal(t, clierr.Rancher+" config update-server --cacert "+clierr.ShellQuote(cmdtest.CAPem2)+" -- '-x'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" config update-server --cacert "+clierr.ShellQuote(path)+" -- '-x'", ce.Hint)
 }

@@ -143,9 +143,12 @@ func TestTheRemediesOfTheOtherPackagesParseAndPassTheGates(t *testing.T) {
 	for _, ref := range []clierr.TokenRef{
 		{Kind: clierr.TokenKindExt, Name: "token-abc"}, {Kind: clierr.TokenKindV3, Name: "token-v3"}, {Kind: clierr.TokenKindExt, Name: "-x"},
 	} {
-		list, revoke := clierr.RecoveryCommands(ref)
-		texts = append(texts, list, revoke)
-		texts = append(texts, clierr.RecoverySequence(url, ref)...)
+		list := clierr.NewCommand("get tokens")
+		if ref.Kind == clierr.TokenKindV3 {
+			list = clierr.NewCommand("get management-tokens")
+		}
+		texts = append(texts, list.String(), clierr.Revoke(ref).String())
+		texts = append(texts, clierr.RecoverySequence(url, ref).Lines()...)
 	}
 	entry := config.ExecLoginPrefix + "r.example.com"
 	for _, withCA := range []map[string]bool{nil, {entry: true}} {
@@ -156,9 +159,9 @@ func TestTheRemediesOfTheOtherPackagesParseAndPassTheGates(t *testing.T) {
 		}
 	}
 	texts = append(texts, config.ErrNotLoggedInFor(map[string]string{"prod": url, "staging": url}, nil).Message,
-		config.ErrNotLoggedInFor(nil, nil).Message, config.TokenReuseOffCommand)
+		config.ErrNotLoggedInFor(nil, nil).Message, clierr.NewCommand(config.TokenReuseOffWords).String())
 	credential := clierr.LoginFailureDetails{CredentialRecovery: &clierr.CredentialRecovery{
-		Command: config.LogoutHintFor("prod"), DataLossRisk: "deletes the stored login",
+		Command: config.LogoutHintFor("prod").Field(), DataLossRisk: "deletes the stored login",
 	}}
 	texts = append(texts, remedytest.DetailTexts(credential.TextDetails())...)
 

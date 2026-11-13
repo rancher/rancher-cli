@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"testing"
 
@@ -553,4 +555,32 @@ func TestProjectNamespacesMalformedProjectIDIsValidationBeforeAnyRequest(t *test
 	assert.Equal(t, clierr.CodeValidation, codeOf(t, err).Code)
 	assert.Empty(t, down.lists)
 	assert.Empty(t, srv.requests())
+}
+
+// TestResolveProjectNotFoundLeavesOutTheHintForAClusterIdThatCannotBePrinted
+// asserts a cluster id the shell would misread leaves out the hint that lists
+// the projects on that cluster and adds the left-out note to the message
+// once.
+func TestResolveProjectNotFoundLeavesOutTheHintForAClusterIdThatCannotBePrinted(t *testing.T) {
+	t.Parallel()
+	for name, id := range map[string]string{
+		"apostrophe":       "c-'x",
+		"curly apostrophe": "c-\u2019x",
+		"zero width space": "c-\u200bx",
+		"double backslash": "c-\\\\x",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			path, err := url.PathUnescape(Request{Type: ProjectsType, Namespace: id}.Path())
+			require.NoError(t, err)
+			srv := newServer(t, map[string]route{path: {pages: onePage(steveProject(id, "p-2", "db"))}})
+			local := &fakeCluster{getErr: clierr.New(clierr.CodeNotFound, "gone")}
+			_, _, err = ResolveProject(t.Context(), srv.getter(), local, id, "web")
+			ce := codeOf(t, err)
+			assert.Equal(t, clierr.CodeNotFound, ce.Code)
+			assert.Empty(t, ce.Hint)
+			assert.Equal(t, 1, strings.Count(ce.Message, clierr.LeftOutNote), ce.Message)
+			assert.True(t, strings.HasPrefix(ce.Message, "project not found: 'web'; it is not among the projects you can read on cluster "), ce.Message)
+		})
+	}
 }

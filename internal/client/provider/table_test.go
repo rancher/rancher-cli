@@ -320,7 +320,8 @@ func TestTableReadsFailLikeListAndGet(t *testing.T) {
 		requireSameCLIError(t, want, got)
 		ce, ok := errors.AsType[*clierr.Error](got)
 		require.True(t, ok)
-		assert.Equal(t, kinds.ForbiddenHint(k, "list", "", ""), ce.Hint)
+		forbidden, _ := kinds.ForbiddenCommand(k, "list", "", "")
+		assert.Equal(t, forbidden.Field(), ce.Hint)
 		assert.NotEmpty(t, ce.Hint)
 
 		_, want = c.Get(t.Context(), k.GVR, "", "c-m-1")
@@ -328,7 +329,8 @@ func TestTableReadsFailLikeListAndGet(t *testing.T) {
 		requireSameCLIError(t, want, got)
 		ce, ok = errors.AsType[*clierr.Error](got)
 		require.True(t, ok)
-		assert.Equal(t, kinds.ForbiddenHint(k, "get", "", "c-m-1"), ce.Hint)
+		forbidden, _ = kinds.ForbiddenCommand(k, "get", "", "c-m-1")
+		assert.Equal(t, forbidden.Field(), ce.Hint)
 		assert.NotEmpty(t, ce.Hint)
 	})
 

@@ -445,15 +445,65 @@ func (s *remedyScan) classify(f *ast.File, path string) {
 					helpTable(name.Name, node.Values[i])
 				}
 			}
+			// The words of a constant of type clierr.CommandWord reach the
+			// command builder, which opens the command with the word rancher.
+			if isCommandWordType(node.Type) {
+				for _, v := range node.Values {
+					allLiterals(v, s.owned)
+				}
+			}
 		case *ast.AssignStmt:
 			for i, lhs := range node.Lhs {
 				if id, ok := lhs.(*ast.Ident); ok && i < len(node.Rhs) {
 					helpTable(id.Name, node.Rhs[i])
 				}
 			}
+		case *ast.CallExpr:
+			if isBuilderCall(node) {
+				for _, a := range node.Args {
+					allLiterals(a, s.owned)
+				}
+			}
 		}
 		return true
 	})
+}
+
+// isCommandWordType reports whether t is the type clierr.CommandWord, written
+// qualified or, inside package clierr, bare.
+func isCommandWordType(t ast.Expr) bool {
+	switch t := t.(type) {
+	case *ast.Ident:
+		return t.Name == "CommandWord"
+	case *ast.SelectorExpr:
+		id, ok := t.X.(*ast.Ident)
+		return ok && id.Name == "clierr" && t.Sel.Name == "CommandWord"
+	}
+	return false
+}
+
+// isBuilderCall reports whether call is a constructor of the command builder,
+// a method of its chain, a step of a sequence or the conversion to clierr.Lead:
+// the literals in its arguments are constant command words, flag spellings,
+// values and lead-ins the builder writes, not a command written as text.
+func isBuilderCall(call *ast.CallExpr) bool {
+	if _, ok := builderStart(call); ok {
+		return true
+	}
+	switch f := call.Fun.(type) {
+	case *ast.Ident:
+		return f.Name == "Lead" || f.Name == "NewSequence"
+	case *ast.SelectorExpr:
+		if id, ok := f.X.(*ast.Ident); ok && id.Name == "clierr" {
+			return f.Sel.Name == "Lead" || f.Sel.Name == "NewSequence"
+		}
+		if !builderMethods[f.Sel.Name] && f.Sel.Name != "Then" {
+			return false
+		}
+		recv, ok := ast.Unparen(f.X).(*ast.CallExpr)
+		return ok && isBuilderCall(recv)
+	}
+	return false
 }
 
 func (s *remedyScan) addHit(into *[]remedyHit, path string, pos token.Pos, rule, text string) {
@@ -1001,8 +1051,6 @@ const (
 // remedyExceptions are the texts the checks report that stay as they are,
 // recorded text by text; an added, a removed or a swapped text fails.
 var remedyExceptions = []remedyException{
-	{"internal/engine/kubeconfig/records.go", remedyCheckMarker, " set: rancher", false, whyKubeconfig, ""},
-	{"internal/engine/kubeconfig/records.go", remedyCheckMarker, "rancher", false, whyKubeconfig, ""},
 	{"internal/testrancher/fidelity/probes.go", remedyCheckWord, "delete user ", false, "a fidelity probe's step name, naming the request the step sends; never printed to a user", "delete user"},
 
 	{"internal/engine/resources/patch.go", remedyCheckWord, "patch operation %d targets %s; the server sets this field and a patch cannot change it", false, whyJSONPatchOperation, "patch operation"},
@@ -1016,17 +1064,17 @@ var remedyExceptions = []remedyException{
 	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d has no \"path\"", false, whyJSONPatchOperation, "patch operation"},
 	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d has the unknown operation %q; use add, remove, replace, move, copy or test", false, whyJSONPatchOperation, "patch operation"},
 	{"internal/engine/resources/patchinput.go", remedyCheckWord, "patch operation %d is a JSON %s, not an object with \"op\" and \"path\"", false, whyJSONPatchOperation, "patch operation"},
-	{"internal/engine/extres/kubeconfig.go", remedyCheckMarker, "# Kubeconfig %q - shown once; revoke with: rancher delete kubeconfig%s\n", false, "a header written into the kubeconfig file, read later from any shell", ""},
 	{"internal/engine/observe/bundle.go", remedyCheckMarker, "This is a rancher-cli support bundle.", true, "README text inside the support bundle, read later from any shell", ""},
 	{"internal/commands/configcmd/config_edit.go", remedyCheckMarker, "# No rancher CLI config file exists yet at this path.", true, "the comment of the file the editor opens", ""},
 	{"internal/runtime/schema_render.go", remedyCheckMarker, "rancher ", false, "a schema card's heading names the command it describes; schema output reads no directory", ""},
 	{"internal/runtime/schema_render.go", remedyCheckMarker, "rancher %s - %d commands", true, "the product name and version in the schema header", ""},
 	{"internal/clierr/remedy.go", remedyCheckMarker, "rancher", false, "the marker's definition", ""},
+	{"internal/clierr/command.go", remedyCheckMarker, "rancher --config ", false, "FileCommandIn writes file text that no invocation expands", ""},
+	{"internal/clierr/command.go", remedyCheckMarker, "rancher", false, "FileCommand and TypedLine write file text that no invocation expands", ""},
 	{"internal/clierr/remedy.go", remedyCheckMarker, "rancher", false, "ExpandRemedies writes the expanded word", ""},
 	{"internal/clierr/remedy.go", remedyCheckMarker, "rancher ", false, "DirectoryFree returns a command checked against the closed set", ""},
 	{"internal/clierr/remedy.go", remedyCheckMarker, "rancher ", false, "DirectoryFree returns a command checked against the closed set", ""},
 	{"internal/remedytest/textfields.go", remedyCheckMarker, "rancher", false, "a test helper's expected value", ""},
-	{"internal/cli/linerefusal.go", remedyCheckMarker, "rancher", false, "rebuilds the line the user typed, --config included when it was typed", ""},
 	{"internal/cli/parseline.go", remedyCheckMarker, "rancher", false, "names the command a message is about", ""},
 	{"internal/cli/execcommand_completion.go", remedyCheckMarker, "rancher", false, "offers the program name as a --exec-command value", ""},
 
@@ -1063,6 +1111,7 @@ var remedyExceptions = []remedyException{
 	{"internal/engine/provisioning/autoscaling.go", remedyCheckWord, "cluster set-autoscaling", false, "the name of the running autoscaling command, passed as the verb parameter of planClusterFamilyMutation", "cluster set-autoscaling"},
 	{"internal/engine/provisioning/autoscaling.go", remedyCheckWord, "cluster clear-autoscaling", false, "the name of the running autoscaling command, passed as the verb parameter of planClusterFamilyMutation", "cluster clear-autoscaling"},
 	{"internal/engine/extres/kubeconfigrefusal.go", remedyCheckWord, "create kubeconfig", false, "the Feature of the capability details: the command the server cannot serve, named as data; nothing to run", "create kubeconfig"},
+	{"internal/token/regenerate.go", remedyCheckWord, "config use-server", false, "the words of a command, passed to the constructor the caller names, which opens the command with the word rancher", "config use-server"},
 }
 
 // remedyScanOfTree is the checks over every production file of the

@@ -146,7 +146,7 @@ func (x *revFixture) deleteLogin(ctx context.Context, ref config.ServerRef) ([]s
 
 // req is a request for cmd over targets with the production login delete.
 func (x *revFixture) req(cmd DeleteCommand, targets ...string) LocalDelete {
-	return LocalDelete{Dir: x.dir, Command: cmd, Targets: targets, Cache: x.store, DeleteLogin: x.deleteLogin, Rerun: clierr.Rancher + " auth logout"}
+	return LocalDelete{Dir: x.dir, Command: cmd, Targets: targets, Cache: x.store, DeleteLogin: x.deleteLogin, Rerun: clierr.NewCommand("auth logout")}
 }
 
 // localDelete runs the local delete under the config lock, as a command does.

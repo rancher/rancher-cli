@@ -207,11 +207,10 @@ func IsCredentialIdentityError(err error) bool { return errors.Is(err, ErrCreden
 // it named.
 func identityError(dir, entry, problem string) error {
 	path := filepath.Join(identityDirPath(dir), identityFileName(entry))
-	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+	err := clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential identity record for %s is %s: %s; note the id it holds, delete any %s keychain entry whose account name starts with that id, then delete the file and log in again",
-		clierr.ShellQuote(entry), problem, path, keyringService)).
-		WithHint(LoginHintFor(entry)).
-		WithCause(ErrCredentialIdentity)
+		clierr.ShellQuote(entry), problem, path, keyringService))
+	return withLoginHint(err, entry).WithCause(ErrCredentialIdentity)
 }
 
 // identityListError renders a file in credstore-id/ that is named like a
@@ -222,7 +221,7 @@ func identityListError(dir, name, problem string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential identity record %s %s; move it aside and log in again - until then no server in this directory can be logged out",
 		filepath.Join(identityDirPath(dir), name), problem)).
-		WithHint(LoginCommand).
+		WithHintCommand(clierr.NewCommand(LoginWords)).
 		WithCause(ErrCredentialIdentity)
 }
 
@@ -233,7 +232,7 @@ func identityDirError(dir, problem string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential identity directory %s is %s; move it aside and log in again",
 		identityDirPath(dir), problem)).
-		WithHint(LoginCommand).
+		WithHintCommand(clierr.NewCommand(LoginWords)).
 		WithCause(ErrCredentialIdentity)
 }
 

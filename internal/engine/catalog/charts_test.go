@@ -396,13 +396,14 @@ func TestChartsRepoFailureIsTheError(t *testing.T) {
 
 // TestChartsMissingRepoIsNotFoundWithTheListCommand asserts a missing
 // ClusterRepo is NOT_FOUND whose remedy lists the repositories of the
-// cluster as the user typed it, shell-quoted.
+// cluster as the user typed it, shell-quoted; a cluster name that cannot be
+// printed leaves the command out and the message says so.
 func TestChartsMissingRepoIsNotFoundWithTheListCommand(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ typed, id, hint string }{
-		{"testcluster", "c-test", clierr.Rancher + " get clusterrepos --cluster 'testcluster'"},
-		{"local", "local", clierr.Rancher + " get clusterrepos --cluster 'local'"},
-		{"my 'odd' name", "c-test", clierr.Rancher + " get clusterrepos --cluster 'my '\\''odd'\\'' name'"},
+	for _, tc := range []struct{ typed, id, hint, message string }{
+		{"testcluster", "c-test", clierr.Rancher + " get clusterrepos --cluster 'testcluster'", "ClusterRepo 'nope' not found"},
+		{"local", "local", clierr.Rancher + " get clusterrepos --cluster 'local'", "ClusterRepo 'nope' not found"},
+		{"my 'odd' name", "c-test", "", "ClusterRepo 'nope' not found; " + clierr.LeftOutNote},
 	} {
 		t.Run(tc.typed, func(t *testing.T) {
 			t.Parallel()
@@ -414,7 +415,7 @@ func TestChartsMissingRepoIsNotFoundWithTheListCommand(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeNotFound, ce.Code)
 			assert.Equal(t, tc.hint, ce.Hint)
-			assert.Equal(t, "ClusterRepo 'nope' not found", ce.Message)
+			assert.Equal(t, tc.message, ce.Message)
 			assert.Equal(t, []string{"nope"}, cluster.gets)
 			assert.Empty(t, root.requests(), "a missing ClusterRepo reads no index")
 		})

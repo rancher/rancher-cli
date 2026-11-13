@@ -42,7 +42,7 @@ const (
 // ClusterRequiredHint lists the clusters of the config directory's current
 // server (or of RANCHER_CLI_URL when it is set), which is the server every
 // command runs against.
-var ClusterRequiredHint = clierr.Rancher + " access clusters"
+var ClusterRequiredHint = clierr.NewCommand("access clusters")
 
 // DownstreamClusterRequiredMessage is the refusal for a target that runs
 // only on a downstream cluster, given no --cluster.
@@ -62,7 +62,7 @@ func NamedClusterRequiredMessage(argName, kind string) string {
 // msg. The pipeline builds the refusal of a required --cluster from the
 // declaration's MissingMessage and MissingHint.
 func ClusterRequiredError(msg string) *clierr.Error {
-	return clierr.New(clierr.CodeValidation, msg).WithHint(ClusterRequiredHint)
+	return clierr.New(clierr.CodeValidation, msg).WithHintCommand(ClusterRequiredHint)
 }
 
 // ClusterFlag declares --cluster with the missing-cluster text that fits the
@@ -73,7 +73,7 @@ func ClusterRequiredError(msg string) *clierr.Error {
 // sets Desc on the result.
 func ClusterFlag(required, namespaced bool) runtime.ArgSpec {
 	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Required: required, Desc: "target cluster `id|name`",
-		MissingMessage: clusterRequiredMessage(namespaced), MissingHint: ClusterRequiredHint}
+		MissingMessage: clusterRequiredMessage(namespaced), MissingHint: ClusterRequiredHint.Field()}
 }
 
 // NamespaceFlag declares --namespace with kubectl's -n. A caller with its

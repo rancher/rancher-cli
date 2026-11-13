@@ -11,9 +11,9 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
-// unusableURLText is what a display shows for a URL that has no scheme and
-// host to show.
-const unusableURLText = "<unusable URL>"
+// UnusableURLDisplay is what DisplayServerURL shows for a URL that has no
+// scheme and host to show.
+const UnusableURLDisplay = "<unusable URL>"
 
 // unusableIdentityPrefix opens the identity of a URL that does not
 // canonicalize, so it never equals the identity of a usable server.
@@ -62,7 +62,9 @@ func (o ServerURLOrigin) source() string {
 
 // Text is the refusal of a server URL from this origin for reason, the error
 // credhelper.CheckServerURL returned or ErrServerURLScheme. The caller
-// already knows the URL cannot be used. The text holds no part of the URL.
+// already knows the URL cannot be used. The text holds no part of the URL. A
+// command in it is left out, with a note, when the entry name cannot be
+// printed.
 func (o ServerURLOrigin) Text(reason error) string {
 	head := "the server URL in " + o.source() + " cannot be used: " + reason.Error() + "; "
 	switch {
@@ -76,11 +78,13 @@ func (o ServerURLOrigin) Text(reason error) string {
 		}
 		return head + repair
 	case IsExecLoginEntryName(o.Entry):
-		return head + "if the entry holds a login, run: " + clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", o.Entry) +
-			"; then remove the entry with: " + clierr.Rancher + " config delete-server" + clierr.ShellQuoteArgs("", o.Entry)
+		repair := clierr.NewSequence().
+			Then("", clierr.NewCommand("auth logout").Arg(o.Entry)).
+			Then("then remove the entry with: ", clierr.NewCommand(DeleteServerWords).Arg(o.Entry))
+		return clierr.Text(head, clierr.Lead("if the entry holds a login, run: "), repair)
 	}
-	return head + "change the entry's URL with " + clierr.Rancher + " config update-server" +
-		clierr.ShellQuoteArgs(" --url <url>", o.Entry)
+	update := clierr.NewCommand("config update-server").Arg(o.Entry).FlagText(" --url <url>")
+	return clierr.Text(head, clierr.Lead("change the entry's URL with "), update)
 }
 
 // RemovedText is the refusal text for the current URL of an entry that the
@@ -99,9 +103,9 @@ func (o ServerURLOrigin) Refusal(reason error) *clierr.Error {
 // stays on the server that issued it, and the delete runs there, as the
 // token's owner (owner, when known) or an administrator.
 func recordServerText(ref clierr.TokenRef, reason error, owner string) string {
-	return "the server recorded for token " + clierr.ShellQuote(ref.Name) + " cannot be used: " + reason.Error() +
-		"; the token stays on the server that issued it; delete it there as " + recordPerson(owner) + " while signed in to that server: " +
-		clierr.Rancher + " delete token" + clierr.ShellQuoteArgs(" --apply --yes", ref.Name)
+	return clierr.Text("the server recorded for token "+clierr.ShellQuote(clierr.IDText(ref.Name))+" cannot be used: "+reason.Error()+
+		"; the token stays on the server that issued it; delete it there as "+recordPerson(owner)+" while signed in to that server",
+		clierr.Lead(": "), clierr.Revoke(ref))
 }
 
 // identityProblem is why the identity of a server cannot go into a command:
@@ -135,9 +139,11 @@ func recordPerson(owner string) string {
 
 // RecordAdvice is what to say about the server a token record names: the
 // recovery sequence that revokes the token, or, when no command can name the
-// server, the text that says what to do instead. Exactly one is set.
+// server, the text that says what to do instead. Exactly one is set. A
+// sequence with a value that cannot be printed is left out whole: its text
+// and json forms name the server and give the command that lists the tokens.
 type RecordAdvice struct {
-	Sequence []string
+	Sequence clierr.Sequence
 	// LoginAs is the user the sequence's first command logs in as: the
 	// token's owner exactly as recorded, empty when the owner is unknown. A
 	// text that names it passes it through clierr.IDText. Set only with
@@ -150,9 +156,9 @@ type RecordAdvice struct {
 // command can reach the server, and the token stays on it. The delete runs as
 // the token's owner (owner, when known) or an administrator.
 func noServerText(ref clierr.TokenRef, owner string) string {
-	return "no server is recorded for token " + clierr.ShellQuote(ref.Name) +
-		"; delete it as " + recordPerson(owner) + ", signed in to the server that issued it: " +
-		clierr.Rancher + " delete token" + clierr.ShellQuoteArgs(" --apply --yes", ref.Name)
+	return clierr.Text("no server is recorded for token "+clierr.ShellQuote(clierr.IDText(ref.Name))+
+		"; delete it as "+recordPerson(owner)+", signed in to the server that issued it",
+		clierr.Lead(": "), clierr.Revoke(ref))
 }
 
 // RecordSite says where a token record is reported: on which entry, and
@@ -221,7 +227,7 @@ func AdviseRecord(site RecordSite, recordServer, userID string, ref clierr.Token
 		}
 		return RecordAdvice{Text: recordServerText(ref, reason, owner)}
 	}
-	return RecordAdvice{Sequence: clierr.RecoverySequence(id, ref), LoginAs: owner}
+	return RecordAdvice{Sequence: clierr.RecoverySequence(id, ref).On(DisplayServerURL(id)), LoginAs: owner}
 }
 
 // stripURLUserinfo is steps 1 to 3 of the identity of a URL that does not
@@ -264,7 +270,7 @@ func DisplayServerURL(raw string) string {
 	if shown, ok := schemeAndHost(stripURLUserinfo(scheme + rest)); ok {
 		return shown
 	}
-	return unusableURLText
+	return UnusableURLDisplay
 }
 
 func schemeAndHost(raw string) (string, bool) {

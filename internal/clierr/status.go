@@ -14,8 +14,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// AuthStatusRemedy is the command a refused credential names.
-var AuthStatusRemedy = Rancher + " auth status"
+// AuthStatusCommand is the command a refused credential names.
+var AuthStatusCommand = NewCommand("auth status")
+
+// AuthStatusRemedy is AuthStatusCommand as the text of a hint.
+var AuthStatusRemedy = AuthStatusCommand.Field()
 
 // Request names the call a server status answers. A nil *Request means
 // nothing is known about the call: the texts for a refusal with no reason
@@ -330,7 +333,7 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 		if noReason || (wrapped && (reason == unauthorizedDefault || strings.EqualFold(reason, http.StatusText(http.StatusUnauthorized)))) {
 			ce := New(CodeAuth, prefix+unauthorizedText(req))
 			if req != nil && !req.NoCredential {
-				ce = ce.WithHint(AuthStatusRemedy)
+				ce = ce.WithHintCommand(AuthStatusCommand)
 			}
 			return ce
 		}

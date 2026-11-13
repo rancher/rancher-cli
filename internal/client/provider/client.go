@@ -222,7 +222,7 @@ func (r *dynamicClient) request(verb string, gvr schema.GroupVersionResource, ns
 	return &clierr.Request{Verb: verb, Group: gvr.Group, Resource: gvr.Resource, Name: name, Cluster: r.clusterID, Server: r.server()}
 }
 
-// forbiddenHint adds the caller-scoped command kinds.ForbiddenHint names
+// forbiddenHint adds the caller-scoped command kinds.ForbiddenCommand names
 // for an RBAC refusal of a kind verb that carries no hint yet.
 func (r *dynamicClient) forbiddenHint(gvr schema.GroupVersionResource, verb, ns, name string, err error) error {
 	ce, ok := errors.AsType[*clierr.Error](err)
@@ -230,8 +230,8 @@ func (r *dynamicClient) forbiddenHint(gvr schema.GroupVersionResource, verb, ns,
 		return err
 	}
 	if k, ok := kinds.ByGVR(gvr); ok {
-		if h := kinds.ForbiddenHint(k, verb, ns, name); h != "" {
-			ce.Hint = h
+		if c, ok := kinds.ForbiddenCommand(k, verb, ns, name); ok {
+			_ = ce.WithHintCommand(c)
 		}
 	}
 	return err

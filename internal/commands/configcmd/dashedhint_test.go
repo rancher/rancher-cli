@@ -13,9 +13,9 @@ import (
 // login entry, for a name that starts with a dash.
 func TestDeleteServerCommandPutsDoubleDashBeforeADashedName(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, clierr.Rancher+" config delete-server 'prod'", deleteServerCommand("prod"))
-	assert.Equal(t, clierr.Rancher+" config delete-server -- '-h'", deleteServerCommand("-h"))
-	assert.Equal(t, clierr.Rancher+" config delete-server -- '--1-8443'", deleteServerCommand("--1-8443"))
+	assert.Equal(t, clierr.Rancher+" config delete-server 'prod'", deleteServerCommand("prod").String())
+	assert.Equal(t, clierr.Rancher+" config delete-server -- '-h'", deleteServerCommand("-h").String())
+	assert.Equal(t, clierr.Rancher+" config delete-server -- '--1-8443'", deleteServerCommand("--1-8443").String())
 	err := execLoginURLChangeRefused("-x")
 	assert.ErrorContains(t, err, "log it out first if it holds a login: "+clierr.Rancher+" auth logout -- '-x'; then delete it: "+clierr.Rancher+" config delete-server -- '-x'")
 }

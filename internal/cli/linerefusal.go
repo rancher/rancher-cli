@@ -126,7 +126,7 @@ func boolValueRefusal(p parsedLine) *clierr.Error {
 		if isBoolValueWord(leaf.words, i) {
 			vals = append(vals, runtime.BoolValue{Index: len(args) - 1, Flag: leaf.words[i-1].text})
 			skipped[w.index] = true
-			joined[leaf.words[i-1].index] = "=" + clierr.ShellQuote(strings.TrimSpace(w.text))
+			joined[leaf.words[i-1].index] = strings.TrimSpace(w.text)
 		}
 	}
 	if len(vals) == 0 {
@@ -136,22 +136,28 @@ func boolValueRefusal(p parsedLine) *clierr.Error {
 }
 
 // hintLine writes the command line typed, each word as typed, with each
-// bool value joined to its flag, so the line runs as written: command names
-// bare, the words of the leaf and flag values quoted. A word no level read
-// is the command name typed after a "--", which a group hands on: every
-// other word of a line that reaches a leaf is read by a level.
+// bool value joined to its flag (the value in joined, by the index of its
+// flag), so the line runs as written: command names bare, the words of the
+// leaf and flag values quoted. A word no level read is the command name typed
+// after a "--", which a group hands on: every other word of a line that
+// reaches a leaf is read by a level. The result is empty when a word cannot
+// be printed so that every supported shell reads it as written.
 func hintLine(argv []string, byIndex map[int]lineWord, inLeaf, skipped map[int]bool, joined map[int]string) string {
-	parts := []string{"rancher"}
+	line := clierr.NewTypedLine()
 	for i, word := range argv {
 		switch w, read := byIndex[i]; {
 		case skipped[i]:
 		case read:
-			parts = append(parts, quoteWord(w.tailWord, w.kind == plainWord && !inLeaf[i])+joined[i])
+			if value, ok := joined[i]; ok {
+				line = line.Joined(w.text, value)
+				continue
+			}
+			line = typedWord(line, w.tailWord, w.kind == plainWord && !inLeaf[i])
 		default:
-			parts = append(parts, word)
+			line = line.Bare(word)
 		}
 	}
-	return strings.Join(parts, " ")
+	return line.Field()
 }
 
 // isBoolValueWord reports whether words[i] is a positional word that reads
@@ -161,17 +167,17 @@ func isBoolValueWord(words []lineWord, i int) bool {
 	return i > 0 && !words[i].unread && isBoolValueAfter(words[i-1].tailWord, words[i].tailWord)
 }
 
-// quoteWord writes w for a command line: a flag as typed with a joined
-// value quoted, "--" as typed, a word bare when bare is set (a command
-// name) and quoted otherwise, like a flag's value.
-func quoteWord(w tailWord, bare bool) string {
+// typedWord adds w to line: a flag as typed with a joined value quoted, "--"
+// as typed, a word bare when bare is set (a command name) and quoted
+// otherwise, like a flag's value.
+func typedWord(line clierr.TypedLine, w tailWord, bare bool) clierr.TypedLine {
 	switch {
 	case w.kind == flagWord && w.joined:
 		name, value, _ := strings.Cut(w.text, "=")
-		return name + "=" + clierr.ShellQuote(value)
+		return line.Joined(name, value)
 	case w.kind == flagWord, w.kind == endWord, bare:
-		return w.text
+		return line.Bare(w.text)
 	default:
-		return clierr.ShellQuote(w.text)
+		return line.Value(w.text)
 	}
 }

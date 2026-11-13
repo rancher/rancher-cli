@@ -105,13 +105,13 @@ const (
 // that shows the app of the Helm release the operation ran for, read from the
 // operation's status.releaseName and status.namespace. It gives no command
 // when one of them or the typed cluster is empty: get app requires --cluster.
-func operationStalledRemedy(obj *unstructured.Unstructured, cluster string) string {
+func operationStalledRemedy(obj *unstructured.Unstructured, cluster string) (clierr.Command, bool) {
 	release, _, _ := unstructured.NestedString(obj.Object, "status", "releaseName")
 	ns, _, _ := unstructured.NestedString(obj.Object, "status", "namespace")
 	if release == "" || ns == "" || cluster == "" {
-		return ""
+		return clierr.Command{}, false
 	}
-	return clierr.Rancher + " get app" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(cluster)+" --namespace "+clierr.ShellQuote(ns), release)
+	return clierr.NewCommand("get app").Arg(release).FlagValue("--cluster", cluster).FlagValue("--namespace", ns), true
 }
 
 type Kind struct {
@@ -160,13 +160,13 @@ type Kind struct {
 	// command that shows why a wait stopped on Stalled=True; the error of that
 	// wait carries it as its hint. It is for a kind whose Stalled message does
 	// not say why. obj is the observed object and cluster is --cluster as the
-	// user typed it ("" when none). It returns "" when obj or cluster lacks a
-	// value the command needs, and then the error carries no command. A command it writes
-	// starts with clierr.Rancher and passes every positional value through
-	// clierr.ShellQuoteArgs and every flag value through clierr.ShellQuote.
+	// user typed it ("" when none). It returns false when obj or cluster lacks
+	// a value the command needs, and then the error carries no command. The
+	// command it returns is built with clierr.NewCommand, which leaves out a
+	// value that cannot be printed.
 	// Every row with WaitFailsOnStalled sets this or is listed with its reason
 	// in the guard test of this package.
-	StalledRemedy func(obj *unstructured.Unstructured, cluster string) string
+	StalledRemedy func(obj *unstructured.Unstructured, cluster string) (clierr.Command, bool)
 	// DeleteCascadeWarning, when non-empty, is appended to the generic
 	// delete's Effect warnings: a plain statement of what the server removes
 	// beyond the named object. Advisory only, never a gate (Destructive
@@ -335,6 +335,16 @@ func hintToken(k Kind) string {
 	return Plural(strings.ReplaceAll(k.Name, "-", ""))
 }
 
+// Word is the kind's CLI name as a command word. The kinds table is a
+// reviewed table whose Name values are constants; this is one of the two
+// conversions of a non-constant string to clierr.CommandWord that the
+// command-word conformance rules allow.
+func (k Kind) Word() clierr.CommandWord { return clierr.CommandWord(k.Name) }
+
+// AliasWord is the word NotFoundCurated's list hint names: the kind's first
+// alias, or the plural of its name without hyphens when it has none.
+func (k Kind) AliasWord() clierr.CommandWord { return clierr.CommandWord(hintToken(k)) }
+
 // NotFoundCurated returns the curated NOT_FOUND error for a named-get miss:
 // "<kind> not found: <name>" with a hint naming the list command. The dynamic
 // client calls this after mapErr when ByGVR resolves the GVR to a kind row -
@@ -350,32 +360,32 @@ func hintToken(k Kind) string {
 // through untouched. Only hint-less NOT_FOUNDs (the raw apiserver passthrough)
 // get the "<kind> not found: <name>" treatment.
 func NotFoundCurated(k Kind, name, clusterID string) error {
-	hint := clierr.Rancher + " get " + hintToken(k)
+	hint := clierr.NewCommand("get").Word(k.AliasWord())
 	if k.Scope == Downstream {
-		hint += " --cluster " + clierr.ShellQuote(clusterID)
+		hint = hint.FlagValue("--cluster", clusterID)
 	}
 	return clierr.New(clierr.CodeNotFound, k.Name+" not found: "+name).
-		WithHint(hint)
+		WithHintCommand(hint)
 }
 
-// ForbiddenHint is the caller-scoped command for an RBAC refusal of a
-// kind verb, or "" when there is none: the generated verbs keep kubectl's
+// ForbiddenCommand is the caller-scoped command for an RBAC refusal of a
+// kind verb, and false when there is none: the generated verbs keep kubectl's
 // semantics on the local cluster's proxy, where Rancher answers some
 // management kinds only for users with access to the local cluster, and
 // the access and inspect commands answer from what the caller can read.
 // namespace and name are the values the request carried.
-func ForbiddenHint(k Kind, verb, namespace, name string) string {
+func ForbiddenCommand(k Kind, verb, namespace, name string) (clierr.Command, bool) {
 	switch {
 	case k.Key == "managementcluster" && verb == "list":
-		return clierr.Rancher + " access clusters"
+		return clierr.NewCommand("access clusters"), true
 	case k.Key == "managementcluster" && verb == "get" && name != "":
-		return clierr.Rancher + " inspect cluster" + clierr.ShellQuoteArgs("", name)
+		return clierr.NewCommand("inspect cluster").Arg(name), true
 	case k.Key == "project" && verb == "list" && namespace != "":
-		return clierr.Rancher + " access projects --cluster " + clierr.ShellQuote(namespace)
+		return clierr.NewCommand("access projects").FlagValue("--cluster", namespace), true
 	case k.Key == "project" && verb == "list":
-		return clierr.Rancher + " access projects"
+		return clierr.NewCommand("access projects"), true
 	}
-	return ""
+	return clierr.Command{}, false
 }
 
 // groupResource is the (Group, Resource) pair used as a map key for O(1)

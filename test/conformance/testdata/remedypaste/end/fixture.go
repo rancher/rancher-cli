@@ -15,12 +15,14 @@ func texts() []string {
 		"use `rancher get users` now",
 		"use 'rancher get users' now",
 		"run:\nrancher get users\nthen check it",
-		"run: rancher get users, then check it",    // hit
-		"(use: rancher config use-server x)",       // hit
-		"run rancher config delete-server x again", // hit
-		"run: rancher get users # note",            // hit
-		"run: rancher get users rancher get pods",  // hit
-		"after it ends, rancher get users.",        // hit
+		"run: rancher get users, then check it",                                             // hit
+		"(use: rancher config use-server x)",                                                // hit
+		"run rancher config delete-server x again",                                          // hit
+		"run: rancher get users # note",                                                     // hit
+		"run: rancher get users rancher get pods",                                           // hit
+		clierr.Text("run", clierr.Lead(": "), clierr.NewCommand("get users"), " again now"), // hit
+		clierr.Text("run", clierr.Lead(": "), clierr.NewCommand("get users"), "; then check it"),
+		"after it ends, rancher get users.", // hit
 		"run: " + clierr.Rancher + " get users",
 		fmt.Sprintf("run: %s get users and look", clierr.Rancher), // hit
 		fmt.Sprintf("run: %s get users", clierr.Rancher),

@@ -148,10 +148,11 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 // resourceName of the error's details in the JSON output.
 func userLookupRecovery(userID string) string {
 	if len(validation.IsDNS1123Subdomain(userID)) == 0 {
-		return clierr.Rancher + " get user" + clierr.ShellQuoteArgs(" -o json", userID)
+		return clierr.Text(clierr.NewCommand("get user").Arg(userID).FlagText(" -o json"))
 	}
-	return "the user id " + clierr.ShellQuote(clierr.IDText(userID)) + " is not a Rancher user id, and the CLI prints no command for it; " +
-		"the exact id is in the JSON output (-o json), field details.resourceName; find the user with: " + clierr.Rancher + " get users -o json"
+	return clierr.Text("the user id "+clierr.ShellQuote(clierr.IDText(userID))+" is not a Rancher user id, and the CLI prints no command for it; "+
+		"the exact id is in the JSON output (-o json), field details.resourceName; find the user",
+		clierr.Lead(" with: "), clierr.NewCommand("get users").FlagText(" -o json"))
 }
 
 // passwordUpdated reports whether created's status carries a True

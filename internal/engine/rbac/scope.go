@@ -2,7 +2,6 @@ package rbac
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -76,16 +75,18 @@ func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in r
 		"a scope is required: --project with --cluster, --cluster, or --global")
 }
 
-// Flags renders the scope as the --project/--cluster/--global flags an
-// equivalent grant or revoke invocation needs, shell-quoted, for splicing
-// into a hint that names a complete paste-valid command.
-func (s Scope) Flags() string {
-	switch s.Kind {
-	case ScopeProject:
-		return fmt.Sprintf(" --project %s --cluster %s", clierr.ShellQuote(s.ProjectID), clierr.ShellQuote(s.Cluster))
-	case ScopeCluster:
-		return fmt.Sprintf(" --cluster %s", clierr.ShellQuote(s.Cluster))
-	default: // ScopeGlobal
-		return " --global"
+// Flags is the --project/--cluster/--global flags an equivalent grant or
+// revoke invocation needs, for a hint that names a complete paste-valid
+// command.
+func (s Scope) Flags() clierr.CommandOption {
+	return func(c clierr.Command) clierr.Command {
+		switch s.Kind {
+		case ScopeProject:
+			return c.FlagValue("--project", s.ProjectID).FlagValue("--cluster", s.Cluster)
+		case ScopeCluster:
+			return c.FlagValue("--cluster", s.Cluster)
+		default: // ScopeGlobal
+			return c.Flag("--global")
+		}
 	}
 }

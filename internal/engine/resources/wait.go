@@ -72,15 +72,15 @@ func invalidForErr(forExpr string) *clierr.Error {
 // --cluster, which the command repeats.
 type stalledRule struct {
 	fail    bool
-	remedy  func(obj *unstructured.Unstructured, cluster string) string
+	remedy  func(obj *unstructured.Unstructured, cluster string) (clierr.Command, bool)
 	cluster string
 }
 
-// remedyFor writes the command the rule's remedy gives for the observed
-// object, or "" when the rule has no remedy.
-func (s stalledRule) remedyFor(obj *unstructured.Unstructured) string {
+// remedyFor is the command the rule's remedy gives for the observed object,
+// and false when the rule has no remedy or it has no command for the object.
+func (s stalledRule) remedyFor(obj *unstructured.Unstructured) (clierr.Command, bool) {
 	if s.remedy == nil {
-		return ""
+		return clierr.Command{}, false
 	}
 	return s.remedy(obj, s.cluster)
 }
@@ -155,8 +155,8 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 						msg = "condition Stalled=True"
 					}
 					stalledErr := clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, output.Printable(msg)))
-					if remedy := stalled.remedyFor(obj); remedy != "" {
-						stalledErr = stalledErr.WithHint(remedy)
+					if remedy, ok := stalled.remedyFor(obj); ok {
+						stalledErr = stalledErr.WithHintCommand(remedy)
 					}
 					return engine.WaitContinue, stalledErr
 				}
@@ -324,7 +324,7 @@ func settled(obj *unstructured.Unstructured) bool {
 // Applied only to kinds that opted into Stalled semantics.
 const freshWindow = 30 * time.Second
 
-func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns string) string {
+func freshSuccessWarning(obj *unstructured.Unstructured, kindName clierr.CommandWord, name, ns string) string {
 	created := obj.GetCreationTimestamp()
 	if created.IsZero() {
 		return ""
@@ -341,13 +341,13 @@ func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns stri
 	} else {
 		when = waitElapsed(elapsed) + " after creation"
 	}
-	recheck := clierr.Rancher + " get " + kindName + clierr.ShellQuoteArgs("", name)
+	recheck := clierr.NewCommand("get").Word(kindName).Arg(name)
 	if ns != "" {
 		// The re-check must target the same namespace the wait resolved -
 		// a copy-pasted command falling back to the kind's default
 		// workspace could 404 or, worse, report a same-named stranger.
-		recheck = clierr.Rancher + " get " + kindName + clierr.ShellQuoteArgs(" --namespace "+clierr.ShellQuote(ns), name)
+		recheck = recheck.FlagValue("--namespace", ns)
 	}
-	return fmt.Sprintf("wait satisfied %s - the status of a new %s may be set before its controller has reconciled it; re-check shortly with: %s",
-		when, kindName, recheck)
+	return clierr.Text(fmt.Sprintf("wait satisfied %s - the status of a new %s may be set before its controller has reconciled it",
+		when, kindName), clierr.Lead("; re-check shortly with: "), recheck)
 }

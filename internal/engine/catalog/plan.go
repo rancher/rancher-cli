@@ -128,7 +128,7 @@ func operationRunning(t actionTarget, op string) error {
 	return clierr.New(clierr.CodeConflict, fmt.Sprintf(
 		"operation %s for release %s in namespace %s may still be running; Rancher runs a new one for each request",
 		clierr.ShellQuote(op), clierr.ShellQuote(t.release), clierr.ShellQuote(t.namespace))).
-		WithHint(clierr.Rancher + " get operation" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(t.namespace), op))
+		WithHintCommand(clierr.NewCommand("get operation").Arg(op).FlagValue("--cluster", t.typedCluster).FlagValue("--namespace", t.namespace))
 }
 
 // operationsNotChecked is the warning when the caller cannot list
@@ -230,18 +230,17 @@ func actionResult(verb string, t actionTarget, a actionAnswer, canReadOperation 
 	if verb == "install" {
 		warnings = append(warnings, noAppNote)
 	}
-	var follow []string
+	var commands []clierr.Command
 	if canReadOperation {
-		follow = append(follow, clierr.Rancher+" get operation"+clierr.ShellQuoteArgs(
-			" --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(a.OperationNamespace)+" --wait", a.OperationName))
+		commands = append(commands, clierr.NewCommand("get operation").Arg(a.OperationName).
+			FlagValue("--cluster", t.typedCluster).FlagValue("--namespace", a.OperationNamespace).Flag("--wait"))
 	}
-	follow = append(follow, t.getApp())
+	commands = append(commands, t.getApp())
+	follow, followText := followUp(commands)
 	var text strings.Builder
 	fmt.Fprintf(&text, "app %s: Rancher accepted the %s request; operation %s in namespace %s runs Helm\n",
 		t.release, verb, a.OperationName, a.OperationNamespace)
-	for _, f := range follow {
-		text.WriteString("follow it with: " + f + "\n")
-	}
+	text.WriteString(followText)
 	return runtime.Result{
 		Kind: "AppOperation",
 		Data: result{
@@ -254,24 +253,44 @@ func actionResult(verb string, t actionTarget, a actionAnswer, canReadOperation 
 	}
 }
 
+// followUp is the commands of a result that can be printed, as the result's
+// followUp list (empty, never nil), and their lines of text. A command left out
+// is missing from both, and one last line carries clierr.LeftOutNote.
+func followUp(commands []clierr.Command) ([]string, string) {
+	list := []string{}
+	var text strings.Builder
+	left := false
+	for _, c := range commands {
+		if !c.OK() {
+			left = true
+			continue
+		}
+		list = append(list, c.Field())
+		text.WriteString(clierr.Text(clierr.Lead("follow it with: "), c) + "\n")
+	}
+	if left {
+		text.WriteString(clierr.LeftOutNote + "\n")
+	}
+	return list, text.String()
+}
+
 // waitedResult builds the result of a request whose wait ended with
 // success: the text names the end, and the one follow-up command reads the
 // App when it still exists.
 func waitedResult(verb string, t actionTarget, a actionAnswer, end waitEnd) runtime.Result {
-	follow := []string{t.getApp()}
+	commands := []clierr.Command{t.getApp()}
 	line := fmt.Sprintf("app %s: uninstalled\n", t.release)
 	if verb == "install" {
 		line = fmt.Sprintf("app %s: installed (revision %d, status %s)\n", t.release, end.revision, end.status)
 	}
 	// An App that is gone has nothing left for get app to show.
 	if end.gone {
-		follow = []string{}
+		commands = nil
 	}
+	follow, followText := followUp(commands)
 	var text strings.Builder
 	text.WriteString(line)
-	for _, f := range follow {
-		text.WriteString("follow it with: " + f + "\n")
-	}
+	text.WriteString(followText)
 	return runtime.Result{
 		Kind: "AppOperation",
 		Data: result{

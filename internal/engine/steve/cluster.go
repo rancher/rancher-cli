@@ -20,7 +20,7 @@ func ClusterText(v string) engine.MatchText {
 	return engine.MatchText{Noun: "cluster", Plural: "clusters", Flag: "--cluster",
 		NotFound: "cluster not found: " + clierr.ShellQuote(v) +
 			"; it is not among the clusters you can read; pass a cluster id or display name",
-		NotFoundHint: clierr.Rancher + " access clusters"}
+		NotFoundHint: clierr.NewCommand("access clusters")}
 }
 
 // MatchCluster picks the cluster v names in list, by id or display name,
@@ -39,7 +39,7 @@ func MatchCluster(list []Cluster, v string, t engine.MatchText) (id, warning str
 	if len(list) == 0 {
 		t.NotFound = fmt.Sprintf("cluster not found: %s; you can read no cluster on this server; a Rancher administrator grants cluster and project roles",
 			clierr.ShellQuote(v))
-		t.NotFoundHint = ""
+		t.NotFoundHint = clierr.Command{}
 	}
 	return engine.MatchOne(v, ids, func(id string) string { return display[id] }, cands, t)
 }
@@ -85,10 +85,10 @@ func GetCluster(ctx context.Context, get Getter, id string) (*unstructured.Unstr
 		switch {
 		case ok && st == http.StatusForbidden:
 			return nil, clierr.New(clierr.CodeRBAC, fmt.Sprintf("you cannot read cluster %s (GET %s answered 403)",
-				clierr.ShellQuote(id), r.Path())).WithHint(clierr.Rancher + " access clusters").WithCause(err)
+				clierr.ShellQuote(id), r.Path())).WithHintCommand(clierr.NewCommand("access clusters")).WithCause(err)
 		case ok && st == http.StatusNotFound:
 			return nil, clierr.New(clierr.CodeNotFound, "cluster not found: "+clierr.ShellQuote(id)).
-				WithHint(clierr.Rancher + " access clusters").WithCause(err)
+				WithHintCommand(clierr.NewCommand("access clusters")).WithCause(err)
 		}
 		return nil, err
 	}

@@ -75,7 +75,7 @@ func probeFor(t *testing.T, url, selector string) Probe {
 }
 
 func conflictHint(selector string) string {
-	return clierr.Rancher + " config update-server 'qa1' " + CAUpdateArg(selector)
+	return clierr.NewCommand("config update-server").Arg("qa1").With(CAUpdateArg(selector)).String()
 }
 
 type caCase struct {

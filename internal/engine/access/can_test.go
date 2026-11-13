@@ -190,7 +190,7 @@ func TestCanDescriptorClusterFlagCarriesTheStandardMessage(t *testing.T) {
 		require.GreaterOrEqual(t, i, 0, d.Name)
 		assert.True(t, d.Flags[i].Required)
 		assert.Equal(t, engine.ClusterRequiredMessage, d.Flags[i].MissingMessage, d.Name)
-		assert.Equal(t, engine.ClusterRequiredHint, d.Flags[i].MissingHint, d.Name)
+		assert.Equal(t, engine.ClusterRequiredHint.Field(), d.Flags[i].MissingHint, d.Name)
 	}
 }
 

@@ -65,6 +65,6 @@ func TestNoCommandNamesAGroupOrServiceAccountWithHiddenRunes(t *testing.T) {
 		assert.NotContains(t, clause, "--as", name)
 		remedytest.AssertIDShownWithEscapes(t, clause, hiddenRunesName, name)
 	}
-	assert.Equal(t, "ask a point question with: "+groupAccessCan("github_org://eng"), groupPointQuestion("github_org://eng"))
+	assert.Equal(t, pointQuestionPlaceholders+"; ask a point question with: "+groupAccessCan("github_org://eng").String(), groupPointQuestion("github_org://eng"))
 	assert.Equal(t, "use "+clierr.Rancher+" access list --cluster <cluster> --as 'system:serviceaccount:ns:sa'", serviceAccountList("system:serviceaccount:ns:sa"))
 }

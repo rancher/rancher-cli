@@ -40,7 +40,7 @@ func TestEffectiveWordsACertificateFailureForTheConnection(t *testing.T) {
 		{"a named entry", c, "", "",
 			tlstrust.Remedy{CA: save("'prod'"), URL: "the server URL saved for entry 'prod'", Fix: "a different CA"}},
 		{"a named entry with no saved CA", odd, "", "",
-			tlstrust.Remedy{CA: save(`'odd'\'''`), URL: `the server URL saved for entry 'odd'\'''`, Fix: "a different CA"}},
+			tlstrust.Remedy{CA: "; <file> is a file that holds the server's CA certificate; " + clierr.LeftOutNote, URL: `the server URL saved for entry 'odd'\'''`, Fix: "a different CA"}},
 		{"a named entry and the variable", c, "", "ENV-CA",
 			tlstrust.Remedy{CA: variableOnEntry("'prod'"), URL: "the server URL saved for entry 'prod'", Fix: "a different CA"}},
 		{"the same URL as the entry", c, "https://prod.example.com/", "",

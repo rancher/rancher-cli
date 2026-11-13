@@ -65,15 +65,24 @@ func refuseUnsupportedTokenLookup(ctx context.Context, clients engine.ClusterCli
 	}
 	server = strings.TrimSpace(server)
 	remedy := ", or set RANCHER_CLI_TOKEN to an API token"
+	leftOut := false
 	if namer, ok := clients.(engine.StoredLoginNamer); ok {
 		// A plugin login entry is left out: auth login refuses its name.
 		if entry, nerr := namer.StoredLoginName(); nerr == nil && entry != "" && !config.IsExecLoginEntryName(entry) {
-			remedy = "; or give an API token: pipe id:secret to " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --token-stdin", entry)
+			login := clierr.NewCommand("auth login").Arg(entry).Flag("--token-stdin")
+			if login.OK() {
+				remedy = clierr.Text(clierr.Lead("; or give an API token: pipe id:secret to "), login)
+			} else {
+				leftOut = true
+			}
 		}
 	}
-	return clierr.New(clierr.CodeCapabilityUnsupported,
-		fmt.Sprintf("Rancher %s cannot create a kubeconfig with the token this command used; use Rancher v%s or later%s",
-			server, kubeconfigTokenFloor, remedy)).
+	message := fmt.Sprintf("Rancher %s cannot create a kubeconfig with the token this command used; use Rancher v%s or later%s",
+		server, kubeconfigTokenFloor, remedy)
+	if leftOut {
+		message = clierr.WithLeftOutNote(message)
+	}
+	return clierr.New(clierr.CodeCapabilityUnsupported, message).
 		WithDetails(clierr.CapabilityUnsupportedDetails{Feature: "create kubeconfig", Server: server}).
 		WithCause(err)
 }

@@ -330,7 +330,7 @@ func createTimeoutError(name string) *clierr.Error {
 		fmt.Sprintf("timed out waiting for oidc-client %s to be provisioned; the oidc-provider feature may be disabled", name)).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "OIDCClient", ResourceName: name,
-			Recovery: "check the oidc-provider feature, then " + recoveryHint(name),
+			Recovery: clierr.Text("check the oidc-provider feature", clierr.Lead(", then "), recoveryCommand(name)),
 		})
 }
 

@@ -470,7 +470,8 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 `1` generic.
 
 - Read the `hint` - when present, it is exactly one paste-valid command
-  carrying only concrete, already-known values. When the CLI has no
+  for POSIX shells, fish and PowerShell, carrying only concrete,
+  already-known values. When the CLI has no
   concrete value to offer, there is no `hint` field at all - the guidance
   lives in `message` instead. Inspect a present hint before running it,
   the same as any other emitted text - do not execute it blindly. A hint

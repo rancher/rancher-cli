@@ -25,7 +25,7 @@ import (
 func TestTheLoginCommandOfTheKubeconfigRefusalParses(t *testing.T) {
 	testfs.SkipOnWindows(t, "the words are split by a POSIX shell, the one the remedies are quoted for")
 	dir := t.TempDir()
-	for _, entry := range []string{"prod", "-x", "it's"} {
+	for _, entry := range []string{"prod", "-x", "my login"} {
 		t.Run(entry, func(t *testing.T) {
 			message := extres.KubeconfigRefusalMessage(t, entry)
 			_, command, found := strings.Cut(message, "pipe id:secret to ")

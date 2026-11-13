@@ -49,25 +49,32 @@ func execEnv(dir, store string) []clientcmdapi.ExecEnvVar {
 // a command other than the default it names the steps that write the
 // kubeconfig again from the entry it was written from; with no entry (an
 // environment-only session) the variables it was written with, the CA's
-// included when the file carries one.
+// included when the file carries one. A command with a value that cannot be
+// printed is left out, and the text says so.
 func installHint(command, entry, clusterID, dir, serverURL string, carriesCA bool) string {
 	if command == defaultExecCommand {
 		return installHintDefault
 	}
 	shown := output.Printable(command) + " was not found; restore it, or "
-	prefix, printable := runtime.RemedyPrefix(dir)
+	_, printable := runtime.RemedyPrefix(dir)
+	start := func(words clierr.CommandWord) clierr.Command { return clierr.FileCommandIn(dir, words) }
 	switch {
 	case !printable:
 		shown += "regenerate this kubeconfig; " + runtime.UnprintableConfigDirNote
 	case entry == "":
-		shown += "regenerate this kubeconfig with " + config.EnvURL + " set to " + clierr.ShellQuote(serverURL)
+		prose := "regenerate this kubeconfig with " + config.EnvURL + " set to " + clierr.ShellQuote(serverURL)
 		if carriesCA {
-			shown += ", " + config.EnvCACert + " set to the CA this kubeconfig carries"
+			prose += ", " + config.EnvCACert + " set to the CA this kubeconfig carries"
 		}
-		shown += " and " + config.EnvToken + " set: rancher" + prefix + " kubeconfig --cluster " + clierr.ShellQuote(clusterID)
+		prose += " and " + config.EnvToken + " set"
+		shown += clierr.Text(prose, clierr.Lead(": "), start("kubeconfig").FlagValue("--cluster", clusterID))
 	default:
-		shown += "regenerate this kubeconfig from entry " + clierr.ShellQuote(entry) + ": " +
-			token.RegenerateSteps("rancher"+prefix, entry, clusterID)
+		steps := token.RegenerateSteps(start, entry, clusterID)
+		if !steps.OK() {
+			shown += clierr.WithLeftOutNote("regenerate this kubeconfig from entry " + clierr.ShellQuote(clierr.IDText(entry)))
+			break
+		}
+		shown += clierr.Text("regenerate this kubeconfig from entry "+clierr.ShellQuote(entry), clierr.Lead(": "), steps, token.RegenerateNote)
 	}
 	return output.Printable(shown)
 }
@@ -180,25 +187,33 @@ func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
 		return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose + " records the owner " +
 			clierr.ShellQuote(clierr.IDText(recorded)) + ", which --user-id does not accept; the exec plugin does not check the user")
 	}
-	var remedy string
+	head := "this kubeconfig names no Rancher user: " + whose + " records no owner; the exec plugin does not check the user; "
 	// auth login refuses a name in the exec plugin's own login entry
 	// namespace whatever the entry's provenance, so such a name is never
 	// the login target.
 	switch {
 	case !lk.PluginEntry && !config.IsExecLoginEntryName(lk.Entry):
-		remedy = "pipe an API token to: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --token-stdin", lk.Entry) + kubeconfigAgain(l.clusterID)
+		return "", runtime.PrintableRemedies(clierr.Text(head+"pipe an API token", clierr.Lead(" to: "), pipeThenWrite(lk.Entry, l.clusterID)))
 	case lk.Identified != "" && lk.Identified != lk.Entry && !config.IsExecLoginEntryName(lk.Identified):
 		// The identified entry fell back to the plugin login entry: its
 		// own login, which records its owner, then answers.
-		remedy = "pipe an API token to: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --token-stdin", lk.Identified) + kubeconfigAgain(l.clusterID)
-	default:
-		// The exec plugin's own login entry: auth login refuses its name,
-		// and the next sign-in makes it again with its owner.
-		remedy = "remove " + clierr.ShellQuote(lk.Entry) + " with: " + clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", lk.Entry) +
-			"; then " + clierr.Rancher + " config delete-server" + clierr.ShellQuoteArgs("", lk.Entry) + kubeconfigAgain(l.clusterID)
+		return "", runtime.PrintableRemedies(clierr.Text(head+"pipe an API token", clierr.Lead(" to: "), pipeThenWrite(lk.Identified, l.clusterID)))
 	}
-	return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose +
-		" records no owner; the exec plugin does not check the user; " + remedy)
+	// The exec plugin's own login entry: auth login refuses its name, and the
+	// next sign-in makes it again with its owner.
+	removal := clierr.NewSequence().
+		Then("", config.LogoutHintFor(lk.Entry)).
+		Then("then ", clierr.NewCommand(config.DeleteServerWords).Arg(lk.Entry)).
+		Then(kubeconfigAgainLead, kubeconfigAgain(l.clusterID))
+	return "", runtime.PrintableRemedies(clierr.Text(head+"remove "+clierr.ShellQuote(lk.Entry), clierr.Lead(" with: "), removal))
+}
+
+// pipeThenWrite is the login of entry that takes a piped API token, then the
+// step that writes the kubeconfig again.
+func pipeThenWrite(entry, clusterID string) clierr.Sequence {
+	return clierr.NewSequence().
+		Then("", clierr.NewCommand(config.LoginWords).Arg(entry).Flag("--token-stdin")).
+		Then(kubeconfigAgainLead, kubeconfigAgain(clusterID))
 }
 
 // lookupNotice is what the kubeconfig says about the login kubectl's exec
@@ -224,10 +239,10 @@ func lookupNotice(l lookupCall, lk token.StoredLogin) string {
 		return runtime.PrintableRemedies("this kubeconfig authenticates through " + through + ", not through " + not)
 	case token.LookupNone:
 		login := token.NoTerminalLogin(l.cfg, l.name, l.clusterID, l.serverID, l.caSource, l.eff.CASource, false)
-		createKubeconfig := token.CreateKubeconfigRemedy(l.clusterID)
-		return runtime.PrintableRemedies(fmt.Sprintf("no stored login in %s answers for this kubeconfig: kubectl will sign in on first use when it has a terminal; "+
-			"%s; or, for a kubeconfig that carries its own token, run: %s",
-			l.dir, login.Instruction("for unattended use, pipe an API token to: "), createKubeconfig))
+		unattended := fmt.Sprintf("no stored login in %s answers for this kubeconfig: kubectl will sign in on first use when it has a terminal; %s",
+			l.dir, login.Instruction("for unattended use, pipe an API token"))
+		return runtime.PrintableRemedies(clierr.NoteOnce(clierr.Text(unattended,
+			clierr.Lead("; or, for a kubeconfig that carries its own token, run: "), token.CreateKubeconfigRemedy(l.clusterID))))
 	case token.LookupRefused:
 		// The lookup's refusals carry their remedies in the message; none
 		// has a hint.
@@ -261,13 +276,19 @@ func reservedName(name, clusterID, serverURL, ca string, from config.CASource) e
 		return nil
 	}
 	login := token.NoTerminalLogin(nil, "", clusterID, serverURL, ca, from, false)
-	return clierr.New(clierr.CodeValidation, "the kubeconfig's --name "+clierr.ShellQuote(name)+" would start with "+clierr.ShellQuote(prefix)+
-		", which auth get-token refuses; "+login.Instruction("to log in under a server entry of another name, pipe an API token to: ")+
-		"; then "+clierr.Rancher+" config use-server <name>"+kubeconfigAgain(clusterID))
+	steps := clierr.NewSequence().
+		Then("", login.Login()).
+		Then("then ", clierr.NewCommand("config use-server").Placeholder("<name>")).
+		Then(kubeconfigAgainLead, kubeconfigAgain(clusterID))
+	return clierr.New(clierr.CodeValidation, clierr.Text("the kubeconfig's --name "+clierr.ShellQuote(name)+" would start with "+clierr.ShellQuote(prefix)+
+		", which auth get-token refuses; "+login.WithFacts("to log in under a server entry of another name, pipe an API token"), clierr.Lead(" to: "), steps))
 }
 
-// kubeconfigAgain is the step that writes the kubeconfig for a cluster again,
-// after the steps before it in the same sentence.
-func kubeconfigAgain(clusterID string) string {
-	return "; then write this kubeconfig again with: " + clierr.Rancher + " kubeconfig" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(clusterID))
+// kubeconfigAgainLead introduces the step that writes the kubeconfig for a
+// cluster again, after the steps before it in the same sentence.
+const kubeconfigAgainLead clierr.CommandWord = "then write this kubeconfig again with: "
+
+// kubeconfigAgain is that step.
+func kubeconfigAgain(clusterID string) clierr.Command {
+	return clierr.NewCommand("kubeconfig").FlagValue("--cluster", clusterID)
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,12 +16,12 @@ import (
 	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
-// TestShellQuoteArgsParsesAsArguments asserts the text clierr.ShellQuoteArgs
+// TestBuilderCommandsParseAsArguments asserts the text the command builder
 // writes is read by the real command tree as the command's flags and
 // arguments: for a command with flags after its value, one with the value
-// last and one with two values, each hostile value reaches the command as
-// that argument, byte for byte (the separator ShellQuote removes aside).
-func TestShellQuoteArgsParsesAsArguments(t *testing.T) {
+// last and one with two values, each value reaches the command as that
+// argument, byte for byte. A value the builder refuses leaves the command out.
+func TestBuilderCommandsParseAsArguments(t *testing.T) {
 	testfs.SkipOnWindows(t, "the words are split by a POSIX shell, the one the remedies are quoted for")
 	hostile := []string{"x", "-h", "--", "--x", "-1", "-", " -h", "\u2063-h", "a b", "a'b", "multi\nline", ""}
 	for _, tc := range []struct {
@@ -38,18 +39,19 @@ func TestShellQuoteArgsParsesAsArguments(t *testing.T) {
 		for _, v := range hostile {
 			t.Run(tc.name+" "+strings.NewReplacer("\n", `\n`, "\u2063", "separator").Replace(v), func(t *testing.T) {
 				values := tc.values(v)
-				line := tc.words + clierr.ShellQuoteArgs(tc.flags, values...)
+				cmd := clierr.FileCommand(clierr.CommandWord(tc.words)).Arg(values...).FlagText(clierr.CommandWord(tc.flags))
+				if !cmd.OK() {
+					assert.True(t, slices.ContainsFunc(values, clierr.NotQuotable), "%q is left out only for a value that cannot be printed", values)
+					return
+				}
+				line := strings.TrimPrefix(cmd.String(), "rancher ")
 				words := splitWithSh(t, line)
 				ran, args, set := parseWithRecorder(t, words)
 				assert.Equal(t, tc.words, ran, line)
 				for _, flag := range tc.setOn {
 					assert.True(t, set[flag], "%s is set in %q", flag, line)
 				}
-				want := make([]string, len(values))
-				for i, x := range values {
-					want[i] = strings.ReplaceAll(x, "\u2063", "")
-				}
-				assert.Equal(t, want, args, line)
+				assert.Equal(t, values, args, line)
 			})
 		}
 	}

@@ -1918,23 +1918,32 @@ nothing is written and the exit code is the error's own.
 
 ## Machine hints
 
-An error's `data.error.hint` field, when present, is exactly one
-paste-valid command targeting POSIX sh, carrying only concrete,
+An error's `data.error.hint` field, when present, is exactly one command
+that reads the same in POSIX sh, bash, zsh, fish, PowerShell 7 and Windows
+PowerShell 5.1: every value is in single quotes. It carries only concrete,
 already-known values - never prose, a `<placeholder>`, an `[optional]`
-flag, or an "X or Y" alternative. Guidance that needs a value the CLI
-does not have (an unknown URL, a name that does not exist) goes in the
-message body instead, with no `hint` field at all: the field's absence is
-itself informative - nothing here is safe to run as-is. Agents may
-execute a present hint after the same inspection any other emitted text
-gets before being treated as argv. Windows agents adapt a runnable hint
-themselves - the same posture as the rest of the machine contract.
+flag, or an "X or Y" alternative. A value that cannot be written that way
+(it has a single or double quote, a typographic single quote, two
+backslashes in a row, a final backslash or a character a terminal cannot
+show, or it is empty) leaves its command out: the `hint` field is absent,
+or for a delete of a token or kubeconfig holds the command that lists them,
+and the message says a command is left out. A sequence of commands is left
+out whole. One text is for POSIX shells only: the pipeline that sets a
+password after `rancher create user`. cmd.exe is not a target. Guidance that
+needs a value the CLI does not have (an unknown URL, a name that does not
+exist) goes in the message body instead, with no `hint` field at all: the
+field's absence is itself informative - nothing here is safe to run as-is.
+Agents may execute a present hint after the same inspection any other
+emitted text gets before being treated as argv.
 
 A hint or remedy that changes something carries `--dry-run`, and the
 message says to add the gates of the command (`--apply`, and `--yes` for a
 destructive change) after reading the preview. A command that deletes a
 token or kubeconfig the CLI created or recorded keeps `--apply --yes`: the
 header of a created kubeconfig file and the text that says how to create a
-token or kubeconfig again name the delete that way. A remedy command ends
+token or kubeconfig again name the delete that way, or the command that lists
+them when the name cannot be printed so that every supported shell reads it
+as written. A remedy command ends
 its sentence: no comma, period, parenthesis or word follows its last
 argument. A name that starts with `-` follows the command's flags and `--`,
 and is read as a name. These rules hold for every text. The exceptions keep
@@ -1951,7 +1960,8 @@ names it (chosen with `--config`, `RANCHER_CLI_CONFIG_DIR` or a custom
 `XDG_CONFIG_HOME`), and so does a run against the platform default when
 `RANCHER_CLI_CONFIG_DIR` or `XDG_CONFIG_HOME` points elsewhere; a run whose
 directory is the default and nothing else says otherwise prints no
-`--config`. Result text, the summary line, the dry-run preview and the json and
+`--config`. A config directory whose path cannot be printed so that every
+supported shell reads it as written leaves the commands that name it out. Result text, the summary line, the dry-run preview and the json and
 yaml output, result data included, name the directory like the other channels,
 and so do `notRevoked[].error` and `notRevoked[].recovery` of `config
 delete-server`, `config update-server`, `auth logout` and `auth delete-token`;
@@ -2071,9 +2081,11 @@ reports the outcome in the error's `details`:
 - `configRecovery`: an entry this login wrote could not be restored;
   `command` removes it and `prior` is its complete earlier state (absent
   when the login created the entry). For the exec plugin in a config
-  directory whose path holds characters a terminal line cannot show, both
-  recovery `command` fields are empty and the message says why: no command
-  can name that directory.
+  directory whose path cannot be printed so that every supported shell reads
+  it as written, both recovery `command` fields are empty and the message says
+  why: no command can name that directory. Both `command` fields are also
+  empty when a value in the command cannot be printed so that every supported
+  shell reads it as written; the message says so.
   Each superseded token in `prior.supersededTokens` carries `server`, the
   canonical URL of the server it lives on.
 - `operationMarker`: the tokens a password or device-code sign-in creates
@@ -2211,7 +2223,11 @@ The data of each command gains two lists, `[]` when empty, never null:
   certificate?, retry, recovery?, loginAs?}` for each token that may still be
   live. `entry` is the entry the token is recorded on, `error` the answer or
   transport error behind `failed`, `recovery` a command sequence; for a v3
-  token it is the administrator's delete alone. `loginAs` is the user the
+  token it is the administrator's delete alone. When a value in the sequence
+  or the delete cannot be printed so that every supported shell reads it as
+  written, `recovery` holds only the command that lists the tokens (`rancher get
+  tokens`, or `rancher get management-tokens` for a v3 token), to run against
+  `server`, and `loginAs` is omitted. `loginAs` is the user the
   first command of `recovery` logs in as, the token's owner; it is omitted
   when the recovery needs no login or the token's owner is unknown. `loginAs`
   holds the owner's id exactly as recorded; a text that names the id writes any
@@ -2222,8 +2238,9 @@ The data of each command gains two lists, `[]` when empty, never null:
   `error` then says how to fix the certificate problem for what revokes the
   token, and `certificate`
   holds the certificate's facts: `kind`, `fingerprint`, `subject`, `issuer`,
-  `notBefore`, `notAfter`. When the config directory's path has characters a
-  terminal cannot show, no command names it: each `recovery` item of `config
+  `notBefore`, `notAfter`. When the config directory's path cannot be printed
+  so that every supported shell reads it as written, no command names it: each
+  `recovery` item of `config
   delete-server` and `config update-server` holds the sentence that says so,
   and each `recovery` item of the details of a failed `auth logout` or `auth
   delete-token` is an empty string, so the list keeps its length.
@@ -2365,7 +2382,7 @@ principal Rancher reported when it created the token says (its name begins with
 the auth config, `<auth config>_user://<id>`, or is `local://<id>`).
 
 A stored login records the auth config of the token its login created
-(`tokenAuthConfig` in `config info` and `config set-token-reuse off`,
+(`tokenAuthConfig` in `config status` and `config set-token-reuse off`,
 `authConfig` in `auth status`). A pasted token, a v3 API key included, records
 none; the first token the plugin creates from such a login for a call that
 names an auth config records the auth config Rancher reports, whichever it is.
@@ -2651,6 +2668,9 @@ A line before the commands says who logs in: the token's owner when the CLI
 knows it, else the token's owner or an administrator.
 A superseded record whose server the entry no longer names has the state
 `otherServer`, and its sequence runs against that server.
+A sequence with a value that cannot be printed so that every supported shell
+reads it as written is left out whole; the text says so and gives `rancher get
+tokens` to run against the record's server.
 Every text rendering of the sequence ends with what it assumes:
 `RANCHER_CLI_URL` and `RANCHER_CLI_TOKEN` are unset, and either would
 override the current server the sequence selects. For a v3 token the

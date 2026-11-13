@@ -247,7 +247,7 @@ func signInRecovery(login, cluster *clierr.TokenFate, marker, userID, retry, clu
 	if len(parts) == 0 {
 		return retry
 	}
-	return strings.Join(parts, "; ") + "; " + retry
+	return clierr.NoteOnce(strings.Join(parts, "; ") + "; " + retry)
 }
 
 // signInWho is who acts on a token left behind, and how that person's
@@ -272,22 +272,19 @@ func signInLeftover(f clierr.TokenFate, userID, marker string) string {
 	case f.Ref != nil && f.Ref.Kind == clierr.TokenKindV3:
 		return v3AdminRemedy(*f.Ref, f.ExpiresAt)
 	case f.Ref != nil:
-		_, revoke := clierr.RecoveryCommands(*f.Ref)
-		text := who + " can delete it from a directory signed in as " + as + "; run: " + revoke
+		expires := ""
 		if f.ExpiresAt != "" {
-			text += "; or it expires at " + f.ExpiresAt
+			expires = "; or it expires at " + f.ExpiresAt
 		}
-		return text
+		return clierr.Text(who+" can delete it from a directory signed in as "+as, clierr.Lead("; run: "), clierr.Revoke(*f.Ref), expires)
 	case f.Marked:
 		find := fmt.Sprintf("delete the one whose description carries %q", "[op:"+marker+"]")
 		var lists []string
 		if f.Kind != clierr.TokenKindV3 {
-			list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
-			lists = append(lists, who+" can list tokens from a directory signed in as "+as+"; list them with: "+list+"; then "+find)
+			lists = append(lists, clierr.Text(who+" can list tokens from a directory signed in as "+as, clierr.Lead("; list them with: "), clierr.NewCommand("get tokens"), "; then "+find))
 		}
 		if f.Kind != clierr.TokenKindExt {
-			list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindV3})
-			lists = append(lists, "an administrator can list tokens with: "+list+"; then "+find)
+			lists = append(lists, clierr.Text("an administrator can list tokens", clierr.Lead(" with: "), clierr.NewCommand("get management-tokens"), "; then "+find))
 		}
 		return strings.Join(lists, "; ")
 	case f.Search != nil:
@@ -295,11 +292,13 @@ func signInLeftover(f clierr.TokenFate, userID, marker string) string {
 		if f.Search.RequestExpiresAt != "" {
 			window += " and not after " + f.Search.RequestExpiresAt
 		}
-		return fmt.Sprintf("a kubeconfig token may have been created through %s %s; the CLI stopped waiting at %s, "+
+		return clierr.Text(fmt.Sprintf("a kubeconfig token may have been created through %s %s; the CLI stopped waiting at %s, "+
 			"but the browser sign-in can still complete after that, and the token may be newer; "+
 			"these facts narrow the candidates but cannot identify one token; "+
-			"an administrator can inspect them with: %s; the user who signed in can find them in the UI under Account & API Keys",
-			f.Search.AuthProvider, window, f.Search.PollEndedAt, clierr.Rancher+" get management-tokens -o json")
+			"an administrator can inspect them",
+			f.Search.AuthProvider, window, f.Search.PollEndedAt),
+			clierr.Lead(" with: "), clierr.NewCommand("get management-tokens").FlagText(" -o json"),
+			"; the user who signed in can find them in the UI under Account & API Keys")
 	}
 	return ""
 }

@@ -147,7 +147,7 @@ func poolLessClusterError(clusterName, verb string, fieldPresent bool) *clierr.E
 func poolNotFoundError(clusterName, poolName string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"cluster %q has no machine pool named %q", clusterName, poolName)).
-		WithHint(clierr.Rancher + " inspect cluster" + clierr.ShellQuoteArgs("", clusterName))
+		WithHintCommand(clierr.NewCommand("inspect cluster").Arg(clusterName))
 }
 
 // autoscaledPoolGuardError is cluster scale's CLI-only check: the server
@@ -157,10 +157,14 @@ func poolNotFoundError(clusterName, poolName string) *clierr.Error {
 // keeps the pause visible as state on the cluster, not a flag nobody can
 // audit later.
 func autoscaledPoolGuardError(clusterName, poolName string) *clierr.Error {
-	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"machine pool %q on cluster %q is managed by the cluster autoscaler; the server accepts a change to the number of nodes, but the cluster autoscaler sets it back to its own value minutes later - pause autoscaling first to scale it yourself; the hint previews it: add --apply --yes after reading the preview",
-		poolName, clusterName)).
-		WithHint(clierr.Rancher + " cluster pause-autoscaling" + clierr.ShellQuoteArgs(" --dry-run", clusterName))
+	hint := clierr.NewCommand("cluster pause-autoscaling").Arg(clusterName).Flag("--dry-run")
+	msg := fmt.Sprintf(
+		"machine pool %q on cluster %q is managed by the cluster autoscaler; the server accepts a change to the number of nodes, but the cluster autoscaler sets it back to its own value minutes later - pause autoscaling first to scale it yourself",
+		poolName, clusterName)
+	if hint.OK() {
+		msg += "; the hint previews it: add --apply --yes after reading the preview"
+	}
+	return clierr.New(clierr.CodeValidation, msg).WithHintCommand(hint)
 }
 
 // provisioningClusterSensitive reads the provisioningcluster kind row's

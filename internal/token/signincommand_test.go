@@ -359,8 +359,7 @@ func TestOtherProducersKeepTheirCancelledWaitDetails(t *testing.T) {
 				assert.True(t, strings.HasPrefix(lines[0], label+"failed ("+details.Fate.Ref.String()+")"), "got %q", lines[0])
 				msg := clierr.ExpandRemedies(ce.Message, "")
 				require.True(t, strings.HasPrefix(msg, lead), "got %q", msg)
-				_, remove := clierr.RecoveryCommands(*details.Fate.Ref)
-				remove = clierr.ExpandRemedies(remove, "")
+				remove := clierr.ExpandRemedies(clierr.Revoke(*details.Fate.Ref).String(), "")
 				switch details.Fate.Ref.Kind {
 				case TokenKindExt:
 					assert.Contains(t, msg, "user 'user-e2e' can delete it from a directory signed in as user 'user-e2e'; run: "+remove)

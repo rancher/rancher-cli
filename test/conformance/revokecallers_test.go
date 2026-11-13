@@ -47,6 +47,10 @@ func TestTokenRevokesOnlyFromTheFilesThatMayDeleteTokens(t *testing.T) {
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch v := n.(type) {
 			case *ast.SelectorExpr:
+				if x, ok := v.X.(*ast.Ident); ok && x.Name == "clierr" && v.Sel.Name == "Revoke" {
+					// clierr.Revoke builds the text of a revoke command; it deletes nothing.
+					return true
+				}
 				if v.Sel.Name == "Revoke" || v.Sel.Name == "RevokeCreated" {
 					offenders = append(offenders, fset.Position(v.Pos()).String()+": ."+v.Sel.Name)
 				}

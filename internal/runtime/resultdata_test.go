@@ -314,8 +314,8 @@ func decodeData(t *testing.T, format string, b []byte) any {
 
 // TestResultDataNamesTheDirectoryInEveryShape asserts, for each JSON shape a
 // string can take in result data and each value whose encoding a scanner can
-// misread, in json and yaml, with a directory that holds a backslash, a double
-// quote and a single quote and with no directory: the decoded marked command
+// misread, in json and yaml, with a directory that holds a backslash, a space
+// and a dollar sign and with no directory: the decoded marked command
 // is the command written for the invocation, every value from outside the
 // process (U+2063 and the word rancher, another process's marker, plain text)
 // and the misread value keep their own bytes, and the output equals, byte for
@@ -327,11 +327,11 @@ func decodeData(t *testing.T, format string, b []byte) any {
 // selected string that rewrites the outside text too, in yaml as in json.
 func TestResultDataNamesTheDirectoryInEveryShape(t *testing.T) {
 	t.Parallel()
-	named := t.TempDir() + "/a\\b\"c'd"
+	named := t.TempDir() + "/a\\b c$d"
 	namedPrefix, printable := runtime.RemedyPrefix(named)
 	require.True(t, printable)
 	for _, dir := range []struct{ name, dir, prefix string }{
-		{"a directory with quotes", named, namedPrefix},
+		{"a directory with a backslash", named, namedPrefix},
 		{"no directory", "", ""},
 	} {
 		for _, shape := range dataShapes() {

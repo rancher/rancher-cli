@@ -105,7 +105,9 @@ func (d CommittedContextDetails) TextDetails() []DetailLine {
 	if d.PartialOutput {
 		lines = append(lines, Line(LabelPart("partial output may already be on stdout")))
 	}
-	lines = append(lines, Line(ValuePart("recover: ", d.Recovery)))
+	if d.Recovery != "" {
+		lines = append(lines, Line(ValuePart("recover: ", d.Recovery)))
+	}
 	return lines
 }
 
@@ -156,25 +158,25 @@ var exitCodes = map[string]int{
 }
 
 // ShellQuote quotes s for a POSIX sh command line: wrapped in single quotes,
-// with each embedded single quote closed, escaped, and reopened. Every value
-// interpolated into a machine hint (a name, URL, or path) goes through this
-// so the emitted command round-trips as one argument even when the value
-// carries a space or shell metacharacter. U+2063, the first character of the
-// remedy marker, is removed from the value, so no name, URL or path can hold
-// a marker; no other character is removed.
+// with each embedded single quote closed, escaped, and reopened. It is for a
+// value named in a sentence; a value in a printed command goes through the
+// Command builder, which leaves out a command with a value it cannot print
+// exactly. U+2063, the first character of the remedy marker, is removed from
+// the value, so no name, URL or path can hold a marker; no other character is
+// removed.
 func ShellQuote(s string) string {
 	s = withoutSeparator(s)
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// ShellQuoteArgs writes the arguments of a command for a POSIX sh command
+// shellQuoteArgs writes the arguments of a command for a POSIX sh command
 // line: the positional values, each quoted by ShellQuote, and the flags that
 // follow them, which are complete text starting with a space ("" when there
 // are none). When one value, as ShellQuote writes it and with the whitespace
 // around it cut off, starts with "-", the flags come first and "--" ends them;
 // every value is then read as an argument, because the command parser reads no
 // flag after "--".
-func ShellQuoteArgs(flags string, values ...string) string {
+func shellQuoteArgs(flags string, values ...string) string {
 	var sb strings.Builder
 	dashed := false
 	for _, v := range values {

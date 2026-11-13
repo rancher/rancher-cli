@@ -26,17 +26,15 @@ const (
 	// pasteFlagsUnknown stands for the flags a call supplies at run time.
 	pasteFlagsUnknown = "\uFFFB"
 
-	pasteCheckSchema     = "schema"
-	pasteCheckEnd        = "end"
-	pasteCheckDryRun     = "dryrun"
-	pasteCheckPositional = "positional"
+	pasteCheckSchema = "schema"
+	pasteCheckEnd    = "end"
+	pasteCheckDryRun = "dryrun"
 )
 
 var (
 	pastePlaceholder = regexp.MustCompile(`^<[a-z-]+>$`)
 	pasteAngle       = regexp.MustCompile(`<[^<>\s]*>`)
 	pasteVerb        = regexp.MustCompile(`%(?:\[(\d+)\])?[-+# 0]*(?:\d+|\*)?(?:\.\d+)?([a-zA-Z%])`)
-	pasteFlagBefore  = regexp.MustCompile(`(?:^|\s)-{1,2}[A-Za-z][A-Za-z0-9-]*[ =]$`)
 )
 
 // pasteFlag and pasteCmd are one flag and one command of the schema golden.
@@ -224,7 +222,252 @@ func (r *pasteReader) flat(e ast.Expr) string {
 	return out[0]
 }
 
+// pasteBuilderStarts are the constructors whose chain the reader reads as the
+// command it prints. Revoke and the sequence builders are read where they are
+// built, in package clierr.
+var pasteBuilderStarts = map[string]bool{"NewCommand": true, "FileCommand": true, "FileCommandIn": true}
+
+// builderChain reports whether e is a builder chain rooted at one of
+// pasteBuilderStarts, followed by any number of builder methods and an
+// optional String or Field.
+func builderChain(e ast.Expr) bool {
+	for {
+		call, ok := ast.Unparen(e).(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		if name, ok := builderStart(call); ok {
+			return pasteBuilderStarts[name]
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || (!builderMethods[sel.Sel.Name] && sel.Sel.Name != "String" && sel.Sel.Name != "Field") {
+			return false
+		}
+		e = sel.X
+	}
+}
+
+// chainRooted reports whether e is a builder chain that starts at one of
+// pasteBuilderStarts, or at a local variable assigned such a chain, through
+// builder methods only.
+func (r *pasteReader) chainRooted(e ast.Expr) bool {
+	for {
+		call, ok := ast.Unparen(e).(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		if name, ok := builderStart(call); ok {
+			return pasteBuilderStarts[name]
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		if id, ok := ast.Unparen(sel.X).(*ast.Ident); ok {
+			return builderMethods[sel.Sel.Name] && slices.ContainsFunc(r.locals[id.Name], builderChain)
+		}
+		if !builderMethods[sel.Sel.Name] && sel.Sel.Name != "String" && sel.Sel.Name != "Field" {
+			return false
+		}
+		e = sel.X
+	}
+}
+
+// chainBase is the constructor call a builder chain starts at, or the name of
+// the local variable it starts at.
+func chainBase(e ast.Expr) (start bool, name string) {
+	for {
+		call, ok := ast.Unparen(e).(*ast.CallExpr)
+		if !ok {
+			return false, ""
+		}
+		if name, ok := builderStart(call); ok {
+			return pasteBuilderStarts[name], ""
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || !builderMethods[sel.Sel.Name] {
+			return false, ""
+		}
+		if id, ok := ast.Unparen(sel.X).(*ast.Ident); ok {
+			return false, id.Name
+		}
+		e = sel.X
+	}
+}
+
+// partialChains returns the right-hand sides of the assignments to a local
+// that holds a command being built in steps: each extension of the variable by
+// itself (x = x.Flag(...)), and the chain it starts as when another chain
+// continues from the variable. Such a chain is not the command that prints;
+// the chain that continues it reads as that command, and the extensions made
+// in branches are not seen.
+func partialChains(root ast.Node) map[ast.Expr]bool {
+	type assignment struct {
+		name string
+		rhs  ast.Expr
+	}
+	var assigns []assignment
+	continued := map[string]int{}
+	ast.Inspect(root, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.AssignStmt:
+			if n.Tok == token.DEFINE || n.Tok == token.ASSIGN {
+				for i, lhs := range n.Lhs {
+					if id, ok := lhs.(*ast.Ident); ok && i < len(n.Rhs) {
+						assigns = append(assigns, assignment{id.Name, n.Rhs[i]})
+					}
+				}
+			}
+		case *ast.ValueSpec:
+			for i, id := range n.Names {
+				if i < len(n.Values) {
+					assigns = append(assigns, assignment{id.Name, n.Values[i]})
+				}
+			}
+		case *ast.CallExpr:
+			if sel, ok := n.Fun.(*ast.SelectorExpr); ok && builderMethods[sel.Sel.Name] {
+				if id, ok := ast.Unparen(sel.X).(*ast.Ident); ok {
+					continued[id.Name]++
+				}
+			}
+		}
+		return true
+	})
+	own := map[string]int{}
+	for _, a := range assigns {
+		ast.Inspect(a.rhs, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok && builderMethods[sel.Sel.Name] {
+					if id, ok := ast.Unparen(sel.X).(*ast.Ident); ok && id.Name == a.name {
+						own[a.name]++
+					}
+				}
+			}
+			return true
+		})
+	}
+	out := map[ast.Expr]bool{}
+	for _, a := range assigns {
+		start, name := chainBase(a.rhs)
+		if name == a.name || (start && continued[a.name] > own[a.name]) {
+			out[a.rhs] = true
+		}
+	}
+	return out
+}
+
+// readCommand reads a command builder chain, or a local variable assigned
+// one, as the command it prints: the words, then the
+// positional values in single quotes, then the flags, as the builder writes a
+// command whose values do not start with a dash.
+func (r *pasteReader) readCommand(e ast.Expr) (string, bool) {
+	e = ast.Unparen(e)
+	if id, ok := e.(*ast.Ident); ok {
+		// A local that is assigned a chain and then extended with more
+		// builder calls reads as its first chain: the calls added in a branch
+		// are not seen.
+		i := slices.IndexFunc(r.locals[id.Name], builderChain)
+		if i < 0 {
+			return "", false
+		}
+		return r.readCommand(r.locals[id.Name][i])
+	}
+	call, ok := e.(*ast.CallExpr)
+	if !ok {
+		return "", false
+	}
+	if name, ok := builderStart(call); ok {
+		switch name {
+		case "NewCommand", "FileCommand":
+			return "rancher " + r.read(call.Args[0]), true
+		case "FileCommandIn":
+			return "rancher --config '" + unresolved + "' " + r.read(call.Args[1]), true
+		}
+		return "", false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return "", false
+	}
+	switch sel.Sel.Name {
+	case "String", "Field", "On":
+		return r.readCommand(sel.X)
+	}
+	if !builderMethods[sel.Sel.Name] {
+		return "", false
+	}
+	chain := []*ast.CallExpr{call}
+	var base ast.Expr
+	for {
+		x := ast.Unparen(chain[len(chain)-1].Fun.(*ast.SelectorExpr).X)
+		recv, isCall := x.(*ast.CallExpr)
+		if !isCall {
+			base = x
+			break
+		}
+		if _, isStart := builderStart(recv); isStart {
+			base = recv
+			break
+		}
+		if rs, ok := recv.Fun.(*ast.SelectorExpr); !ok || !builderMethods[rs.Sel.Name] {
+			return "", false
+		}
+		chain = append(chain, recv)
+	}
+	start, ok := r.readCommand(base)
+	if !ok {
+		return "", false
+	}
+	var words, values, flags strings.Builder
+	for _, c := range slices.Backward(chain) {
+		switch c.Fun.(*ast.SelectorExpr).Sel.Name {
+		case "Word":
+			words.WriteString(" " + r.read(c.Args[0]))
+		case "Arg":
+			for range c.Args {
+				values.WriteString(" '" + unresolved + "'")
+			}
+		case "Placeholder":
+			values.WriteString(" " + r.read(c.Args[0]))
+		case "Flag":
+			flags.WriteString(" " + r.read(c.Args[0]))
+		case "FlagValue":
+			flags.WriteString(" " + r.read(c.Args[0]) + " '" + unresolved + "'")
+		case "FlagText":
+			flags.WriteString(r.read(c.Args[0]))
+		case "With":
+			flags.WriteString(pasteFlagsUnknown)
+		}
+	}
+	return start + words.String() + values.String() + flags.String(), true
+}
+
+// readText reads the parts of a call of clierr.Text as one text: prose and
+// leads as written, a command as a chain reads.
+func (r *pasteReader) readText(call *ast.CallExpr) string {
+	var sb strings.Builder
+	for _, a := range call.Args {
+		a = ast.Unparen(a)
+		if c, ok := a.(*ast.CallExpr); ok && isClierrCall(c, "Lead") && len(c.Args) == 1 {
+			sb.WriteString(r.read(c.Args[0]))
+			continue
+		}
+		if text, ok := r.readCommand(a); ok {
+			sb.WriteString(text)
+			continue
+		}
+		sb.WriteString(r.read(a))
+	}
+	return sb.String()
+}
+
 func (r *pasteReader) readCall(call *ast.CallExpr) string {
+	if isClierrCall(call, "Text") {
+		return r.readText(call)
+	}
+	if text, ok := r.readCommand(call); ok {
+		return text
+	}
 	if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
 		if id, ok := sel.X.(*ast.Ident); ok && id.Name == "fmt" && (sel.Sel.Name == "Sprintf" || sel.Sel.Name == "Errorf") && len(call.Args) > 0 {
 			return r.readFormat(call.Args[0], call.Args[1:])
@@ -717,24 +960,18 @@ type pasteUnresolved struct {
 	file, fn, expr, why, test string
 }
 
-// pastePositionalException is a positional operand that is no quoted value:
-// a fixed word from a built-in table, or a main-area call.
-type pastePositionalException struct {
-	file, fn, operand, why string
-}
-
 // pasteHints marks the expressions that are a hint: the argument of
-// WithHint and the value of Hint, NotFoundHint and ForbiddenHint.
+// WithHint or WithHintCommand and the value of Hint or NotFoundHint.
 func pasteHints(f *ast.File) map[ast.Expr]bool {
 	out := map[ast.Expr]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.CallExpr:
-			if sel, ok := node.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "WithHint" && len(node.Args) > 0 {
+			if sel, ok := node.Fun.(*ast.SelectorExpr); ok && (sel.Sel.Name == "WithHint" || sel.Sel.Name == "WithHintCommand") && len(node.Args) > 0 {
 				out[ast.Unparen(node.Args[0])] = true
 			}
 		case *ast.KeyValueExpr:
-			if id, ok := node.Key.(*ast.Ident); ok && (id.Name == "Hint" || id.Name == "NotFoundHint" || id.Name == "ForbiddenHint") {
+			if id, ok := node.Key.(*ast.Ident); ok && (id.Name == "Hint" || id.Name == "NotFoundHint") {
 				out[ast.Unparen(node.Value)] = true
 			}
 		}
@@ -840,6 +1077,7 @@ func (ps *pasteScanner) sites() []pasteSite {
 		scope := scopeOf(f, path)
 		visit := func(fn string, locals map[string][]ast.Expr, root ast.Node) {
 			r := &pasteReader{fl: ps.fl, scope: scope, locals: locals, funcs: ps.funcs}
+			partial := partialChains(root)
 			ast.Inspect(root, func(n ast.Node) bool {
 				if n == nil || pasteSkipped(n) {
 					return false
@@ -848,17 +1086,23 @@ func (ps *pasteScanner) sites() []pasteSite {
 				if !ok {
 					return true
 				}
+				if partial[e] {
+					return false
+				}
 				viaCall := false
+				builder := false
 				if call, isCall := e.(*ast.CallExpr); isCall && !isTextExpression(e) {
-					if _, ret := r.inlinable(call); ret == nil {
-						return true
+					if builder = isClierrCall(call, "Text") || r.chainRooted(call); !builder {
+						if _, ret := r.inlinable(call); ret == nil {
+							return true
+						}
+						viaCall = true
 					}
-					viaCall = true
 				} else if !isTextExpression(e) {
 					return true
 				}
 				text := r.read(e)
-				marker := !viaCall && builtOnMarker(e)
+				marker := !viaCall && (builder || builtOnMarker(e))
 				if ps.schema.topWord.MatchString(text) || (marker && pasteMarkerWord.MatchString(text)) {
 					out = append(out, ps.site(path, fn, e, text, hints[ast.Unparen(e)] || hints[e], marker, viaCall))
 					return false
@@ -989,160 +1233,6 @@ func pasteItems(e ast.Expr) []pasteItem {
 	return []pasteItem{{expr: e}}
 }
 
-// positional is one operand written after a command with no flag before it:
-// a quoted value or another value the text does not write.
-type pasteOperand struct {
-	file, fn, operand string
-	line              int
-	quoted            bool
-	dashAfter         bool
-}
-
-// positionalHits reads every text expression for the operands that stand in
-// a command's positional place: a call of ShellQuote, a local variable that
-// holds one, and any other value the text does not write. It also reads the
-// text after a call of ShellQuoteArgs: a flag there is read as a positional.
-func (ps *pasteScanner) positionalHits() []pasteOperand {
-	var out []pasteOperand
-	for i, f := range ps.files {
-		path := ps.paths[i]
-		scope := scopeOf(f, path)
-		visit := func(fn string, locals map[string][]ast.Expr, root ast.Node) {
-			r := &pasteReader{fl: ps.fl, scope: scope, locals: locals, funcs: ps.funcs}
-			ast.Inspect(root, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok || !isClierrCall(call, "ShellQuoteArgs") || len(call.Args) == 0 {
-					return true
-				}
-				out = append(out, ps.flagsTailHits(r, path, fn, locals, call.Args[0])...)
-				return true
-			})
-			ast.Inspect(root, func(n ast.Node) bool {
-				if n == nil || pasteSkipped(n) {
-					return false
-				}
-				e, ok := n.(ast.Expr)
-				if !ok || !isTextExpression(e) {
-					return true
-				}
-				items := pasteItems(e)
-				var before strings.Builder
-				for k, it := range items {
-					if it.expr == nil {
-						before.WriteString(it.lit)
-						continue
-					}
-					text := before.String()
-					quoted := isQuotedValue(it.expr, locals)
-					if call, ok := ast.Unparen(it.expr).(*ast.CallExpr); ok && isClierrCall(call, "ShellQuoteArgs") && k+1 < len(items) && items[k+1].expr == nil && strings.HasPrefix(strings.TrimLeft(items[k+1].lit, " "), "-") && len(items[k+1].lit) > len(strings.TrimLeft(items[k+1].lit, " ")) {
-						out = append(out, pasteOperand{path, fn, types.ExprString(it.expr), ps.fset.Position(it.expr.Pos()).Line, false, true})
-					}
-					unwritten := !quoted && strings.Contains(r.read(it.expr), unresolved) && !isHelperCall(it.expr)
-					if ps.argumentPlace(text, quoted) && (quoted || unwritten) {
-						out = append(out, pasteOperand{path, fn, types.ExprString(it.expr), ps.fset.Position(it.expr.Pos()).Line, quoted, false})
-					}
-					before.WriteString(r.read(it.expr))
-				}
-				return false
-			})
-		}
-		for _, d := range f.Decls {
-			switch decl := d.(type) {
-			case *ast.FuncDecl:
-				if decl.Body != nil {
-					visit(decl.Name.Name, collectLocalAssigns(decl.Body), decl.Body)
-				}
-			case *ast.GenDecl:
-				visit("", nil, decl)
-			}
-		}
-	}
-	return out
-}
-
-// flagsTailHits reads the flags argument of clierr.ShellQuoteArgs as the tail
-// of a command: a quoted value there follows a flag spelling, because a
-// positional that is not an argument of the helper is read as a flag when its
-// text starts with a dash, and an unquoted value that is not text is a hit
-// after a flag spelling too. Any other operand that is not text reads as flags
-// the reader does not know.
-func (ps *pasteScanner) flagsTailHits(r *pasteReader, path, fn string, locals map[string][]ast.Expr, flags ast.Expr) []pasteOperand {
-	var out []pasteOperand
-	tail := ""
-	for _, it := range pasteItems(flags) {
-		if it.expr == nil {
-			tail += it.lit
-			continue
-		}
-		hit := func(quoted bool) {
-			out = append(out, pasteOperand{path, fn, types.ExprString(it.expr), ps.fset.Position(it.expr.Pos()).Line, quoted, false})
-		}
-		afterFlag := pasteFlagBefore.MatchString(tail)
-		if isQuotedValue(it.expr, locals) {
-			if !afterFlag {
-				hit(true)
-			}
-			tail += "'" + unresolved + "'"
-			continue
-		}
-		text := r.read(it.expr)
-		if strings.Contains(text, unresolved) && afterFlag && !isHelperCall(it.expr) {
-			hit(false)
-		}
-		tail += text
-	}
-	return out
-}
-
-// argumentPlace reports whether the next word of the command text before is
-// an argument: a positional, or for a value that is not quoted any word after
-// the command name.
-func (ps *pasteScanner) argumentPlace(before string, quoted bool) bool {
-	locs := ps.schema.topWord.FindAllStringIndex(before, -1)
-	if len(locs) == 0 {
-		return false
-	}
-	word := strings.Index(before[locs[len(locs)-1][0]:], "rancher") + locs[len(locs)-1][0]
-	tail := before[word:]
-	if strings.ContainsAny(tail, ";\n") || strings.Contains(tail, ". ") || strings.Contains(tail, ": ") || strings.Contains(tail, ", then ") {
-		return false
-	}
-	if pasteFlagBefore.MatchString(tail) {
-		return !quoted || ps.boolFlagBefore(before, word)
-	}
-	return tail != "" && (strings.HasSuffix(tail, " ") || strings.HasSuffix(tail, "--"))
-}
-
-// boolFlagBefore reports whether the last word of before is a flag that takes
-// no value; the next word is an argument.
-func (ps *pasteScanner) boolFlagBefore(before string, word int) bool {
-	if strings.HasSuffix(before, "=") {
-		return false
-	}
-	p := ps.schema.parse(before, word+len("rancher "), 0, false)
-	return p.cmd != nil && !p.awaitingValue
-}
-
-func isHelperCall(e ast.Expr) bool {
-	call, ok := ast.Unparen(e).(*ast.CallExpr)
-	return ok && (isClierrCall(call, "ShellQuoteArgs") || isClierrCall(call, "MarkRemedy") || isClierrCall(call, "DirectoryFree") || isTextExpression(call))
-}
-
-func isQuotedValue(e ast.Expr, locals map[string][]ast.Expr) bool {
-	e = ast.Unparen(e)
-	if call, ok := e.(*ast.CallExpr); ok {
-		return isClierrCall(call, "ShellQuote")
-	}
-	if id, ok := e.(*ast.Ident); ok {
-		vals := locals[id.Name]
-		return len(vals) > 0 && !slices.ContainsFunc(vals, func(v ast.Expr) bool {
-			call, ok := ast.Unparen(v).(*ast.CallExpr)
-			return !ok || !isClierrCall(call, "ShellQuote")
-		})
-	}
-	return false
-}
-
 // pasteTree is the scan of the production tree, computed once.
 var pasteScanOfTree = sync.OnceValues(func() (*pasteScanner, error) {
 	tree := parseSourceTree()
@@ -1164,20 +1254,8 @@ var pasteSitesOfTree = sync.OnceValue(func() []pasteSite {
 	return ps.sites()
 })
 
-var pastePositionalsOfTree = sync.OnceValue(func() []pasteOperand {
-	ps, err := pasteScanOfTree()
-	if err != nil {
-		return nil
-	}
-	return ps.positionalHits()
-})
-
 func pasteTextExceptions() []pasteTextException {
 	return slices.Clone(pasteLocalTextExceptions)
-}
-
-func pastePositionalExceptions() []pastePositionalException {
-	return slices.Clone(pasteLocalPositionalExceptions)
 }
 
 // applyPasteExceptions matches each exception to one site of its file and
@@ -1251,7 +1329,9 @@ func pasteChecked(t *testing.T, check string) ([]pasteSite, []pasteTextException
 // golden; revoke needs a scope; a bare group name needs --type group, which
 // the golden marks optional); a site that names such a command has a hand
 // test. A text a variable carries to another expression is read where it is
-// written. A call reads as the text it returns only for a function (no method,
+// written. A command built in steps in a local variable reads where a chain
+// continues from the variable, with the calls made in a branch (x = x.Flag(...))
+// not seen. A call reads as the text it returns only for a function (no method,
 // no function value) declared once in its package, with a body of if
 // statements that return early followed by one return, at most 6 calls deep;
 // only that last return is read. Any other call reads as one word, and text
@@ -1303,64 +1383,6 @@ func TestEveryMutatingRemedyCarriesDryRun(t *testing.T) {
 	reportPasteExceptions(t, unused)
 }
 
-// TestEveryPositionalValueOfARemedyGoesThroughShellQuoteArgs asserts a
-// quoted value in the positional place of a remedy command goes through
-// clierr.ShellQuoteArgs: a value that starts with a dash follows "--", and
-// that nothing after the helper's result starts with a flag. The flags
-// argument of the helper is read as the tail of a command: a quoted value
-// there follows a flag spelling.
-//
-// Limits: in the helper's flags argument a quoted value after any flag
-// spelling, a boolean flag included, is read as that flag's value. A call
-// reads as the text it returns only for a function (no method, no function
-// value) declared once in its package, with a body of if statements that
-// return early followed by one return, at most 6 calls deep; only that last
-// return is read. Any other call reads as one word, and text glued after it is
-// not seen. A flag written after a call of a builder whose command ends with
-// the result of clierr.ShellQuoteArgs is read in the ordinary form only: for a
-// value that starts with a dash it follows "--" and is read as an argument,
-// which no check sees.
-func TestEveryPositionalValueOfARemedyGoesThroughShellQuoteArgs(t *testing.T) {
-	t.Parallel()
-	_, err := pasteScanOfTree()
-	require.NoError(t, err)
-	left, unused := applyPasteOperands(pastePositionalsOfTree(), pastePositionalExceptions())
-	for _, o := range left {
-		if o.dashAfter {
-			t.Errorf("%s:%d (%s) a flag follows %s; the helper takes the flags", o.file, o.line, o.fn, o.operand)
-		} else {
-			t.Errorf("%s:%d (%s) %s is written in the positional place of a command; pass it to clierr.ShellQuoteArgs", o.file, o.line, o.fn, o.operand)
-		}
-	}
-	for _, e := range unused {
-		t.Errorf("%s (%s): the operand exception for %q matches nothing; remove it", e.file, e.fn, e.operand)
-	}
-}
-
-// applyPasteOperands matches each exception to one operand with its file,
-// function and source text. The operand is never matched by its value.
-func applyPasteOperands(ops []pasteOperand, exceptions []pastePositionalException) (left []pasteOperand, unused []pastePositionalException) {
-	used := make([]bool, len(ops))
-	for _, e := range exceptions {
-		found := false
-		for i, o := range ops {
-			if !used[i] && !o.dashAfter && o.file == e.file && o.fn == e.fn && o.operand == e.operand {
-				used[i], found = true, true
-				break
-			}
-		}
-		if !found {
-			unused = append(unused, e)
-		}
-	}
-	for i, o := range ops {
-		if !used[i] {
-			left = append(left, o)
-		}
-	}
-	return left, unused
-}
-
 // TestRemedyPasteExceptionsAreReviewed asserts every entry of the lists a
 // check reads matches one site: an entry that matches none, a gated site that
 // no longer holds its gated command, an unresolved-site entry whose site is
@@ -1373,10 +1395,6 @@ func TestRemedyPasteExceptionsAreReviewed(t *testing.T) {
 	for _, check := range []string{pasteCheckSchema, pasteCheckEnd, pasteCheckDryRun} {
 		_, unused := applyPasteExceptions(sites, check, pasteTextExceptions())
 		reportPasteExceptions(t, unused)
-	}
-	_, unusedOperands := applyPasteOperands(pastePositionalsOfTree(), pastePositionalExceptions())
-	for _, e := range unusedOperands {
-		t.Errorf("%s (%s): the operand exception for %q matches nothing; remove it", e.file, e.fn, e.operand)
 	}
 	for _, g := range pasteGatedList {
 		i := slices.IndexFunc(sites, func(s pasteSite) bool { return s.file == g.file && s.fn == g.fn && s.shown() == g.text })
@@ -1425,7 +1443,6 @@ var pasteFixtureCases = []struct {
 	{"schema", pasteCheckSchema},
 	{"end", pasteCheckEnd},
 	{"dryrun", pasteCheckDryRun},
-	{"positional", pasteCheckPositional},
 }
 
 // pasteFixtureScan reads one fixture package: the lines the check reports.
@@ -1446,15 +1463,9 @@ func pasteFixtureScan(t *testing.T, dir, check string) (got, want []int) {
 	}
 	rel := "internal/fixture/" + dir + ".go"
 	ps := newPasteScanner(fset, []*ast.File{f}, []string{rel}, schema, []pasteGated{{rel, "gated", "rancher delete token '{v}' --apply --yes", []string{"--apply", "--yes"}, "a fixture"}, {rel, "withheld", "rancher delete token '{v}' --apply", []string{"--apply", "--yes"}, "a fixture"}})
-	if check == pasteCheckPositional {
-		for _, o := range ps.positionalHits() {
-			got = append(got, o.line)
-		}
-	} else {
-		for _, s := range ps.sites() {
-			if s.has(check) {
-				got = append(got, s.line)
-			}
+	for _, s := range ps.sites() {
+		if s.has(check) {
+			got = append(got, s.line)
 		}
 	}
 	slices.Sort(got)
@@ -1494,22 +1505,19 @@ func TestRemedyPasteFixturesAreAllListed(t *testing.T) {
 
 // pasteGatedList is the sites that keep the gates of their command.
 var pasteGatedList = []pasteGated{
-	{"internal/config/serverurl.go", "recordServerText", "the server recorded for token '{v}' cannot be used: {v}; the token stays on the server that issued it; delete it there as user '{v}' while signed in to that server: rancher delete token '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
-	{"internal/config/serverurl.go", "noServerText", "no server is recorded for token '{v}'; delete it as user '{v}', signed in to the server that issued it: rancher delete token '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
-	{"internal/engine/extres/create.go", "tokenRecovery", "to create it again, delete this one first: rancher delete token '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
-	{"internal/engine/extres/kubeconfig.go", "kubeconfigHeader", "# Kubeconfig \"{v}\" - shown once; revoke with: rancher delete kubeconfig '{v}' --apply --yes\n", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
-	{"internal/engine/extres/kubeconfig.go", "kubeconfigRecovery", "to create it again, delete this one first: rancher delete kubeconfig '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
-	{"internal/clierr/loginfailure.go", "RecoveryCommands", "rancher delete management-token '{v}' --apply --yes --allow-deprecated", []string{"--apply", "--yes", "--allow-deprecated"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
-	{"internal/clierr/loginfailure.go", "RecoveryCommands", "rancher delete token '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
-	{"internal/token/noterminal.go", "CreateKubeconfigRemedy", "rancher create kubeconfig --clusters <id> --apply --yes", []string{"--apply", "--yes"}, "the exec plugin's no-terminal remedy: it creates a kubeconfig for kubectl to use at once; the command keeps the gates of its command"},
-	{"internal/token/noterminal.go", "CreateKubeconfigRemedy", "rancher create kubeconfig --clusters '{v}' --apply --yes", []string{"--apply", "--yes"}, "the exec plugin's no-terminal remedy: it creates a kubeconfig for kubectl to use at once; the command keeps the gates of its command"},
+	{"internal/clierr/command.go", "Revoke", "rancher delete management-token '{v}' --apply --yes --allow-deprecated", []string{"--apply", "--yes", "--allow-deprecated"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
+	{"internal/clierr/command.go", "Revoke", "rancher delete token '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
+	{"internal/clierr/command.go", "RevokeKubeconfig", "rancher delete kubeconfig '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
+	{"internal/clierr/command.go", "FileRevokeKubeconfig", "rancher delete kubeconfig '{v}' --apply --yes", []string{"--apply", "--yes"}, "deletes a token or kubeconfig the CLI created or recorded: the command keeps the gates of its command"},
+	{"internal/token/noterminal.go", "CreateKubeconfigRemedy", "rancher create kubeconfig --apply --yes", []string{"--apply", "--yes"}, "the exec plugin's no-terminal remedy: it creates a kubeconfig for kubectl to use at once; the command keeps the gates of its command"},
 }
 
 // pasteUnresolvedList is the sites whose flags a call supplies at run time.
 var pasteUnresolvedList = []pasteUnresolved{
-	{"internal/engine/rbac/grant.go", "Plan", `aliasRevokeHint(upn, role, scope.Flags())`, "the flags are the scope flags of the binding, built by scope.Flags()", "TestAliasRevokeHintPreviewsTheRevoke"},
-	{"internal/engine/rbac/grant.go", "aliasRevokeHint", `clierr.Rancher + " revoke" + clierr.ShellQuoteArgs(" --role " + clierr.ShellQuote(role) + scopeFlags + " --dry-run", upn)`, "scopeFlags is the flag text of the scope, a parameter", "TestAliasRevokeHintPreviewsTheRevoke"},
-	{"internal/commands/register/register.go", "commitCreateWith", `clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" " + CAUpdateArg(probe.CASelector), name)`, "the flags are the --cacert or --clear-cacert text CAUpdateArg builds from the probe", "TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint"},
+	{"internal/engine/rbac/grant.go", "Plan", `aliasRevokeHint(upn, role, scope)`, "the flags are the scope flags of the binding, built by scope.Flags()", "TestAliasRevokeHintPreviewsTheRevoke"},
+	{"internal/engine/rbac/grant.go", "aliasRevokeHint", `clierr.NewCommand("revoke").Arg(upn).FlagValue("--role", role).With(scope.Flags()).Flag("--dry-run")`, "the scope flags of the binding are built by scope.Flags()", "TestAliasRevokeHintPreviewsTheRevoke"},
+	{"internal/commands/register/register.go", "commitCreateWith", `clierr.NewCommand("config update-server").Arg(name).With(CAUpdateArg(probe.CASelector))`, "the flags are the --cacert or --clear-cacert text CAUpdateArg builds from the probe", "TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint"},
+	{"internal/engine/resources/refusepatch.go", "Plan", `clierr.Text(c.k.Name + ": patch is not supported - " + c.k.NoPatchReason, clierr.Lead("; read it with "), clierr.NewCommand("get").Arg(c.k.Name).With(c.readFlags(in)))`, "the flags are the --cluster and --namespace text readFlags builds from the typed input", "TestRefusePatchRefusesBeforeAnyRequestAndNamesTheRead"},
 }
 
 // pasteLocalTextExceptions are the texts outside the login and token code
@@ -1518,28 +1526,7 @@ var pasteLocalTextExceptions = []pasteTextException{
 	{"internal/cli/argtail.go", pasteCheckEnd, "The rancher completion script in this shell is out of date. To regenerate it, see: rancher completion --help", "the product name followed by the name of a command in a sentence; it names the completion script and no command to run"},
 	{"internal/commands/configcmd/config_edit.go", pasteCheckSchema, "# No rancher CLI config file exists yet at this path.\n# Save this file as-is (or empty) to leave nothing configured.\n# config edit cannot add or change servers or the current server - use\n# rancher config add-server / update-server / delete-server / use-server.\n", "the comment of the file the editor opens; it names commands as examples"},
 	{"internal/commands/configcmd/config_edit.go", pasteCheckEnd, "# No rancher CLI config file exists yet at this path.\n# Save this file as-is (or empty) to leave nothing configured.\n# config edit cannot add or change servers or the current server - use\n# rancher config add-server / update-server / delete-server / use-server.\n", "the comment of the file the editor opens; it names commands as examples"},
-	{"internal/config/config.go", pasteCheckSchema, "rancher config delete-server", "a command prefix; every use appends the entry name through clierr.ShellQuoteArgs"},
 	{"internal/engine/observe/bundle.go", pasteCheckSchema, "This is a rancher-cli support bundle.\n\nContents:\n  manifest.json            what was collected, skipped, or failed, and why\n                            (a target whose container logs could not all be\n                            read is an error item naming the first failure)\n  logs/<cluster>/<target>/ logs of Rancher components (see \"rancher logs\")\n  clusters/<cluster>/      cluster/node state and per-namespace events\n  rancher/                 CLI version, a snapshot of a fixed list of\n                            settings, feature flags, and this CLI's own\n                            schema manifest\n\nThis bundle may contain sensitive log content (application output,\nidentifiers, timestamps) from the collected components. Review before\nsharing outside your organization.\n\nThis bundle covers only what Rancher's Kubernetes API can reach. For\nnode-level diagnostics (journald, the rancher-system-agent unit, OS state)\nsee rancherlabs/support-tools' node collector; the two bundles complement\neach other.\n", "README text inside the support bundle, read later from any shell; it names a command in quotes"},
 	{"internal/runtime/schema_cmd.go", pasteCheckEnd, "rancher schema -o json lists every kind name", "the refusal of the schema command's own selection names commands in running text"},
 	{"internal/runtime/schema_cmd.go", pasteCheckEnd, "see the full command list (rancher schema -o name) or the kind names (rancher schema -o json)", "the refusal of the schema command's own selection names commands in running text"},
-}
-
-// pasteLocalPositionalExceptions are the positional operands outside the
-// login and token code that are no quoted value.
-var pasteLocalPositionalExceptions = []pastePositionalException{
-	{"internal/commands/configcmd/config_edit.go", "checkEditRestrictions", "state", "the word on or off, set from a boolean just above"},
-	{"internal/commands/configcmd/config_edit.go", "checkEditRestrictions", "state", "the word on or off, set from a boolean just above"},
-	{"internal/engine/kinds/kinds.go", "NotFoundCurated", "hintToken(k)", "the name of a kind from the built-in kinds table; never typed or server text"},
-	{"internal/engine/rbac/revoke.go", "Plan", "bindKind.Name", "the name of a kind from the built-in binding table; never typed or server text"},
-	{"internal/engine/rbac/revoke.go", "Plan", "bindKind.Name", "the name of a kind from the built-in binding table; never typed or server text"},
-	{"internal/engine/rbac/revoke.go", "Plan", "bindKind.Name", "the name of a kind from the built-in binding table; never typed or server text"},
-	{"internal/engine/resources/lookup.go", "lookupHandle", "k.Name", "the name of a kind from the built-in kinds table; never typed or server text"},
-	{"internal/engine/resources/lookup.go", "lookupHandle", "k.Name", "the name of a kind from the built-in kinds table; never typed or server text"},
-	{"internal/engine/resources/lookup.go", "lookupHandle", "k.Aliases[0]", "the plural name of a kind from the built-in kinds table; never typed or server text"},
-	{"internal/engine/resources/wait.go", "freshSuccessWarning", "kindName", "the name of a kind from the built-in kinds table; never typed or server text"},
-	{"internal/engine/resources/wait.go", "freshSuccessWarning", "kindName", "the name of a kind from the built-in kinds table; never typed or server text"},
-	{"internal/engine/steve/flag.go", "clusterRequired", "quoted[0]", "a cluster id already quoted by clierr.ShellQuote above, written as a flag value"},
-	{"internal/runtime/schema_cmd.go", "Execute", "k.Name", "the name of a kind from the built-in kinds table; never typed or server text"},
-	{"internal/runtime/schema_cmd.go", "Execute", "k.Name", "the name of a kind from the built-in kinds table; never typed or server text"},
-	{"internal/runtime/schema_cmd.go", "Execute", "g.Name", "the name of a command group from the built-in command table; never typed or server text"},
 }

@@ -87,7 +87,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		ce := clierr.New(clierr.CodeValidation,
 			"pass --namespace <namespace> to create a secret in a namespace, or --project <project> to create a project-scoped secret")
 		if cluster := in.String(engine.FlagCluster); cluster != "" {
-			ce = ce.WithHint(clierr.Rancher + " access projects --cluster " + clierr.ShellQuote(cluster))
+			ce = ce.WithHintCommand(clierr.NewCommand("access projects").FlagValue("--cluster", cluster))
 		}
 		return safety.Effect{}, nil, ce
 	}

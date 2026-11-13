@@ -52,7 +52,7 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 			if _, ok := cfg.Servers[name]; ok {
 				return loginTarget{}, clierr.New(clierr.CodeValidation,
 					fmt.Sprintf("--cacert without --url changes trust for %q, which belongs to registration", name)).
-					WithHint(clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --cacert "+clierr.ShellQuote(cacert), name))
+					WithHintCommand(clierr.NewCommand("config update-server").Arg(name).FlagValue("--cacert", cacert))
 			}
 			return loginTarget{}, loginUnknownNameError(cfg, name)
 		}
@@ -67,7 +67,8 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 		// Matches the --cacert-without-url matrix's absent-name row: body
 		// guidance only, no machine hint (neither value is known here).
 		return loginTarget{}, clierr.New(clierr.CodeValidation,
-			"--cacert without --url and without a name has no entry to attach trust to; "+config.CAFileMeaning+"; pass a name to change an existing entry's trust with: "+clierr.Rancher+" config update-server <name> "+config.CAFileArg("--cacert"))
+			clierr.Text("--cacert without --url and without a name has no entry to attach trust to; "+config.CAFileMeaning+"; pass a name to change an existing entry's trust",
+				clierr.Lead(" with: "), clierr.NewCommand("config update-server").Placeholder("<name>").FlagText(config.CAFileFlag)))
 	}
 
 	cur, srv, cerr := cfg.CurrentServerEntry()
@@ -86,7 +87,7 @@ func resolveLoginTarget(cfg *config.Config, name, url, cacert string) (loginTarg
 		// would fail NOT_LOGGED_IN anyway. Point at the switch verb
 		// instead.
 		return loginTarget{}, clierr.New(clierr.CodeNotLoggedIn, "no current server").
-			WithHint(configUseServerHint(names[0]))
+			WithHintCommand(configUseServerHint(names[0]))
 	default:
 		cands := make([]clierr.Candidate, 0, len(names))
 		for _, n := range names {

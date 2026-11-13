@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -187,7 +186,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	require.Empty(t, hint)
 	texts["a v3 token left behind, not stored"] = text
 	text, hint = ResidualRecovery(clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-ext"}}, "prod", "m", true)
-	texts["a token left behind, stored"], texts["a token left behind, stored, hint"] = text, hint
+	texts["a token left behind, stored"], texts["a token left behind, stored, hint"] = text, hint.String()
 	text, _ = ResidualRecovery(clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "t"}}, "prod", "m", false)
 	texts["a token left behind, not stored"] = text
 	text, _ = ResidualRecovery(clierr.TokenFate{Marked: true}, "prod", "m", false)
@@ -198,16 +197,17 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		texts["a sign-in token left behind, "+name+", user known"] = signInLeftover(f, "u-abc12", "m")
 		texts["a sign-in token left behind, "+name+", user unknown"] = signInLeftover(f, "", "m")
 	}
-	texts["a sign-in again"], texts["a sign-in again, hint"] = reLogin("prod")
-	texts["the regenerate steps"] = RegenerateSteps(clierr.Rancher, "prod", "c-1")
-	texts["a login with no entry named"] = config.LoginCommand
-	texts["a logout"] = config.LogoutHintFor("prod")
-	texts["a server entry's removal"] = config.DeleteServerCommand + clierr.ShellQuoteArgs("", "prod")
-	texts["token reuse off"] = config.TokenReuseOffCommand
-	texts["the status report"] = config.StatusCommand
-	texts["a timed-out read"] = provider.InspectClusterRemedyFor("c-1")
+	text, hint = reLogin("prod")
+	texts["a sign-in again"], texts["a sign-in again, hint"] = text, hint.String()
+	texts["the regenerate steps"] = RegenerateSteps(clierr.NewCommand, "prod", "c-1").String() + RegenerateNote
+	texts["a login with no entry named"] = clierr.NewCommand(config.LoginWords).String()
+	texts["a logout"] = config.LogoutHintFor("prod").String()
+	texts["a server entry's removal"] = clierr.NewCommand(config.DeleteServerWords).Arg("prod").String()
+	texts["token reuse off"] = clierr.NewCommand(config.TokenReuseOffWords).String()
+	texts["the status report"] = clierr.NewCommand(config.StatusWords).String()
+	texts["a timed-out read"] = clierr.NewCommand("inspect cluster").Arg("c-1").String()
 	texts["a refused request"] = clierr.AuthStatusRemedy
-	texts["a missing --cluster"] = engine.ClusterRequiredHint
+	texts["a missing --cluster"] = engine.ClusterRequiredHint.String()
 	for _, kind := range []string{"cluster", "pod"} {
 		k, ok := kinds.Lookup(kind)
 		require.True(t, ok)
@@ -265,8 +265,7 @@ func DashedNameRemediesForTest(t *testing.T) map[string][]string {
 	const dashed, url = "-x", "https://r.example.com"
 	ext := TokenRef{Kind: TokenKindExt, Name: dashed}
 	v3 := TokenRef{Kind: TokenKindV3, Name: dashed}
-	_, deleteToken := clierr.RecoveryCommands(ext)
-	_, deleteManagementToken := clierr.RecoveryCommands(v3)
+	deleteToken, deleteManagementToken := clierr.Revoke(ext).String(), clierr.Revoke(v3).String()
 
 	owned := &config.Config{Servers: map[string]config.Server{dashed: {URL: url, TokenUserID: "u-abc12"}}}
 	item := &revocationItem{source: sourceCache, ref: &ext, server: config.CanonicalServerIdentity(url), owner: "u-abc12", entry: dashed, trust: dashed,
@@ -278,13 +277,14 @@ func DashedNameRemediesForTest(t *testing.T) map[string][]string {
 	u := userCheck{userID: "u-abc12", clusterID: "c-1", serverID: url}
 	relogin, _ := u.relogin(owned, dashed, true)
 
+	dashedLogin, _ := config.LoginHintFor(dashed)
 	return map[string][]string{
-		config.LoginHintFor(dashed):  {"auth login"},
-		config.LogoutHintFor(dashed): {"auth logout"},
-		useServerCommand(dashed):     {"config use-server"},
-		d.revokeTLSRemedy(item).CA:   {"config update-server"},
-		warnings[0]:                  {"auth login", "config update-server"},
-		relogin:                      {"auth logout", "config delete-server", "auth login"},
+		dashedLogin.String():                  {"auth login"},
+		config.LogoutHintFor(dashed).String(): {"auth logout"},
+		useServerCommand(dashed).String():     {"config use-server"},
+		d.revokeTLSRemedy(item).CA:            {"config update-server"},
+		warnings[0]:                           {"auth login", "config update-server"},
+		relogin:                               {"auth logout", "config delete-server", "auth login"},
 		signInLeftover(clierr.TokenFate{Ref: &ext}, "u-abc12", "m"): {"delete token"},
 		deleteToken:           {"delete token"},
 		deleteManagementToken: {"delete management-token"},

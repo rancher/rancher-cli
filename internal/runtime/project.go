@@ -56,7 +56,7 @@ type ProjectResolver interface {
 // --project but whose callers may still type it: the hint is the command
 // to run instead, built from the typed values ("" for none).
 type ProjectRefusalHinter interface {
-	ProjectRefusalHint(in Input) string
+	ProjectRefusalHint(in Input) clierr.Command
 }
 
 // lazyProject resolves the typed --project once, on the command's first
@@ -170,7 +170,7 @@ func checkProjectFlag(cmd Command, d Descriptor, in Input) *clierr.Error {
 	if !TakesProject(d) {
 		ce := clierr.New(clierr.CodeValidation, "--project does not apply to "+d.Name)
 		if h, ok := cmd.(ProjectRefusalHinter); ok {
-			ce = ce.WithHint(h.ProjectRefusalHint(in))
+			ce = ce.WithHintCommand(h.ProjectRefusalHint(in))
 		}
 		return ce
 	}

@@ -104,8 +104,11 @@ func fileStoreAlternative(cfg *Config, entry string) string {
 	if _, ok := cfg.Servers[entry]; !ok {
 		return ""
 	}
-	return ", or keep its credential in a plaintext file on purpose with: " +
-		clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --credential-store file", entry)
+	login := clierr.NewCommand(LoginWords).Arg(entry).FlagText(" --credential-store file")
+	if !login.OK() {
+		return "; " + clierr.LeftOutNote
+	}
+	return clierr.Text(clierr.Lead(", or keep its credential in a plaintext file on purpose with: "), login)
 }
 
 // keychainCause says what a failed keychain call shows about why. On

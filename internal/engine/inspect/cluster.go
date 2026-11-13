@@ -237,10 +237,15 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	} else {
 		// Structural gate: the registration section embeds the cluster
 		// registration token. No fetch is issued when --registration is absent.
+		hint := withheldHint(clusterID)
+		message := withheldMessage()
+		if !hint.OK() {
+			message = clierr.WithLeftOutNote(message)
+		}
 		res.Registration = &registration{
 			Withheld: true,
-			Message:  withheldMessage(),
-			Hint:     withheldHint(clusterID),
+			Message:  message,
+			Hint:     hint.Field(),
 		}
 	}
 
@@ -682,8 +687,8 @@ func withheldMessage() string {
 // Execute already holds. Tests assert an exact match so any wording change
 // fails loudly. The hint is a remedy command, so the json and yaml output name
 // the invocation's config directory in it.
-func withheldHint(clusterID string) string {
-	return clierr.Rancher + " get clusterregistrationtoken default-token --namespace " + clierr.ShellQuote(clusterID)
+func withheldHint(clusterID string) clierr.Command {
+	return clierr.NewCommand("get clusterregistrationtoken default-token").FlagValue("--namespace", clusterID)
 }
 
 // registration carries BOTH workflow pairs explicitly - the node pair

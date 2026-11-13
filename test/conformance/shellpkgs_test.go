@@ -124,13 +124,22 @@ func shellPackageDirs(t *testing.T) []string {
 	return dirs
 }
 
+// shellStartersOutsideShellPackages lists the files outside the shellpkgs
+// directories that may start fish or zsh, each with the reason. A row whose
+// file starts neither shell fails TestOnlyTheShellPackagesStartFishOrZsh.
+var shellStartersOutsideShellPackages = []struct{ file, why string }{
+	{"test/conformance/exactvaluepaste_test.go", "the conformance job installs fish and zsh with setup-tools; TestCIRunsEveryValidatePartOnce asserts it"},
+}
+
 // TestOnlyTheShellPackagesStartFishOrZsh asserts that no Go file git lists
 // outside the shellpkgs directories, test file or not, calls exec.Command,
 // exec.CommandContext or exec.LookPath with a literal program name that is
-// fish or zsh, or a path ending in one. CI installs those shells in one job
-// only, so a test elsewhere that starts them (directly or through a helper)
-// would fail or skip in the jobs without them. A program name held in a
-// variable and an exec function held in a variable are not seen.
+// fish or zsh, or a path ending in one, except the files of
+// shellStartersOutsideShellPackages. CI installs those shells in the job that
+// runs the tests-race-3 part and in the conformance job only, so a test
+// elsewhere that starts them (directly or through a helper) would fail or
+// skip in the jobs without them. A program name held in a variable and an
+// exec function held in a variable are not seen.
 func TestOnlyTheShellPackagesStartFishOrZsh(t *testing.T) {
 	t.Parallel()
 	dirs := shellPackageDirs(t)
@@ -138,6 +147,7 @@ func TestOnlyTheShellPackagesStartFishOrZsh(t *testing.T) {
 	require.NoError(t, err)
 	fset := token.NewFileSet()
 	scanned := 0
+	started := map[string]bool{}
 	for _, file := range files {
 		if !strings.HasSuffix(file, ".go") {
 			continue
@@ -148,11 +158,18 @@ func TestOnlyTheShellPackagesStartFishOrZsh(t *testing.T) {
 		parsed, err := parser.ParseFile(fset, file, nil, parser.SkipObjectResolution)
 		require.NoError(t, err)
 		scanned++
+		allowed := slices.ContainsFunc(shellStartersOutsideShellPackages, func(row struct{ file, why string }) bool { return row.file == file })
 		for _, call := range shellProgramCalls(fset, parsed) {
-			t.Errorf("only the packages listed in shellpkgs (scripts/test) may start fish or zsh, which CI installs in one job: %s", call)
+			started[file] = true
+			if !allowed {
+				t.Errorf("only the packages listed in shellpkgs (scripts/test) may start fish or zsh, which CI installs in the tests-race-3 and conformance jobs only: %s", call)
+			}
 		}
 	}
 	assert.NotZero(t, scanned, "no Go file found outside the shellpkgs directories")
+	for _, row := range shellStartersOutsideShellPackages {
+		assert.True(t, started[row.file], "%s is allowed to start fish or zsh (%s) but starts neither", row.file, row.why)
+	}
 }
 
 // shellPackageProblems returns what is wrong with the shellpkgs list: it

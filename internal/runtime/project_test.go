@@ -47,7 +47,7 @@ func (c *projectRead) Execute(ctx context.Context, in Input, _ Prompter) (Result
 
 type hinted struct{ projectRead }
 
-func (hinted) ProjectRefusalHint(Input) string { return "rancher x" }
+func (hinted) ProjectRefusalHint(Input) clierr.Command { return clierr.FileCommand("x") }
 
 func typedProject(v string) mapInput {
 	return mapInput{s: map[string]string{"project": v}, is: map[string]bool{"project": true}}

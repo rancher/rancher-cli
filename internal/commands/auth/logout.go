@@ -186,11 +186,11 @@ func (l logoutCmd) deleteLocally(ctx context.Context, cfg *config.Config, target
 
 // logoutRerun is the logout that finishes one whose local delete did not
 // complete: the same entry, or --all.
-func logoutRerun(targets []string, all bool) string {
+func logoutRerun(targets []string, all bool) clierr.Command {
 	if all {
-		return clierr.Rancher + " auth logout --all"
+		return clierr.NewCommand("auth logout").Flag("--all")
 	}
-	return clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", targets...)
+	return clierr.NewCommand("auth logout").Arg(targets...)
 }
 
 // sweepFailure is a logout --all whose orphaned-helper sweep failed, with
@@ -209,9 +209,9 @@ func (e *sweepFailure) Unwrap() []error { return []error{e.cache, e.sweep} }
 // written and tokens deleted, and the bare cancellation would carry
 // neither list. Every other failure reaches the helpers below, which
 // therefore never see a cancellation.
-func (l logoutCmd) localFailure(err error, d *token.Deletion, rep token.RevocationReport, rerun string, notices []string) error {
+func (l logoutCmd) localFailure(err error, d *token.Deletion, rep token.RevocationReport, rerun clierr.Command, notices []string) error {
 	details := LogoutAllPartialFailure{LoggedOut: d.DeletedTargets(), DeletedFrom: d.DeletedFrom, DeletedCache: d.DeletedCache,
-		Revoked: rep.Revoked, NotRevoked: rep.NotRevoked, Rerun: rerun}
+		Revoked: rep.Revoked, NotRevoked: rep.NotRevoked, Rerun: rerun.Field(), rerunLeftOut: !rerun.OK()}
 	sweep, swept := errors.AsType[*sweepFailure](err)
 	if errors.Is(err, context.Canceled) {
 		return clierr.New(clierr.CodeInterrupted,
@@ -372,6 +372,10 @@ type LogoutAllPartialFailure struct {
 	// rerunOmitted is set when a renderer that can offer no command emptied
 	// Rerun: the closing line then keeps its fact without the command.
 	rerunOmitted bool
+	// rerunLeftOut is set when the logout to run again has a target name
+	// that cannot be printed: the closing line then keeps its fact and says
+	// the command is left out.
+	rerunLeftOut bool
 }
 
 // TextDetails projects which servers were already logged out, which
@@ -405,6 +409,8 @@ func (p LogoutAllPartialFailure) TextDetails() []clierr.DetailLine {
 		lines = append(lines, clierr.Line(clierr.ValuePart("those credentials are gone regardless of this failure; to finish, run: ", p.Rerun)))
 	case p.rerunOmitted:
 		lines = append(lines, clierr.Line(clierr.LabelPart("those credentials are gone regardless of this failure")))
+	case p.rerunLeftOut:
+		lines = append(lines, clierr.Line(clierr.LabelPart("those credentials are gone regardless of this failure; "+clierr.LeftOutNote)))
 	}
 	return lines
 }

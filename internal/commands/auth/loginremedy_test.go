@@ -324,6 +324,26 @@ func TestTheDecorationReturnsAFailureItCannotRecheckUnchanged(t *testing.T) {
 	assert.Same(t, plain, decorateDelegatedFailure(t.Context(), dir, plain, snap, "", remedyFor()))
 }
 
+// TestTheDecorationWritesTheLeftOutNoteOnceForAnEntryNameThatCannotBePrinted
+// asserts that when the entry name holds a single quote, the login command in
+// the remedy's instruction and the delete of the entry are both left out and
+// the message holds the note once, with no hint command and no delete-server
+// command. Mutation: drop the clierr.NoteOnce call from clierr.Text.
+func TestTheDecorationWritesTheLeftOutNoteOnceForAnEntryNameThatCannotBePrinted(t *testing.T) {
+	t.Parallel()
+	dir, _ := cmdtest.FilePolicyDir(t)
+	seedServer(t, dir, "it's", "https://r.ex", "", false)
+	remedy := token.LoginRefusalRemedy{
+		Instruction: clierr.WithLeftOutNote("run in a terminal"),
+		Fallback:    "run in a terminal",
+	}
+	got := asClierr(t, decorateDelegatedFailure(t.Context(), dir, clierr.New(clierr.CodeGeneric, "failed"),
+		register.AuthSnapshot{Name: "it's", CanonicalURL: "https://r.ex"}, "", remedy))
+	assert.Equal(t, 1, strings.Count(got.Message, clierr.LeftOutNote), got.Message)
+	assert.NotContains(t, got.Message, "config delete-server")
+	assert.NotContains(t, got.Message, clierr.Rancher)
+}
+
 // TestTheDecorationKeepsTheCallersAlternativeAndTheRemedy asserts that when a
 // caller gives both its own alternative (extra) and a remedy, the message
 // keeps both, extra first, as the entry is as registered (the undo ends the

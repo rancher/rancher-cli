@@ -824,22 +824,20 @@ func keyringDelete(account string) error {
 // directory never stored: another config directory that shares this one's
 // identity wrote it, or a login is finishing right now.
 func credentialReplacedError(entry string) error {
-	return clierr.New(clierr.CodeCredentialReplaced, fmt.Sprintf(
+	err := clierr.New(clierr.CodeCredentialReplaced, fmt.Sprintf(
 		"the stored credential for %s was replaced by another config directory that shares this one's identity, or by a login in progress; retry, then log in again",
-		clierr.ShellQuote(entry))).
-		WithHint(LoginHintFor(entry)).
-		WithCause(ErrCredentialIdentity)
+		clierr.ShellQuote(entry)))
+	return withLoginHint(err, entry).WithCause(ErrCredentialIdentity)
 }
 
 // loginIncompleteError says a login for the entry wrote its identity ahead
 // of the credential and has not settled it: either it is still running, or
 // it ended before it could.
 func loginIncompleteError(entry string) error {
-	return clierr.Retryable(clierr.CodeLoginIncomplete, fmt.Sprintf(
+	err := clierr.Retryable(clierr.CodeLoginIncomplete, fmt.Sprintf(
 		"a login for %s is in progress or did not complete; retry, then log in again",
-		clierr.ShellQuote(entry))).
-		WithHint(LoginHintFor(entry)).
-		WithCause(ErrCredentialIdentity)
+		clierr.ShellQuote(entry)))
+	return withLoginHint(err, entry).WithCause(ErrCredentialIdentity)
 }
 
 // getError renders a failed keychain read. A declared keychain that cannot

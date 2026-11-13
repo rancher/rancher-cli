@@ -398,7 +398,7 @@ func whoCanSARRefusal(clusterID string) *clierr.Error {
 	}
 	return clierr.New(clierr.CodeRBAC,
 		fmt.Sprintf("cannot ask the authorizer about other subjects on %s: you lack create subjectaccessreviews there", where)).
-		WithHint(clierr.Rancher + " get globalroles")
+		WithHintCommand(clierr.NewCommand("get globalroles"))
 }
 
 // cachedGroup reports whether Rancher may hold members for a candidate

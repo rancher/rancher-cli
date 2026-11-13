@@ -165,7 +165,7 @@ func TestRetireJudgesARecordByTheIdentityOfItsServer(t *testing.T) {
 	assert.Equal(t, []TokenRef{*same.Ref}, rep.Retired)
 	assert.Equal(t, []string{same.Ref.Name}, deletedNames(x.f, before))
 	require.Len(t, rep.Warnings, 1)
-	for _, command := range clierr.RecoverySequence("https://old.ex:9443", *other.Ref) {
+	for _, command := range clierr.RecoverySequence("https://old.ex:9443", *other.Ref).Lines() {
 		assert.Contains(t, rep.Warnings[0], command)
 	}
 	assert.NotContains(t, rep.Warnings[0], "pwzq7")
@@ -184,7 +184,7 @@ func TestRetirePastedCredentialGivesTheSequenceOfARecordWithUserinfo(t *testing.
 
 	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, UserSupplied("pasted:secret"), x.records(t))
 	require.Len(t, rep.Warnings, 1)
-	for _, command := range clierr.RecoverySequence("https://old.ex:9443", *other.Ref) {
+	for _, command := range clierr.RecoverySequence("https://old.ex:9443", *other.Ref).Lines() {
 		assert.Contains(t, rep.Warnings[0], command)
 	}
 	assert.NotContains(t, rep.Warnings[0], "pwzq7")

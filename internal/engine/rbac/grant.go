@@ -126,7 +126,8 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 			continue
 		}
 		msg := fmt.Sprintf("subject already has role %q at this scope (binding %s)", role, b.GetName())
-		var hint string
+		var hint clierr.Command
+		hinted := false
 		// Alias-only match: the binding carries a different principal alias
 		// than the caller supplied. Revoke matches with aliasPrincipals=false
 		// and won't find it by the same spelling - name the exact principal
@@ -135,16 +136,18 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		if !bindingMatchesSubject(b, rs, sub, false) {
 			if upn, _, _ := unstructured.NestedString(b.Object, "userPrincipalName"); upn != "" {
 				msg += fmt.Sprintf("; that binding uses another principal of the same user, %q", upn)
-				msg += "; the hint previews the revoke that removes it: add --apply --yes after reading the preview"
-				hint = aliasRevokeHint(upn, role, scope.Flags())
+				hint, hinted = aliasRevokeHint(upn, role, scope), true
+				if hint.OK() {
+					msg += "; the hint previews the revoke that removes it: add --apply --yes after reading the preview"
+				}
 			}
 		}
-		if hint == "" {
+		if !hinted {
 			msg += "; nothing to grant; to grant it again, revoke it first"
 		}
 		e := clierr.New(clierr.CodeConflict, msg)
-		if hint != "" {
-			e = e.WithHint(hint)
+		if hinted {
+			e = e.WithHintCommand(hint)
 		}
 		return safety.Effect{}, nil, e
 	}
@@ -264,7 +267,6 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		// usable pool so the raw webhook error does not surface.
 		if scope != ScopeGlobal {
 			if rtCtx, _, _ := unstructured.NestedString(obj.Object, "context"); rtCtx != string(scope) {
-				hint := clierr.Rancher + " get roletemplates"
 				pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 				if perr != nil {
 					return perr
@@ -275,7 +277,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 				}
 				return clierr.New(clierr.CodeNotFound, msg).
 					WithCandidatesCut(roleCandidates(pool, ""), CandidateLimit).
-					WithHint(hint)
+					WithHintCommand(clierr.NewCommand("get roletemplates"))
 			}
 		}
 		return nil
@@ -290,9 +292,9 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		return nil
 	}
 
-	hint := clierr.Rancher + " get roletemplates"
+	hint := clierr.NewCommand("get roletemplates")
 	if scope == ScopeGlobal {
-		hint = clierr.Rancher + " get globalroles"
+		hint = clierr.NewCommand("get globalroles")
 	}
 	pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 	if perr != nil {
@@ -300,7 +302,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 	}
 	return clierr.New(clierr.CodeNotFound, "role not found: "+role).
 		WithCandidatesCut(roleCandidates(pool, role), CandidateLimit).
-		WithHint(hint)
+		WithHintCommand(hint)
 }
 
 // rolePoolAtScope lists the role kind and returns as Candidates the roles
@@ -400,7 +402,7 @@ func bindingMatchesSubject(b *unstructured.Unstructured, rs ResolvedSubject, sub
 }
 
 // aliasRevokeHint is the preview of the revoke of the binding that holds the
-// principal upn; scopeFlags are the flags that name the scope.
-func aliasRevokeHint(upn, role, scopeFlags string) string {
-	return clierr.Rancher + " revoke" + clierr.ShellQuoteArgs(" --role "+clierr.ShellQuote(role)+scopeFlags+" --dry-run", upn)
+// principal upn, with the flags that name the scope.
+func aliasRevokeHint(upn, role string, scope Scope) clierr.Command {
+	return clierr.NewCommand("revoke").Arg(upn).FlagValue("--role", role).With(scope.Flags()).Flag("--dry-run")
 }

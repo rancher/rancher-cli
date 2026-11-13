@@ -60,11 +60,11 @@ func TestClusterFlagCarriesTheTextThatFits(t *testing.T) {
 		assert.Equal(t, required, f.Required)
 		assert.Equal(t, FlagCluster, f.Name)
 		assert.Equal(t, ClusterRequiredMessage, f.MissingMessage)
-		assert.Equal(t, ClusterRequiredHint, f.MissingHint)
+		assert.Equal(t, ClusterRequiredHint.Field(), f.MissingHint)
 
 		f = ClusterFlag(required, false)
 		assert.Equal(t, ClusterRequiredPlainMessage, f.MissingMessage)
-		assert.Equal(t, ClusterRequiredHint, f.MissingHint)
+		assert.Equal(t, ClusterRequiredHint.Field(), f.MissingHint)
 	}
 }
 

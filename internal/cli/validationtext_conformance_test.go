@@ -109,8 +109,8 @@ func clusterDeclarationProblem(d runtime.Descriptor, f runtime.ArgSpec) string {
 	switch {
 	case f.MissingMessage != want:
 		return "MissingMessage is " + quoteOrEmpty(f.MissingMessage) + ", want " + quoteOrEmpty(want)
-	case f.MissingHint != engine.ClusterRequiredHint:
-		return "MissingHint is " + quoteOrEmpty(f.MissingHint) + ", want " + quoteOrEmpty(engine.ClusterRequiredHint)
+	case f.MissingHint != engine.ClusterRequiredHint.Field():
+		return "MissingHint is " + quoteOrEmpty(f.MissingHint) + ", want " + quoteOrEmpty(engine.ClusterRequiredHint.Field())
 	}
 	return ""
 }
@@ -310,7 +310,7 @@ func TestValidationTextRuleClusterRequiredCatchesTheWrongText(t *testing.T) {
 	}}
 	generic := runtime.ArgSpec{Name: "cluster", Required: true}
 	withHint := func(msg string) runtime.ArgSpec {
-		return runtime.ArgSpec{Name: "cluster", Required: true, MissingMessage: msg, MissingHint: engine.ClusterRequiredHint}
+		return runtime.ArgSpec{Name: "cluster", Required: true, MissingMessage: msg, MissingHint: engine.ClusterRequiredHint.Field()}
 	}
 
 	assert.NotEmpty(t, clusterDeclarationProblem(plain, generic), "the generic text fails")

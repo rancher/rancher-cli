@@ -227,18 +227,18 @@ var anonymousListMessage = "no server operation lists the anonymous identity's r
 
 // groupListMessage is the one wording for the group refusal in list.
 func groupListMessage(raw string) string {
-	return "no server operation lists a group's rules; " + pointQuestionPlaceholders + "; " + groupPointQuestion(raw)
+	return "no server operation lists a group's rules; " + groupPointQuestion(raw)
 }
 
-// groupPointQuestion is the clause that suggests the point question about the
-// group raw, or says why none is suggested: a command is built only from a
-// name the terminal shows unchanged, so it never names another group than the
-// one typed.
+// groupPointQuestion is the clause that names the placeholders of the point
+// question about the group raw and suggests it, or says why none is suggested:
+// a command is built only from a name the terminal shows unchanged, so it
+// never names another group than the one typed.
 func groupPointQuestion(raw string) string {
 	if clierr.IDText(raw) != raw {
-		return "the group name holds characters the CLI does not show (" + clierr.IDText(raw) + "); the CLI prints no command for it"
+		return pointQuestionPlaceholders + "; the group name holds characters the CLI does not show (" + clierr.IDText(raw) + "); the CLI prints no command for it"
 	}
-	return "ask a point question with: " + groupAccessCan(raw)
+	return clierr.Text(pointQuestionPlaceholders, clierr.Lead("; ask a point question with: "), groupAccessCan(raw))
 }
 
 // serviceAccountList is the clause that tells the caller to list one cluster's
@@ -248,7 +248,7 @@ func serviceAccountList(raw string) string {
 	if clierr.IDText(raw) != raw {
 		return "the service account name holds characters the CLI does not show (" + clierr.IDText(raw) + "); the CLI prints no command for it"
 	}
-	return "use " + clierr.Rancher + " access list --cluster <cluster> --as " + clierr.ShellQuote(raw)
+	return clierr.Text(clierr.Lead("use "), clierr.NewCommand("access list").FlagText(" --cluster <cluster>").FlagValue("--as", raw))
 }
 
 // pointQuestionPlaceholders names the placeholders of the point question a
@@ -257,13 +257,15 @@ const pointQuestionPlaceholders = "<verb> and <resource> are what to ask and <cl
 
 // groupAccessCan is the point question about the group raw: a bare name is a
 // user unless --type says group.
-func groupAccessCan(raw string) string {
-	return clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as " + clierr.ShellQuote(raw) + " --type group"
+func groupAccessCan(raw string) clierr.Command {
+	return clierr.NewCommand("access can").Placeholder("<verb>").Placeholder("<resource>").
+		FlagText(" --cluster <cluster>").FlagValue("--as", raw).FlagText(" --type group")
 }
 
 // anonymousAccessCan is the point question about the anonymous identity.
-func anonymousAccessCan() string {
-	return clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as system:anonymous"
+func anonymousAccessCan() clierr.Command {
+	return clierr.NewCommand("access can").Placeholder("<verb>").Placeholder("<resource>").
+		FlagText(" --cluster <cluster> --as system:anonymous")
 }
 
 // sarFallback is the fallback when impersonation is refused or the route
@@ -286,7 +288,7 @@ func impersonationRefusal(resolved ResolvedSubject, clusterID string) *clierr.Er
 	}
 	return clierr.New(clierr.CodeRBAC,
 		fmt.Sprintf("cannot act as %s on cluster %s: your GlobalRoles lack %s on the management cluster", resolved.Subject.Name, clusterID, right)).
-		WithHint(clierr.Rancher + " get globalroles")
+		WithHintCommand(clierr.NewCommand("get globalroles"))
 }
 
 // sarRefusal is the refusal when the review endpoint refuses the caller's
@@ -304,7 +306,7 @@ func sarRefusal(resolved ResolvedSubject, clusterID string) *clierr.Error {
 	}
 	return clierr.New(clierr.CodeRBAC,
 		fmt.Sprintf("cannot ask about %s on %s: you lack %s", resolved.Subject.Name, where, right)).
-		WithHint(clierr.Rancher + " get globalroles")
+		WithHintCommand(clierr.NewCommand("get globalroles"))
 }
 
 // noRancherBindingsFor reports whether the management plane has no

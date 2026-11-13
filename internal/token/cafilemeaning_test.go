@@ -40,7 +40,7 @@ func TestLoginRemedyPrintsItsFactsWithItsCommand(t *testing.T) {
 	const pem = "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"
 	l := NoTerminalLogin(nil, "", "c-1", "https://r.example.com", pem, config.CASource{Kind: config.CASourceVariable}, false)
 	require.True(t, l.InlineCA)
-	want := l.Instruction("")
+	want := l.String()
 	for _, verb := range []string{"%v", "%+v", "%s"} {
 		got := fmt.Sprintf(verb, l)
 		assert.Equal(t, want, got, verb)

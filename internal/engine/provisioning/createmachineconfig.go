@@ -32,8 +32,8 @@ const doKind = "digitaloceanconfig"
 // when omitted. Strings (including the comma-separated tags list) are
 // written verbatim.
 type doCuratedFlag struct {
-	flag   string
-	field  string
+	flag   clierr.CommandWord
+	field  clierr.CommandWord
 	isBool bool
 }
 
@@ -129,9 +129,9 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	for _, c := range meta.Credential {
 		credential[strings.ToLower(c)] = c
 	}
-	curatedFieldFlag := map[string]string{}
+	curatedFieldFlag := map[string]clierr.CommandWord{}
 	for _, cf := range doCuratedFlags {
-		curatedFieldFlag[cf.field] = cf.flag
+		curatedFieldFlag[string(cf.field)] = cf.flag
 	}
 
 	// --set entries: shape, rejection of top-level Kubernetes object
@@ -174,26 +174,25 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	// foreign kind is refused, never ignored or written to a foreign CR.
 	fields := map[string]any{}
 	for _, cf := range doCuratedFlags {
-		if !in.IsSet(cf.flag) {
+		if !in.IsSet(string(cf.flag)) {
 			continue
 		}
 		if k.Name != doKind {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--%s applies to %s, not %s; pass --set %s=<value> to set %s %s driver field",
-					cf.flag, doKind, k.Name, cf.field, articleFor(k.Name), k.Name))
+				fmt.Sprintf("--%s applies to %s, not %s; pass %s to set %s %s driver field",
+					cf.flag, doKind, k.Name, clierr.FlagFragmentText("--set", cf.field+"=<value>"), articleFor(k.Name), k.Name))
 		}
 		if cf.isBool {
-			fields[cf.field] = in.Bool(cf.flag)
+			fields[string(cf.field)] = in.Bool(string(cf.flag))
 		} else {
-			fields[cf.field] = in.String(cf.flag)
+			fields[string(cf.field)] = in.String(string(cf.flag))
 		}
 	}
 
 	for _, e := range entries {
 		if k.Name == doKind {
 			if flag, collides := curatedFieldFlag[e.key]; collides {
-				return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--set %s sets the same field as --%s; pass --%s instead", e.key, flag, flag))
+				return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, curatedCollisionMessage(e.key, flag))
 			}
 		}
 		if canonical, isCredential := credential[strings.ToLower(e.key)]; isCredential {
@@ -201,8 +200,9 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 			if e.key != canonical {
 				msg = fmt.Sprintf("%q is the credential field %q and cannot be set on a machine config", e.key, canonical)
 			}
-			msg += "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential (<credential-name>) to the cluster you create (<cluster-name>); add --apply after reading the preview: " +
-				clierr.Rancher + " create cluster <cluster-name> --cloud-credential <credential-name> --dry-run"
+			msg = clierr.Text(msg+"; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential (<credential-name>) to the cluster you create (<cluster-name>)",
+				clierr.Lead("; add --apply after reading the preview: "),
+				clierr.NewCommand("create cluster").Placeholder("<cluster-name>").FlagText(" --cloud-credential <credential-name>").Flag("--dry-run"))
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, msg)
 		}
 		fields[e.key] = parseSetValue(e.raw)
@@ -215,6 +215,18 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	}}
 	maps.Copy(obj.Object, fields)
 	return obj, k, nil
+}
+
+// curatedCollisionMessage refuses a --set key that names the field a curated
+// flag sets. A key that cannot be printed in a command leaves out the
+// --set text: the message then says "a --set field" and carries the left-out
+// note.
+func curatedCollisionMessage(key string, flag clierr.CommandWord) string {
+	set, ok := clierr.FlagFragmentWord("--set", key)
+	if !ok {
+		return clierr.WithLeftOutNote(fmt.Sprintf("a --set field sets the same field as --%s; pass --%s instead", flag, flag))
+	}
+	return fmt.Sprintf("%s sets the same field as --%s; pass --%s instead", set, flag, flag)
 }
 
 func (c createMachineConfigCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
@@ -276,11 +288,11 @@ func fallthroughWarning(kindName string, in runtime.Input) string {
 	if !ok || len(meta.Curated) == 0 {
 		return ""
 	}
-	fieldToFlag := make(map[string]string, len(doCuratedFlags))
+	fieldToFlag := make(map[string]clierr.CommandWord, len(doCuratedFlags))
 	fieldIsBool := make(map[string]bool, len(doCuratedFlags))
 	for _, cf := range doCuratedFlags {
-		fieldToFlag[cf.field] = cf.flag
-		fieldIsBool[cf.field] = cf.isBool
+		fieldToFlag[string(cf.field)] = cf.flag
+		fieldIsBool[string(cf.field)] = cf.isBool
 	}
 	var unset []string
 	for _, field := range meta.Curated {
@@ -297,7 +309,7 @@ func fallthroughWarning(kindName string, in runtime.Input) string {
 		if !known {
 			continue
 		}
-		if !in.IsSet(flag) {
+		if !in.IsSet(string(flag)) {
 			unset = append(unset, field)
 		}
 	}

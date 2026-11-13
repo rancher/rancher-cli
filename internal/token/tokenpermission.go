@@ -28,18 +28,22 @@ func noTokenPermissionText(userID string, ext bool) string {
 func noTokenPermissionTextOf(userID, entry string, ext bool) string {
 	lead := tokenPermissionLead(ext)
 	if userID != "" && ValidUserID(userID) {
-		return lead + "an administrator can grant the global role user: add --apply --yes after reading the preview of: " +
-			clierr.Rancher + " grant" + clierr.ShellQuoteArgs(" --global --role user --dry-run", userID)
+		grant := clierr.NewCommand("grant").Arg(userID).FlagText(" --global --role user --dry-run")
+		return clierr.Text(lead+"an administrator can grant the global role user", clierr.Lead(": add --apply --yes after reading the preview of: "), grant)
 	}
+	users := clierr.NewCommand("get users")
+	grant := clierr.NewCommand("grant").Placeholder("<user-id>").FlagText(" --global --role user --dry-run")
 	if userID != "" {
 		lead += "the user id " + clierr.ShellQuote(clierr.IDText(userID)) + " is not a Rancher user id, and the CLI prints no command for it; "
 		if entry != "" {
-			lead += "the exact id is the tokenUserId of server entry " + clierr.ShellQuote(entry) + " in: " + clierr.Rancher + " config status -o json; "
+			status := clierr.NewCommand("config status").FlagText(" -o json")
+			return clierr.Text(lead+"the exact id is the tokenUserId of server entry "+clierr.ShellQuote(entry), clierr.Lead(" in: "), status,
+				"; find the user's id", clierr.Lead(" with: "), users,
+				"; an administrator can grant the global role user", clierr.Lead(": add --apply --yes after reading the preview of: "), grant)
 		}
 	}
-	return lead + "find the user's id with: " + clierr.Rancher +
-		" get users; an administrator can grant the global role user: add --apply --yes after reading the preview of: " + clierr.Rancher +
-		" grant <user-id> --global --role user --dry-run"
+	return clierr.Text(lead+"find the user's id", clierr.Lead(" with: "), users,
+		"; an administrator can grant the global role user", clierr.Lead(": add --apply --yes after reading the preview of: "), grant)
 }
 
 // configStatusEntry is the name of the entry config status lists with its

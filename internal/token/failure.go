@@ -65,7 +65,7 @@ func credentialRecoveryFor(st LoginStates, server string) *clierr.CredentialReco
 	return &clierr.CredentialRecovery{
 		Backend: st.Commit.Backend, State: state, PriorSource: st.Commit.PriorSource,
 		HelperRecordRetained: st.Commit.HelperRecordRetained, CompensationError: st.CompensationError,
-		Command: config.LogoutHintFor(server), DataLossRisk: clierr.DataLossRiskText(server),
+		Command: config.LogoutHintFor(server).Field(), DataLossRisk: clierr.DataLossRiskText(server),
 	}
 }
 
@@ -172,8 +172,8 @@ func FailLogin(primary error, stage clierr.LoginStage, st LoginStates, cred Logi
 		d.CredentialState == clierr.CredentialCommittedUncompensatable
 	d.Recovery = recoveryText(d, server, persisted)
 	out := compose(ce, d)
-	if h := recoveryHint(d, server, persisted); h != "" {
-		out = out.WithHint(h)
+	if h, ok := recoveryHint(d, server, persisted); ok {
+		out = out.WithHintCommand(h)
 	}
 	if len(st.Warnings) > 0 {
 		out = out.WithWarnings(st.Warnings...)
@@ -197,8 +197,8 @@ func FailAcquire(ae *AcquireError, server string) error {
 		d.Recovery = withTokenPermission(ae.SessionUserID, d.Recovery, server)
 	}
 	out := compose(ce, d)
-	if h := recoveryHint(d, server, false); h != "" {
-		out = out.WithHint(h)
+	if h, ok := recoveryHint(d, server, false); ok {
+		out = out.WithHintCommand(h)
 	}
 	return out
 }
@@ -207,20 +207,20 @@ func FailAcquire(ae *AcquireError, server string) error {
 // that does it. A plugin login entry has neither: auth login refuses the
 // reserved namespace, so the kubectl command that drives the exec plugin is
 // named in prose and no hint is offered.
-func reLogin(server string) (text, hint string) {
-	if config.IsExecLoginEntryName(server) {
-		return "run the kubectl command again; the exec plugin logs in when token reuse is on", ""
+func reLogin(server string) (text string, hint clierr.Command) {
+	login, ok := config.LoginHintFor(server)
+	if !ok {
+		return "run the kubectl command again; the exec plugin logs in when token reuse is on", clierr.Command{}
 	}
-	cmd := clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", server)
-	return "log in again with: " + cmd, cmd
+	return clierr.Text("log in again", clierr.Lead(" with: "), login), login
 }
 
 // ResidualRecovery renders the recovery for one token fate. A hint is
 // returned only when the name is known and a credential the command can
 // use was persisted; every other case is prose, and an unmarked token
 // never mentions a marker.
-func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool) (text, hint string) {
-	login, _ := reLogin(server)
+func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool) (text string, hint clierr.Command) {
+	login, loginCommand := reLogin(server)
 	switch {
 	case f.Ref != nil && f.Ref.Kind == clierr.TokenKindV3:
 		// The delete command is admin-only (Rancher grants a standard user no
@@ -228,49 +228,60 @@ func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool)
 		// for every caller and no hint is offered.
 		remedy := v3AdminRemedy(*f.Ref, f.ExpiresAt)
 		if persisted {
-			return remedy, ""
+			return remedy, clierr.Command{}
 		}
-		return "no credential was stored; " + login + "; " + remedy, ""
+		if !loginCommand.OK() {
+			expiry := " expires"
+			if f.ExpiresAt != "" {
+				expiry += " at " + f.ExpiresAt
+			}
+			return clierr.NoteOnce(clierr.Text(fmt.Sprintf("no credential was stored; %s; %s%s; then an administrator can find it", login, f.Ref.String(), expiry),
+				clierr.Lead(" with: "), clierr.NewCommand("get management-tokens"))), clierr.Command{}
+		}
+		return clierr.NoteOnce("no credential was stored; " + login + "; " + remedy), clierr.Command{}
 	case f.Ref != nil:
-		_, revoke := clierr.RecoveryCommands(*f.Ref)
+		revoke := clierr.Revoke(*f.Ref)
 		if persisted {
-			return fmt.Sprintf("revoke %s with: %s", f.Ref.String(), revoke), revoke
+			return clierr.Text(fmt.Sprintf("revoke %s", f.Ref.String()), clierr.Lead(" with: "), revoke), revoke
 		}
-		return fmt.Sprintf("no credential was stored; %s; then revoke %s with: %s", login, f.Ref.String(), revoke), ""
+		if !loginCommand.OK() {
+			return clierr.NoteOnce(clierr.Text(fmt.Sprintf("no credential was stored; %s; then find %s", login, f.Ref.String()),
+				clierr.Lead(" with: "), clierr.NewCommand("get tokens"))), clierr.Command{}
+		}
+		return clierr.NoteOnce(clierr.Text(fmt.Sprintf("no credential was stored; %s; then revoke %s", login, f.Ref.String()), clierr.Lead(" with: "), revoke)), clierr.Command{}
 	case f.Marked:
 		// A nameless marked token of known kind is listed in its collection;
 		// of unknown kind (a lost or unrecognizable login response) it may be
 		// in either, and both are named so the marker search cannot miss it.
 		// The management-token list and delete commands are an administrator's to run:
 		// Rancher grants a standard user no rule on management.cattle.io tokens.
-		extList, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
-		v3List, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindV3})
+		extList, v3List := clierr.NewCommand("get tokens"), clierr.NewCommand("get management-tokens")
 		carries := fmt.Sprintf("a leftover token created by this login carries %q in its description", "[op:"+marker+"]")
 		var then, steps string
 		switch f.Kind {
 		case clierr.TokenKindV3:
-			steps = "an administrator can list tokens with: " + v3List + "; " + carries + "; an administrator can revoke it with the found name"
+			steps = clierr.Text("an administrator can list tokens", clierr.Lead(" with: "), v3List, "; "+carries+"; an administrator can revoke it with the found name")
 		case "":
 			then = "then "
-			steps = "list tokens with: " + extList + "; an administrator can also list management tokens with: " + v3List + "; " + carries +
-				"; revoke it with the found name; an administrator can revoke one from the management-token list"
+			steps = clierr.Text("list tokens", clierr.Lead(" with: "), extList, "; an administrator can also list management tokens", clierr.Lead(" with: "), v3List,
+				"; "+carries+"; revoke it with the found name; an administrator can revoke one from the management-token list")
 		default:
 			then = "then "
-			steps = "list tokens with: " + extList + "; " + carries + "; revoke it with the found name"
+			steps = clierr.Text("list tokens", clierr.Lead(" with: "), extList, "; "+carries+"; revoke it with the found name")
 		}
 		if !persisted {
-			return "no credential was stored; " + login + "; " + then + steps, ""
+			return clierr.NoteOnce("no credential was stored; " + login + "; " + then + steps), clierr.Command{}
 		}
-		return steps, ""
+		return steps, clierr.Command{}
 	case f.Search != nil:
 		// A SAML sign-in carries no description to mark, so only the provider
 		// and the client-side window of the browser handoff are known. They
 		// narrow the candidates; they cannot identify one token, and the text
 		// says so rather than offering a command that would delete the wrong
 		// one.
-		return signInLeftover(f, "", marker), ""
+		return signInLeftover(f, "", marker), clierr.Command{}
 	}
-	return "", ""
+	return "", clierr.Command{}
 }
 
 // cleanFate is true when a token's create is settled and nothing it created
@@ -311,15 +322,26 @@ func recoveryText(d clierr.LoginFailureDetails, server string, persisted bool) s
 		text, _ := reLogin(server)
 		return text
 	}
-	return strings.Join(parts, "; ")
+	return clierr.NoteOnce(strings.Join(parts, "; "))
 }
 
 // credentialRecoveryText states what the reached backend may hold; the
-// command that clears it rides CredentialRecovery itself.
+// command that clears it rides CredentialRecovery itself. An empty command
+// means it was left out because a value in it cannot be printed, which the
+// text says.
 func credentialRecoveryText(cr *clierr.CredentialRecovery, server string) string {
 	if cr == nil {
 		return ""
 	}
+	text := credentialHoldText(cr, server)
+	if cr.Command == "" {
+		return clierr.WithLeftOutNote(text)
+	}
+	return text
+}
+
+// credentialHoldText is what the reached backend may hold.
+func credentialHoldText(cr *clierr.CredentialRecovery, server string) string {
 	switch {
 	case cr.State == clierr.CredentialCompensationFailed:
 		return fmt.Sprintf("the %s entry for %s may still hold this login's token; restoring the earlier value failed (%s)",
@@ -335,34 +357,40 @@ func credentialRecoveryText(cr *clierr.CredentialRecovery, server string) string
 }
 
 // configRecoveryText names the entry that could not be restored; the
-// command that removes it rides ConfigRecovery itself.
+// command that removes it rides ConfigRecovery itself. An empty command means
+// it was left out because the entry name cannot be printed, which the text
+// says.
 func configRecoveryText(cr *clierr.ConfigRecovery) string {
 	if cr == nil {
 		return ""
 	}
-	return fmt.Sprintf("the config entry %s could not be restored to its prior state; remove it with: %s", cr.Entry, cr.Command)
+	text := fmt.Sprintf("the config entry %s could not be restored to its prior state", cr.Entry)
+	if cr.Command == "" {
+		return clierr.WithLeftOutNote(text)
+	}
+	return text + "; remove it with: " + cr.Command
 }
 
 // recoveryHint offers a command only when running it is the right next
 // step: the exact revoke when a name is known and a usable credential was
 // persisted, a re-login when nothing was persisted and something may
 // outlive this operation. Otherwise the primary keeps its own hint.
-func recoveryHint(d clierr.LoginFailureDetails, server string, persisted bool) string {
+func recoveryHint(d clierr.LoginFailureDetails, server string, persisted bool) (clierr.Command, bool) {
 	unclean := false
 	for _, f := range fatesOf(d) {
 		if cleanFate(f) {
 			continue
 		}
 		unclean = true
-		if _, hint := ResidualRecovery(*f, server, d.OperationMarker, persisted); hint != "" {
-			return hint
+		if _, hint := ResidualRecovery(*f, server, d.OperationMarker, persisted); hasCommand(hint) {
+			return hint, true
 		}
 	}
 	if !persisted && unclean {
 		_, hint := reLogin(server)
-		return hint
+		return hint, hasCommand(hint)
 	}
-	return ""
+	return clierr.Command{}, false
 }
 
 // FinishUnsupportedStore is the one finalizer for a read-only credential

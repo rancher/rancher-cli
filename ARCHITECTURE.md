@@ -1375,6 +1375,21 @@ its own. `IDText` escapes each piece of a value
 between single quotes on its own: no double-quoted piece holds a single quote, and
 `ShellQuote` of the result stays one shell word.
 
+**A printed command comes from the command builder, and a value no supported
+shell reads as written leaves the command out.** Hints, remedies, recovery
+steps and notices build every command with `clierr.NewCommand`, never by
+joining strings. Command words are constants (`CommandWord`), and each value
+is single-quoted so that POSIX sh, bash, zsh, fish, PowerShell 7 and Windows
+PowerShell 5.1 all read it as written. `NotQuotable` lists the values one of
+them would read differently: a character that is unsafe to display or
+invalid UTF-8, a character that ends a single-quoted string (U+0027, or
+U+2018-U+201B in PowerShell), a double quote (Windows PowerShell 5.1), an
+empty value, a final backslash, or two backslashes (fish). Such a value is
+never quoted around: the command is left out with one sentence, a left-out
+revoke keeps the command that lists tokens, and steps that depend on each
+other are left out together. `ShellQuote` stays for prose. Source scans in
+test/conformance refuse a command built any other way.
+
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or
 half-written, but it does not make the surrounding read-modify-write atomic. On

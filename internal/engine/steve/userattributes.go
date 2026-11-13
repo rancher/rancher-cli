@@ -236,7 +236,8 @@ func (u *UserAttributes) mayList(ctx context.Context) (listCheck, error) {
 
 // userAttributesRemedy is the grant that lets a caller read UserAttributes.
 func userAttributesRemedy() string {
-	return "; a GlobalRole with get and list on userattributes.management.cattle.io allows it; see: " + clierr.Rancher + " get globalroles"
+	return clierr.Text("; a GlobalRole with get and list on userattributes.management.cattle.io allows it",
+		clierr.Lead("; see: "), clierr.NewCommand("get globalroles"))
 }
 
 func noTypeClause(status int) string {

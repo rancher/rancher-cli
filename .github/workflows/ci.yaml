@@ -200,6 +200,11 @@ jobs:
         uses: $/.github/actions/go-cache
         with:
           name: conformance
+      # The paste tests run each printed command under sh, bash, zsh,
+      # fish and pwsh; with CI set a missing shell fails.
+      - uses: $/.github/actions/setup-tools
+        with:
+          lint-tools: "false"
       - run: ./scripts/validate tests-conformance
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
@@ -388,6 +393,7 @@ jobs:
       - run: go test -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
       - run: go test -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
       - run: go test -count=1 -run '^Test(WatchObject|ListObject|WaitObject)' ./internal/client/provider/
+      - run: go test -count=1 -run 'TestExactValuePaste(Pwsh|PowerShell51)$' ./test/conformance/
       - run: bash scripts/e2e
       - run: go test -count=1 -v -run TestPwsh ./internal/cli/completions/
       - name: Fault check
@@ -546,6 +552,9 @@ jobs:
       # --exec-command, and the remedies naming a quoted Windows path.
       - run: go test -race -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
       - run: go test -race -count=1 -run '^Test(WatchObject|ListObject|WaitObject)' ./internal/client/provider/
+      # The printed commands, pasted into pwsh and Windows PowerShell 5.1
+      # from a .ps1 file.
+      - run: go test -count=1 -run 'TestExactValuePaste(Pwsh|PowerShell51)$' ./test/conformance/
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.cache-hit != 'true'
         with:

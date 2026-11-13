@@ -64,7 +64,7 @@ func holdsMarkerRuneDecoded(text string) bool {
 // the ones the CLI writes for a token of its kind.
 func notRevokedFixture() token.NotRevokedToken {
 	ref := token.TokenRef{Kind: token.TokenKindExt, Name: "token-abc"}
-	list, revoke := clierr.RecoveryCommands(ref)
+	list, revoke := recoveryCommands(ref)
 	return token.NotRevokedToken{
 		Ref: &ref, Source: "login", Server: "https://r.example", Entry: "prod", Reason: "failed",
 		Code: clierr.CodeTLSTrust, Error: "the server presented a certificate signed by an unknown authority",
@@ -101,4 +101,10 @@ func TestRecordOfRevokeReportsInStructuredOutput(t *testing.T) {
 			})
 		}
 	}
+}
+
+// recoveryCommands is the list and the delete command of a token, the way
+// Revoke builds them.
+func recoveryCommands(ref clierr.TokenRef) (list, revoke string) {
+	return clierr.Revoke(clierr.TokenRef{Kind: ref.Kind}).Field(), clierr.Revoke(ref).String()
 }

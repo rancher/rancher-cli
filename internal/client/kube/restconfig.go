@@ -54,9 +54,11 @@ func RequireLogin(eff config.Effective) error {
 		// or never had one on a blank machine), so it stays AUTH with body
 		// guidance naming RANCHER_CLI_TOKEN and no machine hint.
 		if eff.ServerName != "" {
-			return eff.UnfinishedChange().Apply(clierr.New(clierr.CodeNotLoggedIn,
-				fmt.Sprintf("not logged in to %q", eff.ServerName)).
-				WithHint(config.LoginHintFor(eff.ServerName)))
+			ce := clierr.New(clierr.CodeNotLoggedIn, fmt.Sprintf("not logged in to %q", eff.ServerName))
+			if login, ok := config.LoginHintFor(eff.ServerName); ok {
+				ce = ce.WithHintCommand(login)
+			}
+			return eff.UnfinishedChange().Apply(ce)
 		}
 		return clierr.New(clierr.CodeAuth,
 			"no token for server; set "+config.EnvToken+", or unset "+config.EnvURL+" and use a configured server")

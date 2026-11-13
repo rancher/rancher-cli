@@ -179,7 +179,7 @@ func TestImagesNeitherClusterNorAllClustersIsRefused(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, "--cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list", ce.Message)
-	assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+	assert.Equal(t, engine.ClusterRequiredHint.Field(), ce.Hint)
 }
 
 func TestImagesSkipsInactivePods(t *testing.T) {

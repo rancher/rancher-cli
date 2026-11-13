@@ -109,6 +109,25 @@ func TestCreateSecretWithoutNamespaceOrProjectIsValidation(t *testing.T) {
 	assert.Equal(t, clierr.Rancher+" access projects --cluster 'c-x'", ce.Hint)
 }
 
+// TestCreateSecretWithoutNamespaceOrProjectLeavesOutTheHintForAnUnprintableCluster
+// asserts a typed --cluster that cannot be printed as one shell word leaves the
+// hint out and puts the note in the message.
+func TestCreateSecretWithoutNamespaceOrProjectLeavesOutTheHintForAnUnprintableCluster(t *testing.T) {
+	t.Parallel()
+	for name, cluster := range unprintableNames {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewCreateSecret(noRequestFactory{t: t})
+			_, _, err := planMember(t, t.Context(), cmd, memberIn{s: map[string]string{"cluster": cluster}, a: []string{"app-secret"}})
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Empty(t, ce.Hint)
+			assert.Contains(t, ce.Message, "pass --namespace <namespace>")
+			assert.Contains(t, ce.Message, clierr.LeftOutNote)
+		})
+	}
+}
+
 // TestCreateSecretProjectWithNamespaceIsValidationBeforeReadingTheProject
 // asserts --project with --namespace is refused before the project is read
 // and before any request.

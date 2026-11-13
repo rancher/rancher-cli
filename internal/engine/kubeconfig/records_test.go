@@ -524,7 +524,8 @@ func TestKubeconfigInstallHintForAnEnvironmentOnlySession(t *testing.T) {
 
 // TestKubeconfigInstallHintIsPrintable asserts installHint, which kubectl
 // prints itself, carries no control or format character from any value in
-// it - the cluster id the server returned, not only the command.
+// it - the cluster id the server returned, not only the command - and leaves
+// out the command that would name such a cluster id, saying so.
 func TestKubeconfigInstallHintIsPrintable(t *testing.T) {
 	t.Setenv(config.EnvURL, "")
 	t.Setenv(config.EnvToken, "")
@@ -537,7 +538,8 @@ func TestKubeconfigInstallHintIsPrintable(t *testing.T) {
 	kc := loadKubeconfig(t, res)
 	require.Len(t, kc.AuthInfos, 1)
 	for _, ai := range kc.AuthInfos {
-		assert.Contains(t, ai.Exec.InstallHint, "kubeconfig --cluster 'c[31m-1'")
+		assert.Equal(t, "rancher-dev was not found; restore it, or regenerate this kubeconfig from entry 'prod'; "+clierr.LeftOutNote, ai.Exec.InstallHint,
+			"a cluster id with a control character leaves the command out")
 		assert.NotContains(t, ai.Exec.InstallHint, "\x1b")
 		assert.NotContains(t, ai.Exec.InstallHint, "\u202e")
 	}

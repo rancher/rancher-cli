@@ -62,11 +62,31 @@ func TestStalledOperationOffersTheGetAppCommand(t *testing.T) {
 // namespace or cluster with a space or a quote is shell-quoted, and a release
 // that starts with a dash ends the flags.
 func TestStalledOperationRemedyQuotesServerAndTypedValues(t *testing.T) {
-	ce := waitStalled(t, stalledOperation("my app", "ns'x"), operationRule(t, "my cluster"))
-	assert.Equal(t, clierr.Rancher+" get app 'my app' --cluster 'my cluster' --namespace 'ns'\\''x'", ce.Hint)
+	ce := waitStalled(t, stalledOperation("my app", "my ns"), operationRule(t, "my cluster"))
+	assert.Equal(t, clierr.Rancher+" get app 'my app' --cluster 'my cluster' --namespace 'my ns'", ce.Hint)
 
 	ce = waitStalled(t, stalledOperation("-rel", "ns"), operationRule(t, "local"))
 	assert.Equal(t, clierr.Rancher+" get app --cluster 'local' --namespace 'ns' -- '-rel'", ce.Hint)
+}
+
+// TestStalledOperationLeavesOutTheCommandForAValueNoShellReadsAsWritten asserts
+// a release, namespace or typed cluster that cannot be printed as one shell
+// word leaves the command out of the hint and puts the note in the message.
+func TestStalledOperationLeavesOutTheCommandForAValueNoShellReadsAsWritten(t *testing.T) {
+	for name, tc := range map[string]struct {
+		release, namespace, cluster string
+	}{
+		"release apostrophe":       {"re'l", "ns", "c-m-abc"},
+		"namespace right quote":    {"rel", "n\u2019s", "c-m-abc"},
+		"cluster zero width space": {"rel", "ns", "c\u200b-m"},
+		"release double backslash": {"re\\\\l", "ns", "c-m-abc"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ce := waitStalled(t, stalledOperation(tc.release, tc.namespace), operationRule(t, tc.cluster))
+			assert.Empty(t, ce.Hint)
+			assert.Equal(t, "helm-operation-b85sw stalled:  exit code: 123; "+clierr.LeftOutNote, ce.Message)
+		})
+	}
 }
 
 // TestStalledOperationWithoutTypedClusterHasNoRemedy asserts the command is

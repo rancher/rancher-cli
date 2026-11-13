@@ -448,11 +448,20 @@ func TestCreatePreviewNamesEachBinding(t *testing.T) {
 	t.Run("no default names the username quoted", func(t *testing.T) {
 		t.Parallel()
 		client := &fakeUserClient{userPreviewName: "u-preview1"}
-		eff, _, err := plan(t, client, fakeSrc{body: []byte(testPassword)}, planInput("o'neil"))
+		eff, _, err := plan(t, client, fakeSrc{body: []byte(testPassword)}, planInput("o neil"))
 		require.NoError(t, err)
 		require.Len(t, eff.Warnings, 2)
 		assert.Equal(t, "the server marks no global role as a default for new users; the user cannot log in until granted one; preview the grant with: "+
-			clierr.Rancher+` grant 'o'\''neil' --global --role user --dry-run`, eff.Warnings[1])
+			clierr.Rancher+` grant 'o neil' --global --role user --dry-run`, eff.Warnings[1])
+	})
+
+	t.Run("no default leaves the command out for a username holding a quote", func(t *testing.T) {
+		t.Parallel()
+		client := &fakeUserClient{userPreviewName: "u-preview1"}
+		eff, _, err := plan(t, client, fakeSrc{body: []byte(testPassword)}, planInput("o'neil"))
+		require.NoError(t, err)
+		require.Len(t, eff.Warnings, 2)
+		assert.Equal(t, "the server marks no global role as a default for new users; the user cannot log in until granted one; "+clierr.LeftOutNote, eff.Warnings[1])
 	})
 }
 

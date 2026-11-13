@@ -26,18 +26,24 @@ func detailTexts(lines []DetailLine) []string {
 	return out
 }
 
-// TestRecoveryCommandsByKind asserts the one source of token recovery text:
+// recoveryCommands is the list and the delete command of a token, the way
+// Revoke builds them.
+func recoveryCommands(ref TokenRef) (list, revoke string) {
+	return Revoke(TokenRef{Kind: ref.Kind}).Field(), Revoke(ref).String()
+}
+
+// TestRevokeCommandsByKind asserts the one source of token recovery text:
 // an ext token is the `token` kind, a v3 token is the deprecated
 // `management-token` kind whose delete needs the deprecated gate.
-func TestRecoveryCommandsByKind(t *testing.T) {
+func TestRevokeCommandsByKind(t *testing.T) {
 	t.Parallel()
-	list, revoke := RecoveryCommands(TokenRef{Kind: TokenKindExt, Name: "ext-abc"})
+	list, revoke := recoveryCommands(TokenRef{Kind: TokenKindExt, Name: "ext-abc"})
 	assert.Equal(t, "rancher get tokens", ExpandRemedies(list, ""))
 	assert.Equal(t, "rancher delete token 'ext-abc' --apply --yes", ExpandRemedies(revoke, ""))
-	list, revoke = RecoveryCommands(TokenRef{Kind: TokenKindV3, Name: "token-xyz"})
+	list, revoke = recoveryCommands(TokenRef{Kind: TokenKindV3, Name: "token-xyz"})
 	assert.Equal(t, "rancher get management-tokens", ExpandRemedies(list, ""))
 	assert.Equal(t, "rancher delete management-token 'token-xyz' --apply --yes --allow-deprecated", ExpandRemedies(revoke, ""))
-	_, dashed := RecoveryCommands(TokenRef{Kind: TokenKindExt, Name: "-x"})
+	_, dashed := recoveryCommands(TokenRef{Kind: TokenKindExt, Name: "-x"})
 	assert.Equal(t, "rancher delete token --apply --yes -- '-x'", ExpandRemedies(dashed, ""))
 }
 

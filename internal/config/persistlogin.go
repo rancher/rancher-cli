@@ -538,8 +538,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 				}
 			}
 			return rb.undo(out, cfg,
-				clierr.New(clierr.CodeGeneric, fmt.Sprintf("storing the accepted certificate for %s: %s", name, werr.Error())).
-					WithHint(LoginHintFor(name)))
+				withLoginHint(clierr.New(clierr.CodeGeneric, fmt.Sprintf("storing the accepted certificate for %s: %s", name, werr.Error())), name))
 		}
 		entry = cfg.Servers[name]
 	default:
@@ -554,16 +553,14 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 			cfg.CredentialStore, cfg.CredentialTransitionID = rb.declared, rb.transition
 			if declares {
 				out.ConfigState = clierr.ConfigDeclarationNotWritten
-				return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
+				return withLoginHint(clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 					"the credential for %s was stored, but recording that this directory keeps credentials in %q failed: %s",
-					name, in.Declaration, werr.Error())).
-					WithHint(LoginHintFor(name))
+					name, in.Declaration, werr.Error())), name)
 			}
 			out.ConfigState = clierr.ConfigTransitionNotRecorded
-			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
+			return withLoginHint(clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 				"the credential for %s was stored, but starting the credential store change failed: %s; nothing was moved",
-				name, werr.Error())).
-				WithHint(LoginHintFor(name))
+				name, werr.Error())), name)
 		}
 	}
 	if plan != nil {
@@ -582,17 +579,16 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 				"the credential for %s was stored, but the record of the credential store change cannot be read: %s; the change did not run",
 				name, terr.Error())).
-				WithCause(terr).WithHint(StatusCommand)
+				WithCause(terr).WithHintCommand(clierr.NewCommand(StatusWords))
 		case state != TransitionActive:
 			// Finished: none of its steps can run, and none is left to
 			// hold a pause. A writer that read the store readers have left
 			// is refused by the store check, so this write resumes.
 			out.ConfigState = clierr.ConfigTransitionLost
 			out.Warnings = appendNotice(out.Warnings, resumeLast(dir, cfg, name))
-			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
+			return withLoginHint(clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 				"the credential for %s was stored, but the record of the credential store change is no longer the one this login wrote; the change did not run",
-				name)).
-				WithHint(LoginHintFor(name))
+				name)), name)
 		}
 	}
 
@@ -607,10 +603,9 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		out.Warnings = append(out.Warnings, ns...)
 		if !ok {
 			out.ConfigState = clierr.ConfigStoreChangeNotApplied
-			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
+			return withLoginHint(clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 				"the credential for %s was stored, but neither the old copy nor the credential store pin could be changed; this directory still reads the previous credential",
-				name)).
-				WithHint(LoginHintFor(name))
+				name)), name)
 		}
 	}
 
@@ -902,9 +897,9 @@ func rollbackFailed(out *PersistLoginOutcome, name string, snap *Server, werr, p
 	out.ConfigRecovery = &clierr.ConfigRecovery{
 		Entry: name,
 		Prior: priorEntry(snap),
-		// The entry name is operator-chosen and only prefix-checked, so it is
-		// shell-quoted like every value a machine hint carries.
-		Command: DeleteServerCommand + clierr.ShellQuoteArgs("", name),
+		// The entry name is operator-chosen and only prefix-checked; a name
+		// that cannot be printed leaves the command empty.
+		Command: clierr.NewCommand(DeleteServerWords).Arg(name).Field(),
 	}
 	return fmt.Errorf("%w (restoring the config entry also failed: %v)", primary, werr)
 }

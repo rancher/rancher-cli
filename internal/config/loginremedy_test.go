@@ -21,7 +21,7 @@ import (
 
 // loginRemedyBuilders lists the functions of this package that can write
 // an auth login command, read from its source: every function whose body
-// names LoginCommand or LoginHintFor, or holds a string literal with
+// names LoginWords, LoginHintFor or withLoginHint, or holds a string literal with
 // "auth login" in it.
 func loginRemedyBuilders(t *testing.T) []string {
 	t.Helper()
@@ -44,7 +44,7 @@ func loginRemedyBuilders(t *testing.T) []string {
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				switch x := n.(type) {
 				case *ast.Ident:
-					writes = writes || x.Name == "LoginCommand" || x.Name == "LoginHintFor"
+					writes = writes || x.Name == "LoginWords" || x.Name == "LoginHintFor" || x.Name == "withLoginHint"
 				case *ast.BasicLit:
 					writes = writes || (x.Kind == token.STRING && strings.Contains(x.Value, "auth login"))
 				}
@@ -81,7 +81,15 @@ func TestNoLoginRemedyNamesAPluginLoginEntry(t *testing.T) {
 	const name = "exec-login-r.ex"
 	dir := t.TempDir()
 	rows := map[string]func(t *testing.T) []string{
-		"LoginHintFor": func(*testing.T) []string { return []string{LoginHintFor(name)} },
+		"LoginHintFor": func(*testing.T) []string {
+			if login, ok := LoginHintFor(name); ok {
+				return []string{login.String()}
+			}
+			return nil
+		},
+		"withLoginHint": func(*testing.T) []string {
+			return textOf(withLoginHint(clierr.New(clierr.CodeGeneric, "failed"), name))
+		},
 		"ErrNotLoggedInFor": func(*testing.T) []string {
 			return append(textOf(ErrNotLoggedInFor(map[string]string{name: "https://r.ex"}, nil)),
 				textOf(ErrNotLoggedInFor(map[string]string{name: "https://r.ex", "prod": "https://r.ex"}, nil))...)
@@ -159,7 +167,10 @@ func TestNotLoggedInWithOnlyAPluginLoginEntryNamesALoginOfANewEntry(t *testing.T
 			assert.Equal(t, tc.login, clierr.ExpandRemedies(ce.Hint, ""))
 		})
 	}
-	assert.Empty(t, LoginHintFor("exec-login-r.ex"), "auth login refuses the name, so it is no hint")
-	assert.Equal(t, "rancher auth login 'prod'", clierr.ExpandRemedies(LoginHintFor("prod"), ""))
+	_, ok := LoginHintFor("exec-login-r.ex")
+	assert.False(t, ok, "auth login refuses the name, so it is no hint")
+	prod, ok := LoginHintFor("prod")
+	assert.True(t, ok)
+	assert.Equal(t, "rancher auth login 'prod'", clierr.ExpandRemedies(prod.String(), ""))
 	assert.Equal(t, "rancher auth login 'prod'", clierr.ExpandRemedies(ErrNotLoggedInFor(map[string]string{"prod": "https://r.ex"}, nil).Hint, ""))
 }

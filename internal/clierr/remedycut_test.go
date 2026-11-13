@@ -23,10 +23,9 @@ func cutTexts(t *testing.T) map[string][]string {
 	t.Helper()
 	ext := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-a"}
 	v3 := clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "token-b"}
-	var recoveryCommands []string
+	var revokes []string
 	for _, ref := range []clierr.TokenRef{ext, v3} {
-		list, revoke := clierr.RecoveryCommands(ref)
-		recoveryCommands = append(recoveryCommands, list, revoke)
+		revokes = append(revokes, clierr.Revoke(clierr.TokenRef{Kind: ref.Kind}).Field(), clierr.Revoke(ref).String())
 	}
 	var credentialLines []string
 	for _, line := range (clierr.LoginFailureDetails{CredentialRecovery: &clierr.CredentialRecovery{
@@ -37,8 +36,8 @@ func cutTexts(t *testing.T) map[string][]string {
 		}
 	}
 	return map[string][]string{
-		"RecoveryCommands":                recoveryCommands,
-		"RecoverySequence":                clierr.RecoverySequence("https://r.example.test", ext),
+		"Revoke":                          revokes,
+		"RecoverySequence":                clierr.RecoverySequence("https://r.example.test", ext).Lines(),
 		"LoginFailureDetails.TextDetails": credentialLines,
 	}
 }
@@ -50,7 +49,7 @@ func cutTexts(t *testing.T) map[string][]string {
 func TestNoCommandSurvivesTheCutOfTheRecoveryTexts(t *testing.T) {
 	io := runtime.IO{RemedyDir: "/d\x01"}
 	texts := cutTexts(t)
-	for _, name := range []string{"RecoveryCommands", "RecoverySequence", "LoginFailureDetails.TextDetails"} {
+	for _, name := range []string{"Revoke", "RecoverySequence", "LoginFailureDetails.TextDetails"} {
 		require.NotEmpty(t, texts[name], name)
 		for _, text := range texts[name] {
 			require.True(t, clierr.HasRemedy(text), "%s: %q", name, text)
@@ -88,7 +87,7 @@ func TestEveryRecoveryBuilderHasACutRow(t *testing.T) {
 		}
 	}
 	slices.Sort(found)
-	assert.Equal(t, []string{"RecoveryCommands", "RecoverySequence"}, found)
+	assert.Empty(t, found, "the recovery builders write their commands with NewCommand and name no Rancher marker themselves")
 	for _, name := range found {
 		assert.NotEmpty(t, rows[name], "%s has a cut row", name)
 	}

@@ -1724,6 +1724,17 @@ func TestRenderClusterTextSystemMemberTag(t *testing.T) {
 	assert.Contains(t, text, "  okta_user://operator  cluster-member\n")
 }
 
+// TestWithheldHintIsLeftOutForAnUnprintableClusterID asserts a cluster id that
+// cannot be printed as one shell word leaves the rerun command out.
+func TestWithheldHintIsLeftOutForAnUnprintableClusterID(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"c'x", "c\u2019x", "c\u200bx", "c\\\\x"} {
+		assert.False(t, withheldHint(id).OK())
+		assert.Empty(t, withheldHint(id).Field())
+	}
+	assert.Equal(t, clierr.Rancher+" get clusterregistrationtoken default-token --namespace 'c-abc'", withheldHint("c-abc").String())
+}
+
 // TestInspectClusterRegistrationWithheldByDefault asserts the gate: without
 // --registration the section is withheld (no fetch issued), the text view
 // shows the withheld line, the JSON shape is {"withheld":true,...}, and
@@ -1747,7 +1758,7 @@ func TestInspectClusterRegistrationWithheldByDefault(t *testing.T) {
 	message, _ := reg["message"].(string)
 	assert.Equal(t, withheldMessage(), message, "message must carry the rerun-with---registration prose")
 	hint, _ := reg["hint"].(string)
-	assert.Equal(t, withheldHint("c-abc"), hint, "hint must be the canonical rerun suggestion")
+	assert.Equal(t, withheldHint("c-abc").Field(), hint, "hint must be the canonical rerun suggestion")
 	assert.NotContains(t, hint, "--registration", "hint must be a single paste-valid command, not the --registration alternative too")
 	for _, field := range []string{"nodeCommand", "insecureNodeCommand", "command", "insecureCommand", "manifestUrl"} {
 		_, has := reg[field]

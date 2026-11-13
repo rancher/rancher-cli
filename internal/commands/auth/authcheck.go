@@ -420,7 +420,8 @@ var errV3TokenNotFound = errors.New("v3 token not found on the server")
 // tokenWarning so the two messages cannot drift independently as the probe
 // grows.
 func rotatedTokenAdvisory() string {
-	return "token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate with: " + config.LoginCommand
+	return clierr.Text("token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate",
+		clierr.Lead(" with: "), clierr.NewCommand(config.LoginWords))
 }
 
 // probeToken runs the token probe for the EFFECTIVE token (eff.Token -

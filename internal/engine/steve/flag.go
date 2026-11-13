@@ -105,7 +105,7 @@ func clusterRequired(ctx context.Context, get Getter, v string) error {
 	if len(on) == 0 {
 		return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 			"--cluster is required with --project; no project you can read has the id or display name %s", q)).
-			WithHint(clierr.Rancher + " access projects")
+			WithHintCommand(clierr.NewCommand("access projects"))
 	}
 	slices.Sort(on)
 	clusters, err := Clusters(ctx, get)
@@ -122,9 +122,13 @@ func clusterRequired(ctx context.Context, get Getter, v string) error {
 		cands[i] = clierr.Candidate{ID: id, Name: name[id]}
 		quoted[i] = clierr.ShellQuote(id)
 	}
-	hint := clierr.Rancher + " access clusters"
-	msg := fmt.Sprintf("--cluster is required with --project; the project with the id or display name %s is on cluster %s - pass --cluster %s",
-		q, quoted[0], quoted[0])
+	hint := clierr.NewCommand("access clusters")
+	pass, passOK := clierr.FlagFragment("--cluster", on[0])
+	msg := fmt.Sprintf("--cluster is required with --project; the project with the id or display name %s is on cluster %s",
+		q, quoted[0])
+	if passOK {
+		msg += " - pass " + pass
+	}
 	switch {
 	case len(on) > 1:
 		msg = fmt.Sprintf("--cluster is required with --project; projects with the id or display name %s are on clusters %s - pass --cluster with one of them",
@@ -133,9 +137,15 @@ func clusterRequired(ctx context.Context, get Getter, v string) error {
 		// On the one cluster the display name still names several projects,
 		// so --cluster alone is not enough: the caller needs an id, which
 		// the projects listing shows.
-		msg = fmt.Sprintf("--cluster is required with --project; %d projects with the display name %s are on cluster %s - pass --cluster %s and one of their ids as --project",
-			byDisplay, q, quoted[0], quoted[0])
-		hint = clierr.Rancher + " access projects --cluster " + quoted[0]
+		msg = fmt.Sprintf("--cluster is required with --project; %d projects with the display name %s are on cluster %s",
+			byDisplay, q, quoted[0])
+		if passOK {
+			msg += " - pass " + pass + " and one of their ids as --project"
+		}
+		hint = clierr.NewCommand("access projects").FlagValue("--cluster", on[0])
 	}
-	return clierr.New(clierr.CodeValidation, msg).WithCandidates(cands).WithHint(hint)
+	if !passOK && len(on) == 1 {
+		msg = clierr.WithLeftOutNote(msg)
+	}
+	return clierr.New(clierr.CodeValidation, msg).WithCandidates(cands).WithHintCommand(hint)
 }

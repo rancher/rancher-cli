@@ -198,6 +198,10 @@ func rotateUnchangedValueError(clientName, secretName, recovery string) *clierr.
 // rotateAgainRecovery is the text that says how to rotate the same secret
 // again once the controller is healthy: the command previews it.
 func rotateAgainRecovery(clientName, secretName string) string {
-	return "once the controller is healthy, rotate the same secret again (the command previews it; add --apply --yes after reading the preview): " +
-		clierr.Rancher + " oidc-client rotate-secret" + clierr.ShellQuoteArgs(" --dry-run", clientName, secretName)
+	rotate := clierr.NewCommand("oidc-client rotate-secret").Arg(clientName, secretName).Flag("--dry-run")
+	text := "once the controller is healthy, rotate the same secret again"
+	if rotate.OK() {
+		text += " (the command previews it; add --apply --yes after reading the preview)"
+	}
+	return clierr.Text(text, clierr.Lead(": "), rotate)
 }

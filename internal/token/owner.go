@@ -47,7 +47,7 @@ func (u userCheck) otherAuthConfig(recorded string) bool {
 // which auth login refuses by name, it is the entry's removal, after which
 // the next call signs in as the user in a terminal or uses a login of an
 // entry of the user's own choice; there is no hint.
-func (u userCheck) relogin(cfg *config.Config, entry string, plugin bool) (text, hint string) {
+func (u userCheck) relogin(cfg *config.Config, entry string, plugin bool) (text string, hint clierr.Command) {
 	quoted := clierr.ShellQuote(entry)
 	through := ""
 	if u.authConfig != "" {
@@ -55,33 +55,35 @@ func (u userCheck) relogin(cfg *config.Config, entry string, plugin bool) (text,
 	}
 	if plugin || config.IsExecLoginEntryName(entry) {
 		login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, u.caFrom, false)
-		piped := "a login piped to: "
+		piped := "a login piped"
 		if u.authConfig != "" {
-			piped = "a login made" + through + " and piped to: "
+			piped = "a login made" + through + " and piped"
 		}
 		next := login.Instruction("the next call signs in as " + clierr.ShellQuote(u.userID) + through + " in a terminal; or it uses " + piped)
-		return "remove " + quoted + " with: " + clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", entry) + "; then " +
-			clierr.Rancher + " config delete-server" + clierr.ShellQuoteArgs("", entry) + "; " + next, ""
+		removal := clierr.NewSequence().
+			Then("", config.LogoutHintFor(entry)).
+			Then("then ", clierr.NewCommand(config.DeleteServerWords).Arg(entry))
+		return clierr.NoteOnce(clierr.Text("remove "+quoted, clierr.Lead(" with: "), removal) + "; " + next), clierr.Command{}
 	}
 	of := ""
 	if u.authConfig != "" {
 		of = " made" + through
 	}
-	hint = clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --token-stdin", entry)
-	return "pipe an API token of " + clierr.ShellQuote(u.userID) + of + " to: " + hint, hint
+	hint = clierr.NewCommand(config.LoginWords).Arg(entry).Flag("--token-stdin")
+	return clierr.Text("pipe an API token of "+clierr.ShellQuote(u.userID)+of, clierr.Lead(" to: "), hint), hint
 }
 
 // authConfigRemedy is the way to a login of entry made through the call's
 // auth config: for a user entry, a sign-in through it, the command being
 // the hint, or the piped token relogin gives; for a plugin login entry
 // relogin's removal, with no hint.
-func (u userCheck) authConfigRemedy(cfg *config.Config, entry string, plugin bool) (text, hint string) {
+func (u userCheck) authConfigRemedy(cfg *config.Config, entry string, plugin bool) (text string, hint clierr.Command) {
 	text, _ = u.relogin(cfg, entry, plugin)
 	if plugin || config.IsExecLoginEntryName(entry) {
-		return text, ""
+		return text, clierr.Command{}
 	}
-	signIn := clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --auth-provider "+clierr.ShellQuote(u.authConfig), entry)
-	return "sign in through auth config " + clierr.ShellQuote(u.authConfig) + " with: " + signIn + "; or " + text, signIn
+	signIn := clierr.NewCommand(config.LoginWords).Arg(entry).FlagValue("--auth-provider", u.authConfig)
+	return clierr.NoteOnce(clierr.Text("sign in through auth config "+clierr.ShellQuote(u.authConfig), clierr.Lead(" with: "), signIn) + "; or " + text), signIn
 }
 
 // entryAuthConfigRefused is the refusal of a call with an auth config whose
@@ -99,7 +101,7 @@ func (u userCheck) entryAuthConfigRefused(cfg *config.Config, entry, recorded st
 		}
 	}
 	text, hint := u.authConfigRemedy(cfg, entry, plugin)
-	return clierr.New(clierr.CodeAuth, subject+state+", and this exec entry names --auth-provider "+clierr.ShellQuote(u.authConfig)+"; "+text).WithHint(hint)
+	return clierr.New(clierr.CodeAuth, clierr.NoteOnce(subject+state+", and this exec entry names --auth-provider "+clierr.ShellQuote(u.authConfig)+"; "+text)).WithHintCommand(hint)
 }
 
 // loginOfNewEntry is the way to a login when no user entry is the call's to
@@ -108,8 +110,11 @@ func (u userCheck) entryAuthConfigRefused(cfg *config.Config, entry, recorded st
 // so it has no hint. The caller adds the note about the entry it selects.
 func (u userCheck) loginOfNewEntry(cfg *config.Config) string {
 	login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, u.caFrom, false)
-	return login.Instruction("pipe an API token to: ") + "; then " + clierr.Rancher + " config use-server <name>; then " +
-		kubeconfigRemedy(u.clusterID)
+	steps := clierr.NewSequence().
+		Then("", login.Login()).
+		Then("then ", clierr.NewCommand("config use-server").Placeholder("<name>")).
+		Then("then ", kubeconfigRemedy(u.clusterID))
+	return clierr.Text(login.WithFacts("pipe an API token"), clierr.Lead(" to: "), steps)
 }
 
 // entryOwnerRefused is the refusal of a call whose entry holds a login
@@ -133,10 +138,13 @@ func (u userCheck) entryOwnerRefused(cfg *config.Config, entry, owner string, pl
 		if cfg != nil {
 			current = cfg.CurrentServer
 		}
-		msg += "; or regenerate the kubeconfig from an entry that holds the login of " + clierr.ShellQuote(u.userID) + " with: " +
-			useServerCommand("") + "; then " + kubeconfigRemedy(u.clusterID) + useServerNote(current)
+		regenerate := clierr.NewSequence().
+			Then("", useServerCommand("")).
+			Then("then ", kubeconfigRemedy(u.clusterID))
+		msg += clierr.Text("; or regenerate the kubeconfig from an entry that holds the login of "+clierr.ShellQuote(u.userID), clierr.Lead(" with: "), regenerate) +
+			useServerNote(current)
 	}
-	return clierr.New(clierr.CodeAuth, msg).WithHint(hint)
+	return clierr.New(clierr.CodeAuth, clierr.NoteOnce(msg)).WithHintCommand(hint)
 }
 
 // entryNameTooLong is the refusal of a plugin-created login whose entry
@@ -150,11 +158,11 @@ func (u userCheck) entryNameTooLong(cfg *config.Config, length int) *clierr.Erro
 		piped += " of " + clierr.ShellQuote(u.userID)
 	}
 	subject := "the exec plugin's login entry for this server"
-	remedy := login.Instruction("to log in under a shorter name, " + piped + " to: ")
+	remedy := login.Instruction("to log in under a shorter name, " + piped)
 	if u.authConfig != "" {
 		subject += ", for Rancher user " + clierr.ShellQuote(u.userID) + " through auth config " + clierr.ShellQuote(u.authConfig) + ","
 		piped += " made through auth config " + clierr.ShellQuote(u.authConfig)
-		remedy = login.Instruction("to log in under a shorter name, sign in with: " + login.signIn(u.authConfig) + "; or " + piped + " to: ")
+		remedy = login.InstructionSignIn("to log in under a shorter name, sign in", u.authConfig, piped)
 	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"%s would have a name of %d characters, and the credential store accepts at most %d; %s",
@@ -177,8 +185,7 @@ func revokedClause(subject string, ref *TokenRef, out RevokeOutcome) string {
 	if ref.Kind == TokenKindV3 {
 		return subject + " could not be revoked" + cause + "; " + v3AdminRemedy(*ref, "")
 	}
-	_, revoke := clierr.RecoveryCommands(*ref)
-	return subject + " could not be revoked" + cause + "; revoke it with: " + clierr.MarkRemedy(revoke)
+	return clierr.Text(subject+" could not be revoked"+cause, clierr.Lead("; revoke it with: "), clierr.Revoke(*ref))
 }
 
 // revokeRefused revokes a token the call created and refused to hand
@@ -213,9 +220,9 @@ func (u userCheck) checkCreatedOwner(ctx context.Context, cfg *config.Config, cr
 			revokedClause("the token", created.Ref, out)).WithDetails(fateDetails(fresh, out))
 	}
 	text, hint := u.relogin(cfg, sc.name, sc.entry.Provenance == clierr.ProvenanceExecLogin)
-	return clierr.New(clierr.CodeAuth, "the stored login of server entry "+clierr.ShellQuote(sc.name)+" belongs to Rancher user "+clierr.ShellQuote(clierr.IDText(created.UserID))+
+	return clierr.New(clierr.CodeAuth, clierr.NoteOnce("the stored login of server entry "+clierr.ShellQuote(sc.name)+" belongs to Rancher user "+clierr.ShellQuote(clierr.IDText(created.UserID))+
 		", not to "+clierr.ShellQuote(u.userID)+", which this exec entry names with --user-id; "+
-		revokedClause("the token created from it", created.Ref, out)+"; "+text).WithHint(hint).WithDetails(fateDetails(fresh, out))
+		revokedClause("the token created from it", created.Ref, out)+"; "+text)).WithHintCommand(hint).WithDetails(fateDetails(fresh, out))
 }
 
 // refuseNoAuthConfig is the refusal of a token created from a stored login
@@ -235,10 +242,10 @@ func (u userCheck) refuseNoAuthConfig(ctx context.Context, created CreateResult,
 func (u userCheck) refuseOtherAuthConfig(ctx context.Context, cfg *config.Config, created CreateResult, fresh *freshToken, sc storedCredential) error {
 	out := revokeRefused(ctx, fresh)
 	text, hint := u.authConfigRemedy(cfg, sc.name, sc.entry.Provenance == clierr.ProvenanceExecLogin)
-	return clierr.New(clierr.CodeAuth, "the token created from the stored login of server entry "+clierr.ShellQuote(sc.name)+
+	return clierr.New(clierr.CodeAuth, clierr.NoteOnce("the token created from the stored login of server entry "+clierr.ShellQuote(sc.name)+
 		" was made through auth config "+clierr.ShellQuote(created.AuthConfig)+", not "+clierr.ShellQuote(u.authConfig)+
-		", which this exec entry names with --auth-provider; "+revokedClause("the token", created.Ref, out)+"; "+text).
-		WithHint(hint).WithDetails(fateDetails(fresh, out))
+		", which this exec entry names with --auth-provider; "+revokedClause("the token", created.Ref, out)+"; "+text)).
+		WithHintCommand(hint).WithDetails(fateDetails(fresh, out))
 }
 
 // noOwnerWithoutExtTokens is the refusal of a call with --user-id on a

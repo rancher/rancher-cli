@@ -3,6 +3,7 @@ package steve
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -160,4 +161,46 @@ func TestResolveProjectFlagWithClusterReturnsFactoryErrorsBeforeAnyRequest(t *te
 	_, _, err = ResolveProjectFlag(t.Context(), srv.getter(), f, "c-abc", "web")
 	assert.Same(t, down, err)
 	assert.Empty(t, srv.requests())
+}
+
+// TestResolveProjectFlagWithoutClusterLeavesOutACommandForAClusterIdThatCannotBePrinted
+// asserts a cluster id the shell would misread drops the instruction to pass
+// --cluster with it, keeps the cluster named in prose and adds the left-out
+// note once; the hint that lists projects on that cluster is left out too.
+func TestResolveProjectFlagWithoutClusterLeavesOutACommandForAClusterIdThatCannotBePrinted(t *testing.T) {
+	t.Parallel()
+	for name, id := range map[string]string{
+		"apostrophe":        "c-'x",
+		"curly apostrophe":  "c-\u2019x",
+		"zero width space":  "c-\u200bx",
+		"double backslash":  "c-\\\\x",
+		"final backslash":   "c-x\\",
+		"double quote mark": "c-\"x",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			srv := newServer(t, map[string]route{
+				allProjectsPath: {pages: onePage(
+					steveProject(id, "p-1", "web"), steveProject(id, "p-8", "web"), steveProject(id, "p-3", "db"),
+				)},
+				clustersPath: {pages: onePage(steveCluster(id, "Odd"))},
+			})
+			for _, tc := range []struct {
+				v        string
+				wantHint string
+			}{
+				{"db", clierr.NewCommand("access clusters").Field()},
+				{"web", ""},
+			} {
+				_, _, err := ResolveProjectFlag(t.Context(), srv.getter(), &fakeFactory{}, "", tc.v)
+				ce := codeOf(t, err)
+				assert.Equal(t, clierr.CodeValidation, ce.Code)
+				assert.True(t, strings.HasPrefix(ce.Message, "--cluster is required with --project; "), ce.Message)
+				assert.NotContains(t, ce.Message, "pass --cluster")
+				assert.Equal(t, 1, strings.Count(ce.Message, clierr.LeftOutNote), ce.Message)
+				assert.Equal(t, tc.wantHint, ce.Hint)
+				assert.NotContains(t, ce.Hint, "access projects")
+			}
+		})
+	}
 }

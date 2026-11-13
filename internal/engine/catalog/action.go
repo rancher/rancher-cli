@@ -97,8 +97,13 @@ type actionTarget struct {
 }
 
 // getApp is the command that shows the App of the release.
-func (t actionTarget) getApp() string {
-	return clierr.Rancher + " get app" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(t.namespace), t.release)
+func (t actionTarget) getApp() clierr.Command {
+	return clierr.NewCommand("get app").Arg(t.release).FlagValue("--cluster", t.typedCluster).FlagValue("--namespace", t.namespace)
+}
+
+// getOperations is the command that lists the operations of the namespace.
+func (t actionTarget) getOperations() clierr.Command {
+	return clierr.NewCommand("get operations").FlagValue("--cluster", t.typedCluster).FlagValue("--namespace", t.namespace)
 }
 
 // postAction sends body once through the action port and decodes Rancher's
@@ -128,9 +133,9 @@ func postAction(ctx context.Context, actions engine.ActionClientFactory, path st
 	var a actionAnswer
 	if err := json.Unmarshal(answer, &a); err != nil || a.OperationName == "" || a.OperationNamespace == "" {
 		return actionAnswer{}, clierr.New(clierr.CodeGeneric,
-			"Rancher accepted the request but its answer names no operation; list the operations of the namespace, then read the app: "+
-				clierr.Rancher+" get app"+clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(t.namespace), t.release)).
-			WithHint(clierr.Rancher + " get operations --cluster " + clierr.ShellQuote(t.typedCluster) + " --namespace " + clierr.ShellQuote(t.namespace))
+			clierr.Text("Rancher accepted the request but its answer names no operation; list the operations of the namespace, then read the app",
+				clierr.Lead(": "), t.getApp())).
+			WithHintCommand(t.getOperations())
 	}
 	return a, nil
 }
@@ -271,15 +276,15 @@ func outcomeUnknown(t actionTarget, err error, values Values) error {
 			cause += ": " + said
 		}
 	}
-	msg := fmt.Sprintf("the request for release %s was sent, but the answer did not say whether Rancher ran it (%s); "+
-		"before you run the command again, list the operations of the namespace and read the app: %s",
-		clierr.ShellQuote(t.release), cause, clierr.Rancher+" get app"+clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(t.namespace), t.release))
+	parts := []any{fmt.Sprintf("the request for release %s was sent, but the answer did not say whether Rancher ran it (%s); "+
+		"before you run the command again, list the operations of the namespace and read the app",
+		clierr.ShellQuote(t.release), cause), clierr.Lead(": "), t.getApp()}
 	if t.requestID != "" {
-		msg += fmt.Sprintf("; this request's id is %s, and an app whose spec.chart.metadata.annotations hold %s: %s is the revision this request installed",
-			t.requestID, annotationRequestID, t.requestID)
+		parts = append(parts, fmt.Sprintf("; this request's id is %s, and an app whose spec.chart.metadata.annotations hold %s: %s is the revision this request installed",
+			t.requestID, annotationRequestID, t.requestID))
 	}
-	return clierr.New(clierr.CodeGeneric, msg).WithRetryable(false).
-		WithHint(clierr.Rancher + " get operations --cluster " + clierr.ShellQuote(t.typedCluster) + " --namespace " + clierr.ShellQuote(t.namespace))
+	return clierr.New(clierr.CodeGeneric, clierr.Text(parts...)).WithRetryable(false).
+		WithHintCommand(t.getOperations())
 }
 
 // outcomeCause words the transport failure without the URL, which names

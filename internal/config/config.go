@@ -17,40 +17,48 @@ import (
 
 const fileName = "config.yaml"
 
-// LoginHintFor returns the bare, shell-quoted `rancher auth login <name>`
-// command for name - the concrete login hint every not-logged-in outcome
-// below emits when (and only when) a name is known. Replaces the retired
-// LoginHint constant, which could not carry a concrete name under the
-// executable-hint contract (a machine hint is a complete command, never a
-// placeholder). A name in the exec plugin's own login entry namespace gets
-// none: auth login refuses it, and a hint is a command that runs.
-func LoginHintFor(name string) string {
+// LoginHintFor returns the `rancher auth login <name>` command for name - the
+// concrete login hint every not-logged-in outcome below emits when (and only
+// when) a name is known. A name in the exec plugin's own login entry
+// namespace gets none (ok is false): auth login refuses it, and a hint is a
+// command that runs. A name that cannot be printed gives a command that is
+// left out; set it as the hint with WithHintCommand.
+func LoginHintFor(name string) (cmd clierr.Command, ok bool) {
 	if IsExecLoginEntryName(name) {
-		return ""
+		return clierr.Command{}, false
 	}
-	return LoginCommand + clierr.ShellQuoteArgs("", name)
+	return clierr.NewCommand(LoginWords).Arg(name), true
 }
 
-// The remedy commands the shared credential and store-change code names,
-// each opened by clierr.Rancher so the invocation that prints it can name
-// its config directory.
-var (
-	// LoginCommand logs in; LoginHintFor names the entry.
-	LoginCommand = clierr.Rancher + " auth login"
-	// DeleteServerCommand removes a server entry; the entry follows.
-	DeleteServerCommand = clierr.Rancher + " config delete-server"
-	// TokenReuseOffCommand turns token reuse off.
-	TokenReuseOffCommand = clierr.Rancher + " config set-token-reuse off"
-	// StatusCommand reports the directory's state, a store change's
-	// included: the hint of every error about a store change that no other
-	// command fixes, since its report shows the change record, what is left
-	// and why it stopped.
-	StatusCommand = clierr.Rancher + " config status"
+// withLoginHint sets the login command for name as the hint of e; a name that
+// gets no login hint leaves e without one.
+func withLoginHint(e *clierr.Error, name string) *clierr.Error {
+	if login, ok := LoginHintFor(name); ok {
+		return e.WithHintCommand(login)
+	}
+	return e.WithHint("")
+}
+
+// The words of the remedy commands the shared credential and store-change
+// code names; each goes to clierr.NewCommand, which opens the command so the
+// invocation that prints it can name its config directory.
+const (
+	// LoginWords logs in; LoginHintFor names the entry.
+	LoginWords clierr.CommandWord = "auth login"
+	// DeleteServerWords removes a server entry; the entry follows.
+	DeleteServerWords clierr.CommandWord = "config delete-server"
+	// TokenReuseOffWords turns token reuse off.
+	TokenReuseOffWords clierr.CommandWord = "config set-token-reuse off"
+	// StatusWords reports the directory's state, a store change's included:
+	// the hint of every error about a store change that no other command
+	// fixes, since its report shows the change record, what is left and why it
+	// stopped.
+	StatusWords clierr.CommandWord = "config status"
 )
 
 // LogoutHintFor is the command that logs out entry name.
-func LogoutHintFor(name string) string {
-	return clierr.Rancher + " auth logout" + clierr.ShellQuoteArgs("", name)
+func LogoutHintFor(name string) clierr.Command {
+	return clierr.NewCommand("auth logout").Arg(name)
 }
 
 // ErrNotLoggedIn builds the standard not-logged-in error for callers that
@@ -124,15 +132,20 @@ func ErrNotLoggedInFor(servers map[string]string, withCA map[string]bool) *clier
 				return clierr.New(clierr.CodeNotLoggedIn, msg+EntryOrigin(names[0]).Text(err))
 			}
 			if withCA[names[0]] {
-				login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url)+" "+CAFileArg("--cacert"), name)
-				return clierr.New(clierr.CodeNotLoggedIn, msg+InlineCAHolder(CASource{Kind: CASourceEntry, Entry: names[0]})+
-					" and --cacert needs a file; "+CAFileMeaning+"; log in under a server entry of your own with: "+login)
+				login := clierr.NewCommand(LoginWords).Arg(name).FlagValue("--url", url).FlagText(CAFileFlag)
+				return clierr.New(clierr.CodeNotLoggedIn, clierr.Text(msg+InlineCAHolder(CASource{Kind: CASourceEntry, Entry: names[0]})+
+					" and --cacert needs a file; "+CAFileMeaning,
+					clierr.Lead("; log in under a server entry of your own with: "), login))
 			}
-			login := LoginCommand + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(url), name)
-			return clierr.New(clierr.CodeNotLoggedIn, msg+"log in under a server entry of your own with: "+login).WithHint(login)
+			login := clierr.NewCommand(LoginWords).Arg(name).FlagValue("--url", url)
+			return clierr.New(clierr.CodeNotLoggedIn, clierr.Text(msg, clierr.Lead("log in under a server entry of your own with: "), login)).
+				WithHintCommand(login)
 		}
-		return clierr.New(clierr.CodeNotLoggedIn, "not logged in - no current server").
-			WithHint(LoginHintFor(names[0]))
+		err := clierr.New(clierr.CodeNotLoggedIn, "not logged in - no current server")
+		if login, ok := LoginHintFor(names[0]); ok {
+			err = err.WithHintCommand(login)
+		}
+		return err
 	}
 	cands := make([]clierr.Candidate, 0, len(names))
 	for _, n := range names {

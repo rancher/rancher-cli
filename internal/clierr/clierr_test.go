@@ -300,33 +300,33 @@ var shellQuoteArgsHostile = []string{
 // TestShellQuoteArgs asserts the exact text of the helper for each hostile
 // value, with and without flags, and for two values with one starting with a
 // dash.
-func TestShellQuoteArgs(t *testing.T) {
+func TestQuoteArgsOfTheBuilderHelper(t *testing.T) {
 	for _, v := range shellQuoteArgsHostile {
 		dashed := strings.HasPrefix(strings.TrimSpace(strings.ReplaceAll(v, "\u2063", "")), "-")
 		t.Run(fmt.Sprintf("%q", v), func(t *testing.T) {
 			if !dashed {
-				assert.Equal(t, " "+ShellQuote(v), ShellQuoteArgs("", v))
-				assert.Equal(t, " "+ShellQuote(v)+" --apply --yes", ShellQuoteArgs(" --apply --yes", v))
+				assert.Equal(t, " "+ShellQuote(v), shellQuoteArgs("", v))
+				assert.Equal(t, " "+ShellQuote(v)+" --apply --yes", shellQuoteArgs(" --apply --yes", v))
 				return
 			}
-			assert.Equal(t, " -- "+ShellQuote(v), ShellQuoteArgs("", v))
-			assert.Equal(t, " --apply --yes -- "+ShellQuote(v), ShellQuoteArgs(" --apply --yes", v))
+			assert.Equal(t, " -- "+ShellQuote(v), shellQuoteArgs("", v))
+			assert.Equal(t, " --apply --yes -- "+ShellQuote(v), shellQuoteArgs(" --apply --yes", v))
 		})
 	}
-	assert.Equal(t, " -- '-h'", ShellQuoteArgs("", "-h"))
-	assert.Equal(t, " -- '-h' 'x'", ShellQuoteArgs("", "-h", "x"))
-	assert.Equal(t, " -- 'x' '-h'", ShellQuoteArgs("", "x", "-h"))
-	assert.Equal(t, " --dry-run -- 'x' '-h'", ShellQuoteArgs(" --dry-run", "x", "-h"))
-	assert.Equal(t, " 'x' 'y' --dry-run", ShellQuoteArgs(" --dry-run", "x", "y"))
-	assert.Equal(t, " ''", ShellQuoteArgs("", ""))
+	assert.Equal(t, " -- '-h'", shellQuoteArgs("", "-h"))
+	assert.Equal(t, " -- '-h' 'x'", shellQuoteArgs("", "-h", "x"))
+	assert.Equal(t, " -- 'x' '-h'", shellQuoteArgs("", "x", "-h"))
+	assert.Equal(t, " --dry-run -- 'x' '-h'", shellQuoteArgs(" --dry-run", "x", "-h"))
+	assert.Equal(t, " 'x' 'y' --dry-run", shellQuoteArgs(" --dry-run", "x", "y"))
+	assert.Equal(t, " ''", shellQuoteArgs("", ""))
 }
 
-// TestShellQuoteArgsTestsTheValueAsShellQuoteWritesIt asserts that a value
+// TestQuoteArgsTestsTheValueAsShellQuoteWritesIt asserts that a value
 // that is U+2063 followed by "-h" prints as '-h' and gets the "--" form, and
 // that a value with the separator in the middle of an ordinary word does not.
-func TestShellQuoteArgsTestsTheValueAsShellQuoteWritesIt(t *testing.T) {
-	assert.Equal(t, " -- '-h'", ShellQuoteArgs("", "\u2063-h"))
-	assert.Equal(t, " 'ab' --x", ShellQuoteArgs(" --x", "a\u2063b"))
+func TestQuoteArgsTestsTheValueAsShellQuoteWritesIt(t *testing.T) {
+	assert.Equal(t, " -- '-h'", shellQuoteArgs("", "\u2063-h"))
+	assert.Equal(t, " 'ab' --x", shellQuoteArgs(" --x", "a\u2063b"))
 }
 
 // TestInterruptedShape asserts the interrupt error's contract: its own

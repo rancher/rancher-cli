@@ -129,8 +129,7 @@ func TestEveryCommandOfTheConfigRecoveryTextsIsOneOfTheRecoveryCommands(t *testi
 	const server = "https://r.example.test"
 	ext := clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old"}
 	v3 := clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "token-v3"}
-	_, deleteV3 := clierr.RecoveryCommands(v3)
-	commands := append(clierr.RecoverySequence(server, ext), deleteV3)
+	commands := append(clierr.RecoverySequence(server, ext).Lines(), clierr.Revoke(v3).String())
 	for name, row := range cutRows(t) {
 		if name == "pauseReasonText" {
 			continue

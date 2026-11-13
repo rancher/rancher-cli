@@ -7,23 +7,30 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 )
 
+// RegenerateNote is what the text after RegenerateSteps says of the first
+// step: the selection is always named, since the text is read later, when
+// another server may be current.
+const RegenerateNote = "; selecting the entry switches the directory's current server"
+
 // RegenerateSteps are the commands that write the kubeconfig for cluster
 // again from entry, the server entry it was written from: select that
-// entry, then write the kubeconfig. The selection is always named, since
-// the text is read later, when another server may be current, and so is
-// what it does to the directory. rancher opens each command: clierr.Rancher
-// for text an invocation prints, or rancher and its --config for text kept
-// in a file. An empty entry or cluster names the placeholder.
-func RegenerateSteps(rancher, entry, cluster string) string {
-	e, c := " <entry>", " --cluster <id>"
-	if entry != "" {
-		e = clierr.ShellQuoteArgs("", entry)
+// entry, then write the kubeconfig. start opens each command: clierr.NewCommand
+// for text an invocation prints, or a closure over clierr.FileCommandIn for
+// text kept in a file. An empty entry or cluster names the placeholder. The
+// steps are left out whole when a value in them cannot be printed.
+func RegenerateSteps(start func(clierr.CommandWord) clierr.Command, entry, cluster string) clierr.Sequence {
+	use, kubeconfig := start("config use-server"), start("kubeconfig")
+	if entry == "" {
+		use = use.Placeholder("<entry>")
+	} else {
+		use = use.Arg(entry)
 	}
-	if cluster != "" {
-		c = clierr.ShellQuoteArgs(" --cluster " + clierr.ShellQuote(cluster))
+	if cluster == "" {
+		kubeconfig = kubeconfig.FlagText(" --cluster <id>")
+	} else {
+		kubeconfig = kubeconfig.FlagValue("--cluster", cluster)
 	}
-	return rancher + " config use-server" + e + "; then " + rancher + " kubeconfig" + c +
-		"; selecting the entry switches the directory's current server"
+	return clierr.NewSequence().Then("", use).Then("then ", kubeconfig)
 }
 
 // withStoreConflictSteps adds to the refusal of a directory whose declared
@@ -40,7 +47,7 @@ func (t tokenCmd) withStoreConflictSteps(err error, server, name, clusterID stri
 	if lerr != nil {
 		cfg = nil
 	}
-	steps := RegenerateSteps(clierr.Rancher, entryOfName(cfg, ApplyDefaultScheme(server), name, clusterID, false), clusterID)
-	return ce.WithMessage(ce.Message + "; if a kubeconfig's exec entry sets it, regenerate the kubeconfig with " +
-		config.EnvCredentialStore + " unset: " + steps)
+	steps := RegenerateSteps(clierr.NewCommand, entryOfName(cfg, ApplyDefaultScheme(server), name, clusterID, false), clusterID)
+	return ce.WithMessage(clierr.Text(ce.Message+"; if a kubeconfig's exec entry sets it, regenerate the kubeconfig with "+config.EnvCredentialStore+" unset",
+		clierr.Lead(": "), steps, RegenerateNote))
 }

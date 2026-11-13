@@ -148,7 +148,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			var lerr error
 			del, lerr = token.DeleteAndRecord(ctx, cfg, token.LocalDelete{
 				Dir: c.dir, Command: token.DeleteForUpdateServer, Targets: []string{name}, Cache: cache,
-				Rerun: clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(canonicalResultURL), name),
+				Rerun: clierr.NewCommand("config update-server").Arg(name).FlagValue("--url", canonicalResultURL),
 				DeleteLogin: func(ctx context.Context, ref config.ServerRef) ([]string, []string, error) {
 					return config.DeleteLoginToken(ctx, c.dir, ref, policy)
 				},
@@ -191,7 +191,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			// token is already gone.
 			return clierr.Wrap(err, fmt.Sprintf(
 				"credentials for %q were cleared, but writing the updated server entry failed: %v",
-				name, err)).WithHint(clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", name)).
+				name, err)).WithHintCommand(clierr.NewCommand(config.LoginWords).Arg(name)).
 				WithWarnings(notices...)
 		}
 		return err
@@ -252,7 +252,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	}
 	credentialsClearedLine := ""
 	if out.CredentialsCleared {
-		credentialsClearedLine = "credentials cleared - log in again: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", out.Name)
+		credentialsClearedLine = clierr.Text("credentials cleared", clierr.Lead(" - log in again: "), clierr.NewCommand(config.LoginWords).Arg(out.Name))
 		lines = append(lines, credentialsClearedLine)
 	}
 	if len(deletedCache) > 0 {
@@ -276,9 +276,12 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 // ordinary entry under a name auth login refuses: no command could log it
 // in again. The plugin makes a new entry for a new URL by itself.
 func execLoginURLChangeRefused(name string) error {
-	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"%s is one of the exec plugin's own login entries, and its URL cannot change; the exec plugin creates a new entry for the new URL; to remove this entry, log it out first if it holds a login: %s; then delete it: %s",
-		clierr.ShellQuote(name), clierr.Rancher+" auth logout"+clierr.ShellQuoteArgs("", name), deleteServerCommand(name)))
+	remove := clierr.NewSequence().
+		Then("", clierr.NewCommand("auth logout").Arg(name)).
+		Then("then delete it: ", deleteServerCommand(name))
+	return clierr.New(clierr.CodeValidation, clierr.Text(fmt.Sprintf(
+		"%s is one of the exec plugin's own login entries, and its URL cannot change; the exec plugin creates a new entry for the new URL; to remove this entry, log it out first if it holds a login",
+		clierr.ShellQuote(name)), clierr.Lead(": "), remove))
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `config update-server

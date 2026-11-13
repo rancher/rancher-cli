@@ -731,8 +731,9 @@ func TestLoginDelegatedIdenticalURLDifferentCacertConflicts(t *testing.T) {
 	t.Parallel()
 	dir, store := cmdtest.FilePolicyDir(t)
 	seedServer(t, dir, "prod", "https://r.ex", "", false)
+	caFile := cmdtest.WriteCAFile(t, cmdtest.CertificatePEM(t))
 	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(),
-		cmdtest.Input{Str: map[string]string{"url": "https://r.ex", "cacert": cmdtest.CAPem1}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}},
+		cmdtest.Input{Str: map[string]string{"url": "https://r.ex", "cacert": caFile}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}},
 		cmdtest.StdinPrompter("id:sec\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -1929,7 +1930,7 @@ func TestLoginReadOnlyHelperRevokesDerivedToken(t *testing.T) {
 				assert.Equal(t, clierr.ResultFailed, residual[0].Cleanup.Result)
 				joined := strings.Join(res.Warnings, "\n")
 				assert.Contains(t, joined, "no credential was stored")
-				_, revoke := clierr.RecoveryCommands(*residual[0].Ref)
+				_, revoke := recoveryCommands(*residual[0].Ref)
 				assert.Contains(t, joined, revoke, "the exact ext delete command follows the re-login")
 			} else {
 				assert.Empty(t, residual)
@@ -2161,7 +2162,7 @@ func TestLoginReadOnlyHelperRecoveryMatrix(t *testing.T) {
 			login := strings.Index(joined, "rancher auth login "+clierr.ShellQuote("prod"))
 			require.GreaterOrEqual(t, login, 0)
 			for _, r := range residual {
-				_, revoke := clierr.RecoveryCommands(*r.Ref)
+				_, revoke := recoveryCommands(*r.Ref)
 				at := strings.Index(joined, revoke)
 				require.GreaterOrEqual(t, at, 0, "a known name gets its exact revoke command in the prose: %s", revoke)
 				assert.Less(t, login, at, "re-login is ordered before the delete")
@@ -2238,8 +2239,8 @@ func TestLoginLostResponseRecoveryNamesBothCollections(t *testing.T) {
 			assert.Empty(t, d.SessionToken.Kind, "a lost response establishes no kind")
 			assert.Nil(t, d.SessionToken.Ref)
 			assert.True(t, d.SessionToken.Marked)
-			v3List, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindV3})
-			extList, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
+			v3List, _ := recoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindV3})
+			extList, _ := recoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
 			assert.Contains(t, d.Recovery, v3List)
 			assert.Contains(t, d.Recovery, extList)
 			assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
@@ -2267,7 +2268,7 @@ func TestLoginSuccessWithFailedExtSessionCleanupNamesTheTokenKind(t *testing.T) 
 	require.Len(t, residual, 1)
 	assert.Equal(t, clierr.TokenKindExt, residual[0].Ref.Kind)
 	joined := strings.Join(res.Warnings, "\n")
-	_, revoke := clierr.RecoveryCommands(*residual[0].Ref)
+	_, revoke := recoveryCommands(*residual[0].Ref)
 	assert.Contains(t, joined, revoke)
 	assert.Contains(t, revoke, "rancher delete token ")
 	assert.NotContains(t, joined, "management-token")
@@ -2491,7 +2492,7 @@ func TestLoginUnknownDerivedLeavesOneMarkedToken(t *testing.T) {
 	assert.Equal(t, clierr.CreateUnknown, d.DerivedToken.Outcome)
 	assert.Equal(t, clierr.ResultNotAttempted, d.DerivedToken.Cleanup.Result)
 	assert.Contains(t, d.Recovery, "rancher auth login "+clierr.ShellQuote("prod"))
-	list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
+	list, _ := recoveryCommands(clierr.TokenRef{Kind: clierr.TokenKindExt})
 	assert.Contains(t, d.Recovery, list)
 	assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
 	assert.Len(t, f.TokensWithDescriptionContaining("ext", "[op:"+d.OperationMarker+"]"), 1, "exactly one ext token carries the marker")
@@ -2940,7 +2941,7 @@ func TestLoginReadOnlyHelperThenConfigWriteFailureRevokesOnce(t *testing.T) {
 func TestRecoveryCommandsNameKindsFromTheTable(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []clierr.TokenKind{clierr.TokenKindV3, clierr.TokenKindExt} {
-		list, revoke := clierr.RecoveryCommands(clierr.TokenRef{Kind: kind, Name: "tok-1"})
+		list, revoke := recoveryCommands(clierr.TokenRef{Kind: kind, Name: "tok-1"})
 		listWords, revokeWords := strings.Fields(list), strings.Fields(revoke)
 		require.GreaterOrEqual(t, len(listWords), 3, list)
 		require.GreaterOrEqual(t, len(revokeWords), 3, revoke)
@@ -3457,4 +3458,10 @@ func seedBothStores(t *testing.T, dir string, cfg *config.Config, entry, url str
 	store, _, err := config.OpenResolvedStore("keychain", dir)
 	require.NoError(t, err)
 	require.NoError(t, store.SetToken(config.ServerRef{Name: entry, URL: url}, "keychain-copy"))
+}
+
+// recoveryCommands is the list and the delete command of a token, the way
+// Revoke builds them.
+func recoveryCommands(ref clierr.TokenRef) (list, revoke string) {
+	return clierr.Revoke(clierr.TokenRef{Kind: ref.Kind}).Field(), clierr.Revoke(ref).String()
 }

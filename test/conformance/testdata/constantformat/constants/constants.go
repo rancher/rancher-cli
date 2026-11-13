@@ -4,17 +4,16 @@ import (
 	"fmt"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/config"
 )
 
 func marked(x string) string { return clierr.Rancher + fmt.Sprintf(" auth login %s", x) }
 
 func asArgument(x string) string {
-	return fmt.Sprintf("listed by: %s (%s)", config.StatusCommand, x)
+	return fmt.Sprintf("listed by: %s (%s)", clierr.AuthStatusRemedy, x)
 }
 
 func joinedOutside(x string) string {
-	return fmt.Sprintf("listed by: (%s) ", x) + config.StatusCommand
+	return fmt.Sprintf("listed by: (%s) ", x) + clierr.AuthStatusRemedy
 }
 
 func literal() string { return fmt.Sprintf("literal") }

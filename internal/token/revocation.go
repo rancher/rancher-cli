@@ -76,8 +76,9 @@ type LocalDelete struct {
 	// DeleteLogin deletes one target's login token from every backend.
 	DeleteLogin func(ctx context.Context, ref config.ServerRef) (from, notices []string, err error)
 	// Rerun is the command to run again when a local delete did not
-	// complete, built on clierr.Rancher.
-	Rerun string
+	// complete. The zero Command stands for none; a command with a value
+	// that cannot be printed is left out of every text that names it.
+	Rerun clierr.Command
 }
 
 // LoginDeleteError is a login-token delete that failed: the target and the
@@ -662,7 +663,8 @@ func (d *Deletion) Settle(ctx context.Context) []string {
 		return config.WriteStep("settle", cfg)
 	})
 	if err != nil {
-		return []string{fmt.Sprintf("could not record the revocation results on the server entries (%v); the records stay, listed by: %s", err, config.StatusCommand)}
+		return []string{clierr.Text(fmt.Sprintf("could not record the revocation results on the server entries (%v); the records stay", err),
+			clierr.Lead(", listed by: "), clierr.NewCommand(config.StatusWords))}
 	}
 	return nil
 }

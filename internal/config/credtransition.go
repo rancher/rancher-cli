@@ -113,7 +113,7 @@ func transitionError(dir, what string) error {
 	path := TransitionPath(dir)
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential store change recorded in %s is %s; no credential was read or written; inspect the file and restore a valid copy, or move it aside to abandon the change",
-		path, what)).WithHint(StatusCommand)
+		path, what)).WithHintCommand(clierr.NewCommand(StatusWords))
 }
 
 // transitionIncomplete reports work the directory still has to do. It is
@@ -126,7 +126,7 @@ func transitionIncomplete(step transitionStep) error {
 	} else {
 		msg += "; run this command again"
 	}
-	return clierr.Retryable(clierr.CodeCredentialTransitionIncomplete, msg).WithHint(StatusCommand)
+	return clierr.Retryable(clierr.CodeCredentialTransitionIncomplete, msg).WithHintCommand(clierr.NewCommand(StatusWords))
 }
 
 // transitionAlreadyRecorded refuses to write a manifest over a different
@@ -137,7 +137,7 @@ func transitionIncomplete(step transitionStep) error {
 func transitionAlreadyRecorded(dir string, present transitionStep) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"a credential store change is already recorded in %s (%s); it must finish, or be abandoned, before another is recorded",
-		TransitionPath(dir), stepWhat(present))).WithHint(StatusCommand)
+		TransitionPath(dir), stepWhat(present))).WithHintCommand(clierr.NewCommand(StatusWords))
 }
 
 // stepWhat names a step for a message: its kind and, when it has one, its

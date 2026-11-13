@@ -15,6 +15,8 @@ func texts() []string {
 		"run: rancher delete token x",                 // hit
 		"run: rancher delete token x --apply --yes",   // hit
 		"run: rancher delete token x --dry-run --yes", // hit
+		clierr.NewCommand("delete token").Arg(name()).Flag("--dry-run").String(),
+		clierr.NewCommand("delete token").Arg(name()).String(), // hit
 		clierr.Rancher + " delete token 'x' --dry-run",
 		clierr.Rancher + " project remove-namespace 'n' --cluster 'c' --dry-run",
 		clierr.Rancher + " project remove-namespace 'n' --cluster 'c'", // hit

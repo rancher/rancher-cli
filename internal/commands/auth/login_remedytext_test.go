@@ -56,7 +56,7 @@ func DashedNameRemedies(t *testing.T) []DashedNameRemedy {
 	ce := asClierr(t, err)
 	add("--cacert without --url", ce.Hint, " config update-server --cacert '/etc/ca.pem' -- '-x'")
 
-	add("switch hint", configUseServerHint(name), " config use-server -- '-x'")
+	add("switch hint", configUseServerHint(name).String(), " config use-server -- '-x'")
 
 	dir, store := cmdtest.FilePolicyDir(t)
 	seedServer(t, dir, name, "https://r.ex", "", false)
@@ -268,8 +268,11 @@ func TestALoginHintIsWrittenOnlyForAnEntryAuthLoginAccepts(t *testing.T) {
 	ce := asClierr(t, err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Empty(t, ce.Hint)
-	assert.Empty(t, config.LoginHintFor(name))
-	assert.Equal(t, clierr.Rancher+" auth login 'prod'", config.LoginHintFor("prod"))
+	_, ok := config.LoginHintFor(name)
+	assert.False(t, ok)
+	prod, ok := config.LoginHintFor("prod")
+	assert.True(t, ok)
+	assert.Equal(t, clierr.Rancher+" auth login 'prod'", prod.String())
 }
 
 // TestTheFactBeforeACommandSurvivesTheCutOfAnUnprintableDirectory asserts that

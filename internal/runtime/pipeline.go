@@ -535,6 +535,9 @@ func BoolValueError(d Descriptor, args []string, vals []BoolValue, line string) 
 	if len(rest) < len(d.Args) || slices.Contains(rest, "") || d.SecretInput {
 		return clierr.New(clierr.CodeValidation, msg).WithHint(helpHint(d))
 	}
+	if line == "" {
+		return clierr.New(clierr.CodeValidation, clierr.WithLeftOutNote(msg))
+	}
 	return clierr.New(clierr.CodeValidation, msg).WithHint(line)
 }
 

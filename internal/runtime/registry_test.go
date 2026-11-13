@@ -452,7 +452,7 @@ func TestSchemaCommandGates(t *testing.T) {
 
 type hintingRead struct{ fakeRead }
 
-func (hintingRead) ProjectRefusalHint(Input) string { return "" }
+func (hintingRead) ProjectRefusalHint(Input) clierr.Command { return clierr.Command{} }
 
 // TestValidateProjectFlagRules asserts the three rules on how a command
 // takes the global --project flag: only as ProjectFlag's entry, never

@@ -12,18 +12,17 @@ import (
 // tokenRecovery is the commands that revoke a token: the administrator's
 // delete for a v3 token, which no login of the entry's user can delete,
 // else the sequence that logs in as the token's owner and deletes it. A
-// server that cannot go into a command gives an empty list. Each command is
-// a remedy command: the json and yaml output name the invocation's config
-// directory in it. entry is the stored entry the token
+// value that cannot go into a command gives the list command of the token
+// instead. Each command is a remedy command: the json and yaml output name
+// the invocation's config directory in it. entry is the stored entry the token
 // belongs to and entryURL its current URL; serverURL is the server the token
 // is recorded on.
 func tokenRecovery(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) []string {
 	if ref.Kind == clierr.TokenKindV3 {
-		_, revoke := clierr.RecoveryCommands(ref)
-		return []string{revoke}
+		return []string{clierr.Revoke(ref).Field()}
 	}
 	if advice := config.AdviseRecord(config.RecordSite{Entry: entry, EntryURL: entryURL}, serverURL, userID, ref); advice.Text == "" {
-		return advice.Sequence
+		return advice.Sequence.Field()
 	}
 	return []string{}
 }
@@ -31,8 +30,8 @@ func tokenRecovery(entry, entryURL, serverURL, userID string, ref clierr.TokenRe
 // administratorLine is the text that replaces the recovery sequence and
 // its assumption for a v3 token.
 func administratorLine(serverURL string, ref clierr.TokenRef) string {
-	_, revoke := clierr.RecoveryCommands(ref)
-	return "an administrator logged in to " + config.DisplayServerURL(serverURL) + " can delete it; run: " + revoke
+	return clierr.Text("an administrator logged in to "+config.DisplayServerURL(serverURL)+" can delete it",
+		clierr.Lead("; run: "), clierr.Revoke(ref))
 }
 
 // tokenReport projects one named token (the entry's current token or a
@@ -123,7 +122,6 @@ func recordLines(entry string, s config.Server, indent string) []string {
 			lines = append(lines, indent+"  last attempt: "+string(r.LastAttempt.Result)+" ("+output.Printable(r.LastAttempt.Error)+")")
 		}
 		ref := r.Ref
-		ref.Name = output.Printable(ref.Name)
 		userID := r.UserID
 		if r.Ref.Kind == clierr.TokenKindV3 {
 			lines = append(lines, indent+"  "+administratorLine(cmp.Or(r.Server, s.URL), ref))
@@ -153,12 +151,15 @@ func recordState(s config.Server, rec config.SupersededToken) string {
 // its assumption, after a line that says who logs in: loginAs, the user the
 // first command logs in as, or, when it is empty because the owner is unknown,
 // the token's owner or an administrator.
-func sequenceLines(indent, loginAs string, seq []string) []string {
+func sequenceLines(indent, loginAs string, seq clierr.Sequence) []string {
+	if !seq.OK() {
+		return []string{indent + seq.String()}
+	}
 	lines := []string{indent + "log in as the token's owner or an administrator, then revoke it with:"}
 	if loginAs != "" {
 		lines = []string{indent + "log in as user " + clierr.ShellQuote(clierr.IDText(loginAs)) + " (the token's owner), then revoke it with:"}
 	}
-	for _, c := range seq {
+	for _, c := range seq.Lines() {
 		lines = append(lines, indent+"  "+c)
 	}
 	return append(lines, indent+"  ("+clierr.RecoverySequenceAssumption+")")

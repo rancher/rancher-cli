@@ -126,17 +126,17 @@ func (u Unpinned) Err() error {
 	if u.Row != UnpinnedBoth {
 		return nil
 	}
-	logouts := make([]string, 0, len(u.FileEntries))
+	logouts := make([]clierr.Command, 0, len(u.FileEntries))
 	for _, e := range u.FileEntries {
 		logouts = append(logouts, LogoutHintFor(e))
 	}
-	msg := fmt.Sprintf(
-		"this config directory has credentials in the keychain (%s) and in the plaintext file %s (%s), and nothing records which of the two is current; neither is read; log out the entries in the store you do not want to keep, then run this command again; a keychain entry's logout needs the keychain reachable; or use a different --config; to keep the keychain, which holds no plaintext, run: %s",
-		strings.Join(u.KeychainEntries, ", "), CredentialsFilePath(u.dir), strings.Join(u.FileEntries, ", "),
-		strings.Join(logouts, "; "))
+	prose := fmt.Sprintf(
+		"this config directory has credentials in the keychain (%s) and in the plaintext file %s (%s), and nothing records which of the two is current; neither is read; log out the entries in the store you do not want to keep, then run this command again; a keychain entry's logout needs the keychain reachable; or use a different --config",
+		strings.Join(u.KeychainEntries, ", "), CredentialsFilePath(u.dir), strings.Join(u.FileEntries, ", "))
+	msg := clierr.Text(slices.Concat([]any{prose}, commandListParts("; to keep the keychain, which holds no plaintext, run: ", logouts))...)
 	err := clierr.New(clierr.CodeValidation, msg).WithCause(errCredentialsInBothStores)
 	if len(logouts) == 1 {
-		err = err.WithHint(logouts[0])
+		err = err.WithHintCommand(logouts[0])
 	}
 	return UnfinishedChangeOf(u.dir, u.cfg).Apply(err)
 }

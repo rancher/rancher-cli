@@ -147,7 +147,8 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 		}
 		return changed
 	}); err != nil {
-		rep.Warnings = append(rep.Warnings, fmt.Sprintf("could not update the superseded-token records of %s (%v); they are listed by: ", entry, err)+config.StatusCommand)
+		rep.Warnings = append(rep.Warnings, clierr.Text(fmt.Sprintf("could not update the superseded-token records of %s (%v)", entry, err),
+			clierr.Lead("; they are listed by: "), clierr.NewCommand(config.StatusWords)))
 	}
 	return rep
 }
@@ -167,12 +168,11 @@ func v3AdminRemedy(ref TokenRef, expiresAt string) string {
 // v3AdminDelete renders the administrator's delete of ref, naming it as
 // subject, and the token's expiry when known.
 func v3AdminDelete(subject string, ref TokenRef, expiresAt string) string {
-	_, revoke := clierr.RecoveryCommands(ref)
 	expiry := " expires"
 	if expiresAt != "" {
 		expiry += " at " + expiresAt
 	}
-	return subject + expiry + "; an administrator can delete it sooner with: " + revoke
+	return clierr.Text(subject+expiry+"; an administrator can delete it sooner", clierr.Lead(" with: "), clierr.Revoke(ref))
 }
 
 // keptWarning names one unretired token, why, and what revokes it: the
@@ -187,12 +187,16 @@ func keptWarning(rec config.SupersededToken, serverURL, why string) string {
 	if advice.Text != "" {
 		return unusableServerKept(rec, advice.Text, why)
 	}
-	revoke := "revoke it as " + config.RecordOwnerOrAdministrator + " with: "
+	who := config.RecordOwnerOrAdministrator
 	if advice.LoginAs != "" {
-		revoke = "revoke it as user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs)) + " with: "
+		who = "user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs))
 	}
-	return fmt.Sprintf("the superseded token %s was not retired: %s; the sequence %s; %s%s",
-		rec.Ref.String(), why, clierr.RecoverySequenceAssumption, revoke, strings.Join(advice.Sequence, "; "))
+	if !advice.Sequence.OK() {
+		return clierr.Text(fmt.Sprintf("the superseded token %s was not retired: %s; revoke it as %s", rec.Ref.String(), why, who),
+			clierr.Lead(" with: "), advice.Sequence)
+	}
+	return clierr.Text(fmt.Sprintf("the superseded token %s was not retired: %s; the sequence %s; revoke it as %s",
+		rec.Ref.String(), why, clierr.RecoverySequenceAssumption, who), clierr.Lead(" with: "), advice.Sequence)
 }
 
 // unusableServerKept is the warning for a superseded token whose server

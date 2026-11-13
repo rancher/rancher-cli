@@ -322,7 +322,6 @@ func tokenSection(entry, serverURL string, ref clierr.TokenRef, userID, expiresA
 // token it is the administrator's delete alone. Text only: the JSON side is
 // entryReport, whose recovery value stays the commands alone.
 func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRef) field {
-	ref.Name = output.Printable(ref.Name)
 	if ref.Kind == clierr.TokenKindV3 {
 		return field{"recovery", []string{administratorLine(serverURL, ref)}}
 	}
@@ -330,7 +329,10 @@ func recoveryField(entry, entryURL, serverURL, userID string, ref clierr.TokenRe
 	if advice.Text != "" {
 		return field{"recovery", []string{advice.Text}}
 	}
-	lines := append(advice.Sequence, "("+clierr.RecoverySequenceAssumption+")")
+	if !advice.Sequence.OK() {
+		return field{"recovery", []string{advice.Sequence.String()}}
+	}
+	lines := append(advice.Sequence.Lines(), "("+clierr.RecoverySequenceAssumption+")")
 	login := "log in as the token's owner or an administrator, then run:"
 	if advice.LoginAs != "" {
 		login = "log in as user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs)) + " (the token's owner), then run:"
@@ -349,8 +351,8 @@ func pauseReasonText(dir, entry, reason string) string {
 		return "changeRecordUnreadable - the credential store change record " + config.TransitionPath(dir) + " cannot be read; inspect it, then restore a valid copy or move it aside; credentialStoreChange says why it cannot be read"
 	case config.PauseReasonNoLock:
 		text := "noLock - the change ran with " + config.EnvConfigNoLock + "; a login or logout of the entry clears it"
-		if hint := config.LoginHintFor(entry); hint != "" {
-			text += ": " + hint
+		if login, ok := config.LoginHintFor(entry); ok {
+			return clierr.Text(text, clierr.Lead(": "), login)
 		}
 		return text
 	}

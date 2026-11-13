@@ -12,7 +12,6 @@ package user
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -250,7 +249,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	createdSecret, err := client.Create(ctx, secretGVR, secretNamespace, secretObj, false)
 	if err != nil {
 		if len(roles) > 0 {
-			recovery += "; " + strings.Join(notBoundClauses(name, roles), "; ")
+			recovery += "; " + notBoundClauses(name, roles)
 		}
 		return runtime.Result{}, engine.CommittedPartialSuccess(err, clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "User", ResourceName: name, Recovery: recovery,
@@ -273,7 +272,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		bindings = append(bindings, map[string]any{"name": created.GetName(), "globalRoleName": role})
 	}
 	if firstErr != nil {
-		recovery := fmt.Sprintf("the user %s was created; %s", clierr.ShellQuote(clierr.IDText(name)), strings.Join(notBoundClauses(name, notBound), "; "))
+		recovery := fmt.Sprintf("the user %s was created; %s", clierr.ShellQuote(clierr.IDText(name)), notBoundClauses(name, notBound))
 		return runtime.Result{}, engine.CommittedPartialSuccess(firstErr, clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "User", ResourceName: name, Recovery: recovery,
 		})

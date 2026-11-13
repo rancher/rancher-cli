@@ -91,7 +91,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			// Local principal, hash-id was NOT_FOUND: the user doesn't exist.
 			return ResolvedSubject{}, clierr.New(clierr.CodeNotFound,
 				fmt.Sprintf("no user found for principal %q", sub.Principal)).
-				WithHint(clierr.Rancher + " get users")
+				WithHintCommand(clierr.NewCommand("get users"))
 		}
 
 		// External principal: always run the authoritative ownership scan.
@@ -133,7 +133,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 				return ResolvedSubject{}, clierr.New(clierr.CodeConflict,
 					fmt.Sprintf("principal %q cannot be provisioned: the user id Rancher would give the new user, %q, already belongs to a user without this principal; find the right user, or pass its id directly",
 						sub.Principal, hashIDOccupied)).
-					WithHint(clierr.Rancher + " get users")
+					WithHintCommand(clierr.NewCommand("get users"))
 			}
 			return ResolvedSubject{Principal: sub.Principal, Provision: true}, nil
 		case 1:
@@ -193,7 +193,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+sub.Bare).
 			WithCandidatesCut(SubjectCandidates(all, sub.Bare), CandidateLimit).
-			WithHint(clierr.Rancher + " get users")
+			WithHintCommand(clierr.NewCommand("get users"))
 	default:
 		cands := make([]clierr.Candidate, 0, len(nameMatches))
 		for _, u := range nameMatches {

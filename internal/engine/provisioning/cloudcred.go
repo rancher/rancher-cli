@@ -81,7 +81,7 @@ func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFac
 // read no other credential to warn about); a 404 or a Secret that is not a
 // credential is NOT_FOUND with no candidates; any other GET error is
 // returned. Never inspects `data` values - see the package doc.
-func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFactory, nameOrID, flag string) (*unstructured.Unstructured, string, error) {
+func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string, flag clierr.CommandWord) (*unstructured.Unstructured, string, error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return nil, "", err
@@ -89,7 +89,7 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 	// The namespaced id form names the same Secret.
 	name := strings.TrimPrefix(nameOrID, cloudCredNamespace+":")
 	t := engine.MatchText{Noun: "cloud credential", Plural: "cloud credentials", Flag: flag,
-		NotFound: "cloud credential not found: " + nameOrID, NotFoundHint: clierr.Rancher + " get cloud-credential"}
+		NotFound: "cloud credential not found: " + nameOrID, NotFoundHint: clierr.NewCommand("get cloud-credential")}
 
 	list, err := client.List(ctx, secretsGVR, cloudCredNamespace, "")
 	if err != nil {

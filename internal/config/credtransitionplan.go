@@ -37,7 +37,7 @@ func (p *TransitionPlan) ID() string { return p.manifest.ID }
 func transitionRefusal(msg string, entries []string) error {
 	err := clierr.New(clierr.CodeValidation, msg)
 	if len(entries) == 1 {
-		return err.WithHint(LogoutHintFor(entries[0]))
+		return err.WithHintCommand(LogoutHintFor(entries[0]))
 	}
 	return err
 }
@@ -115,9 +115,9 @@ func CheckTransitionSources(dir string, cfg *Config, loginEntry, from, to string
 		// which entries it serves. Every other entry counts. Logging one
 		// out does not stop the helper answering for it, so the remedies
 		// are another directory for the new store or removing the entry.
-		return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"a login changes the store of its own credential only, and the credential helper %s may answer for %s, which would then read a store that holds nothing for %s; keep this directory on the helper and use a different --config for the new store, or remove %s with: %s; then run this command again",
-			helper, strings.Join(others, ", "), pronounFor(others), pronounFor(others), deleteServerCommands(others)))
+		return clierr.New(clierr.CodeValidation, removeEntriesText(fmt.Sprintf(
+			"a login changes the store of its own credential only, and the credential helper %s may answer for %s, which would then read a store that holds nothing for %s; keep this directory on the helper and use a different --config for the new store, or remove %s",
+			helper, strings.Join(others, ", "), pronounFor(others), pronounFor(others)), others))
 	}
 	if err := helperDestinationRefusal(to, others); err != nil {
 		return err
@@ -219,9 +219,9 @@ func helperDestinationRefusal(to string, others []string) error {
 	if len(others) > 1 {
 		each = "each of them"
 	}
-	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"a login changes the store of its own credential only, and the credential helper %s may answer for %s: after the change %s would be served a credential it never logged in with; keep this directory where it is and use a different --config for the helper, or remove %s with: %s; then run this command again",
-		helper, strings.Join(others, ", "), each, pronounFor(others), deleteServerCommands(others)))
+	return clierr.New(clierr.CodeValidation, removeEntriesText(fmt.Sprintf(
+		"a login changes the store of its own credential only, and the credential helper %s may answer for %s: after the change %s would be served a credential it never logged in with; keep this directory where it is and use a different --config for the helper, or remove %s",
+		helper, strings.Join(others, ", "), each, pronounFor(others)), others))
 }
 
 // pronounFor refers back to the entries a refusal names, in the number the
@@ -233,14 +233,37 @@ func pronounFor(names []string) string {
 	return "them"
 }
 
-// deleteServerCommands is the command that removes each of the named
-// entries, one command per entry, in the order given and separated by "; ".
-func deleteServerCommands(names []string) string {
-	commands := make([]string, 0, len(names))
+// removeEntriesText is the prose that ends with the request to remove the
+// named entries, then the command that removes each one, one command per
+// entry in the order given and separated by "; ", then the request to run the
+// command again. A command that cannot be printed is left out alone; when
+// none can be printed the text carries the note and no command.
+func removeEntriesText(prose string, names []string) string {
+	deletes := make([]clierr.Command, 0, len(names))
 	for _, name := range names {
-		commands = append(commands, DeleteServerCommand+clierr.ShellQuoteArgs("", name))
+		deletes = append(deletes, clierr.NewCommand(DeleteServerWords).Arg(name))
 	}
-	return strings.Join(commands, "; ")
+	parts := slices.Concat([]any{prose}, commandListParts(" with: ", deletes), []any{"; then run this command again"})
+	return clierr.Text(parts...)
+}
+
+// commandListParts is the parts of a clierr.Text for independent commands:
+// the lead-in before the first command that can be printed, each of those
+// separated by "; ", then each command that cannot be printed, which Text
+// leaves out and notes.
+func commandListParts(lead clierr.Lead, commands []clierr.Command) []any {
+	var parts, left []any
+	for _, c := range commands {
+		switch {
+		case !c.OK():
+			left = append(left, c)
+		case len(parts) == 0:
+			parts = append(parts, lead, c)
+		default:
+			parts = append(parts, "; ", c)
+		}
+	}
+	return slices.Concat(parts, left)
 }
 
 // credentialsHeldIn reads each entry's credential in one physical store

@@ -37,7 +37,7 @@ func TestDeleteTokenRefusalNamesBothCommands(t *testing.T) {
 // ends the text.
 func TestDeleteFailureTextPutsTheRerunLast(t *testing.T) {
 	t.Parallel()
-	text := deleteFailureText(`"prod"`, errors.New("the lock timed out"), clierr.Rancher+" auth delete-token 'prod'")
+	text := deleteFailureText(`"prod"`, errors.New("the lock timed out"), clierr.NewCommand("auth delete-token").Arg("prod"))
 	assert.Equal(t, `failed to delete "prod": the lock timed out; to finish, run: `+clierr.Rancher+" auth delete-token 'prod'", text)
 }
 
@@ -65,11 +65,11 @@ func TestOwnerRefusalForAUserEntryJoinsTheRegenerateChoiceAfterTheLogin(t *testi
 // quoted value.
 func TestKubeconfigRemedyNamesAPlaceholderForAnEmptyCluster(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "rancher kubeconfig --cluster 'c-1'", clierr.ExpandRemedies(kubeconfigRemedy("c-1"), ""))
-	assert.Equal(t, "rancher kubeconfig --cluster '-c'", clierr.ExpandRemedies(kubeconfigRemedy("-c"), ""))
-	assert.Equal(t, "rancher kubeconfig --cluster <id>", clierr.ExpandRemedies(kubeconfigRemedy(""), ""))
-	assert.Equal(t, "rancher create kubeconfig --clusters <id> --apply --yes", clierr.ExpandRemedies(CreateKubeconfigRemedy(""), ""))
-	assert.Equal(t, "rancher create kubeconfig --clusters 'c-1' --apply --yes", clierr.ExpandRemedies(CreateKubeconfigRemedy("c-1"), ""))
+	assert.Equal(t, "rancher kubeconfig --cluster 'c-1'", clierr.ExpandRemedies(kubeconfigRemedy("c-1").String(), ""))
+	assert.Equal(t, "rancher kubeconfig --cluster '-c'", clierr.ExpandRemedies(kubeconfigRemedy("-c").String(), ""))
+	assert.Equal(t, "rancher kubeconfig --cluster <id>", clierr.ExpandRemedies(kubeconfigRemedy("").String(), ""))
+	assert.Equal(t, "rancher create kubeconfig --clusters <id> --apply --yes", clierr.ExpandRemedies(CreateKubeconfigRemedy("").String(), ""))
+	assert.Equal(t, "rancher create kubeconfig --clusters 'c-1' --apply --yes", clierr.ExpandRemedies(CreateKubeconfigRemedy("c-1").String(), ""))
 }
 
 // TestNoTerminalLoginNamesTheCAFlagInsideTheCommand asserts the login command
@@ -82,22 +82,22 @@ func TestNoTerminalLoginNamesTheCAFlagInsideTheCommand(t *testing.T) {
 	const pem = "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: url}}}
 	path := NoTerminalLogin(cfg, "team", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false)
-	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert '/etc/rancher/ca.pem' --token-stdin", clierr.ExpandRemedies(path.command, ""))
+	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert '/etc/rancher/ca.pem' --token-stdin", clierr.ExpandRemedies(path.command.String(), ""))
 	assert.Empty(t, path.Facts())
 	assert.Equal(t, path.command, path.Hint())
 
 	inline := NoTerminalLogin(cfg, "team", "c-1", url, pem, config.CASource{Kind: config.CASourceVariable}, false)
-	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert <file> --token-stdin", clierr.ExpandRemedies(inline.command, ""))
+	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert <file> --token-stdin", clierr.ExpandRemedies(inline.command.String(), ""))
 	assert.Equal(t, "RANCHER_CLI_CACERT carries the CA inline and --cacert needs a file; "+config.CAFileMeaning, inline.Facts())
 	assert.Empty(t, inline.Hint(), "a command with a placeholder is no hint")
-	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert <file> --auth-provider 'corp-ldap'", clierr.ExpandRemedies(inline.signIn("corp-ldap"), ""))
+	assert.Equal(t, "rancher auth login 'team' --url 'https://r.example.com' --cacert <file> --auth-provider 'corp-ldap'", clierr.ExpandRemedies(inline.signIn("corp-ldap").String(), ""))
 
 	own := NoTerminalLogin(cfg, "prod", "c-1", url, "/etc/rancher/ca.pem", config.CASource{}, false)
-	assert.Equal(t, "rancher auth login 'prod' --url 'https://r.example.com' --token-stdin", clierr.ExpandRemedies(own.command, ""))
+	assert.Equal(t, "rancher auth login 'prod' --url 'https://r.example.com' --token-stdin", clierr.ExpandRemedies(own.command.String(), ""))
 
 	unnamed := NoTerminalLogin(cfg, "", "c-1", url, "", config.CASource{}, false)
 	assert.Equal(t, "<name> stands for a name of your choice", unnamed.Facts())
-	assert.Equal(t, "<name> stands for a name of your choice; pipe an API token to: "+unnamed.command, unnamed.Instruction("pipe an API token to: "))
+	assert.Equal(t, "<name> stands for a name of your choice; pipe an API token to: "+unnamed.command.String(), unnamed.Instruction("pipe an API token"))
 }
 
 // TestLoginRemedyKeepsTheDashedNameAfterTheDoubleDash asserts the sign-in
@@ -107,8 +107,8 @@ func TestLoginRemedyKeepsTheDashedNameAfterTheDoubleDash(t *testing.T) {
 	t.Parallel()
 	const url = "https://r.example.com"
 	login := NoTerminalLogin(nil, "-x", "c-1", url, "", config.CASource{}, false)
-	assert.Equal(t, "rancher auth login --url 'https://r.example.com' --token-stdin -- '-x'", clierr.ExpandRemedies(login.command, ""))
-	assert.Equal(t, "rancher auth login --url 'https://r.example.com' --auth-provider 'corp-ldap' -- '-x'", clierr.ExpandRemedies(login.signIn("corp-ldap"), ""))
+	assert.Equal(t, "rancher auth login --url 'https://r.example.com' --token-stdin -- '-x'", clierr.ExpandRemedies(login.command.String(), ""))
+	assert.Equal(t, "rancher auth login --url 'https://r.example.com' --auth-provider 'corp-ldap' -- '-x'", clierr.ExpandRemedies(login.signIn("corp-ldap").String(), ""))
 }
 
 // TestUseServerNoteSaysWhatTheSelectionChanges asserts the note after a
@@ -119,8 +119,8 @@ func TestUseServerNoteSaysWhatTheSelectionChanges(t *testing.T) {
 	assert.Equal(t, "; selecting an entry sets the directory's current server, which is unset now", useServerNote(""))
 	assert.Equal(t, "; selecting an entry switches the directory's current server; to switch back, run: rancher config use-server 'prod'",
 		clierr.ExpandRemedies(useServerNote("prod"), ""))
-	assert.Equal(t, "rancher config use-server -- '-x'", clierr.ExpandRemedies(useServerCommand("-x"), ""))
-	assert.Equal(t, "rancher config use-server <entry>", clierr.ExpandRemedies(useServerCommand(""), ""))
+	assert.Equal(t, "rancher config use-server -- '-x'", clierr.ExpandRemedies(useServerCommand("-x").String(), ""))
+	assert.Equal(t, "rancher config use-server <entry>", clierr.ExpandRemedies(useServerCommand("").String(), ""))
 }
 
 // TestTheRegenerateStepsRunTheSelectionThenTheKubeconfig asserts the steps
@@ -128,9 +128,10 @@ func TestUseServerNoteSaysWhatTheSelectionChanges(t *testing.T) {
 // what the selection does, with the opener the caller gives.
 func TestTheRegenerateStepsRunTheSelectionThenTheKubeconfig(t *testing.T) {
 	t.Parallel()
-	got := RegenerateSteps("rancher --config '/d'", "prod", "c-1")
-	assert.Equal(t, "rancher --config '/d' config use-server 'prod'; then rancher --config '/d' kubeconfig --cluster 'c-1'; selecting the entry switches the directory's current server", got)
-	assert.Equal(t, "rancher config use-server <entry>; then rancher kubeconfig --cluster <id>; selecting the entry switches the directory's current server", RegenerateSteps("rancher", "", ""))
+	got := RegenerateSteps(func(words clierr.CommandWord) clierr.Command { return clierr.FileCommandIn("/d", words) }, "prod", "c-1")
+	assert.Equal(t, "rancher --config '/d' config use-server 'prod'; then rancher --config '/d' kubeconfig --cluster 'c-1'", got.String())
+	assert.Equal(t, "rancher config use-server <entry>; then rancher kubeconfig --cluster <id>", RegenerateSteps(clierr.FileCommand, "", "").String())
+	assert.Equal(t, "; selecting the entry switches the directory's current server", RegenerateNote)
 }
 
 // TestRevocationWarningNamesTheOwnerTheSequenceLogsInAs asserts the warning
@@ -143,7 +144,7 @@ func TestRevocationWarningNamesTheOwnerTheSequenceLogsInAs(t *testing.T) {
 	const url = "https://r.example.com"
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: url}}}
 	ref := &TokenRef{Kind: TokenKindExt, Name: "token-abc"}
-	d := &Deletion{cfg: cfg, view: cfg, removed: map[string]bool{"prod": true}, req: LocalDelete{Rerun: clierr.Rancher + " auth logout 'prod'"}}
+	d := &Deletion{cfg: cfg, view: cfg, removed: map[string]bool{"prod": true}, req: LocalDelete{Rerun: clierr.NewCommand("auth logout").Arg("prod")}}
 	it := &revocationItem{source: sourceCache, ref: ref, server: config.CanonicalServerIdentity(url), owner: "u-abc12", entry: "prod", reason: reasonFailed}
 	warning := clierr.ExpandRemedies(d.manualWarning(it), "")
 	assert.Contains(t, warning, "; the sequence "+clierr.RecoverySequenceAssumption+"; revoke it as user 'u-abc12' with: rancher auth login ")
@@ -157,7 +158,7 @@ func TestRevocationWarningNamesTheOwnerTheSequenceLogsInAs(t *testing.T) {
 
 	rerun := &revocationItem{source: sourceLogin, ref: ref, server: config.CanonicalServerIdentity(url), entry: "prod", reason: reasonNotDeleted}
 	commands, loginAs = d.recovery(rerun)
-	assert.Equal(t, []string{d.req.Rerun}, commands)
+	assert.Equal(t, []string{d.req.Rerun.Field()}, commands)
 	assert.Empty(t, loginAs, "a rerun logs in as nobody")
 	v3 := &revocationItem{source: sourceCache, ref: &TokenRef{Kind: TokenKindV3, Name: "t"}, server: config.CanonicalServerIdentity(url), reason: reasonV3}
 	_, loginAs = d.recovery(v3)

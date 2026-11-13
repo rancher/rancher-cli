@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,7 +32,7 @@ func (f matchFixture) match(v string, t MatchText) (string, string, error) {
 }
 
 var projectText = MatchText{Noun: "project", Plural: "projects", Flag: "--project",
-	NotFound: "project not found", NotFoundHint: "list the projects"}
+	NotFound: "project not found", NotFoundHint: clierr.NewCommand("access projects")}
 
 // TestMatchOneIDMatchWinsWithoutAWarningWhenNoDisplayNameMatches asserts an
 // id match resolves silently when no other object has v as its display
@@ -74,6 +75,39 @@ func TestMatchOneIDMatchWinsOverDisplayNameMatches(t *testing.T) {
 	}
 }
 
+// TestMatchOneIDMatchWarningLeavesOutAFlagValueThatCannotBePrinted asserts a
+// value that cannot be one argument of a printed command drops the sentence
+// that tells the reader to pass it, or the flag in front of the id that
+// matched, and puts the left-out note in the warning once.
+func TestMatchOneIDMatchWarningLeavesOutAFlagValueThatCannotBePrinted(t *testing.T) {
+	t.Parallel()
+	positional := projectText
+	positional.Flag = ""
+	for name, tc := range map[string]struct {
+		id, other string
+		t         MatchText
+		subject   string
+		dropped   bool
+	}{
+		"other with apostrophe":       {"p-1", "p-'2", projectText, "--project 'p-1' is the id of project 'p-1'", true},
+		"other with curly apostrophe": {"p-1", "p-\u20192", projectText, "--project 'p-1' is the id of project 'p-1'", true},
+		"other with zero width space": {"p-1", "p-\u200b2", projectText, "--project 'p-1' is the id of project 'p-1'", true},
+		"other with double backslash": {"p-1", "p-\\\\2", positional, "'p-1' is the id of project 'p-1'", true},
+		"id with apostrophe":          {"p-'1", "p-2", projectText, "the value ", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newMatchFixture(tc.id, "first", tc.other, tc.id)
+			_, warning, err := f.match(tc.id, tc.t)
+			require.NoError(t, err)
+			assert.Equal(t, 1, strings.Count(warning, clierr.LeftOutNote))
+			assert.True(t, strings.HasSuffix(warning, "; "+clierr.LeftOutNote), warning)
+			assert.True(t, strings.HasPrefix(warning, tc.subject), warning)
+			assert.Equal(t, !tc.dropped, strings.Contains(warning, "To use the other one"))
+		})
+	}
+}
+
 func TestMatchOneOneDisplayNameMatchResolves(t *testing.T) {
 	t.Parallel()
 	f := newMatchFixture("p-1", "web", "p-2", "db")
@@ -109,6 +143,6 @@ func TestMatchOneNotFoundCarriesTheTextAndEveryCandidate(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "project not found", ce.Message)
-	assert.Equal(t, "list the projects", ce.Hint)
+	assert.Equal(t, clierr.NewCommand("access projects").Field(), ce.Hint)
 	assert.Equal(t, f.cands, ce.Candidates)
 }

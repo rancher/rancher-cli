@@ -11,23 +11,24 @@ import (
 )
 
 // UnprintableConfigDirNote is what a text says in place of its commands
-// when the config directory's path holds characters output.Printable
-// removes: printed as it is, the path would be another path, so no command
-// can name it and none is offered.
-const UnprintableConfigDirNote = "the config directory's path has characters a terminal cannot show; the commands that would name it are left out"
+// when the config directory's path cannot be printed (clierr.NotQuotable):
+// printed as it is, a shell would read another path, so no command can name
+// it and none is offered.
+const UnprintableConfigDirNote = "the config directory's path cannot be printed so that every supported shell reads it as written; the commands that would name it are left out"
 
 // RemedyPrefix is what follows the word rancher in every remedy command an
 // invocation against dir prints: --config and the directory, shell-quoted,
 // for any dir, since the shell that runs the command may resolve another
 // directory. Which invocations name their directory is the CLI layer's
-// choice (IO.RemedyDir). printable is false when the path holds a
-// character a terminal line cannot show; the invocation then offers no
-// command at all (withoutCommands).
+// choice (IO.RemedyDir). printable is false when clierr.NotQuotable
+// reports true for the path; the invocation then offers no command at all
+// (withoutCommands).
 func RemedyPrefix(dir string) (prefix string, printable bool) {
-	if output.Printable(dir) != dir {
+	fragment, ok := clierr.FlagFragment("--config", dir)
+	if !ok {
 		return "", false
 	}
-	return " --config " + clierr.ShellQuote(dir), true
+	return " " + fragment, true
 }
 
 // remedyPrefix is this invocation's RemedyPrefix: none when its remedies

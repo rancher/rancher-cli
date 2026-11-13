@@ -722,6 +722,29 @@ func TestFreshSuccessWarning(t *testing.T) {
 	})
 }
 
+// TestFreshSuccessWarningLeavesOutTheRecheckForAnUnprintableValue asserts an
+// object name or namespace that cannot be printed as one shell word leaves
+// the re-check command out of the advisory and puts the note in it.
+func TestFreshSuccessWarningLeavesOutTheRecheckForAnUnprintableValue(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		young := multiConditionObj([3]string{"Ready", "True", ""})
+		young.SetCreationTimestamp(metav1.NewTime(time.Now()))
+		for name, tc := range map[string]struct{ name, ns string }{
+			"name apostrophe":        {"re'po", "team-a"},
+			"name right quote":       {"re\u2019po", "team-a"},
+			"namespace zero width":   {"repo-1", "te\u200bam"},
+			"namespace double slash": {"repo-1", "te\\\\am"},
+		} {
+			w := freshSuccessWarning(young, "gitrepo", tc.name, tc.ns)
+			assert.Contains(t, w, "wait satisfied immediately after creation", name)
+			assert.Contains(t, w, clierr.LeftOutNote, name)
+			assert.NotContains(t, w, "re-check shortly", name)
+			assert.NotContains(t, w, clierr.Rancher, name)
+		}
+	})
+}
+
 func (*seqClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
 	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
 }

@@ -53,7 +53,7 @@ func TestRecoveryEntryName(t *testing.T) {
 // expandedSequence is the recovery sequence as an invocation with the
 // default directory prints it.
 func expandedSequence(serverURL string, ref TokenRef) []string {
-	seq := RecoverySequence(serverURL, ref)
+	seq := RecoverySequence(serverURL, ref).Lines()
 	out := make([]string, len(seq))
 	for i, c := range seq {
 		out[i] = ExpandRemedies(c, "")
@@ -67,7 +67,7 @@ func expandedSequence(serverURL string, ref TokenRef) []string {
 // and no command holds a comment.
 func TestRecoverySequenceBindsLoginAndDeleteToTheRecordedURL(t *testing.T) {
 	t.Parallel()
-	got := RecoverySequence("https://r.ex:8443", TokenRef{Kind: TokenKindV3, Name: "kubeconfig-u-x"})
+	got := RecoverySequence("https://r.ex:8443", TokenRef{Kind: TokenKindV3, Name: "kubeconfig-u-x"}).Lines()
 	require.Len(t, got, 4)
 	for _, c := range got {
 		assert.True(t, strings.HasPrefix(c, Rancher+" "), "%q opens with the marker", c)
@@ -116,4 +116,44 @@ func TestRecoverySequenceQuotesADashedName(t *testing.T) {
 	assert.Equal(t, "rancher auth login 'recover--x.example.com' --url 'https://-x.example.com'", got[0])
 	assert.Equal(t, "rancher config use-server 'recover--x.example.com'", got[1])
 	assert.Equal(t, "rancher delete token --apply --yes -- '-t'", got[2])
+}
+
+// TestRecoverySequenceIsLeftOutForAValueThatCannotBePrinted asserts a server
+// URL or token name that holds a quote, a right single quotation mark, a zero
+// width space or two backslashes leaves the whole sequence out: no command
+// lines, the list command in the json form, and a text that names the server,
+// gives the list command and the note.
+func TestRecoverySequenceIsLeftOutForAValueThatCannotBePrinted(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		server string
+		ref    TokenRef
+	}{
+		{"quote in the server", "https://o'b.example", TokenRef{Kind: TokenKindExt, Name: "token-1"}},
+		{"curly quote in the server", "https://o\u2019b.example", TokenRef{Kind: TokenKindExt, Name: "token-1"}},
+		{"zero width space in the server", "https://o\u200bb.example", TokenRef{Kind: TokenKindExt, Name: "token-1"}},
+		{"quote in the name", "https://r.example", TokenRef{Kind: TokenKindExt, Name: "a'b"}},
+		{"zero width space in the name", "https://r.example", TokenRef{Kind: TokenKindExt, Name: "abc\u200b"}},
+		{"two backslashes in the name", "https://r.example", TokenRef{Kind: TokenKindV3, Name: `a\\b`}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			seq := RecoverySequence(c.server, c.ref).On("https://shown.example")
+			assert.False(t, seq.OK())
+			assert.Nil(t, seq.Lines())
+			list := "rancher get tokens"
+			if c.ref.Kind == TokenKindV3 {
+				list = "rancher get management-tokens"
+			}
+			require.Len(t, seq.Field(), 1)
+			assert.Equal(t, list, ExpandRemedies(seq.Field()[0], ""))
+			text := ExpandRemedies(seq.String(), "")
+			assert.Contains(t, text, "the token stays on https://shown.example; log in there and run: "+list)
+			assert.Contains(t, text, LeftOutNote)
+			assert.NotContains(t, text, "delete token")
+			assert.NotContains(t, text, "delete management-token")
+		})
+	}
 }

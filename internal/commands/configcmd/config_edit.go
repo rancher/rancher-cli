@@ -278,12 +278,17 @@ func credentialStoreOffense(before, after string) string {
 	case after == "":
 		return "credentialStore removed (no command removes a declaration; a different --config starts a fresh directory)"
 	case before == "":
-		return "credentialStore set; <name> is the entry to log in; log out the other entries first when there are any; use: " +
-			clierr.Rancher + " auth login <name> --credential-store " + clierr.ShellQuote(after)
+		return clierr.Text("credentialStore set; <name> is the entry to log in; log out the other entries first when there are any",
+			clierr.Lead("; use: "), loginWithStore(after))
 	default:
-		return "credentialStore changed; <name> is the entry to log in; log out the other entries first when there are any; use: " +
-			clierr.Rancher + " auth login <name> --credential-store " + clierr.ShellQuote(after)
+		return clierr.Text("credentialStore changed; <name> is the entry to log in; log out the other entries first when there are any",
+			clierr.Lead("; use: "), loginWithStore(after))
 	}
+}
+
+// loginWithStore is the login that names the credential store after.
+func loginWithStore(after string) clierr.Command {
+	return clierr.NewCommand("auth login").Placeholder("<name>").FlagValue("--credential-store", after)
 }
 
 // checkEditRestrictions diffs the edited buffer against the pre-edit
@@ -324,10 +329,10 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 		e, eOK := edited.Servers[n]
 		switch {
 		case !bOK && eOK:
-			offenses = append(offenses, fmt.Sprintf("servers.%s added; <url> is the server's address; add it with: ", n)+
-				clierr.Rancher+" config add-server"+clierr.ShellQuoteArgs(" --url <url>", n))
+			offenses = append(offenses, clierr.Text(fmt.Sprintf("servers.%s added; <url> is the server's address", n),
+				clierr.Lead("; add it with: "), clierr.NewCommand("config add-server").Arg(n).FlagText(" --url <url>")))
 		case bOK && !eOK:
-			offenses = append(offenses, fmt.Sprintf("servers.%s removed; use: ", n)+deleteServerCommand(n))
+			offenses = append(offenses, clierr.Text(fmt.Sprintf("servers.%s removed", n), clierr.Lead("; use: "), deleteServerCommand(n)))
 		case bOK && eOK && !reflect.DeepEqual(b, e):
 			caFlags := config.CAFileArg("--cacert") + " or --clear-cacert changes the CA instead"
 			if !caFileSaid {
@@ -336,8 +341,8 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 				caFlags += "; " + config.CAFileMeaning
 				caFileSaid = true
 			}
-			offenses = append(offenses, fmt.Sprintf("servers.%s changed; <url> is the server's address; ", n)+caFlags+"; use: "+
-				clierr.Rancher+" config update-server"+clierr.ShellQuoteArgs(" --url <url>", n))
+			offenses = append(offenses, clierr.Text(fmt.Sprintf("servers.%s changed; <url> is the server's address; ", n)+caFlags,
+				clierr.Lead("; use: "), clierr.NewCommand("config update-server").Arg(n).FlagText(" --url <url>")))
 		}
 	}
 	if before.CurrentServer != edited.CurrentServer {
@@ -349,22 +354,22 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 	// without a reader serving a record against the old value. This
 	// command writes the file as edited and moves no stamp.
 	if before.TokenReuse != edited.TokenReuse {
-		state := "off"
+		var state clierr.CommandWord = "off"
 		if edited.TokenReuse {
 			state = "on"
 		}
-		offenses = append(offenses, "tokenReuse changed; use: "+clierr.Rancher+" config set-token-reuse "+state)
+		offenses = append(offenses, clierr.Text("tokenReuse changed", clierr.Lead("; use: "), clierr.NewCommand("config set-token-reuse").Word(state)))
 	}
 	// Whether recording is on is judged by the effective value: only the
 	// exact text "false" turns it off, and an absent or invalid key leaves it
 	// on. An edit that changes it would skip the deletion that
 	// `telemetry off` performs, so it is refused.
 	if wasOff, nowOff := telemetryOff(before), telemetryOff(edited); wasOff != nowOff {
-		state := "on"
+		var state clierr.CommandWord = "on"
 		if nowOff {
 			state = "off"
 		}
-		offenses = append(offenses, "telemetry changed; use: "+clierr.Rancher+" telemetry "+state)
+		offenses = append(offenses, clierr.Text("telemetry changed", clierr.Lead("; use: "), clierr.NewCommand("telemetry").Word(state)))
 	}
 	// The binding stamp is how a cache reader tells a load that was
 	// overtaken from one that was not. Editing it by hand makes records
@@ -390,7 +395,7 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 	if len(offenses) == 0 {
 		return nil
 	}
-	return clierr.New(clierr.CodeValidation, "config edit cannot change: "+strings.Join(offenses, "; "))
+	return clierr.New(clierr.CodeValidation, clierr.NoteOnce("config edit cannot change: "+strings.Join(offenses, "; ")))
 }
 
 // telemetryOff reports whether the config turns recording off.

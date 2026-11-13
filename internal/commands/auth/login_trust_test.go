@@ -422,7 +422,8 @@ func TestLoginPlainUnknownAuthorityCompensationFailureIsReported(t *testing.T) {
 	assert.Equal(t, clierr.BackendFile, d.CredentialRecovery.Backend)
 	assert.Equal(t, compensateErr.Error(), d.CredentialRecovery.CompensationError)
 	assert.Contains(t, d.Primary.Message, configErr.Error())
-	assert.Equal(t, config.LoginHintFor("prod"), d.Primary.Hint)
+	prodLogin, _ := config.LoginHintFor("prod")
+	assert.Equal(t, prodLogin.Field(), d.Primary.Hint)
 	assert.Equal(t, clierr.Rancher+" auth logout "+clierr.ShellQuote("prod"), d.CredentialRecovery.Command)
 
 	cfg, lerr := config.Load(config.FilePath(dir))

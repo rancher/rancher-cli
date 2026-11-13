@@ -174,7 +174,7 @@ func (s transitionStep) matches(token string) bool {
 // the report that shows the step.
 func terminalStepError(s transitionStep, what string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"the credential store change cannot finish for %s: %s", s.Entry, what)).WithHint(StatusCommand)
+		"the credential store change cannot finish for %s: %s", s.Entry, what)).WithHintCommand(clierr.NewCommand(StatusWords))
 }
 
 // retainedStepError is a step that could not finish now. It carries the
@@ -182,7 +182,7 @@ func terminalStepError(s transitionStep, what string) error {
 // error from it for every later command the step stops.
 func retainedStepError(s transitionStep, what string) error {
 	return clierr.Retryable(clierr.CodeCredentialTransitionIncomplete, fmt.Sprintf(
-		"the credential store change could not finish for %s: %s", s.Entry, what)).WithHint(StatusCommand)
+		"the credential store change could not finish for %s: %s", s.Entry, what)).WithHintCommand(clierr.NewCommand(StatusWords))
 }
 
 // retireSourceRecord removes the identity record a keychain-source step

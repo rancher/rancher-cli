@@ -13,6 +13,12 @@ import (
 // (ARCHITECTURE.md, .golangci.yml, the tracked file list, the internal/
 // tree), and `go test` starts it in this package's own directory.
 func TestMain(m *testing.M) {
+	// A copy of this binary that the paste tests run as the program rancher
+	// answers before anything reads the repository: it may run outside the
+	// module tree.
+	if os.Getenv(pasteHelperEnv) == "1" {
+		pasteHelper()
+	}
 	root, err := moduleRoot()
 	if err != nil {
 		panic(err)

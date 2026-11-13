@@ -432,7 +432,7 @@ func TestLogsDownstreamOnlyTargetWithoutClusterNamesTheTarget(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			assert.Equal(t, "--cluster is required; "+target+" runs only on a downstream cluster, pass a downstream cluster id or name", ce.Message)
-			assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+			assert.Equal(t, engine.ClusterRequiredHint.Field(), ce.Hint)
 		})
 	}
 }

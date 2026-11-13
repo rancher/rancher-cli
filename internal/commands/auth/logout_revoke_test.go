@@ -566,7 +566,7 @@ func TestALogoutWhoseStepWasInterruptedReportsBothLists(t *testing.T) {
 				Revoked:    []token.RevokedToken{{Ref: ref, Source: "login"}},
 				NotRevoked: []token.NotRevokedToken{{Source: "login", Reason: "unproven", Retry: "manual"}},
 			}
-			err := logoutCmd{}.localFailure(tc.err, tc.d, rep, "rancher auth logout prod", []string{"a notice"})
+			err := logoutCmd{}.localFailure(tc.err, tc.d, rep, clierr.NewCommand("auth logout").Arg("prod"), []string{"a notice"})
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeInterrupted, ce.Code)

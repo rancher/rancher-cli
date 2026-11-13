@@ -126,5 +126,6 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 // tokenRecovery is the text that says how to create the token again: delete
 // the one the server created, which this run recorded.
 func tokenRecovery(name string) string {
-	return "to create it again, delete this one first: " + clierr.Rancher + " delete token" + clierr.ShellQuoteArgs(" --apply --yes", name)
+	return clierr.Text("to create it again, delete this one first", clierr.Lead(": "),
+		clierr.Revoke(clierr.TokenRef{Kind: clierr.TokenKindExt, Name: name}))
 }

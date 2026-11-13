@@ -105,7 +105,7 @@ func recordingOffError(by telemetry.Control) error {
 			"recording is off: "+telemetry.EnvTelemetry+" is false; unset "+telemetry.EnvTelemetry+" to send")
 	case telemetry.ControlConfig:
 		return clierr.New(clierr.CodeValidation, "recording is off: the telemetry key of config.yaml is false").
-			WithHint(clierr.Rancher + " telemetry on")
+			WithHintCommand(clierr.NewCommand("telemetry on"))
 	}
 	return clierr.New(clierr.CodeValidation, "recording is off: decided by "+string(by))
 }
@@ -119,22 +119,21 @@ func failure(dir string, res telemetry.UploadResult) error {
 // failedStep says what failed and what to do about it, for each failure value
 // except recordingTurnedOff, which Execute handles first.
 func failedStep(dir string, res telemetry.UploadResult) string {
-	reset := fmt.Sprintf("delete it with the recorded events by running %s telemetry reset", clierr.Rancher)
 	switch res.Failure {
 	case telemetry.FailureUploadDirectoryUnsafe:
-		return fmt.Sprintf("%s is a symlink, not a directory, or cannot be read; remove it, or %s", res.FailurePath, reset)
+		return withReset(fmt.Sprintf("%s is a symlink, not a directory, or cannot be read; remove it", res.FailurePath))
 	case telemetry.FailureLockUnreadable:
-		return fmt.Sprintf("the upload lock %s cannot be read; remove it, or %s", res.FailurePath, reset)
+		return withReset(fmt.Sprintf("the upload lock %s cannot be read; remove it", res.FailurePath))
 	case telemetry.FailureLockUnavailable:
 		return fmt.Sprintf("the upload lock %s cannot be created because the file system refuses a hard link; "+
 			"put the config directory on a file system that supports hard links, "+
 			"or set RANCHER_CLI_CONFIG_DIR to a directory on one", res.FailurePath)
 	case telemetry.FailureLockPermissionDenied:
-		return fmt.Sprintf("the upload lock %s cannot be created: permission denied; "+
-			"give this user write access to %s, or %s", res.FailurePath, filepath.Dir(res.FailurePath), reset)
+		return withReset(fmt.Sprintf("the upload lock %s cannot be created: permission denied; "+
+			"give this user write access to %s", res.FailurePath, filepath.Dir(res.FailurePath)))
 	case telemetry.FailureLockCreateFailed:
-		return fmt.Sprintf("the upload lock %s cannot be created; "+
-			"check the free space and the access to %s, or %s", res.FailurePath, filepath.Dir(res.FailurePath), reset)
+		return withReset(fmt.Sprintf("the upload lock %s cannot be created; "+
+			"check the free space and the access to %s", res.FailurePath, filepath.Dir(res.FailurePath)))
 	case telemetry.FailureStoreUnavailable:
 		return fmt.Sprintf("%s is a symlink, not a directory, or cannot be opened", telemetryPath(dir))
 	case telemetry.FailureReadFailed:
@@ -143,6 +142,13 @@ func failedStep(dir string, res telemetry.UploadResult) string {
 		return "a request could not be built"
 	}
 	return "the sender stopped on an unexpected error"
+}
+
+// withReset is the text with the way out that deletes the recorded events:
+// "<text>, or delete it with the recorded events by running <command>".
+func withReset(text string) string {
+	return clierr.Text(text+", or delete it with the recorded events",
+		clierr.Lead(" by running "), clierr.NewCommand("telemetry reset"))
 }
 
 // uploadData is the data of a successful run.

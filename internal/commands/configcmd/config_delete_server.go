@@ -32,8 +32,8 @@ func NewConfigDeleteServer(dir string) runtime.Command {
 }
 
 // deleteServerCommand is the command that removes the server entry name.
-func deleteServerCommand(name string) string {
-	return clierr.Rancher + " config delete-server" + clierr.ShellQuoteArgs("", name)
+func deleteServerCommand(name string) clierr.Command {
+	return clierr.NewCommand(config.DeleteServerWords).Arg(name)
 }
 
 func (configDeleteServerCmd) Describe() runtime.Descriptor {
@@ -137,9 +137,9 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		if cancelled {
 			// Records may already be written and tokens deleted: the bare
 			// cancellation would carry neither list.
-			return runtime.Result{}, clierr.New(clierr.CodeInterrupted, fmt.Sprintf(
-				"stopped while deleting the credentials of %s; the server entry is left in place; run it again to finish: %s",
-				clierr.ShellQuote(name), deleteServerCommand(name))).
+			return runtime.Result{}, clierr.New(clierr.CodeInterrupted, clierr.Text(fmt.Sprintf(
+				"stopped while deleting the credentials of %s; the server entry is left in place",
+				clierr.ShellQuote(name)), clierr.Lead("; run it again to finish: "), deleteServerCommand(name))).
 				WithDetails(rep).
 				WithWarnings(notices...)
 		}
@@ -156,9 +156,9 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		del.RemoveEntry(name)
 		rep := del.Report()
 		notices = append(notices, del.Warnings()...)
-		return runtime.Result{}, clierr.New(clierr.CodeInterrupted, fmt.Sprintf(
-			"stopped before every token was revoked; the credentials are deleted and the server entry is left in place; run it again to remove it: %s",
-			deleteServerCommand(name))).
+		return runtime.Result{}, clierr.New(clierr.CodeInterrupted, clierr.Text(
+			"stopped before every token was revoked; the credentials are deleted and the server entry is left in place",
+			clierr.Lead("; run it again to remove it: "), deleteServerCommand(name))).
 			WithDetails(rep).
 			WithWarnings(notices...)
 	}
@@ -238,9 +238,9 @@ func (d configDeleteServerCmd) removeEntry(ctx context.Context, name string) (re
 			removed = true
 			return nil
 		case s.LoggedOutAt == "":
-			return clierr.New(clierr.CodeConflict, fmt.Sprintf(
-				"the entry %s changed since this command started (a login or a URL change); run it again: %s",
-				clierr.ShellQuote(name), deleteServerCommand(name)))
+			return clierr.New(clierr.CodeConflict, clierr.Text(fmt.Sprintf(
+				"the entry %s changed since this command started (a login or a URL change)",
+				clierr.ShellQuote(name)), clierr.Lead("; run it again: "), deleteServerCommand(name)))
 		}
 		delete(cfg.Servers, name)
 		if cfg.CurrentServer == name {

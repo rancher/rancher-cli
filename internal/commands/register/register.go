@@ -182,14 +182,16 @@ func registrationConflict(name, step string, cause error) *clierr.Error {
 	return clierr.New(clierr.CodeConflict, msg)
 }
 
-// CAUpdateArg renders the update-server flag that would set an entry's CA to
+// CAUpdateArg is the update-server flag that would set an entry's CA to
 // selector: --clear-cacert for system roots (update-server has no --cacert
-// spelling for "no CA"), else --cacert <selector> shell-quoted.
-func CAUpdateArg(selector string) string {
-	if selector == "" {
-		return "--clear-cacert"
+// spelling for "no CA"), else --cacert with the selector.
+func CAUpdateArg(selector string) clierr.CommandOption {
+	return func(c clierr.Command) clierr.Command {
+		if selector == "" {
+			return c.Flag("--clear-cacert")
+		}
+		return c.FlagValue("--cacert", selector)
 	}
-	return "--cacert " + clierr.ShellQuote(selector)
 }
 
 // recheckBytes re-resolves selector under canonicalURL and requires the
@@ -392,17 +394,17 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 	case existing.URL == probe.CanonicalURL && existing.CA == probe.CASelector:
 		// Entry no-op: identical existing entry, nothing to rewrite.
 	case existing.URL != probe.CanonicalURL:
-		hint := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(probe.CanonicalURL), name)
+		hint := clierr.NewCommand("config update-server").Arg(name).FlagValue("--url", probe.CanonicalURL)
 		if _, problem := credhelper.CheckServerURL(existing.URL); problem != nil {
 			// The entry's URL cannot be shown or compared: the entry is
 			// what needs the repair.
-			return CreateOutcome{}, clierr.New(clierr.CodeConflict, config.EntryOrigin(name).Text(problem)).WithHint(hint)
+			return CreateOutcome{}, clierr.New(clierr.CodeConflict, config.EntryOrigin(name).Text(problem)).WithHintCommand(hint)
 		}
 		return CreateOutcome{}, clierr.New(clierr.CodeConflict,
-			fmt.Sprintf(
-				"server entry %q already points at %s; to add a new server choose a different name, or to change this entry's URL run: ",
-				name, config.DisplayServerURL(existing.URL))+hint).
-			WithHint(hint)
+			clierr.Text(fmt.Sprintf("server entry %q already points at %s", name, config.DisplayServerURL(existing.URL)),
+				"; to add a new server choose a different name",
+				clierr.Lead(", or to change this entry's URL run: "), hint)).
+			WithHintCommand(hint)
 	default:
 		// URL matches; only the CA selector differs as text. The saved CA is
 		// read once: the text compared is the text a kept entry hands back.
@@ -425,13 +427,14 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 			}
 			break
 		}
-		hint := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+CAUpdateArg(probe.CASelector), name)
+		hint := clierr.NewCommand("config update-server").Arg(name).With(CAUpdateArg(probe.CASelector))
 		return CreateOutcome{}, clierr.New(clierr.CodeConflict,
-			fmt.Sprintf(
+			clierr.Text(fmt.Sprintf(
 				"server entry %q already exists with a different CA (saved: %s; --cacert: %s)",
-				name, saved.text(given), given.text(saved))+
-				"; to add a new server choose a different name, or to change this entry's trust run: "+hint).
-			WithHint(hint)
+				name, saved.text(given), given.text(saved)),
+				"; to add a new server choose a different name",
+				clierr.Lead(", or to change this entry's trust run: "), hint)).
+			WithHintCommand(hint)
 	}
 
 	repaired := bootstrapPointer(cfg, name)

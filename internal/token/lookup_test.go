@@ -138,7 +138,7 @@ func TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := NoTerminalLogin(tc.cfg, tc.callName, "c-1", url, "", config.CASource{}, tc.shim)
-			assert.Equal(t, clierr.Rancher+" auth login "+tc.want+" --url '"+url+"' --token-stdin", got.command)
+			assert.Equal(t, clierr.Rancher+" auth login "+tc.want+" --url '"+url+"' --token-stdin", got.command.String())
 			assert.Equal(t, tc.named, got.Named)
 			if tc.named {
 				assert.Equal(t, got.command, got.Hint())
@@ -176,7 +176,7 @@ func TestGetTokenStoreConflictNamesTheRegenerateSteps(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorIs(t, err, config.ErrCredentialStoreConflict)
 	require.ErrorContains(t, err, "if a kubeconfig's exec entry sets it, regenerate the kubeconfig with "+config.EnvCredentialStore+" unset: "+
-		RegenerateSteps(clierr.Rancher, "prod", "c-1"))
+		RegenerateSteps(clierr.NewCommand, "prod", "c-1").String()+RegenerateNote)
 	assert.Equal(t, "unset "+config.EnvCredentialStore, ce.Hint)
 
 	shim := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
@@ -205,5 +205,5 @@ func TestGetTokenStoreConflictStepsNameTheEntryPartOfTheName(t *testing.T) {
 	cmd := NewTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 	_, err = cmd.Execute(t.Context(), tin{s: map[string]string{"server": "https://r.example.com", "cluster": "c-1", "name": "prod-c-1"}}, noTerminal())
 	require.ErrorIs(t, err, config.ErrCredentialStoreConflict)
-	require.ErrorContains(t, err, RegenerateSteps(clierr.Rancher, "prod", "c-1"))
+	require.ErrorContains(t, err, RegenerateSteps(clierr.NewCommand, "prod", "c-1").String())
 }

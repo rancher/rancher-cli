@@ -13,7 +13,6 @@ import (
 	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/cli"
-	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/auth"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -155,11 +154,11 @@ func TestFixedRemedyCommandsParse(t *testing.T) {
 			command string
 			args    []string
 		}{
-			{config.StatusCommand, nil},
-			{config.TokenReuseOffCommand, []string{"off"}},
-			{config.LoginCommand, nil},
-			{config.DeleteServerCommand + " 'x'", []string{"x"}},
-			{provider.InspectClusterRemedyFor("c-1"), []string{"c-1"}},
+			{clierr.NewCommand(config.StatusWords).String(), nil},
+			{clierr.NewCommand(config.TokenReuseOffWords).String(), []string{"off"}},
+			{clierr.NewCommand(config.LoginWords).String(), nil},
+			{clierr.NewCommand(config.DeleteServerWords).Arg("x").String(), []string{"x"}},
+			{clierr.NewCommand("inspect cluster").Arg("c-1").String(), []string{"c-1"}},
 			{clierr.Rancher + " auth list-tokens", nil},
 		} {
 			check(t, tc.command, tc.args)

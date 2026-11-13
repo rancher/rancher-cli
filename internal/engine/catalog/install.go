@@ -350,20 +350,25 @@ func readClusterRepo(ctx context.Context, client engine.ClusterClient, repo, typ
 	if err != nil {
 		if notFound(err) {
 			return nil, clierr.New(clierr.CodeNotFound, "ClusterRepo "+clierr.ShellQuote(repo)+" not found").
-				WithHint(clierr.Rancher + " get clusterrepos --cluster " + clierr.ShellQuote(typedCluster))
+				WithHintCommand(clierr.NewCommand("get clusterrepos").FlagValue("--cluster", typedCluster))
 		}
 		return nil, err
 	}
 	if enabled, found, _ := unstructured.NestedBool(obj.Object, "spec", "enabled"); found && !enabled {
 		return nil, clierr.New(clierr.CodeValidation, "ClusterRepo "+clierr.ShellQuote(repo)+" is disabled").
-			WithHint(clierr.Rancher + " get clusterrepo" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(typedCluster), repo))
+			WithHintCommand(clierr.NewCommand("get clusterrepo").Arg(repo).FlagValue("--cluster", typedCluster))
 	}
 	return obj, nil
 }
 
-// chartsHint is the command that lists the repository's charts.
-func (p installPlan) chartsHint(extra string) string {
-	return clierr.Rancher + " charts --cluster " + clierr.ShellQuote(p.target.typedCluster) + " --repo " + clierr.ShellQuote(p.repo) + extra
+// chartsHint is the command that lists the repository's charts, with the
+// flags it is given.
+func (p installPlan) chartsHint(flags ...clierr.CommandWord) clierr.Command {
+	c := clierr.NewCommand("charts").FlagValue("--cluster", p.target.typedCluster).FlagValue("--repo", p.repo)
+	for _, f := range flags {
+		c = c.Flag(f)
+	}
+	return c
 }
 
 // resolveVersion finds the chart version to install in the index Rancher
@@ -378,7 +383,7 @@ func (p installPlan) resolveVersion(ctx context.Context, want string) (ChartVers
 	if !ok || len(versions) == 0 {
 		return ChartVersion{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
 			"chart %s is not in the index ClusterRepo %s serves for this cluster", clierr.ShellQuote(p.chart), clierr.ShellQuote(p.repo))).
-			WithHint(p.chartsHint(""))
+			WithHintCommand(p.chartsHint())
 	}
 	if want != "" {
 		for _, v := range versions {
@@ -389,7 +394,7 @@ func (p installPlan) resolveVersion(ctx context.Context, want string) (ChartVers
 		return ChartVersion{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
 			"version %s of chart %s is not in the index ClusterRepo %s serves for this cluster; --version names one exact version; the index has %s",
 			clierr.ShellQuote(want), clierr.ShellQuote(p.chart), clierr.ShellQuote(p.repo), versionList(versions))).
-			WithHint(p.chartsHint(" --all-versions"))
+			WithHintCommand(p.chartsHint("--all-versions"))
 	}
 	usable := WithoutDeprecated(versions)
 	v, ok := DefaultVersion(usable)
@@ -397,7 +402,7 @@ func (p installPlan) resolveVersion(ctx context.Context, want string) (ChartVers
 		return ChartVersion{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
 			"every version of %s is deprecated; name one with --version; the index has %s",
 			clierr.ShellQuote(p.chart), versionList(versions))).
-			WithHint(p.chartsHint(" --all-versions --include-deprecated"))
+			WithHintCommand(p.chartsHint("--all-versions", "--include-deprecated"))
 	}
 	var warnings []string
 	if IsPrerelease(v.Version) {
@@ -431,9 +436,13 @@ func (p installPlan) checkChart(ctx context.Context, entry ChartVersion, info In
 			name, strings.Join(first, ", "), firstAnnotation(ann)))
 	}
 	if want := ann[annotationNamespace]; want != "" && want != p.target.namespace {
-		return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"%s installs only in namespace %s (annotation %s); run it with --namespace %s",
-			name, clierr.ShellQuote(want), annotationNamespace, clierr.ShellQuote(want)))
+		msg := fmt.Sprintf("%s installs only in namespace %s (annotation %s)", name, clierr.ShellQuote(want), annotationNamespace)
+		if fragment, ok := clierr.FlagFragment("--namespace", want); ok {
+			msg += "; run it with " + fragment
+		} else {
+			msg = clierr.WithLeftOutNote(msg)
+		}
+		return nil, clierr.New(clierr.CodeValidation, msg)
 	}
 	if want := ann[annotationReleaseName]; want != "" && want != p.target.release {
 		return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
@@ -660,14 +669,12 @@ func (p installPlan) checkNoApp(ctx context.Context) error {
 			"release %s in namespace %s is uninstalled and Helm keeps its history; Helm does not install a release name with kept history; choose another release name",
 			clierr.ShellQuote(t.release), clierr.ShellQuote(t.namespace)))
 	}
-	msg := fmt.Sprintf("app %s already exists in namespace %s (status %s)",
-		clierr.ShellQuote(t.release), clierr.ShellQuote(t.namespace), statusText(status))
+	parts := []any{fmt.Sprintf("app %s already exists in namespace %s (status %s)",
+		clierr.ShellQuote(t.release), clierr.ShellQuote(t.namespace), statusText(status))}
 	if status == "failed" {
-		msg += "; to remove the failed release, add --apply --yes after reading the preview of " +
-			clierr.Rancher + " app uninstall" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(t.namespace)+" --dry-run", t.release)
+		parts = append(parts, clierr.Lead("; to remove the failed release, add --apply --yes after reading the preview of "), uninstallPreview(t))
 	}
-	return clierr.New(clierr.CodeConflict, msg).
-		WithHint(clierr.Rancher + " get app" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(t.namespace), t.release))
+	return clierr.New(clierr.CodeConflict, clierr.Text(parts...)).WithHintCommand(t.getApp())
 }
 
 func statusText(s string) string {
@@ -688,11 +695,12 @@ func (p installPlan) checkNamespace(ctx context.Context) error {
 		return err
 	}
 	t := p.target
-	return clierr.New(clierr.CodeNotFound, fmt.Sprintf(
-		"namespace %s not found on cluster %s; create it first; a project member creates it in the project (<project> is its name) with %s",
-		clierr.ShellQuote(t.namespace), clierr.ShellQuote(t.typedCluster),
-		clierr.Rancher+" create namespace"+clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --project <project> --dry-run", t.namespace))).
-		WithHint(clierr.Rancher + " create namespace" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(t.typedCluster)+" --dry-run", t.namespace))
+	msg := clierr.Text(fmt.Sprintf("namespace %s not found on cluster %s; create it first; a project member creates it in the project (<project> is its name)",
+		clierr.ShellQuote(t.namespace), clierr.ShellQuote(t.typedCluster)),
+		clierr.Lead(" with "),
+		clierr.NewCommand("create namespace").Arg(t.namespace).FlagValue("--cluster", t.typedCluster).FlagText(" --project <project>").Flag("--dry-run"))
+	return clierr.New(clierr.CodeNotFound, msg).
+		WithHintCommand(clierr.NewCommand("create namespace").Arg(t.namespace).FlagValue("--cluster", t.typedCluster).Flag("--dry-run"))
 }
 
 // execute reads the App, the operations and the index entry again, then

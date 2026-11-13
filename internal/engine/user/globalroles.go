@@ -111,7 +111,7 @@ func checkGlobalRole(ctx context.Context, client engine.ClusterClient, k kinds.K
 		return nil, nil
 	}
 	e := clierr.New(clierr.CodeNotFound, "role not found: "+id).
-		WithHint(clierr.Rancher + " get globalroles")
+		WithHintCommand(clierr.NewCommand("get globalroles"))
 	list, lerr := client.List(ctx, k.GVR, "", "")
 	if lerr != nil {
 		if ctx.Err() != nil {
@@ -218,14 +218,14 @@ func refuseBinding(role string, err error) error {
 
 // grantPreview is the grant command that previews binding the global role to
 // the user, a username or an id.
-func grantPreview(subject, role string) string {
-	return clierr.Rancher + " grant" + clierr.ShellQuoteArgs(" --global --role "+clierr.ShellQuote(role)+" --dry-run", subject)
+func grantPreview(subject, role string) clierr.Command {
+	return clierr.NewCommand("grant").Arg(subject).Flag("--global").FlagValue("--role", role).Flag("--dry-run")
 }
 
 // grantUserPreview is the grant command that previews binding the global role
 // user, the built-in role that allows creating tokens, to the username.
-func grantUserPreview(username string) string {
-	return clierr.Rancher + " grant" + clierr.ShellQuoteArgs(" --global --role user --dry-run", username)
+func grantUserPreview(username string) clierr.Command {
+	return clierr.NewCommand("grant").Arg(username).FlagText(" --global --role user").Flag("--dry-run")
 }
 
 // grantUserClause is the end of a warning that says how to grant the global
@@ -236,23 +236,25 @@ func grantUserClause(username string) string {
 	if clierr.IDText(username) != username {
 		return "the username holds characters the CLI does not show (" + clierr.IDText(username) + "); the CLI prints no command for it"
 	}
-	return "preview the grant with: " + grantUserPreview(username)
+	return clierr.Text(clierr.Lead("preview the grant with: "), grantUserPreview(username))
 }
 
 // notBoundClauses words, for each role that was not bound, how to grant it
-// to the committed user id. An id that is not an object name gets prose only:
-// the CLI prints no command for an id it cannot quote.
-func notBoundClauses(id string, roles []string) []string {
+// to the committed user id, joined with "; ". An id that is not an object
+// name gets prose only: the CLI prints no command for an id it cannot quote.
+func notBoundClauses(id string, roles []string) string {
 	quotable := len(validation.IsDNS1123Subdomain(id)) == 0
-	clauses := make([]string, 0, len(roles))
-	for _, role := range roles {
-		clause := "global role " + role + " was not bound"
-		if quotable {
-			clause += "; preview the grant with: " + grantPreview(id, role)
+	parts := make([]any, 0, 3*len(roles))
+	for i, role := range roles {
+		if i > 0 {
+			parts = append(parts, "; ")
 		}
-		clauses = append(clauses, clause)
+		parts = append(parts, "global role "+role+" was not bound")
+		if quotable {
+			parts = append(parts, clierr.Lead("; preview the grant with: "), grantPreview(id, role))
+		}
 	}
-	return clauses
+	return clierr.Text(parts...)
 }
 
 // noDefaultWarning is the preview note for an empty role set: the server

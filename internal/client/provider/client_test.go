@@ -632,7 +632,7 @@ func bodylessServer(t *testing.T, status int) *httptest.Server {
 // TestDynamicClientBodylessRefusalsNameTheRequest asserts, through the real
 // dynamic client, the texts and hints of a bodyless 403 and 401: a get,
 // list or update of a management kind is named with the local proxy's
-// reason and the caller-scoped command kinds.ForbiddenHint names, and a
+// reason and the caller-scoped command kinds.ForbiddenCommand names, and a
 // 401 names the call with `rancher auth status`.
 func TestDynamicClientBodylessRefusalsNameTheRequest(t *testing.T) {
 	t.Parallel()

@@ -688,12 +688,12 @@ func (d *Deletion) revokeTLSRemedy(it *revocationItem) tlstrust.Remedy {
 	fromVariable := d.clients[it.trust].fromVariable
 	if d.retry(it) == retryNextLogin {
 		entry := clierr.ShellQuote(it.entry)
-		save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), it.entry)
+		save := clierr.NewCommand("config update-server").Arg(it.entry).FlagText(config.CAFileFlag)
 		meaning := config.CAFileMeaning
 		if fromVariable {
-			r.CA = "; the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; " + meaning + "; to save a CA for entry " + entry + ", run: " + save
+			r.CA = clierr.Text("; the CA came from "+config.EnvCACert+" - unset it, or set it to the server's CA; "+meaning+"; to save a CA for entry "+entry, clierr.Lead(", run: "), save)
 		} else {
-			r.CA = "; " + meaning + "; save it for entry " + entry + " with: " + save
+			r.CA = clierr.Text("; "+meaning+"; save it for entry "+entry, clierr.Lead(" with: "), save)
 		}
 		return r
 	}
@@ -702,8 +702,8 @@ func (d *Deletion) revokeTLSRemedy(it *revocationItem) tlstrust.Remedy {
 		r.CA = "; the CA came from " + config.EnvCACert + " in this command's environment - " +
 			"a Rancher administrator who deletes the token sets it to the server's CA in their own environment"
 	case it.ref != nil && it.ref.Kind == TokenKindV3:
-		r.CA = "; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server; " +
-			config.CAFileMeaning + "; run: " + clierr.Rancher + " config update-server <entry> " + config.CAFileArg("--cacert")
+		r.CA = clierr.Text("; a Rancher administrator who deletes the token needs that CA saved on their own entry for this server; "+config.CAFileMeaning,
+			clierr.Lead("; run: "), clierr.NewCommand("config update-server").Placeholder("<entry>").FlagText(config.CAFileFlag))
 	case fromVariable:
 		r.CA = "; the CA came from " + config.EnvCACert + " - set it to the server's CA before the recovery steps"
 	default:
@@ -772,17 +772,24 @@ func (d *Deletion) recovery(it *revocationItem) (commands []string, loginAs stri
 		return nil, ""
 	}
 	switch {
-	case it.reason == reasonNotDeleted && d.req.Rerun != "":
-		return []string{d.req.Rerun}, ""
+	case it.reason == reasonNotDeleted && hasCommand(d.req.Rerun):
+		if rerun := d.req.Rerun.Field(); rerun != "" {
+			return []string{rerun}, ""
+		}
+		return nil, ""
 	case it.reason == reasonUnproven || it.ref == nil:
-		list, _ := clierr.RecoveryCommands(TokenRef{Kind: TokenKindExt})
-		return []string{list}, ""
+		return []string{clierr.NewCommand("get tokens").Field()}, ""
 	case it.ref.Kind == TokenKindV3:
-		_, revoke := clierr.RecoveryCommands(*it.ref)
-		return []string{revoke}, ""
+		return []string{clierr.Revoke(*it.ref).Field()}, ""
 	}
 	advice := d.advise(it)
-	return advice.Sequence, advice.LoginAs
+	switch {
+	case advice.Text != "":
+		return nil, ""
+	case !advice.Sequence.OK():
+		return advice.Sequence.Field(), ""
+	}
+	return advice.Sequence.Field(), advice.LoginAs
 }
 
 // advise is what config.AdviseRecord says about the server of a manual
@@ -826,7 +833,7 @@ func (d *Deletion) Warnings() []string {
 		if k := needsCA[e]; k > 0 {
 			// Only a CA fixes an unknown authority, and the next login meets
 			// the same certificate until the entry saves it.
-			save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), e)
+			save := clierr.NewCommand("config update-server").Arg(e).FlagText(config.CAFileFlag)
 			var failed string
 			switch {
 			case next[e] == 1:
@@ -838,7 +845,7 @@ func (d *Deletion) Warnings() []string {
 			default:
 				failed = fmt.Sprintf("; the revokes of %d of them failed on the server's certificate", k)
 			}
-			line += failed + "; " + config.CAFileMeaning + "; first save the server's CA with: " + save
+			line = clierr.NoteOnce(line + clierr.Text(failed+"; "+config.CAFileMeaning+"; first save the server's CA", clierr.Lead(" with: "), save))
 		}
 		out = append(out, line)
 	}
@@ -849,9 +856,9 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	what := describe(it)
 	switch it.reason {
 	case reasonNotDeleted:
-		return fmt.Sprintf("the %s was not revoked: its local copy was not deleted and it stays in use; to delete it, run: %s", what, d.req.Rerun)
+		return clierr.Text(fmt.Sprintf("the %s was not revoked: its local copy was not deleted and it stays in use", what), clierr.Lead("; to delete it, run: "), d.req.Rerun)
 	case reasonUnproven:
-		return fmt.Sprintf("the %s was not revoked: nothing proves the CLI created it; find it with: %s", what, clierr.Rancher+" get tokens")
+		return clierr.Text(fmt.Sprintf("the %s was not revoked: nothing proves the CLI created it", what), clierr.Lead("; find it with: "), clierr.NewCommand("get tokens"))
 	case reasonV3:
 		return fmt.Sprintf("the %s was not revoked: %s", what, v3Remedy(*it.ref, it.expiresAt))
 	}
@@ -862,11 +869,16 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	if advice.Text != "" {
 		return fmt.Sprintf("the %s was not revoked (%s); %s", what, reasonText(it), advice.Text)
 	}
-	revoke := "revoke it as " + config.RecordOwnerOrAdministrator + " with: "
+	who := config.RecordOwnerOrAdministrator
 	if advice.LoginAs != "" {
-		revoke = "revoke it as user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs)) + " with: "
+		who = "user " + clierr.ShellQuote(clierr.IDText(advice.LoginAs))
 	}
-	text := fmt.Sprintf("the %s was not revoked (%s); the sequence %s; %s%s", what, reasonText(it), clierr.RecoverySequenceAssumption, revoke, strings.Join(advice.Sequence, "; "))
+	if !advice.Sequence.OK() {
+		return clierr.Text(fmt.Sprintf("the %s was not revoked (%s); revoke it as %s", what, reasonText(it), who),
+			clierr.Lead(" with: "), advice.Sequence)
+	}
+	text := clierr.Text(fmt.Sprintf("the %s was not revoked (%s); the sequence %s; revoke it as %s", what, reasonText(it), clierr.RecoverySequenceAssumption, who),
+		clierr.Lead(" with: "), advice.Sequence)
 	switch {
 	case it.reason == reasonNoEntry:
 		// No entry names the server, so the login in the sequence has no CA
@@ -905,7 +917,7 @@ func (d *Deletion) nextLoginText(entry string, withCommand bool, writeID func(st
 	}
 	text := "the next login of " + entry + as
 	if withCommand {
-		text += "; run it with: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", entry)
+		return clierr.Text(text, clierr.Lead("; run it with: "), clierr.NewCommand(config.LoginWords).Arg(entry))
 	}
 	return text
 }
@@ -986,7 +998,7 @@ func (d *Deletion) textLine(it *revocationItem) string {
 	if e := d.reportedEntry(it); e != "" {
 		detail += "; recorded on " + e
 		if d.retry(it) == retryNextLogin {
-			detail += ": " + output.Printable(d.nextLoginText(e, false, successTextID)) + " revokes it"
+			detail += ": " + runtime.PrintableRemedies(d.nextLoginText(e, false, successTextID)) + " revokes it"
 		}
 	}
 	return fmt.Sprintf("not revoked %s (%s)", name, detail)

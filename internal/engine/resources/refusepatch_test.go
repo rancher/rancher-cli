@@ -41,8 +41,16 @@ func TestRefusePatchRefusesBeforeAnyRequestAndNamesTheRead(t *testing.T) {
 		in   input
 		want string
 	}{
-		{"typed cluster and namespace", NewRefusePatch(app), input{s: map[string]string{"cluster": "prod", "namespace": "it's"}},
-			"app: patch is not supported - " + app.NoPatchReason + "; read it with " + clierr.Rancher + " get 'app' --cluster 'prod' --namespace 'it'\\''s'"},
+		{"typed cluster and namespace", NewRefusePatch(app), input{s: map[string]string{"cluster": "prod", "namespace": "my ns"}},
+			"app: patch is not supported - " + app.NoPatchReason + "; read it with " + clierr.Rancher + " get 'app' --cluster 'prod' --namespace 'my ns'"},
+		{"namespace with an apostrophe", NewRefusePatch(app), input{s: map[string]string{"cluster": "prod", "namespace": "it's"}},
+			"app: patch is not supported - " + app.NoPatchReason + "; " + clierr.LeftOutNote},
+		{"namespace with a right single quote", NewRefusePatch(app), input{s: map[string]string{"cluster": "prod", "namespace": "it\u2019s"}},
+			"app: patch is not supported - " + app.NoPatchReason + "; " + clierr.LeftOutNote},
+		{"namespace with a zero width space", NewRefusePatch(app), input{s: map[string]string{"cluster": "prod", "namespace": "it\u200bs"}},
+			"app: patch is not supported - " + app.NoPatchReason + "; " + clierr.LeftOutNote},
+		{"cluster with a double backslash", NewRefusePatch(app), input{s: map[string]string{"cluster": "pr\\\\od", "namespace": "ns"}},
+			"app: patch is not supported - " + app.NoPatchReason + "; " + clierr.LeftOutNote},
 		{"no cluster", NewRefusePatch(app), input{},
 			"app: patch is not supported - " + app.NoPatchReason + "; read it with " + clierr.Rancher + " get 'app' --cluster <cluster>"},
 		{"cluster-scoped row", NewRefusePatch(repo), input{s: map[string]string{"cluster": "c-1", "namespace": "ignored"}},

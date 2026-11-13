@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
@@ -14,10 +15,15 @@ import (
 // keeps its text.
 func TestLoginAndLogoutHintsPutDoubleDashBeforeADashedName(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, clierr.Rancher+" auth login -- '-x'", LoginHintFor("-x"))
-	assert.Equal(t, clierr.Rancher+" auth logout -- '-x'", LogoutHintFor("-x"))
-	assert.Equal(t, clierr.Rancher+" auth login 'prod'", LoginHintFor("prod"))
-	assert.Equal(t, clierr.Rancher+" auth logout 'prod'", LogoutHintFor("prod"))
+	login := func(name string) string {
+		c, ok := LoginHintFor(name)
+		require.True(t, ok)
+		return c.String()
+	}
+	assert.Equal(t, clierr.Rancher+" auth login -- '-x'", login("-x"))
+	assert.Equal(t, clierr.Rancher+" auth logout -- '-x'", LogoutHintFor("-x").String())
+	assert.Equal(t, clierr.Rancher+" auth login 'prod'", login("prod"))
+	assert.Equal(t, clierr.Rancher+" auth logout 'prod'", LogoutHintFor("prod").String())
 }
 
 // TestRemedyTextsPutDoubleDashBeforeADashedName asserts every command with

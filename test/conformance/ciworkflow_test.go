@@ -273,7 +273,8 @@ func completionStepCount(steps []map[string]any) int {
 // step: checkout, setup-go, go-cache and the cache save with the commits
 // recorded in cacheUsesPins, the tools install the part needs (the shells
 // only for the tests-race-3 part, which also has the completion shell tests
-// step), the part step and the CPU model step (keys name and run only, the
+// step, and for the conformance part, whose paste tests run each printed
+// command under the shells), the part step and the CPU model step (keys name and run only, the
 // text of linuxCPUCommand, which only prints).
 // The part jobs goCacheReaders lists (test-2, test-3, cachemodel) have
 // go-cache with restore-from in place of go-cache without it, and no cache
@@ -305,6 +306,9 @@ func allowedPartSteps(jobID, part string) []map[string]any {
 		steps = append(steps,
 			map[string]any{"uses": setupToolsAction, "with": map[string]any{"lint-tools": "false"}},
 			completionStep)
+	case testsConformanceStepBody:
+		steps = append(steps,
+			map[string]any{"uses": setupToolsAction, "with": map[string]any{"lint-tools": "false"}})
 	}
 	return append(steps, map[string]any{"name": linuxCPUStepName, "run": linuxCPUCommand + "\n"})
 }
@@ -348,7 +352,8 @@ func partStepProblems(jobID, part string, steps []map[string]any) []string {
 // that each part job has exactly the keys runs-on (ubuntu-latest),
 // timeout-minutes and steps; and that each job installs only the tools its
 // part uses (the shells only in the job of tests-race-3, whose completion
-// shell tests step is the only one that starts them in the race shards' jobs).
+// shell tests step is the only one that starts them in the race shards' jobs,
+// and in the conformance job, whose paste tests start them).
 // TestSharedActionsHoldNoEnvWrites holds the two local actions the part jobs
 // call (go-cache and setup-tools) to the same environment-write rule.
 //
@@ -405,7 +410,7 @@ func TestCIRunsEveryValidatePartOnce(t *testing.T) {
 		{testsRace1StepBody, "", []string{"lint-tools", "shells"}, 1},
 		{testsRace2StepBody, "", []string{"lint-tools", "shells"}, 1},
 		{testsRace3StepBody, "shells", []string{"lint-tools"}, 1},
-		{testsConformanceStepBody, "", nil, 0},
+		{testsConformanceStepBody, "shells", []string{"lint-tools"}, 1},
 		{testsCacheModelStepBody, "", nil, 0},
 	} {
 		name := jobOf[c.part]
@@ -1153,6 +1158,7 @@ func TestPartJobStepRules(t *testing.T) {
 	assert.Empty(t, partStepProblems("job", testsRace3StepBody, append(toolsWith(map[string]any{"lint-tools": "false"}), completionStep)), "tools with the shells and the completion step")
 	assert.NotEmpty(t, partStepProblems("job", testsRace3StepBody, append(toolsWith(map[string]any{"lint-tools": "false", "shells": "false"}), completionStep)), "tools without the shells in the job of tests-race-3")
 	assert.NotEmpty(t, partStepProblems(job, testsConformanceStepBody, []map[string]any{{"uses": setupToolsAction, "with": map[string]any{"shells": "false"}}}), "tools the conformance part does not use")
+	assert.Empty(t, partStepProblems(job, testsConformanceStepBody, toolsWith(map[string]any{"lint-tools": "false"})), "tools with the shells and without the lint tools in the conformance part")
 }
 
 // goPathStepBody is the exact body of the one step of setup-tools that may

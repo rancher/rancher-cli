@@ -111,16 +111,17 @@ func loginVariableRemedy(urlPath bool, name string) string {
 		return "the CA came from " + config.EnvCACert + " - pass " + config.CAFileArg("--cacert") + " to this login, or unset " +
 			config.EnvCACert + ", or set it to the server's CA; " + config.CAFileMeaning
 	}
-	return "the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; " + config.CAFileMeaning +
-		"; to save a CA for this entry, run: " +
-		clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), name)
+	return clierr.Text("the CA came from "+config.EnvCACert+" - unset it, or set it to the server's CA; "+config.CAFileMeaning,
+		clierr.Lead("; to save a CA for this entry, run: "),
+		clierr.NewCommand("config update-server").Arg(name).FlagText(config.CAFileFlag))
 }
 
 // loginSaveCARemedy is the remedy of an unknown-authority failure of a
 // plain login's verify step: the CA is the one the entry saves, so the
 // entry is where to change it.
 func loginSaveCARemedy(name string) string {
-	return config.CAFileMeaning + "; save it for this entry with: " + clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), name)
+	return clierr.Text(config.CAFileMeaning, clierr.Lead("; save it for this entry with: "),
+		clierr.NewCommand("config update-server").Arg(name).FlagText(config.CAFileFlag))
 }
 
 // verifyTLSRemedy words a certificate failure of the verify step. The
@@ -179,18 +180,16 @@ type connectionCA struct {
 // the saved CA, or with none.
 func variableNotice(name, savedSelector string) string {
 	q := clierr.ShellQuote(name)
-	save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+config.CAFileArg("--cacert"), name)
-	lead, action := "", ""
+	save := clierr.NewCommand("config update-server").Arg(name).FlagText(config.CAFileFlag)
+	lead := "server entry " + q + " keeps its saved CA, which differs from " + config.EnvCACert +
+		" that this login used; commands run without that variable, and logout, use the saved CA, and fail if it does not fit the server; "
+	action := clierr.Lead("; to replace it, run: ")
 	if savedSelector == "" {
 		lead = "server entry " + q + " has no saved CA and this login used " + config.EnvCACert +
 			"; commands run without that variable will not trust the server (logout uses the variable for this entry); "
-		action = "to save the CA, run: "
-	} else {
-		lead = "server entry " + q + " keeps its saved CA, which differs from " + config.EnvCACert +
-			" that this login used; commands run without that variable, and logout, use the saved CA, and fail if it does not fit the server; "
-		action = "to replace it, run: "
+		action = "; to save the CA, run: "
 	}
-	return lead + config.CAFileMeaning + "; " + action + save
+	return clierr.Text(lead+config.CAFileMeaning, action, save)
 }
 
 // replacedUserWarning is the warning of a login that leaves a server entry
@@ -309,14 +308,14 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 // the message body instead. existingURL is the entry's stored URL; a URL that
 // cannot be used is never shown, and the refusal says so instead.
 func nameCollisionError(name, existingURL, canonical string, derived bool) *clierr.Error {
-	update := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(canonical), name)
+	update := clierr.NewCommand("config update-server").Arg(name).FlagValue("--url", canonical)
 	if problem := config.CheckServerURL(existingURL); problem != nil {
 		if derived {
 			return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 				"the server URL in server entry %s cannot be used: %s; the name was derived from the host of --url; change that entry's URL before a login, or pass an explicit name to add this server as a separate entry",
 				clierr.ShellQuote(name), problem))
 		}
-		return clierr.New(clierr.CodeValidation, config.EntryOrigin(name).Text(problem)).WithHint(update)
+		return clierr.New(clierr.CodeValidation, config.EntryOrigin(name).Text(problem)).WithHintCommand(update)
 	}
 	if derived {
 		return clierr.New(clierr.CodeValidation,
@@ -325,14 +324,14 @@ func nameCollisionError(name, existingURL, canonical string, derived bool) *clie
 	}
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("server %s is registered at %s", name, config.DisplayServerURL(existingURL))).
-		WithHint(update)
+		WithHintCommand(update)
 }
 
-// configUseServerHint returns the bare, shell-quoted `rancher config
-// use-server <name>` command - the pointer-switch hint every no-pointer
-// login outcome below emits for a concrete name.
-func configUseServerHint(name string) string {
-	return clierr.Rancher + " config use-server" + clierr.ShellQuoteArgs("", name)
+// configUseServerHint returns the `rancher config use-server <name>`
+// command - the pointer-switch hint every no-pointer login outcome below
+// emits for a concrete name.
+func configUseServerHint(name string) clierr.Command {
+	return clierr.NewCommand("config use-server").Arg(name)
 }
 
 // loginUnknownNameError builds NOT_FOUND for an explicit name absent from
@@ -401,9 +400,12 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		// spelling, which can never itself re-establish trust for an
 		// existing entry.
 		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeTLSTrust {
-			err = ce.WithMessage(ce.Message +
-				fmt.Sprintf("; %s is already registered; sign in to it directly: %s", clierr.ShellQuote(name), config.LoginCommand+clierr.ShellQuoteArgs("", name))).
-				WithHint(config.LoginHintFor(name))
+			out := ce.WithMessage(clierr.Text(ce.Message+fmt.Sprintf("; %s is already registered", clierr.ShellQuote(name)),
+				clierr.Lead("; sign in to it directly: "), clierr.NewCommand(config.LoginWords).Arg(name))).WithHint("")
+			if login, ok := config.LoginHintFor(name); ok {
+				out = out.WithHintCommand(login)
+			}
+			err = out
 		}
 	}
 	if err != nil {
@@ -502,9 +504,8 @@ func (l loginCmd) authenticateAndStore(
 		b, raerr := register.ResolveCA(serverURL, caSelector)
 		if raerr != nil {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf(
-					"reading stored CA for server entry %q: %s; restore the file, or run: %s",
-					name, config.CAFileProblem(raerr), config.DeleteServerCommand+clierr.ShellQuoteArgs("", name)))
+				clierr.Text(fmt.Sprintf("reading stored CA for server entry %q: %s; restore the file", name, config.CAFileProblem(raerr)),
+					clierr.Lead(", or run: "), clierr.NewCommand(config.DeleteServerWords).Arg(name)))
 		}
 		caBytes, connBytes = b, b
 		if conn.variable != "" {
@@ -659,9 +660,11 @@ func (l loginCmd) authenticateAndStore(
 				cfg = fresh
 			}
 			if !register.SnapshotMatchesCurrent(cfg, snap) {
-				return clierr.New(clierr.CodeConflict,
-					fmt.Sprintf("server entry %q changed during login", name)).
-					WithHint(config.LoginHintFor(name))
+				ce := clierr.New(clierr.CodeConflict, fmt.Sprintf("server entry %q changed during login", name))
+				if login, ok := config.LoginHintFor(name); ok {
+					ce = ce.WithHintCommand(login)
+				}
+				return ce
 			}
 			return nil
 		},
@@ -755,10 +758,10 @@ func (l loginCmd) authenticateAndStore(
 	// next command still operates against a different server.
 	switch {
 	case !currentValid:
-		lines = append(lines, "the current server is not set; switch to it with: "+configUseServerHint(name))
+		lines = append(lines, clierr.Text("the current server is not set", clierr.Lead("; switch to it with: "), configUseServerHint(name)))
 	case currentServer != name:
-		lines = append(lines, fmt.Sprintf("the current server remains %s; switch to %s with: %s",
-			clierr.ShellQuote(currentServer), clierr.ShellQuote(name), configUseServerHint(name)))
+		lines = append(lines, clierr.Text(fmt.Sprintf("the current server remains %s; switch to %s",
+			clierr.ShellQuote(currentServer), clierr.ShellQuote(name)), clierr.Lead(" with: "), configUseServerHint(name)))
 	}
 	shownURL := config.DisplayServerURL(serverURL)
 	headline := fmt.Sprintf("logged in to %s (%s)", name, shownURL)
@@ -844,16 +847,21 @@ func decorateDelegatedFailure(ctx context.Context, dir string, failure error, sn
 			fmt.Sprintf("; server entry %q may have changed since registration; check it with: ", snap.Name) + clierr.Rancher + " config list-servers").
 			WithHint("")
 	}
-	hint := config.LoginHintFor(snap.Name)
 	if remedy.Instruction != "" {
-		extra, hint = joinClauses(extra, remedy.Instruction), remedy.Hint
+		extra = joinClauses(extra, remedy.Instruction)
 	}
-	undo := "; undo the registration with: "
+	undo := "; undo the registration"
 	if extra != "" {
-		undo = "; " + extra + "; or undo the registration with: "
+		undo = "; " + extra + "; or undo the registration"
 	}
-	return ce.WithMessage(ce.Message + undo + config.DeleteServerCommand + clierr.ShellQuoteArgs("", snap.Name)).
-		WithHint(hint)
+	out := ce.WithMessage(clierr.Text(ce.Message+undo, clierr.Lead(" with: "), clierr.NewCommand(config.DeleteServerWords).Arg(snap.Name)))
+	switch login, ok := config.LoginHintFor(snap.Name); {
+	case remedy.Instruction != "":
+		return out.WithHint(remedy.Hint)
+	case ok:
+		return out.WithHintCommand(login)
+	}
+	return out.WithHint("")
 }
 
 // joinClauses joins the clauses that are not empty with "; ".

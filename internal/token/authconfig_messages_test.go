@@ -39,9 +39,9 @@ func authMessageRows(t *testing.T, authConfig string) []messageRow {
 		rows = append(rows, messageRow{name, clierr.ExpandRemedies(ce.Message, ""), clierr.ExpandRemedies(ce.Hint, "")})
 	}
 	text, hint := u.relogin(cfg, "prod", false)
-	rows = append(rows, messageRow{"the login of a user entry", clierr.ExpandRemedies(text, ""), clierr.ExpandRemedies(hint, "")})
+	rows = append(rows, messageRow{"the login of a user entry", clierr.ExpandRemedies(text, ""), clierr.ExpandRemedies(hint.String(), "")})
 	text, hint = u.relogin(cfg, "exec-login-r.example.com", true)
-	rows = append(rows, messageRow{"the removal of a plugin login entry", clierr.ExpandRemedies(text, ""), clierr.ExpandRemedies(hint, "")})
+	rows = append(rows, messageRow{"the removal of a plugin login entry", clierr.ExpandRemedies(text, ""), clierr.ExpandRemedies(hint.String(), "")})
 	row("another user's login in a user entry", u.entryOwnerRefused(cfg, "prod", "u-other", false, true))
 	row("another user's login in a plugin login entry", u.entryOwnerRefused(cfg, "exec-login-r.example.com", "u-other", true, true))
 	row("a plugin login entry last logged in as another user", u.entryOwnerRefused(cfg, "exec-login-r.example.com", "u-other", true, false))

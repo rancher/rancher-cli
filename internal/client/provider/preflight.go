@@ -57,11 +57,13 @@ func localRESTConfig(eff config.Effective) (*rest.Config, error) {
 	if ce, ok := errors.AsType[*clierr.Error](err); ok {
 		return nil, ce
 	}
-	hint := ""
+	out := clierr.New(clierr.CodeAuth, err.Error())
 	if eff.ServerName != "" {
-		hint = config.LoginHintFor(eff.ServerName)
+		if login, ok := config.LoginHintFor(eff.ServerName); ok {
+			out = out.WithHintCommand(login)
+		}
 	}
-	return nil, clierr.New(clierr.CodeAuth, err.Error()).WithHint(hint)
+	return nil, out
 }
 
 // discoveryConfig returns a copy of rc bounded by requestTimeout, the same

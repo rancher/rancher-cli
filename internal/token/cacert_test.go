@@ -339,7 +339,7 @@ func TestNoTerminalLoginNamesWhereAnInlineCAIsCarried(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			l := NoTerminalLogin(nil, "", "c-1", url, tc.ca, tc.from, false)
 			assert.True(t, l.InlineCA)
-			assert.Contains(t, l.command, " --cacert <file> --token-stdin")
+			assert.Contains(t, l.command.String(), " --cacert <file> --token-stdin")
 			assert.Contains(t, l.Facts(), tc.want)
 			assert.Empty(t, l.Hint())
 		})
@@ -347,13 +347,13 @@ func TestNoTerminalLoginNamesWhereAnInlineCAIsCarried(t *testing.T) {
 	t.Run("a path from the variable", func(t *testing.T) {
 		l := NoTerminalLogin(nil, "prod-c-1", "c-1", url, "/etc/ca.pem", config.CASource{Kind: config.CASourceVariable}, false)
 		assert.False(t, l.InlineCA)
-		assert.Contains(t, l.command, " --cacert '/etc/ca.pem'")
+		assert.Contains(t, l.command.String(), " --cacert '/etc/ca.pem'")
 	})
 	t.Run("an entry registered here names no CA", func(t *testing.T) {
 		cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: url}}}
 		l := NoTerminalLogin(cfg, "prod-c-1", "c-1", url, inline, config.CASource{Kind: config.CASourceVariable}, false)
 		assert.False(t, l.InlineCA)
-		assert.NotContains(t, l.command, "--cacert")
+		assert.NotContains(t, l.command.String(), "--cacert")
 		assert.Equal(t, l.command, l.Hint())
 	})
 }

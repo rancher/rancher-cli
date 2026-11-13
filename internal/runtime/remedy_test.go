@@ -147,11 +147,13 @@ func TestRemedyCommandsInStructuredResultDataNameTheDirectory(t *testing.T) {
 // terminal cannot show.
 func TestUnprintableConfigDirNoteText(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "the config directory's path has characters a terminal cannot show; the commands that would name it are left out", UnprintableConfigDirNote)
+	assert.Equal(t, "the config directory's path cannot be printed so that every supported shell reads it as written; the commands that would name it are left out", UnprintableConfigDirNote)
 }
 
 // TestRemedyCommandsForAnUnprintableDirectory asserts a directory whose
-// path a terminal line cannot show is never named in a command, nor
+// path cannot be printed so that every supported shell reads it as written (a
+// character a terminal line cannot show, a quote, a curly quote, a zero-width
+// space or two backslashes in a row) is never named in a command, nor
 // replaced by a placeholder: every text keeps its words up to the clause
 // holding its first command and says why none is offered, the hint (a
 // command) is dropped, and no rancher command is printed at all, in text
@@ -159,7 +161,7 @@ func TestUnprintableConfigDirNoteText(t *testing.T) {
 func TestRemedyCommandsForAnUnprintableDirectory(t *testing.T) {
 	t.Parallel()
 	notice := "not caching: a credential change for prod has not finished (see `" + clierr.Rancher + " config status`)"
-	for _, dir := range []string{"/home/u/a\nb", "/home/u/\x1b[31mred", "/home/u/\u202eevil"} {
+	for _, dir := range []string{"/home/u/a\nb", "/home/u/\x1b[31mred", "/home/u/\u202eevil", "/home/u/o'brien", "/home/u/o\u2019brien", "/home/u/o\u200bbrien", `/home/u/a\\b`} {
 		t.Run(strings.ToValidUTF8(dir, "?"), func(t *testing.T) {
 			t.Parallel()
 			var out, errBuf bytes.Buffer

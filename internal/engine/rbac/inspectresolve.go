@@ -79,7 +79,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound,
 			fmt.Sprintf("no user found for principal %q", principal)).
-			WithHint(clierr.Rancher + " get users")
+			WithHintCommand(clierr.NewCommand("get users"))
 	case 1:
 		pids, _, _ := unstructured.NestedStringSlice(owners[0].Object, "principalIds")
 		return ResolvedSubject{UserID: owners[0].GetName(), Principal: principal, PrincipalIDs: pids}, nil
@@ -128,7 +128,7 @@ func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, us
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+bare).
 			WithCandidatesCut(SubjectCandidates(toPointerSlice(list.Items), bare), CandidateLimit).
-			WithHint(clierr.Rancher + " get users")
+			WithHintCommand(clierr.NewCommand("get users"))
 	default:
 		cands := make([]clierr.Candidate, 0, len(matches))
 		for _, u := range matches {

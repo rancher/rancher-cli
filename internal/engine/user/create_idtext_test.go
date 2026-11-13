@@ -137,3 +137,23 @@ func TestACreatedUserNameInTheRecoveryIsEscapedOnce(t *testing.T) {
 		})
 	}
 }
+
+// TestAGrantCommandIsLeftOutForAValueAShellMisreads asserts that a username or
+// a role holding a quote, a curly quote, a zero-width space or two backslashes
+// in a row leaves the grant command out of the clause and puts the note in
+// once.
+func TestAGrantCommandIsLeftOutForAValueAShellMisreads(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"o'brien", "o\u2019brien", "o\u200bbrien", `o\\brien`} {
+		clause := grantUserClause(value)
+		assert.NotContains(t, strings.ReplaceAll(clause, clierr.Rancher, "rancher"), "rancher grant", "username %q", value)
+		if clierr.IDText(value) == value {
+			assert.Contains(t, clause, clierr.LeftOutNote, "username %q", value)
+		}
+
+		clauses := notBoundClauses("u-abc12", []string{value, "alpha"})
+		assert.Equal(t, 1, strings.Count(clauses, clierr.LeftOutNote), "role %q", value)
+		assert.NotContains(t, clauses, "--role '"+value+"'", "role %q", value)
+		assert.Contains(t, clauses, "global role alpha was not bound; preview the grant with: "+clierr.Rancher+" grant 'u-abc12' --global --role 'alpha' --dry-run", "role %q", value)
+	}
+}

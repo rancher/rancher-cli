@@ -36,22 +36,19 @@ func HostEntryName(prefix, serverURL string) string {
 	return strings.ReplaceAll(name, ":", "-")
 }
 
-// RecoverySequence renders the four commands that revoke one token whose
-// entry is not the current server: log in to the recorded URL under the
-// recovery entry, select that entry, run the kind-correct delete, and log the
-// recovery entry out again since its login created a CLI-owned token of its
-// own. Rendered as text, in warnings, and in result data; never as a hint,
-// which holds one command. Every value that came from persisted or server
-// data is shell-quoted; a stray metacharacter or newline in a name cannot
-// turn display text into a command. Each command is a remedy: it names the
-// config directory when the invocation was given one.
-func RecoverySequence(serverURL string, ref TokenRef) []string {
+// RecoverySequence is the four commands that revoke one token whose entry is
+// not the current server: log in to the recorded URL under the recovery
+// entry, select that entry, run the kind-correct delete, and log the recovery
+// entry out again since its login created a CLI-owned token of its own.
+// Rendered as text, in warnings, and in result data; never as a hint, which
+// holds one command. A value that cannot be printed leaves the whole sequence
+// out; its text then gives the list command of the token. The caller names
+// the server with On.
+func RecoverySequence(serverURL string, ref TokenRef) Sequence {
 	entry := RecoveryEntryName(serverURL)
-	_, revoke := RecoveryCommands(ref)
-	return []string{
-		Rancher + " auth login" + ShellQuoteArgs(" --url "+ShellQuote(serverURL), entry),
-		Rancher + " config use-server" + ShellQuoteArgs("", entry),
-		revoke,
-		Rancher + " auth logout" + ShellQuoteArgs("", entry),
-	}
+	return NewSequence().
+		Then("", NewCommand("auth login").Arg(entry).FlagValue("--url", serverURL)).
+		Then("", NewCommand("config use-server").Arg(entry)).
+		Then("", Revoke(ref)).
+		Then("", NewCommand("auth logout").Arg(entry))
 }

@@ -353,13 +353,14 @@ func tlsRemedyFor(eff Effective) tlstrust.Remedy {
 		return r
 	}
 	name := clierr.ShellQuote(eff.ServerName)
-	save := clierr.Rancher + " config update-server" + clierr.ShellQuoteArgs(" "+CAFileArg("--cacert"), eff.ServerName)
+	save := clierr.NewCommand("config update-server").Arg(eff.ServerName).FlagText(CAFileFlag)
 	r := tlstrust.Remedy{URL: "the server URL saved for entry " + name, Fix: "a different CA"}
 	meaning := CAFileMeaning
 	if fromVariable {
-		r.CA = "; the CA came from " + EnvCACert + " - unset it, or set it to the server's CA; " + meaning + "; to save a CA for this entry, run: " + save
+		r.CA = clierr.Text("; the CA came from "+EnvCACert+" - unset it, or set it to the server's CA; "+meaning,
+			clierr.Lead("; to save a CA for this entry, run: "), save)
 	} else {
-		r.CA = "; " + meaning + "; save it for this entry with: " + save
+		r.CA = clierr.Text("; "+meaning, clierr.Lead("; save it for this entry with: "), save)
 	}
 	return r
 }

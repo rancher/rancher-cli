@@ -21,6 +21,7 @@ const (
 	caFileHelperPath = "internal/config/cafile.go"
 	caFileMeaningTxt = "holds the server's CA certificate"
 	caFileArgTail    = " <file>"
+	caFileFlagText   = " --cacert <file>"
 )
 
 // caFlagPlaceholder matches a placeholder in angle brackets after a CA flag
@@ -41,8 +42,9 @@ func caFileLiteralIsHandWritten(text string) bool {
 }
 
 // caFileReferences counts the references of file f to config.CAFileMeaning
-// and config.CAFileArg: a selector on the config package, or the bare name
-// inside package config.
+// and, as uses of the argument, to config.CAFileArg and config.CAFileFlag (the
+// flag text of a command builder): a selector on the config package, or the
+// bare name inside package config.
 func caFileReferences(f *ast.File, path string) (meaning, arg int) {
 	inConfig := f.Name.Name == "config" && strings.HasPrefix(path, "internal/config/")
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -52,7 +54,7 @@ func caFileReferences(f *ast.File, path string) (meaning, arg int) {
 				switch x.Sel.Name {
 				case "CAFileMeaning":
 					meaning++
-				case "CAFileArg":
+				case "CAFileArg", "CAFileFlag":
 					arg++
 				}
 			}
@@ -63,7 +65,7 @@ func caFileReferences(f *ast.File, path string) (meaning, arg int) {
 			switch x.Name {
 			case "CAFileMeaning":
 				meaning++
-			case "CAFileArg":
+			case "CAFileArg", "CAFileFlag":
 				arg++
 			}
 		}
@@ -80,10 +82,12 @@ func caFileReferences(f *ast.File, path string) (meaning, arg int) {
 //     flag (any spacing, quotes, any name), the meaning of the placeholder,
 //     or a literal that starts with a placeholder (which a flag built from
 //     two literals ends with), so each message takes both from the helpers;
-//  2. each file uses CAFileMeaning as often as CAFileArg, so a message that
+//  2. each file uses CAFileMeaning as often as CAFileArg and CAFileFlag
+//     together, so a message that
 //     names the placeholder also says what it is (a site with several
 //     branches takes the meaning into one value the branches share);
-//  3. the helper file writes the meaning once and the argument once.
+//  3. the helper file writes the meaning once, the argument once and the flag
+//     text of a command builder once.
 //
 // The scan reads string literals, so comments never count.
 func TestEveryCACertFilePlaceholderSaysWhatTheFileIs(t *testing.T) {
@@ -96,7 +100,7 @@ func TestEveryCACertFilePlaceholderSaysWhatTheFileIs(t *testing.T) {
 		path := tree.paths[i]
 		if path == caFileHelperPath {
 			sawHelper = true
-			meanings, args, placeholders := 0, 0, 0
+			meanings, args, flags, placeholders := 0, 0, 0, 0
 			ast.Inspect(f, func(n ast.Node) bool {
 				lit, ok := n.(*ast.BasicLit)
 				if !ok || lit.Kind != token.STRING {
@@ -112,12 +116,15 @@ func TestEveryCACertFilePlaceholderSaysWhatTheFileIs(t *testing.T) {
 					meanings++
 				case text == caFileArgTail:
 					args++
+				case text == caFileFlagText:
+					flags++
 				}
 				return true
 			})
 			assert.Equal(t, 1, meanings, "%s writes the meaning of <file> %d times, want one literal", path, meanings)
 			assert.Equal(t, 1, args, "%s writes %q %d times, want one literal", path, caFileArgTail, args)
-			assert.Equal(t, 2, placeholders, "%s writes <file> in %d literals, want the meaning and the argument", path, placeholders)
+			assert.Equal(t, 1, flags, "%s writes %q %d times, want one literal", path, caFileFlagText, flags)
+			assert.Equal(t, 3, placeholders, "%s writes <file> in %d literals, want the meaning, the argument and the flag text", path, placeholders)
 			continue
 		}
 

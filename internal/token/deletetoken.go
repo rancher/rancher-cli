@@ -21,22 +21,27 @@ func (d deleteTokenCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 	all := in.Bool("all")
 	args := in.Args()
 	if all && len(args) > 0 {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"specify either a credential name or --all, not both; to delete only "+clierr.ShellQuote(args[0])+", run: "+
-				clierr.Rancher+" auth delete-token"+clierr.ShellQuoteArgs("", args[0])+"; to delete every cached credential, run: "+
-				clierr.Rancher+" auth delete-token --all")
+		only := clierr.NewCommand("auth delete-token").Arg(args[0])
+		every := clierr.NewCommand("auth delete-token").Flag("--all")
+		if !only.OK() {
+			return runtime.Result{}, clierr.New(clierr.CodeValidation, clierr.WithLeftOutNote(clierr.Text(
+				"specify either a credential name or --all, not both; to delete every cached credential", clierr.Lead(", run: "), every)))
+		}
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, clierr.Text(
+			"specify either a credential name or --all, not both; to delete only "+clierr.ShellQuote(args[0]), clierr.Lead(", run: "), only,
+			"; to delete every cached credential", clierr.Lead(", run: "), every))
 	}
 	if !all && len(args) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"provide a cached-credential name or --all")
 	}
-	req := LocalDelete{Dir: d.dir, Command: DeleteForDeleteToken, Cache: d.store, Rerun: clierr.Rancher + " auth delete-token --all"}
+	req := LocalDelete{Dir: d.dir, Command: DeleteForDeleteToken, Cache: d.store, Rerun: clierr.NewCommand("auth delete-token").Flag("--all")}
 	name, what := "", "the cached credentials"
 	if !all {
 		name = args[0]
 		what = fmt.Sprintf("%q", name)
 		req.Select = func(r config.CachedRecord) bool { return r.Name == name || r.Key == name }
-		req.Rerun = clierr.Rancher + " auth delete-token" + clierr.ShellQuoteArgs("", name)
+		req.Rerun = clierr.NewCommand("auth delete-token").Arg(name)
 	}
 
 	var del *Deletion
@@ -114,8 +119,8 @@ func (d deleteTokenCmd) Execute(ctx context.Context, in runtime.Input, _ runtime
 
 // deleteFailureText is the message of a failed local delete: what it tried to
 // delete, why it failed, and the command that finishes the delete.
-func deleteFailureText(what string, err error, rerun string) string {
-	return fmt.Sprintf("failed to delete %s: %v; to finish, run: %s", what, err, rerun)
+func deleteFailureText(what string, err error, rerun clierr.Command) string {
+	return clierr.Text(fmt.Sprintf("failed to delete %s: %v", what, err), clierr.Lead("; to finish, run: "), rerun)
 }
 
 // DeleteTokenFailure is auth delete-token's structured payload for a

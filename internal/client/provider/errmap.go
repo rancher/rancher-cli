@@ -50,7 +50,8 @@ func mapRequestErrWithin(ctx context.Context, method string, bound time.Duration
 		// cluster is the one to inspect.
 		if q != nil && q.Cluster != "" && q.Cluster != engine.LocalCluster {
 			return clierr.Retryable(clierr.CodeGeneric,
-				err.Error()+" - the server may be slow, or its agent may be disconnected; check the cluster with: "+InspectClusterRemedyFor(q.Cluster))
+				clierr.Text(err.Error()+" - the server may be slow, or its agent may be disconnected",
+					clierr.Lead("; check the cluster with: "), inspectClusterCommand(q.Cluster)))
 		}
 		return clierr.Retryable(clierr.CodeGeneric, err.Error()+" - the server may be slow; retry later")
 	}
@@ -77,10 +78,10 @@ func answeredThenTimedOut(ctx context.Context, method string, bound time.Duratio
 		WithCause(clierr.ResponseError(method, status, nil))
 }
 
-// InspectClusterRemedyFor is the command a timed-out read through a
-// downstream cluster names: the cluster's own state.
-func InspectClusterRemedyFor(cluster string) string {
-	return clierr.Rancher + " inspect cluster" + clierr.ShellQuoteArgs("", cluster)
+// inspectClusterCommand is the command a timed-out read through a downstream
+// cluster names: the cluster's own state.
+func inspectClusterCommand(cluster string) clierr.Command {
+	return clierr.NewCommand("inspect cluster").Arg(cluster)
 }
 
 // restoreStatus rebuilds a raw request's error from the answer's body

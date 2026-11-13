@@ -789,7 +789,7 @@ func (t tokenCmd) resumeCacheWrites(entry string, p runtime.Prompter) {
 	if err == nil && res.Tried {
 		// With the lock taken, a pause that stays is one only another
 		// command or the operator can clear, and config status names what.
-		msg += " (see `" + config.StatusCommand + "`)"
+		msg += clierr.Text(clierr.Lead(" (see `"), clierr.NewCommand(config.StatusWords), "`)")
 	}
 	p.Notice(msg)
 }
@@ -1341,7 +1341,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 				}
 			}
 			if err != nil {
-				p.Notice("error deleting auth token: " + output.Printable(clierr.From(err).Message))
+				p.Notice("error deleting auth token: " + runtime.PrintableRemedies(clierr.From(err).Message))
 			}
 
 			res.Create.ExpiresAt = deposited.ExpiresAt
@@ -2513,13 +2513,13 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, cluster stri
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
 		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):
-		refresh := "; refresh it with: " + clierr.Rancher + " auth login" + clierr.ShellQuoteArgs("", sc.name)
-		if config.IsExecLoginEntryName(sc.name) {
-			// auth login refuses the name; the sign-in this falls back to
-			// is the one way to a login here.
-			refresh = ""
+		msg := fmt.Sprintf("the stored login credential for %q was rejected (%s); falling back to interactive login", sc.name, runtime.PrintableRemedies(clierr.From(err).Message))
+		// auth login refuses a name of the exec plugin's own login entries;
+		// the sign-in this falls back to is the one way to a login there.
+		if login, ok := config.LoginHintFor(sc.name); ok {
+			msg = clierr.Text(msg, clierr.Lead("; refresh it with: "), login)
 		}
-		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%s); falling back to interactive login%s", sc.name, output.Printable(clierr.From(err).Message), refresh))
+		p.Notice(msg)
 		return errStoredCredentialRejected
 	}
 	return err

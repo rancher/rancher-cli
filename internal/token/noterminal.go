@@ -123,12 +123,17 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 	for _, c := range pc.noTerminal {
 		names = append(names, c.ID)
 	}
-	choice := "or add --auth-provider " + names[0] + " to the command (in a kubeconfig, to the exec entry's args) to sign in through " + names[0] + " in a browser"
+	note := pc.note
+	var choice string
 	if len(names) > 1 {
 		choice = "or add --auth-provider with one of " + strings.Join(names, ", ") + " to the command (in a kubeconfig, to the exec entry's args) and sign in through it in a browser"
+	} else if fragment, ok := clierr.FlagFragmentWord("--auth-provider", names[0]); ok {
+		choice = "or add " + fragment + " to the command (in a kubeconfig, to the exec entry's args) to sign in through " + names[0] + " in a browser"
+	} else {
+		note = clierr.WithLeftOutNote(note)
 	}
 	head := "this server has several auth configs and this call has no terminal to choose one"
-	return t.noTerminalError(err, call, clierr.CodeAmbiguousSelection, head, choice, pc.noTerminal, pc.note)
+	return t.noTerminalError(err, call, clierr.CodeAmbiguousSelection, head, choice, pc.noTerminal, note)
 }
 
 // unsupportedConfigRemedy is the exec plugin's form of the refusal of an
@@ -146,13 +151,12 @@ func (t tokenCmd) unsupportedConfigRemedy(err error, call noTerminalCall) error 
 	cfg, pending := t.remedyConfig()
 	login := NoTerminalLogin(cfg, call.name, call.clusterID, call.serverURL, call.caCert, call.caFrom, call.shim)
 	msg := ce.Message
-	hint := login.Hint()
-	if hint == "" {
-		msg += "; " + login.Instruction("to log in with an API token, pipe it to: ")
+	if !login.hasHint() {
+		msg += "; " + login.Instruction("to log in with an API token, pipe it")
 	}
-	out := clierr.New(ce.Code, msg).WithCause(err).WithCandidates(ce.Candidates)
-	if hint != "" {
-		out = out.WithHint(hint)
+	out := clierr.New(ce.Code, clierr.NoteOnce(msg)).WithCause(err).WithCandidates(ce.Candidates)
+	if login.hasHint() {
+		out = out.WithHintCommand(login.Hint())
 	}
 	return pending.Apply(out)
 }
@@ -187,7 +191,7 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 			of, signIn = of+" made"+through, signIn+through
 		}
 	}
-	msg := head + "; " + login.Instruction("to log in without a terminal, pipe an API token"+of+" to: ")
+	msg := head + "; " + login.Instruction("to log in without a terminal, pipe an API token"+of)
 	if choice != "" {
 		msg += "; " + choice
 	}
@@ -199,29 +203,29 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 		// a call with --user-id, under its user.
 		msg += "; or run kubectl once in a terminal and " + signIn + ", which lasts until the cached token expires"
 	default:
-		msg += "; this exec entry sets no --name, and a sign-in in a terminal would not be kept; give it one, for example by regenerating the kubeconfig with: " + kubeconfigRemedy(call.clusterID)
+		msg = clierr.Text(msg+"; this exec entry sets no --name, and a sign-in in a terminal would not be kept; give it one, for example by regenerating the kubeconfig",
+			clierr.Lead(" with: "), kubeconfigRemedy(call.clusterID))
 	}
 	if (call.userID == "" || call.clusterID != "") && t.currentLoginServes(cfg, call) {
-		createKubeconfig := CreateKubeconfigRemedy(call.clusterID)
-		msg += "; for a kubeconfig that carries its own token, run: " + createKubeconfig
+		msg = clierr.Text(msg, clierr.Lead("; for a kubeconfig that carries its own token, run: "), CreateKubeconfigRemedy(call.clusterID))
 	}
 	if note != "" {
 		msg += "; " + note
 	}
-	out := clierr.New(code, msg).WithCause(cause).WithCandidates(candidates)
-	if h := login.Hint(); h != "" {
-		out = out.WithHint(h)
+	out := clierr.New(code, clierr.NoteOnce(msg)).WithCause(cause).WithCandidates(candidates)
+	if login.hasHint() {
+		out = out.WithHintCommand(login.Hint())
 	}
 	return pending.Apply(out)
 }
 
-// The leads of auth login's remedy for a refused sign-in, one per form. Each
-// is followed by the piped login (LoginRemedy.Instruction); auth login
+// The words of auth login's remedy for a refused sign-in, one per form. Each
+// ends before the piped login (LoginRemedy.Instruction adds it); auth login
 // always has an entry name, so the command is complete.
 const (
-	loginLeadTerminal    = loginFallbackTerminal + ", or to log in with an API token, pipe it to: "
-	loginLeadNoInput     = loginFallbackNoInput + ", or to log in with an API token, pipe it to: "
-	loginLeadUnsupported = "to log in with an API token, pipe it to: "
+	loginLeadTerminal    = loginFallbackTerminal + ", or to log in with an API token, pipe it"
+	loginLeadNoInput     = loginFallbackNoInput + ", or to log in with an API token, pipe it"
+	loginLeadUnsupported = "to log in with an API token, pipe it"
 
 	loginFallbackTerminal = "run in a terminal"
 	loginFallbackNoInput  = "run without --no-input"
@@ -267,7 +271,7 @@ func AuthLoginRemedyOf(err error, cfg *config.Config, name, serverURL, caSelecto
 		return LoginRefusalRemedy{}, false
 	}
 	login := NoTerminalLogin(cfg, name, "", serverURL, caSelector, config.CASource{}, false)
-	return LoginRefusalRemedy{Instruction: login.Instruction(lead), Hint: login.Hint(), Fallback: fallback}, true
+	return LoginRefusalRemedy{Instruction: login.Instruction(lead), Hint: login.Hint().Field(), Fallback: fallback}, true
 }
 
 // AuthLoginRemedy is err with auth login's remedy (AuthLoginRemedyOf) added
@@ -337,11 +341,14 @@ func entryOfName(cfg *config.Config, server, name, clusterID string, shim bool) 
 // CreateKubeconfigRemedy is the command that writes a kubeconfig carrying
 // its own token for the cluster, with both of the gates create kubeconfig
 // needs to run: it is destructive. An empty cluster names the placeholder.
-func CreateKubeconfigRemedy(clusterID string) string {
+func CreateKubeconfigRemedy(clusterID string) clierr.Command {
+	create := clierr.NewCommand("create kubeconfig")
 	if clusterID == "" {
-		return clierr.Rancher + " create kubeconfig --clusters <id> --apply --yes"
+		create = create.FlagText(" --clusters <id>")
+	} else {
+		create = create.FlagValue("--clusters", clusterID)
 	}
-	return clierr.Rancher + " create kubeconfig" + clierr.ShellQuoteArgs(" --clusters "+clierr.ShellQuote(clusterID)+" --apply --yes")
+	return create.Flag("--apply").Flag("--yes")
 }
 
 // LoginRemedy is the auth login that stores a login for an exec entry's
@@ -350,7 +357,15 @@ type LoginRemedy struct {
 	// command is the auth login, a remedy command. With an inline CA it holds
 	// --cacert <file>, which needs the clause Facts gives, so it is read only
 	// through Text, Instruction and Hint.
-	command string
+	command clierr.Command
+	// steps is the command, then, for an exec entry whose --name stands for an
+	// entry auth login refuses, the steps that make the exec entry use it: the
+	// new entry made current, then the kubeconfig written again from it.
+	steps clierr.Sequence
+	// selects reports that steps select an entry, so the text ends with what
+	// that does to the directory's current server, current being the one now.
+	selects bool
+	current string
 	// Named reports that the entry name is filled in; otherwise <name>
 	// stands for one the operator chooses.
 	Named bool
@@ -363,11 +378,6 @@ type LoginRemedy struct {
 	// another server than the exec entry's; otherwise the exec entry
 	// carries it.
 	CASource config.CASource
-	// Then are the steps after the login that make the exec entry use it,
-	// for an exec entry whose --name stands for an entry auth login
-	// refuses: the new entry made current, then the kubeconfig written
-	// again from it. Empty when the login alone is enough.
-	Then string
 	// name, serverURL and caPath are what the command was built from; the
 	// sign-in command is built the same way: the entry name (empty for the
 	// placeholder <name>), the server URL and the path of the CA file the
@@ -378,10 +388,19 @@ type LoginRemedy struct {
 // Text is the login and the steps that follow it, as commands: the login
 // first, then each step after "; then ".
 func (l LoginRemedy) Text() string {
-	if l.Then == "" {
-		return l.command
+	return clierr.NoteOnce(clierr.Text(l.steps) + l.tail())
+}
+
+// Login is the auth login alone.
+func (l LoginRemedy) Login() clierr.Command { return l.command }
+
+// tail is what ends the text of a login that selects an entry: what the
+// selection does to the directory's current server.
+func (l LoginRemedy) tail() string {
+	if !l.selects {
+		return ""
 	}
-	return l.command + "; then " + l.Then
+	return useServerNote(l.current)
 }
 
 // Facts says what the operator has to know before the login command: that
@@ -399,72 +418,77 @@ func (l LoginRemedy) Facts() string {
 	return strings.Join(facts, "; ")
 }
 
-// inlineCAArg is the CA flag of a login whose CA is carried inline, with the
-// <file> placeholder: the command cannot name the file.
-func inlineCAArg() string {
-	return config.CAFileArg("--cacert")
-}
-
-// String is Instruction with no lead, so a print of the value (%v, %+v, %s)
-// carries Facts before the command, as every message does.
-func (l LoginRemedy) String() string {
-	return l.Instruction("")
-}
-
-// Instruction is the login as a sentence names it: Facts, then lead, which
-// ends with a colon, then Text. The command comes last in its clause.
-func (l LoginRemedy) Instruction(lead string) string {
+// WithFacts is prose with Facts before it, when there are any.
+func (l LoginRemedy) WithFacts(prose string) string {
 	if facts := l.Facts(); facts != "" {
-		return facts + "; " + lead + l.Text()
+		return facts + "; " + prose
 	}
-	return lead + l.Text()
+	return prose
+}
+
+// String is Facts, then the text of the login, so a print of the value (%v,
+// %+v, %s) carries Facts before the command, as every message does.
+func (l LoginRemedy) String() string {
+	return l.WithFacts(l.Text())
+}
+
+// Instruction is the login as a sentence names it: Facts, then prose, which
+// asks for the login, then the login and the steps after it. The command
+// comes last in its clause.
+func (l LoginRemedy) Instruction(prose string) string {
+	return clierr.NoteOnce(clierr.Text(l.WithFacts(prose), clierr.Lead(" to: "), l.steps) + l.tail())
+}
+
+// InstructionSignIn is Instruction for a login that can be made by signing in
+// through authConfig as well: Facts, then signInProse, the sign-in, then
+// pipedProse, which asks for the piped login, and the login.
+func (l LoginRemedy) InstructionSignIn(signInProse, authConfig, pipedProse string) string {
+	return clierr.NoteOnce(clierr.Text(l.WithFacts(signInProse), clierr.Lead(" with: "), l.signIn(authConfig),
+		"; or "+pipedProse, clierr.Lead(" to: "), l.steps) + l.tail())
 }
 
 // signIn is the sign-in through authConfig that logs in the same entry as
 // the piped login does: the command without --token-stdin and with
 // --auth-provider.
-func (l LoginRemedy) signIn(authConfig string) string {
-	switch {
-	case l.name == "" && l.InlineCA:
-		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " " + inlineCAArg() + " --auth-provider " + clierr.ShellQuote(authConfig)
-	case l.name == "" && l.caPath != "":
-		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --cacert " + clierr.ShellQuote(l.caPath) + " --auth-provider " + clierr.ShellQuote(authConfig)
-	case l.name == "":
-		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --auth-provider " + clierr.ShellQuote(authConfig)
-	case l.InlineCA:
-		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" "+inlineCAArg()+" --auth-provider "+clierr.ShellQuote(authConfig), l.name)
-	case l.caPath != "":
-		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" --cacert "+clierr.ShellQuote(l.caPath)+" --auth-provider "+clierr.ShellQuote(authConfig), l.name)
-	}
-	return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" --auth-provider "+clierr.ShellQuote(authConfig), l.name)
+func (l LoginRemedy) signIn(authConfig string) clierr.Command {
+	return l.loginCommand().FlagValue("--auth-provider", authConfig)
 }
 
 // pipedLogin is the auth login that reads a token from stdin, for the entry
 // l.name (the placeholder <name> when empty) at l.serverURL, with the CA
 // the login names.
-func (l LoginRemedy) pipedLogin() string {
-	switch {
-	case l.name == "" && l.InlineCA:
-		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " " + inlineCAArg() + " --token-stdin"
-	case l.name == "" && l.caPath != "":
-		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --cacert " + clierr.ShellQuote(l.caPath) + " --token-stdin"
-	case l.name == "":
-		return clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(l.serverURL) + " --token-stdin"
-	case l.InlineCA:
-		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" "+inlineCAArg()+" --token-stdin", l.name)
-	case l.caPath != "":
-		return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" --cacert "+clierr.ShellQuote(l.caPath)+" --token-stdin", l.name)
-	}
-	return clierr.Rancher + " auth login" + clierr.ShellQuoteArgs(" --url "+clierr.ShellQuote(l.serverURL)+" --token-stdin", l.name)
+func (l LoginRemedy) pipedLogin() clierr.Command {
+	return l.loginCommand().Flag("--token-stdin")
 }
 
-// Hint is the login when it runs as written, "" otherwise: a hint is a
-// command and nothing else.
-func (l LoginRemedy) Hint() string {
-	if l.Named && !l.InlineCA {
+// loginCommand is the auth login of the entry, with the URL and the CA.
+func (l LoginRemedy) loginCommand() clierr.Command {
+	c := clierr.NewCommand(config.LoginWords)
+	if l.name == "" {
+		c = c.Placeholder("<name>")
+	} else {
+		c = c.Arg(l.name)
+	}
+	c = c.FlagValue("--url", l.serverURL)
+	switch {
+	case l.InlineCA:
+		c = c.FlagText(config.CAFileFlag)
+	case l.caPath != "":
+		c = c.FlagValue("--cacert", l.caPath)
+	}
+	return c
+}
+
+// hasHint reports whether the login runs as written: a hint is a command and
+// nothing else.
+func (l LoginRemedy) hasHint() bool { return l.Named && !l.InlineCA }
+
+// Hint is the login when it runs as written, the zero Command otherwise.
+func (l LoginRemedy) Hint() clierr.Command {
+	if l.hasHint() {
 		return l.command
 	}
-	return ""
+	return clierr.Command{}
 }
 
 // NoTerminalLogin builds the login the exec plugin's no-terminal error
@@ -502,19 +526,10 @@ func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert stri
 	default:
 		caPath = caCert
 	}
-	then := ""
-	if config.IsExecLoginEntryName(loginEntry) {
-		current := ""
-		if cfg != nil {
-			current = cfg.CurrentServer
-		}
-		then = clierr.Rancher + " config use-server <name>; then " + kubeconfigRemedy(clusterID) + useServerNote(current)
-	}
 	login := LoginRemedy{
 		Named:     named,
 		InlineCA:  inlineCA,
 		CASource:  caFrom,
-		Then:      then,
 		serverURL: serverURL,
 		caPath:    caPath,
 	}
@@ -522,5 +537,15 @@ func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert stri
 		login.name = loginEntry
 	}
 	login.command = login.pipedLogin()
+	login.steps = clierr.NewSequence().Then("", login.command)
+	if config.IsExecLoginEntryName(loginEntry) {
+		if cfg != nil {
+			login.current = cfg.CurrentServer
+		}
+		login.selects = true
+		login.steps = login.steps.
+			Then("then ", clierr.NewCommand("config use-server").Placeholder("<name>")).
+			Then("then ", kubeconfigRemedy(clusterID))
+	}
 	return login
 }

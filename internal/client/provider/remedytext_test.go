@@ -65,5 +65,5 @@ func TestADeadlineMessageEndsWithTheCommandThatInspectsTheCluster(t *testing.T) 
 	ce, ok := errors.AsType[*clierr.Error](mapRequestErr(t.Context(), http.MethodGet, err, &clierr.Request{Cluster: "c-m-x"}))
 	require.True(t, ok)
 	assert.True(t, strings.HasSuffix(ce.Message, "its agent may be disconnected; check the cluster with: "+clierr.Rancher+" inspect cluster 'c-m-x'"), ce.Message)
-	assert.Equal(t, clierr.Rancher+" inspect cluster 'c-m-x'", InspectClusterRemedyFor("c-m-x"))
+	assert.Equal(t, clierr.Rancher+" inspect cluster 'c-m-x'", inspectClusterCommand("c-m-x").Field())
 }

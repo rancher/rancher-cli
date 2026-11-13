@@ -262,7 +262,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			if err == nil {
 				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
 				if c.k.WaitFailsOnStalled && !cond.isStalledTarget() {
-					if w := freshSuccessWarning(one, c.k.Name, name, ns); w != "" {
+					if w := freshSuccessWarning(one, c.k.Word(), name, ns); w != "" {
 						waitWarnings = append(waitWarnings, w)
 					}
 				}
@@ -447,8 +447,8 @@ func ProjectRefusal(k kinds.Kind, op Operation, name, cluster, project string) e
 		ce := clierr.New(clierr.CodeValidation,
 			"--project does not place a namespace created from a manifest in a project; <name> is the namespace, <cluster> its cluster and <project> the project; add --apply after reading the preview: "+clierr.Rancher+" create namespace <name> --cluster <cluster> --project <project> --dry-run")
 		if name != "" && cluster != "" {
-			ce = ce.WithHint(clierr.Rancher + " create namespace" +
-				clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(cluster)+" --project "+clierr.ShellQuote(project)+" --dry-run", name))
+			ce = ce.WithHintCommand(clierr.NewCommand("create namespace").Arg(name).
+				FlagValue("--cluster", cluster).FlagValue("--project", project).Flag("--dry-run"))
 		}
 		return ce
 	}

@@ -22,13 +22,13 @@ import (
 func cliText(v string) engine.MatchText {
 	return engine.MatchText{Noun: "cluster", Plural: "clusters", Flag: "--cluster",
 		NotFound:     "cluster not found: " + clierr.ShellQuote(v) + "; it is not among the clusters you can read; pass a cluster id or display name",
-		NotFoundHint: clierr.Rancher + " access clusters"}
+		NotFoundHint: clierr.NewCommand("access clusters")}
 }
 
 func pluginText(v string) engine.MatchText {
 	t := cliText(v)
 	t.NotFound += "; the clusters you can read: 'c-abc' (prod)"
-	t.NotFoundHint = ""
+	t.NotFoundHint = clierr.Command{}
 	return t
 }
 

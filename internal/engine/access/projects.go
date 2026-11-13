@@ -210,12 +210,13 @@ func (c *projectsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 	}
 	switch as.Kind {
 	case KindGroup:
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "no server operation lists a group's projects; "+pointQuestionPlaceholders+"; "+groupPointQuestion(as.Raw))
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "no server operation lists a group's projects; "+groupPointQuestion(as.Raw))
 	case KindServiceAccount:
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "a service account belongs to one cluster; "+serviceAccountList(as.Raw))
 	}
 	if as.Raw == anonymousUser {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; "+pointQuestionPlaceholders+"; ask a point question with: "+anonymousAccessCan())
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, clierr.Text("the anonymous identity cannot be impersonated; "+pointQuestionPlaceholders,
+			clierr.Lead("; ask a point question with: "), anonymousAccessCan()))
 	}
 	budget, err := parseTimeout(in)
 	if err != nil {

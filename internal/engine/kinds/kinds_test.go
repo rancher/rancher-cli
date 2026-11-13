@@ -412,6 +412,55 @@ func TestNotFoundCuratedDownstreamCarriesCluster(t *testing.T) {
 	assert.Equal(t, clierr.Rancher+" get deployments --cluster 'c-abc123'", ce.Hint)
 }
 
+// TestNotFoundCuratedLeavesOutTheListCommandForAnUnprintableCluster asserts a
+// Downstream-scoped kind's NOT_FOUND with a --cluster value that cannot be
+// printed as one shell word, or with none, has no hint and carries the note,
+// and that a Management-scoped kind ignores the value.
+func TestNotFoundCuratedLeavesOutTheListCommandForAnUnprintableCluster(t *testing.T) {
+	t.Parallel()
+	k, ok := Lookup("deployment")
+	require.True(t, ok)
+	for name, cluster := range map[string]string{
+		"apostrophe":       "c'x",
+		"right quote":      "c\u2019x",
+		"zero width":       "c\u200bx",
+		"double backslash": "c\\\\x",
+		"empty":            "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var ce *clierr.Error
+			require.ErrorAs(t, NotFoundCurated(k, "web", cluster), &ce)
+			assert.Empty(t, ce.Hint)
+			assert.Equal(t, "deployment not found: web; "+clierr.LeftOutNote, ce.Message)
+		})
+	}
+	user, ok := Lookup("user")
+	require.True(t, ok)
+	require.Equal(t, Management, user.Scope)
+	var ce *clierr.Error
+	require.ErrorAs(t, NotFoundCurated(user, "bob", "c'x"), &ce)
+	assert.Equal(t, clierr.Rancher+" get users", ce.Hint)
+}
+
+// TestForbiddenCommandIsLeftOutForAnUnprintableValue asserts the field of an
+// RBAC refusal's command is empty when the name or namespace cannot be printed
+// as one shell word, and that ForbiddenCommand reports the command as left out.
+func TestForbiddenCommandIsLeftOutForAnUnprintableValue(t *testing.T) {
+	t.Parallel()
+	cluster, _ := ByKey("managementcluster")
+	project, _ := ByKey("project")
+	for _, v := range []string{"x'y", "x\u2019y", "x\u200by", "x\\\\y"} {
+		c, ok := ForbiddenCommand(cluster, "get", "", v)
+		require.True(t, ok)
+		assert.False(t, c.OK())
+		assertForbiddenLeftOut(t, cluster, "get", "", v)
+		c, ok = ForbiddenCommand(project, "list", v, "")
+		require.True(t, ok)
+		assert.False(t, c.OK())
+		assertForbiddenLeftOut(t, project, "list", v, "")
+	}
+}
+
 func TestLookupGVK(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -699,10 +748,10 @@ func TestPrefixFilterMatches(t *testing.T) {
 	assert.False(t, none.Matches(map[string]any{"principalIds": []any{"system://x"}}))
 }
 
-// TestForbiddenHint asserts the caller-scoped command for each kind verb
-// the generated commands send through the local cluster's proxy, and none
+// TestForbiddenCommandField asserts the caller-scoped command for each kind
+// verb the generated commands send through the local cluster's proxy, and none
 // for every other kind and verb.
-func TestForbiddenHint(t *testing.T) {
+func TestForbiddenCommandField(t *testing.T) {
 	t.Parallel()
 	cluster, _ := ByKey("managementcluster")
 	project, _ := ByKey("project")
@@ -714,14 +763,16 @@ func TestForbiddenHint(t *testing.T) {
 	}{
 		{cluster, "list", "", "", clierr.Rancher + " access clusters"},
 		{cluster, "get", "", "c-abc", clierr.Rancher + " inspect cluster 'c-abc'"},
-		{cluster, "get", "", "it's", clierr.Rancher + ` inspect cluster 'it'\''s'`},
+		{cluster, "get", "", "my cluster", clierr.Rancher + " inspect cluster 'my cluster'"},
+		{cluster, "get", "", "it's", ""},
 		{cluster, "update", "", "c-abc", ""},
 		{project, "list", "c-abc", "", clierr.Rancher + " access projects --cluster 'c-abc'"},
 		{project, "list", "", "", clierr.Rancher + " access projects"},
 		{project, "get", "c-abc", "p-1", ""},
 		{user, "list", "", "", ""},
 	} {
-		assert.Equal(t, tc.want, ForbiddenHint(tc.k, tc.verb, tc.namespace, tc.name), "%s %s", tc.k.Key, tc.verb)
+		c, _ := ForbiddenCommand(tc.k, tc.verb, tc.namespace, tc.name)
+		assert.Equal(t, tc.want, c.Field(), "%s %s", tc.k.Key, tc.verb)
 	}
 }
 
@@ -878,4 +929,14 @@ func TestBuiltInKubernetesKindRows(t *testing.T) {
 			assert.False(t, ok, "a manifest with another apiVersion of the kind finds no row")
 		})
 	}
+}
+
+// assertForbiddenLeftOut asserts the caller-scoped command for the value is
+// left out: its field is empty.
+func assertForbiddenLeftOut(t *testing.T, k Kind, verb, namespace, name string) {
+	t.Helper()
+	c, ok := ForbiddenCommand(k, verb, namespace, name)
+	require.True(t, ok)
+	assert.False(t, c.OK())
+	assert.Empty(t, c.Field())
 }

@@ -239,7 +239,8 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 				primary = clierr.New(clierr.CodeConflict, out.Aborted).WithCause(perr)
 			case errors.Is(perr, config.ErrTokenStoreUnsupported):
 				primary = clierr.New(clierr.CodeGeneric,
-					fmt.Sprintf("the credential store (policy %s) cannot store a login credential (%v), and one cannot be reused across clusters; fix the store, or turn the setting off with: %s", decision.Policy, perr, config.TokenReuseOffCommand)).
+					clierr.Text(fmt.Sprintf("the credential store (policy %s) cannot store a login credential (%v), and one cannot be reused across clusters; fix the store, or turn the setting off", decision.Policy, perr),
+						clierr.Lead(" with: "), clierr.NewCommand(config.TokenReuseOffWords))).
 					WithCause(perr)
 			}
 			if cerr := ctx.Err(); cerr != nil {
@@ -290,10 +291,10 @@ func (u userCheck) entryNameCharacters(cfg *config.Config, p config.NameProblem)
 	if u.userID != "" {
 		piped += " of " + clierr.ShellQuote(u.userID)
 	}
-	remedy := login.Instruction("to log in under a name of your own, " + piped + " to: ")
+	remedy := login.Instruction("to log in under a name of your own, " + piped)
 	if u.authConfig != "" {
 		piped += " made through auth config " + clierr.ShellQuote(u.authConfig)
-		remedy = login.Instruction("to log in under a name of your own, sign in with: " + login.signIn(u.authConfig) + "; or " + piped + " to: ")
+		remedy = login.InstructionSignIn("to log in under a name of your own, sign in", u.authConfig, piped)
 	}
 	why := "the server URL's host is not valid UTF-8"
 	if !p.InvalidUTF8 {

@@ -432,7 +432,7 @@ func TestPersistRecoveryCommandQuotesAHostileEntryName(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("no POSIX shell")
 	}
-	hostile := "prod it's; rm -rf /"
+	hostile := "prod it; rm -rf /"
 	existing := derivedEntry()
 	dir, path := persistFixture(t, nil)
 	cfg, _ := Load(path)
@@ -450,7 +450,7 @@ func TestPersistRecoveryCommandQuotesAHostileEntryName(t *testing.T) {
 	in.Name = hostile
 	out, _ := PersistLoginCredential(t.Context(), dir, in)
 	require.NotNil(t, out.ConfigRecovery)
-	assert.Equal(t, clierr.Rancher+" config delete-server 'prod it'\\''s; rm -rf /'", out.ConfigRecovery.Command)
+	assert.Equal(t, clierr.Rancher+" config delete-server 'prod it; rm -rf /'", out.ConfigRecovery.Command)
 	words, err := exec.Command("/bin/sh", "-c", "printf '%s\\n' "+strings.TrimPrefix(clierr.ExpandRemedies(out.ConfigRecovery.Command, ""), "rancher ")).Output()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"config", "delete-server", hostile}, strings.Split(strings.TrimRight(string(words), "\n"), "\n"))

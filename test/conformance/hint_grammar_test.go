@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -149,7 +150,27 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 		return out
 
 	case *ast.CallExpr:
+		if out, ok := fl.flattenBuilder(e, localAssigns, depth); ok {
+			return out
+		}
 		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
+			// clierr.Text joins its parts and clierr.Lead is the words it holds.
+			if id, ok := sel.X.(*ast.Ident); ok && id.Name == "clierr" && !e.Ellipsis.IsValid() {
+				switch {
+				case sel.Sel.Name == "Lead" && len(e.Args) == 1:
+					return fl.flatten(e.Args[0], localAssigns, depth+1)
+				case sel.Sel.Name == "Text":
+					out := []string{""}
+					for _, a := range e.Args {
+						out = joinCandidates(out, "", fl.flatten(a, localAssigns, depth+1))
+					}
+					return out
+				}
+			}
+			// Command.Field() is the text of the command it is called on.
+			if sel.Sel.Name == "Field" && len(e.Args) == 0 {
+				return fl.flatten(sel.X, localAssigns, depth+1)
+			}
 			if id, ok := sel.X.(*ast.Ident); ok && id.Name == "fmt" &&
 				(sel.Sel.Name == "Sprintf" || sel.Sel.Name == "Errorf") && len(e.Args) > 0 {
 				return fl.flatten(e.Args[0], localAssigns, depth+1)
@@ -206,7 +227,15 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 	case *ast.Ident:
 		if vals, ok := localAssigns[e.Name]; ok {
 			var out []string
-			for _, v := range vals {
+			spans := localAssigns[assignSpans(e.Name)]
+			for i, v := range vals {
+				// A variable declared in a block the use is not in is another
+				// variable of the same name.
+				if i < len(spans) {
+					if span, ok := spans[i].(*ast.BadExpr); ok && span.To != 0 && (e.Pos() < span.From || e.Pos() >= span.To) {
+						continue
+					}
+				}
 				out = append(out, fl.flatten(v, localAssigns, depth+1)...)
 			}
 			if len(out) > 0 {
@@ -223,6 +252,93 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 	default:
 		return []string{unresolved}
 	}
+}
+
+// builderStarts are the functions that open a command builder chain; the
+// methods are the chain's links.
+var (
+	builderStarts  = map[string]bool{"NewCommand": true, "FileCommand": true, "FileCommandIn": true, "Revoke": true, "RevokeKubeconfig": true, "FileRevokeKubeconfig": true}
+	builderMethods = map[string]bool{"Word": true, "Arg": true, "Placeholder": true, "FlagValue": true, "Flag": true, "FlagText": true, "With": true, "On": true}
+)
+
+// builderStart is the name of the constructor call e is, whether written
+// clierr.NewCommand(...) or, inside package clierr, NewCommand(...).
+func builderStart(e *ast.CallExpr) (string, bool) {
+	switch f := e.Fun.(type) {
+	case *ast.Ident:
+		return f.Name, builderStarts[f.Name]
+	case *ast.SelectorExpr:
+		if id, ok := f.X.(*ast.Ident); ok && id.Name == "clierr" {
+			return f.Sel.Name, builderStarts[f.Sel.Name]
+		}
+	}
+	return "", false
+}
+
+// flattenBuilder reads a command builder chain as the command it prints: the
+// word rancher, each constant word and flag spelling as written, and every
+// runtime value as the unresolved sentinel. A placeholder is written as its
+// text, so a placeholder in a hint fails the grammar. ok is false when e is
+// no builder chain.
+func (fl *flattener) flattenBuilder(e *ast.CallExpr, localAssigns map[string][]ast.Expr, depth int) ([]string, bool) {
+	if name, ok := builderStart(e); ok {
+		out := []string{"rancher"}
+		switch name {
+		case "NewCommand", "FileCommand":
+			out = joinCandidates(out, " ", fl.flatten(e.Args[0], localAssigns, depth+1))
+		case "FileCommandIn":
+			out = joinCandidates(out, " ", fl.flatten(e.Args[1], localAssigns, depth+1))
+		case "Revoke":
+			out = []string{"rancher delete token " + unresolved + " --apply --yes"}
+		case "RevokeKubeconfig", "FileRevokeKubeconfig":
+			out = []string{"rancher delete kubeconfig " + unresolved + " --apply --yes"}
+		}
+		return out, true
+	}
+	sel, ok := e.Fun.(*ast.SelectorExpr)
+	if !ok || !builderMethods[sel.Sel.Name] {
+		return nil, false
+	}
+	recv, ok := sel.X.(*ast.CallExpr)
+	if !ok {
+		return nil, false
+	}
+	base, ok := fl.flattenBuilder(recv, localAssigns, depth)
+	if !ok {
+		return nil, false
+	}
+	arg := func(i int) []string {
+		if i >= len(e.Args) {
+			return []string{unresolved}
+		}
+		return fl.flatten(e.Args[i], localAssigns, depth+1)
+	}
+	switch sel.Sel.Name {
+	case "Word", "Placeholder", "Flag":
+		return joinCandidates(base, " ", arg(0)), true
+	case "FlagText":
+		return joinCandidates(base, "", arg(0)), true
+	case "FlagValue":
+		return joinCandidates(joinCandidates(base, " ", arg(0)), " ", []string{unresolved}), true
+	case "Arg":
+		for range e.Args {
+			base = joinCandidates(base, " ", []string{unresolved})
+		}
+		return base, true
+	}
+	return base, true
+}
+
+// joinCandidates is every combination of a candidate of left, sep and a
+// candidate of right.
+func joinCandidates(left []string, sep string, right []string) []string {
+	out := make([]string, 0, len(left)*len(right))
+	for _, l := range left {
+		for _, r := range right {
+			out = append(out, l+sep+r)
+		}
+	}
+	return out
 }
 
 // flattenConst resolves the constant or variable name of package pkg
@@ -276,7 +392,32 @@ func (fl *flattener) flattenReturns(fd *ast.FuncDecl, depth int) []string {
 // detection here, not a wrongly-failed build; a false positive would.
 func collectLocalAssigns(body *ast.BlockStmt) map[string][]ast.Expr {
 	out := map[string][]ast.Expr{}
+	var stack []ast.Node
+	// add records value as assigned to name. The value of a := or var
+	// declaration also gets the span of the block it is visible in, in the
+	// entry of name's spans at the same index; an assignment to an existing
+	// variable has a span with no end.
+	add := func(name string, value ast.Expr, declares bool) {
+		out[name] = append(out[name], value)
+		span := &ast.BadExpr{}
+		if declares {
+			for _, s := range slices.Backward(stack) {
+				switch s.(type) {
+				case *ast.BlockStmt, *ast.CaseClause, *ast.CommClause, *ast.IfStmt, *ast.ForStmt, *ast.SwitchStmt, *ast.TypeSwitchStmt:
+					span = &ast.BadExpr{From: s.Pos(), To: s.End()}
+				default:
+					continue
+				}
+				break
+			}
+		}
+		out[assignSpans(name)] = append(out[assignSpans(name)], span)
+	}
 	ast.Inspect(body, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
 		switch s := n.(type) {
 		case *ast.AssignStmt:
 			for i, lhs := range s.Lhs {
@@ -284,19 +425,26 @@ func collectLocalAssigns(body *ast.BlockStmt) map[string][]ast.Expr {
 				if !ok || i >= len(s.Rhs) {
 					continue
 				}
-				out[id.Name] = append(out[id.Name], s.Rhs[i])
+				add(id.Name, s.Rhs[i], s.Tok == token.DEFINE)
 			}
 		case *ast.ValueSpec:
 			for i, name := range s.Names {
 				if i < len(s.Values) {
-					out[name.Name] = append(out[name.Name], s.Values[i])
+					add(name.Name, s.Values[i], true)
 				}
 			}
 		}
+		stack = append(stack, n)
 		return true
 	})
 	return out
 }
+
+// assignSpans is the key under which collectLocalAssigns keeps, for each
+// value assigned to name, the span of the block a declaration of it is visible
+// in: an ast.BadExpr whose To is zero when the value is no declaration. No
+// identifier has a NUL in its name, so the key never collides with one.
+func assignSpans(name string) string { return name + "\x00" }
 
 // TestHintGrammarConformance is the corpus-grammar tripwire: it statically
 // resolves every WithHint(...) call site's argument, and every composite
@@ -383,7 +531,7 @@ func eachHint(files []*ast.File, paths []string, visit func(path string, expr as
 				switch node := n.(type) {
 				case *ast.CallExpr:
 					sel, ok := node.Fun.(*ast.SelectorExpr)
-					if ok && sel.Sel.Name == "WithHint" && len(node.Args) > 0 {
+					if ok && (sel.Sel.Name == "WithHint" || sel.Sel.Name == "WithHintCommand") && len(node.Args) > 0 {
 						check(node.Args[0], node.Pos())
 					}
 				case *ast.KeyValueExpr:
@@ -448,8 +596,78 @@ func isStringExpr(e ast.Expr) bool {
 	case *ast.SelectorExpr:
 		_, ok := e.X.(*ast.Ident)
 		return ok
+	case *ast.CallExpr:
+		// X.Field() is the text of the command X, and a builder chain is
+		// the command itself.
+		if sel, ok := e.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Field" && len(e.Args) == 0 {
+			return isStringExpr(sel.X) || isBuilderChain(sel.X)
+		}
+		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
+			if id, ok := sel.X.(*ast.Ident); ok && id.Name == "clierr" && !e.Ellipsis.IsValid() {
+				switch sel.Sel.Name {
+				case "Lead":
+					return len(e.Args) == 1 && isStringExpr(e.Args[0])
+				case "Text":
+					return !slices.ContainsFunc(e.Args, func(a ast.Expr) bool { return !isStringExpr(a) && !isBuilderChain(a) })
+				}
+			}
+		}
+		return isBuilderChain(e)
 	}
 	return false
+}
+
+// isBuilderChain reports whether e is a command builder chain: a constructor
+// call, or a call of a builder method on a chain.
+func isBuilderChain(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	if _, ok := builderStart(call); ok {
+		return true
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	return ok && builderMethods[sel.Sel.Name] && isBuilderChain(sel.X)
+}
+
+// TestHintGrammarReadsBuilderChains asserts the hint grammar reads the
+// argument of WithHintCommand through the builder chain: constant words and
+// flag text as written, values as unresolved, so a placeholder or a second
+// command in a hint fails.
+func TestHintGrammarReadsBuilderChains(t *testing.T) {
+	t.Parallel()
+	read := func(src string) []string {
+		expr, err := parser.ParseExpr(src)
+		require.NoError(t, err)
+		fl := &flattener{funcsByName: map[string][]*ast.FuncDecl{}}
+		return fl.flatten(expr, nil, 0)
+	}
+	require.Equal(t, []string{"rancher get users " + unresolved + " --cluster " + unresolved},
+		read(`clierr.NewCommand("get users").Arg(id).FlagValue("--cluster", cluster)`))
+	require.Equal(t, []string{"rancher get " + unresolved + " --apply"},
+		read(`clierr.NewCommand("get").Word(k.Word()).Flag("--apply")`))
+	for _, src := range []string{
+		// M8.1: a placeholder in flag text.
+		`clierr.NewCommand("get users").FlagText(" <id>")`,
+		`clierr.NewCommand("config use-server").Placeholder("<entry>")`,
+		`clierr.NewCommand("get users").FlagText(" or run: rancher get tokens")`,
+	} {
+		got := read(src)
+		require.Len(t, got, 1, src)
+		require.NotEmpty(t, hintGrammarViolation(got[0]), src)
+	}
+	require.Empty(t, hintGrammarViolation(read(`clierr.NewCommand("get users").Arg(id)`)[0]))
+	require.Empty(t, hintGrammarViolation(read(`clierr.Revoke(ref)`)[0]))
+	require.Nil(t, func() []string {
+		expr, err := parser.ParseExpr(`other.NewCommand("x").Arg(id)`)
+		require.NoError(t, err)
+		fl := &flattener{funcsByName: map[string][]*ast.FuncDecl{}}
+		if out, ok := fl.flattenBuilder(expr.(*ast.CallExpr), nil, 0); ok {
+			return out
+		}
+		return nil
+	}(), "a chain that does not start at the builder is not read as one")
 }
 
 // TestHintFlattenerReadsDirectoryFreeAndMarkRemedy asserts a hint built with

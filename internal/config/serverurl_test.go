@@ -185,7 +185,7 @@ func TestAdviseRecord(t *testing.T) {
 		return "the server recorded for token 'token-abc12' cannot be used: " + reason + "; the token stays on the server that issued it; " +
 			"delete it there as user 'u-abc12' while signed in to that server: " + clierr.Rancher + " delete token 'token-abc12' --apply --yes"
 	}
-	sequence := func(server string) []string { return clierr.RecoverySequence(server, ref) }
+	sequence := func(server string) []string { return clierr.RecoverySequence(server, ref).Lines() }
 	const userinfo = "it holds a user name or password"
 	for _, tc := range []struct {
 		name             string
@@ -227,11 +227,11 @@ func TestAdviseRecord(t *testing.T) {
 			got := AdviseRecord(tc.site, tc.recordServer, "u-abc12", ref)
 			assert.Equal(t, tc.wantText, got.Text)
 			if tc.wantText == "" {
-				assert.Equal(t, sequence(tc.wantSequenceFrom), got.Sequence)
+				assert.Equal(t, sequence(tc.wantSequenceFrom), got.Sequence.Lines())
 				assert.Equal(t, "u-abc12", got.LoginAs)
-				assert.NotContains(t, strings.Join(got.Sequence, " "), "pwzq7", "no command is built from the text as stored")
+				assert.NotContains(t, strings.Join(got.Sequence.Lines(), " "), "pwzq7", "no command is built from the text as stored")
 			} else {
-				assert.Empty(t, got.Sequence)
+				assert.Empty(t, got.Sequence.Lines())
 				assert.Empty(t, got.LoginAs)
 				assert.NotContains(t, got.Text, "pwzq7")
 			}
@@ -272,7 +272,7 @@ func TestAdviseRecordEscapesTheOwnerWhenTheRecordServerCannotBeUsed(t *testing.T
 		"a record server that does not parse": AdviseRecord(RecordSite{}, "not a url", owner, ref),
 		"an entry URL that cannot be used":    AdviseRecord(unusableEntry, unusableEntry.EntryURL, owner, ref),
 	} {
-		assert.Empty(t, advice.Sequence, name)
+		assert.Empty(t, advice.Sequence.Lines(), name)
 		assert.Contains(t, advice.Text, "delete it there as user '"+strconv.Quote(owner)+"' while signed in", name)
 		remedytest.AssertIDShownWithEscapes(t, advice.Text, owner, name)
 	}
@@ -292,7 +292,7 @@ func TestAdviseRecordEscapesAnOwnerOfOnlyUnsafeRunes(t *testing.T) {
 	advice := AdviseRecord(site, "https://hostzq7", owner, ref)
 	assert.Equal(t, owner, advice.LoginAs)
 	assert.Empty(t, advice.Text)
-	assert.NotEmpty(t, advice.Sequence)
+	assert.NotEmpty(t, advice.Sequence.Lines())
 
 	noServer := AdviseRecord(site, "", owner, ref)
 	assert.Contains(t, noServer.Text, `delete it as user '"\u202e\u2063"', signed in`)

@@ -41,11 +41,10 @@ func IsUnsafeToDisplay(r rune) bool {
 }
 
 // WithoutUnsafeToDisplay is s with every rune IsUnsafeToDisplay reports
-// removed. Its only caller is output.Printable, which applies it to
-// displayed text. A user id and a value in the details lines of an error never
-// go through it: removing runes could turn one value into another real value,
-// so IDText writes them as escapes. An input that holds only such runes comes
-// back empty.
+// removed. output.Printable applies it to displayed text. A user id and a
+// value in the details lines of an error never go through it: removing runes
+// could turn one value into another real value, so IDText writes them as
+// escapes. An input that holds only such runes comes back empty.
 func WithoutUnsafeToDisplay(s string) string {
 	return strings.Map(func(r rune) rune {
 		if IsUnsafeToDisplay(r) {

@@ -11,17 +11,33 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
-// TestDeleteServerCommandsNamesOneCommandPerEntry asserts the commands that
+// TestRemoveEntriesTextNamesOneCommandPerEntry asserts the commands that
 // remove the entries a refused store change names: one command for each, in
 // the order given, separated by a semicolon, with a name that starts with a
-// dash written after "--".
-func TestDeleteServerCommandsNamesOneCommandPerEntry(t *testing.T) {
+// dash written after "--", and a command left out alone for a name that
+// cannot be printed.
+func TestRemoveEntriesTextNamesOneCommandPerEntry(t *testing.T) {
 	t.Parallel()
 	del := clierr.Rancher + " config delete-server"
-	assert.Empty(t, deleteServerCommands(nil))
-	assert.Equal(t, del+" 'qa'", deleteServerCommands([]string{"qa"}))
-	assert.Equal(t, del+" -- '-x'", deleteServerCommands([]string{"-x"}))
-	assert.Equal(t, del+" -- '-x'; "+del+" 'qa'; "+del+" 'it'\\''s'", deleteServerCommands([]string{"-x", "qa", "it's"}))
+	const tail = "; then run this command again"
+	assert.Equal(t, "or remove them"+tail, removeEntriesText("or remove them", nil))
+	assert.Equal(t, "or remove it with: "+del+" 'qa'"+tail, removeEntriesText("or remove it", []string{"qa"}))
+	assert.Equal(t, "or remove it with: "+del+" -- '-x'"+tail, removeEntriesText("or remove it", []string{"-x"}))
+	assert.Equal(t, "or remove them with: "+del+" -- '-x'; "+del+" 'qa'"+tail+"; "+clierr.LeftOutNote,
+		removeEntriesText("or remove them", []string{"-x", "it's", "qa"}), "the command of a name that cannot be printed is left out alone")
+}
+
+// TestRemoveEntriesTextLeavesOutEveryCommandForNamesThatCannotBePrinted
+// asserts that when no entry name can be printed the text names no remove
+// command, still ends with the request to run the command again, and carries
+// the note once.
+func TestRemoveEntriesTextLeavesOutEveryCommandForNamesThatCannotBePrinted(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"a'b", "a\u2019b", "abc\u200b", `a\\b`} {
+		got := removeEntriesText("or remove it", []string{name})
+		assert.Equal(t, "or remove it; then run this command again; "+clierr.LeftOutNote, got, name)
+		assert.NotContains(t, got, "config delete-server", name)
+	}
 }
 
 // TestAStoreChangeRefusalNamesTheCommandThatRemovesEachEntry asserts the

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,7 @@ import (
 const (
 	headerStart       = "# Kubeconfig "
 	headerRevokeText  = " - shown once; revoke with: rancher delete kubeconfig"
-	headerNoRevokeEnd = " - shown once; no revoke command is shown because the name is empty or holds characters a terminal cannot show"
+	headerNoRevokeEnd = " - shown once; no revoke command is shown because the name cannot be printed so that every supported shell reads it as written; find it with: rancher get kubeconfigs"
 	tokensStart       = "# Tokens: "
 	tokensNoExpiry    = " - expiry not returned by the server\n"
 )
@@ -102,7 +103,7 @@ func TestReadShellWord(t *testing.T) {
 
 // hostileKubeconfigNames are names a server can send in its reply, as the
 // name of the kubeconfig and as the name of a token. plain is true for a name
-// that prints as it is and is not empty, the only names the first header line
+// clierr.NotQuotable reports false for, the only names the first header line
 // gives a revoke command for.
 var hostileKubeconfigNames = []struct {
 	row   string
@@ -124,11 +125,15 @@ var hostileKubeconfigNames = []struct {
 	{"rightToLeftOverride", "kc\u202edcba", false},
 	{"invisibleSeparator", "kc\u2063x", false},
 	{"invalidByte", "kc\xffx", false},
-	{"singleQuote", "it's", true},
-	{"doubleQuote", `a"b`, true},
+	{"singleQuote", "it's", false},
+	{"curlyQuote", "it\u2019s", false},
+	{"zeroWidthSpace", "kc\u200bx", false},
+	{"doubleQuote", `a"b`, false},
 	{"space", "kc x", true},
 	{"backslash", `a\b`, true},
-	{"quoteAndComma", `a", "b`, true},
+	{"doubleBackslash", `a\\b`, false},
+	{"trailingBackslash", `a\`, false},
+	{"quoteAndComma", `a", "b`, false},
 	{"shellMetacharacters", "$(id);rm", true},
 	{"dollarSign", "a$b", true},
 	{"leadingDash", "-h", true},
@@ -141,8 +146,9 @@ var hostileKubeconfigNames = []struct {
 // server sends for the kubeconfig and for a token, the output is two comment
 // lines followed by the document byte for byte. The first line shows the name
 // in Go's quoted form, holds no character a terminal acts on, and gives a
-// revoke command that reads as the one name only for a name that prints as it
-// is; any other name gets a line with no command. The second line shows the
+// revoke command that reads as the one name only for a name clierr.NotQuotable
+// reports false for; any other name gets a line with the command that lists
+// the kubeconfigs. The second line shows the
 // token name in Go's quoted form and holds no character a terminal acts on;
 // an empty token name names no token, and the line says none is listed.
 func TestCreateKubeconfigHeaderLinesStayComments(t *testing.T) {
@@ -151,7 +157,7 @@ func TestCreateKubeconfigHeaderLinesStayComments(t *testing.T) {
 	for _, tc := range hostileKubeconfigNames {
 		t.Run(tc.row, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.plain, tc.name != "" && output.Printable(tc.name) == tc.name, "the row's plain flag")
+			assert.Equal(t, tc.plain, !clierr.NotQuotable(tc.name), "the row's plain flag")
 
 			cmd := NewCreateKubeconfig(stubFactory{c: &fakeClient{name: tc.name, status: map[string]any{"value": rawKC, "tokens": []any{tc.name}}}})
 			_, exec, err := planKubeconfig(t, cmd, in{s: map[string]string{}})

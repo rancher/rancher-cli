@@ -185,7 +185,7 @@ func withRepoRemedy(err error, typedCluster string) error {
 	if !ok || ce.Code != clierr.CodeNotFound {
 		return err
 	}
-	return ce.WithHint(clierr.Rancher + " get clusterrepos --cluster " + clierr.ShellQuote(typedCluster))
+	return ce.WithHintCommand(clierr.NewCommand("get clusterrepos").FlagValue("--cluster", typedCluster))
 }
 
 // enabledRepos lists the names of the cluster's ClusterRepos whose

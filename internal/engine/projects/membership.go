@@ -66,9 +66,12 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 
 	current, inProject := projectOn(before, cluster)
 	if inProject && current != projectID {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("namespace %q belongs to project %q; remove it from that project first; the hint previews the removal: add --apply after reading the preview", nsName, current)).
-			WithHint(removeNamespaceHint(nsName, cluster))
+		hint := removeNamespaceHint(nsName, cluster)
+		msg := fmt.Sprintf("namespace %q belongs to project %q; remove it from that project first", nsName, current)
+		if hint.OK() {
+			msg += "; the hint previews the removal: add --apply after reading the preview"
+		}
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, msg).WithHintCommand(hint)
 	}
 
 	after := before.DeepCopy()
@@ -112,18 +115,18 @@ func (removeNamespaceCmd) Describe() runtime.Descriptor {
 // ProjectRefusalHint is the command to run instead of a typed --project:
 // the same removal without it, previewed, when the namespace and --cluster
 // are typed.
-func (removeNamespaceCmd) ProjectRefusalHint(in runtime.Input) string {
+func (removeNamespaceCmd) ProjectRefusalHint(in runtime.Input) clierr.Command {
 	args := in.Args()
 	cluster := in.String(engine.FlagCluster)
 	if len(args) == 0 || args[0] == "" || cluster == "" {
-		return ""
+		return clierr.Command{}
 	}
 	return removeNamespaceHint(args[0], cluster)
 }
 
 // removeNamespaceHint is the preview of removing the namespace from its project.
-func removeNamespaceHint(nsName, cluster string) string {
-	return clierr.Rancher + " project remove-namespace" + clierr.ShellQuoteArgs(" --cluster "+clierr.ShellQuote(cluster)+" --dry-run", nsName)
+func removeNamespaceHint(nsName, cluster string) clierr.Command {
+	return clierr.NewCommand("project remove-namespace").Arg(nsName).FlagValue("--cluster", cluster).Flag("--dry-run")
 }
 
 func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {

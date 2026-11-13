@@ -351,19 +351,6 @@ type LoginFailureDetails struct {
 	Recovery           string              `json:"recovery"`
 }
 
-// RecoveryCommands renders the kind-correct list and revoke commands for a
-// token. Reads carry no gate; the deprecated gate applies to mutations of
-// the v3 kind only. This is the only source of that text.
-func RecoveryCommands(ref TokenRef) (list, revoke string) {
-	switch ref.Kind {
-	case TokenKindV3:
-		return Rancher + " get management-tokens",
-			Rancher + " delete management-token" + ShellQuoteArgs(" --apply --yes --allow-deprecated", ref.Name)
-	default:
-		return Rancher + " get tokens", Rancher + " delete token" + ShellQuoteArgs(" --apply --yes", ref.Name)
-	}
-}
-
 // DataLossRiskText is the one sentence every CredentialRecovery carries:
 // auth logout erases every backend for the server, not only the one that
 // failed.

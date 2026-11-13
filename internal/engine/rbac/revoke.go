@@ -166,7 +166,8 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 
 	if len(names) == 0 {
 		msg := fmt.Sprintf("no %s for subject %q at this scope", bindKind.GVR.Resource, args[0])
-		var hint string
+		var hint clierr.Command
+		hinted := false
 		held := slices.DeleteFunc(slices.Sorted(maps.Keys(heldRoles)), func(r string) bool { return r == "" })
 		var heldCands []clierr.Candidate
 		if len(held) > 0 {
@@ -184,16 +185,17 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 			// all-namespaces/all-clusters list.
 			switch scope.Kind {
 			case ScopeProject:
-				hint = clierr.Rancher + fmt.Sprintf(" get %s --namespace %s -o json", bindKind.Name, clierr.ShellQuote(scope.NS))
+				hint = clierr.NewCommand("get").Word(bindKind.Word()).FlagValue("--namespace", scope.NS).FlagText(" -o json")
 			case ScopeCluster:
-				hint = clierr.Rancher + fmt.Sprintf(" get %s --cluster %s -o json", bindKind.Name, clierr.ShellQuote(scope.Cluster))
+				hint = clierr.NewCommand("get").Word(bindKind.Word()).FlagValue("--cluster", scope.Cluster).FlagText(" -o json")
 			default: // ScopeGlobal - no namespace qualifier needed
-				hint = clierr.Rancher + " get " + bindKind.Name + " -o json"
+				hint = clierr.NewCommand("get").Word(bindKind.Word()).FlagText(" -o json")
 			}
+			hinted = true
 		}
 		e := clierr.New(clierr.CodeNotFound, msg)
-		if hint != "" {
-			e = e.WithHint(hint)
+		if hinted {
+			e = e.WithHintCommand(hint)
 		}
 		if len(heldCands) > 0 {
 			e = e.WithCandidates(heldCands)

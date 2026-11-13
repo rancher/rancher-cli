@@ -90,7 +90,7 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 		if notFound(err) {
 			return safety.Effect{}, nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("app %s not found in namespace %s",
 				clierr.ShellQuote(t.release), clierr.ShellQuote(t.namespace))).
-				WithHint(clierr.Rancher + " get apps --cluster " + clierr.ShellQuote(t.typedCluster) + " --namespace " + clierr.ShellQuote(t.namespace))
+				WithHintCommand(clierr.NewCommand("get apps").FlagValue("--cluster", t.typedCluster).FlagValue("--namespace", t.namespace))
 		}
 		return safety.Effect{}, nil, err
 	}
@@ -131,8 +131,9 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 
 	ann, _, _ := unstructured.NestedStringMap(app.Object, "spec", "chart", "metadata", "annotations")
 	if crd := autoInstallChartNames(ann); len(crd) > 0 {
-		warnings = append(warnings, fmt.Sprintf("the chart installed %s with it, which stays installed; find its release with %s",
-			strings.Join(crd, ", "), clierr.Rancher+" get apps --cluster "+clierr.ShellQuote(t.typedCluster)+" --namespace "+clierr.ShellQuote(t.namespace)))
+		warnings = append(warnings, clierr.Text(fmt.Sprintf("the chart installed %s with it, which stays installed", strings.Join(crd, ", ")),
+			clierr.Lead("; find its release with "),
+			clierr.NewCommand("get apps").FlagValue("--cluster", t.typedCluster).FlagValue("--namespace", t.namespace)))
 	}
 
 	body := uninstallBody{NoHooks: in.Bool(flagNoHooks), KeepHistory: keep, Timeout: timeout}
