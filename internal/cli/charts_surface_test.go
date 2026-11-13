@@ -15,6 +15,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/catalog"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ucli "github.com/urfave/cli/v3"
@@ -408,6 +409,25 @@ func TestChartsRepoSuggestionsAreAccepted(t *testing.T) {
 	}
 	_, _, err := runChartsCommand(t, "charts", "--cluster", "c-aaa11", "--repo", "off-charts", "-o", "json")
 	require.Error(t, err, "the command refuses a disabled repository, so offering it would fail this test")
+}
+
+// TestRepoSuggestionsAreClusterRepoNames asserts every suggestion of --repo,
+// for charts and for app install, passes the name rule the commands apply
+// before any request, so the command never refuses what completion offers.
+func TestRepoSuggestionsAreClusterRepoNames(t *testing.T) {
+	s := newChartsServer(t, true)
+	chartsFixture(t, s.srv)
+
+	for name, words := range map[string][]string{
+		"charts":      {"charts", "--cluster", "c-aaa11", "--repo"},
+		"app install": {"app", "install", "my-rel", "--cluster", "c-aaa11", "--repo"},
+	} {
+		got := runCompletion(t, words, "")
+		require.NotEmpty(t, got, name)
+		for _, repo := range got {
+			assert.True(t, kinds.ClusterRepoName(repo), "%s offers %q, which is not a ClusterRepo name", name, repo)
+		}
+	}
 }
 
 // chartsFlagCompletion says how each value-taking flag of `charts`

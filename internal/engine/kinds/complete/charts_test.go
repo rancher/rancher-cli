@@ -184,6 +184,17 @@ func TestChartSourceOffersNothingWithoutWhatItNeeds(t *testing.T) {
 		assert.Empty(t, ChartSource(InstallCommand).Complete(t.Context(), ls.Conn(2), installRequest("chart", "--repo", "a/b")).Names)
 		assert.Empty(t, ls.Requested())
 	})
+	for _, repo := range []string{"A", "a_b", "a."} {
+		t.Run("a repo that is no ClusterRepo name "+repo, func(t *testing.T) {
+			t.Parallel()
+			for name, src := range map[string]completion.Source{"chart": ChartSource(InstallCommand), "version": VersionSource(InstallCommand)} {
+				ls := chartServer(t, enabledRepo)
+				got := src.Complete(t.Context(), ls.Conn(2), installRequest(name, "--repo", repo, "--chart", "plain"))
+				assert.Empty(t, got.Names, name)
+				assert.Empty(t, ls.Requested(), name)
+			}
+		})
+	}
 	t.Run("disabled repository", func(t *testing.T) {
 		t.Parallel()
 		ls := chartServer(t, `{"metadata":{"name":"rancher-charts"},"spec":{"enabled":false}}`)

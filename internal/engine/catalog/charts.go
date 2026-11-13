@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -23,6 +24,17 @@ const (
 	// and not empty, whatever the value.
 	hiddenAnnotation = "catalog.cattle.io/hidden"
 )
+
+// validateRepoName refuses a --repo value that is not a ClusterRepo name, so
+// that the command sends no request for it.
+func validateRepoName(v string) error {
+	if kinds.ClusterRepoName(v) {
+		return nil
+	}
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"--%s %s is not a ClusterRepo name: a ClusterRepo name has at most 253 characters of lowercase letters, digits, \"-\" and \".\", "+
+			"each part between dots starting and ending with a letter or digit", flagRepo, clierr.ShellQuote(clierr.IDText(v))))
+}
 
 // IsHidden reports whether the Rancher UI does not list v: its annotation
 // catalog.cattle.io/hidden is present and not empty, whatever the value.
@@ -123,6 +135,11 @@ func (*chartsCmd) Describe() runtime.Descriptor {
 }
 
 func (c *chartsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	if repo := in.String(flagRepo); repo != "" {
+		if err := validateRepoName(repo); err != nil {
+			return runtime.Result{}, err
+		}
+	}
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, false)
 	if err != nil {
 		return runtime.Result{}, err

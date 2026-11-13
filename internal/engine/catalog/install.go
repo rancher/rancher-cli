@@ -171,6 +171,9 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	if err := validateReleaseName(release); err != nil {
 		return safety.Effect{}, nil, err
 	}
+	if err := validateRepoName(in.String(flagRepo)); err != nil {
+		return safety.Effect{}, nil, err
+	}
 	timeout, err := helmTimeout(in.String(flagHelmTimeout), defaultHelmTimeout)
 	if err != nil {
 		return safety.Effect{}, nil, err
