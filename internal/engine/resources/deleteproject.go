@@ -409,7 +409,7 @@ func (c *deleteProjectCmd) deleteProject(ctx context.Context, local engine.Clust
 			item.Outcome = safety.OutcomeDeletionStarted
 			return nil
 		}
-		if clierr.From(err).Code != clierr.CodeConflict {
+		if ce := clierr.From(err); ce.Code != clierr.CodeConflict || !ce.Retryable {
 			return c.projectFailed(item, err)
 		}
 		if attempt == projectRetries {

@@ -140,7 +140,7 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 		{"404", http.StatusNotFound, "text/plain", "nope",
 			clierr.CodeNotFound, "GET /x on the Rancher server: the server could not find the requested resource", "", false},
 		{"409 steve object", http.StatusConflict, object, `{"type":"error","code":"Conflict","message":"conflict","status":409}`,
-			clierr.CodeConflict, "the resource changed on the server since it was last read; retry the command", "", true},
+			clierr.CodeConflict, "GET /x on the Rancher server: conflict", "", false},
 		{"400", http.StatusBadRequest, "text/plain", "bad",
 			clierr.CodeValidation, "", "", false},
 		{"422", http.StatusUnprocessableEntity, "text/plain", "bad",

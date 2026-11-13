@@ -161,6 +161,14 @@ func TestClassifyStatusWordingRules(t *testing.T) {
 	nodes := schema.GroupResource{Resource: "nodes"}
 	provisioning := schema.GroupResource{Group: "provisioning.cattle.io", Resource: "clusters"}
 	local := &Request{Cluster: "local"}
+	withPrecondition := &Request{Cluster: "local", Precondition: true}
+	staleConflict := apierrors.NewConflict(provisioning, "c-x", errors.New("the object has been modified; please apply your changes to the latest version and try again"))
+	const webhookDenied = `admission webhook "x.example.io" denied the request: duplicate not allowed`
+	webhook409 := func(reason metav1.StatusReason) error {
+		return &apierrors.StatusError{ErrStatus: metav1.Status{
+			Status: metav1.StatusFailure, Reason: reason, Code: http.StatusConflict, Message: webhookDenied,
+		}}
+	}
 	emptyForbidden := &apierrors.StatusError{ErrStatus: metav1.Status{
 		Status: metav1.StatusFailure, Reason: metav1.StatusReasonForbidden, Code: http.StatusForbidden,
 	}}
@@ -189,7 +197,35 @@ func TestClassifyStatusWordingRules(t *testing.T) {
 			CodeRBAC, `projects.management.cattle.io "p-x" is forbidden: nope`, "", false},
 		{"unauthorized with a reason passes through", apierrors.NewUnauthorized("bad token"), local,
 			CodeAuth, "bad token", "", false},
-		{"conflict is retryable with plain wording", apierrors.NewConflict(provisioning, "c-x", errors.New("the object has been modified; please apply your changes to the latest version and try again")), local,
+		{"conflict on a write with a precondition is retryable with plain wording", staleConflict, withPrecondition,
+			CodeConflict, "the resource changed on the server since it was last read; retry the command", "", true},
+		{"conflict on a request with no precondition keeps the server's message", staleConflict, local,
+			CodeConflict, "Operation cannot be fulfilled on clusters.provisioning.cattle.io \"c-x\": the object has been modified; please apply your changes to the latest version and try again", "", false},
+		{"conflict with no request keeps the server's message", staleConflict, nil,
+			CodeConflict, "Operation cannot be fulfilled on clusters.provisioning.cattle.io \"c-x\": the object has been modified; please apply your changes to the latest version and try again", "", false},
+		{"webhook 409 with no reason and no precondition keeps the message", webhook409(""), local,
+			CodeConflict, webhookDenied, "", false},
+		{"webhook 409 with an undefined reason and no precondition keeps the message", webhook409("Denied"), local,
+			CodeConflict, webhookDenied, "", false},
+		{"webhook 409 with no reason on a write with a precondition gets the retryable message", webhook409(""), withPrecondition,
+			CodeConflict, "the resource changed on the server since it was last read; retry the command", "", true},
+		{"webhook 409 with an undefined reason on a write with a precondition gets the retryable message", webhook409("Denied"), withPrecondition,
+			CodeConflict, "the resource changed on the server since it was last read; retry the command", "", true},
+		{"409 Rancher error object on a GET shows its message", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusConflict, []byte(`{"type":"error","code":"Conflict","message":"conflict","status":409}`))), &Request{},
+			CodeConflict, "GET /x: conflict", "", false},
+		{"409 plain text on a GET shows the text", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusConflict, []byte("duplicate not allowed"))), &Request{},
+			CodeConflict, "GET /x: duplicate not allowed", "", false},
+		{"409 plain text with CRLF line ends on a GET shows the first line without the carriage return", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusConflict, []byte("duplicate not allowed\r\nmore"))), &Request{},
+			CodeConflict, "GET /x: duplicate not allowed", "", false},
+		{"409 empty body on a GET shows the status text", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusConflict, nil)), &Request{},
+			CodeConflict, "GET /x: Conflict", "", false},
+		{"409 long body on a GET is cut", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusConflict, []byte(strings.Repeat("x", 199)+"\u00e9\u00e9"))), &Request{},
+			CodeConflict, "GET /x: " + strings.Repeat("x", 199) + "…", "", false},
+		{"409 plain text on a POST is an already exists and keeps apimachinery's words", wrapped("POST /x", ResponseError(http.MethodPost, http.StatusConflict, []byte("duplicate not allowed"))), &Request{},
+			CodeConflict, "POST /x: the server reported a conflict", "", false},
+		{"409 plain text on a PUT with a precondition is retryable", wrapped("PUT /x", ResponseError(http.MethodPut, http.StatusConflict, []byte("duplicate not allowed"))), withPrecondition,
+			CodeConflict, "the resource changed on the server since it was last read; retry the command", "", true},
+		{"409 plain text on a DELETE with a precondition is retryable", wrapped("DELETE /x", ResponseError(http.MethodDelete, http.StatusConflict, []byte("duplicate not allowed"))), withPrecondition,
 			CodeConflict, "the resource changed on the server since it was last read; retry the command", "", true},
 		{"already exists is not retryable", apierrors.NewAlreadyExists(provisioning, "c-x"), local,
 			CodeConflict, `clusters.provisioning.cattle.io "c-x" already exists`, "", false},

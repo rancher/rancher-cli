@@ -310,8 +310,12 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
 	out, err := r.ri(gvr, ns).Update(ctx, obj, opts)
+	req := r.request("update", gvr, ns, obj.GetName())
+	// The body's resourceVersion is the precondition. Without one, a 409
+	// cannot mean the resourceVersion is out of date.
+	req.Precondition = obj.GetResourceVersion() != ""
 	return out, r.forbiddenHint(gvr, "update", ns, obj.GetName(),
-		r.curateNotFound(gvr, obj.GetName(), mapRequestErr(ctx, http.MethodPut, err, r.request("update", gvr, ns, obj.GetName()))))
+		r.curateNotFound(gvr, obj.GetName(), mapRequestErr(ctx, http.MethodPut, err, req)))
 }
 
 func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
@@ -329,5 +333,7 @@ func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResou
 	if resourceVersion != "" {
 		opts.Preconditions = &metav1.Preconditions{ResourceVersion: &resourceVersion}
 	}
-	return r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodDelete, r.ri(gvr, ns).Delete(ctx, name, opts), r.request("delete", gvr, ns, name)))
+	req := r.request("delete", gvr, ns, name)
+	req.Precondition = resourceVersion != ""
+	return r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodDelete, r.ri(gvr, ns).Delete(ctx, name, opts), req))
 }

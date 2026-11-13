@@ -478,9 +478,25 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   the same as any other emitted text - do not execute it blindly. A hint
   for a command that changes something previews it (`--dry-run`); the
   message says how to apply it.
-- `retryable: true` (timeouts, conflicts except a create that found the name
-  taken, a 429, a 502/503/504, or another 5xx whose body is not a Kubernetes
-  Status) → retry is reasonable; otherwise do not repeat the identical call.
+- `retryable: true` (timeouts, a 429, a 502/503/504, another 5xx whose body is
+  not a Kubernetes Status, a 409 on an update or delete that sent a
+  resourceVersion, and the two CONFLICTs from a check in the CLI named below)
+  → retry is reasonable; otherwise do not repeat the identical call. A 409 on
+  an update or delete that sent a resourceVersion is `CONFLICT` with the message
+  "the resource changed on the server since it was last read; retry the
+  command". An update here is a command that changes an existing object, such as
+  `rancher patch`. An admission webhook's 409 on such a write gets the same
+  message, and a retry gets the same refusal. A 409 on any other request is
+  `CONFLICT` and is not retryable. Its message is the server's message. The one
+  exception is a create whose response body is not a Kubernetes Status: its
+  message ends with "the server reported a conflict". Two CONFLICTs come from a
+  check in the CLI, not from a 409, and are retryable: `app install` or
+  `app uninstall` with `--apply` finds that what the dry-run preview read has
+  changed (the message ends "run the command again to see a new preview"), and
+  the exec plugin finds that `config.yaml` changed during a call and `--name`
+  now identifies another entry or none (the message starts "config.yaml changed
+  while this call was running"). Any other CONFLICT from a check in the CLI
+  carries its own `retryable`.
 - `TLS_TRUST` (exit `10`) means the server's certificate failed
   verification: act on the remedy the message names (a different CA, the
   server URL, or the server's administrator), or tell the user; never retry the

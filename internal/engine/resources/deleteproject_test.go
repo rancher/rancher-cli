@@ -912,6 +912,35 @@ func TestDeleteProjectFlagProjectChangedIsAConflict(t *testing.T) {
 	}
 }
 
+// TestDeleteProjectFlagDoesNotRetryAConflictThatIsNotRetryable asserts a
+// CONFLICT the delete returns that is not retryable ends the project delete
+// at once: one delete of the project, no re-read, the error's own code and
+// message, and the project's outcome failed.
+func TestDeleteProjectFlagDoesNotRetryAConflictThatIsNotRetryable(t *testing.T) {
+	t.Parallel()
+	f := newProjectFixture(t, member("apps", "1"))
+	f.withProjectAnswers(deleteTestProject("5", "1"), deleteTestProject("7", "1"))
+	const refused = `admission webhook "x.example.io" denied the request: duplicate not allowed`
+	f.local.deleteErr = func(ns, name, rv string, dryRun bool) error {
+		if dryRun || name != "p-1" {
+			return nil
+		}
+		return clierr.New(clierr.CodeConflict, refused)
+	}
+	_, exec := f.mustPlan(t, true)
+	planned := len(f.log)
+
+	_, err := exec(t.Context())
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeConflict, ce.Code)
+	assert.Equal(t, refused, ce.Message)
+	assert.Equal(t, []string{"delete apps rv=1", "delete c-abc/p-1 rv=5"}, f.log[planned:], "the project is deleted once and not read again")
+	objs := detailsOf(t, err).Objects
+	assert.Equal(t, "deletion started", objectsByName(objs)["namespace/apps"])
+	assert.Equal(t, "failed", objectsByName(objs)["project/p-1"])
+}
+
 // TestProjectSpecChanged asserts which differences between the project as
 // read and the project after a conflict count as a change: the status, the
 // used quota and the bookkeeping the server rewrites on every update do not;

@@ -48,6 +48,11 @@ type Request struct {
 	// NoCredential marks a call that sends no credential, so a 401 does not
 	// name one and carries no remedy.
 	NoCredential bool
+	// Precondition marks a write that sent a resourceVersion precondition: an
+	// update whose body carries metadata.resourceVersion, or a delete with
+	// DeleteOptions preconditions.resourceVersion. A 409 on any other request
+	// cannot mean the resourceVersion is out of date.
+	Precondition bool
 	// Server is the server the call went to, in the form output may show
 	// it (config.DisplayServerURL: scheme and host, no userinfo or path).
 	// The caller sets it: this package cannot import config.
@@ -254,7 +259,7 @@ func decodeMessage(body []byte, filter func(string) string) string {
 		return ""
 	}
 	line, _, _ := strings.Cut(text, "\n")
-	return bounded(filter(line))
+	return bounded(strings.TrimRight(filter(line), "\r"))
 }
 
 // objectMessage decodes text as a JSON error object.
@@ -338,11 +343,25 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 			return ce
 		}
 		return New(CodeAuth, msg)
-	case apierrors.IsConflict(se):
+	case apierrors.IsConflict(se) && req != nil && req.Precondition:
 		// A resourceVersion precondition race: another writer updated the
 		// object between the read and this write; a fresh read-modify-write
-		// resolves it.
+		// resolves it. The reason alone cannot tell this from a webhook's
+		// refusal. A webhook 409 on a write that sent a resourceVersion
+		// therefore gets the same message.
 		return Retryable(CodeConflict, "the resource changed on the server since it was last read; retry the command")
+	case apierrors.IsConflict(se):
+		// A 409 can mean the resourceVersion is out of date only for a write
+		// that sent one. Any other request was refused for another reason,
+		// and repeating it gets the same response: show the server's message.
+		if _, _, ok := unexpectedCause(se); ok && wrapped {
+			text := serverDetail(se, reason, noReason)
+			if text == "" {
+				text = statusText(code)
+			}
+			msg = prefix + text
+		}
+		return New(CodeConflict, msg)
 	case apierrors.IsAlreadyExists(se):
 		return New(CodeConflict, msg)
 	case apierrors.IsInvalid(se), apierrors.IsBadRequest(se):
