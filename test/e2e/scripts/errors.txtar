@@ -1,9 +1,11 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# VALIDATION: missing required arg
-! exec rancher create project -o json
+# VALIDATION: no project id and no --display-name is refused with the remedy
+# in the message, before any request
+! exec rancher create project --cluster testcluster -o json
 jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message '--display-name is required when no project id is given; pass --display-name <name>, or pass the project id as the argument'
 
 # AUTH: wrong token
 env RANCHER_CLI_TOKEN=bad-token

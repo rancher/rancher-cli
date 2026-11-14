@@ -23,7 +23,7 @@ func TestHandleRowsAndTheirDescriptions(t *testing.T) {
 		"user": {[]HandleField{{Path: []string{"username"}, Label: "username"}, display},
 			"user id (the NAME column of `rancher get users`), not the username or display name"},
 		"project": {[]HandleField{specDisplay},
-			"project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)"},
+			"project id (p-xxxxx when Rancher generated it; a project created with `rancher create project <id>` has that id)"},
 		"roletemplate": {[]HandleField{display},
 			"role template id (the NAME column of `rancher get roletemplates`), not the display name"},
 		"globalrole": {[]HandleField{display},

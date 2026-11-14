@@ -455,7 +455,7 @@ var table = []Kind{
 		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true, SetsCreatorID: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
-		ArgDesc: "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",
+		ArgDesc: "project id (p-xxxxx when Rancher generated it; a project created with `rancher create project <id>` has that id)",
 
 		// Rancher deletes the namespaces of the project that carry
 		// field.cattle.io/creatorId and keeps the rest, removing their project

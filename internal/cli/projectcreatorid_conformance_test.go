@@ -132,6 +132,13 @@ var projectCreatePaths = []struct {
 		},
 	},
 	{
+		name: "create project with a generated id",
+		run: func(t *testing.T, factory engine.ClusterClientFactory) {
+			t.Helper()
+			runGuardedCreate(t, projects.NewCreate(factory), guardInput{s: map[string]string{"cluster": "c-guard", "display-name": "Guarded"}})
+		},
+	},
+	{
 		name: "create resource with a Project manifest",
 		run: func(t *testing.T, factory engine.ClusterClientFactory) {
 			t.Helper()

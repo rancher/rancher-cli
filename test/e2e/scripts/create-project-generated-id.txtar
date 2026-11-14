@@ -1,0 +1,33 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Without an id the preview shows p-*: the name in the dry-run
+# response is generated for the dry-run only.
+exec rancher create project --cluster testcluster --display-name 'Web tier gen' --dry-run -o json
+jsonquery stdout data.action create
+jsonquery stdout data.displayName 'p-*'
+jsonquery stdout data.target 'projects/p-*'
+
+# The --apply result shows the generated id, and the display name is the
+# one given.
+exec rancher create project --cluster testcluster --display-name 'Web tier gen' --apply -o json
+jsonquery stdout data.metadata.generateName 'p-'
+jsonquery stdout data.spec.displayName 'Web tier gen'
+jsonget stdout data.metadata.name pid.txt
+setenvfrom PID pid.txt
+
+exec rancher get project $PID --cluster testcluster -o json
+jsonquery stdout data.spec.displayName 'Web tier gen'
+exec rancher delete project $PID --cluster testcluster --apply --yes
+
+# With an id and a display name: the id is metadata.name, the display name
+# is spec.displayName.
+exec rancher create project cpdn-web --cluster testcluster --display-name 'Web DN' --apply -o json
+jsonquery stdout data.metadata.name cpdn-web
+jsonquery stdout data.spec.displayName 'Web DN'
+exec rancher delete project cpdn-web --cluster testcluster --apply --yes
+
+# An id that is not a DNS-1123 label is refused before any request.
+! exec rancher create project 'My Project' --cluster testcluster -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message 'project id ''My Project'' is not valid: use lowercase letters, digits and ''-'', starting and ending with a letter or digit, at most 63 characters; to let Rancher generate the id, leave it out and pass --display-name'

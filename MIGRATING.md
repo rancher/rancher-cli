@@ -44,7 +44,7 @@ conformance test (`internal/cli/migrating_test.go` +
 | `nodes ls` | → `rancher get nodes --cluster <c>` |
 | `nodes delete` (alias `rm`) | DROPPED - the `node` kind is `Deletable: false`; use `kubectl delete node` via `rancher kubeconfig --cluster <id>` + kubectl, or the Rancher UI |
 | `projects ls` | → `rancher get projects` |
-| `projects create` | → `rancher create project <name> --cluster <id> [--description] [--quota-limit ...] [--namespace-default-quota ...] [--container-default-resource-limit ...]` |
+| `projects create` | → `rancher create project --display-name <name> --cluster <id> [--description] [--quota-limit ...] [--namespace-default-quota ...] [--container-default-resource-limit ...]` - `projects create <name>` made `<name>` the display name and Rancher generated the id; `--display-name <name>` with no id does the same. The argument of `create project` is an id, not the display name. |
 | `projects delete` (alias `rm`) | → `rancher delete project <id> --cluster <c>` |
 | `projects add-member-role` | → `rancher grant <subject> --role <r> --project <p> --cluster <c> --apply --yes` |
 | `projects delete-member-role` | → `rancher revoke <subject> [--role <r>] --project <p> --cluster <c> --apply --yes` |

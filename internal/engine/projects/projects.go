@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // quotaKeys is ResourceQuotaLimit's 13 fixed fields (rancher/rancher
@@ -172,10 +173,17 @@ type createCmd struct {
 	clients engine.ClusterClientFactory
 }
 
-// NewCreate builds `create project <name> --cluster <id>` (mutating). The Project
-// is a management.cattle.io/v3 resource in the cluster-id namespace on the
-// management cluster (proxy "local"). Uses an explicit metadata.name (not
-// generateName) so Plan's dry-run and Execute address the same object.
+// projectGenerateNamePrefix is the metadata.generateName of a project created
+// without an id, and the prefix of the preview name p-*.
+const projectGenerateNamePrefix = "p-"
+
+// NewCreate builds `create project [<id>] --cluster <id>` (mutating). The
+// Project is a management.cattle.io/v3 resource in the cluster-id namespace
+// on the management cluster (proxy "local"). With an id the Project gets that
+// metadata.name; without one it gets metadata.generateName p- and Rancher
+// generates the name. The real create generates a different name from the
+// dry-run; the preview shows p-*, and the --apply result shows the real one.
+// A create carries no resourceVersion precondition.
 func NewCreate(clients engine.ClusterClientFactory) runtime.Command {
 	return &createCmd{clients: clients}
 }
@@ -184,7 +192,17 @@ func (createCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "create project",
 		Usage: "Create a project in a cluster",
-		Desc: "--container-default-resource-limit sets spec.containerDefaultResourceLimit, the default " +
+		Desc: "With an id, the project's metadata.name is that id, and --display-name defaults to it. " +
+			"The id must be a DNS-1123 label (lowercase letters, digits and '-', starting and ending with a " +
+			"letter or digit, at most 63 characters), because Rancher names the project's backing namespace " +
+			"after it; an id that is not valid is refused before any request. Rancher refuses an id that a " +
+			"project in the cluster already has, and the dry-run fails for it too. It also refuses an id whose " +
+			"backing namespace <cluster>-<id> already exists, but only the real create checks that; the " +
+			"dry-run passes. Without an id the command sends metadata.generateName p- and requires " +
+			"--display-name: Rancher generates the id. The real create generates a different id from the " +
+			"dry-run, which is why the preview shows p-* in place of the id; the --apply result shows the " +
+			"generated id. " +
+			"--container-default-resource-limit sets spec.containerDefaultResourceLimit, the default " +
 			"CPU and memory requests and limits for each container in the project's namespaces, as " +
 			"comma-separated key=value pairs; keys: " + strings.Join(ContainerDefaultResourceLimitKeys(), ", ") +
 			"; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once. " +
@@ -194,15 +212,20 @@ func (createCmd) Describe() runtime.Descriptor {
 			"annotation. If the command cannot get your user ID, it warns \"creatorId annotation not set\" and " +
 			"continues without the annotation, and Rancher then adds no owner binding for you.",
 		CommandType: runtime.Mutating,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Args:        []runtime.ArgSpec{{Name: "id", Type: "string", Desc: "project `id` (lowercase letters, digits and '-', at most 63 characters); leave it out and pass --display-name, and Rancher generates an id that starts with p-"}},
 		Flags: []runtime.ArgSpec{
 			engine.ClusterFlag(true, false),
+			{Name: "display-name", Type: "string", Desc: "display `name` of the project (default: the id; required when no id is given)"},
 			{Name: "description", Type: "string", Desc: "short `description` for the project"},
 			{Name: "quota-limit", Type: "string", Once: true, Desc: "project resource quota limit as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi"},
 			{Name: "namespace-default-quota", Type: "string", Once: true, Desc: "default resource quota for each namespace as `key=value` pairs (same keys as --quota-limit)"},
 			{Name: "container-default-resource-limit", Type: "string", Once: true, Desc: "default container resource requests and limits as `key=value` pairs"},
 		},
-		Examples:    []string{"rancher create project web --cluster c-x --dry-run", "rancher create project web --cluster c-x --apply"},
+		Examples: []string{
+			"rancher create project --cluster c-x --display-name 'Web tier' --dry-run",
+			"rancher create project --cluster c-x --display-name 'Web tier' --apply",
+			"rancher create project web --cluster c-x --apply",
+		},
 		Destructive: "false",
 		Auth:        true,
 		Shape:       runtime.ShapeText,
@@ -212,19 +235,46 @@ func (createCmd) Describe() runtime.Descriptor {
 // build validates input and constructs the Project object + namespace.
 func (createCmd) build(in runtime.Input) (*unstructured.Unstructured, string, error) {
 	args := in.Args()
-	if len(args) == 0 || args[0] == "" {
-		return nil, "", clierr.New(clierr.CodeValidation, "argument <name> is required")
+	var id string
+	if len(args) > 0 {
+		id = args[0]
+		if id == "" {
+			return nil, "", clierr.New(clierr.CodeValidation,
+				"the project id is empty; pass an id, or leave it out and pass --display-name")
+		}
+		// The check is stricter than metadata.name: Rancher builds the
+		// backing namespace <cluster>-<lowercased id>, a namespace name
+		// must be a DNS-1123 label, and the id is also written as a label
+		// value (63 characters at most).
+		if validation.IsDNS1123Label(id) != nil {
+			return nil, "", clierr.New(clierr.CodeValidation, fmt.Sprintf(
+				"project id %s is not valid: use lowercase letters, digits and '-', starting and ending with a letter or digit, at most 63 characters; to let Rancher generate the id, leave it out and pass --display-name",
+				clierr.ShellQuote(clierr.IDText(id))))
+		}
+	}
+	displayName := in.String("display-name")
+	if len(args) == 0 && displayName == "" {
+		return nil, "", clierr.New(clierr.CodeValidation,
+			"--display-name is required when no project id is given; pass --display-name <name>, or pass the project id as the argument")
 	}
 	cluster := in.String("cluster")
 	if cluster == "" {
 		return nil, "", engine.ClusterRequiredError(engine.ClusterRequiredPlainMessage)
 	}
-	name := args[0]
+	if displayName == "" {
+		displayName = id
+	}
+	metadata := map[string]any{"namespace": cluster}
+	if id != "" {
+		metadata["name"] = id
+	} else {
+		metadata["generateName"] = projectGenerateNamePrefix
+	}
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "management.cattle.io/v3",
 		"kind":       "Project",
-		"metadata":   map[string]any{"name": name, "namespace": cluster},
-		"spec":       map[string]any{"clusterName": cluster, "displayName": name},
+		"metadata":   metadata,
+		"spec":       map[string]any{"clusterName": cluster, "displayName": displayName},
 	}}
 	if desc := in.String("description"); desc != "" {
 		_ = unstructured.SetNestedField(obj.Object, desc, "spec", "description")
@@ -279,6 +329,13 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	eff, exec, err := engine.PlanCreate(ctx, client, gvr, cluster, obj, projectKind.Redaction(), cluster, "project", "Project", false)
 	if err != nil {
 		return safety.Effect{}, nil, err
+	}
+	if obj.GetName() == "" {
+		// Without an id the name in the dry-run response is generated for
+		// the dry-run only; the real create gets another one. The preview
+		// shows p-*, and the --apply result shows the real name.
+		eff.Target = gvr.Resource + "/" + projectGenerateNamePrefix + "*"
+		eff.DisplayName = projectGenerateNamePrefix + "*"
 	}
 	if warning != "" {
 		eff.Warnings = append(eff.Warnings, warning)

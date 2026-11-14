@@ -264,6 +264,8 @@ rancher create project web --cluster prod --apply             # 2. execute
 rancher delete project web --cluster prod --apply --yes       # 3. destructive effects additionally need --yes
 ```
 
+`create project --cluster <c> --display-name <name>` lets Rancher generate the id (`p-xxxxx`); read it from `data.metadata.name` of the `--apply` result before `get`, `patch` or `delete project`.
+
 - `delete project <id> --cluster <c>` lists the project's namespaces in the
   dry-run Effect and in the result: `data.objects`, one item per namespace
   with `kind`, `name`, `outcome` (and `code`, `message` for a failure). Rancher

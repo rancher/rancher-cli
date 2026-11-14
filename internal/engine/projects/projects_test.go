@@ -5,6 +5,8 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/selfuser"
@@ -122,16 +124,19 @@ func TestCreateProjectExecutorWrites(t *testing.T) {
 	assert.Equal(t, []bool{true, false}, client.dryRuns, "Plan dry-runs, then the executor writes for real")
 }
 
-func TestCreateProjectRequiresClusterAndName(t *testing.T) {
+// TestCreateProjectRequiresClusterAndDisplayNameWithoutID asserts a missing
+// cluster is refused, and so is a missing display name when no id is given.
+func TestCreateProjectRequiresClusterAndDisplayNameWithoutID(t *testing.T) {
 	t.Parallel()
 	client := &recClient{}
 	cmd := projectCmdFor(t, client)
 	// missing cluster
 	_, _, err := planProject(t, cmd, in{a: []string{"web"}})
 	require.Error(t, err)
-	// missing name
+	// missing display name without an id
 	_, _, err = planProject(t, cmd, in{s: map[string]string{"cluster": "c-x"}})
-	require.Error(t, err)
+	require.ErrorContains(t, err, "--display-name is required")
+	assert.Empty(t, client.dryRuns)
 }
 
 func TestCreateProjectResolvesClusterDisplayName(t *testing.T) {
@@ -498,4 +503,285 @@ func (*memberClient) ServerResources(context.Context) ([]engine.APIResource, err
 
 func (f stubFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
 	return f.Cluster(ctx, id)
+}
+
+// callLog records, in order, every lookup and request a fake receives.
+type callLog struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (l *callLog) add(call string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls = append(l.calls, call)
+}
+
+func (l *callLog) all() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.calls)
+}
+
+// countingFactory is a ClusterClientFactory whose every call is logged.
+type countingFactory struct {
+	stubFactory
+	log *callLog
+}
+
+func (f countingFactory) Cluster(ctx context.Context, id string) (engine.ClusterClient, error) {
+	f.log.add("Cluster " + id)
+	return f.stubFactory.Cluster(ctx, id)
+}
+
+func (f countingFactory) ResolveCluster(ctx context.Context, s string) (string, error) {
+	f.log.add("ResolveCluster " + s)
+	return f.stubFactory.ResolveCluster(ctx, s)
+}
+
+// generatingClient responds to a create the way the server responds to a
+// Project that carries metadata.generateName: the dry-run with the name
+// p-dry01 (the Kubernetes API server generates it, because the Rancher
+// webhook leaves dry-run requests alone) and the real create with the name
+// p-real1 (the Rancher webhook generates it). An object that carries
+// metadata.name is returned as sent. Every call is logged and the object of
+// each create is kept.
+type generatingClient struct {
+	log     *callLog
+	dryObj  *unstructured.Unstructured
+	realObj *unstructured.Unstructured
+}
+
+func (g *generatingClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+	g.log.add("Get")
+	return nil, nil
+}
+
+func (g *generatingClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
+	g.log.add("List")
+	return nil, nil
+}
+
+func (g *generatingClient) Create(_ context.Context, gvr schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	g.log.add("Create " + gvr.Resource)
+	if gvr == selfuser.GVR {
+		response := obj.DeepCopy()
+		_ = unstructured.SetNestedField(response.Object, "u-self", "status", "userID")
+		return response, nil
+	}
+	if dryRun {
+		g.dryObj = obj
+	} else {
+		g.realObj = obj
+	}
+	response := obj.DeepCopy()
+	if obj.GetName() == "" && obj.GetGenerateName() != "" {
+		if dryRun {
+			response.SetName("p-dry01")
+		} else {
+			response.SetName("p-real1")
+		}
+	}
+	return response, nil
+}
+
+func (g *generatingClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	g.log.add("Update")
+	return nil, nil
+}
+
+func (g *generatingClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+	g.log.add("Delete")
+	return nil
+}
+
+func (g *generatingClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
+	g.log.add("Logs")
+	return "", nil
+}
+
+func (g *generatingClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	g.log.add("PostReview")
+	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
+}
+
+func (g *generatingClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	g.log.add("ServerResources")
+	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+// generatingFixture is a command wired to a generatingClient behind a
+// counting factory.
+func generatingFixture(t *testing.T) (runtime.Command, *generatingClient, *callLog) {
+	t.Helper()
+	log := &callLog{}
+	client := &generatingClient{log: log}
+	return NewCreate(countingFactory{c: client, log: log}), client, log
+}
+
+// TestCreateProjectIDWithDisplayName asserts an id and --display-name give
+// metadata.name the id and spec.displayName the display name.
+func TestCreateProjectIDWithDisplayName(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := projectCmdFor(t, client)
+
+	eff, _, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x", "display-name": "Web tier"}, a: []string{"web"}})
+	require.NoError(t, err)
+	assert.Equal(t, "web", client.created.GetName())
+	dn, _, _ := unstructured.NestedString(client.created.Object, "spec", "displayName")
+	assert.Equal(t, "Web tier", dn)
+	assert.Equal(t, "projects/web", eff.Target, "with an id the preview shows the id")
+	assert.Equal(t, "web", eff.DisplayName)
+	assert.Equal(t, "project", eff.DisplayKind)
+}
+
+// TestCreateProjectWithoutIDSendsGenerateName asserts a create with no id:
+// the object carries metadata.generateName p- and no metadata.name, the
+// preview shows p-* in place of the id, and the --apply result shows the id
+// the server generated for the real create.
+func TestCreateProjectWithoutIDSendsGenerateName(t *testing.T) {
+	t.Parallel()
+	cmd, client, _ := generatingFixture(t)
+
+	eff, exec, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x", "display-name": "Web tier"}})
+	require.NoError(t, err)
+	require.NotNil(t, client.dryObj)
+
+	_, hasName, err := unstructured.NestedFieldNoCopy(client.dryObj.Object, "metadata", "name")
+	require.NoError(t, err)
+	assert.False(t, hasName, "the object carries no metadata.name key")
+	gn, _, _ := unstructured.NestedString(client.dryObj.Object, "metadata", "generateName")
+	assert.Equal(t, "p-", gn)
+	dn, _, _ := unstructured.NestedString(client.dryObj.Object, "spec", "displayName")
+	assert.Equal(t, "Web tier", dn)
+	annotation, _, _ := unstructured.NestedString(client.dryObj.Object, "metadata", "annotations", "field.cattle.io/creatorId")
+	assert.Equal(t, "u-self", annotation, "a create with no id sets the creator annotation")
+
+	assert.Equal(t, safety.ActionCreate, eff.Action)
+	assert.Equal(t, "projects/p-*", eff.Target)
+	assert.Equal(t, "p-*", eff.DisplayName)
+	assert.Equal(t, "project", eff.DisplayKind)
+	assert.Equal(t, "c-x", eff.Cluster)
+	assert.True(t, slices.ContainsFunc(eff.Diff, func(e safety.DiffEntry) bool { return e.Path == "/spec/displayName" }), "the diff holds /spec/displayName: %v", eff.Diff)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "project/p-real1 created\n", res.Text)
+	assert.NotContains(t, res.Text, "*")
+	assert.NotContains(t, res.Text, "p-dry01")
+	name, _, _ := unstructured.NestedString(res.Data.(map[string]any), "metadata", "name")
+	assert.Equal(t, "p-real1", name, "the result shows the generated id")
+	assert.Equal(t, "p-", client.realObj.GetGenerateName())
+}
+
+// TestCreateProjectWithoutIDRequiresDisplayName asserts no id and no
+// --display-name is refused before any lookup or request.
+func TestCreateProjectWithoutIDRequiresDisplayName(t *testing.T) {
+	t.Parallel()
+	cmd, _, log := generatingFixture(t)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, 2, ce.ExitCode())
+	require.ErrorContains(t, err, "--display-name is required when no project id is given")
+	assert.Equal(t, "--display-name is required when no project id is given; pass --display-name <name>, or pass the project id as the argument", ce.Message)
+	assert.Empty(t, log.all(), "refused before any lookup or request")
+
+	// With no cluster either, the display name is the first refusal.
+	_, _, err = planProject(t, cmd, in{})
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, "--display-name is required when no project id is given; pass --display-name <name>, or pass the project id as the argument", ce.Message)
+	assert.Empty(t, log.all(), "refused before any lookup or request")
+}
+
+// TestCreateProjectEmptyIDIsRefused asserts an empty id that was typed is
+// refused before any lookup or request, and is not read as no id.
+func TestCreateProjectEmptyIDIsRefused(t *testing.T) {
+	t.Parallel()
+	cmd, _, log := generatingFixture(t)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x", "display-name": "Web tier"}, a: []string{""}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, 2, ce.ExitCode())
+	assert.Equal(t, "the project id is empty; pass an id, or leave it out and pass --display-name", ce.Message)
+	assert.Empty(t, log.all())
+}
+
+const invalidProjectIDMessage = " is not valid: use lowercase letters, digits and '-', starting and ending with a letter or digit, at most 63 characters; to let Rancher generate the id, leave it out and pass --display-name"
+
+// TestCreateProjectInvalidIDIsRefusedBeforeAnyRequest asserts an id that is
+// not a DNS-1123 label is refused with the whole message, exit code 2 and
+// no lookup or request. The row "-web" is a unit row: the command line
+// parser reads it as a flag.
+func TestCreateProjectInvalidIDIsRefusedBeforeAnyRequest(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, id, quoted string
+	}{
+		{"space and uppercase", "My Project", `'My Project'`},
+		{"uppercase", "Web", `'Web'`},
+		{"underscore", "web_tier", `'web_tier'`},
+		{"leading hyphen", "-web", `'-web'`},
+		{"trailing hyphen", "web-", `'web-'`},
+		{"dot", "a.b", `'a.b'`},
+		{"double dot", "a..b", `'a..b'`},
+		{"64 characters", strings.Repeat("a", 64), "'" + strings.Repeat("a", 64) + "'"},
+		{"253 characters", strings.Repeat("a", 253), "'" + strings.Repeat("a", 253) + "'"},
+		{"single quote", "it's", `'it'\''s'`},
+		{"zero-width character", "web\u200b", `'"web\u200b"'`},
+		{"whitespace only", " ", `' '`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd, _, log := generatingFixture(t)
+			_, _, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{tc.id}})
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, 2, ce.ExitCode())
+			assert.Equal(t, "project id "+tc.quoted+invalidProjectIDMessage, ce.Message)
+			assert.Empty(t, ce.Hint, "no hint command")
+			assert.Empty(t, log.all(), "refused before any lookup or request")
+		})
+	}
+}
+
+// TestCreateProjectValidIDReachesTheDryRun asserts each id that is a
+// DNS-1123 label reaches the dry-run as metadata.name.
+func TestCreateProjectValidIDReachesTheDryRun(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"web", "p-abc12", "a", "0", "a-b-c", strings.Repeat("a", 63)} {
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+			cmd, client, _ := generatingFixture(t)
+			_, _, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{id}})
+			require.NoError(t, err)
+			require.NotNil(t, client.dryObj)
+			assert.Equal(t, id, client.dryObj.GetName())
+			_, hasGenerateName, _ := unstructured.NestedFieldNoCopy(client.dryObj.Object, "metadata", "generateName")
+			assert.False(t, hasGenerateName, "an id means no generateName")
+		})
+	}
+}
+
+// TestCreateProjectDescribesItsIDAndDisplayName asserts the argument is
+// optional and the command has a --display-name flag that is not
+// declared required.
+func TestCreateProjectDescribesItsIDAndDisplayName(t *testing.T) {
+	t.Parallel()
+	d := NewCreate(stubFactory{}).Describe()
+	require.Len(t, d.Args, 1)
+	assert.Equal(t, "id", d.Args[0].Name)
+	assert.False(t, d.Args[0].Required)
+	i := slices.IndexFunc(d.Flags, func(a runtime.ArgSpec) bool { return a.Name == "display-name" })
+	require.GreaterOrEqual(t, i, 0)
+	assert.False(t, d.Flags[i].Required)
+	assert.False(t, d.Flags[i].AllowEmpty)
 }

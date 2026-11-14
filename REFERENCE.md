@@ -1146,6 +1146,18 @@ dry-run also stops `--apply`, which runs the same dry-run first. Log in
 again, or check that you may create `selfusers.ext.cattle.io`, then
 retry.
 
+`create project <id>` creates the project with that id (`metadata.name`);
+`--display-name` sets its display name and defaults to the id. An id you give
+must be a DNS-1123 label (lowercase letters, digits and `-`, starting and
+ending with a letter or digit, at most 63 characters): Rancher names the
+project's backing namespace after it. An id that is not valid is refused
+before any request. Without an id the command sends
+`metadata.generateName: p-` and `--display-name` is required: Rancher generates
+the id. The real create generates a different id from the dry-run, which is why
+the preview shows `p-*` in place of the id; the `--apply` result shows the
+generated id (`data.metadata.name` in json). `get`, `patch` and `delete project`
+take the id; `--project` and `inspect project` also take the display name.
+
 `create project`, and `create resource -f` with a Project manifest, set the
 `field.cattle.io/creatorId` annotation to your user ID, from a SelfUser
 request, before the server-side dry-run; the preview lists it. Rancher then

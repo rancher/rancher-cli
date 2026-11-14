@@ -1872,18 +1872,19 @@
     {
       "args": [
         {
-          "name": "name",
-          "required": true,
+          "desc": "project `id` (lowercase letters, digits and '-', at most 63 characters); leave it out and pass --display-name, and Rancher generates an id that starts with p-",
+          "name": "id",
           "type": "string"
         }
       ],
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "--container-default-resource-limit sets spec.containerDefaultResourceLimit, the default CPU and memory requests and limits for each container in the project's namespaces, as comma-separated key=value pairs; keys: limitsCpu, limitsMemory, requestsCpu, requestsMemory; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once. Before the dry-run the command gets your user ID with a SelfUser request (ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it; Rancher then gives you the project's creator default roles (Project Owner unless an administrator changed them) shortly after the create. The preview lists the annotation. If the command cannot get your user ID, it warns \"creatorId annotation not set\" and continues without the annotation, and Rancher then adds no owner binding for you.",
+      "desc": "With an id, the project's metadata.name is that id, and --display-name defaults to it. The id must be a DNS-1123 label (lowercase letters, digits and '-', starting and ending with a letter or digit, at most 63 characters), because Rancher names the project's backing namespace after it; an id that is not valid is refused before any request. Rancher refuses an id that a project in the cluster already has, and the dry-run fails for it too. It also refuses an id whose backing namespace <cluster>-<id> already exists, but only the real create checks that; the dry-run passes. Without an id the command sends metadata.generateName p- and requires --display-name: Rancher generates the id. The real create generates a different id from the dry-run, which is why the preview shows p-* in place of the id; the --apply result shows the generated id. --container-default-resource-limit sets spec.containerDefaultResourceLimit, the default CPU and memory requests and limits for each container in the project's namespaces, as comma-separated key=value pairs; keys: limitsCpu, limitsMemory, requestsCpu, requestsMemory; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once. Before the dry-run the command gets your user ID with a SelfUser request (ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it; Rancher then gives you the project's creator default roles (Project Owner unless an administrator changed them) shortly after the create. The preview lists the annotation. If the command cannot get your user ID, it warns \"creatorId annotation not set\" and continues without the annotation, and Rancher then adds no owner binding for you.",
       "destructive": "false",
       "examples": [
-        "rancher create project web --cluster c-x --dry-run",
+        "rancher create project --cluster c-x --display-name 'Web tier' --dry-run",
+        "rancher create project --cluster c-x --display-name 'Web tier' --apply",
         "rancher create project web --cluster c-x --apply"
       ],
       "flags": [
@@ -1891,6 +1892,11 @@
           "desc": "target cluster `id|name`",
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "display `name` of the project (default: the id; required when no id is given)",
+          "name": "display-name",
           "type": "string"
         },
         {
@@ -3212,7 +3218,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",
+          "desc": "project id (p-xxxxx when Rancher generated it; a project created with `rancher create project <id>` has that id)",
           "name": "id",
           "required": true,
           "type": "string"
@@ -6385,7 +6391,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",
+          "desc": "project id (p-xxxxx when Rancher generated it; a project created with `rancher create project <id>` has that id)",
           "name": "id",
           "type": "string"
         }
@@ -10584,7 +10590,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project created with `rancher create project` has the name you gave as its id)",
+          "desc": "project id (p-xxxxx when Rancher generated it; a project created with `rancher create project <id>` has that id)",
           "name": "id",
           "required": true,
           "type": "string"

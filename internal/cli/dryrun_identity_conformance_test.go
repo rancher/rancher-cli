@@ -19,14 +19,17 @@ import (
 // tested wrapper that only appends to the Result/Effect those planners
 // already returned (membership.go's indented context line, secret.go's
 // project-scoped propagation warning, provisioning's stamped-identity and
-// version warnings, the creator annotation warning of `create project` and
-// `create resource`) - none of which ever assigns to DisplayKind or
-// DisplayName. Those three planners set both fields unconditionally:
+// version warnings, the creator annotation warning of `create resource`) -
+// none of which ever assigns to DisplayKind or DisplayName. Those three
+// planners set both fields unconditionally:
 // DisplayKind from a kind-table Name (internal/engine/kinds's
 // TestAllKindsHaveNonEmptyName proves that value is never empty for any
 // row), DisplayName from a real object's returned name. So the identity
 // invariant holds by construction for every command in this set - no
-// per-command render test has to reprove it individually.
+// per-command render test has to reprove it individually. `create project`
+// is not in this set: without an id its Plan sets DisplayName to the
+// preview text "p-*"; it is in dryRunBespokeEffectCommands instead, which
+// names the tests that cover it.
 //
 // The generated "patch <kind>"/"delete <kind>" families (resources.NewPatch,
 // resources.NewDelete, and every guard wrapping them - guarded_delete.go,
@@ -46,7 +49,6 @@ var dryRunDisplayIdentityGenericCommands = map[string]bool{
 	"create machine-config":      true,
 	"create namespace":           true,
 	"create oidc-client":         true,
-	"create project":             true,
 	"create resource":            true,
 	"create secret":              true,
 	"create token":               true,
@@ -68,8 +70,9 @@ var dryRunDisplayIdentityGenericCommands = map[string]bool{
 // must be added here (or reclassified into the generic set above, if it
 // truly never touches those fields) before it ships, or this test fails.
 var dryRunBespokeEffectCommands = map[string]string{
-	"grant":  "internal/engine/rbac/grant_test.go: TestGrantGlobalScope, TestGrantClusterScope, TestGrantProjectUserByID assert DisplayKind on every scope; TestGrantCommittedIdentityNeverCarriesPreviewWildcard asserts the committed text never carries \"*\"",
-	"revoke": "internal/engine/rbac/revoke_test.go: TestRevokeSingleRole and TestRevokeAllRolesAtScope assert DisplayKind/DisplayName and the exact per-binding committed text",
+	"grant":          "internal/engine/rbac/grant_test.go: TestGrantGlobalScope, TestGrantClusterScope, TestGrantProjectUserByID assert DisplayKind on every scope; TestGrantCommittedIdentityNeverCarriesPreviewWildcard asserts the committed text never carries \"*\"",
+	"revoke":         "internal/engine/rbac/revoke_test.go: TestRevokeSingleRole and TestRevokeAllRolesAtScope assert DisplayKind/DisplayName and the exact per-binding committed text",
+	"create project": "internal/engine/projects/projects_test.go: TestCreateProjectWithoutIDSendsGenerateName asserts DisplayKind/DisplayName (\"p-*\" for a project without an id) and that the committed identity is the id the real create returned, never the dry-run preview's \"*\" marker; TestCreateProjectIDWithDisplayName asserts the id as the identity",
 	"create user": "internal/engine/user/create_test.go: TestCreatePlanDisplayIdentity asserts DisplayKind/DisplayName; " +
 		"TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity asserts the committed identity is the real server-assigned name, never the dry-run preview placeholder",
 	"create password-change-request": "internal/engine/extres/createpasswordchangerequest_test.go: TestCreatePasswordChangeRequestPlanDisplayIdentity asserts DisplayKind/DisplayName (the request resource itself carries no name, so DisplayName names the target user)",

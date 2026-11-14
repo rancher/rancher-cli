@@ -211,6 +211,23 @@ func TestCreateFieldFlagsFullCallback(t *testing.T) {
 		got := runCreateFieldCompletion(t, []string{"create", "project", "web"}, "--container")
 		assert.Contains(t, got, "--container-default-resource-limit")
 	})
+	t.Run("create project offers --display-name with and without an id", func(t *testing.T) {
+		for _, words := range [][]string{
+			{"create", "project", "--cluster", "c-x"},
+			{"create", "project", "web", "--cluster", "c-x"},
+		} {
+			got := runCreateFieldCompletion(t, words, "--disp")
+			assert.Contains(t, got, "--display-name", "%q", words)
+		}
+	})
+	t.Run("create project --display-name takes free text", func(t *testing.T) {
+		got := runCreateFieldCompletion(t, []string{"create", "project", "--cluster", "c-x", "--display-name"}, "")
+		assert.Empty(t, got)
+	})
+	t.Run("create project offers no candidates for the id argument", func(t *testing.T) {
+		got := runCreateFieldCompletion(t, []string{"create", "project"}, "w")
+		assert.Empty(t, got)
+	})
 	t.Run("create user offers the new flag names", func(t *testing.T) {
 		got := runCreateFieldCompletion(t, []string{"create", "user", "alice"}, "--")
 		assert.Contains(t, got, "--description:")
