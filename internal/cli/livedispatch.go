@@ -155,6 +155,16 @@ func claimLiveSource(req completion.Request, d runtime.Descriptor, lc completion
 		completionDebugf("source: %s does not take --project", d.Name)
 		return completion.Source{}, completion.Requirements{}, false
 	}
+	if req.Flag == engine.FlagNamespace && isGeneratedVerb(d.Name) {
+		// A kind whose objects live in a project's backing namespace has that
+		// namespace on the local cluster. The generic --namespace completion
+		// lists the namespaces of the cluster typed with --cluster; none of
+		// them is a valid value here, and completion offers no candidates.
+		if k, found := kindForDescriptor(d); found && k.ProjectBackingNamespace {
+			completionDebugf("source: %s takes the project's backing namespace; it offers no candidates", d.Name)
+			return completion.Source{}, completion.Requirements{}, false
+		}
+	}
 	if lc != nil {
 		if src := lc.LiveSource(); src.Claim != nil {
 			if reqs, ok := src.Claim(req); ok {

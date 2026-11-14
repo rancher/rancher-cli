@@ -156,6 +156,10 @@ func refusalArgv(c runtime.SchemaCommand, cluster, url, caPath, manifest string)
 		switch {
 		case f.Name == "cluster":
 			argv = append(argv, "--cluster", cluster)
+		case f.Name == "namespace" && readsBackingNamespace(runtime.Descriptor{Name: c.Name}):
+			// The namespace comes from --project.
+		case f.Name == "project" && readsBackingNamespace(runtime.Descriptor{Name: c.Name}):
+			argv = append(argv, "--project", "p-x")
 		case f.Name == "namespace":
 			argv = append(argv, "--namespace", "default")
 		case f.Name == "patch":

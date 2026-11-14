@@ -50,8 +50,11 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 //   - an NSPlain kind's --namespace (an empty value would 404 opaquely).
 //
 // NSWorkspace deletes need nothing marked Required - the kind's
-// DefaultNamespace satisfies the named-op rule. --project describes the
-// named object, never a list.
+// DefaultNamespace satisfies the named-op rule. A row with
+// ProjectBackingNamespace does not mark --cluster or --namespace as
+// required: Route refuses a delete that has no --namespace and no --project
+// with --cluster, and its message names both ways.
+// --project describes the named object, never a list.
 func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := WithoutWaitFlags(getFlags(k))
 	for i := range flags {
@@ -59,8 +62,10 @@ func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 		case k.Policy == kinds.NSCluster && flags[i].Name == FlagCluster:
 			flags[i].Required = true
 			flags[i].Desc = "cluster `id|name` of the " + k.Name
-		case k.Policy == kinds.NSPlain && flags[i].Name == FlagNamespace:
+		case k.Policy == kinds.NSPlain && flags[i].Name == FlagNamespace && !k.ProjectBackingNamespace:
 			flags[i].Required = true
+		case flags[i].Name == FlagProject && k.ProjectBackingNamespace:
+			flags[i].Desc = "project `id|name` (with --cluster) the " + k.Name + " is in"
 		case flags[i].Name == FlagProject && k.Policy == kinds.NSNone:
 			flags[i].Desc = "the namespace must be in this project"
 		case flags[i].Name == FlagProject:

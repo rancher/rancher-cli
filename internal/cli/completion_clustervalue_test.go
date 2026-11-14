@@ -273,6 +273,10 @@ var clusterValueWiringsWithoutSites = map[string]string{
 	"command oidc-client remove-secret": "the command takes no --cluster",
 
 	"flag --cluster on access projects": "the command's own source claims the flag",
+
+	"flag --namespace on get projectroletemplatebinding":    "the namespace is the project's backing namespace on the local cluster; no source offers it",
+	"flag --namespace on patch projectroletemplatebinding":  "the namespace is the project's backing namespace on the local cluster; no source offers it",
+	"flag --namespace on delete projectroletemplatebinding": "the namespace is the project's backing namespace on the local cluster; no source offers it",
 }
 
 // clusterValueKindKey returns the kind key whose source claims the first
@@ -329,6 +333,9 @@ func clusterValueOwnSite(flag string, index int) string {
 // a first positional. It returns "" when no source claims it.
 func clusterValueWiring(req completion.Request, d runtime.Descriptor, lc completion.Completer) string {
 	if req.Flag == runtime.FlagProject && !runtime.TakesProject(d) {
+		return ""
+	}
+	if req.Flag == "namespace" && readsBackingNamespace(d) {
 		return ""
 	}
 	if lc != nil {

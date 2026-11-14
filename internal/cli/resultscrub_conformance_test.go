@@ -732,12 +732,18 @@ func generatedScrubRows() []scrubRow {
 	for _, k := range kinds.All() {
 		o := ov[k.Key]
 		routing := map[string]string{"cluster": scrubCluster, "namespace": "ns1"}
+		patchValues := map[string]string{"cluster": scrubCluster, "namespace": "ns1", "type": "merge", "patch": `{"metadata":{"labels":{"scrub":"1"}}}`}
+		if k.ProjectBackingNamespace {
+			// Such a row takes --cluster only with --project.
+			delete(routing, "cluster")
+			delete(patchValues, "cluster")
+		}
 		patch := scrubRow{
 			command: "patch " + k.Name, kind: k.Key, class: classEcho,
 			input: func(*plantSet) fieldCoverageInput {
 				return fieldCoverageInput{
 					args:   []string{scrubObjectName},
-					values: map[string]string{"cluster": scrubCluster, "namespace": "ns1", "type": "merge", "patch": `{"metadata":{"labels":{"scrub":"1"}}}`},
+					values: patchValues,
 				}
 			},
 		}

@@ -104,5 +104,5 @@ func TestProjectFlagIsShownWhereTaken(t *testing.T) {
 		assert.Equal(t, "--project:"+desc, offered, "%s: completion offers --project with the command's description", d.Name)
 		assert.Equal(t, desc, schema[d.Name][runtime.FlagProject].Desc, "%s: schema description", d.Name)
 	}
-	assert.Equal(t, 76, taking)
+	assert.Equal(t, 79, taking)
 }

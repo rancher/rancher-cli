@@ -965,10 +965,17 @@ rancher oidc-client rotate-secret my-app --apply --yes
 - **Project scope (`--project`):** `--project <id-or-name>` names a project on
   the cluster `--cluster` names; pass both. Only the commands whose `rancher
   schema` entry lists a `project` flag take it (generated `get`/`delete`/`patch`
-  of Downstream namespaced kinds and namespaces, `create resource|namespace|secret`,
-  `project add-namespace`, `grant`, `revoke`, `usage`, `access can|list|who-can`);
-  every other command refuses it with `VALIDATION` before any request. A list
-  filters to the project's namespaces, a named op or mutation must be in one.
+  of Downstream namespaced kinds, namespaces and `projectroletemplatebinding`,
+  `create resource|namespace|secret`, `project add-namespace`, `grant`, `revoke`,
+  `usage`, `access can|list|who-can`); every other command refuses it with
+  `VALIDATION` before any request. A list filters to the project's namespaces, a
+  named op or mutation must be in one. A `projectroletemplatebinding` is the
+  exception: it is in the project's backing namespace on the local cluster (the
+  project's `status.backingNamespace`, or the project id when that is empty).
+  `get|patch|delete projectroletemplatebinding --project <p> --cluster <c>`
+  reads that namespace from the project. A `--namespace` typed together with
+  `--project` and `--cluster` must be that backing namespace. `--cluster`
+  without `--project` is refused with `VALIDATION`.
   `get namespaces --project <p>` is the membership listing: the server narrows
   the list by the project label and the CLI keeps the namespaces whose
   `field.cattle.io/projectId` annotation (`<cluster>:<project>`) names the

@@ -147,6 +147,9 @@ type getCase struct {
 // when named is false. The routing flags are always set.
 func getRow(k kinds.Kind, variant string, named bool, flags getFlagInput) getCase {
 	flags.cluster, flags.namespace = scrubCluster, "ns1"
+	if k.ProjectBackingNamespace {
+		flags.cluster = "" // a kind whose objects live in a project's backing namespace takes --cluster only with --project
+	}
 	var args []string
 	if named {
 		args = []string{scrubObjectName}

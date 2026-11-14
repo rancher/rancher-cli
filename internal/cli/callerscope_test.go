@@ -134,6 +134,9 @@ func generatedRow(d runtime.Descriptor, k kinds.Kind) callerRow {
 		switch {
 		case f.Name == "cluster":
 			args = append(args, "--cluster", "prod")
+		case f.Name == "project" && k.ProjectBackingNamespace:
+			// The cluster of such a row is the cluster of its project.
+			args = append(args, "--project", "p-1")
 		case f.Name == "namespace" && f.Required:
 			args = append(args, "--namespace", "default")
 		case f.Name == "patch":
@@ -481,7 +484,7 @@ func callerRows(t *testing.T) map[string]callerRow {
 			rows[d.Name] = row
 		}
 	}
-	assert.Equal(t, 110, taking, "the commands that take a cluster or clusters flag")
+	assert.Equal(t, 113, taking, "the commands that take a cluster or clusters flag")
 	for name, row := range callerBespokeRows {
 		if _, ok := rows[name]; !ok {
 			rows[name] = row

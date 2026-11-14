@@ -81,6 +81,15 @@ var clusterOptionalRows = map[string]clusterOptionalRow{
 	"create resource": {
 		allow: "the cluster comes from the manifest, not from --cluster",
 	},
+	"get projectroletemplatebinding": {
+		allow: "--cluster goes with --project: the command refuses either one without the other, and takes --namespace when neither is given",
+	},
+	"patch projectroletemplatebinding": {
+		allow: "--cluster goes with --project: the command refuses either one without the other, and takes --namespace when neither is given",
+	},
+	"delete projectroletemplatebinding": {
+		allow: "--cluster goes with --project: the command refuses either one without the other, and takes --namespace when neither is given",
+	},
 	"create token": {
 		allow: "an absent --cluster creates a token for no cluster; the cluster is resolved only when the flag is set",
 	},

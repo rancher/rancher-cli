@@ -1,0 +1,67 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+exec rancher create project flags-proj --cluster testcluster --apply
+
+# no Rancher controller runs here, so the project's status.backingNamespace is
+# empty and its namespace is the project id; it must exist before a binding
+# can be created in it.
+exec rancher create namespace flags-proj --cluster local --apply
+
+# a binding with a fixed name, in the project's namespace.
+exec rancher create resource -f binding.yaml --apply --yes
+
+# --project with --cluster reads the same binding as --namespace.
+exec rancher get prtb --namespace flags-proj -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.metadata.name flags-binding
+
+exec rancher get prtb --project flags-proj --cluster testcluster -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.metadata.name flags-binding
+jsonquery stdout data.0.userPrincipalName local://u-alice
+jsonquery stdout data.0.projectName c-test:flags-proj
+
+exec rancher get prtb --project flags-proj --cluster testcluster --namespace flags-proj -o json
+jsonquery stdout 'data.#' 1
+
+exec rancher get prtb flags-binding --project flags-proj --cluster testcluster -o json
+jsonquery stdout data.metadata.name flags-binding
+jsonquery stdout data.roleTemplateName project-member
+
+# patch and delete address the binding in the same namespace.
+exec rancher patch prtb flags-binding --project flags-proj --cluster testcluster --patch '[{"op":"replace","path":"/roleTemplateName","value":"project-owner"}]' --dry-run -o json
+jsonquery stdout data.action update
+stdout projectroletemplatebindings/flags-binding
+
+exec rancher delete prtb flags-binding --project flags-proj --cluster testcluster --dry-run -o json
+jsonquery stdout data.action delete
+stdout projectroletemplatebindings/flags-binding
+
+# refusals, before any binding is read.
+! exec rancher get prtb --project flags-proj -o json
+jsonquery stderr data.error.code VALIDATION
+
+! exec rancher get prtb --cluster testcluster -o json
+jsonquery stderr data.error.code VALIDATION
+
+! exec rancher get prtb --project flags-proj --cluster testcluster --namespace other -o json
+jsonquery stderr data.error.code VALIDATION
+
+! exec rancher get prtb flags-binding -o json
+jsonquery stderr data.error.code VALIDATION
+
+exec rancher delete prtb flags-binding --project flags-proj --cluster testcluster --apply --yes
+
+exec rancher get prtb --project flags-proj --cluster testcluster -o json
+jsonquery stdout 'data.#' 0
+
+-- binding.yaml --
+apiVersion: management.cattle.io/v3
+kind: ProjectRoleTemplateBinding
+metadata:
+  name: flags-binding
+  namespace: flags-proj
+projectName: c-test:flags-proj
+roleTemplateName: project-member
+userPrincipalName: local://u-alice

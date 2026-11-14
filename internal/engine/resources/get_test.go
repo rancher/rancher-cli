@@ -427,6 +427,38 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 	assert.Equal(t, []string{""}, listAll.listNS, "empty --cluster lists across all clusters")
 }
 
+func prtbObj(name, project string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata":         map[string]any{"name": name},
+		"projectName":      project,
+		"roleTemplateName": "project-member",
+		"userName":         "u-1",
+	}}
+}
+
+// TestGetProjectRoleTemplateBindingWithNamespaceReadsThatNamespace asserts a
+// list or a named get of a projectroletemplatebinding with --namespace and no
+// --project reads that namespace on the local cluster.
+func TestGetProjectRoleTemplateBindingWithNamespaceReadsThatNamespace(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "projectroletemplatebinding")
+
+	list := &memClient{items: []unstructured.Unstructured{prtbObj("b1", "c-abc:p-1")}}
+	listFac := &recFactory{client: list}
+	res := execGet(t, NewGet(k, listFac), input{s: map[string]string{"namespace": "c-abc-p-1"}})
+	assert.Equal(t, "ProjectRoleTemplateBindingList", res.Kind)
+	assert.Equal(t, []string{engine.LocalCluster}, listFac.clusterCalls)
+	assert.Equal(t, []string{"c-abc-p-1"}, list.listNS)
+
+	named := &memClient{items: []unstructured.Unstructured{prtbObj("b1", "c-abc:p-1")}}
+	namedFac := &recFactory{client: named}
+	res = execGet(t, NewGet(k, namedFac), input{args: []string{"b1"}, s: map[string]string{"namespace": "c-abc-p-1"}})
+	assert.Equal(t, "ProjectRoleTemplateBinding", res.Kind)
+	assert.Equal(t, []string{engine.LocalCluster}, namedFac.clusterCalls)
+	assert.Equal(t, []string{"c-abc-p-1"}, named.getNS)
+	assert.Equal(t, []string{"b1"}, named.getName)
+}
+
 // TestGetNamedNotFoundCurated asserts the curated NOT_FOUND shape for a named get:
 // the dynamic client now produces "<kind> not found: <name>" with a list hint;
 // the fake simulates that by returning a pre-curated error.
@@ -551,8 +583,8 @@ func TestRoutePolicyMatrix(t *testing.T) {
 			kind:  kinds.Kind{Name: "pod", Scope: kinds.Downstream, Policy: kinds.NSPlain},
 			flags: map[string]string{"cluster": "prod"}, op: OpList,
 			wantCluster: "c-abc", wantNS: ""},
-		{name: "NSPlain management client routes to local (projectroletemplatebinding)",
-			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
+		{name: "NSPlain management client routes to local",
+			kind:  kinds.Kind{Name: "widget", Scope: kinds.Management, Policy: kinds.NSPlain},
 			flags: map[string]string{"namespace": "p-1"}, op: OpNamed,
 			wantCluster: engine.LocalCluster, wantNS: "p-1"},
 		{name: "NSCluster kind rejects a project scope",
@@ -563,8 +595,8 @@ func TestRoutePolicyMatrix(t *testing.T) {
 			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
 			flags: map[string]string{"project": "p-1"}, op: OpNamed,
 			wantErrCode: clierr.CodeValidation},
-		{name: "Management-scope NSPlain kind rejects a project scope",
-			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
+		{name: "Management-scope NSPlain kind whose objects do not live in a project's backing namespace rejects a project scope",
+			kind:  kinds.Kind{Name: "widget", Scope: kinds.Management, Policy: kinds.NSPlain},
 			flags: map[string]string{"namespace": "p-1", "project": "p-1"}, op: OpNamed,
 			wantErrCode: clierr.CodeValidation},
 		{name: "Management-scope NSNone kind rejects a project scope",
@@ -625,8 +657,8 @@ func TestRouteIgnoresUntypedProjectOnNonScopableKinds(t *testing.T) {
 		{name: "NSWorkspace (gitrepo)",
 			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
 			flags: map[string]string{}, op: OpNamed},
-		{name: "Management NSPlain (projectroletemplatebinding)",
-			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
+		{name: "Management NSPlain",
+			kind:  kinds.Kind{Name: "widget", Scope: kinds.Management, Policy: kinds.NSPlain},
 			flags: map[string]string{"namespace": "p-1"}, op: OpNamed},
 		{name: "Management NSNone (cluster)",
 			kind:  kinds.Kind{Name: "cluster", Scope: kinds.Management, Policy: kinds.NSNone},

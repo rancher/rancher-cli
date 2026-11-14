@@ -23,6 +23,9 @@ func planTyped(t *testing.T, kind, name, obj, p, typ string) (safety.Effect, *pa
 	client := &patchClient{obj: objFromJSON(t, obj)}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
 	s := map[string]string{"cluster": "prod", "namespace": "default", "patch": p}
+	if mustKind(t, kind).ProjectBackingNamespace {
+		delete(s, "cluster") // a kind whose objects live in a project's backing namespace takes --cluster only with --project; this input has no --project
+	}
 	if typ != "" {
 		s["type"] = typ
 	}

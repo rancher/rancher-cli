@@ -114,7 +114,10 @@ func (c getCmd) Describe() runtime.Descriptor {
 // getFlags declares the routing flags a kind's namespace policy needs:
 //   - NSCluster: --cluster (it becomes the namespace).
 //   - NSWorkspace: --namespace only (client is always management).
-//   - NSPlain: --namespace, plus --cluster when the kind is Downstream.
+//   - NSPlain: --namespace, plus --cluster when the kind is Downstream; a
+//     row with ProjectBackingNamespace takes an optional --cluster, which
+//     names the cluster of --project, and a --namespace that names the
+//     project's backing namespace directly.
 //   - NSNone: --cluster only when the kind is Downstream; nothing otherwise.
 //
 // A project scopable kind takes --project. Every kind additionally gains
@@ -133,9 +136,16 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	case kinds.NSWorkspace:
 		flags = []runtime.ArgSpec{engine.NamespaceFlag(false)}
 	case kinds.NSPlain:
-		if k.Scope == kinds.Downstream {
+		switch {
+		case k.ProjectBackingNamespace:
+			cluster := engine.ClusterFlag(false, true)
+			cluster.Desc = "cluster `id|name` of the project (only with --project)"
+			namespace := engine.NamespaceFlag(false)
+			namespace.Desc = "the project's backing `namespace` on the local cluster; or pass --project with --cluster"
+			flags = []runtime.ArgSpec{cluster, namespace}
+		case k.Scope == kinds.Downstream:
 			flags = []runtime.ArgSpec{engine.ClusterFlag(true, true), engine.NamespaceFlag(false)}
-		} else {
+		default:
 			flags = []runtime.ArgSpec{engine.NamespaceFlag(false)}
 		}
 	default: // NSNone
@@ -147,6 +157,9 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 		desc := "list only objects in the project's namespaces; an object you name must be in one of them"
 		if k.Policy == kinds.NSNone {
 			desc = "list only the project's namespaces; a namespace you name must be one of them"
+		}
+		if k.ProjectBackingNamespace {
+			desc = "project `id|name` (with --cluster) the " + kinds.Plural(k.Name) + " are in"
 		}
 		flags = append(flags, runtime.ProjectFlag(false, desc))
 	}
@@ -411,12 +424,14 @@ func hasName(in runtime.Input) bool {
 }
 
 // ProjectScope carries the effective --project scope a routing decision
-// resolved: nil means unscoped. Members is the project's member
-// namespace set, used for caller-side membership validation and list
-// filtering (the generic Downstream NSPlain path). Selector is a server-side
-// label selector that only narrows a list, used only by the namespace-kind
-// special case (Members is nil there); Cluster and Project name the project
-// whose annotation the namespaces it returns must carry.
+// resolved: nil means no project filter - also for a kind whose objects live
+// in a project's backing namespace, because that namespace already limits the
+// objects to the project. Members is the project's member namespace set, used
+// for caller-side membership validation and list filtering (the generic
+// Downstream NSPlain path). Selector is a server-side label selector that
+// only narrows a list, used only by the namespace-kind special case (Members
+// is nil there); Cluster and Project name the project whose annotation the
+// namespaces it returns must carry.
 type ProjectScope struct {
 	Members  map[string]bool
 	Selector string
@@ -436,11 +451,13 @@ const (
 
 // ProjectRefusal is the refusal of a typed --project for an operation on
 // k that --project does not apply to, nil when it applies: every kind
-// that is not project scopable, and creating a namespace, which create
-// resource cannot place in a project. One rule for the command's check
-// before the project is resolved and for Route.
+// that is not project scopable, creating an object of a kind whose objects
+// live in a project's backing namespace (create resource takes its namespace
+// from the manifest), and creating a namespace, which create resource cannot
+// place in a project. One rule for the command's check before the project is
+// resolved and for Route.
 func ProjectRefusal(k kinds.Kind, op Operation, name, cluster, project string) error {
-	if !kinds.ProjectScopable(k) {
+	if !kinds.ProjectScopable(k) || (op == OpCreate && k.ProjectBackingNamespace) {
 		return clierr.New(clierr.CodeValidation, "--project does not apply to "+k.Name)
 	}
 	if op == OpCreate && k.Policy == kinds.NSNone {
@@ -465,6 +482,10 @@ func ProjectRefusal(k kinds.Kind, op Operation, name, cluster, project string) e
 //	NSCluster:   client "local",       ns = resolved --cluster, effect that cluster
 //	NSWorkspace: client "local",       ns = --namespace|Default, effect "local"
 //	NSPlain:     client per scope,     ns = --namespace,      effect = client
+//
+// An NSPlain row with ProjectBackingNamespace is the exception for a get,
+// patch or delete with --project: client "local", ns = the project's
+// backing namespace, effect "local".
 //
 // "per scope" (NSNone, NSPlain): a Management kind is served by the local proxy
 // ("local"); a Downstream kind resolves --cluster (name-or-id) via
@@ -512,6 +533,9 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		}
 		return engine.LocalCluster, nspace, engine.LocalCluster, nil, nil
 	case kinds.NSPlain:
+		if k.ProjectBackingNamespace && op != OpCreate {
+			return routeProjectBackingNamespace(ctx, clients, k, in, op)
+		}
 		// Namespace is a pure input requirement - check it before any network
 		// resolution so a missing --namespace fails fast. A named op with an
 		// empty --namespace would pass ns="" to the API and 404 opaquely; a
@@ -548,6 +572,47 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		}
 		return routeNamespaceKind(ctx, in, clientCluster, op, name)
 	}
+}
+
+// routeProjectBackingNamespace routes a get, patch or delete of a row whose
+// objects live in a project's backing namespace on the local cluster. With
+// --project the namespace is read from the project (--cluster names its
+// cluster) and no project scope is returned: every object in that namespace
+// belongs to the project. Without --project the typed --namespace is used as
+// given, and --cluster, which only names the cluster of a project, is refused.
+func routeProjectBackingNamespace(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, op Operation) (clientCluster, ns, effectCluster string, scope *ProjectScope, err error) {
+	typedNamespace := in.String(FlagNamespace)
+	if in.String(FlagProject) == "" {
+		if typedCluster := in.String(FlagCluster); typedCluster != "" {
+			return "", "", "", nil, clierr.New(clierr.CodeValidation,
+				"--cluster applies to a "+k.Name+" only with --project, where it names the cluster the project is in; pass --project or remove --cluster").
+				WithHintCommand(clierr.NewCommand("access projects").FlagValue("--cluster", typedCluster))
+		}
+		if op == OpNamed && typedNamespace == "" {
+			return "", "", "", nil, clierr.New(clierr.CodeValidation,
+				"--namespace, or --project with --cluster, is required when you give the name of one "+k.Name).
+				WithHintCommand(clierr.NewCommand("access projects"))
+		}
+		return engine.LocalCluster, typedNamespace, engine.LocalCluster, nil, nil
+	}
+	cluster, err := engine.ResolveDownstreamCluster(ctx, clients, in, true)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	p, _, err := runtime.TypedProjectOn(ctx, in, cluster)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	backing, _, err := projects.BackingNamespace(ctx, clients, cluster, p.ID)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	if typedNamespace != "" && typedNamespace != backing {
+		return "", "", "", nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("--namespace %s is not the backing namespace of project %s in cluster %s; the backing namespace is %s",
+				clierr.ShellQuote(typedNamespace), clierr.ShellQuote(p.ID), clierr.ShellQuote(cluster), clierr.ShellQuote(backing)))
+	}
+	return engine.LocalCluster, backing, engine.LocalCluster, nil, nil
 }
 
 // routeNamespaceKind scopes the namespace kind by its own membership: a

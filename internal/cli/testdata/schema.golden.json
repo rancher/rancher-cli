@@ -3271,12 +3271,21 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "cluster `id|name` of the project (only with --project)",
+          "name": "cluster",
+          "type": "string"
+        },
+        {
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "the project's backing `namespace` on the local cluster; or pass --project with --cluster",
           "name": "namespace",
-          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "project `id|name` (with --cluster) the projectroletemplatebinding is in",
+          "name": "project",
           "type": "string"
         }
       ],
@@ -6453,11 +6462,21 @@
       "contract": "public",
       "flags": [
         {
+          "desc": "cluster `id|name` of the project (only with --project)",
+          "name": "cluster",
+          "type": "string"
+        },
+        {
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "the project's backing `namespace` on the local cluster; or pass --project with --cluster",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "project `id|name` (with --cluster) the projectroletemplatebindings are in",
+          "name": "project",
           "type": "string"
         },
         {
@@ -10659,12 +10678,21 @@
       "destructive": "true",
       "flags": [
         {
+          "desc": "cluster `id|name` of the project (only with --project)",
+          "name": "cluster",
+          "type": "string"
+        },
+        {
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "the project's backing `namespace` on the local cluster; or pass --project with --cluster",
           "name": "namespace",
-          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "project `id|name` (with --cluster) the projectroletemplatebinding is in",
+          "name": "project",
           "type": "string"
         },
         {

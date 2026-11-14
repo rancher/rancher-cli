@@ -105,6 +105,27 @@ func TestKindSitesFullCallback(t *testing.T) {
 		{name: "--namespace with a spaced display name resolves it first", words: []string{"get", "pod", "--cluster", "prod cluster", "--namespace"}, want: []string{"team"}, hits: map[string]int{steveClustersPath: 2, downTeamNamespaces: 1}},
 		{name: "--node with a cluster id", words: []string{"usage", "--cluster", "c-aaa11", "--node"}, want: []string{"node-1", "node-2"}, hits: map[string]int{downNodesPath: 1}},
 		{name: "--node without a cluster", words: []string{"usage", "--node"}, hits: map[string]int{}},
+		// the generated verbs of a kind whose objects live in a project's backing
+		// namespace complete --cluster and --project but no namespaces: the
+		// namespace is on the local cluster, not on the typed cluster
+		{name: "get projectroletemplatebinding --cluster", words: []string{"get", "projectroletemplatebinding", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "get projectroletemplatebinding --project with a cluster id", words: []string{"get", "projectroletemplatebinding", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
+		{name: "get projectroletemplatebinding --project without a cluster", words: []string{"get", "projectroletemplatebinding", "--project"}, hits: map[string]int{}},
+		{name: "get projectroletemplatebinding --namespace without a cluster", words: []string{"get", "projectroletemplatebinding", "--namespace"}, hits: map[string]int{}},
+		{name: "get projectroletemplatebinding --namespace with a cluster id", words: []string{"get", "projectroletemplatebinding", "--cluster", "c-aaa11", "--namespace"}, hits: map[string]int{}},
+		{name: "get projectroletemplatebinding -n= with a cluster id", words: []string{"get", "projectroletemplatebinding", "--cluster", "c-aaa11"}, cur: "-n=", hits: map[string]int{}},
+		{name: "patch projectroletemplatebinding --cluster", words: []string{"patch", "projectroletemplatebinding", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "patch projectroletemplatebinding --project with a cluster id", words: []string{"patch", "projectroletemplatebinding", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
+		{name: "patch projectroletemplatebinding --project without a cluster", words: []string{"patch", "projectroletemplatebinding", "--project"}, hits: map[string]int{}},
+		{name: "patch projectroletemplatebinding --namespace without a cluster", words: []string{"patch", "projectroletemplatebinding", "--namespace"}, hits: map[string]int{}},
+		{name: "patch projectroletemplatebinding --namespace with a cluster id", words: []string{"patch", "projectroletemplatebinding", "--cluster", "c-aaa11", "--namespace"}, hits: map[string]int{}},
+		{name: "patch projectroletemplatebinding -n= with a cluster id", words: []string{"patch", "projectroletemplatebinding", "--cluster", "c-aaa11"}, cur: "-n=", hits: map[string]int{}},
+		{name: "delete projectroletemplatebinding --cluster", words: []string{"delete", "projectroletemplatebinding", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "delete projectroletemplatebinding --project with a cluster id", words: []string{"delete", "projectroletemplatebinding", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
+		{name: "delete projectroletemplatebinding --project without a cluster", words: []string{"delete", "projectroletemplatebinding", "--project"}, hits: map[string]int{}},
+		{name: "delete projectroletemplatebinding --namespace without a cluster", words: []string{"delete", "projectroletemplatebinding", "--namespace"}, hits: map[string]int{}},
+		{name: "delete projectroletemplatebinding --namespace with a cluster id", words: []string{"delete", "projectroletemplatebinding", "--cluster", "c-aaa11", "--namespace"}, hits: map[string]int{}},
+		{name: "delete projectroletemplatebinding -n= with a cluster id", words: []string{"delete", "projectroletemplatebinding", "--cluster", "c-aaa11"}, cur: "-n=", hits: map[string]int{}},
 		// management kinds on the generated verbs
 		{name: "get cluster", words: []string{"get", "cluster"}, want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
 		// The generated project verbs address a project by id only.

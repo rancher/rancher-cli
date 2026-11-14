@@ -544,7 +544,7 @@ func TestCreateResourceProjectRefusalPrecedesEveryRequest(t *testing.T) {
 		wantMsg  string
 		wantHint string
 	}{
-		{name: "NSPlain kind that is not project scopable", manifest: prtbManifest, cluster: "prod",
+		{name: "--project with a projectroletemplatebinding manifest is refused on create", manifest: prtbManifest, cluster: "prod",
 			wantMsg: "--project does not apply to projectroletemplatebinding"},
 		{name: "Namespace", manifest: namespaceManifest, cluster: "prod",
 			wantMsg:  "--project does not place a namespace created from a manifest in a project; <name> is the namespace, <cluster> its cluster and <project> the project; add --apply after reading the preview: rancher create namespace <name> --cluster <cluster> --project <project> --dry-run",
@@ -602,6 +602,29 @@ func TestCreateResourceProjectRefusalPrecedesEveryRequest(t *testing.T) {
 			assert.Empty(t, client.creates, "no dry-run create")
 		})
 	}
+}
+
+// TestRouteCreateProjectRoleTemplateBindingRequiresANamespace asserts a
+// create of a projectroletemplatebinding with --cluster and no --project
+// routes to the local cluster in the namespace it is given, and with no
+// namespace is refused with the message that a namespace is required.
+func TestRouteCreateProjectRoleTemplateBindingRequiresANamespace(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "projectroletemplatebinding")
+	fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
+
+	clusterID, ns, effCluster, scope, err := Route(t.Context(), fac, k,
+		input{s: map[string]string{"cluster": "prod", "namespace": "p-1"}}, OpCreate, "b1")
+	require.NoError(t, err)
+	assert.Equal(t, engine.LocalCluster, clusterID)
+	assert.Equal(t, "p-1", ns)
+	assert.Equal(t, engine.LocalCluster, effCluster)
+	assert.Nil(t, scope)
+
+	_, _, _, _, err = Route(t.Context(), fac, k,
+		input{s: map[string]string{"cluster": "prod"}}, OpCreate, "b1")
+	requireValidation(t, err)
+	require.ErrorContains(t, err, "--namespace is required when you give the name of one projectroletemplatebinding")
 }
 
 func (*createClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {

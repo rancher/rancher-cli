@@ -646,10 +646,11 @@ permissions (`rancher access clusters`, `rancher inspect cluster <id>`,
 
 `--project <id-or-name>` selects a project on the cluster that `--cluster`
 selects. Only these commands accept `--project`: `get`, `delete` and `patch` for
-namespaced kinds on downstream clusters and for namespaces, `create resource`,
-`create namespace`, `create secret`, `project add-namespace`, `grant`, `revoke`,
-`usage`, and `access can`/`list`/`who-can`; `rancher schema` shows `project`
-among the flags of each of them. Every other command refuses a typed `--project`
+namespaced kinds on downstream clusters, for namespaces and for
+`projectroletemplatebinding`, `create resource`, `create namespace`,
+`create secret`, `project add-namespace`, `grant`, `revoke`, `usage`, and
+`access can`/`list`/`who-can`; `rancher schema` shows `project` among the flags
+of each of them. Every other command refuses a typed `--project`
 with `VALIDATION` before it sends a request, whether the flag is typed before or
 after the command name.
 
@@ -681,6 +682,13 @@ that namespace or node; a name that does not exist gives NOT_FOUND instead of an
 empty result. If you can list pods there but cannot read the namespace or node,
 you get the result with a warning that it could not be read; if you cannot
 list pods there, you get the RBAC error from the pod list.
+
+A `projectroletemplatebinding` lives on the local cluster in the project's
+backing namespace: the project's `status.backingNamespace`, or the project id
+when that is empty. `get`, `patch` and `delete` of the kind with `--project <p>
+--cluster <c>` read that namespace from the project. A `--namespace` typed
+together with `--project` and `--cluster` must be that backing namespace.
+`--cluster` without `--project` is refused with `VALIDATION`.
 
 A flag typed with an empty or blank value (`--project ''`, `--namespace=`,
 `-o ' '`) is refused with `VALIDATION` before any request instead of acting
@@ -891,7 +899,9 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
 - Rancher role bindings (`projectroletemplatebinding`,
   `clusterroletemplatebinding`, `globalrolebinding`): prefer `grant`/`revoke`,
   which resolve the subject, detect duplicates and report partial failures. The
-  generated verbs are for working from manifests or with declarative tools.
+  generated verbs are for working from manifests or with declarative tools;
+  `get projectroletemplatebindings --project <p> --cluster <c>` lists the
+  bindings of a project.
 
 `rancher schema <kind>` shows the verbs of one kind: available (with contract
 and stability), refused (with the reason), or not available (with the reason).

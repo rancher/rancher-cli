@@ -226,7 +226,8 @@ func TestProjectScopable(t *testing.T) {
 		want bool
 	}{
 		{"NSPlain + Downstream", Kind{Name: "pod", Policy: NSPlain, Scope: Downstream}, true},
-		{"NSPlain + Management", Kind{Name: "projectroletemplatebinding", Policy: NSPlain, Scope: Management}, false},
+		{"NSPlain + Management", Kind{Name: "clusterregistrationtoken", Policy: NSPlain, Scope: Management}, false},
+		{"NSPlain + Management with a project backing namespace", Kind{Name: "projectroletemplatebinding", Policy: NSPlain, Scope: Management, ProjectBackingNamespace: true}, true},
 		{"namespace carve-out (NSNone + Downstream)", Kind{Name: "namespace", Policy: NSNone, Scope: Downstream}, true},
 		{"NSCluster", Kind{Name: "project", Policy: NSCluster, Scope: Management}, false},
 		{"NSWorkspace", Kind{Name: "gitrepo", Policy: NSWorkspace, Scope: Management}, false},
@@ -327,6 +328,27 @@ func TestUserRowDeletableAndCompletable(t *testing.T) {
 	assert.True(t, k.Deletable, "user row must be Deletable")
 	assert.True(t, k.Completable, "user row must be Completable")
 	assert.Empty(t, k.NoDeleteReason, "Deletable row must not carry a NoDeleteReason")
+}
+
+// TestValidateRejectsProjectBackingNamespaceOutsideManagementPlainRows
+// asserts ProjectBackingNamespace is accepted on a Management row with a
+// plain namespace and refused on every other row.
+func TestValidateRejectsProjectBackingNamespaceOutsideManagementPlainRows(t *testing.T) {
+	t.Parallel()
+	row := func(policy NamespacePolicy, scope Scope) []Kind {
+		return []Kind{{Key: "foo", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Policy: policy, Scope: scope, ProjectBackingNamespace: true}}
+	}
+	require.NoError(t, validateKinds(row(NSPlain, Management)))
+	for name, bad := range map[string][]Kind{
+		"downstream plain": row(NSPlain, Downstream),
+		"management none":  row(NSNone, Management),
+		"cluster id":       row(NSCluster, Management),
+		"workspace":        row(NSWorkspace, Management),
+	} {
+		err := validateKinds(bad)
+		require.Error(t, err, name)
+		require.ErrorContains(t, err, "ProjectBackingNamespace", name)
+	}
 }
 
 // TestValidateRejectsBadFirstAlias asserts the plural-first alias invariant: a row

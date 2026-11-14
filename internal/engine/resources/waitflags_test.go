@@ -63,14 +63,18 @@ func TestGetFlagsAppendExactlyTheWaitFlags(t *testing.T) {
 }
 
 // waitFlagRowInput is the input a get of k receives for one named object:
-// the routing flags k's own descriptor declares (cluster and namespace),
-// the given flags, and IsSet answering true for each string flag present.
+// the --cluster and --namespace flags k's own descriptor declares (a kind
+// whose objects live in a project's backing namespace takes --cluster only
+// with --project and gets no --cluster here), the given flags, and IsSet
+// answering true for each string flag present.
 func waitFlagRowInput(k kinds.Kind, flags map[string]string, bools map[string]bool) input {
 	in := input{args: []string{"x"}, s: map[string]string{}, b: map[string]bool{}, isSet: map[string]bool{}}
 	for _, f := range NewGet(k, nil).Describe().Flags {
 		switch f.Name {
 		case FlagCluster:
-			in.s[FlagCluster] = "c-x"
+			if !k.ProjectBackingNamespace {
+				in.s[FlagCluster] = "c-x"
+			}
 		case FlagNamespace:
 			in.s[FlagNamespace] = "ns"
 		}

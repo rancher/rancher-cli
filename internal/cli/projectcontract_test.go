@@ -380,8 +380,9 @@ func (h *contractHarness) contractArgs(d runtime.Descriptor, withCluster bool) [
 			}
 		case f.Name == "namespace":
 			// --namespace is another way to name what --project names for
-			// create secret and the access questions; the rest need it.
-			if d.Name != "create secret" && !strings.HasPrefix(d.Name, "access ") {
+			// create secret, the access questions and a generated verb of a kind
+			// whose objects live in a project's backing namespace; the rest need it.
+			if d.Name != "create secret" && !strings.HasPrefix(d.Name, "access ") && !readsBackingNamespace(d) {
 				args = append(args, "--namespace", "default")
 			}
 		case f.Name == runtime.FlagProject:
@@ -410,6 +411,13 @@ func (h *contractHarness) contractArgs(d runtime.Descriptor, withCluster bool) [
 		args = append(args, "-o", "json")
 	}
 	return args
+}
+
+// readsBackingNamespace reports whether d is a generated verb of a row whose
+// namespace is a project's backing namespace.
+func readsBackingNamespace(d runtime.Descriptor) bool {
+	k, ok := kindForDescriptor(d)
+	return ok && isGeneratedVerb(d.Name) && k.ProjectBackingNamespace
 }
 
 // before moves a trailing "--project <v>" in front of the command name.
@@ -544,7 +552,7 @@ func TestProjectContract(t *testing.T) {
 			hints = append(hints, r.err.Hint)
 		})
 	}
-	assert.Equal(t, 76, declaring, "the commands that take --project")
+	assert.Equal(t, 79, declaring, "the commands that take --project")
 
 	t.Run("usage --by project", func(t *testing.T) {
 		r := h.run(t, "usage", "--cluster", "c-abc", "--by", "project", "--project", "web", "-o", "json")

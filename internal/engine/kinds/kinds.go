@@ -96,8 +96,11 @@ const (
 	// flag with DefaultNamespace fallback, NO --cluster; client is management.
 	NSWorkspace NamespacePolicy = "workspace"
 	// NSPlain: ordinary namespace - --namespace flag, required for named
-	// ops; --cluster routes when Scope is Downstream. For the one Management
-	// NSPlain kind (projectroletemplatebinding) --namespace is a project id.
+	// ops; --cluster routes when Scope is Downstream. A Management NSPlain
+	// kind lives on the local cluster: projectroletemplatebinding in a
+	// project's backing namespace (ProjectBackingNamespace),
+	// clusterregistrationtoken in the cluster's management namespace (the
+	// cluster id).
 	NSPlain NamespacePolicy = "plain"
 )
 
@@ -230,6 +233,13 @@ type Kind struct {
 	// argument. Set on every Handle row and on the management cluster, whose
 	// argument takes an id or a display name and has no Handle.
 	ArgDesc string
+	// ProjectBackingNamespace marks a Management NSPlain row whose objects
+	// live on the local cluster in a project's backing namespace: the
+	// project's status.backingNamespace, or the project id when that is empty.
+	// The generated get, patch and delete then take --cluster and --project
+	// and read the namespace from the project; --namespace names it directly.
+	// validateKinds rejects the field on any other row.
+	ProjectBackingNamespace bool
 }
 
 // Handle names the positional argument of a kind whose users do not type the
@@ -854,11 +864,12 @@ var table = []Kind{
 		},
 	},
 	{
-		// The one Management + NSPlain kind: --namespace is a project id, not a
-		// cluster id - reflected in the generated flag help.
+		// Management + NSPlain: the bindings live on the local cluster in the
+		// project's backing namespace, so the generated verbs take --project
+		// with --cluster and read the namespace from the project.
 		Key: "projectroletemplatebinding", Name: "projectroletemplatebinding", Aliases: []string{"projectroletemplatebindings", "prtb"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projectroletemplatebindings"},
-		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
+		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true, ProjectBackingNamespace: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		// MEMBER column prefers userName → groupPrincipalName → userPrincipalName:
 		// same deliberate divergence as crtb above; see that entry for rationale.
@@ -1211,15 +1222,22 @@ func Bindings() map[string]safety.Binding {
 	return out
 }
 
-// ProjectScopable reports whether --project applies to k: a
-// Downstream NSPlain kind validates/filters by project membership, plus the
-// one carve-out - the namespace kind itself (NSNone/Downstream), which
-// converts an unnamed --project into a label-selector list rather than a
-// rejection (Route's default branch). Every other kind rejects a non-empty
-// project outright. This is the single source of the rule; Route and the
-// generated-command descriptor builders both consume it.
+// ProjectScopable reports whether --project applies to k. Three cases:
+//   - a Downstream NSPlain kind validates/filters by project membership;
+//   - the namespace kind itself (NSNone/Downstream) converts an unnamed
+//     --project into a label-selector list rather than a rejection (Route's
+//     default branch);
+//   - a row with ProjectBackingNamespace reads the namespace from the
+//     project's status.backingNamespace on the local cluster.
+//
+// Every other kind rejects a non-empty project outright. This is the single
+// source of the rule; Route and the generated-command descriptor builders
+// both consume it.
 func ProjectScopable(k Kind) bool {
 	if k.Policy == NSPlain && k.Scope == Downstream {
+		return true
+	}
+	if k.ProjectBackingNamespace {
 		return true
 	}
 	return k.Name == "namespace" && k.Policy == NSNone && k.Scope == Downstream
@@ -1312,6 +1330,9 @@ func validateKinds(ts []Kind) error {
 				return fmt.Errorf("kind identifier %q claimed by both %q and %q", id, prev, k.Key)
 			}
 			seen[id] = k.Key
+		}
+		if k.ProjectBackingNamespace && (k.Policy != NSPlain || k.Scope != Management) {
+			return fmt.Errorf("kind %q sets ProjectBackingNamespace on a row that is not Management with a plain namespace", k.Key)
 		}
 		if k.ServerTable {
 			if len(k.Columns) > 0 {
