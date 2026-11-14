@@ -915,7 +915,7 @@ func TestSchemaFiltersDescribeSearchText(t *testing.T) {
 			tin{strs: map[string]string{"search": "MANAGEMENT"}}, nil)
 		require.NoError(t, err)
 		first, _, _ := strings.Cut(res.Text, "\n")
-		assert.Equal(t, "1 commands match --search 'MANAGEMENT'", first)
+		assert.Equal(t, "1 command matches --search 'MANAGEMENT'", first)
 	})
 }
 

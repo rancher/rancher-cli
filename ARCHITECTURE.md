@@ -1010,10 +1010,10 @@ test/conformance fails the build on a remedy command written without `clierr.Ran
 the word rancher; the commands still written plain are listed there with their reasons.
 The text of every remedy builder in internal/token is cut at each command and must end its
 clause.
-`clierr.ShellQuoteArgs` writes the values after a command, and puts the flags first and `--` before the values
-when one starts with a dash; source scans in test/conformance fail the build on a remedy command that does not
-parse against the schema, has text glued after it, changes something without `--dry-run`, or quotes a positional
-value anywhere but in that function.
+A command built with `clierr.NewCommand` has its values after the command words, with the flags first and `--`
+before the values when one starts with a dash; source scans in test/conformance fail the build on a remedy command
+that does not parse against the schema, has text glued after it, or changes something without `--dry-run`, and on
+a quoted argument value in a command anywhere but the quoting code of internal/clierr.
 
 **Exec-credential cache stays on disk.** Even under the keychain backend, the exec-credential cache
 - live short-lived bearer tokens - still lives in `token-cache.yaml` on disk (0600). The

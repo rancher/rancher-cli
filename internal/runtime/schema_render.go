@@ -393,7 +393,11 @@ func renderFilteredTOC(m Manifest, f schemaFilters, primeGroups map[string]bool)
 	}
 	byName := commandIndex(m.Commands)
 	var b strings.Builder
-	fmt.Fprintf(&b, "%d commands match %s\n", len(m.Commands), filters)
+	if len(m.Commands) == 1 {
+		fmt.Fprintf(&b, "1 command matches %s\n", filters)
+	} else {
+		fmt.Fprintf(&b, "%d commands match %s\n", len(m.Commands), filters)
+	}
 	b.WriteString(readOnlyLine(m))
 	for _, g := range m.Groups {
 		b.WriteString("\n")
