@@ -780,7 +780,10 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   `VALIDATION` (exit code 2, not retryable): the message is `ClusterRepo
   '<name>' is disabled`, the hint is the `get clusterrepo` command that shows
   it, and the index is not read. `--repo` therefore needs `get` on the
-  ClusterRepo.
+  ClusterRepo. A `--repo` value that is not a ClusterRepo name (`a/b`, for
+  example) is refused with `VALIDATION` before any request;
+  `app install --repo` and `app upgrade --repo` refuse it the same way. A
+  ClusterRepo name is a DNS subdomain name.
   Without `--repo`, a ClusterRepo whose index cannot be read (for example one
   that answers 503, or one with no stored index yet, which answers 500) is left
   out and named in one warning, and the exit code is 0; with `--repo` the same
@@ -1525,6 +1528,7 @@ from the ones the Rancher UI would keep.
 - A ClusterRepo that is disabled, and a version that is not in the index
   (`VALIDATION`), except the installed version (see "A version the index no
   longer lists").
+- A `--repo` value that is not a ClusterRepo name (`VALIDATION`).
 - `--force` with `--take-ownership` (`VALIDATION`): Helm refuses
   `--force-replace` (sent for `--force`) together with `--force-conflicts` (sent
   for `--take-ownership`).

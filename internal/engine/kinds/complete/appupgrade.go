@@ -125,6 +125,9 @@ func clusterReads(allowance completion.Allowance) completion.Requirements {
 //   - --version: the versions of the App's chart in the filtered index of the
 //     typed or source ClusterRepo, and the installed version (three requests:
 //     the App, the ClusterRepo, the index).
+//
+// A typed --repo that is not a ClusterRepo name leaves the --version source
+// with no names; it reads neither the ClusterRepo nor its index.
 func UpgradeSource(command string) completion.Source {
 	pick := func(req completion.Request) (completion.Requirements, func(context.Context, *completion.Connection, completion.Request) completion.Result, bool) {
 		if req.Command != command {

@@ -71,8 +71,9 @@ func (v indexVersion) installable(namespace, release string) bool {
 }
 
 // repoIndexOf reads the index of the typed --repo on the typed cluster: first
-// the ClusterRepo, to leave a disabled repository out, then its filtered
-// index. It reports false when anything fails or the repository is disabled.
+// the ClusterRepo, to leave a disabled ClusterRepo out, then its filtered
+// index. It reports false when anything fails, the ClusterRepo is disabled or
+// the typed value is not a ClusterRepo name (no request is sent for it).
 func repoIndexOf(ctx context.Context, conn *completion.Connection, req completion.Request) (repoIndex, bool) {
 	if !clusterRepoEnabled(ctx, conn, req.ClusterID, completion.TailFlag(req.Tail, "repo")) {
 		return repoIndex{}, false
@@ -86,6 +87,9 @@ func repoIndexOf(ctx context.Context, conn *completion.Connection, req completio
 func clusterRepoEnabled(ctx context.Context, conn *completion.Connection, clusterID, repo string) bool {
 	k, known := kinds.ByKey("clusterrepo")
 	if !known || clusterID == "" || repo == "" {
+		return false
+	}
+	if !kinds.ClusterRepoName(repo) {
 		return false
 	}
 	obj, err := completion.NamedResourcePath(clusterID, k.GVR.Group, k.GVR.Version, "", k.GVR.Resource, repo)

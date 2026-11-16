@@ -142,3 +142,20 @@ func TestUpgradeSourceReadsNothingWithoutWhatItNeeds(t *testing.T) {
 		})
 	}
 }
+
+// TestUpgradeVersionSourceReadsNoClusterRepoForANameThatIsNotAClusterRepo
+// asserts a typed --repo that is not a ClusterRepo name makes the --version
+// source offer no versions and read neither the ClusterRepo nor its index; the
+// only read is the App, which it needs to find the chart.
+func TestUpgradeVersionSourceReadsNoClusterRepoForANameThatIsNotAClusterRepo(t *testing.T) {
+	t.Parallel()
+	for _, repo := range []string{"A", "a_b", "a.", "a/b"} {
+		t.Run(repo, func(t *testing.T) {
+			t.Parallel()
+			ls := upgradeServer(t, upgradeApp)
+			got := UpgradeSource(upgradeCommand).Complete(t.Context(), ls.Conn(3), upgradeRequest("version", "--repo", repo))
+			assert.Empty(t, got.Names)
+			assert.Equal(t, []string{upgradeAppPath}, ls.Requested())
+		})
+	}
+}

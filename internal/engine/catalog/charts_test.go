@@ -36,9 +36,7 @@ func indexOf(charts map[string][]string) string {
 
 func runCharts(t *testing.T, clients *fakeClients, root *fakeRoot, in input) (runtime.Result, error) {
 	t.Helper()
-	cmd, ok := NewCharts(clients, fakeRoots{root: root}).(runtime.ReadCommand)
-	require.True(t, ok)
-	return cmd.Execute(t.Context(), in, nil)
+	return runChartsWith(t, clients, root, in)
 }
 
 func resultItems(t *testing.T, res runtime.Result) chartList {

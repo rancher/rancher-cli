@@ -265,6 +265,11 @@ func (c *upgradeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
+	if repo := in.String(flagRepo); repo != "" {
+		if err := validateRepoName(repo); err != nil {
+			return safety.Effect{}, nil, err
+		}
+	}
 	t := actionTarget{typedCluster: in.String(engine.FlagCluster), namespace: in.String(engine.FlagNamespace), release: release, requestID: c.newID()}
 	p := upgradePlan{target: t, wait: f.wait, cleanup: in.Bool(flagCleanupOnFail)}
 	var warnings []string
