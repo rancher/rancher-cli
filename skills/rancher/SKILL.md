@@ -482,8 +482,15 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   message says how to apply it.
 - `retryable: true` (timeouts, a 429, a 502/503/504, another 5xx whose body is
   not a Kubernetes Status, a 409 on an update or delete that sent a
-  resourceVersion, and the two CONFLICTs from a check in the CLI named below)
-  → retry is reasonable; otherwise do not repeat the identical call. A 409 on
+  resourceVersion, the two CONFLICTs from a check in the CLI named below, and a
+  500 the API server returns for a failed admission webhook call that did not
+  reach the webhook or came back with a 503 that is not a Kubernetes Status)
+  → retry is reasonable; otherwise do not repeat the identical call. A failed
+  admission webhook call did not reach the webhook when the connection was
+  refused, there was no route to host, the host name did not resolve,
+  connecting to the webhook's address timed out, or the webhook's service had
+  no endpoints. A webhook call that timed out in any other way, or came back
+  with a 504, is not retryable. A 409 on
   an update or delete that sent a resourceVersion is `CONFLICT` with the message
   "the resource changed on the server since it was last read; retry the
   command". An update here is a command that changes an existing object, such as

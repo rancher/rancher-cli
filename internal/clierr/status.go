@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -317,6 +318,22 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 		// shows the message; the 401 and 403 arms word their own.
 		msg = prefix + statusText(code)
 	}
+	// A response body that apimachinery quoted into the caller's prefix, or
+	// into the Status message after its start, is replaced by "unknown" in
+	// every arm (an empty body shows nothing and stays as it is). The prefix
+	// and the Status message are processed separately: an unterminated body in
+	// the prefix does not hide the Status message, and a Status message that
+	// starts with a body reads the same with or without a prefix. raw is the
+	// text as it was, for the webhook arm, which finds each occurrence of the
+	// Status message in it and replaces the bodies itself, and for the
+	// cluster agent check.
+	raw := msg
+	if own, ok := strings.CutPrefix(msg, prefix); wrapped && ok {
+		msg = errorTextWithoutResponseBodies(prefix, false) + errorTextWithoutResponseBodies(own, true)
+	} else {
+		msg = errorTextWithoutResponseBodies(msg, true)
+	}
+	prefix = errorTextWithoutResponseBodies(prefix, false)
 	switch {
 	case apierrors.IsNotFound(se):
 		switch {
@@ -392,7 +409,7 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 		}
 		// The substring refines the message only, never the class.
 		switch {
-		case strings.Contains(msg, "cluster agent disconnected"):
+		case strings.Contains(raw, "cluster agent disconnected"):
 			return Retryable(CodeGeneric, msg+" - retry once the cluster reconnects")
 		case throughCluster(req):
 			return Retryable(CodeGeneric, msg+" - often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed")
@@ -401,6 +418,8 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 	case named && isCloudflareCode(code):
 		// A Status body that carries a proxy's own code.
 		return Retryable(CodeGeneric, answeredMessage(prefix, req, code, serverDetail(se, reason, noReason), false))
+	case webhookCall(reason):
+		return webhookCallError(raw, se.ErrStatus.Message, reason, req)
 	default:
 		return New(CodeGeneric, msg)
 	}
@@ -469,12 +488,12 @@ func serverDetail(se *apierrors.StatusError, reason string, noReason bool) strin
 		switch {
 		case cause == unknownMessage:
 		case taken:
-			text = cause
+			text = bounded(withoutResponseBodies(cause))
 		default:
-			text = serverMessage([]byte(cause))
+			text = decodeMessage([]byte(cause), withoutResponseBodies)
 		}
 	} else if !noReason {
-		text = bounded(reason)
+		text = bounded(withoutResponseBodies(reason))
 	}
 	if text == statusText(code) || sameWords(text, code) {
 		return ""
@@ -544,9 +563,9 @@ func unexpectedResponseText(se *apierrors.StatusError) string {
 	switch {
 	case cause == unknownMessage:
 	case taken:
-		text = cause
+		text = bounded(withoutResponseBodies(cause))
 	default:
-		text = serverMessage([]byte(cause))
+		text = decodeMessage([]byte(cause), withoutResponseBodies)
 	}
 	if text == "" {
 		text = statusText(int(se.ErrStatus.Code))
@@ -572,4 +591,412 @@ func unexpectedServerResponse(se *apierrors.StatusError) bool {
 		}
 	}
 	return false
+}
+
+// internalErrorLead is the text apimachinery's NewInternalError puts in
+// front of the error it wraps.
+const internalErrorLead = "Internal error occurred: "
+
+// webhookCallPhrase starts the text k8s.io/apiserver writes when an
+// admission webhook call fails: the phrase, the webhook name in Go's
+// double-quoted form, then ": <webhook error>" or webhookNoDetails. The
+// webhook error is the Reason of k8s.io/apiserver's ErrCallingWebhook.
+const webhookCallPhrase = "failed calling webhook "
+
+// webhookCallLead starts the API server's 500 for a failed admission
+// webhook call.
+const webhookCallLead = internalErrorLead + webhookCallPhrase
+
+// webhookNoDetails ends that text when the API server has no webhook
+// error.
+const webhookNoDetails = "; no further details available"
+
+// webhookCallFailed starts the webhook error when the API server's request
+// to the webhook returned an error.
+const webhookCallFailed = "failed to call webhook: "
+
+// rancherWebhookPrefix starts the name of every webhook rancher-webhook
+// registers.
+const rancherWebhookPrefix = "rancher.cattle.io."
+
+// maxQuotedWebhookName bounds the text read for the quoted webhook name: a
+// webhook name is at most 253 bytes, and Go's quoting writes a byte as at
+// most four.
+const maxQuotedWebhookName = 4*253 + 2
+
+// maxWebhookBody is the number of bytes of a response body that client-go
+// keeps in its error. A body longer than that gives no webhook message.
+const maxWebhookBody = 2048
+
+// maxQuotedWebhookBody bounds the text read for the quoted form of a
+// response body.
+const maxQuotedWebhookBody = 4*maxWebhookBody + 2
+
+// quotedUnknown stands in for a response body that is not shown: the word
+// client-go writes for a body it does not keep, quoted as apimachinery
+// quotes a body.
+const quotedUnknown = `"unknown"`
+
+// responseBodyLead and responseBodyTail are apimachinery's text before and
+// after a response body it quotes into an error (unexpectedResponseFormat).
+var responseBodyLead, responseBodyTail, _ = strings.Cut(unexpectedResponseFormat, "%q")
+
+// quotedResponseBody finds the first response body that apimachinery
+// quoted into s, at or after index from. start is the index of its opening
+// quote and end the index just past its closing quote. When what follows
+// responseBodyLead is not a quoted string that ends within
+// maxQuotedWebhookBody bytes, the body is unterminated: unterminated is
+// true and end is len(s). found is false when s holds no responseBodyLead
+// there. The function returns indexes, not text.
+func quotedResponseBody(s string, from int) (start, end int, unterminated, found bool) {
+	_, after, found := strings.Cut(s[from:], responseBodyLead)
+	if !found {
+		return 0, 0, false, false
+	}
+	start = len(s) - len(after)
+	quoted, err := strconv.QuotedPrefix(after[:min(len(after), maxQuotedWebhookBody)])
+	if err != nil {
+		return start, len(s), true, true
+	}
+	return start, start + len(quoted), false, true
+}
+
+// withoutResponseBodies returns s with every response body that
+// apimachinery quoted into it replaced by quotedUnknown. An unterminated
+// body is replaced together with the rest of s, and responseBodyTail ends
+// the text. Everything from the first "{" at or after the first replaced
+// body is then cut, and U+2026 is added. s is returned as it is when it
+// holds no body, and an empty body is kept as sent. Use it for text from a
+// server only. For an error's text, which can hold a command, use
+// errorTextWithoutResponseBodies: the result of this function can be
+// printed in Go-quoted form.
+func withoutResponseBodies(s string) string {
+	var b strings.Builder
+	first := -1
+	at := 0
+	for {
+		start, end, unterminated, found := quotedResponseBody(s, at)
+		if !found {
+			break
+		}
+		if !unterminated && end-start == len(`""`) {
+			b.WriteString(s[at:end])
+			at = end
+			continue
+		}
+		b.WriteString(s[at:start])
+		if first < 0 {
+			first = b.Len()
+		}
+		b.WriteString(quotedUnknown)
+		if unterminated {
+			b.WriteString(responseBodyTail)
+			at = len(s)
+			break
+		}
+		at = end
+	}
+	if first < 0 {
+		return s
+	}
+	b.WriteString(s[at:])
+	shown := b.String()
+	if before, _, cut := strings.Cut(shown[first:], "{"); cut {
+		return shown[:first] + before + "\u2026"
+	}
+	return shown
+}
+
+// errorTextWithoutResponseBodies does the same for an error's text, which
+// can hold a command or a value from ShellQuote; its result is never
+// printed in Go-quoted form. With keepFirst, when s starts with
+// responseBodyLead and the quoted body holds no other quoted response
+// body, that body is kept: it is the server's own message in
+// apimachinery's form.
+func errorTextWithoutResponseBodies(s string, keepFirst bool) string {
+	at := 0
+	if keepFirst {
+		start, end, unterminated, found := quotedResponseBody(s, 0)
+		if found && start == len(responseBodyLead) && !strings.Contains(s[start:end], responseBodyLead) {
+			if unterminated {
+				return s
+			}
+			at = end
+		}
+	}
+	var b strings.Builder
+	b.WriteString(s[:at])
+	first := -1
+	for {
+		start, end, unterminated, found := quotedResponseBody(s, at)
+		if !found {
+			break
+		}
+		if !unterminated && end-start == len(`""`) {
+			b.WriteString(s[at:end])
+			at = end
+			continue
+		}
+		b.WriteString(s[at:start])
+		if first < 0 {
+			first = b.Len()
+		}
+		b.WriteString(quotedUnknown)
+		if unterminated {
+			b.WriteString(responseBodyTail)
+			at = len(s)
+			break
+		}
+		at = end
+	}
+	if first < 0 {
+		return s
+	}
+	b.WriteString(s[at:])
+	shown := b.String()
+	if before, _, cut := strings.Cut(shown[first:], "{"); cut {
+		return shown[:first] + before + "\u2026"
+	}
+	return shown
+}
+
+// webhookCallParts reads the API server's 500 for a failed admission
+// webhook call: the webhook name, its quoted form as sent, and the webhook
+// error, "" when the text ends with webhookNoDetails. ok is false for any
+// other text, a name that is not double-quoted included.
+func webhookCallParts(text string) (name, quoted, reason string, ok bool) {
+	rest, found := strings.CutPrefix(text, webhookCallLead)
+	if !found || !strings.HasPrefix(rest, `"`) {
+		return "", "", "", false
+	}
+	quoted, err := strconv.QuotedPrefix(rest[:min(len(rest), maxQuotedWebhookName)])
+	if err != nil {
+		return "", "", "", false
+	}
+	name, err = strconv.Unquote(quoted)
+	if err != nil || name == "" {
+		return "", "", "", false
+	}
+	rest = rest[len(quoted):]
+	if rest == webhookNoDetails {
+		return name, quoted, "", true
+	}
+	reason, found = strings.CutPrefix(rest, ": ")
+	if !found || reason == "" {
+		return "", "", "", false
+	}
+	return name, quoted, reason, true
+}
+
+// webhookCall reports whether text is the API server's 500 for a failed
+// admission webhook call.
+func webhookCall(text string) bool {
+	_, _, _, ok := webhookCallParts(text)
+	return ok
+}
+
+// webhookCallOutcome is what the error of a call to a webhook shows: that
+// the request did not reach the webhook (a 503 that is not a Status
+// included), that the call timed out (a 504 that is not a Status
+// included), or neither (a response, or any other error).
+type webhookCallOutcome int
+
+const (
+	webhookCallOther webhookCallOutcome = iota
+	webhookCallNotReached
+	webhookCallTimedOut
+)
+
+// notReachedSuffixes are the endings of the error text of a POST request
+// that did not reach the webhook: the connection was refused, there was no
+// route to the webhook's address, or its host name did not resolve.
+var notReachedSuffixes = []string{
+	": connect: connection refused",
+	": connect: no route to host",
+	": no such host",
+}
+
+// timedOutSuffixes are the endings of the error text of a POST request
+// that timed out.
+var timedOutSuffixes = []string{
+	": context deadline exceeded",
+	": i/o timeout",
+	" (Client.Timeout exceeded while awaiting headers)",
+	": net/http: TLS handshake timeout",
+}
+
+// webhookCallOutcomeOf reads the error of the call to the webhook, the text
+// after webhookCallFailed. A POST request that failed with no endpoints for
+// the webhook's service did not reach the webhook. apimachinery's text for
+// a 503 that is not a Status means a response from the webhook's server, or
+// from something in front of it, that did not handle the request; it is
+// treated as a request that did not reach the webhook. apimachinery's text
+// for a 504 means a timeout.
+func webhookCallOutcomeOf(inner string) webhookCallOutcome {
+	switch {
+	case inner == genericStatusText(http.StatusServiceUnavailable):
+		return webhookCallNotReached
+	case inner == genericStatusText(http.StatusGatewayTimeout):
+		return webhookCallTimedOut
+	case !strings.HasPrefix(inner, `Post "`):
+		return webhookCallOther
+	case strings.Contains(inner, `": dial tcp `) && strings.HasSuffix(inner, ": i/o timeout"):
+		// The connection was never opened: the request did not reach the
+		// webhook.
+		return webhookCallNotReached
+	case slices.ContainsFunc(notReachedSuffixes, func(end string) bool { return strings.HasSuffix(inner, end) }),
+		strings.Contains(inner, `": no endpoints available for service "`) && strings.HasSuffix(inner, `"`):
+		return webhookCallNotReached
+	case slices.ContainsFunc(timedOutSuffixes, func(end string) bool { return strings.HasSuffix(inner, end) }):
+		return webhookCallTimedOut
+	}
+	return webhookCallOther
+}
+
+// genericStatusText is apimachinery's text for a response with code that
+// is not a Status and carries no text of its own.
+func genericStatusText(code int) string {
+	return apierrors.NewGenericServerResponse(code, http.MethodPost, schema.GroupResource{}, "", "", 0, true).ErrStatus.Message
+}
+
+// webhookCallError is the error for the API server's 500 for a failed
+// admission webhook call. msg is the error's text as it was, own the Status
+// message, and reason that message as the status table read it. The code
+// is GENERIC. The error is retryable when the request did not reach the
+// webhook (a timeout while connecting to the webhook's address included)
+// or the call came back with a 503 that is not a Status. A call that timed
+// out in any other way (a 504 that is not a Status included) is not
+// retryable: a timeout does not show whether the webhook acted on the
+// request. A call that did not reach the webhook, timed out, or came back
+// with a 503 or 504 that is not a Status gets the hint that shows
+// rancher-webhook's logs when the webhook is one of rancher-webhook's own
+// and the CLI's request is to the local cluster. The logs are read on that
+// cluster. Every other call, including one where the webhook responded
+// with its own body, is not retryable and gets no hint.
+//
+// Every occurrence of the Status message in msg is replaced by the message
+// the CLI shows. In the text around the occurrences each response body is
+// replaced by "unknown" (an empty body stays as it is), and everything from
+// the first "{" after the first replaced body is cut, with U+2026 added.
+// When msg holds no occurrence, only the message the CLI shows is returned:
+// the rest of msg is not shown.
+func webhookCallError(msg, own, reason string, req *Request) *Error {
+	name, quoted, cause, _ := webhookCallParts(reason)
+	shown := webhookCallText(name, quoted, cause)
+	copied := reason
+	if strings.HasSuffix(msg, own) && strings.TrimSpace(own) == reason {
+		copied = own
+	}
+	if parts := strings.Split(msg, copied); len(parts) > 1 {
+		for i, p := range parts {
+			parts[i] = errorTextWithoutResponseBodies(p, false)
+		}
+		shown = strings.Join(parts, shown)
+	}
+	outcome := webhookCallOther
+	if inner, called := strings.CutPrefix(cause, webhookCallFailed); called {
+		outcome = webhookCallOutcomeOf(inner)
+	}
+	ce := New(CodeGeneric, shown).WithRetryable(outcome == webhookCallNotReached)
+	if outcome != webhookCallOther && strings.HasPrefix(name, rancherWebhookPrefix) && req != nil && req.Cluster == "local" {
+		ce = ce.WithHintCommand(NewCommand("logs webhook"))
+	}
+	return ce
+}
+
+// webhookCallText is the message for the API server's 500 for a failed
+// admission webhook call, built from the parts webhookCallParts read. When
+// the webhook responded with its own message, the text is "admission
+// webhook '<name>' failed: " followed by that message. In every other case
+// it is the API server's text with the response bodies in the webhook
+// error replaced, everything from the first "{" the webhook error still
+// holds cut, and the webhook error cut to maxServerMessage bytes.
+func webhookCallText(name, quoted, reason string) string {
+	lead := webhookCallLead + quoted
+	if reason == "" {
+		return lead + webhookNoDetails
+	}
+	if inner, called := strings.CutPrefix(reason, webhookCallFailed); called {
+		if text, body, found := webhookResponseBody(inner); found {
+			if m := webhookResponseMessage(body); m != "" {
+				return "admission webhook " + ShellQuote(name) + " failed: " + m
+			}
+			reason = webhookCallFailed + text
+		}
+	}
+	text := withoutResponseBodies(reason)
+	if before, _, cut := strings.Cut(text, "{"); cut {
+		text = before + "\u2026"
+	}
+	return lead + ": " + bounded(text)
+}
+
+// webhookResponseBody finds the webhook's response body in the error of
+// the call. The body is quoted into apimachinery's text for a 5xx response
+// that is not a Status (whatever follows the quoted body is kept), or it
+// is the whole text when that starts with "{", as apimachinery keeps the
+// body of a 403, 406 or 415 response. text is the error with the body
+// replaced by "unknown", or the error as it is when the body is empty.
+// When the quoted body is unterminated or does not unquote, body is "".
+// found is false when the error holds no response body.
+func webhookResponseBody(inner string) (text, body string, found bool) {
+	replaced := fmt.Sprintf(unexpectedResponseFormat, unknownMessage)
+	if strings.HasPrefix(inner, responseBodyLead) {
+		start, end, cut, _ := quotedResponseBody(inner, 0)
+		if cut {
+			return replaced, "", true
+		}
+		unquoted, err := strconv.Unquote(inner[start:end])
+		if err != nil {
+			return replaced, "", true
+		}
+		if strings.TrimSpace(unquoted) == "" {
+			return inner, "", true
+		}
+		return responseBodyLead + quotedUnknown + inner[end:], unquoted, true
+	}
+	if strings.HasPrefix(inner, "{") {
+		if len(inner) > maxWebhookBody {
+			return unknownMessage, "", true
+		}
+		return unknownMessage, inner, true
+	}
+	return inner, "", false
+}
+
+// webhookResponseMessage is the webhook's own message in its response
+// body, or "" when the body has none or cannot be used. The message is cut
+// to maxServerMessage bytes. It is the Status message of an AdmissionReview
+// response; or the message of a JSON error object that has no apiVersion and
+// no metadata and whose kind is absent or Status; or the first line of a
+// body that is not JSON and starts with neither "{" nor "[". A body that
+// starts with "{" or "[" and does not decode has no message, and neither
+// has a body longer than client-go keeps.
+func webhookResponseMessage(body string) string {
+	text := strings.TrimSpace(body)
+	if text == "" || text == unknownMessage || len(text) > maxWebhookBody {
+		return ""
+	}
+	if !strings.HasPrefix(text, "{") && !strings.HasPrefix(text, "[") {
+		return serverMessage([]byte(text))
+	}
+	var review struct {
+		APIVersion string          `json:"apiVersion"`
+		Kind       string          `json:"kind"`
+		Metadata   json.RawMessage `json:"metadata"`
+		Response   *struct {
+			Status *metav1.Status `json:"status"`
+		} `json:"response"`
+	}
+	if json.Unmarshal([]byte(text), &review) != nil {
+		return ""
+	}
+	if review.Response != nil && review.Response.Status != nil {
+		return bounded(review.Response.Status.Message)
+	}
+	if review.APIVersion != "" || review.Metadata != nil || (review.Kind != "" && review.Kind != "Status") {
+		return ""
+	}
+	m, _ := objectMessage(text)
+	return m
 }
