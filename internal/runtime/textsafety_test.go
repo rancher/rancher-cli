@@ -168,3 +168,49 @@ func TestErrorTextEscapesCandidates(t *testing.T) {
 		})
 	}
 }
+
+// TestErrorTextCandidatesThatReadAsEscapedStrings asserts a candidate name or
+// id that is itself the double-quoted, escaped form of a text with a hidden
+// character prints differently from a candidate that holds the character, in
+// the name and in the id. A value that holds a single quote, or that
+// unquotes to a printable text, prints as it is.
+func TestErrorTextCandidatesThatReadAsEscapedStrings(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		candidates []clierr.Candidate
+		want       string
+	}{
+		{
+			name: "two names, one the escaped form of the other",
+			candidates: []clierr.Candidate{
+				{Name: "\"a\\u200bb\"", ID: "c-1"},
+				{Name: "a\u200bb", ID: "c-2"},
+			},
+			want: `candidates: "\"a\\u200bb\"" (c-1), "a\u200bb" (c-2)`,
+		},
+		{
+			name: "two ids, one the escaped form of the other",
+			candidates: []clierr.Candidate{
+				{Name: "x", ID: "\"a\\u200bb\""},
+				{Name: "y", ID: "a\u200bb"},
+			},
+			want: `candidates: x ("\"a\\u200bb\""), y ("a\u200bb")`,
+		},
+		{
+			name:       "double-quoted values that unquote to printable text",
+			candidates: []clierr.Candidate{{Name: "\"ops\"", ID: "\"$PASSWORD\""}},
+			want:       `candidates: "ops" ("$PASSWORD")`,
+		},
+		{
+			name:       "an escaped form that holds a single quote",
+			candidates: []clierr.Candidate{{Name: "\"o'b\\u200b\"", ID: "x"}},
+			want:       `candidates: "o'b\u200b" (x)`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, candidatesLine(t, tc.candidates, 0))
+		})
+	}
+}

@@ -1241,10 +1241,11 @@ func errorText(ce *clierr.Error, s style.Style) string {
 	// Message, hint, candidates, and details may all carry server text
 	// (an admission message, a display name), so each line passes the
 	// terminal-safety boundary before it reaches stderr. A candidate's name
-	// and id, and each details value, show their hidden characters as
-	// escapes (clierr.IDText, detailLineText); two values that differ only
-	// by a hidden character print differently. The message and the hint
-	// have them removed.
+	// and id and each details value are written with their hidden
+	// characters as escapes (clierr.WholeValueText for a candidate,
+	// detailLineText for a details value); two values that differ only by a
+	// hidden character print differently. The message and the hint have
+	// those characters removed.
 	header := s.Red(prefix) + " " + output.Printable(ce.Message)
 
 	var lines []string
@@ -1254,9 +1255,11 @@ func errorText(ce *clierr.Error, s style.Style) string {
 	if len(ce.Candidates) > 0 {
 		names := make([]string, len(ce.Candidates))
 		for i, c := range ce.Candidates {
-			// The text IDText returns holds no character Printable removes
-			// and no invalid UTF-8 byte; Printable would not change it.
-			names[i] = clierr.IDText(c.Name) + " (" + clierr.IDText(c.ID) + ")"
+			// A candidate never holds a remedy marker: the text
+			// WholeValueText returns for it holds no character Printable
+			// removes and no invalid UTF-8 byte, and Printable would not
+			// change it.
+			names[i] = clierr.WholeValueText(c.Name) + " (" + clierr.WholeValueText(c.ID) + ")"
 		}
 		label := "candidates"
 		if ce.CandidatesTotal > 0 {

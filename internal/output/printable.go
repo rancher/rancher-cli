@@ -18,11 +18,12 @@ import (
 // text format shows. The table, wide, and name renderers apply it to every
 // cell; text builders apply it at each insertion of a server field; the
 // runtime applies it to warning lines, to the message and hint of an error
-// and to the preview fields. Each value in the details lines of an error,
-// and each candidate's name and id, is shown as clierr.IDText shows it:
-// these runes and each invalid byte as escapes and nothing removed. Two
-// values that differ by a hidden character or an invalid byte print
-// differently, and Printable has nothing to remove from them.
+// and to the preview fields. Each value in the details lines of an error
+// is shown as clierr.IDText shows it, and each candidate's name and id as
+// clierr.WholeValueText shows it: these runes and each invalid byte as
+// escapes and nothing removed. Two values that differ by a hidden character
+// or an invalid byte print differently, and Printable has nothing to remove
+// from them.
 // Structured formats (json, yaml, template) never pass through it - they
 // return the bytes verbatim. A whole text with its own lines goes through
 // PrintableLines, which the runtime applies to every text print and

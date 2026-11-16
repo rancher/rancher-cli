@@ -2057,7 +2057,10 @@ The same holds for each value in the details lines under an `error (...)`
 line, and for the name and id of each candidate in the `candidates` line under
 it: one that holds a control character, an invisible format character or a line
 or paragraph separator is written as a double-quoted string with escapes, as a
-user id is, and nothing is removed.
+user id is, and nothing is removed. A candidate name or id that is already such
+a double-quoted string with escapes, as Go writes it, is written in double
+quotes again, with its quotes and backslashes escaped, unless it holds a single
+quote.
 Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
 `template=` (the bytes are
 the data), `logs` (container output whose newlines are its structure), and the
