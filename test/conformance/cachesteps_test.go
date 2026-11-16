@@ -117,7 +117,7 @@ var cacheUsesPins = map[string]string{
 	"actions/upload-artifact":         "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
 	"actions/attest-build-provenance": "4d101475d8b20a2381f78447822ac1eab6504dd8",
 	"zizmorcore/zizmor-action":        "45d7276c9ca790aabd705e31ca99c6185c3e76dd",
-	"rancher/renovate-config/.github/workflows/renovate-vault.yml": "25cb0e4e38b4931d4a551db492bf2cf47dac03f1",
+	"rancher/renovate-config/.github/workflows/renovate-vault.yml": "ef1355071eeda6bbcf3455f943558cd538a8cd81",
 }
 
 // allowlistPinProblems returns the entries of the allowlist that are not a
