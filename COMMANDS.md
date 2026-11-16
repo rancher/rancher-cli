@@ -188,9 +188,9 @@ Per-kind verb rules and kind notes:
 [REFERENCE.md](REFERENCE.md#project-scope---project).
 
 <!-- conformance:surface-counts -->
-Generated per kind from the 61-kind table: `get <kind>` (61), `patch <kind>`
-(61), `delete <kind>` (38 - 37 deletable kinds, including the RBAC binding
+Generated per kind from the 62-kind table: `get <kind>` (62), `patch <kind>`
+(62), `delete <kind>` (39 - 38 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-160 generated commands, 233 total together with the fixed commands above. The authoritative, always-current list is
+163 generated commands, 236 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

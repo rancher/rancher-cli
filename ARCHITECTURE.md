@@ -631,7 +631,11 @@ singular - `cluster`, `project`, `pod`), `Aliases`, `GVR`, `Namespaced`, `Scope`
 value makes the generated patch a refusal that keeps its flags, says in its usage and
 description that it is refused, and offers no candidates when completing),
 `NoCreateViaManifest` (a non-empty value makes `create resource` refuse a manifest of the
-kind, with this text as the reason), `GetDesc` (the
+kind, with this text as the reason), `CreateWarning` (a non-empty value is a warning
+`create resource` adds to a successful preview of the kind; the schema shows it as the
+note of the kind's `create` verb (state `available`; the verb describes
+`create resource`); a row cannot set it together with
+`NoCreateViaManifest`), `GetDesc` (the
 description of the generated `get`; a row with a `SystemFilter` gets the filter's sentence
 first and `GetDesc` after it), `Binding` (contract/stability for the generated generic
 ops), and the table: `Columns` for a kind with its own, or `ServerTable` for a

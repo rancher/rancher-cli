@@ -203,7 +203,8 @@ type SchemaCommand struct {
 
 // Verb states for SchemaKind.Verbs: available and refused verbs are
 // both registered commands (a refusal declines at Plan); an absent verb has
-// no registered command.
+// no registered command. The exception is a kind's create verb in any state:
+// it describes `create resource` for the kind and is not a registered command.
 const (
 	VerbAvailable = "available"
 	VerbRefused   = "refused"
@@ -211,8 +212,10 @@ const (
 )
 
 // VerbState is one generated verb's effective availability on a kind.
-// Contract/Stability are set for registered verbs (available, refused); Note
-// carries a refusal's wording or an absence's reviewed reason.
+// Contract/Stability are set for registered verbs (available, refused) and for
+// a kind's create verb, which is not a registered command; Note
+// carries a refusal's wording, an absence's reviewed reason or the warning of
+// an available create.
 type VerbState struct {
 	State     string `json:"state"`
 	Contract  string `json:"contract,omitempty"`

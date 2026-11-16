@@ -50,6 +50,7 @@ func TestRequirements(t *testing.T) {
 		{key: "managementcluster", want: management, ok: true},
 		{key: "provisioningcluster", want: management, ok: true},
 		{key: "etcdsnapshot", want: management, ok: true},
+		{key: "managedchart", want: management, ok: true},
 		{key: "project"}, // its own source lists the projects the caller can read
 		{key: "secret"},
 		{key: "capicluster"},

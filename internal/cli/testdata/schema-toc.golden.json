@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 233,
+  "commandCount": 236,
   "effectSchema": {
     "actions": [
       "create",
@@ -66,7 +66,7 @@
       "serverReads"
     ]
   },
-  "generatedCommandCount": 160,
+  "generatedCommandCount": 163,
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
@@ -410,7 +410,7 @@
       ],
       "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "generated": {
-        "count": 61,
+        "count": 62,
         "pattern": "get <kind>"
       },
       "name": "get"
@@ -476,7 +476,7 @@
     {
       "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
       "generated": {
-        "count": 61,
+        "count": 62,
         "pattern": "patch <kind>"
       },
       "name": "patch"
@@ -484,13 +484,13 @@
     {
       "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
       "generated": {
-        "count": 38,
+        "count": 39,
         "pattern": "delete <kind>"
       },
       "name": "delete"
     }
   ],
-  "kindCount": 61,
+  "kindCount": 62,
   "kinds": [
     "cluster",
     "project",
@@ -524,6 +524,7 @@
     "clustergroup",
     "fleet-cluster",
     "fleet-workspace",
+    "managedchart",
     "setting",
     "feature",
     "user",

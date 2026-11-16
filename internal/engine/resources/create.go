@@ -63,7 +63,9 @@ func (*createCmd) Describe() runtime.Descriptor {
 		Desc: "A Project manifest gets the field.cattle.io/creatorId annotation set to your user ID, as " +
 			"`rancher create project` does. A manifest that sets it to your own user ID keeps it; one that sets another " +
 			"user's ID is refused. When the command cannot get your user ID, a manifest that sets " +
-			"field.cattle.io/creatorId is refused. A manifest that sets field.cattle.io/no-creator-rbac gets nothing added.",
+			"field.cattle.io/creatorId is refused. A manifest that sets field.cattle.io/no-creator-rbac gets nothing added. " +
+			"A manifest of a kind where Rancher acts on the object as soon as it exists (ManagedChart) gets a " +
+			"warning in the preview that says what Rancher does.",
 		CommandType: runtime.Mutating,
 		Flags: []runtime.ArgSpec{
 			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}, Desc: "manifest `file`, or - for stdin"},
@@ -184,6 +186,9 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	}
 	if creatorWarning != "" {
 		eff.Warnings = append(eff.Warnings, creatorWarning)
+	}
+	if k.CreateWarning != "" {
+		eff.Warnings = append(eff.Warnings, k.CreateWarning)
 	}
 	return eff, exec, nil
 }

@@ -454,6 +454,16 @@ func TestCreatePreviewHidesSecretValues(t *testing.T) {
 		}, []string{"helm-secret-19", "helm-secret-20", "helm-secret-21", "helm-secret-22"},
 			[]string{"/spec/targets/0/helm/values/password", "/spec/targets/0/helm/templateValues/token",
 				"/spec/targets/1/helm/values/password", "/spec/targets/1/helm/templateValues/token"}},
+		{"managedchart manifest", func(t *testing.T) previewResult {
+			t.Helper()
+			in := fieldCoverageInput{values: map[string]string{"filename": "m.yaml"}}
+			return planPreview(t, t.Context(), resources.NewCreate(&fieldRecorder{}, fieldCoverageSource{
+				"apiVersion: management.cattle.io/v3\nkind: ManagedChart\nmetadata:\n  name: mc\n  namespace: fleet-default\nspec:\n  chart: monitoring\n  values:\n    password: helm-secret-25\n  targets:\n" +
+					"  - clusterName: a\n    helm:\n      values:\n        password: helm-secret-26\n      templateValues:\n        token: helm-secret-27\n" +
+					"  - clusterName: b\n    helm:\n      values:\n        password: helm-secret-28\n      templateValues:\n        token: helm-secret-29\n"}), in)
+		}, []string{"helm-secret-25", "helm-secret-26", "helm-secret-27", "helm-secret-28", "helm-secret-29"},
+			[]string{"/spec/values/password", "/spec/targets/0/helm/values/password", "/spec/targets/0/helm/templateValues/token",
+				"/spec/targets/1/helm/values/password", "/spec/targets/1/helm/templateValues/token"}},
 		{"bundle manifest", func(t *testing.T) previewResult {
 			t.Helper()
 			in := fieldCoverageInput{values: map[string]string{"filename": "m.yaml"}}

@@ -790,12 +790,14 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   failure is the command's error. A 401 for an index is reported as Rancher
   refusing to serve it, not as a rejected credential. The repositories are read
   one after another in name order.
-- The CLI hides the Helm `values` and `templateValues` of HelmOps, bundles
-  and bundle deployments from every output. For a HelmOp or a bundle it also
-  hides them in each item of `targets`. For a bundle deployment it hides them
-  in `options` and `stagedOptions`. A HelmOp can take values from a Secret
-  through `valuesFrom`. Those values are in the Secret, not in the HelmOp. The
-  HelmOp output shows only the `valuesFrom` reference.
+- The CLI hides the Helm `values` and `templateValues` of HelmOps, bundles,
+  bundle deployments and ManagedCharts from every output. For a HelmOp or a
+  bundle it also hides them in each item of `targets`. For a ManagedChart it
+  hides `spec.values`, and `values` and `templateValues` in each item of
+  `spec.targets`. For a bundle deployment it hides them in `options` and
+  `stagedOptions`. A HelmOp can take values from a Secret through
+  `valuesFrom`. Those values are in the Secret, not in the HelmOp. The HelmOp
+  output shows only the `valuesFrom` reference.
 - `etcd-snapshot` (`rke.cattle.io`) is read-only: Rancher creates one etcd
   snapshot object for each snapshot file of a cluster. `--namespace` defaults to
   `fleet-default`, the namespace of provisioning clusters in the default Fleet
@@ -816,6 +818,38 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   with `VALIDATION` and an "unknown command" message that gives the reason. The
   columns follow the Rancher UI, since the server's Table has only the Name and
   Created At columns.
+- `managedchart` (`management.cattle.io`) is a chart Rancher installs through
+  Fleet on the target clusters: the clusters that `spec.targets` matches, except
+  a cluster whose first matching target has `doNotDeploy: true`. Rancher serves
+  it only when its `fleet` and `provisioningv2` features are both on; when
+  either is off, a list fails with `NOT_FOUND` and the server's text, and a
+  `get` of one object fails with `NOT_FOUND`, the message "managedchart not
+  found: <name>" and a hint to list. `--namespace` defaults to `fleet-default`,
+  the default Fleet workspace; for the local cluster pass `--namespace
+  fleet-local`. The columns are CHART, VERSION and REPO from `spec`,
+  BUNDLEDEPLOYMENTS-READY from `status.display.readyClusters`, the number of
+  ready clusters out of the clusters desired to be ready, for example 1/2 (Fleet
+  shows the same value in the BundleDeployments-Ready column of `kubectl get
+  bundles`), and READY, from the `Ready` condition (`Ready` for True, `NotReady`
+  for False). `patch` and `delete` of a ManagedChart, and `create resource` with
+  a ManagedChart manifest, require `--yes` with `--apply`. The `create resource`
+  preview warns that Rancher installs the chart on every target cluster.
+  `delete` makes Rancher delete the chart's Fleet Bundle, which makes Fleet
+  uninstall the chart from every target cluster, except a cluster whose first
+  matching target has `keepResources: true`. The paths the CLI hides are in the
+  bullet about Helm `values` above. The default wait is `condition=Ready`.
+  Rancher deletes the ManagedChart that installs system-upgrade-controller on a
+  cluster it provisions, on its own, when all of these hold: the cluster is not
+  being deleted, `spec.rkeConfig` is set, `status.fleetWorkspaceName` is set,
+  the management cluster named in `status.clusterName` exists and is connected,
+  `status.clientSecretName` is set, and the Rancher settings
+  `system-agent-upgrade-image` and `system-upgrade-controller-chart-version`
+  both have a value. That ManagedChart is in the cluster's Fleet workspace
+  (`status.fleetWorkspaceName`). Its name is
+  `<name>-managed-system-upgrade-controller`, where `<name>` is the provisioning
+  cluster's name, not its `c-` id. Rancher shortens that name to 48 characters
+  and ends it with a hash when it is longer than 48 characters, which is the
+  case for a cluster name of more than 14 characters.
 - `delete` exists only for kinds where deleting an object makes sense. Rancher
   settings and feature flags (`setting`, `feature`), role templates and global
   roles (`roletemplate`, `globalrole`), and objects a controller creates and
@@ -898,7 +932,9 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
 - `create` has a dedicated command for kinds such as `project`, `namespace`,
   `secret`, `token`, `kubeconfig` and `cluster`; `create resource -f` covers any
   supported kind from a manifest, except a token or a kubeconfig: `create
-  token` and `create kubeconfig` create those and show the value once.
+  token` and `create kubeconfig` create those and show the value once. A
+  manifest of a kind where Rancher acts on the object as soon as it exists
+  (ManagedChart) gets a warning in the preview that says what Rancher does.
 - Rancher role bindings (`projectroletemplatebinding`,
   `clusterroletemplatebinding`, `globalrolebinding`): prefer `grant`/`revoke`,
   which resolve the subject, detect duplicates and report partial failures. The
@@ -908,6 +944,10 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
 
 `rancher schema <kind>` shows the verbs of one kind: available (with contract
 and stability), refused (with the reason), or not available (with the reason).
+In JSON, a kind whose `create resource` preview carries a warning also has a
+`create` verb with state `available`. That verb describes `create resource -f`
+and does not mean that a `create <kind>` command exists (there is no `create
+managedchart`); its note is the warning.
 
 `feature` (Rancher's `management.cattle.io/v3` Feature flags) is one of those
 generated kinds - not deletable, sensitive (`patch feature` flips a flag and

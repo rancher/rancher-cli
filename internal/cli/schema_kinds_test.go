@@ -59,9 +59,10 @@ func TestSchemaKindVerbSurfaceMatchesRegisteredCommands(t *testing.T) {
 // surfaces the management-token "create" verb as refused, so agents can
 // discover that create-resource rejects v3 Token manifests without running a
 // live command. Only kinds that actively refuse create via NoCreateViaManifest
-// carry this verb state; the absence of "create" in other kinds' verb maps
-// does not mean create is available - it means no reviewed restriction was
-// recorded (agents should treat absence as unknown, not available).
+// carry this refused state (a kind with a CreateWarning carries an available
+// one); the absence of "create" in other kinds' verb maps does not mean create
+// is available - it means no reviewed restriction or warning was recorded
+// (agents should treat absence as unknown, not available).
 func TestSchemaManagementTokenCreateRefused(t *testing.T) {
 	m := schemaManifest(t)
 	var mt *runtime.SchemaKind

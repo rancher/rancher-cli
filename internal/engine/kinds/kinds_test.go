@@ -33,6 +33,7 @@ var cliOnlyKinds = map[string]bool{
 	"app":                      true, // no rancher-ai-mcp tool counterpart
 	"operation":                true, // no rancher-ai-mcp tool counterpart
 	"etcdsnapshot":             true, // no rancher-ai-mcp tool counterpart
+	"managedchart":             true, // no rancher-ai-mcp tool counterpart
 
 	"horizontalpodautoscaler": true, // no rancher-ai-mcp tool counterpart
 	"limitrange":              true, // no rancher-ai-mcp tool counterpart
@@ -737,6 +738,66 @@ func TestValidateRejectsServerTableMisuse(t *testing.T) {
 			require.ErrorContains(t, validateKinds([]Kind{bad}), tt.want)
 		})
 	}
+}
+
+// TestValidateRejectsCreateWarningWithNoCreateViaManifest asserts a row that
+// sets both CreateWarning and NoCreateViaManifest is refused (a refused
+// create shows no warning), and that each field alone is accepted.
+func TestValidateRejectsCreateWarningWithNoCreateViaManifest(t *testing.T) {
+	t.Parallel()
+	base := Kind{Key: "a", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}}
+	warned := base
+	warned.CreateWarning = "the controller installs it"
+	require.NoError(t, validateKinds([]Kind{warned}))
+	refused := base
+	refused.NoCreateViaManifest = "use create foo"
+	require.NoError(t, validateKinds([]Kind{refused}))
+	both := warned
+	both.NoCreateViaManifest = "use create foo"
+	require.ErrorContains(t, validateKinds([]Kind{both}), "CreateWarning together with NoCreateViaManifest")
+}
+
+// TestManagedChartRow asserts the managedchart row: identity, routing, the
+// five columns, the hidden Helm values, the gates, the default wait, the
+// delete and create warnings, and that its manifest apiVersion and kind
+// resolve to it.
+func TestManagedChartRow(t *testing.T) {
+	t.Parallel()
+	mc, ok := Lookup("managedcharts")
+	require.True(t, ok)
+	assert.Equal(t, "managedchart", mc.Key)
+	assert.Equal(t, "managedchart", mc.Name)
+	assert.Equal(t, []string{"managedcharts"}, mc.Aliases)
+	assert.Equal(t, schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "managedcharts"}, mc.GVR)
+	assert.Equal(t, "ManagedChart", mc.K8sKind)
+	assert.Equal(t, Management, mc.Scope)
+	assert.Equal(t, NSWorkspace, mc.Policy)
+	assert.Equal(t, "fleet-default", mc.DefaultNamespace)
+	assert.True(t, mc.Deletable)
+	assert.True(t, mc.Sensitive)
+	assert.True(t, mc.Completable)
+	assert.Equal(t, "condition=Ready", mc.WaitDefault)
+	assert.False(t, mc.WaitFailsOnStalled)
+	assert.Equal(t, safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta}, mc.Binding)
+	assert.Equal(t, []Column{
+		{Header: "CHART", Path: []string{"spec", "chart"}},
+		{Header: "VERSION", Path: []string{"spec", "version"}},
+		{Header: "REPO", Path: []string{"spec", "repoName"}},
+		{Header: "BUNDLEDEPLOYMENTS-READY", Path: []string{"status", "display", "readyClusters"}},
+		{Header: "READY", Condition: "Ready"},
+	}, mc.Columns)
+	assert.Equal(t, [][]string{
+		{"spec", "values"},
+		{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},
+	}, mc.RedactPaths)
+	assert.Equal(t, "Rancher serves ManagedCharts when its fleet and provisioningv2 features are both on; when either is off, get returns NOT_FOUND.", mc.GetDesc)
+	assert.Equal(t, "deleting this ManagedChart makes Rancher delete its Fleet Bundle, which makes Fleet uninstall the chart from every target cluster, except a cluster whose first matching target has keepResources: true", mc.DeleteCascadeWarning)
+	assert.Equal(t, "Rancher installs the chart from the ClusterRepo whose name is in spec.repoName, through Fleet, on every target cluster: a cluster that spec.targets matches, except one whose first matching target has doNotDeploy: true", mc.CreateWarning)
+	assert.Empty(t, mc.NoCreateViaManifest)
+
+	byGVK, ok := LookupGVK("management.cattle.io/v3", "ManagedChart")
+	require.True(t, ok)
+	assert.Equal(t, "managedchart", byGVK.Key)
 }
 
 // TestByKeyMatchesTheKeyAlone asserts ByKey resolves a canonical key and

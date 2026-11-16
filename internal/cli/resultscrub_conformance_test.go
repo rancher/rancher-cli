@@ -37,8 +37,9 @@ const (
 // apart from the kind row so a row that loses a path fails the table: the
 // value an ext token or kubeconfig create returns once, the credential
 // fields of the v3 token and the user, and the Helm values and template
-// values of the helmop, bundle and bundledeployment kinds (in the helmop and
-// bundle paths, a "*" wildcard segment stands for every target).
+// values of the helmop, bundle, bundledeployment and managedchart kinds (in
+// the helmop, bundle and managedchart paths, a "*" wildcard segment stands for
+// every target).
 var scrubRequiredPaths = map[string][][]string{
 	"token":           {{"status", "bearerToken"}, {"status", "value"}},
 	"kubeconfig":      {{"status", "value"}},
@@ -55,6 +56,10 @@ var scrubRequiredPaths = map[string][][]string{
 	"bundledeployment": {
 		{"spec", "options", "helm", "values"}, {"spec", "options", "helm", "templateValues"},
 		{"spec", "stagedOptions", "helm", "values"}, {"spec", "stagedOptions", "helm", "templateValues"},
+	},
+	"managedchart": {
+		{"spec", "values"},
+		{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},
 	},
 }
 
@@ -830,6 +835,25 @@ func helmOpTargetsManifest(ps *plantSet) string {
 	return string(body)
 }
 
+// managedChartManifest is a ManagedChart manifest whose spec.values and
+// targets are the planted values.
+func managedChartManifest(ps *plantSet) string {
+	planted, _ := ps.fragment["spec"].(map[string]any)
+	body, err := json.Marshal(map[string]any{
+		"apiVersion": "management.cattle.io/v3", "kind": "ManagedChart",
+		"metadata": map[string]any{"name": "mc", "namespace": "fleet-default"},
+		"spec": map[string]any{
+			"chart":   "monitoring",
+			"values":  deepCopyValue(planted["values"]),
+			"targets": plantedTargets(ps),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return string(body)
+}
+
 // withoutTargetsAtFirstGet removes spec.targets from the response to the
 // first Get of the HelmOp; the patch then adds the list. Later responses
 // hold the planted targets.
@@ -914,16 +938,20 @@ const appResultReason = "the result is built from names: the release, the operat
 // generated from the kind table.
 func handWrittenScrubRows() []scrubRow {
 	oidcSecret := "oidcIntended1"
-	createHelmOp := in(nil, map[string]string{"filename": "m.yaml", "cluster": scrubCluster})
+	createFromManifest := in(nil, map[string]string{"filename": "m.yaml", "cluster": scrubCluster})
 	rows := []scrubRow{
 		{command: "patch helmop", variant: "targets dry run", kind: "helmop", class: classNames, reason: dryRunReason, dryRun: true,
 			input: helmOpTargetsPatch, setup: withoutTargetsAtFirstGet, check: requireTargetsDiffEntry},
 		{command: "patch helmop", variant: "targets apply", kind: "helmop", class: classEcho,
 			input: helmOpTargetsPatch, setup: withoutTargetsAtFirstGet, check: requireTargetsSentIntact},
 		{command: "create resource", variant: "helmop targets apply", kind: "helmop", class: classEcho,
-			input: createHelmOp, manifest: helmOpTargetsManifest},
+			input: createFromManifest, manifest: helmOpTargetsManifest},
 		{command: "create resource", variant: "helmop targets dry run", kind: "helmop", class: classNames, reason: dryRunReason, dryRun: true,
-			input: createHelmOp, manifest: helmOpTargetsManifest},
+			input: createFromManifest, manifest: helmOpTargetsManifest},
+		{command: "create resource", variant: "managedchart values apply", kind: "managedchart", class: classEcho,
+			input: createFromManifest, manifest: managedChartManifest},
+		{command: "create resource", variant: "managedchart values dry run", kind: "managedchart", class: classNames, reason: dryRunReason, dryRun: true,
+			input: createFromManifest, manifest: managedChartManifest},
 		{command: "create project", kind: "project", class: classEcho, input: in([]string{"web"}, map[string]string{"cluster": scrubCluster})},
 		{command: "create namespace", kind: "namespace", class: classEcho, input: in([]string{"team-b"}, map[string]string{"cluster": scrubCluster})},
 		{command: "create secret", variant: "namespace", kind: "secret", class: classEcho,

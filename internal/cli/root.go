@@ -334,10 +334,13 @@ func kindOverrides() map[string]kindOverride {
 // "available" (the provisioningcluster case); a delete neither the row nor
 // an override generates is "absent", carrying the row's NoDeleteReason.
 //
-// "create" verb state: only kinds with NoCreateViaManifest set carry a
-// "create" entry (state=refused, note=the restriction message). Kinds without
-// the field are omitted from "create" - absence means no reviewed restriction
-// is recorded, not that create-resource is guaranteed to accept the kind.
+// "create" verb state: only kinds with NoCreateViaManifest or CreateWarning
+// set carry a "create" entry. NoCreateViaManifest gives state=refused with the
+// restriction message as the note; CreateWarning gives state=available with
+// the warning as the note (the two are exclusive). Kinds with neither field
+// are omitted from "create" - absence means no reviewed restriction or
+// warning is recorded, not that create-resource is guaranteed to accept the
+// kind. Either entry describes `create resource`, not a dedicated command.
 func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime.SchemaKind {
 	out := make([]runtime.SchemaKind, 0, len(rows))
 	for _, k := range rows {
@@ -357,6 +360,13 @@ func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime
 				Contract:  string(k.Binding.Contract),
 				Stability: string(k.Binding.Stability),
 				Note:      k.NoCreateViaManifest,
+			}
+		} else if k.CreateWarning != "" {
+			verbs["create"] = runtime.VerbState{
+				State:     runtime.VerbAvailable,
+				Contract:  string(k.Binding.Contract),
+				Stability: string(k.Binding.Stability),
+				Note:      k.CreateWarning,
 			}
 		}
 		out = append(out, runtime.SchemaKind{

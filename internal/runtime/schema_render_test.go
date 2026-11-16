@@ -37,10 +37,9 @@ func TestCountGenerated(t *testing.T) {
 }
 
 // TestGeneratedSetLeavesOutACreateWithTheNameOfACommand asserts a kind's
-// refused create verb is no generated command: a hand-written command that
-// shares its name (create token) stays out of the generated set and the
-// count, and the other verbs of the kind stay in. An available create stays
-// generated.
+// create verb is no generated command, refused or available: a hand-written
+// command that shares its name (create token) stays out of the generated set
+// and the count, and the other verbs of the kind stay in.
 func TestGeneratedSetLeavesOutACreateWithTheNameOfACommand(t *testing.T) {
 	t.Parallel()
 	ks := []SchemaKind{
@@ -57,9 +56,10 @@ func TestGeneratedSetLeavesOutACreateWithTheNameOfACommand(t *testing.T) {
 	cmds := []SchemaCommand{{Name: "create token"}, {Name: "get token"}, {Name: "patch token"}}
 	assert.Equal(t, 2, countGenerated(cmds, generated))
 
-	// An available create is a registered command: it stays generated.
+	// An available create describes create resource, not a command named
+	// create <kind>: it is not generated.
 	available := generatedCommandNames([]SchemaKind{{Name: "widget", Verbs: map[string]VerbState{"create": {State: VerbAvailable}}}})
-	assert.True(t, available["create widget"])
+	assert.False(t, available["create widget"])
 
 	m := Manifest{
 		Commands: cmds,

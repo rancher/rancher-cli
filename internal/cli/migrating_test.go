@@ -191,7 +191,10 @@ func TestMigratingReplacementCommandsResolve(t *testing.T) {
 	for _, k := range manifest.Kinds {
 		entry := kindEntry{verbs: make(map[string]bool, len(k.Verbs))}
 		for verb, v := range k.Verbs {
-			entry.verbs[verb] = v.State == "available"
+			// A kind's create verb describes `create resource`, not a command
+			// of the kind; a dedicated command such as `create token` resolves
+			// through the command list.
+			entry.verbs[verb] = v.State == "available" && verb != "create"
 		}
 		byAlias[k.Name] = entry
 		for _, a := range k.Aliases {
@@ -199,20 +202,28 @@ func TestMigratingReplacementCommandsResolve(t *testing.T) {
 		}
 	}
 
+	resolves := func(cand string) bool {
+		if bespoke[cand] {
+			return true
+		}
+		if parts := strings.Fields(cand); len(parts) == 2 && migratingGenericVerbs[parts[0]] {
+			if k, ok := byAlias[parts[1]]; ok && k.verbs[parts[0]] {
+				return true
+			}
+		}
+		return false
+	}
+	assert.True(t, resolves("get managedchart"))
+	assert.False(t, resolves("create managedchart"), "a kind's create verb is not a command")
+
 	candidates := migratingReplacementCommands(t, string(migrating))
 	require.NotEmpty(t, candidates, "the extractor must find at least the known replacement commands")
 
 	var bad []string
 	for _, cand := range candidates {
-		if bespoke[cand] {
-			continue
+		if !resolves(cand) {
+			bad = append(bad, cand)
 		}
-		if parts := strings.Fields(cand); len(parts) == 2 && migratingGenericVerbs[parts[0]] {
-			if k, ok := byAlias[parts[1]]; ok && k.verbs[parts[0]] {
-				continue
-			}
-		}
-		bad = append(bad, cand)
 	}
 	sort.Strings(bad)
 	require.Empty(t, bad, "MIGRATING.md names replacement command(s) that do not resolve against the schema manifest: %v", bad)

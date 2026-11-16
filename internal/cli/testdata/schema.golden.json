@@ -1935,7 +1935,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "A Project manifest gets the field.cattle.io/creatorId annotation set to your user ID, as `rancher create project` does. A manifest that sets it to your own user ID keeps it; one that sets another user's ID is refused. When the command cannot get your user ID, a manifest that sets field.cattle.io/creatorId is refused. A manifest that sets field.cattle.io/no-creator-rbac gets nothing added.",
+      "desc": "A Project manifest gets the field.cattle.io/creatorId annotation set to your user ID, as `rancher create project` does. A manifest that sets it to your own user ID keeps it; one that sets another user's ID is refused. When the command cannot get your user ID, a manifest that sets field.cattle.io/creatorId is refused. A manifest that sets field.cattle.io/no-creator-rbac gets nothing added. A manifest of a kind where Rancher acts on the object as soon as it exists (ManagedChart) gets a warning in the preview that says what Rancher does.",
       "destructive": "dependsOnInput",
       "examples": [
         "rancher create resource -f deploy.yaml --cluster prod --dry-run",
@@ -2910,6 +2910,43 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Delete the limitrange"
+    },
+    {
+      "aliases": [
+        "managedcharts"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "delete",
+      "name": "delete managedchart",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Delete the managedchart"
     },
     {
       "aliases": [
@@ -5756,6 +5793,61 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List machinesets or show one"
+    },
+    {
+      "aliases": [
+        "managedcharts"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "Rancher serves ManagedCharts when its fleet and provisioningv2 features are both on; when either is off, get returns NOT_FOUND.",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get managedchart",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List managedcharts or show one"
     },
     {
       "aliases": [
@@ -9914,6 +10006,65 @@
     },
     {
       "aliases": [
+        "managedcharts"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "destructive": "true",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch managedchart",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Patch the managedchart"
+    },
+    {
+      "aliases": [
         "managementtokens",
         "management-tokens",
         "v3token",
@@ -12675,6 +12826,7 @@
         "get clustergroup",
         "get fleet-cluster",
         "get fleet-workspace",
+        "get managedchart",
         "get setting",
         "get feature",
         "get user",
@@ -12765,6 +12917,7 @@
         "patch clustergroup",
         "patch fleet-cluster",
         "patch fleet-workspace",
+        "patch managedchart",
         "patch setting",
         "patch feature",
         "patch user",
@@ -12823,6 +12976,7 @@
         "delete storageclass",
         "delete gitrepo",
         "delete helmop",
+        "delete managedchart",
         "delete user",
         "delete globalrolebinding",
         "delete clusterroletemplatebinding",
@@ -13798,6 +13952,45 @@
         }
       },
       "version": "v3"
+    },
+    {
+      "aliases": [
+        "managedcharts"
+      ],
+      "completable": true,
+      "defaultNamespace": "fleet-default",
+      "group": "management.cattle.io",
+      "key": "managedchart",
+      "name": "managedchart",
+      "namespacePolicy": "workspace",
+      "resource": "managedcharts",
+      "scope": "management",
+      "sensitive": true,
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "Rancher installs the chart from the ClusterRepo whose name is in spec.repoName, through Fleet, on every target cluster: a cluster that spec.targets matches, except one whose first matching target has doNotDeploy: true",
+          "stability": "beta",
+          "state": "available"
+        },
+        "delete": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        }
+      },
+      "version": "v3",
+      "waitDefault": "condition=Ready"
     },
     {
       "aliases": [

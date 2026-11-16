@@ -208,6 +208,15 @@ func TestSurfaceCountsMatchManifest(t *testing.T) {
 			"COMMANDS.md claims %d for %s; the live surface has %d - update COMMANDS.md, not this test",
 			claims[i], r.what, r.want)
 	}
+
+	readme, err := os.ReadFile(docPath(t, "README.md"))
+	require.NoError(t, err)
+	rm := regexp.MustCompile(`cover the (\d+) kinds that`).FindStringSubmatch(strings.Join(strings.Fields(string(readme)), " "))
+	require.NotNil(t, rm, "README.md no longer says \"cover the <n> kinds that\"; keep the sentence or rework this check")
+	readmeCount, err := strconv.Atoi(rm[1])
+	require.NoError(t, err)
+	assert.Equal(t, counts.kindTable, readmeCount,
+		"README.md claims %d kinds; the live kind table has %d - update README.md, not this test", readmeCount, counts.kindTable)
 }
 
 // TestCRTPatchRefusalClaim asserts REFERENCE.md's verb prose

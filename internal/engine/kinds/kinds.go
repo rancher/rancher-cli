@@ -175,6 +175,11 @@ type Kind struct {
 	// beyond the named object. Advisory only, never a gate (Destructive
 	// already forces --yes). Bespoke delete overrides carry their own text.
 	DeleteCascadeWarning string
+	// CreateWarning, when non-empty, is appended to the Effect warnings of
+	// `create resource` for a manifest of this kind: what the server's
+	// controller does once the object exists, which the dry-run cannot show.
+	// Advisory only, never a gate.
+	CreateWarning string
 	// Completable marks this kind as eligible for live name completion.
 	// Deny-by-default: a new row gets no completion until this is explicitly set.
 	// Secrets and cloud-credentials are never set.
@@ -717,6 +722,29 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "FleetWorkspace", Scope: Management, Deletable: false, Sensitive: true,
 		NoDeleteReason: "this CLI does not delete Fleet workspaces; deleting one deletes its namespace and every Fleet and provisioning object in it; a workspace with the annotation provisioning.cattle.io/managed: \"false\" is the exception",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+	},
+	{
+		// The CRD has no printer columns. BUNDLEDEPLOYMENTS-READY is the first
+		// column of the Fleet Bundle CRD, whose status a ManagedChart carries.
+		Key: "managedchart", Name: "managedchart", Aliases: []string{"managedcharts"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "managedcharts"},
+		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ManagedChart", Scope: Management, Deletable: true, Sensitive: true, Completable: true,
+		WaitDefault: "condition=Ready",
+		GetDesc:     "Rancher serves ManagedCharts when its fleet and provisioningv2 features are both on; when either is off, get returns NOT_FOUND.",
+		Columns: []Column{
+			{Header: "CHART", Path: []string{"spec", "chart"}},
+			{Header: "VERSION", Path: []string{"spec", "version"}},
+			{Header: "REPO", Path: []string{"spec", "repoName"}},
+			{Header: "BUNDLEDEPLOYMENTS-READY", Path: []string{"status", "display", "readyClusters"}},
+			{Header: "READY", Condition: "Ready"},
+		},
+		RedactPaths: [][]string{
+			{"spec", "values"},
+			{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},
+		},
+		DeleteCascadeWarning: "deleting this ManagedChart makes Rancher delete its Fleet Bundle, which makes Fleet uninstall the chart from every target cluster, except a cluster whose first matching target has keepResources: true",
+		CreateWarning:        "Rancher installs the chart from the ClusterRepo whose name is in spec.repoName, through Fleet, on every target cluster: a cluster that spec.targets matches, except one whose first matching target has doNotDeploy: true",
+		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 
 	{
@@ -1344,6 +1372,9 @@ func validateKinds(ts []Kind) error {
 			if len(k.RedactPaths) > 0 {
 				return fmt.Errorf("kind %q sets ServerTable together with RedactPaths (the server's table is shown as it is)", k.Key)
 			}
+		}
+		if k.CreateWarning != "" && k.NoCreateViaManifest != "" {
+			return fmt.Errorf("kind %q sets CreateWarning together with NoCreateViaManifest (a refused create shows no warning)", k.Key)
 		}
 		for _, col := range k.Columns {
 			if col.Condition != "" && (len(col.Path) > 0 || len(col.AltPaths) > 0 || col.Bool) {

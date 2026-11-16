@@ -850,11 +850,17 @@ Never present a role list as permissions.
   upgrade` and `rancher app uninstall` (below). The
   CLI hides an app's Helm values, chart default values and install notes, and
   an operation's `status.token`, from every output. It also hides the Helm
-  `values` and `templateValues` of HelmOps, bundles and bundle deployments:
-  for a HelmOp or a bundle, in each item of `targets` too; for a bundle
-  deployment, in `options` and `stagedOptions`. A HelmOp can take values from
-  a Secret through `valuesFrom`. Those values are in the Secret, not in the
-  HelmOp. The HelmOp output shows only the `valuesFrom` reference.
+  `values` and `templateValues` of HelmOps, bundles, bundle deployments and
+  ManagedCharts: for a HelmOp or a bundle, in each item of `targets`
+  too; for a ManagedChart, `spec.values` and the `values` and `templateValues`
+  of each item of `spec.targets`; for a bundle deployment, in `options` and
+  `stagedOptions`. A HelmOp can take values from a Secret through
+  `valuesFrom`. Those values are in the Secret, not in the HelmOp. The HelmOp
+  output shows only the `valuesFrom` reference. The `create resource` preview
+  of a ManagedChart warns that Rancher installs the chart on every target
+  cluster (a cluster that `spec.targets` matches, except one whose first
+  matching target has `doNotDeploy: true`): relay the warning to the user before
+  `--apply --yes`.
 - `rancher get etcd-snapshot` lists the etcd snapshots of a cluster that Rancher
   provisions or imports. `--namespace` defaults to `fleet-default`, the
   namespace of provisioning clusters in the default Fleet workspace. For a
