@@ -1514,6 +1514,48 @@ plugin still serves. Each live token whose record the change stops serving is
 revoked, recorded for a later login that revokes it, or listed with the command
 that deletes it. `config update-server` itself sends no delete request.
 
+**Rancher decides whether the current password is needed, and the CLI sends it
+when given.** Rancher ignores `spec.currentPassword` for a caller who has
+update on `users.management.cattle.io` and on `secrets` in
+`cattle-local-user-passwords`, and checks it for any other caller who changes
+their own password. The CLI makes no request to find out which case applies,
+because that would copy Rancher's rule into the CLI, which would then have to
+follow every change of it. Rancher's dry-run returns before that check, and a
+run with `--current-password-stdin` warns in the preview that the dry-run does
+not check the current password. A refused check writes nothing, and a retry is
+safe.
+
+**The current password is piped on stdin with the new password, never a flag
+and never a prompt.** `create password-change-request --current-password-stdin
+--password-stdin` reads two lines: line 1 is `spec.currentPassword` and line 2
+is `spec.newPassword`, the order of Rancher's fields. A flag value would be
+saved in shell history. A mutating command cannot prompt: its gates are flags
+only, an agent cannot answer a prompt, and a dry-run followed by an apply
+would prompt twice. The CLI cannot detect swapped lines; the help and the
+example give the order.
+
+**A password that contains a newline is refused on `--password-stdin`, in
+`create user` too.** One final newline (`\n` or `\r\n`) is cut first; a value
+that still contains `\n` is a VALIDATION error. Without this, a caller who can
+change every user's password and pipes two lines to `--password-stdin`, having
+forgotten `--current-password-stdin`, would set a password nobody can type and
+exit 0. Rancher accepts such a password; the CLI refuses it on purpose,
+because a mistake should fail instead of succeeding silently.
+
+**Two Rancher responses to a password change get another code, chosen by their
+text.** A 500 with "error updating password: invalid current password" becomes
+VALIDATION (exit 2), because the fix is a different password. A 401 "not
+authorized to update password" (another user's password, without the
+permissions named above) becomes RBAC (exit 6), because AUTH tells a script to
+sign in again, which does not help. A match needs the status, the code and
+Rancher's text together (the same from v2.13 to v2.16); every other response
+keeps its code. Neither new error has a hint: the fix of the first needs a
+password the CLI does not have, and the second says which permissions are
+missing. The server's error stays as the cause. Rancher gives a missing and a
+wrong current password the same text; the message follows what the command
+sent. The published meanings of RBAC and VALIDATION in `internal/clierr` name
+this exception.
+
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or
 half-written, but it does not make the surrounding read-modify-write atomic. On
