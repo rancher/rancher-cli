@@ -1,0 +1,2096 @@
+[
+  {
+    "name": "activeDirectoryConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "displayName": "SHOWN-display-activeDirectoryConfig",
+      "enabled": true,
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-activeDirectoryConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "activedirectory"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "servers": [
+        "SHOWN-ad.example"
+      ],
+      "serviceAccountPassword": "cattle-global-data:SECRET-activedirectoryconfig-serviceaccountpassword",
+      "serviceAccountUsername": "SHOWN-serviceAccountUsername",
+      "type": "activeDirectoryConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-activeDirectoryConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-activeDirectoryConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-activeDirectoryConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-activeDirectoryConfig-unlisted",
+      "userSearchBase": "SHOWN-userSearchBase"
+    },
+    "type": "activeDirectoryConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "activeDirectoryConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "displayName": "SHOWN-display-activeDirectoryConfig",
+      "enabled": true,
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-activeDirectoryConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "activedirectory"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "servers": [
+        "SHOWN-ad.example"
+      ],
+      "serviceAccountPassword": "SECRET-plain-activeDirectoryConfig-serviceAccountPassword",
+      "serviceAccountUsername": "SHOWN-serviceAccountUsername",
+      "type": "activeDirectoryConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-activeDirectoryConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-activeDirectoryConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-activeDirectoryConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-activeDirectoryConfig-unlisted",
+      "userSearchBase": "SHOWN-userSearchBase"
+    },
+    "type": "activeDirectoryConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "adfsConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-adfsConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-adfsConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "adfs"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "openLdapConfig": {
+        "servers": [
+          "SHOWN-ldap.example"
+        ],
+        "serviceAccountPassword": "cattle-global-data:SECRET-adfsconfig-openldapconfig-serviceaccountpassword",
+        "serviceAccountUsername": "SHOWN-ldap-user"
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "cattle-global-data:SECRET-adfsconfig-spkey",
+      "type": "adfsConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-adfsConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-adfsConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-adfsConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-adfsConfig-unlisted"
+    },
+    "type": "adfsConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "adfsConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-adfsConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-adfsConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "adfs"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "openLdapConfig": {
+        "servers": [
+          "SHOWN-ldap.example"
+        ],
+        "serviceAccountPassword": "SECRET-plain-adfsConfig-openLdapConfig-serviceAccountPassword",
+        "serviceAccountUsername": "SHOWN-ldap-user"
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "SECRET-plain-adfsConfig-spKey",
+      "type": "adfsConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-adfsConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-adfsConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-adfsConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-adfsConfig-unlisted"
+    },
+    "type": "adfsConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "azureADConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "applicationId": "SHOWN-applicationId",
+      "applicationSecret": "cattle-global-data:SECRET-azureadconfig-applicationsecret",
+      "displayName": "SHOWN-display-azureADConfig",
+      "enabled": true,
+      "endpoint": "SHOWN-endpoint",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-azureADConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "azuread"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "tenantId": "SHOWN-tenantId",
+      "type": "azureADConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-azureADConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-azureADConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-azureADConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-azureADConfig-unlisted"
+    },
+    "type": "azureADConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "azureADConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "applicationId": "SHOWN-applicationId",
+      "applicationSecret": "SECRET-plain-azureADConfig-applicationSecret",
+      "displayName": "SHOWN-display-azureADConfig",
+      "enabled": true,
+      "endpoint": "SHOWN-endpoint",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-azureADConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "azuread"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "tenantId": "SHOWN-tenantId",
+      "type": "azureADConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-azureADConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-azureADConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-azureADConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-azureADConfig-unlisted"
+    },
+    "type": "azureADConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "cognitoConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "cattle-global-data:SECRET-cognitoconfig-clientsecret",
+      "displayName": "SHOWN-display-cognitoConfig",
+      "enabled": true,
+      "groupSearchEnabled": "SHOWN-groupSearchEnabled",
+      "issuer": "SHOWN-issuer",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-cognitoConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "cognito"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "cattle-global-data:SECRET-cognitoconfig-privatekey",
+      "type": "cognitoConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-cognitoConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-cognitoConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-cognitoConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-cognitoConfig-unlisted"
+    },
+    "type": "cognitoConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "cognitoConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "SECRET-plain-cognitoConfig-clientSecret",
+      "displayName": "SHOWN-display-cognitoConfig",
+      "enabled": true,
+      "groupSearchEnabled": "SHOWN-groupSearchEnabled",
+      "issuer": "SHOWN-issuer",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-cognitoConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "cognito"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "SECRET-plain-cognitoConfig-privateKey",
+      "type": "cognitoConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-cognitoConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-cognitoConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-cognitoConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-cognitoConfig-unlisted"
+    },
+    "type": "cognitoConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "freeIpaConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "displayName": "SHOWN-display-freeIpaConfig",
+      "enabled": true,
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-freeIpaConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "freeipa"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "servers": [
+        "SHOWN-ipa.example"
+      ],
+      "serviceAccountDistinguishedName": "SHOWN-serviceAccountDistinguishedName",
+      "serviceAccountPassword": "cattle-global-data:SECRET-freeipaconfig-serviceaccountpassword",
+      "type": "freeIpaConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-freeIpaConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-freeIpaConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-freeIpaConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-freeIpaConfig-unlisted"
+    },
+    "type": "freeIpaConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "freeIpaConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "displayName": "SHOWN-display-freeIpaConfig",
+      "enabled": true,
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-freeIpaConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "freeipa"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "servers": [
+        "SHOWN-ipa.example"
+      ],
+      "serviceAccountDistinguishedName": "SHOWN-serviceAccountDistinguishedName",
+      "serviceAccountPassword": "SECRET-plain-freeIpaConfig-serviceAccountPassword",
+      "type": "freeIpaConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-freeIpaConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-freeIpaConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-freeIpaConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-freeIpaConfig-unlisted"
+    },
+    "type": "freeIpaConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "genericOIDCConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "cattle-global-data:SECRET-genericoidcconfig-clientsecret",
+      "displayName": "SHOWN-display-genericOIDCConfig",
+      "enabled": true,
+      "groupSearchEnabled": "SHOWN-groupSearchEnabled",
+      "issuer": "SHOWN-issuer",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-genericOIDCConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "genericoidc"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "cattle-global-data:SECRET-genericoidcconfig-privatekey",
+      "type": "genericOIDCConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-genericOIDCConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-genericOIDCConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-genericOIDCConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-genericOIDCConfig-unlisted"
+    },
+    "type": "genericOIDCConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "genericOIDCConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "SECRET-plain-genericOIDCConfig-clientSecret",
+      "displayName": "SHOWN-display-genericOIDCConfig",
+      "enabled": true,
+      "groupSearchEnabled": "SHOWN-groupSearchEnabled",
+      "issuer": "SHOWN-issuer",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-genericOIDCConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "genericoidc"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "SECRET-plain-genericOIDCConfig-privateKey",
+      "type": "genericOIDCConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-genericOIDCConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-genericOIDCConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-genericOIDCConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-genericOIDCConfig-unlisted"
+    },
+    "type": "genericOIDCConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "genericSAMLConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-genericSAMLConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-genericSAMLConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "genericsaml"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "cattle-global-data:SECRET-genericsamlconfig-spkey",
+      "type": "genericSAMLConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-genericSAMLConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-genericSAMLConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-genericSAMLConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-genericSAMLConfig-unlisted"
+    },
+    "type": "genericSAMLConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "genericSAMLConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-genericSAMLConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-genericSAMLConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "genericsaml"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "SECRET-plain-genericSAMLConfig-spKey",
+      "type": "genericSAMLConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-genericSAMLConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-genericSAMLConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-genericSAMLConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-genericSAMLConfig-unlisted"
+    },
+    "type": "genericSAMLConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "githubAppConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "additionalClientIds": {
+        "SECRET-client-id-githubAppConfig": "cattle-global-data:SECRET-githubappconfig-additionalclientids"
+      },
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "appId": "SHOWN-appId",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "cattle-global-data:SECRET-githubappconfig-clientsecret",
+      "displayName": "SHOWN-display-githubAppConfig",
+      "enabled": true,
+      "installationId": "SHOWN-installationId",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-githubAppConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "githubapp"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "cattle-global-data:SECRET-githubappconfig-privatekey",
+      "type": "githubAppConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-githubAppConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-githubAppConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-githubAppConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-githubAppConfig-unlisted"
+    },
+    "type": "githubAppConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "githubAppConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "additionalClientIds": {
+        "SECRET-client-id-githubAppConfig": "SECRET-plain-githubAppConfig-additionalClientIds"
+      },
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "appId": "SHOWN-appId",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "SECRET-plain-githubAppConfig-clientSecret",
+      "displayName": "SHOWN-display-githubAppConfig",
+      "enabled": true,
+      "installationId": "SHOWN-installationId",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-githubAppConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "githubapp"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "SECRET-plain-githubAppConfig-privateKey",
+      "type": "githubAppConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-githubAppConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-githubAppConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-githubAppConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-githubAppConfig-unlisted"
+    },
+    "type": "githubAppConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "githubConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "additionalClientIds": {
+        "SECRET-client-id-githubConfig": "cattle-global-data:SECRET-githubconfig-additionalclientids"
+      },
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "cattle-global-data:SECRET-githubconfig-clientsecret",
+      "displayName": "SHOWN-display-githubConfig",
+      "enabled": true,
+      "hostname": "SHOWN-hostname",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-githubConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "github"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "tls": "SHOWN-tls",
+      "type": "githubConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-githubConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-githubConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-githubConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-githubConfig-unlisted"
+    },
+    "type": "githubConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "githubConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "additionalClientIds": {
+        "SECRET-client-id-githubConfig": "SECRET-plain-githubConfig-additionalClientIds"
+      },
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "SECRET-plain-githubConfig-clientSecret",
+      "displayName": "SHOWN-display-githubConfig",
+      "enabled": true,
+      "hostname": "SHOWN-hostname",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-githubConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "github"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "tls": "SHOWN-tls",
+      "type": "githubConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-githubConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-githubConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-githubConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-githubConfig-unlisted"
+    },
+    "type": "githubConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "googleOauthConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "adminEmail": "SHOWN-adminEmail",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-googleOauthConfig",
+      "enabled": true,
+      "hostname": "SHOWN-hostname",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-googleOauthConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "googleoauth"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "oauthCredential": "cattle-global-data:SECRET-googleoauthconfig-oauthcredential",
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "serviceAccountCredential": "cattle-global-data:SECRET-googleoauthconfig-serviceaccountcredential",
+      "type": "googleOauthConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-googleOauthConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-googleOauthConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-googleOauthConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-googleOauthConfig-unlisted"
+    },
+    "type": "googleOauthConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "googleOauthConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "adminEmail": "SHOWN-adminEmail",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-googleOauthConfig",
+      "enabled": true,
+      "hostname": "SHOWN-hostname",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-googleOauthConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "googleoauth"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "oauthCredential": "SECRET-plain-googleOauthConfig-oauthCredential",
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "serviceAccountCredential": "SECRET-plain-googleOauthConfig-serviceAccountCredential",
+      "type": "googleOauthConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-googleOauthConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-googleOauthConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-googleOauthConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-googleOauthConfig-unlisted"
+    },
+    "type": "googleOauthConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "keyCloakConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-keyCloakConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-keyCloakConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "keycloak"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "cattle-global-data:SECRET-keycloakconfig-spkey",
+      "type": "keyCloakConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-keyCloakConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-keyCloakConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-keyCloakConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-keyCloakConfig-unlisted"
+    },
+    "type": "keyCloakConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "keyCloakConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-keyCloakConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-keyCloakConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "keycloak"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "SECRET-plain-keyCloakConfig-spKey",
+      "type": "keyCloakConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-keyCloakConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-keyCloakConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-keyCloakConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-keyCloakConfig-unlisted"
+    },
+    "type": "keyCloakConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "keyCloakOIDCConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "cattle-global-data:SECRET-keycloakoidcconfig-clientsecret",
+      "displayName": "SHOWN-display-keyCloakOIDCConfig",
+      "enabled": true,
+      "groupSearchEnabled": "SHOWN-groupSearchEnabled",
+      "issuer": "SHOWN-issuer",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-keyCloakOIDCConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "keycloakoidc"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "cattle-global-data:SECRET-keycloakoidcconfig-privatekey",
+      "type": "keyCloakOIDCConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-keyCloakOIDCConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-keyCloakOIDCConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-keyCloakOIDCConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-keyCloakOIDCConfig-unlisted"
+    },
+    "type": "keyCloakOIDCConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "keyCloakOIDCConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "SECRET-plain-keyCloakOIDCConfig-clientSecret",
+      "displayName": "SHOWN-display-keyCloakOIDCConfig",
+      "enabled": true,
+      "groupSearchEnabled": "SHOWN-groupSearchEnabled",
+      "issuer": "SHOWN-issuer",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-keyCloakOIDCConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "keycloakoidc"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "SECRET-plain-keyCloakOIDCConfig-privateKey",
+      "type": "keyCloakOIDCConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-keyCloakOIDCConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-keyCloakOIDCConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-keyCloakOIDCConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-keyCloakOIDCConfig-unlisted"
+    },
+    "type": "keyCloakOIDCConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "localConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-localConfig",
+      "enabled": true,
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-localConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "local"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "type": "localConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-localConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-localConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-localConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-localConfig-unlisted"
+    },
+    "type": "localConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "localConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-localConfig",
+      "enabled": true,
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-localConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "local"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "type": "localConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-localConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-localConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-localConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-localConfig-unlisted"
+    },
+    "type": "localConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "oidcConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "cattle-global-data:SECRET-oidcconfig-clientsecret",
+      "displayName": "SHOWN-display-oidcConfig",
+      "enabled": true,
+      "groupSearchEnabled": "SHOWN-groupSearchEnabled",
+      "issuer": "SHOWN-issuer",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-oidcConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "oidc"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "cattle-global-data:SECRET-oidcconfig-privatekey",
+      "type": "oidcConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-oidcConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-oidcConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-oidcConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-oidcConfig-unlisted"
+    },
+    "type": "oidcConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "oidcConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "clientId": "SHOWN-clientId",
+      "clientSecret": "SECRET-plain-oidcConfig-clientSecret",
+      "displayName": "SHOWN-display-oidcConfig",
+      "enabled": true,
+      "groupSearchEnabled": "SHOWN-groupSearchEnabled",
+      "issuer": "SHOWN-issuer",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-oidcConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "oidc"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "privateKey": "SECRET-plain-oidcConfig-privateKey",
+      "type": "oidcConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-oidcConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-oidcConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-oidcConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-oidcConfig-unlisted"
+    },
+    "type": "oidcConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "oktaConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-oktaConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-oktaConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "okta"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "openLdapConfig": {
+        "servers": [
+          "SHOWN-ldap.example"
+        ],
+        "serviceAccountPassword": "cattle-global-data:SECRET-oktaconfig-openldapconfig-serviceaccountpassword",
+        "serviceAccountUsername": "SHOWN-ldap-user"
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "cattle-global-data:SECRET-oktaconfig-spkey",
+      "type": "oktaConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-oktaConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-oktaConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-oktaConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-oktaConfig-unlisted"
+    },
+    "type": "oktaConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "oktaConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-oktaConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-oktaConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "okta"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "openLdapConfig": {
+        "servers": [
+          "SHOWN-ldap.example"
+        ],
+        "serviceAccountPassword": "SECRET-plain-oktaConfig-openLdapConfig-serviceAccountPassword",
+        "serviceAccountUsername": "SHOWN-ldap-user"
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "SECRET-plain-oktaConfig-spKey",
+      "type": "oktaConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-oktaConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-oktaConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-oktaConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-oktaConfig-unlisted"
+    },
+    "type": "oktaConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "openLdapConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "displayName": "SHOWN-display-openLdapConfig",
+      "enabled": true,
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-openLdapConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "openldap"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "servers": [
+        "SHOWN-ldap.example"
+      ],
+      "serviceAccountDistinguishedName": "SHOWN-serviceAccountDistinguishedName",
+      "serviceAccountPassword": "cattle-global-data:SECRET-openldapconfig-serviceaccountpassword",
+      "type": "openLdapConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-openLdapConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-openLdapConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-openLdapConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-openLdapConfig-unlisted"
+    },
+    "type": "openLdapConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "openLdapConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "certificate": "SHOWN-certificate",
+      "displayName": "SHOWN-display-openLdapConfig",
+      "enabled": true,
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-openLdapConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "openldap"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "servers": [
+        "SHOWN-ldap.example"
+      ],
+      "serviceAccountDistinguishedName": "SHOWN-serviceAccountDistinguishedName",
+      "serviceAccountPassword": "SECRET-plain-openLdapConfig-serviceAccountPassword",
+      "type": "openLdapConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-openLdapConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-openLdapConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-openLdapConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-openLdapConfig-unlisted"
+    },
+    "type": "openLdapConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "pingConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-pingConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-pingConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "ping"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "cattle-global-data:SECRET-pingconfig-spkey",
+      "type": "pingConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-pingConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-pingConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-pingConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-pingConfig-unlisted"
+    },
+    "type": "pingConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "pingConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-pingConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-pingConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "ping"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "SECRET-plain-pingConfig-spKey",
+      "type": "pingConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-pingConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-pingConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-pingConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-pingConfig-unlisted"
+    },
+    "type": "pingConfig",
+    "variant": "plaintext"
+  },
+  {
+    "name": "shibbolethConfig/reference",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-shibbolethConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-shibbolethConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "shibboleth"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "openLdapConfig": {
+        "servers": [
+          "SHOWN-ldap.example"
+        ],
+        "serviceAccountPassword": "cattle-global-data:SECRET-shibbolethconfig-openldapconfig-serviceaccountpassword",
+        "serviceAccountUsername": "SHOWN-ldap-user"
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "cattle-global-data:SECRET-shibbolethconfig-spkey",
+      "type": "shibbolethConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-shibbolethConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-shibbolethConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-shibbolethConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-shibbolethConfig-unlisted"
+    },
+    "type": "shibbolethConfig",
+    "variant": "reference"
+  },
+  {
+    "name": "shibbolethConfig/plaintext",
+    "object": {
+      "accessMode": "SHOWN-restricted",
+      "allowedPrincipalIds": [
+        "SHOWN-principal-one",
+        "SHOWN-principal-two"
+      ],
+      "apiVersion": "management.cattle.io/v3",
+      "displayName": "SHOWN-display-shibbolethConfig",
+      "enabled": true,
+      "idpMetadataContent": "SHOWN-idpMetadataContent",
+      "kind": "AuthConfig",
+      "mapKeyWithPrefix": {
+        "cattle-global-data:SHOWN-key": "SHOWN-value-under-prefixed-key"
+      },
+      "metadata": {
+        "annotations": {
+          "field.cattle.io/description": "SHOWN-description-shibbolethConfig",
+          "management.cattle.io/auth-provider-cleanup": "SHOWN-unlocked"
+        },
+        "creationTimestamp": "2026-01-01T00:00:00Z",
+        "name": "shibboleth"
+      },
+      "nonStrings": {
+        "SHOWN-flag": true,
+        "SHOWN-number": 42
+      },
+      "openLdapConfig": {
+        "servers": [
+          "SHOWN-ldap.example"
+        ],
+        "serviceAccountPassword": "SECRET-plain-shibbolethConfig-openLdapConfig-serviceAccountPassword",
+        "serviceAccountUsername": "SHOWN-ldap-user"
+      },
+      "otherCase": "Cattle-Global-Data:SHOWN-other-case",
+      "rancherApiHost": "SHOWN-rancherApiHost",
+      "spCert": "SHOWN-spCert",
+      "spKey": "SECRET-plain-shibbolethConfig-spKey",
+      "type": "shibbolethConfig",
+      "unlistedList": [
+        "SHOWN-item-before",
+        "cattle-global-data:SECRET-shibbolethConfig-item",
+        "SHOWN-item-after"
+      ],
+      "unlistedListOfMaps": [
+        {
+          "SHOWN-name": "SHOWN-in-list-map",
+          "secretRef": "cattle-global-data:SECRET-shibbolethConfig-in-map"
+        }
+      ],
+      "unlistedNested": {
+        "SHOWN-sibling": "SHOWN-nested-sibling",
+        "deeper": {
+          "SHOWN-keep": "SHOWN-deeper-sibling",
+          "reference": "cattle-global-data:SECRET-shibbolethConfig-nested"
+        }
+      },
+      "unlistedReference": "cattle-global-data:SECRET-shibbolethConfig-unlisted"
+    },
+    "type": "shibbolethConfig",
+    "variant": "plaintext"
+  }
+]

@@ -92,6 +92,14 @@ func globalRoleObj(id, display string) unstructured.Unstructured {
 	}}
 }
 
+func authConfigObj(id, authType, display string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata":    map[string]any{"name": id},
+		"type":        authType,
+		"displayName": display,
+	}}
+}
+
 const lookupPatch = `[{"op":"add","path":"/metadata/labels","value":{"a":"b"}}]`
 
 // lookupVerbs runs one generated verb on k with typed as its argument and
@@ -159,6 +167,8 @@ func TestLookupNamesTheIDOnEachField(t *testing.T) {
 			"roletemplate not found: Owner; 'Owner' is the display name of roletemplate rt-owner", "rt-owner", "Owner"},
 		{"globalrole", "Admin", []unstructured.Unstructured{globalRoleObj("admin", "Admin")},
 			"globalrole not found: Admin; 'Admin' is the display name of globalrole admin", "admin", "Admin"},
+		{"authconfig", "GitHub EU", []unstructured.Unstructured{authConfigObj("github-eu", "githubConfig", "GitHub EU"), authConfigObj("local", "localConfig", "")},
+			"authconfig not found: GitHub EU; 'GitHub EU' is the display name of authconfig github-eu", "github-eu", "GitHub EU"},
 		{"nodedriver", "Linode", []unstructured.Unstructured{nodeDriverObj("linode", "Linode", true, false)},
 			"nodedriver not found: Linode; 'Linode' is the display name of nodedriver linode", "linode", "Linode"},
 	}
@@ -270,6 +280,31 @@ func TestLookupSeveralMatchesStayNotFoundWithCandidates(t *testing.T) {
 	assert.Equal(t, "roletemplate not found: Owner; 2 roletemplates have that display name", ce.Message)
 	assert.Equal(t, clierr.Rancher+" get roletemplates", ce.Hint)
 	assert.Equal(t, []clierr.Candidate{{ID: "rt-a", Name: "Owner"}, {ID: "rt-b", Name: "Owner"}}, ce.Candidates)
+
+	ac := mustKind(t, "authconfig")
+	acClient := &lookupClient{miss: kinds.NotFoundCurated(ac, "GitHub", ""), objects: []unstructured.Unstructured{
+		authConfigObj("github-us", "githubConfig", "GitHub"), authConfigObj("github-eu", "githubConfig", "GitHub"),
+		authConfigObj("okta", "oktaConfig", "Okta"),
+	}}
+	err = lookupVerbs["get"](t, ac, &recFactory{client: acClient}, input{args: []string{"GitHub"}})
+	ce = asClierr(t, err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "authconfig not found: GitHub; 2 authconfigs have that display name", ce.Message)
+	assert.Equal(t, clierr.Rancher+" get authconfigs", ce.Hint)
+	assert.Equal(t, []clierr.Candidate{{ID: "github-eu", Name: "GitHub"}, {ID: "github-us", Name: "GitHub"}}, ce.Candidates)
+}
+
+// TestLookupAuthConfigMissWithoutADisplayNameKeepsNotFound asserts a typed
+// name that is no object's name or display name (a server before v2.16 has no
+// display name on an auth config) stays the original NOT_FOUND.
+func TestLookupAuthConfigMissWithoutADisplayNameKeepsNotFound(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "authconfig")
+	miss := kinds.NotFoundCurated(k, "nope", "")
+	client := &lookupClient{miss: miss, objects: []unstructured.Unstructured{authConfigObj("github", "githubConfig", ""), authConfigObj("local", "localConfig", "")}}
+	err := lookupVerbs["get"](t, k, &recFactory{client: client}, input{args: []string{"nope"}})
+	assert.Equal(t, miss, err)
+	assert.Equal(t, 1, client.lists)
 }
 
 // TestLookupMatchIsExactAndCaseSensitive asserts a value that differs in case
@@ -526,7 +561,7 @@ func TestHandleRowsDeclareTheIDArgument(t *testing.T) {
 			assert.Equal(t, runtime.ArgSpec{Name: "id", Type: "string", Required: verb != "get", Desc: k.ArgDesc}, d.Args[0], k.Name+" "+verb)
 		}
 	}
-	assert.Equal(t, 5, count)
+	assert.Equal(t, 6, count)
 
 	cluster := mustKind(t, "cluster")
 	for _, d := range []runtime.Descriptor{NewGet(cluster, nil).Describe(), NewPatch(cluster, nil, nil).Describe()} {

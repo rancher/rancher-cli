@@ -73,6 +73,7 @@ func (t table) Columns() []string {
 
 // Rows is Columns' matching row data.
 func (t table) Rows() [][]string {
+	hidesReferences := t.k.ReadRedaction().HidesReferences()
 	rows := make([][]string, 0, len(t.items))
 	for i := range t.items {
 		o := t.items[i].Object
@@ -82,7 +83,7 @@ func (t table) Rows() [][]string {
 			if c.Wide {
 				continue
 			}
-			row = append(row, columnString(o, c))
+			row = append(row, columnString(o, c, hidesReferences))
 		}
 		row = append(row, ageCell(o))
 		rows = append(rows, row)
@@ -104,13 +105,14 @@ func (t table) WideColumns() []string {
 
 // WideRows is WideColumns' matching row data.
 func (t table) WideRows() [][]string {
+	hidesReferences := t.k.ReadRedaction().HidesReferences()
 	rows := make([][]string, 0, len(t.items))
 	for i := range t.items {
 		o := t.items[i].Object
 		row := make([]string, 0, len(t.k.Columns)+2)
 		row = append(row, t.items[i].GetName())
 		for _, c := range t.k.Columns {
-			row = append(row, columnString(o, c))
+			row = append(row, columnString(o, c, hidesReferences))
 		}
 		row = append(row, ageCell(o))
 		rows = append(rows, row)
@@ -223,15 +225,35 @@ func countCell(o map[string]any, c kinds.Column) string {
 }
 
 // columnString projects one column from one object. validateKinds guarantees
-// Condition, Count, and Path/AltPaths/Bool/Default/Join are mutually
-// exclusive, so the dispatcher selects exactly one projection mode.
-func columnString(o map[string]any, c kinds.Column) string {
+// that Condition, Count, and Path/AltPaths/Bool/Default/Join are mutually
+// exclusive. The dispatcher therefore selects exactly one projection mode. When
+// hidesReferences is set (the row's RedactReferences check), a reference
+// (kinds.IsReference) at Path or at any AltPaths entry makes the cell empty.
+// The cell stays empty because the value exists: a Bool column does not fall
+// back to "false", and neither the Default nor the other AltPaths are used. A
+// Count cell is a number and never shows a reference; Join and Condition cells
+// are not checked, and a row that hides references uses neither.
+func columnString(o map[string]any, c kinds.Column, hidesReferences bool) string {
 	switch {
 	case c.Condition != "":
 		return conditionCell(o, c)
 	case len(c.Count) > 0:
 		return countCell(o, c)
 	default:
+		if hidesReferences && !c.Join && holdsReference(o, c) {
+			return ""
+		}
 		return pathCell(o, c)
 	}
+}
+
+// holdsReference reports whether the value at Path or at any AltPaths entry of
+// c is a reference.
+func holdsReference(o map[string]any, c kinds.Column) bool {
+	for _, path := range append([][]string{c.Path}, c.AltPaths...) {
+		if v, ok, _ := unstructured.NestedFieldNoCopy(o, path...); ok && kinds.IsReference(v) {
+			return true
+		}
+	}
+	return false
 }

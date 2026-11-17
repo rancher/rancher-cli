@@ -14,6 +14,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/extres"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/oidcclient"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
@@ -40,6 +41,9 @@ type rancherAPIFields struct {
 		Label         string `json:"label"`
 		Commit        string `json:"commit"`
 		PseudoVersion string `json:"pseudoVersion"`
+		// ClientPseudoVersion is the version of the pkg/client module at the
+		// same commit.
+		ClientPseudoVersion string `json:"clientPseudoVersion"`
 	} `json:"oracles"`
 	Resources []struct {
 		Resource string              `json:"resource"`
@@ -50,6 +54,29 @@ type rancherAPIFields struct {
 		Type   string              `json:"type"`
 		Fields map[string][]string `json:"fields"`
 	} `json:"catalogActions"`
+	// AuthConfigTypes are the struct types of pkg/apis management.cattle.io/v3
+	// that embed AuthConfig, each with its client type constant (empty when
+	// there is none).
+	AuthConfigTypes []struct {
+		Struct   string   `json:"struct"`
+		Constant string   `json:"constant"`
+		Editions []string `json:"editions"`
+	} `json:"authConfigTypes"`
+	// AuthConfigPasswordFields are the fields those structs tag norman
+	// type=password, by struct name and json path.
+	AuthConfigPasswordFields []struct {
+		Struct   string   `json:"struct"`
+		Path     string   `json:"path"`
+		Editions []string `json:"editions"`
+	} `json:"authConfigPasswordFields"`
+	// AuthConfigSecretFields are the entries of TypeToFields and
+	// SubTypeToFields in Rancher's secrets package, by auth config type value
+	// and json path.
+	AuthConfigSecretFields []struct {
+		Type     string   `json:"type"`
+		Path     string   `json:"path"`
+		Editions []string `json:"editions"`
+	} `json:"authConfigSecretFields"`
 }
 
 func loadRancherAPIFields(t *testing.T) rancherAPIFields {
@@ -988,3 +1015,288 @@ func (fieldCoverageRoots) Root() (engine.RootClient, error) {
 type fieldCoverageSource struct{ body string }
 
 func (s fieldCoverageSource) Read(string) ([]byte, error) { return []byte(s.body + "\n"), nil }
+
+// authConfigExcludedStructs are the structs of the golden's auth config types
+// that are never an AuthConfig object's type on their own, each with the
+// reason. They have no fixture in
+// internal/engine/kinds/testdata/authconfig-fixtures.json.
+var authConfigExcludedStructs = map[string]string{
+	"LdapConfig": "the base struct that OpenLdapConfig and FreeIpaConfig embed; Rancher saves no object of this type",
+	"SamlConfig": "the base struct that the SAML auth providers embed; it has no client type constant and Rancher saves no object of this type",
+}
+
+// authConfigMainOnlyFixtures lists the types of the fixtures in
+// internal/engine/kinds/testdata/authconfig-fixtures.json that the golden has
+// no auth config struct for, because only Rancher main has them, each with the
+// reason. Remove an entry when the golden gains the type.
+var authConfigMainOnlyFixtures = map[string]string{
+	"genericSAMLConfig": "Rancher main has the generic SAML auth provider; the Rancher versions of the golden do not",
+}
+
+func authConfigFixtureTypes(t *testing.T) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile(authConfigFixturesPath)
+	require.NoError(t, err)
+	var cases []struct {
+		Type string `json:"type"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &cases))
+	out := map[string]bool{}
+	for _, c := range cases {
+		out[c.Type] = true
+	}
+	return out
+}
+
+// authConfigCovers reports whether the authconfig row's own redaction hides
+// the value at a dotted json path.
+func authConfigCovers(t *testing.T) func(path string) bool {
+	t.Helper()
+	row, ok := kinds.ByKey("authconfig")
+	require.True(t, ok)
+	r := row.Redaction()
+	return func(path string) bool { return r.Covers(strings.Split(path, ".")) }
+}
+
+// checkAuthConfigGolden returns what is wrong with the golden's auth config
+// sections: an excluded struct with no reason or not in the golden; a struct
+// with no client type constant that is not excluded; a struct that is not
+// excluded and has no fixture; a password-tagged field or an entry of Rancher's
+// secret field lists that the row's redaction does not hide; a secret field
+// entry for a type the golden's types do not list; an entry with no edition or
+// an unknown one; and a client pseudo-version that does not name the commit.
+func checkAuthConfigGolden(g rancherAPIFields, fixtureTypes map[string]bool, excluded map[string]string, covers func(path string) bool) []string {
+	var problems []string
+	inGolden := map[string]bool{}
+	constants := map[string]bool{}
+	checkEditions := func(what string, editions []string) {
+		if len(editions) == 0 {
+			problems = append(problems, what+" names no edition")
+		}
+		for _, e := range editions {
+			if _, ok := g.Oracles[e]; !ok {
+				problems = append(problems, fmt.Sprintf("%s names the edition %q, which is not one of the golden's oracles", what, e))
+			}
+		}
+	}
+	for _, t := range g.AuthConfigTypes {
+		inGolden[t.Struct] = true
+		if t.Constant != "" {
+			constants[t.Constant] = true
+		}
+		checkEditions("auth config type "+t.Struct, t.Editions)
+		_, isExcluded := excluded[t.Struct]
+		switch {
+		case isExcluded:
+		case t.Constant == "":
+			problems = append(problems, fmt.Sprintf("auth config struct %s has no client type constant and is not in the exclusion list", t.Struct))
+		case !fixtureTypes[t.Constant]:
+			problems = append(problems, fmt.Sprintf("auth config struct %s (type %s) has no fixture in internal/engine/kinds/testdata/authconfig-fixtures.json and is not in the exclusion list", t.Struct, t.Constant))
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(excluded)) {
+		if excluded[name] == "" {
+			problems = append(problems, fmt.Sprintf("the exclusion of %s has no reason", name))
+		}
+		if !inGolden[name] {
+			problems = append(problems, fmt.Sprintf("the exclusion list names %s, which is not an auth config struct of the golden", name))
+		}
+	}
+	for _, p := range g.AuthConfigPasswordFields {
+		checkEditions(fmt.Sprintf("password field %s %s", p.Struct, p.Path), p.Editions)
+		if !inGolden[p.Struct] {
+			problems = append(problems, fmt.Sprintf("password field %s %s names a struct that is not in the golden's types", p.Struct, p.Path))
+		}
+		if !covers(p.Path) {
+			problems = append(problems, fmt.Sprintf("the password field %s of %s is not hidden by the authconfig row", p.Path, p.Struct))
+		}
+	}
+	for _, f := range g.AuthConfigSecretFields {
+		checkEditions(fmt.Sprintf("secret field %s %s", f.Type, f.Path), f.Editions)
+		if !constants[f.Type] {
+			problems = append(problems, fmt.Sprintf("the secret field %s of %s names a type that is not in the golden's per-type section", f.Path, f.Type))
+		}
+		if !covers(f.Path) {
+			problems = append(problems, fmt.Sprintf("the secret field %s of %s is not hidden by the authconfig row", f.Path, f.Type))
+		}
+	}
+	for edition, o := range g.Oracles {
+		if !pseudoVersionRE.MatchString(o.ClientPseudoVersion) || (len(o.Commit) >= 12 && !strings.HasSuffix(o.ClientPseudoVersion, o.Commit[:12])) {
+			problems = append(problems, fmt.Sprintf("%s client pseudo-version %q is not a pkg/client pseudo-version of commit %s", edition, o.ClientPseudoVersion, o.Commit))
+		}
+	}
+	return problems
+}
+
+// checkAuthConfigFixtureTypes returns what is wrong with the fixture types
+// against the golden: a fixture type that is not the client type constant of
+// any auth config struct of the golden and is not in mainOnly (the fixture
+// types that only Rancher main has, each with a reason); a mainOnly entry with
+// no reason; and a mainOnly entry whose type the golden has now.
+func checkAuthConfigFixtureTypes(g rancherAPIFields, fixtureTypes map[string]bool, mainOnly map[string]string) []string {
+	var problems []string
+	constants := map[string]bool{}
+	for _, t := range g.AuthConfigTypes {
+		constants[t.Constant] = true
+	}
+	for _, typ := range slices.Sorted(maps.Keys(fixtureTypes)) {
+		if _, ok := mainOnly[typ]; !constants[typ] && !ok {
+			problems = append(problems, fmt.Sprintf("the golden has no auth config struct for the fixture type %s, and authConfigMainOnlyFixtures does not list it", typ))
+		}
+	}
+	for _, typ := range slices.Sorted(maps.Keys(mainOnly)) {
+		if mainOnly[typ] == "" {
+			problems = append(problems, fmt.Sprintf("the entry %s of authConfigMainOnlyFixtures has no reason", typ))
+		}
+		if constants[typ] {
+			problems = append(problems, fmt.Sprintf("the golden has an auth config struct for %s now: remove its entry from authConfigMainOnlyFixtures", typ))
+		}
+	}
+	return problems
+}
+
+// TestRancherAPIFieldsAuthConfigFixturesAreKnown asserts every fixture type is
+// the type of an auth config struct of the golden or is in
+// authConfigMainOnlyFixtures with a reason. A mistyped fixture type, or a
+// fixture for a type Rancher dropped, fails the test.
+func TestRancherAPIFieldsAuthConfigFixturesAreKnown(t *testing.T) {
+	t.Parallel()
+	g := loadRancherAPIFields(t)
+	require.NotEmpty(t, g.AuthConfigTypes)
+	fixtureTypes := authConfigFixtureTypes(t)
+	require.NotEmpty(t, fixtureTypes)
+	assert.Empty(t, checkAuthConfigFixtureTypes(g, fixtureTypes, authConfigMainOnlyFixtures))
+
+	for _, tc := range []struct {
+		name         string
+		fixtureTypes map[string]bool
+		mainOnly     map[string]string
+		want         string
+	}{
+		{"a mistyped fixture type", map[string]bool{"githubConfg": true}, nil, "the golden has no auth config struct for the fixture type githubConfg"},
+		{"the entry for a type the golden lacks is removed", fixtureTypes, map[string]string{}, "the golden has no auth config struct for the fixture type genericSAMLConfig"},
+		{"an entry with no reason", fixtureTypes, map[string]string{"genericSAMLConfig": ""}, "the entry genericSAMLConfig of authConfigMainOnlyFixtures has no reason"},
+		{"an entry for a type the golden has now", fixtureTypes, map[string]string{"genericSAMLConfig": "a reason", "githubConfig": "a reason"}, "the golden has an auth config struct for githubConfig now"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			problems := checkAuthConfigFixtureTypes(g, tc.fixtureTypes, tc.mainOnly)
+			require.NotEmpty(t, problems)
+			assert.Contains(t, strings.Join(problems, "\n"), tc.want)
+		})
+	}
+}
+
+// TestRancherAPIFieldsAuthConfigSecretsAreHidden asserts the golden's auth
+// config sections against the authconfig row: every struct that embeds
+// AuthConfig has a client type constant and a fixture in
+// internal/engine/kinds/testdata/authconfig-fixtures.json unless the exclusion
+// list names it with a reason, every password-tagged field and every entry of
+// Rancher's secret field lists is hidden by the row's own redaction, and every
+// type those lists name is one of the golden's types.
+func TestRancherAPIFieldsAuthConfigSecretsAreHidden(t *testing.T) {
+	t.Parallel()
+	g := loadRancherAPIFields(t)
+	require.NotEmpty(t, g.AuthConfigTypes)
+	require.NotEmpty(t, g.AuthConfigPasswordFields)
+	require.NotEmpty(t, g.AuthConfigSecretFields)
+	assert.Empty(t, checkAuthConfigGolden(g, authConfigFixtureTypes(t), authConfigExcludedStructs, authConfigCovers(t)), "run make rancher-api-fields-update")
+}
+
+// TestRancherAPIFieldsAuthConfigMutations asserts the auth config check fails
+// for each change to an otherwise passing golden or exclusion list.
+func TestRancherAPIFieldsAuthConfigMutations(t *testing.T) {
+	t.Parallel()
+	good := loadRancherAPIFields(t)
+	fixtureTypes := authConfigFixtureTypes(t)
+	covers := authConfigCovers(t)
+	require.Empty(t, checkAuthConfigGolden(good, fixtureTypes, authConfigExcludedStructs, covers))
+
+	clone := func(t *testing.T) rancherAPIFields {
+		t.Helper()
+		raw, err := json.Marshal(good)
+		require.NoError(t, err)
+		var g rancherAPIFields
+		require.NoError(t, json.Unmarshal(raw, &g))
+		return g
+	}
+	both := []string{"community", "prime"}
+	cases := []struct {
+		name   string
+		mutate func(g *rancherAPIFields, excluded map[string]string)
+		want   string
+	}{
+		{"a new type with a constant that has no fixture", func(g *rancherAPIFields, _ map[string]string) {
+			g.AuthConfigTypes = append(g.AuthConfigTypes, struct {
+				Struct   string   `json:"struct"`
+				Constant string   `json:"constant"`
+				Editions []string `json:"editions"`
+			}{"NewProviderConfig", "newProviderConfig", both})
+		}, "has no fixture"},
+		{"a new type with no constant", func(g *rancherAPIFields, _ map[string]string) {
+			g.AuthConfigTypes = append(g.AuthConfigTypes, struct {
+				Struct   string   `json:"struct"`
+				Constant string   `json:"constant"`
+				Editions []string `json:"editions"`
+			}{"NewProviderConfig", "", both})
+		}, "has no client type constant"},
+		{"a new password field that no hidden path of the row covers", func(g *rancherAPIFields, _ map[string]string) {
+			g.AuthConfigPasswordFields = append(g.AuthConfigPasswordFields, struct {
+				Struct   string   `json:"struct"`
+				Path     string   `json:"path"`
+				Editions []string `json:"editions"`
+			}{"OKTAConfig", "openLdapConfig.bindSecret", both})
+		}, "is not hidden by the authconfig row"},
+		{"a nested password field covered only by its last segment", func(g *rancherAPIFields, _ map[string]string) {
+			g.AuthConfigPasswordFields = append(g.AuthConfigPasswordFields, struct {
+				Struct   string   `json:"struct"`
+				Path     string   `json:"path"`
+				Editions []string `json:"editions"`
+			}{"OKTAConfig", "ldap.serviceAccountPassword", both})
+		}, "is not hidden by the authconfig row"},
+		{"a new secret field entry that no path covers", func(g *rancherAPIFields, _ map[string]string) {
+			g.AuthConfigSecretFields = append(g.AuthConfigSecretFields, struct {
+				Type     string   `json:"type"`
+				Path     string   `json:"path"`
+				Editions []string `json:"editions"`
+			}{"githubConfig", "webhookSecret", both})
+		}, "the secret field webhookSecret of githubConfig is not hidden"},
+		{"a secret field entry for a type the golden lacks", func(g *rancherAPIFields, _ map[string]string) {
+			g.AuthConfigTypes = slices.DeleteFunc(g.AuthConfigTypes, func(t struct {
+				Struct   string   `json:"struct"`
+				Constant string   `json:"constant"`
+				Editions []string `json:"editions"`
+			}) bool {
+				return t.Struct == "OKTAConfig" || t.Struct == "ShibbolethConfig"
+			})
+		}, "names a type that is not in the golden's per-type section"},
+		{"an exclusion without a reason", func(_ *rancherAPIFields, excluded map[string]string) {
+			excluded["LdapConfig"] = ""
+		}, "the exclusion of LdapConfig has no reason"},
+		{"an exclusion removed", func(_ *rancherAPIFields, excluded map[string]string) {
+			delete(excluded, "SamlConfig")
+		}, "has no client type constant and is not in the exclusion list"},
+		{"an exclusion that names no struct of the golden", func(_ *rancherAPIFields, excluded map[string]string) {
+			excluded["GoneConfig"] = "a base struct"
+		}, "which is not an auth config struct of the golden"},
+		{"a type with no edition", func(g *rancherAPIFields, _ map[string]string) {
+			g.AuthConfigTypes[0].Editions = nil
+		}, "names no edition"},
+		{"a client pseudo-version of another commit", func(g *rancherAPIFields, _ map[string]string) {
+			o := g.Oracles["community"]
+			o.ClientPseudoVersion = "v0.0.0-20260101000000-aaaaaaaaaaaa"
+			g.Oracles["community"] = o
+		}, "client pseudo-version"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g := clone(t)
+			excluded := maps.Clone(authConfigExcludedStructs)
+			tc.mutate(&g, excluded)
+			problems := checkAuthConfigGolden(g, fixtureTypes, excluded, covers)
+			require.NotEmpty(t, problems)
+			assert.Contains(t, strings.Join(problems, "\n"), tc.want)
+		})
+	}
+}

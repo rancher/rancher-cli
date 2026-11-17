@@ -57,6 +57,21 @@ type Redaction struct {
 	// secretNames are top-level field names of a machine config kind, each
 	// hiding the field and everything under it.
 	secretNames []string
+	// references hides every string value that IsReference reports true for,
+	// wherever it sits in the object (Kind.RedactReferences).
+	references bool
+}
+
+// referencePrefix starts a string value that names a Secret Rancher moved a
+// credential into: "cattle-global-data:<name>". The match is case-sensitive.
+const referencePrefix = "cattle-global-data:"
+
+// IsReference reports whether v is a string that starts with exactly
+// "cattle-global-data:". Any other value, including a string that holds the
+// prefix in another letter case or inside longer text, is not a reference.
+func IsReference(v any) bool {
+	s, ok := v.(string)
+	return ok && strings.HasPrefix(s, referencePrefix)
 }
 
 // Redaction returns the redaction of the registered row with this kind's
@@ -77,6 +92,7 @@ func (k Kind) Redaction() Redaction {
 		built:      true,
 		secretData: row.Sensitive,
 		paths:      slices.Clone(row.RedactPaths),
+		references: row.RedactReferences,
 	}
 	if row.GVR.Group == MachineConfigGroup {
 		if f, ok := MachineConfigFieldsFor(row.Name); ok {
@@ -127,10 +143,15 @@ func (r Redaction) IsZero() bool { return !r.built }
 // GVR is the resource the redaction was built for.
 func (r Redaction) GVR() schema.GroupVersionResource { return r.gvr }
 
-// Hides reports whether the redaction hides any path.
+// Hides reports whether the redaction hides any path or any reference.
 func (r Redaction) Hides() bool {
-	return r.secretData || len(r.paths) > 0 || len(r.secretNames) > 0
+	return r.secretData || len(r.paths) > 0 || len(r.secretNames) > 0 || r.references
 }
+
+// HidesReferences reports whether the redaction hides every string value for
+// which IsReference is true, at any depth. Covers is path-only and does not
+// report them.
+func (r Redaction) HidesReferences() bool { return r.references }
 
 // Covers reports whether the value at the object path keys is hidden: the
 // path is a hidden path or lies under one. Names are compared ignoring case.

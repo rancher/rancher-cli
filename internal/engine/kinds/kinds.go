@@ -211,6 +211,18 @@ type Kind struct {
 	// an object path. {"spec", "targets", "*", "helm", "values"} hides the
 	// values of every target.
 	RedactPaths [][]string
+	// RedactReferences hides every string value that starts with exactly
+	// "cattle-global-data:" (case-sensitive, colon included). It hides the
+	// value wherever it sits in the object, in get output in every format and
+	// in table cells. Rancher stores such a string, the namespace and name of a
+	// Secret, in a field whose value it moved into that Secret. This package
+	// calls it a reference. Map keys, numbers, booleans and null are never
+	// tested; a value with the prefix in another letter case, or a reference
+	// inside longer text, is shown. A --wait or --for message prints the
+	// condition message or status.transitioningMessage the server sent, and
+	// RedactReferences does not apply to it. A row with ServerTable cannot set
+	// it.
+	RedactReferences bool
 	// NoCreateViaManifest, when non-empty, prevents `create resource` from
 	// accepting a manifest whose resolved kind matches this row. The value is
 	// surfaced as the error hint. Use it for kinds whose creation must go
@@ -863,6 +875,48 @@ var table = []Kind{
 		},
 	},
 	{
+		// On Rancher v2.16 a client names an auth config with the configName it
+		// sends when it configures an auth provider, which makes TYPE the only
+		// column that always says which auth provider it is. No column reads a
+		// field that holds a credential. RedactPaths lists the credential
+		// fields of every auth provider type (a path a type lacks matches
+		// nothing); RedactReferences hides a reference to a Secret in any other
+		// field.
+		Key: "authconfig", Name: "authconfig", Aliases: []string{"authconfigs"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "authconfigs"},
+		Policy: NSNone, K8sKind: "AuthConfig", Scope: Management, Deletable: false, Completable: true, Sensitive: true,
+
+		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
+		ArgDesc: "auth config id (the NAME column of `rancher get authconfigs`), not the display name",
+
+		NoPatchReason:       "auth configs are read-only in this CLI for now: Rancher configures, enables and disables auth providers through its own test-and-apply flow, and changing them from the CLI is planned separately",
+		NoDeleteReason:      "deleting an auth config is not supported: in Rancher, deleting one removes none of its users, tokens or role bindings, and disabling an auth provider is planned separately",
+		NoCreateViaManifest: "adding an auth config is not supported: Rancher adds and enables auth providers through its test-and-apply flow, which the CLI does not run yet",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		RedactPaths: [][]string{
+			{"clientSecret"},
+			{"privateKey"},
+			{"applicationSecret"},
+			{"serviceAccountPassword"},
+			{"spKey"},
+			{"oauthCredential"},
+			{"serviceAccountCredential"},
+			{"additionalClientIds"},
+			{"openLdapConfig", "serviceAccountPassword"},
+		},
+		RedactReferences: true,
+		Columns: []Column{
+			{Header: "TYPE", Path: []string{"type"}},
+			{Header: "ENABLED", Path: []string{"enabled"}, Bool: true},
+			{Header: "ACCESS-MODE", Path: []string{"accessMode"}},
+			{Header: "ALLOWED-PRINCIPALS", Count: []string{"allowedPrincipalIds"}},
+			{Header: "CLEANUP", Path: []string{"metadata", "annotations", "management.cattle.io/auth-provider-cleanup"}},
+			{Header: "DISPLAY NAME", Path: []string{"displayName"}, Wide: true},
+			{Header: "DESCRIPTION", Path: []string{"metadata", "annotations", "field.cattle.io/description"}, Wide: true},
+		},
+		GetDesc: "Auth configs of the Rancher server. Before v2.16, Rancher keeps one for every auth provider it supports, most of them disabled and never configured. From v2.16 it keeps the local auth config and the ones that were configured. ENABLED says whether users can log in with an auth config; ACCESS-MODE and its Authorized Users & Groups say who (an empty mode means any user the provider authenticates). CLEANUP is Rancher's management.cattle.io/auth-provider-cleanup annotation: when a disabled auth config's annotation is unlocked, Rancher deletes its users, tokens and role bindings. Fields that hold credentials are never shown.",
+	},
+	{
 		Key: "roletemplate", Name: "roletemplate", Aliases: []string{"roletemplates"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "roletemplates"},
 		Policy: NSNone, K8sKind: "RoleTemplate", Scope: Management, Deletable: false, Completable: true, Sensitive: true,
@@ -1403,6 +1457,12 @@ func validateKinds(ts []Kind) error {
 			if len(k.RedactPaths) > 0 {
 				return fmt.Errorf("kind %q sets ServerTable together with RedactPaths (the server's table is shown as it is)", k.Key)
 			}
+			if k.RedactReferences {
+				return fmt.Errorf("kind %q sets ServerTable together with RedactReferences (the server's table is shown as it is)", k.Key)
+			}
+		}
+		if k.RedactReferences && (k.NoPatchReason == "" || k.NoCreateViaManifest == "") {
+			return fmt.Errorf("kind %q sets RedactReferences and must also set NoPatchReason and NoCreateViaManifest (the diff in a write preview does not hide references)", k.Key)
 		}
 		if k.CreateWarning != "" && k.NoCreateViaManifest != "" {
 			return fmt.Errorf("kind %q sets CreateWarning together with NoCreateViaManifest (a refused create shows no warning)", k.Key)

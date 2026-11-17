@@ -373,3 +373,37 @@ func TestCheckRedactionRefusesAReadRedaction(t *testing.T) {
 	require.ErrorContains(t, err, "uses the redaction for reads")
 	assert.Empty(t, client.dryRuns, "no request before the refusal")
 }
+
+// TestCheckRedactionRefusesAReferenceHidingRedaction asserts a create or an
+// update preview cannot be built from the redaction of a row that hides
+// references, because the diff does not hide them, and that the refusal comes
+// before any request. A redaction that hides only paths is accepted.
+func TestCheckRedactionRefusesAReferenceHidingRedaction(t *testing.T) {
+	t.Parallel()
+	authconfig, ok := kinds.ByKey("authconfig")
+	require.True(t, ok)
+	r := authconfig.Redaction()
+	require.True(t, r.HidesReferences())
+
+	for _, action := range []string{"create", "update"} {
+		require.ErrorContains(t, checkRedaction(authconfig.GVR, r, action), "internal error: "+action+" preview of authconfigs uses a redaction that hides references")
+	}
+	secret, ok := kinds.ByKey("secret")
+	require.True(t, ok)
+	require.False(t, secret.Redaction().HidesReferences())
+	require.NoError(t, checkRedaction(secret.GVR, secret.Redaction(), "create"))
+
+	client := &obsClient{}
+	obj := newObj(map[string]any{"metadata": map[string]any{"name": "github"}})
+	_, _, _, err := PlanCreateObserved(t.Context(), client, authconfig.GVR, "", obj, r, "local", "authconfig", "AuthConfig", false)
+	require.ErrorContains(t, err, "hides references")
+	_, _, err = PlanCreate(t.Context(), client, authconfig.GVR, "", obj, r, "local", "authconfig", "AuthConfig", false)
+	require.ErrorContains(t, err, "hides references")
+	_, _, _, err = PlanUpdateObserved(t.Context(), client, authconfig.GVR, "", obj, r, "local", "authconfig", "AuthConfig", nil, false)
+	require.ErrorContains(t, err, "hides references")
+	_, _, err = PlanUpdate(t.Context(), client, authconfig.GVR, "", obj, r, "local", "authconfig", "AuthConfig", nil, false)
+	require.ErrorContains(t, err, "hides references")
+	_, err = CreateDiff(authconfig.GVR, obj.Object, r)
+	require.ErrorContains(t, err, "hides references")
+	assert.Empty(t, client.dryRuns, "no request before the refusal")
+}

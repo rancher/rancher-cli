@@ -58,6 +58,7 @@ var refusalExemptions = map[string]refusalExemption{
 	"patch app":                      {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher creates and manages app objects from the Helm release", nil},
 	"patch operation":                {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher creates and manages operation objects", nil},
 	"patch etcd-snapshot":            {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher creates and manages etcd snapshot objects from the snapshot files", nil},
+	"patch authconfig":               {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: auth configs are read-only in this CLI for now", nil},
 	"auth logout": {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 0, localDeletionReason,
 		map[int]int{http.StatusUnauthorized: 3, http.StatusForbidden: 2}},
 	"config delete-server": {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 0, localDeletionReason,

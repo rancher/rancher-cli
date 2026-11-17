@@ -5,13 +5,15 @@
       "image": "rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b",
       "label": "org.opencontainers.image.revision",
       "commit": "99ab89e90bf1d048f3f7acf7f05b132bf5a23a8e",
-      "pseudoVersion": "v0.0.0-20261029130418-99ab89e90bf1"
+      "pseudoVersion": "v0.0.0-20261029130418-99ab89e90bf1",
+      "clientPseudoVersion": "v0.0.0-20261029130418-99ab89e90bf1"
     },
     "prime": {
       "image": "registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca",
       "label": "org.opencontainers.image.oss.revision",
       "commit": "63d8501ec84950c65d9fb62c1666ef193d468bf5",
-      "pseudoVersion": "v0.0.0-20260826145222-63d8501ec849"
+      "pseudoVersion": "v0.0.0-20260826145222-63d8501ec849",
+      "clientPseudoVersion": "v0.0.0-20260826145222-63d8501ec849"
     }
   },
   "resources": [
@@ -453,6 +455,564 @@
           "prime"
         ]
       }
+    }
+  ],
+  "authConfigTypes": [
+    {
+      "struct": "ADFSConfig",
+      "constant": "adfsConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "ActiveDirectoryConfig",
+      "constant": "activeDirectoryConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "AzureADConfig",
+      "constant": "azureADConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "CognitoConfig",
+      "constant": "cognitoConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "FreeIpaConfig",
+      "constant": "freeIpaConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GenericOIDCConfig",
+      "constant": "genericOIDCConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GithubAppConfig",
+      "constant": "githubAppConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GithubConfig",
+      "constant": "githubConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GoogleOauthConfig",
+      "constant": "googleOauthConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "KeyCloakConfig",
+      "constant": "keyCloakConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "KeyCloakOIDCConfig",
+      "constant": "keyCloakOIDCConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "LdapConfig",
+      "constant": "ldapConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "LocalConfig",
+      "constant": "localConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "OIDCConfig",
+      "constant": "oidcConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "OKTAConfig",
+      "constant": "oktaConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "OpenLdapConfig",
+      "constant": "openLdapConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "PingConfig",
+      "constant": "pingConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "SamlConfig",
+      "constant": "",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "ShibbolethConfig",
+      "constant": "shibbolethConfig",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    }
+  ],
+  "authConfigPasswordFields": [
+    {
+      "struct": "ADFSConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "ActiveDirectoryConfig",
+      "path": "serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "AzureADConfig",
+      "path": "applicationSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "CognitoConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "CognitoConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "FreeIpaConfig",
+      "path": "serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GenericOIDCConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GenericOIDCConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GithubAppConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GithubAppConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GithubConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GoogleOauthConfig",
+      "path": "oauthCredential",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "GoogleOauthConfig",
+      "path": "serviceAccountCredential",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "KeyCloakConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "KeyCloakOIDCConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "KeyCloakOIDCConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "LdapConfig",
+      "path": "serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "OIDCConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "OIDCConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "OKTAConfig",
+      "path": "openLdapConfig.serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "OKTAConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "OpenLdapConfig",
+      "path": "serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "PingConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "SamlConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "ShibbolethConfig",
+      "path": "openLdapConfig.serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "struct": "ShibbolethConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    }
+  ],
+  "authConfigSecretFields": [
+    {
+      "type": "activeDirectoryConfig",
+      "path": "serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "adfsConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "azureADConfig",
+      "path": "applicationSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "cognitoConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "cognitoConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "freeIpaConfig",
+      "path": "serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "genericOIDCConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "genericOIDCConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "githubAppConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "githubAppConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "githubConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "googleOauthConfig",
+      "path": "oauthCredential",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "googleOauthConfig",
+      "path": "serviceAccountCredential",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "keyCloakConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "keyCloakOIDCConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "keyCloakOIDCConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "oidcConfig",
+      "path": "clientSecret",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "oidcConfig",
+      "path": "privateKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "oktaConfig",
+      "path": "openLdapConfig.serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "oktaConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "openLdapConfig",
+      "path": "serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "pingConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "shibbolethConfig",
+      "path": "openLdapConfig.serviceAccountPassword",
+      "editions": [
+        "community",
+        "prime"
+      ]
+    },
+    {
+      "type": "shibbolethConfig",
+      "path": "spKey",
+      "editions": [
+        "community",
+        "prime"
+      ]
     }
   ]
 }

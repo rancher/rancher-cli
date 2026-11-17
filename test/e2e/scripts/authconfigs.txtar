@@ -1,0 +1,129 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj management.cattle.io/v3/authconfigs . local.yaml
+seedobj management.cattle.io/v3/authconfigs . github.yaml
+seedobj management.cattle.io/v3/authconfigs . okta.yaml
+
+# list: the headers and the values of the table.
+exec rancher get authconfig -o table
+stdout 'TYPE'
+stdout 'ENABLED'
+stdout 'ACCESS-MODE'
+stdout 'ALLOWED'
+stdout 'CLEANUP'
+stdout 'localConfig'
+stdout 'githubConfig'
+stdout 'oktaConfig'
+stdout 'rancher-locked'
+stdout 'unlocked'
+stdout 'restricted'
+! stdout 'DISPLAY NAME'
+! stdout 'DESCRIPTION'
+! stdout 'plaintext'
+! stdout 'cattle-global-data'
+
+# wide output adds the display name and the description.
+exec rancher get authconfig -o wide
+stdout 'DISPLAY NAME'
+stdout 'DESCRIPTION'
+stdout 'GitHub EU'
+stdout 'Single sign-on for staff'
+! stdout 'plaintext'
+! stdout 'cattle-global-data'
+
+# one object: the shown fields stay and no credential or reference appears.
+exec rancher get authconfig github -o json
+jsonquery stdout data.type githubConfig
+jsonquery stdout data.enabled true
+jsonquery stdout data.accessMode restricted
+jsonquery stdout data.clientId gh-client-id
+jsonquery stdout data.displayName 'GitHub EU'
+! stdout 'plaintext'
+! stdout 'cattle-global-data'
+! stdout 'clientSecret'
+! stdout 'privateKey'
+! stdout 'additionalClientIds'
+
+exec rancher get authconfig okta -o json
+jsonquery stdout data.type oktaConfig
+jsonquery stdout data.spCert public-sp-cert
+jsonquery stdout data.openLdapConfig.serviceAccountUsername ldap-user
+! stdout 'plaintext'
+! stdout 'serviceAccountPassword'
+! stdout 'spKey'
+
+# the list holds the same objects without the credential values.
+exec rancher get authconfigs -o json
+jsonquery stdout 'data.#' 3
+! stdout 'plaintext'
+! stdout 'cattle-global-data'
+
+# a display name that is no object's name gets the id in the NOT_FOUND message.
+! exec rancher get authconfig 'GitHub EU' -o json
+jsonquery stderr data.error.code NOT_FOUND
+stderr 'is the display name of authconfig github'
+
+# the schema shows patch and create as refused and delete as absent.
+exec rancher schema authconfig -o json
+jsonquery stdout data.verbs.patch.state refused
+jsonquery stdout data.verbs.create.state refused
+jsonquery stdout data.verbs.delete.state absent
+
+# patch, create and delete are refused with VALIDATION before any request: a
+# name that does not exist would return NOT_FOUND if a request were made.
+! exec rancher patch authconfig no-such-auth-config --patch '[{"op":"add","path":"/metadata/labels/x","value":"y"}]' --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher create resource -f missing.yaml --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher delete authconfig no-such-auth-config --apply --yes -o json
+jsonquery stderr data.error.code VALIDATION
+
+-- local.yaml --
+apiVersion: management.cattle.io/v3
+kind: AuthConfig
+metadata:
+  name: local
+  annotations:
+    management.cattle.io/auth-provider-cleanup: rancher-locked
+type: localConfig
+enabled: true
+-- github.yaml --
+apiVersion: management.cattle.io/v3
+kind: AuthConfig
+metadata:
+  name: github
+  annotations:
+    management.cattle.io/auth-provider-cleanup: unlocked
+    field.cattle.io/description: Single sign-on for staff
+type: githubConfig
+enabled: true
+accessMode: restricted
+allowedPrincipalIds:
+  - github_user://1
+  - github_team://2
+displayName: GitHub EU
+clientId: gh-client-id
+clientSecret: cattle-global-data:github-clientsecret
+privateKey: plaintext-private-key
+additionalClientIds:
+  abc: plaintext-additional-secret
+unlistedField: cattle-global-data:github-unlisted
+-- okta.yaml --
+apiVersion: management.cattle.io/v3
+kind: AuthConfig
+metadata:
+  name: okta
+type: oktaConfig
+enabled: false
+spKey: plaintext-sp-key
+spCert: public-sp-cert
+openLdapConfig:
+  serviceAccountUsername: ldap-user
+  serviceAccountPassword: plaintext-ldap-password
+-- missing.yaml --
+apiVersion: management.cattle.io/v3
+kind: AuthConfig
+metadata:
+  name: no-such-auth-config
+type: githubConfig

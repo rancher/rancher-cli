@@ -45,7 +45,70 @@ func ScrubObject(obj map[string]any, r kinds.Redaction) map[string]any {
 		return obj
 	}
 	out, _ := removeCovered(nil, obj, r.Covers)
+	if r.HidesReferences() {
+		if cleaned, changed := removeReferences(out); changed {
+			out, _ = cleaned.(map[string]any)
+		}
+	}
 	return out
+}
+
+// removeReferences returns v without every map entry and list item whose value
+// is a reference (kinds.IsReference), at any depth, and whether anything was
+// removed. Map keys are never tested. It searches maps and lists only, as
+// removeCovered does. v is never modified: the maps and lists on the path to a
+// removed value are copied first, and a value with nothing to remove is
+// returned as it is. The items after a removed list item move up.
+func removeReferences(v any) (any, bool) {
+	switch v := v.(type) {
+	case map[string]any:
+		var out map[string]any
+		for k, child := range v {
+			if kinds.IsReference(child) {
+				if out == nil {
+					out = maps.Clone(v)
+				}
+				delete(out, k)
+				continue
+			}
+			next, changed := removeReferences(child)
+			if !changed {
+				continue
+			}
+			if out == nil {
+				out = maps.Clone(v)
+			}
+			out[k] = next
+		}
+		if out == nil {
+			return v, false
+		}
+		return out, true
+	case []any:
+		var out []any
+		for i, item := range v {
+			removed := kinds.IsReference(item)
+			next, changed := item, false
+			if !removed {
+				next, changed = removeReferences(item)
+			}
+			if out == nil {
+				if !removed && !changed {
+					continue
+				}
+				out = make([]any, i, len(v))
+				copy(out, v[:i])
+			}
+			if !removed {
+				out = append(out, next)
+			}
+		}
+		if out == nil {
+			return v, false
+		}
+		return out, true
+	}
+	return v, false
 }
 
 // removeCovered returns m with every entry whose path (keys, extended by the

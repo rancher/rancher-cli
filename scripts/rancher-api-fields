@@ -25,6 +25,15 @@ set -euo pipefail
 # removed on exit, never in this repository: a go.mod or go.sum here that
 # named it would make manifest scanners (trivy fs, osv-scanner, Dependabot)
 # report every advisory of its dependency tree against this repository.
+# The auth config secret check reads three more things from the same commits:
+# the struct types of pkg/apis management.cattle.io/v3 that embed AuthConfig
+# (found by parsing the package, so a type Rancher adds appears in the
+# golden), the string constants of pkg/client/generated/management/v3 that
+# name them, the fields their structs tag norman "type=password", and the
+# entries of TypeToFields and SubTypeToFields in pkg/auth/api/secrets/fields.go
+# of the root module. pkg/client is its own module and is downloaded at the
+# pseudo-version of the same commit. Everything is parsed with go/parser and
+# never compiled.
 # Needs network access to the Go module proxy on a cold module cache, and to
 # the registries of the two images.
 
@@ -40,6 +49,7 @@ set -euo pipefail
 # output of docker buildx imagetools inspect --format '{{json .Image}}'.
 module="github.com/rancher/rancher/pkg/apis"
 root_module="github.com/rancher/rancher"
+client_module="github.com/rancher/rancher/pkg/client"
 
 cd "$(dirname "$0")/.."
 GOLDEN="internal/cli/testdata/rancher-api-fields.golden.json"
@@ -130,25 +140,26 @@ read_commit() {
   printf -v "$3" '%s' "$commit"
 }
 
-# resolve_version sets the variable named by its second argument to the
-# pkg/apis pseudo-version of the commit, which is 40 lowercase hex digits.
-# It runs in the script's own shell, not in a command substitution, where
-# bash would ignore set -e; every step that can fail is checked and stops
+# resolve_version sets the variable named by its second argument to a
+# pseudo-version. The module is the one named by its third argument (pkg/apis
+# when there is none); the commit is its first argument (40 lowercase hex
+# digits). It runs in the script's own shell, not in a command substitution,
+# where bash would ignore set -e; every step that can fail is checked and stops
 # the script with a message.
 resolve_version() {
-  local commit=$1 info version
+  local commit=$1 info version mod=${3:-$module}
   if [ ! -f "$work/resolve/go.mod" ]; then
     mkdir -p "$work/resolve"
     (cd "$work/resolve" && run "creating the module that resolves versions" go mod init rancherapifieldsresolve)
   fi
-  if ! info=$(cd "$work/resolve" && go list -m -json "$module@$commit" 2>&1); then
-    echo "error: cannot resolve $module at commit $commit:" >&2
+  if ! info=$(cd "$work/resolve" && go list -m -json "$mod@$commit" 2>&1); then
+    echo "error: cannot resolve $mod at commit $commit:" >&2
     echo "$info" >&2
     exit 1
   fi
   version=$(sed -n 's/^[[:space:]]*"Version": "\(.*\)",$/\1/p' <<<"$info")
   if [ -z "$version" ] || [ "${version##*-}" != "${commit:0:12}" ]; then
-    echo "error: the module proxy named \"$version\" for $module at commit $commit:" >&2
+    echo "error: the module proxy named \"$version\" for $mod at commit $commit:" >&2
     echo "$info" >&2
     exit 1
   fi
@@ -158,7 +169,7 @@ resolve_version() {
 # vendor directory, and may update their own go.mod freely.
 export GOWORK=off GOFLAGS=-mod=mod
 
-mkdir -p "$work/extract" "$work/merge" "$work/labels" "$work/catalog"
+mkdir -p "$work/extract" "$work/merge" "$work/labels" "$work/catalog" "$work/authconfig"
 cat >"$work/labels/main.go" <<'GOEOF'
 // Command labels prints the commit an oracle image names in one label. It
 // reads the output of docker buildx imagetools inspect --format
@@ -486,6 +497,516 @@ GOEOF
   run "building the catalog reader" go build -o catalog .
 )
 
+cat >"$work/authconfig/main.go" <<'EOF'
+// Command authconfig prints, as JSON, what the auth config secret check needs
+// from three downloaded modules: github.com/rancher/rancher/pkg/apis,
+// github.com/rancher/rancher/pkg/client and github.com/rancher/rancher. It
+// takes the output file of go mod download -json, the module path and the
+// version of each, in that order. The files are parsed, never compiled.
+//
+// types lists every struct of pkg/apis management.cattle.io/v3 that embeds
+// AuthConfig, directly or through other embedded structs. Each comes with the
+// string constant of the client package whose name is the struct name followed
+// by "Type", ignoring case (empty when there is none). An embedded field is
+// anonymous with an empty json name, the rule encoding/json follows; an
+// anonymous field with a json name is a named field.
+//
+// passwords lists, for each such struct, the json path of every field with a
+// norman "type=password" tag, descending into embedded structs and into named
+// fields of a struct type of the same package (an openLdapConfig field gives
+// openLdapConfig.serviceAccountPassword).
+//
+// secrets lists the entries of TypeToFields and SubTypeToFields in
+// pkg/auth/api/secrets/fields.go: the auth config type and the json path of
+// each secret field, with every selector resolved from the string constants
+// of pkg/client/generated/management/v3.
+package main
+
+import (
+	"cmp"
+	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"maps"
+	"os"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+)
+
+const (
+	apisPackage    = "management.cattle.io/v3"
+	clientPackage  = "generated/management/v3"
+	clientImport   = "github.com/rancher/rancher/pkg/client/generated/management/v3"
+	secretsFile    = "pkg/auth/api/secrets/fields.go"
+	baseStruct     = "AuthConfig"
+	passwordMarker = "type=password"
+)
+
+type download struct {
+	Path    string
+	Version string
+	Dir     string
+	Error   string
+}
+
+type typeEntry struct {
+	Struct   string `json:"struct"`
+	Constant string `json:"constant"`
+}
+
+type passwordEntry struct {
+	Struct string `json:"struct"`
+	Path   string `json:"path"`
+}
+
+type secretEntry struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+type output struct {
+	Types     []typeEntry     `json:"types"`
+	Passwords []passwordEntry `json:"passwords"`
+	Secrets   []secretEntry   `json:"secrets"`
+}
+
+func main() {
+	out, err := run(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func moduleDir(file, path, version string) (string, error) {
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return "", err
+	}
+	var d download
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return "", fmt.Errorf("cannot parse the output of go mod download for %s: %w", path, err)
+	}
+	if d.Error != "" {
+		return "", fmt.Errorf("go mod download %s: %s", path, d.Error)
+	}
+	if d.Path != path || d.Version != version {
+		return "", fmt.Errorf("go mod download returned %s@%s, want %s@%s", d.Path, d.Version, path, version)
+	}
+	if d.Dir == "" {
+		return "", fmt.Errorf("go mod download reported no directory for %s@%s", path, version)
+	}
+	return d.Dir, nil
+}
+
+func parseDir(dir string) ([]*ast.File, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var files []*ast.File
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no Go files in %s", dir)
+	}
+	return files, nil
+}
+
+func run(args []string) (*output, error) {
+	if len(args) != 9 {
+		return nil, fmt.Errorf("want the download file, module path and version of pkg/apis, pkg/client and the root module")
+	}
+	apisDir, err := moduleDir(args[0], args[1], args[2])
+	if err != nil {
+		return nil, err
+	}
+	clientDir, err := moduleDir(args[3], args[4], args[5])
+	if err != nil {
+		return nil, err
+	}
+	rootDir, err := moduleDir(args[6], args[7], args[8])
+	if err != nil {
+		return nil, err
+	}
+	apisFiles, err := parseDir(filepath.Join(apisDir, filepath.FromSlash(apisPackage)))
+	if err != nil {
+		return nil, err
+	}
+	clientFiles, err := parseDir(filepath.Join(clientDir, filepath.FromSlash(clientPackage)))
+	if err != nil {
+		return nil, err
+	}
+	structs := map[string]*ast.StructType{}
+	for _, f := range apisFiles {
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				ts := spec.(*ast.TypeSpec)
+				if st, ok := ts.Type.(*ast.StructType); ok {
+					structs[ts.Name.Name] = st
+				}
+			}
+		}
+	}
+	if structs[baseStruct] == nil {
+		return nil, fmt.Errorf("no struct type %s in %s", baseStruct, apisPackage)
+	}
+	consts := map[string]string{}
+	byLower := map[string]string{}
+	for _, f := range clientFiles {
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				vs := spec.(*ast.ValueSpec)
+				for i, n := range vs.Names {
+					if i >= len(vs.Values) {
+						continue
+					}
+					lit, ok := vs.Values[i].(*ast.BasicLit)
+					if !ok || lit.Kind != token.STRING {
+						continue
+					}
+					v, err := strconv.Unquote(lit.Value)
+					if err != nil {
+						return nil, err
+					}
+					consts[n.Name] = v
+					byLower[strings.ToLower(n.Name)] = v
+				}
+			}
+		}
+	}
+
+	out := &output{}
+	memo := map[string]bool{}
+	var names []string
+	for name := range structs {
+		if name != baseStruct && embedsBase(structs, name, memo, nil) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		out.Types = append(out.Types, typeEntry{Struct: name, Constant: byLower[strings.ToLower(name+"Type")]})
+		paths := map[string]bool{}
+		if err := walkPasswords(structs, name, "", nil, paths); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		for _, p := range slices.Sorted(maps.Keys(paths)) {
+			out.Passwords = append(out.Passwords, passwordEntry{Struct: name, Path: p})
+		}
+	}
+
+	secrets, err := readSecrets(filepath.Join(rootDir, filepath.FromSlash(secretsFile)), consts)
+	if err != nil {
+		return nil, err
+	}
+	out.Secrets = secrets
+	return out, nil
+}
+
+// jsonName returns the json name of a field and whether encoding/json skips it.
+func jsonName(f *ast.Field) (string, bool, error) {
+	if f.Tag == nil {
+		return "", false, nil
+	}
+	unquoted, err := strconv.Unquote(f.Tag.Value)
+	if err != nil {
+		return "", false, err
+	}
+	tag := reflect.StructTag(unquoted).Get("json")
+	if tag == "-" {
+		return "", true, nil
+	}
+	name, _, _ := strings.Cut(tag, ",")
+	return name, false, nil
+}
+
+func normanPassword(f *ast.Field) (bool, error) {
+	if f.Tag == nil {
+		return false, nil
+	}
+	unquoted, err := strconv.Unquote(f.Tag.Value)
+	if err != nil {
+		return false, err
+	}
+	for part := range strings.SplitSeq(reflect.StructTag(unquoted).Get("norman"), ",") {
+		if part == passwordMarker {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// sameName returns the name that a field's type expression gives, following a
+// pointer, and false for any other expression. The callers look the name up
+// among the structs of the package. It does not follow a slice or a map. A
+// password field in a struct that a field holds only in a slice or a map is
+// therefore never walked.
+func sameName(expr ast.Expr) (string, bool) {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e.Name, true
+	case *ast.StarExpr:
+		return sameName(e.X)
+	}
+	return "", false
+}
+
+func embedsBase(structs map[string]*ast.StructType, name string, memo map[string]bool, path []string) bool {
+	if v, ok := memo[name]; ok {
+		return v
+	}
+	if slices.Contains(path, name) {
+		return false
+	}
+	path = append(path, name)
+	st := structs[name]
+	found := false
+	if st != nil {
+		for _, f := range st.Fields.List {
+			if len(f.Names) != 0 {
+				continue
+			}
+			jn, skip, err := jsonName(f)
+			if err != nil || skip || jn != "" {
+				continue
+			}
+			embedded, ok := sameName(f.Type)
+			if !ok {
+				continue
+			}
+			if embedded == baseStruct || embedsBase(structs, embedded, memo, path) {
+				found = true
+				break
+			}
+		}
+	}
+	memo[name] = found
+	return found
+}
+
+func walkPasswords(structs map[string]*ast.StructType, name, prefix string, path []string, out map[string]bool) error {
+	st, ok := structs[name]
+	if !ok {
+		return nil
+	}
+	if slices.Contains(path, name) {
+		return nil
+	}
+	path = append(path, name)
+	for _, f := range st.Fields.List {
+		jn, skip, err := jsonName(f)
+		if err != nil {
+			return err
+		}
+		if skip {
+			continue
+		}
+		password, err := normanPassword(f)
+		if err != nil {
+			return err
+		}
+		typeName, same := sameName(f.Type)
+		if len(f.Names) == 0 {
+			if !same {
+				continue
+			}
+			if jn == "" {
+				if err := walkPasswords(structs, typeName, prefix, path, out); err != nil {
+					return err
+				}
+				continue
+			}
+			if password {
+				out[prefix+jn] = true
+			}
+			if err := walkPasswords(structs, typeName, prefix+jn+".", path, out); err != nil {
+				return err
+			}
+			continue
+		}
+		for _, n := range f.Names {
+			if !n.IsExported() {
+				continue
+			}
+			field := jn
+			if field == "" {
+				field = n.Name
+			}
+			if password {
+				out[prefix+field] = true
+			}
+			if same {
+				if err := walkPasswords(structs, typeName, prefix+field+".", path, out); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func readSecrets(path string, consts map[string]string) ([]secretEntry, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	alias := "client"
+	for _, imp := range file.Imports {
+		p, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			return nil, err
+		}
+		if p == clientImport && imp.Name != nil {
+			alias = imp.Name.Name
+		}
+	}
+	resolve := func(expr ast.Expr) (string, error) {
+		switch e := expr.(type) {
+		case *ast.BasicLit:
+			if e.Kind == token.STRING {
+				return strconv.Unquote(e.Value)
+			}
+		case *ast.SelectorExpr:
+			if x, ok := e.X.(*ast.Ident); ok && x.Name == alias {
+				if v, ok := consts[e.Sel.Name]; ok {
+					return v, nil
+				}
+				return "", fmt.Errorf("the constant %s.%s is not in %s", alias, e.Sel.Name, clientImport)
+			}
+		}
+		return "", fmt.Errorf("an expression in %s is neither a string nor a constant of %s", secretsFile, clientImport)
+	}
+	vars := map[string]*ast.CompositeLit{}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs := spec.(*ast.ValueSpec)
+			for i, n := range vs.Names {
+				if i < len(vs.Values) {
+					if lit, ok := vs.Values[i].(*ast.CompositeLit); ok {
+						vars[n.Name] = lit
+					}
+				}
+			}
+		}
+	}
+	list := func(expr ast.Expr) ([]string, error) {
+		lit, ok := expr.(*ast.CompositeLit)
+		if !ok {
+			return nil, fmt.Errorf("a secret field list in %s is not a composite literal", secretsFile)
+		}
+		var out []string
+		for _, e := range lit.Elts {
+			v, err := resolve(e)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, v)
+		}
+		return out, nil
+	}
+	var out []secretEntry
+	typeToFields, ok := vars["TypeToFields"]
+	if !ok {
+		return nil, fmt.Errorf("no TypeToFields in %s", secretsFile)
+	}
+	for _, e := range typeToFields.Elts {
+		kv, ok := e.(*ast.KeyValueExpr)
+		if !ok {
+			return nil, fmt.Errorf("an entry of TypeToFields is not a key and a value")
+		}
+		typ, err := resolve(kv.Key)
+		if err != nil {
+			return nil, err
+		}
+		fields, err := list(kv.Value)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range fields {
+			out = append(out, secretEntry{Type: typ, Path: f})
+		}
+	}
+	subTypeToFields, ok := vars["SubTypeToFields"]
+	if !ok {
+		return nil, fmt.Errorf("no SubTypeToFields in %s", secretsFile)
+	}
+	for _, e := range subTypeToFields.Elts {
+		kv, ok := e.(*ast.KeyValueExpr)
+		if !ok {
+			return nil, fmt.Errorf("an entry of SubTypeToFields is not a key and a value")
+		}
+		typ, err := resolve(kv.Key)
+		if err != nil {
+			return nil, err
+		}
+		inner, ok := kv.Value.(*ast.CompositeLit)
+		if !ok {
+			return nil, fmt.Errorf("an entry of SubTypeToFields holds no map")
+		}
+		for _, ie := range inner.Elts {
+			ikv, ok := ie.(*ast.KeyValueExpr)
+			if !ok {
+				return nil, fmt.Errorf("a nested entry of SubTypeToFields is not a key and a value")
+			}
+			parent, err := resolve(ikv.Key)
+			if err != nil {
+				return nil, err
+			}
+			fields, err := list(ikv.Value)
+			if err != nil {
+				return nil, err
+			}
+			for _, f := range fields {
+				out = append(out, secretEntry{Type: typ, Path: parent + "." + f})
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b secretEntry) int {
+		return cmp.Or(cmp.Compare(a.Type, b.Type), cmp.Compare(a.Path, b.Path))
+	})
+	return out, nil
+}
+EOF
+(
+  cd "$work/authconfig"
+  run "creating the auth config reader module" go mod init rancherapifieldsauthconfig
+  run "building the auth config reader" go build -o authconfig .
+)
+
 cat >"$work/extract/main.go" <<'EOF'
 // Command extract prints, as JSON, the top-level fields of the Rancher API
 // types the bespoke create commands build: one level only, the json names
@@ -598,7 +1119,9 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 )
 
@@ -609,10 +1132,11 @@ type resource struct {
 }
 
 type oracle struct {
-	Image         string `json:"image"`
-	Label         string `json:"label"`
-	Commit        string `json:"commit"`
-	PseudoVersion string `json:"pseudoVersion"`
+	Image                string `json:"image"`
+	Label                string `json:"label"`
+	Commit               string `json:"commit"`
+	PseudoVersion        string `json:"pseudoVersion"`
+	ClientPseudoVersion string `json:"clientPseudoVersion"`
 }
 
 type catalogAction struct {
@@ -631,15 +1155,52 @@ type goldenCatalogAction struct {
 	Fields map[string][]string `json:"fields"`
 }
 
+type authConfigOutput struct {
+	Types []struct {
+		Struct   string `json:"struct"`
+		Constant string `json:"constant"`
+	} `json:"types"`
+	Passwords []struct {
+		Struct string `json:"struct"`
+		Path   string `json:"path"`
+	} `json:"passwords"`
+	Secrets []struct {
+		Type string `json:"type"`
+		Path string `json:"path"`
+	} `json:"secrets"`
+}
+
+type goldenAuthConfigType struct {
+	Struct   string   `json:"struct"`
+	Constant string   `json:"constant"`
+	Editions []string `json:"editions"`
+}
+
+type goldenAuthConfigPassword struct {
+	Struct   string   `json:"struct"`
+	Path     string   `json:"path"`
+	Editions []string `json:"editions"`
+}
+
+type goldenAuthConfigSecret struct {
+	Type     string   `json:"type"`
+	Path     string   `json:"path"`
+	Editions []string `json:"editions"`
+}
+
 type golden struct {
-	Module         string                `json:"module"`
-	Oracles        map[string]oracle     `json:"oracles"`
-	Resources      []goldenResource      `json:"resources"`
-	CatalogActions []goldenCatalogAction `json:"catalogActions"`
+	Module                   string                     `json:"module"`
+	Oracles                  map[string]oracle          `json:"oracles"`
+	Resources                []goldenResource           `json:"resources"`
+	CatalogActions           []goldenCatalogAction      `json:"catalogActions"`
+	AuthConfigTypes          []goldenAuthConfigType     `json:"authConfigTypes"`
+	AuthConfigPasswordFields []goldenAuthConfigPassword `json:"authConfigPasswordFields"`
+	AuthConfigSecretFields   []goldenAuthConfigSecret   `json:"authConfigSecretFields"`
 }
 
 // Arguments: module, then edition image label commit pseudo-version
-// extract-output catalog-output, once per oracle.
+// client-pseudo-version extract-output catalog-output authconfig-output, once
+// per oracle.
 func main() {
 	args := os.Args[1:]
 	g := golden{Module: args[0], Oracles: map[string]oracle{}}
@@ -647,12 +1208,44 @@ func main() {
 	var order []string
 	catalogByType := map[string]*goldenCatalogAction{}
 	var catalogOrder []string
-	if (len(args)-1)%7 != 0 {
-		panic("want the module, then seven arguments per oracle")
+	if (len(args)-1)%9 != 0 {
+		panic("want the module, then nine arguments per oracle")
 	}
-	for i := 1; i < len(args); i += 7 {
-		edition, image, label, commit, version, path, catalogPath := args[i], args[i+1], args[i+2], args[i+3], args[i+4], args[i+5], args[i+6]
-		g.Oracles[edition] = oracle{Image: image, Label: label, Commit: commit, PseudoVersion: version}
+	types := map[string]*goldenAuthConfigType{}
+	passwords := map[string]*goldenAuthConfigPassword{}
+	secrets := map[string]*goldenAuthConfigSecret{}
+	for i := 1; i < len(args); i += 9 {
+		edition, image, label, commit, version, clientVersion, path, catalogPath, authConfigPath := args[i], args[i+1], args[i+2], args[i+3], args[i+4], args[i+5], args[i+6], args[i+7], args[i+8]
+		g.Oracles[edition] = oracle{Image: image, Label: label, Commit: commit, PseudoVersion: version, ClientPseudoVersion: clientVersion}
+		authRaw, err := os.ReadFile(authConfigPath)
+		if err != nil {
+			panic(err)
+		}
+		var ao authConfigOutput
+		if err := json.Unmarshal(authRaw, &ao); err != nil {
+			panic(err)
+		}
+		for _, t := range ao.Types {
+			key := t.Struct + "\x00" + t.Constant
+			if types[key] == nil {
+				types[key] = &goldenAuthConfigType{Struct: t.Struct, Constant: t.Constant}
+			}
+			types[key].Editions = append(types[key].Editions, edition)
+		}
+		for _, p := range ao.Passwords {
+			key := p.Struct + "\x00" + p.Path
+			if passwords[key] == nil {
+				passwords[key] = &goldenAuthConfigPassword{Struct: p.Struct, Path: p.Path}
+			}
+			passwords[key].Editions = append(passwords[key].Editions, edition)
+		}
+		for _, sf := range ao.Secrets {
+			key := sf.Type + "\x00" + sf.Path
+			if secrets[key] == nil {
+				secrets[key] = &goldenAuthConfigSecret{Type: sf.Type, Path: sf.Path}
+			}
+			secrets[key].Editions = append(secrets[key].Editions, edition)
+		}
 		catalogRaw, err := os.ReadFile(catalogPath)
 		if err != nil {
 			panic(err)
@@ -694,6 +1287,18 @@ func main() {
 				gr.Fields[f] = append(gr.Fields[f], edition)
 			}
 		}
+	}
+	for _, key := range slices.Sorted(maps.Keys(types)) {
+		slices.Sort(types[key].Editions)
+		g.AuthConfigTypes = append(g.AuthConfigTypes, *types[key])
+	}
+	for _, key := range slices.Sorted(maps.Keys(passwords)) {
+		slices.Sort(passwords[key].Editions)
+		g.AuthConfigPasswordFields = append(g.AuthConfigPasswordFields, *passwords[key])
+	}
+	for _, key := range slices.Sorted(maps.Keys(secrets)) {
+		slices.Sort(secrets[key].Editions)
+		g.AuthConfigSecretFields = append(g.AuthConfigSecretFields, *secrets[key])
 	}
 	sort.Strings(order)
 	for _, name := range order {
@@ -774,6 +1379,29 @@ catalog_actions() {
     exit 1
   fi
 }
+# auth_config_types downloads the pkg/apis, pkg/client and root modules at the
+# three pseudo-versions and writes what the authconfig reader finds in them to
+# the file named by the fifth argument. It runs in the script's own shell like
+# resolve_version.
+auth_config_types() {
+  local edition=$1 apis=$2 client=$3 root=$4 out=$5 mod version file n=0 args=()
+  for mod in "$module@$apis" "$client_module@$client" "$root_module@$root"; do
+    n=$((n + 1))
+    file="$work/$edition-download-$n.json"
+    if ! (cd "$work/resolve" && go mod download -json "$mod") >"$file" 2>"$work/download.err"; then
+      echo "error: cannot download $mod for the $edition auth config types:" >&2
+      cat "$file" "$work/download.err" >&2
+      exit 1
+    fi
+    args+=("$file" "${mod%@*}" "${mod#*@}")
+  done
+  if ! "$work/authconfig/authconfig" "${args[@]}" >"$out" 2>"$work/authconfig.log"; then
+    echo "error: reading the $edition auth config types failed:" >&2
+    cat "$work/authconfig.log" >&2
+    exit 1
+  fi
+}
+
 pinned_image ORACLE_IMAGE COMMUNITY_IMAGE
 pinned_image PRIME_ORACLE_IMAGE PRIME_IMAGE
 read_commit community "$COMMUNITY_IMAGE" COMMUNITY_COMMIT
@@ -782,17 +1410,21 @@ label_key community COMMUNITY_LABEL
 label_key prime PRIME_LABEL
 resolve_version "$COMMUNITY_COMMIT" COMMUNITY_VERSION
 resolve_version "$PRIME_COMMIT" PRIME_VERSION
+resolve_version "$COMMUNITY_COMMIT" COMMUNITY_CLIENT_VERSION "$client_module"
+resolve_version "$PRIME_COMMIT" PRIME_CLIENT_VERSION "$client_module"
 extract "$COMMUNITY_VERSION" "$work/community.json"
 extract "$PRIME_VERSION" "$work/prime.json"
 catalog_actions community "$COMMUNITY_VERSION" "$work/community-catalog.json"
 catalog_actions prime "$PRIME_VERSION" "$work/prime-catalog.json"
+auth_config_types community "$COMMUNITY_VERSION" "$COMMUNITY_CLIENT_VERSION" "$COMMUNITY_VERSION" "$work/community-authconfig.json"
+auth_config_types prime "$PRIME_VERSION" "$PRIME_CLIENT_VERSION" "$PRIME_VERSION" "$work/prime-authconfig.json"
 
 (
   cd "$work/merge"
   run "creating the merge module" go mod init rancherapifieldsmerge
   if ! go run . "$module" \
-    community "$COMMUNITY_IMAGE" "$COMMUNITY_LABEL" "$COMMUNITY_COMMIT" "$COMMUNITY_VERSION" "$work/community.json" "$work/community-catalog.json" \
-    prime "$PRIME_IMAGE" "$PRIME_LABEL" "$PRIME_COMMIT" "$PRIME_VERSION" "$work/prime.json" "$work/prime-catalog.json" >"$work/golden.json" 2>"$work/merge.log"; then
+    community "$COMMUNITY_IMAGE" "$COMMUNITY_LABEL" "$COMMUNITY_COMMIT" "$COMMUNITY_VERSION" "$COMMUNITY_CLIENT_VERSION" "$work/community.json" "$work/community-catalog.json" "$work/community-authconfig.json" \
+    prime "$PRIME_IMAGE" "$PRIME_LABEL" "$PRIME_COMMIT" "$PRIME_VERSION" "$PRIME_CLIENT_VERSION" "$work/prime.json" "$work/prime-catalog.json" "$work/prime-authconfig.json" >"$work/golden.json" 2>"$work/merge.log"; then
     echo "error: merging the field lists failed:" >&2
     cat "$work/merge.log" >&2
     exit 1

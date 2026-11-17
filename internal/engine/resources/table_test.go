@@ -203,11 +203,54 @@ func TestColumnStringConditionDerived(t *testing.T) {
 			map[string]any{"type": "Ready", "status": status},
 		}}}
 	}
-	assert.Equal(t, "Ready", columnString(obj("True"), col))
-	assert.Equal(t, "NotReady", columnString(obj("False"), col))
-	assert.Equal(t, "Unknown", columnString(obj("Unknown"), col))
-	assert.Equal(t, "", columnString(map[string]any{}, col), "absent condition renders blank, never fabricated")
-	assert.Equal(t, "", columnString(obj(""), col), "degenerate statusless entry renders blank")
+	assert.Equal(t, "Ready", columnString(obj("True"), col, false))
+	assert.Equal(t, "NotReady", columnString(obj("False"), col, false))
+	assert.Equal(t, "Unknown", columnString(obj("Unknown"), col, false))
+	assert.Equal(t, "", columnString(map[string]any{}, col, false), "absent condition renders blank, never fabricated")
+	assert.Equal(t, "", columnString(obj(""), col, false), "degenerate statusless entry renders blank")
+}
+
+// TestColumnStringReferenceMakesTheCellEmpty asserts that, for a row that
+// hides references, a reference at Path or at an AltPaths entry gives an empty
+// cell with no fall-through to another AltPaths entry, the Bool marker's
+// "false" or Default; a plain value still shows; and with the rule off a
+// reference shows as it does for any value.
+func TestColumnStringReferenceMakesTheCellEmpty(t *testing.T) {
+	t.Parallel()
+	ref := "cattle-global-data:github-clientsecret"
+	obj := func(path, alt any) map[string]any {
+		o := map[string]any{}
+		if path != nil {
+			o["a"] = path
+		}
+		if alt != nil {
+			o["b"] = alt
+		}
+		return o
+	}
+	tests := []struct {
+		name string
+		o    map[string]any
+		col  kinds.Column
+		want string
+		off  string
+	}{
+		{"path with a plain alt", obj(ref, "plain"), kinds.Column{Path: []string{"a"}, AltPaths: [][]string{{"b"}}}, "", ref},
+		{"alt reference", obj(nil, ref), kinds.Column{Path: []string{"a"}, AltPaths: [][]string{{"b"}}}, "", ref},
+		{"path with a default", obj(ref, nil), kinds.Column{Path: []string{"a"}, Default: "x"}, "", ref},
+		{"bool column", obj(ref, nil), kinds.Column{Path: []string{"a"}, Bool: true}, "", ref},
+		{"plain value", obj("plain", nil), kinds.Column{Path: []string{"a"}, Default: "x"}, "plain", "plain"},
+		{"plain bool", obj(true, nil), kinds.Column{Path: []string{"a"}, Bool: true}, "true", "true"},
+		{"other case shows", obj("Cattle-Global-Data:x", nil), kinds.Column{Path: []string{"a"}}, "Cattle-Global-Data:x", "Cattle-Global-Data:x"},
+		{"count over a list with a reference", map[string]any{"a": []any{ref, "x"}}, kinds.Column{Count: []string{"a"}}, "2", "2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, columnString(tt.o, tt.col, true))
+			assert.Equal(t, tt.off, columnString(tt.o, tt.col, false), "the rule off shows the value")
+		})
+	}
 }
 
 // TestTableMarshalJSONSingleInvariant drives the real output.Render path (not

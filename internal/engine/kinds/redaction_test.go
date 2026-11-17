@@ -359,3 +359,27 @@ func TestReadRedactionOfAKindThatIsNotARowIsTheZeroValue(t *testing.T) {
 	otherKey.Key = "nosuchkind"
 	assert.True(t, otherKey.ReadRedaction().IsZero())
 }
+
+// TestReferencesOnlyRedactionHidesAndCoversOnlyTheAppliedAnnotations asserts
+// that a redaction which hides only references still reports that it hides
+// something. It covers no path except the two annotations that hold a copy of
+// the applied object. Every redaction that hides anything covers them, because
+// the copy is longer text, in which a reference stays shown.
+func TestReferencesOnlyRedactionHidesAndCoversOnlyTheAppliedAnnotations(t *testing.T) {
+	t.Parallel()
+	r := Redaction{built: true, references: true}
+	assert.True(t, r.HidesReferences())
+	assert.True(t, r.Hides())
+	for _, path := range [][]string{
+		{"spec"}, {"data"}, {"stringData"}, {"clientSecret"},
+		{"metadata", "annotations", "other"}, {"metadata", "annotations"},
+	} {
+		assert.False(t, r.Covers(path), "%v", path)
+	}
+	for _, name := range HiddenAnnotations() {
+		assert.True(t, r.Covers([]string{"metadata", "annotations", name}), name)
+		assert.True(t, r.Covers([]string{"METADATA", "Annotations", strings.ToUpper(name)}), name)
+	}
+	assert.False(t, Redaction{built: true}.Hides())
+	assert.False(t, Redaction{built: true}.HidesReferences())
+}

@@ -99,6 +99,15 @@ func refusalCases() []refusalCase {
 			"etcd-snapshot: patch is not supported - Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them; read it with "+clierr.Rancher+" get 'etcd-snapshot' --namespace 'default'",
 			"--namespace", "default"),
 
+		patchRefusal("authconfig", "authconfig",
+			"authconfig: patch is not supported - auth configs are read-only in this CLI for now: Rancher configures, enables and disables auth providers through its own test-and-apply flow, and changing them from the CLI is planned separately; read it with "+clierr.Rancher+" get 'authconfig'"),
+
+		createRefusal("authconfig", "authconfig", manifestOf("management.cattle.io/v3", "AuthConfig", false),
+			"cannot create an authconfig from a manifest; adding an auth config is not supported: Rancher adds and enables auth providers through its test-and-apply flow, which the CLI does not run yet"),
+
+		deleteRefusal("authconfig", "authconfig",
+			`unknown command "authconfig"; authconfig cannot be deleted - deleting an auth config is not supported: in Rancher, deleting one removes none of its users, tokens or role bindings, and disabling an auth provider is planned separately`),
+
 		createRefusal("clusterrepo", "clusterrepo", manifestOf("catalog.cattle.io/v1", "ClusterRepo", false),
 			"cannot create a clusterrepo from a manifest; this CLI does not add repositories"),
 		createRefusal("app", "app", manifestOf("catalog.cattle.io/v1", "App", true),

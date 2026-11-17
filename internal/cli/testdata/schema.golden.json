@@ -3930,6 +3930,54 @@
     },
     {
       "aliases": [
+        "authconfigs"
+      ],
+      "args": [
+        {
+          "desc": "auth config id (the NAME column of `rancher get authconfigs`), not the display name",
+          "name": "id",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "Auth configs of the Rancher server. Before v2.16, Rancher keeps one for every auth provider it supports, most of them disabled and never configured. From v2.16 it keeps the local auth config and the ones that were configured. ENABLED says whether users can log in with an auth config; ACCESS-MODE and its Authorized Users & Groups say who (an empty mode means any user the provider authenticates). CLEANUP is Rancher's management.cattle.io/auth-provider-cleanup annotation: when a disabled auth config's annotation is unlocked, Rancher deletes its users, tokens and role bindings. Fields that hold credentials are never shown.",
+      "flags": [
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get authconfig",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List authconfigs or show one"
+    },
+    {
+      "aliases": [
         "azureconfigs"
       ],
       "args": [
@@ -8001,6 +8049,59 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Refused: app cannot be patched"
+    },
+    {
+      "aliases": [
+        "authconfigs"
+      ],
+      "args": [
+        {
+          "desc": "auth config id (the NAME column of `rancher get authconfigs`), not the display name",
+          "name": "id",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: auth configs are read-only in this CLI for now: Rancher configures, enables and disables auth providers through its own test-and-apply flow, and changing them from the CLI is planned separately.",
+      "destructive": "true",
+      "flags": [
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch authconfig",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: authconfig cannot be patched"
     },
     {
       "aliases": [
@@ -12836,6 +12937,7 @@
         "get setting",
         "get feature",
         "get user",
+        "get authconfig",
         "get roletemplate",
         "get globalrole",
         "get globalrolebinding",
@@ -12927,6 +13029,7 @@
         "patch setting",
         "patch feature",
         "patch user",
+        "patch authconfig",
         "patch roletemplate",
         "patch globalrole",
         "patch globalrolebinding",
@@ -14083,6 +14186,43 @@
           "contract": "public",
           "stability": "stable",
           "state": "available"
+        }
+      },
+      "version": "v3"
+    },
+    {
+      "aliases": [
+        "authconfigs"
+      ],
+      "completable": true,
+      "group": "management.cattle.io",
+      "key": "authconfig",
+      "name": "authconfig",
+      "namespacePolicy": "none",
+      "resource": "authconfigs",
+      "scope": "management",
+      "sensitive": true,
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "adding an auth config is not supported: Rancher adds and enables auth providers through its test-and-apply flow, which the CLI does not run yet",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "deleting an auth config is not supported: in Rancher, deleting one removes none of its users, tokens or role bindings, and disabling an auth provider is planned separately",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "auth configs are read-only in this CLI for now: Rancher configures, enables and disables auth providers through its own test-and-apply flow, and changing them from the CLI is planned separately",
+          "stability": "beta",
+          "state": "refused"
         }
       },
       "version": "v3"

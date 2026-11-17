@@ -30,6 +30,8 @@ func TestHandleRowsAndTheirDescriptions(t *testing.T) {
 			"global role id (the NAME column of `rancher get globalroles`), not the display name"},
 		"nodedriver": {[]HandleField{specDisplay},
 			"node driver id (the NAME column of `rancher get nodedrivers`), not the display name"},
+		"authconfig": {[]HandleField{display},
+			"auth config id (the NAME column of `rancher get authconfigs`), not the display name"},
 	}
 	got := map[string]bool{}
 	for _, k := range All() {

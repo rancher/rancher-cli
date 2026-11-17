@@ -45,11 +45,11 @@ func redactedSide(v any) any {
 	return Redacted
 }
 
-// checkRedaction refuses a preview of action (create or update) built
-// without the redaction of the resource it previews: a zero redaction, or
-// the redaction of another resource, or a redaction built for a read, which
-// leaves a Secret's payload visible. Each is a programming error, refused
-// before any request.
+// checkRedaction refuses a preview of action (create or update) built without
+// the redaction of the resource it previews: a zero redaction, the redaction of
+// another resource, a redaction built for a read (it leaves a Secret's payload
+// visible), or a redaction that hides references (the diff does not hide them).
+// Each is a programming error, refused before any request.
 func checkRedaction(gvr schema.GroupVersionResource, r kinds.Redaction, action string) error {
 	switch {
 	case r.IsZero():
@@ -61,6 +61,9 @@ func checkRedaction(gvr schema.GroupVersionResource, r kinds.Redaction, action s
 	case r.GVR() != gvr:
 		return clierr.New(clierr.CodeGeneric,
 			"internal error: "+action+" preview of "+gvr.Resource+" uses the redaction for "+r.GVR().Resource)
+	case r.HidesReferences():
+		return clierr.New(clierr.CodeGeneric,
+			"internal error: "+action+" preview of "+gvr.Resource+" uses a redaction that hides references, which the diff does not hide yet")
 	}
 	return nil
 }

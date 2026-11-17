@@ -36,15 +36,20 @@ const (
 // scrubRequiredPaths are the paths a kind's redaction must hide, named here
 // apart from the kind row so a row that loses a path fails the table: the
 // value an ext token or kubeconfig create returns once, the credential
-// fields of the v3 token and the user, and the Helm values and template
-// values of the helmop, bundle, bundledeployment and managedchart kinds (in
-// the helmop, bundle and managedchart paths, a "*" wildcard segment stands for
-// every target).
+// fields of the v3 token, the user and the auth config, and the Helm values and
+// template values of the helmop, bundle, bundledeployment and managedchart
+// kinds (in the helmop, bundle and managedchart paths, a "*" wildcard segment
+// stands for every target).
 var scrubRequiredPaths = map[string][][]string{
 	"token":           {{"status", "bearerToken"}, {"status", "value"}},
 	"kubeconfig":      {{"status", "value"}},
 	"managementtoken": {{"token"}},
 	"user":            {{"password"}},
+	"authconfig": {
+		{"clientSecret"}, {"privateKey"}, {"applicationSecret"}, {"serviceAccountPassword"},
+		{"spKey"}, {"oauthCredential"}, {"serviceAccountCredential"}, {"additionalClientIds"},
+		{"openLdapConfig", "serviceAccountPassword"},
+	},
 	"helmop": {
 		{"spec", "helm", "values"}, {"spec", "helm", "templateValues"},
 		{"spec", "targets", "*", "helm", "values"}, {"spec", "targets", "*", "helm", "templateValues"},

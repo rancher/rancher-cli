@@ -34,6 +34,7 @@ var cliOnlyKinds = map[string]bool{
 	"operation":                true, // no rancher-ai-mcp tool counterpart
 	"etcdsnapshot":             true, // no rancher-ai-mcp tool counterpart
 	"managedchart":             true, // no rancher-ai-mcp tool counterpart
+	"authconfig":               true, // no rancher-ai-mcp tool counterpart
 
 	"horizontalpodautoscaler": true, // no rancher-ai-mcp tool counterpart
 	"limitrange":              true, // no rancher-ai-mcp tool counterpart
@@ -779,6 +780,7 @@ func TestValidateRejectsServerTableMisuse(t *testing.T) {
 			k.SystemFilter = &PrefixFilter{Path: []string{"p"}, Prefix: "s://", Label: "system account"}
 		}, "SystemFilter"},
 		{"RedactPaths", func(k *Kind) { k.RedactPaths = [][]string{{"password"}} }, "RedactPaths"},
+		{"RedactReferences", func(k *Kind) { k.RedactReferences = true }, "RedactReferences"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -1071,4 +1073,132 @@ func assertForbiddenLeftOut(t *testing.T, k Kind, verb, namespace, name string) 
 	require.True(t, ok)
 	assert.False(t, c.OK())
 	assert.Empty(t, c.Field())
+}
+
+// TestValidateRedactReferencesNeedsBothWriteRefusals asserts a row that sets
+// RedactReferences is refused unless it sets both NoPatchReason and
+// NoCreateViaManifest, because the diff of a write preview does not hide
+// references. A row that sets both is accepted. A row that sets ServerTable and
+// RedactReferences is refused by the ServerTable check, which runs first
+// (TestValidateRejectsServerTableMisuse).
+func TestValidateRedactReferencesNeedsBothWriteRefusals(t *testing.T) {
+	t.Parallel()
+	base := Kind{Key: "a", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, RedactReferences: true}
+	for _, tt := range []struct {
+		name string
+		edit func(k *Kind)
+	}{
+		{"neither reason", func(k *Kind) {}},
+		{"only NoPatchReason", func(k *Kind) { k.NoPatchReason = "read-only" }},
+		{"only NoCreateViaManifest", func(k *Kind) { k.NoCreateViaManifest = "not supported" }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			bad := base
+			tt.edit(&bad)
+			require.ErrorContains(t, validateKinds([]Kind{bad}), "sets RedactReferences and must also set NoPatchReason and NoCreateViaManifest")
+		})
+	}
+	ok := base
+	ok.NoPatchReason = "read-only"
+	ok.NoCreateViaManifest = "not supported"
+	require.NoError(t, validateKinds([]Kind{ok}))
+}
+
+// TestAuthConfigRow asserts the authconfig row: its names, scope, refusal
+// texts, hidden paths, RedactReferences, columns and description.
+func TestAuthConfigRow(t *testing.T) {
+	t.Parallel()
+	k, ok := Lookup("authconfigs")
+	require.True(t, ok)
+	byGVK, ok := LookupGVK("management.cattle.io/v3", "AuthConfig")
+	require.True(t, ok)
+	assert.Equal(t, k.Key, byGVK.Key)
+
+	assert.Equal(t, "authconfig", k.Key)
+	assert.Equal(t, "authconfig", k.Name)
+	assert.Equal(t, []string{"authconfigs"}, k.Aliases)
+	assert.Equal(t, schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "authconfigs"}, k.GVR)
+	assert.Equal(t, "AuthConfig", k.K8sKind)
+	assert.Equal(t, Management, k.Scope)
+	assert.Equal(t, NSNone, k.Policy)
+	assert.False(t, k.Deletable)
+	assert.True(t, k.Sensitive)
+	assert.True(t, k.Completable)
+	assert.Empty(t, k.WaitDefault)
+	assert.Equal(t, safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta}, k.Binding)
+
+	assert.Equal(t, "auth configs are read-only in this CLI for now: Rancher configures, enables and disables auth providers through its own test-and-apply flow, and changing them from the CLI is planned separately", k.NoPatchReason)
+	assert.Equal(t, "deleting an auth config is not supported: in Rancher, deleting one removes none of its users, tokens or role bindings, and disabling an auth provider is planned separately", k.NoDeleteReason)
+	assert.Equal(t, "adding an auth config is not supported: Rancher adds and enables auth providers through its test-and-apply flow, which the CLI does not run yet", k.NoCreateViaManifest)
+	assert.Equal(t, "Auth configs of the Rancher server. Before v2.16, Rancher keeps one for every auth provider it supports, most of them disabled and never configured. From v2.16 it keeps the local auth config and the ones that were configured. ENABLED says whether users can log in with an auth config; ACCESS-MODE and its Authorized Users & Groups say who (an empty mode means any user the provider authenticates). CLEANUP is Rancher's management.cattle.io/auth-provider-cleanup annotation: when a disabled auth config's annotation is unlocked, Rancher deletes its users, tokens and role bindings. Fields that hold credentials are never shown.", k.GetDesc)
+
+	assert.Equal(t, [][]string{
+		{"clientSecret"}, {"privateKey"}, {"applicationSecret"}, {"serviceAccountPassword"},
+		{"spKey"}, {"oauthCredential"}, {"serviceAccountCredential"}, {"additionalClientIds"},
+		{"openLdapConfig", "serviceAccountPassword"},
+	}, k.RedactPaths)
+	assert.True(t, k.RedactReferences)
+
+	require.Len(t, k.Columns, 7)
+	want := []struct {
+		header string
+		wide   bool
+	}{
+		{"TYPE", false}, {"ENABLED", false}, {"ACCESS-MODE", false}, {"ALLOWED-PRINCIPALS", false},
+		{"CLEANUP", false}, {"DISPLAY NAME", true}, {"DESCRIPTION", true},
+	}
+	for i, w := range want {
+		assert.Equal(t, w.header, k.Columns[i].Header, "column %d", i)
+		assert.Equal(t, w.wide, k.Columns[i].Wide, w.header)
+	}
+	assert.Equal(t, []string{"type"}, k.Columns[0].Path)
+	assert.Equal(t, []string{"enabled"}, k.Columns[1].Path)
+	assert.True(t, k.Columns[1].Bool)
+	assert.Equal(t, []string{"accessMode"}, k.Columns[2].Path)
+	assert.Equal(t, []string{"allowedPrincipalIds"}, k.Columns[3].Count)
+	assert.Equal(t, []string{"metadata", "annotations", "management.cattle.io/auth-provider-cleanup"}, k.Columns[4].Path)
+	assert.Equal(t, []string{"displayName"}, k.Columns[5].Path)
+	assert.Equal(t, []string{"metadata", "annotations", "field.cattle.io/description"}, k.Columns[6].Path)
+}
+
+// TestAuthConfigRedactionHidesReferences asserts the row's preview and read
+// redactions both hide references.
+func TestAuthConfigRedactionHidesReferences(t *testing.T) {
+	t.Parallel()
+	k, ok := ByKey("authconfig")
+	require.True(t, ok)
+	assert.True(t, k.Redaction().HidesReferences())
+	assert.True(t, k.ReadRedaction().HidesReferences())
+	other, ok := ByKey("user")
+	require.True(t, ok)
+	assert.False(t, other.ReadRedaction().HidesReferences())
+}
+
+// TestIsReference asserts a reference is a string that starts with exactly
+// "cattle-global-data:".
+func TestIsReference(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		v    any
+		want bool
+	}{
+		{"exact prefix", "cattle-global-data:github-clientsecret", true},
+		{"prefix only", "cattle-global-data:", true},
+		{"empty", "", false},
+		{"no colon", "cattle-global-data", false},
+		{"other case", "Cattle-Global-Data:github-clientsecret", false},
+		{"inside longer text", "see cattle-global-data:github-clientsecret", false},
+		{"number", 42, false},
+		{"bool", true, false},
+		{"nil", nil, false},
+		{"list", []any{"cattle-global-data:x"}, false},
+		{"map", map[string]any{"a": "cattle-global-data:x"}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, IsReference(tt.v))
+		})
+	}
 }

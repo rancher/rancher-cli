@@ -51,6 +51,7 @@ func TestRequirements(t *testing.T) {
 		{key: "provisioningcluster", want: management, ok: true},
 		{key: "etcdsnapshot", want: management, ok: true},
 		{key: "managedchart", want: management, ok: true},
+		{key: "authconfig", want: management, ok: true},
 		{key: "project"}, // its own source lists the projects the caller can read
 		{key: "secret"},
 		{key: "capicluster"},
@@ -167,8 +168,8 @@ func TestKindSourceCompleteFailsEmpty(t *testing.T) {
 
 // TestKindSourceDescribesTheKindsThatHaveAHandle asserts the generic source
 // describes a name with the fields of the row's Handle.Lookup: the display
-// name of a node driver (spec.displayName), a role template and a global
-// role (displayName), never spec.description or description. A hidden or
+// name of a node driver (spec.displayName), a role template, a global role
+// and an auth config (displayName), never spec.description or description. A hidden or
 // locked role is listed and described like any other, and a name without a
 // display name has no description.
 func TestKindSourceDescribesTheKindsThatHaveAHandle(t *testing.T) {
@@ -249,14 +250,14 @@ func TestKindSourceDescribesNothingWithoutAHandle(t *testing.T) {
 }
 
 // TestKindSourceDescribesWithTheLookupFieldsOnly asserts a node driver, a
-// role template and a global role are described by the fields of their
+// role template, a global role and an auth config are described by the fields of their
 // Handle.Lookup and by no other field the object carries.
 func TestKindSourceDescribesWithTheLookupFieldsOnly(t *testing.T) {
 	t.Parallel()
 	body := `{"items":[
 		{"metadata":{"name":"a"},"displayName":"Top Display","description":"decoy description","spec":{"name":"decoy spec","displayName":"Spec Display","description":"decoy spec description"},"status":{"displayName":"decoy status"}}
 	]}`
-	for key, want := range map[string]string{"nodedriver": "Spec Display", "roletemplate": "Top Display", "globalrole": "Top Display"} {
+	for key, want := range map[string]string{"nodedriver": "Spec Display", "roletemplate": "Top Display", "globalrole": "Top Display", "authconfig": "Top Display"} {
 		ls := completiontest.NewFixed(t, body)
 		got := KindSource(key).Complete(t.Context(), ls.Conn(1), completion.Request{})
 		assert.Equal(t, map[string]string{"a": want}, got.Descriptions, key)

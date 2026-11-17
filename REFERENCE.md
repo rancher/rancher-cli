@@ -863,6 +863,41 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   cluster's name, not its `c-` id. Rancher shortens that name to 48 characters
   and ends it with a hash when it is longer than 48 characters, which is the
   case for a cluster name of more than 14 characters.
+- `authconfig` (Rancher's `management.cattle.io/v3` AuthConfig, not namespaced)
+  lists the auth configs of the Rancher server. Before Rancher v2.16 the list
+  holds one auth config for every auth provider Rancher supports, most of them
+  disabled and never configured. From v2.16 it holds the local auth config and
+  the ones that were configured. ENABLED says which ones users can log in with.
+  It is read-only. The columns are TYPE, ENABLED, ACCESS-MODE,
+  ALLOWED-PRINCIPALS (the number of `allowedPrincipalIds`) and CLEANUP; `-o
+  wide` adds DISPLAY NAME and DESCRIPTION. TYPE is the kind of auth provider,
+  for example `githubConfig`. On Rancher v2.16 a client names an auth config
+  with the `configName` it sends when it configures an auth provider. The name
+  can therefore differ from the name of the auth provider, and TYPE always tells
+  you which auth provider it is. Before v2.16 an auth config has no display name
+  and DISPLAY NAME is empty. An empty ACCESS-MODE is the same as `unrestricted`:
+  any user the auth provider authenticates can log in. CLEANUP is the
+  `management.cattle.io/auth-provider-cleanup` annotation: when it is `unlocked`
+  on a disabled auth config, Rancher deletes the users, tokens and role bindings
+  of that auth provider. The argument is the auth config's id (the NAME column),
+  not the display name. A display name that belongs to one auth config fails
+  with `NOT_FOUND`, and the message names its id. A display name that belongs to
+  several fails with `NOT_FOUND` and lists their ids in `data.error.candidates`.
+  The CLI hides the fields that hold credentials: `clientSecret`, `privateKey`,
+  `applicationSecret`, `serviceAccountPassword`, `spKey`, `oauthCredential`,
+  `serviceAccountCredential`, `additionalClientIds` and
+  `openLdapConfig.serviceAccountPassword`. It also hides every string value that
+  starts with `cattle-global-data:`, wherever it appears in the object. When
+  Rancher moves a value into a Secret, it stores the namespace and name of that
+  Secret in place of the value. The
+  `kubectl.kubernetes.io/last-applied-configuration` and
+  `objectset.rio.cattle.io/applied` annotations are hidden too. The CLI hides
+  these values in get output in every `-o` format and in the table cells. It
+  does not hide them in the `--wait` and `--for` messages, which print the
+  condition message the server sent. `patch` and `create resource` with an
+  AuthConfig manifest are refused with `VALIDATION` before any request. There is
+  no `delete` for it: `rancher delete authconfig` fails with `VALIDATION` and an
+  "unknown command" message that gives the reason.
 - `delete` exists only for kinds where deleting an object makes sense. Rancher
   settings and feature flags (`setting`, `feature`), role templates and global
   roles (`roletemplate`, `globalrole`), and objects a controller creates and

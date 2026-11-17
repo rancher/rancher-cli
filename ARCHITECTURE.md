@@ -640,7 +640,19 @@ description of the generated `get`; a row with a `SystemFilter` gets the filter'
 first and `GetDesc` after it), `Binding` (contract/stability for the generated generic
 ops), and the table: `Columns` for a kind with its own, or `ServerTable` for a
 built-in Kubernetes kind whose text table the cluster's API server serves (kubectl's
-columns and cells; such a row has no `Columns`, `SystemFilter` or `RedactPaths`).
+columns and cells; such a row has no `Columns`, `SystemFilter`, `RedactPaths` or
+`RedactReferences`). `RedactPaths` lists the field paths hidden from every read and
+result. A row with `RedactReferences` set to true hides every string value that starts
+with `cattle-global-data:` (the namespace and name of a Secret). It hides them in get
+output (`ScrubObject`) and in table cells (`columnString`). In table cells the
+RedactReferences check covers `Path`, `AltPaths`, `Bool` and `Count` columns, and does
+not cover `Join` or `Condition` columns. A row that sets `RedactReferences` therefore
+has no `Join` or `Condition` column, and a test asserts this for every such row. The
+diff in a write preview does not hide references. `validateKinds` therefore refuses
+`RedactReferences` on a row unless it sets both `NoPatchReason` and
+`NoCreateViaManifest`. `checkRedaction` also refuses every create and update preview
+built from the redaction of a row that sets it, whichever command builds the preview.
+Wait messages are not covered.
 `Key` is conformance-tested against a recorded fixture copied from rancher-ai-mcp (`testdata/mcp-kinds-050e375.json`) - the test matches on
 `Key`, never `Name`, so the CLI's user-facing vocabulary can evolve independently of the
 MCP identity.
@@ -1247,6 +1259,19 @@ Verb reservation. get/create/patch/delete are reserved for kind-table resources 
 **`app install --wait`, `app upgrade --wait` and `app uninstall --wait` read the Operation, then the App, on the shared wait loop.** Rancher runs Helm in the operation's pod. A wait reads the Operation until it is done or `Stalled`, then the App until it shows how the run ended: for an install or an upgrade, the revision that carries the request id at `deployed` or `failed`; for an uninstall, the App gone, or `uninstalled` with `--keep-history`. Rancher writes the App from the release Secret apart from the Operation, and the App can lag; a read of at most 30 seconds after the Operation's end covers a status that is not final yet, and one deadline bounds the whole wait. `--timeout` is at most 55m because Rancher removes the operation one hour after it starts. When the caller cannot get operations in the namespace, the wait reads the App only and says so. An error after Rancher accepted the request is not retryable and carries the committed details with the command to run next, because the request already ran on the server. The shared loop's `WhileAbsent` keeps a wait going while the object does not exist yet, and `OnDeleted` lets a wait decide on a watch Deleted event; every other wait sets neither.
 
 **Hidden paths reach into lists through a wildcard segment.** A `"*"` segment of a `RedactPaths` entry matches any one segment of an object path: a list index, the `-` of a JSON patch append, or a map key. The code that removes hidden values from get output and apply results, and the diff redaction, search lists as well as maps. The helmop and bundle rows hide the Helm `values` and `templateValues` of the object and of every item of `spec.targets`, and the bundledeployment row hides them under `spec.options` and `spec.stagedOptions`, because these values often hold credentials. The input must be JSON-shaped (`map[string]any`, `[]any` and scalars): a typed Go slice or map is not searched, and code that builds an object in Go converts it to unstructured JSON before any output.
+
+**Auth configs are read-only, and their credential fields are never shown.**
+`rancher get authconfig` lists and shows Rancher's AuthConfig objects. Patch,
+delete and create from a manifest are refused with a reason until enabling and
+configuring an auth provider has commands of its own. Rancher moves some
+credential values into Secrets and leaves a reference in the field: a string
+of the form `cattle-global-data:<name>`, the namespace and name of the Secret.
+Besides the credential fields its row names, the row hides every reference, in
+get output and in table cells. A credential field that Rancher adds later is
+therefore hidden as soon as Rancher stores a reference in it. No flag shows a
+hidden credential. A field can hold the credential itself in plain text, and
+anyone allowed to read the Secrets can show their values with `rancher get
+secret`.
 
 **Two layers over one substrate.** Generic verbs are the exact, declarative substrate,
 generated from the kind table: `get`/`patch` for every row (`patch` is a refusal for a row
