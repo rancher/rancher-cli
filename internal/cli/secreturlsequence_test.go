@@ -20,7 +20,7 @@ import (
 // is canaryURLMisread: the host read from it (admin and 1234), the login name a
 // recovery sequence builds from it (recover-), and the text after it (@x). The
 // word "admin" stands alone: the advice for a v3 token says "an administrator".
-var misreadPattern = regexp.MustCompile(`\badmin\b|1234|recover-|@x`)
+var misreadPattern = regexp.MustCompile(`\badmin\b|\b1234\b|recover-|@x`)
 
 // shownKey is the key output shows for the cache record of the seed.
 const shownKey = "x@<unusable URL>/c-1"

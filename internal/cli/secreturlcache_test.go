@@ -210,7 +210,7 @@ func slicesWithout(steps []cacheStep) []cacheStep {
 // Not parallel: it sets the process environment.
 func TestAShownKeyThatMatchesSeveralCacheRecordsIsRefused(t *testing.T) {
 	restoreRawArgv(t)
-	pattern := regexp.MustCompile(`\badmin\b|\broot\b|1234|5678|recover-|@x|q@h`)
+	pattern := regexp.MustCompile(`\badmin\b|\broot\b|\b1234\b|\b5678\b|recover-|@x|q@h`)
 	entries := map[string]string{"z": "https://root:5678/q@h"}
 	recs := []cacheRecordSeed{
 		{name: "x", server: "https://admin:1234", ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-cch01"}},

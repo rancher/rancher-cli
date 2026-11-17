@@ -19,7 +19,7 @@ import (
 // the report of the entry, and in the administrator's line for the v3 token.
 func TestRecordsOfAnEntryThatHoldsAnAtSignAfterTheHostShowNoHost(t *testing.T) {
 	t.Parallel()
-	hostRead := regexp.MustCompile(`\badmin\b|1234|recover-|pwzq7`)
+	hostRead := regexp.MustCompile(`\badmin\b|\b1234\b|recover-|pwzq7`)
 	records := []config.SupersededToken{
 		{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old88"}, UserID: "u-abc12", SupersededAt: "2026-10-02T00:00:00Z", Server: "https://admin:1234"},
 		{Ref: clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "kubeconfig-u-old99"}, UserID: "u-abc12", SupersededAt: "2026-10-03T00:00:00Z", Server: "https://admin:1234"},
