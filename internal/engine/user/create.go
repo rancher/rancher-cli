@@ -87,8 +87,8 @@ func (createCmd) Describe() runtime.Descriptor {
 			{Name: "global-role", Type: "stringSlice", Desc: "global role `id` to bind (repeatable); default: the roles the server marks newUserDefault; list them with: `rancher get globalroles`"},
 		},
 		Examples: []string{
-			`echo -n "$PASSWORD" | rancher create user alice --password-stdin --apply --yes`,
-			`echo -n "$PASSWORD" | rancher create user bob --password-stdin --global-role user-base --apply --yes`,
+			`printf '%s' "$PASSWORD" | rancher create user alice --password-stdin --apply --yes`,
+			`printf '%s' "$PASSWORD" | rancher create user bob --password-stdin --global-role user-base --apply --yes`,
 		},
 		Destructive: "true",
 		Auth:        true,

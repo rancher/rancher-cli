@@ -2106,8 +2106,8 @@
       "desc": "Creates the management.cattle.io/v3 User, then a same-named Secret in cattle-local-user-passwords that holds the password - the server hashes it on write (never the CLI) - then a management.cattle.io/v3 GlobalRoleBinding for each global role Rancher gives new users by default (the ones with newUserDefault set), or for each --global-role. A user with no global role cannot create a token and cannot log in. Requires a server that supports local user passwords (it serves the ext.cattle.io PasswordChangeRequest resource).",
       "destructive": "true",
       "examples": [
-        "echo -n \"$PASSWORD\" | rancher create user alice --password-stdin --apply --yes",
-        "echo -n \"$PASSWORD\" | rancher create user bob --password-stdin --global-role user-base --apply --yes"
+        "printf '%s' \"$PASSWORD\" | rancher create user alice --password-stdin --apply --yes",
+        "printf '%s' \"$PASSWORD\" | rancher create user bob --password-stdin --global-role user-base --apply --yes"
       ],
       "flags": [
         {

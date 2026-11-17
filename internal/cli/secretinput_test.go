@@ -93,7 +93,7 @@ type secretRow struct {
 	stdin string
 	// files are written to the working directory before the run.
 	files map[string]string
-	// stub answers the requests it takes; the stub Rancher answers the rest.
+	// stub responds to the requests it takes; the stub Rancher responds to the rest.
 	stub secretStub
 	// canary is the secret the row asserts absent; empty means secretCanary.
 	canary string
@@ -135,12 +135,12 @@ type secretRow struct {
 // RANCHER_CLI_TOKEN. Any other token is refused with 401.
 const secretBearer = "u-member:secret"
 
-// secretStub is a server's answer in front of the stub Rancher: it writes
-// the answer and returns true, or returns false to let the stub Rancher
-// answer.
+// secretStub is a server response in front of the stub Rancher: it writes
+// the response and returns true, or returns false to let the stub Rancher
+// respond.
 type secretStub func(w http.ResponseWriter, r *http.Request) bool
 
-// writeKubeJSON writes body as a JSON answer with status.
+// writeKubeJSON writes body as a JSON response with status.
 func writeKubeJSON(w http.ResponseWriter, status int, body string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -149,7 +149,7 @@ func writeKubeJSON(w http.ResponseWriter, status int, body string) {
 
 const secretConfigMap = `{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"app","namespace":"default","resourceVersion":"7"},"data":{"a":"1"}}`
 
-// configMapStub answers the get of the config map "app" with the object.
+// configMapStub responds to the get of the ConfigMap "app" with the object.
 func configMapStub(w http.ResponseWriter, r *http.Request) bool {
 	if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/configmaps/app") {
 		writeKubeJSON(w, http.StatusOK, secretConfigMap)
@@ -158,7 +158,7 @@ func configMapStub(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-// unauthorizedStub answers every request with 401, as a server does for a
+// unauthorizedStub responds to every request with 401, as a server does for a
 // token it does not know.
 func unauthorizedStub(w http.ResponseWriter, _ *http.Request) bool {
 	writeKubeJSON(w, http.StatusUnauthorized, `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"Unauthorized","reason":"Unauthorized","code":401}`)
@@ -166,9 +166,9 @@ func unauthorizedStub(w http.ResponseWriter, _ *http.Request) bool {
 }
 
 // shortPasswordStub serves the ext discovery of a server that has the
-// password-change-request resource and the global roles create user reads, and answers every create the way a
-// server answers a password it refuses as too short: 422 with the length
-// rule, which names no value.
+// password-change-request resource and the global roles create user reads,
+// and responds to every create the way a server responds to a password it
+// refuses as too short: 422 with the length rule, which names no value.
 func shortPasswordStub(w http.ResponseWriter, r *http.Request) bool {
 	switch {
 	case r.Method == http.MethodPost:
@@ -533,9 +533,11 @@ func currentPasswordRows() []secretRow {
 	return rows
 }
 
-// secretFlagPattern matches the names of the flags that may take a secret
-// value, or a file or stdin that holds one.
-var secretFlagPattern = regexp.MustCompile(`secret|password|token|credential|literal|set|patch|stdin|key|file|filename|url|server|cacert`)
+// secretFlagPattern matches the names of the flags and positional arguments
+// that may take a secret value, or a file or stdin that holds one. A name it
+// matches by mistake (a future bypass-cache) gets an entry in secretExempt, or
+// in secretArgExempt for an argument, with a reason.
+var secretFlagPattern = regexp.MustCompile(`secret|password|token|credential|literal|set|patch|stdin|key|file|filename|url|server|cacert|pass|pw`)
 
 // secretExempt names the flags the pattern matches whose value is never a
 // secret, with the reason.
@@ -549,15 +551,46 @@ var secretExempt = map[string]string{
 	"non-resource-url":     "a request path of the Kubernetes API on the server, never a URL with userinfo",
 }
 
+// secretArgExempt names the positional arguments the pattern matches whose
+// value is never a secret, with the reason.
+var secretArgExempt = map[string]string{
+	"secret-name": "the name of an oidc-client secret, never its value",
+}
+
+// secretValueFlags lists each flag that has a row in secretRows and is not a
+// bool ending in -stdin, with the reason it may take a value. A reason does
+// not say the value is never a secret. It says what the value is: the form
+// kubectl uses, public data (a path, a name, an id), or a value the command
+// refuses without printing it.
+var secretValueFlags = map[string]string{
+	"from-literal":     "key=value pairs of Secret data in the form kubectl create secret --from-literal uses; a malformed value is refused without echoing it; to keep the data off the command line, use create resource -f - and send the Secret on stdin",
+	"patch":            "a JSON patch given inline, as kubectl does; to keep it off the command line, use --patch-file - and send the patch on stdin",
+	"set":              "a field=value pair; a credential field is refused",
+	"url":              "a server URL; one that holds a user name or password is refused",
+	"server":           "a server URL; one that holds a user name or password is refused",
+	"cacert":           "the path or PEM text of a CA certificate, public data",
+	"cacerts":          "the path or PEM text of CA certificates, public data",
+	"filename":         "a path, or - for stdin",
+	"patch-file":       "a path, or - for stdin",
+	"credential-store": "the name of a credential store, or exec:<name>",
+	"user-id":          "a Rancher user id",
+	"auth-provider":    "an auth config name, or an auth provider type",
+}
+
 // secretNameGaps returns one problem per name in uses that pattern matches
-// and neither rows nor exempt covers, one per row or exempt entry that
-// matches no name in uses, one per exempt entry with no reason, and one per
-// name with both a row and an exempt entry. kind and dashes spell a name in
-// a problem: "flag" with "--", "environment variable" with "".
+// and neither rows nor exempt covers; one per row that matches no name in
+// uses; one per exempt entry that matches no name; one per exempt entry that
+// matches a name and has no reason; and one per name that has a row and an
+// exempt entry with a reason. A name that several commands have is reported
+// once, with the first command in uses that has it. kind and dashes spell a
+// name in a problem: "flag" with "--", "environment variable" with "".
 func secretNameGaps(kind, dashes string, uses []nameUse, pattern *regexp.Regexp, rows map[string]bool, exempt map[string]string) []string {
 	seen := map[string]bool{}
 	var problems []string
 	for _, u := range uses {
+		if seen[u.name] {
+			continue
+		}
 		seen[u.name] = true
 		if _, exempted := exempt[u.name]; pattern.MatchString(u.name) && !rows[u.name] && !exempted {
 			problems = append(problems, kind+" "+dashes+u.name+" of "+u.owner+" has no row and no exempt entry")
@@ -582,19 +615,129 @@ func secretNameGaps(kind, dashes string, uses []nameUse, pattern *regexp.Regexp,
 	return problems
 }
 
-// nameUse is a flag or environment variable and the command or list that
-// has it.
-type nameUse struct{ name, owner string }
+// nameUse is a flag or environment variable, its type
+// (empty for an environment variable), and the command or list that has it.
+type nameUse struct{ name, typ, owner string }
 
-// secretFlagGaps is secretNameGaps over the flags of every command of m.
-func secretFlagGaps(m runtime.Manifest, rows map[string]bool, exempt map[string]string) []string {
-	var uses []nameUse
+// globalFlagsOwner is the text a problem uses where it names the command, for
+// a global flag.
+const globalFlagsOwner = "the global flags"
+
+// secretFlagUses returns each flag of m with its type and the command that has
+// it: first the flags of each command in manifest order, then the global
+// flags, each under its long name (the text after the last "--": config for
+// -c/--config). A global flag whose name has no text after "--" is returned
+// as a problem.
+func secretFlagUses(m runtime.Manifest) (uses []nameUse, problems []string) {
 	for _, c := range m.Commands {
 		for _, f := range c.Flags {
-			uses = append(uses, nameUse{f.Name, c.Name})
+			uses = append(uses, nameUse{f.Name, f.Type, c.Name})
 		}
 	}
-	return secretNameGaps("flag", "--", uses, secretFlagPattern, rows, exempt)
+	for _, g := range m.GlobalFlags {
+		_, name, found := strings.CutLast(g.Name, "--")
+		if !found || name == "" {
+			problems = append(problems, "the global flag "+g.Name+" has no name after --; the scan cannot read it")
+			continue
+		}
+		uses = append(uses, nameUse{name, g.Type, globalFlagsOwner})
+	}
+	return uses, problems
+}
+
+// secretFlagGaps runs secretNameGaps on the flags of every command and the
+// global flags of m, and adds the problems secretFlagUses found.
+func secretFlagGaps(m runtime.Manifest, rows map[string]bool, exempt map[string]string) []string {
+	uses, problems := secretFlagUses(m)
+	problems = append(problems, secretNameGaps("flag", "--", uses, secretFlagPattern, rows, exempt)...)
+	slices.Sort(problems)
+	return problems
+}
+
+// secretValueFlagGaps reports: (1) a flag with a row that is not a -stdin bool
+// and has no entry in valueFlags; (2) a flag whose name ends in -stdin and is
+// not a bool, whether or not it has a row, once per name and type; (3) an
+// entry in valueFlags that no flag with a row matches; (4) an entry with no
+// reason; (5) an entry whose name is also in exempt; (6) an entry for a -stdin
+// bool. (2) is reported once for each name and type, and replaces (1) for that
+// name and type. Items (1) and (3) to (6) give a name one problem, the first
+// that applies; (1) names the first command that has the flag (or the global
+// flags), and (3) to (6) name no command.
+func secretValueFlagGaps(m runtime.Manifest, rows map[string]bool, valueFlags, exempt map[string]string) []string {
+	uses, problems := secretFlagUses(m)
+	seen := map[string]bool{}
+	stdinBool := map[string]bool{}
+	nonBoolStdin := map[string]bool{}
+	for _, u := range uses {
+		seen[u.name] = true
+		stdin := strings.HasSuffix(u.name, "-stdin")
+		if stdin && u.typ == "bool" {
+			stdinBool[u.name] = true
+		}
+		if stdin && u.typ != "bool" && !nonBoolStdin[u.name+" "+u.typ] {
+			nonBoolStdin[u.name+" "+u.typ] = true
+			problems = append(problems, "flag --"+u.name+" of "+u.owner+" is a "+u.typ+"; a flag whose name ends in -stdin must be a bool")
+		}
+	}
+	reported := map[string]bool{}
+	for _, u := range uses {
+		if !rows[u.name] || reported[u.name] || nonBoolStdin[u.name+" "+u.typ] {
+			continue
+		}
+		if _, listed := valueFlags[u.name]; listed {
+			continue
+		}
+		if u.typ == "bool" && strings.HasSuffix(u.name, "-stdin") {
+			continue
+		}
+		reported[u.name] = true
+		problems = append(problems, "flag --"+u.name+" of "+u.owner+" (a "+u.typ+") has a row in secretRows and no entry in secretValueFlags; add an entry with a reason, or make it a bool ending in -stdin")
+	}
+	for name, reason := range valueFlags {
+		_, exempted := exempt[name]
+		switch {
+		case !seen[name] || !rows[name]:
+			problems = append(problems, "secretValueFlags has an entry for --"+name+", but no flag with a row has that name")
+		case reason == "":
+			problems = append(problems, "the entry for --"+name+" in secretValueFlags has no reason")
+		case exempted:
+			problems = append(problems, "flag --"+name+" has an entry in secretValueFlags and in secretExempt")
+		case stdinBool[name]:
+			problems = append(problems, "secretValueFlags has an entry for --"+name+", a bool ending in -stdin, which takes no value")
+		}
+	}
+	slices.Sort(problems)
+	return problems
+}
+
+// secretArgGaps returns one problem for each positional argument name in m
+// that pattern matches and exempt does not list; one for each entry of exempt
+// that names no argument; and one for each entry that names an argument and
+// has no reason. A name is reported once, with the first command that has it.
+func secretArgGaps(m runtime.Manifest, pattern *regexp.Regexp, exempt map[string]string) []string {
+	seen := map[string]bool{}
+	var problems []string
+	for _, c := range m.Commands {
+		for _, a := range c.Args {
+			if seen[a.Name] {
+				continue
+			}
+			seen[a.Name] = true
+			if _, exempted := exempt[a.Name]; pattern.MatchString(a.Name) && !exempted {
+				problems = append(problems, "argument "+a.Name+" of "+c.Name+" matches the secret pattern and has no exempt entry")
+			}
+		}
+	}
+	for name, reason := range exempt {
+		switch {
+		case !seen[name]:
+			problems = append(problems, "the exempt list has an entry for argument "+name+", but no command has an argument with that name")
+		case reason == "":
+			problems = append(problems, "the exempt entry for argument "+name+" has no reason")
+		}
+	}
+	slices.Sort(problems)
+	return problems
 }
 
 // secretEnvPattern matches the names of the environment variables that may
@@ -609,7 +752,7 @@ var secretEnvExempt = map[string]string{}
 func secretEnvGaps(vars []runtime.EnvVar, rows map[string]bool, exempt map[string]string) []string {
 	uses := make([]nameUse, len(vars))
 	for i, v := range vars {
-		uses[i] = nameUse{v.Name, "the environment list"}
+		uses[i] = nameUse{name: v.Name, owner: "the environment list"}
 	}
 	return secretNameGaps("environment variable", "", uses, secretEnvPattern, rows, exempt)
 }
@@ -705,6 +848,336 @@ func TestSecretFlagScanFailsOnAFlagWithNoRow(t *testing.T) {
 	assert.Equal(t, "flag --set of create machine-config has no row and no exempt entry", problems[0])
 }
 
+// manifestWithFlag returns a copy of m whose first command has the flag f in
+// addition to the flags it already has.
+func manifestWithFlag(m runtime.Manifest, f runtime.ArgSpec) runtime.Manifest {
+	return manifestWithFlagOn(m, f, 0)
+}
+
+// manifestWithFlagOn returns a copy of m whose commands at the indexes have
+// the flag f in addition to the flags they already have.
+func manifestWithFlagOn(m runtime.Manifest, f runtime.ArgSpec, indexes ...int) runtime.Manifest {
+	out := m
+	out.Commands = slices.Clone(m.Commands)
+	for _, i := range indexes {
+		out.Commands[i].Flags = append(slices.Clone(out.Commands[i].Flags), f)
+	}
+	return out
+}
+
+// manifestWithGlobalFlag returns a copy of m with the global flag g added.
+func manifestWithGlobalFlag(m runtime.Manifest, g runtime.GlobalFlag) runtime.Manifest {
+	out := m
+	out.GlobalFlags = append(slices.Clone(m.GlobalFlags), g)
+	return out
+}
+
+// TestSecretFlagScanCoversPassPwAndGlobalFlags asserts that the scan reports
+// a flag whose name contains pass but none of the other pattern words, and one
+// that contains pw but none of the others; accepts a match by mistake that has
+// an exempt entry with a reason; reports a global flag with no row; reports
+// the same flag with no row on two commands once; reads each global flag under
+// its long name; and reports a global flag whose name has no --. It also
+// asserts that the real command tree has no problem.
+func TestSecretFlagScanCoversPassPwAndGlobalFlags(t *testing.T) {
+	t.Parallel()
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	rows := rowFlags(secretRows())
+	first := m.Commands[0].Name
+
+	tests := []struct {
+		name    string
+		m       runtime.Manifest
+		exempt  map[string]string
+		want    []string
+		wantNil bool
+	}{
+		{
+			name:    "the real command tree has no problem",
+			m:       m,
+			exempt:  secretExempt,
+			wantNil: true,
+		},
+		{
+			name:   "a flag name that contains pass and no other pattern word",
+			m:      manifestWithFlag(m, runtime.ArgSpec{Name: "passwd", Type: "string"}),
+			exempt: secretExempt,
+			want:   []string{"flag --passwd of " + first + " has no row and no exempt entry"},
+		},
+		{
+			name:   "a flag name that contains pw and no other pattern word",
+			m:      manifestWithFlag(m, runtime.ArgSpec{Name: "pwd", Type: "string"}),
+			exempt: secretExempt,
+			want:   []string{"flag --pwd of " + first + " has no row and no exempt entry"},
+		},
+		{
+			name:    "a match by mistake with an exempt entry that has a reason",
+			m:       manifestWithFlag(m, runtime.ArgSpec{Name: "bypass-cache", Type: "string"}),
+			exempt:  withEntry(secretExempt, "bypass-cache", "a cache switch, never a value that holds a secret"),
+			wantNil: true,
+		},
+		{
+			name:   "a global flag with no row",
+			m:      manifestWithGlobalFlag(m, runtime.GlobalFlag{Name: "--token-x", Type: "string", AppliesTo: "all"}),
+			exempt: secretExempt,
+			want:   []string{"flag --token-x of the global flags has no row and no exempt entry"},
+		},
+		{
+			name:   "the same flag with no row on two commands is one problem",
+			m:      manifestWithFlagOn(m, runtime.ArgSpec{Name: "passwd", Type: "string"}, 0, 1),
+			exempt: secretExempt,
+			want:   []string{"flag --passwd of " + first + " has no row and no exempt entry"},
+		},
+		{
+			name:   "a global flag with no --",
+			m:      manifestWithGlobalFlag(m, runtime.GlobalFlag{Name: "-x", Type: "string", AppliesTo: "all"}),
+			exempt: secretExempt,
+			want:   []string{"the global flag -x has no name after --; the scan cannot read it"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := secretFlagGaps(tt.m, rows, tt.exempt)
+			if tt.wantNil {
+				assert.Empty(t, got)
+				return
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	uses, problems := secretFlagUses(m)
+	assert.Empty(t, problems)
+	for _, name := range []string{"project", "config", "output"} {
+		assert.Contains(t, uses, nameUse{name: name, typ: globalTypeOf(t, m, name), owner: globalFlagsOwner}, "the global flag --%s is not read under its long name", name)
+	}
+	assert.Empty(t, secretFlagGaps(m, rows, secretExempt), "the scan reports a problem on the real command tree")
+}
+
+// globalTypeOf returns the type of the global flag whose long name is name.
+func globalTypeOf(t *testing.T, m runtime.Manifest, name string) string {
+	t.Helper()
+	for _, g := range m.GlobalFlags {
+		if _, after, found := strings.CutLast(g.Name, "--"); found && after == name {
+			return g.Type
+		}
+	}
+	require.FailNow(t, "no global flag named --"+name)
+	return ""
+}
+
+// withEntry returns a copy of m with the entry key set to value.
+func withEntry(m map[string]string, key, value string) map[string]string {
+	out := maps.Clone(m)
+	out[key] = value
+	return out
+}
+
+// TestEverySecretFlagWithARowIsAStdinBoolOrListed asserts that every flag with
+// a row is a bool ending in -stdin or has an entry in secretValueFlags that
+// gives the reason it may take a value, and that no flag ending in -stdin has
+// another type.
+func TestEverySecretFlagWithARowIsAStdinBoolOrListed(t *testing.T) {
+	t.Parallel()
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	assert.Empty(t, secretValueFlagGaps(m, rowFlags(secretRows()), secretValueFlags, secretExempt))
+}
+
+// TestSecretValueFlagScanFailsOnEachMistake asserts that the scan reports each
+// of these: a flag with a row that is not a -stdin bool and has no entry; a
+// -stdin flag that is not a bool; an entry that no flag with a row matches; an
+// entry with no reason; an entry that is also in the exempt list; an entry for
+// a -stdin bool. It also asserts that the real command tree has no problem.
+func TestSecretValueFlagScanFailsOnEachMistake(t *testing.T) {
+	t.Parallel()
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	rows := rowFlags(secretRows())
+	first := m.Commands[0].Name
+	withRow := func(name string) map[string]bool {
+		out := maps.Clone(rows)
+		out[name] = true
+		return out
+	}
+	allStringStdin := m
+	allStringStdin.Commands = slices.Clone(m.Commands)
+	var firstPasswordStdin string
+	for i, c := range allStringStdin.Commands {
+		allStringStdin.Commands[i].Flags = slices.Clone(c.Flags)
+		for j, f := range allStringStdin.Commands[i].Flags {
+			if f.Name == "password-stdin" {
+				allStringStdin.Commands[i].Flags[j].Type = "string"
+				if firstPasswordStdin == "" {
+					firstPasswordStdin = c.Name
+				}
+			}
+		}
+	}
+	require.NotEmpty(t, firstPasswordStdin)
+	// twoTypes has password-stdin as a string in the first command that has
+	// it and as a stringSlice in the others.
+	twoTypes := m
+	twoTypes.Commands = slices.Clone(m.Commands)
+	var stdinOwners []string
+	for i, c := range twoTypes.Commands {
+		twoTypes.Commands[i].Flags = slices.Clone(c.Flags)
+		for j, f := range twoTypes.Commands[i].Flags {
+			if f.Name == "password-stdin" {
+				twoTypes.Commands[i].Flags[j].Type = []string{"string", "stringSlice"}[min(len(stdinOwners), 1)]
+				stdinOwners = append(stdinOwners, c.Name)
+			}
+		}
+	}
+	require.GreaterOrEqual(t, len(stdinOwners), 2)
+	noServer := maps.Clone(secretValueFlags)
+	delete(noServer, "server")
+	var firstServer string
+	for _, c := range m.Commands {
+		if firstServer == "" && slices.ContainsFunc(c.Flags, func(f runtime.ArgSpec) bool { return f.Name == "server" }) {
+			firstServer = c.Name
+		}
+	}
+	require.NotEmpty(t, firstServer)
+
+	tests := []struct {
+		name        string
+		m           runtime.Manifest
+		rows        map[string]bool
+		valueFlags  map[string]string
+		exempt      map[string]string
+		wantProblem string
+		// wantProblems, when set, lists every expected problem; wantProblem is
+		// then not used.
+		wantProblems []string
+	}{
+		{
+			name: "the real command tree has no problem", m: m, rows: rows, valueFlags: secretValueFlags, exempt: secretExempt,
+		},
+		{
+			name: "a string flag current-password with a row and no entry",
+			m:    manifestWithFlag(m, runtime.ArgSpec{Name: "current-password", Type: "string"}), rows: withRow("current-password"), valueFlags: secretValueFlags, exempt: secretExempt,
+			wantProblem: "flag --current-password of " + first + " (a string) has a row in secretRows and no entry in secretValueFlags; add an entry with a reason, or make it a bool ending in -stdin",
+		},
+		{
+			name: "a string flag passwd with a row and no entry",
+			m:    manifestWithFlag(m, runtime.ArgSpec{Name: "passwd", Type: "string"}), rows: withRow("passwd"), valueFlags: secretValueFlags, exempt: secretExempt,
+			wantProblem: "flag --passwd of " + first + " (a string) has a row in secretRows and no entry in secretValueFlags; add an entry with a reason, or make it a bool ending in -stdin",
+		},
+		{
+			name: "every password-stdin flag is a string",
+			m:    allStringStdin, rows: rows, valueFlags: secretValueFlags, exempt: secretExempt,
+			wantProblem: "flag --password-stdin of " + firstPasswordStdin + " is a string; a flag whose name ends in -stdin must be a bool",
+		},
+		{
+			name: "a string flag whose name ends in -stdin with no row",
+			m:    manifestWithFlag(m, runtime.ArgSpec{Name: "x-stdin", Type: "string"}), rows: rows, valueFlags: secretValueFlags, exempt: secretExempt,
+			wantProblem: "flag --x-stdin of " + first + " is a string; a flag whose name ends in -stdin must be a bool",
+		},
+		{
+			name: "one -stdin name with two types gives one problem for each type",
+			m:    twoTypes, rows: rows, valueFlags: secretValueFlags, exempt: secretExempt,
+			wantProblems: []string{
+				"flag --password-stdin of " + stdinOwners[0] + " is a string; a flag whose name ends in -stdin must be a bool",
+				"flag --password-stdin of " + stdinOwners[1] + " is a stringSlice; a flag whose name ends in -stdin must be a bool",
+			},
+		},
+		{
+			name: "a global string flag token with a row and no entry",
+			m:    manifestWithGlobalFlag(m, runtime.GlobalFlag{Name: "--token", Type: "string", AppliesTo: "all"}), rows: withRow("token"), valueFlags: secretValueFlags, exempt: secretExempt,
+			wantProblem: "flag --token of the global flags (a string) has a row in secretRows and no entry in secretValueFlags; add an entry with a reason, or make it a bool ending in -stdin",
+		},
+		{
+			name: "the entry for --server removed",
+			m:    m, rows: rows, valueFlags: noServer, exempt: secretExempt,
+			wantProblem: "flag --server of " + firstServer + " (a string) has a row in secretRows and no entry in secretValueFlags; add an entry with a reason, or make it a bool ending in -stdin",
+		},
+		{
+			name: "an entry that no flag with a row matches",
+			m:    m, rows: rows, valueFlags: withEntry(secretValueFlags, "gone-flag", "a flag that no longer exists"), exempt: secretExempt,
+			wantProblem: "secretValueFlags has an entry for --gone-flag, but no flag with a row has that name",
+		},
+		{
+			name: "an entry with an empty reason",
+			m:    m, rows: rows, valueFlags: withEntry(secretValueFlags, "server", ""), exempt: secretExempt,
+			wantProblem: "the entry for --server in secretValueFlags has no reason",
+		},
+		{
+			name: "an entry that is also exempt",
+			m:    m, rows: rows, valueFlags: secretValueFlags, exempt: withEntry(secretExempt, "server", "an entry that also has a value reason"),
+			wantProblem: "flag --server has an entry in secretValueFlags and in secretExempt",
+		},
+		{
+			name: "a bool not ending in -stdin with a row and no entry",
+			m:    manifestWithFlag(m, runtime.ArgSpec{Name: "keep-secret", Type: "bool"}), rows: withRow("keep-secret"), valueFlags: secretValueFlags, exempt: secretExempt,
+			wantProblem: "flag --keep-secret of " + first + " (a bool) has a row in secretRows and no entry in secretValueFlags; add an entry with a reason, or make it a bool ending in -stdin",
+		},
+		{
+			name: "an entry for a bool ending in -stdin",
+			m:    m, rows: rows, valueFlags: withEntry(secretValueFlags, "password-stdin", "an unneeded entry"), exempt: secretExempt,
+			wantProblem: "secretValueFlags has an entry for --password-stdin, a bool ending in -stdin, which takes no value",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := secretValueFlagGaps(tt.m, tt.rows, tt.valueFlags, tt.exempt)
+			switch {
+			case tt.wantProblems != nil:
+				assert.Equal(t, tt.wantProblems, got)
+			case tt.wantProblem == "":
+				assert.Empty(t, got)
+			default:
+				assert.Equal(t, []string{tt.wantProblem}, got)
+			}
+		})
+	}
+}
+
+// TestEverySecretArgumentHasAnExemptEntry asserts that every positional
+// argument of the built command tree whose name matches the secret pattern
+// has an exempt entry with a reason, and that no entry names an argument no
+// command has.
+func TestEverySecretArgumentHasAnExemptEntry(t *testing.T) {
+	t.Parallel()
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	assert.Empty(t, secretArgGaps(m, secretFlagPattern, secretArgExempt))
+}
+
+// TestSecretArgumentScanFailsOnEachMistake asserts that the scan reports a
+// positional argument that matches the pattern and has no entry; the same
+// argument on two commands once; an entry that names no argument; and an entry
+// with no reason. It also asserts that the real command tree has no problem.
+func TestSecretArgumentScanFailsOnEachMistake(t *testing.T) {
+	t.Parallel()
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	assert.Empty(t, secretArgGaps(m, secretFlagPattern, secretArgExempt))
+
+	withArg := m
+	withArg.Commands = slices.Clone(m.Commands)
+	withArg.Commands[0].Args = append(slices.Clone(withArg.Commands[0].Args), runtime.ArgSpec{Name: "password", Type: "string"})
+	assert.Equal(t, []string{"argument password of " + m.Commands[0].Name + " matches the secret pattern and has no exempt entry"},
+		secretArgGaps(withArg, secretFlagPattern, secretArgExempt))
+
+	onTwo := m
+	onTwo.Commands = slices.Clone(m.Commands)
+	for _, i := range []int{0, 1} {
+		onTwo.Commands[i].Args = append(slices.Clone(onTwo.Commands[i].Args), runtime.ArgSpec{Name: "password", Type: "string"})
+	}
+	assert.Equal(t, []string{"argument password of " + m.Commands[0].Name + " matches the secret pattern and has no exempt entry"},
+		secretArgGaps(onTwo, secretFlagPattern, secretArgExempt), "the same argument on two commands is one problem")
+
+	assert.Equal(t, []string{"the exempt list has an entry for argument gone-arg, but no command has an argument with that name"},
+		secretArgGaps(m, secretFlagPattern, withEntry(secretArgExempt, "gone-arg", "an argument that no longer exists")))
+
+	assert.Equal(t, []string{"the exempt entry for argument secret-name has no reason"},
+		secretArgGaps(m, secretFlagPattern, withEntry(secretArgExempt, "secret-name", "")))
+}
+
 // TestEverySecretEnvironmentVariableHasARowOrAnExemptEntry asserts that
 // every environment variable of the schema whose name may hold a secret has
 // a row in the table or an exempt entry with a reason, and that no row or
@@ -764,9 +1237,9 @@ func TestSecretInputIsSetOnEveryCommandWithARowAndOnlyThere(t *testing.T) {
 	}, secretInputGaps(unmarked, rows))
 }
 
-// secretServer starts a TLS server answering with h, points the process at
-// it with an empty config directory, the file credential store and a
-// temporary working directory, and returns it. Nothing reaches a real
+// secretServer starts a TLS server that responds through stub, points the
+// process at it with an empty config directory, the file credential store and
+// a temporary working directory, and returns it. Nothing reaches a real
 // server. Not for a parallel test: it sets the process environment.
 func secretServer(t *testing.T, stub secretStub, token string) *httptest.Server {
 	t.Helper()
