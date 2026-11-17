@@ -352,6 +352,55 @@ func TestValidateRejectsProjectBackingNamespaceOutsideManagementPlainRows(t *tes
 	}
 }
 
+// TestValidateRejectsNamespaceDescOutsideManagementPlainAndWorkspaceRows
+// asserts NamespaceDesc is accepted on a Management row with a plain or
+// workspace namespace and refused on every other row, and that its text
+// carries exactly one backtick pair.
+func TestValidateRejectsNamespaceDescOutsideManagementPlainAndWorkspaceRows(t *testing.T) {
+	t.Parallel()
+	const desc = "cluster `id` of the token"
+	row := func(policy NamespacePolicy, scope Scope, text string) []Kind {
+		return []Kind{{Key: "foo", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Policy: policy, Scope: scope, NamespaceDesc: text}}
+	}
+	require.NoError(t, validateKinds(row(NSPlain, Management, desc)))
+	require.NoError(t, validateKinds(row(NSWorkspace, Management, desc)))
+	for name, bad := range map[string][]Kind{
+		"downstream plain":       row(NSPlain, Downstream, desc),
+		"downstream workspace":   row(NSWorkspace, Downstream, desc),
+		"management none":        row(NSNone, Management, desc),
+		"cluster id":             row(NSCluster, Management, desc),
+		"no backticks":           row(NSPlain, Management, "cluster id"),
+		"one backtick":           row(NSPlain, Management, "cluster `id"),
+		"two backtick pairs":     row(NSWorkspace, Management, "cluster `id` or `name`"),
+		"no backticks workspace": row(NSWorkspace, Management, "Fleet workspace"),
+	} {
+		err := validateKinds(bad)
+		require.Error(t, err, name)
+		require.ErrorContains(t, err, "NamespaceDesc", name)
+	}
+}
+
+// TestNamespaceDescOfManagementRows asserts the --namespace description of
+// the Management rows whose value is not an ordinary namespace of the
+// target cluster and not always a Fleet workspace.
+func TestNamespaceDescOfManagementRows(t *testing.T) {
+	t.Parallel()
+	for key, want := range map[string]string{
+		"projectroletemplatebinding": "the project's backing `namespace` on the local cluster; or pass --project with --cluster",
+		"clusterregistrationtoken":   "cluster `id` (c-...), the namespace of its cluster registration tokens",
+		"bundledeployment":           "cluster namespace of a Fleet cluster (`namespace`): its status.namespace, such as cluster-fleet-...",
+		"etcdsnapshot":               "`namespace` of the cluster's snapshots: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the cluster's id (c-...)",
+		"capicluster":                "`namespace` of the CAPI cluster: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace it was created in",
+		"capimachine":                "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
+		"capimachineset":             "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
+		"capimachinedeployment":      "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
+	} {
+		k, ok := Lookup(key)
+		require.True(t, ok, key)
+		assert.Equal(t, want, k.NamespaceDesc, key)
+	}
+}
+
 // TestValidateRejectsBadFirstAlias asserts the plural-first alias invariant: a row
 // whose Aliases[0] is not plural(hyphen-stripped Name) must fail validateKinds,
 // and a row with no aliases at all also fails - every row must register its plural.

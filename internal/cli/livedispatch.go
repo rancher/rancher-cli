@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -156,12 +157,16 @@ func claimLiveSource(req completion.Request, d runtime.Descriptor, lc completion
 		return completion.Source{}, completion.Requirements{}, false
 	}
 	if req.Flag == engine.FlagNamespace && isGeneratedVerb(d.Name) {
-		// A kind whose objects live in a project's backing namespace has that
-		// namespace on the local cluster. The generic --namespace completion
-		// lists the namespaces of the cluster typed with --cluster; none of
-		// them is a valid value here, and completion offers no candidates.
-		if k, found := kindForDescriptor(d); found && k.ProjectBackingNamespace {
-			completionDebugf("source: %s takes the project's backing namespace; it offers no candidates", d.Name)
+		// The shared --namespace source lists the namespaces of the cluster
+		// typed with --cluster, and nothing under a typed --project. The
+		// objects of a Management kind are on the local cluster. Their
+		// namespace is a Fleet workspace, the namespace of a CAPI cluster, the
+		// namespace named by a cluster's id, a Fleet cluster's namespace or a
+		// project's backing namespace. The typed cluster can be any cluster,
+		// and most of its namespaces hold no objects of the kind. Completion
+		// offers no candidates.
+		if k, found := kindForDescriptor(d); found && k.Scope == kinds.Management {
+			completionDebugf("source: the namespace of %s is on the local cluster; it offers no candidates", d.Name)
 			return completion.Source{}, completion.Requirements{}, false
 		}
 	}

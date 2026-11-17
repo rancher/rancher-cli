@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -327,6 +328,14 @@ func clusterValueOwnSite(flag string, index int) string {
 	return "positional " + strconv.Itoa(index)
 }
 
+// namespaceIsOnLocalCluster reports whether d is a generated verb of a
+// Management row: its --namespace value is a namespace of the local cluster,
+// which no source offers.
+func namespaceIsOnLocalCluster(d runtime.Descriptor) bool {
+	k, ok := kindForDescriptor(d)
+	return ok && isGeneratedVerb(d.Name) && k.Scope == kinds.Management
+}
+
 // clusterValueWiring names the wiring that claims the request, in the order
 // claimLiveSource looks: the command's own source at that flag or position,
 // the shared flag source of the flag on that command, or the kind source of
@@ -335,7 +344,7 @@ func clusterValueWiring(req completion.Request, d runtime.Descriptor, lc complet
 	if req.Flag == runtime.FlagProject && !runtime.TakesProject(d) {
 		return ""
 	}
-	if req.Flag == "namespace" && readsBackingNamespace(d) {
+	if req.Flag == "namespace" && namespaceIsOnLocalCluster(d) {
 		return ""
 	}
 	if lc != nil {

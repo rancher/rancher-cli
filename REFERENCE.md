@@ -711,7 +711,20 @@ you typed after it; a wrong name never shows up as a flag error. An empty name
 
 ## Kinds & verbs
 
-Every command that takes `--namespace` also takes `-n`, as kubectl does.
+Every command that takes `--namespace` also takes `-n`, as kubectl does. For a
+kind whose objects are on the Rancher server, the value is not a namespace of a
+downstream cluster. For most Fleet kinds, for provisioning clusters and for
+machine configs it is the Fleet workspace (default `fleet-default`); the
+exceptions follow. `bundledeployment` is in the cluster namespace of a Fleet
+cluster (the Fleet cluster's `status.namespace`). For a cluster Rancher
+provisions, `etcd-snapshot` and the CAPI kinds (`capi-cluster`, `machine`,
+`machineset`, `machinedeployment`) are in the namespace of its provisioning
+cluster (default `fleet-default`). For a cluster Rancher does not provision,
+`etcd-snapshot` is in the namespace named by the cluster's id (`c-...`) and the
+CAPI kinds are in the namespace the CAPI cluster was created in.
+`clusterregistrationtoken` is in the namespace named by the cluster's id
+(`c-...`). `projectroletemplatebinding` is in the project's backing namespace,
+described above.
 
 Every kind that `rancher schema` lists gets its generated verbs by these rules:
 

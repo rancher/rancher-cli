@@ -2171,7 +2171,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -2208,7 +2208,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -2480,7 +2480,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -2517,7 +2517,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -2581,7 +2581,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -2618,7 +2618,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -2931,7 +2931,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -3359,7 +3359,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -3786,7 +3786,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -3821,7 +3821,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -3940,7 +3940,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -3994,7 +3994,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -4048,7 +4048,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "cluster namespace of a Fleet cluster (`namespace`): its status.namespace, such as cluster-fleet-...",
           "name": "namespace",
           "type": "string"
         },
@@ -4103,7 +4103,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the CAPI cluster: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace it was created in",
           "name": "namespace",
           "type": "string"
         },
@@ -4222,7 +4222,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -4277,7 +4277,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "cluster `id` (c-...), the namespace of its cluster registration tokens",
           "name": "namespace",
           "type": "string"
         },
@@ -4683,7 +4683,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -4739,7 +4739,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the cluster's snapshots: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the cluster's id (c-...)",
           "name": "namespace",
           "type": "string"
         },
@@ -4906,7 +4906,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -5007,7 +5007,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -5154,7 +5154,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -5208,7 +5208,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -5650,7 +5650,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
           "name": "namespace",
           "type": "string"
         },
@@ -5704,7 +5704,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
           "name": "namespace",
           "type": "string"
         },
@@ -5758,7 +5758,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
           "name": "namespace",
           "type": "string"
         },
@@ -5813,7 +5813,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -6622,7 +6622,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -7316,7 +7316,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -7887,7 +7887,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -8016,7 +8016,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -8074,7 +8074,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -8132,7 +8132,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "cluster namespace of a Fleet cluster (`namespace`): its status.namespace, such as cluster-fleet-...",
           "name": "namespace",
           "type": "string"
         },
@@ -8191,7 +8191,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the CAPI cluster: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace it was created in",
           "name": "namespace",
           "type": "string"
         },
@@ -8300,7 +8300,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -8359,7 +8359,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "cluster `id` (c-...), the namespace of its cluster registration tokens",
           "name": "namespace",
           "required": true,
           "type": "string"
@@ -8816,7 +8816,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -8876,7 +8876,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the cluster's snapshots: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the cluster's id (c-...)",
           "name": "namespace",
           "type": "string"
         },
@@ -9057,7 +9057,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -9168,7 +9168,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -9329,7 +9329,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -9387,7 +9387,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -9850,7 +9850,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
           "name": "namespace",
           "type": "string"
         },
@@ -9908,7 +9908,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
           "name": "namespace",
           "type": "string"
         },
@@ -9966,7 +9966,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
           "name": "namespace",
           "type": "string"
         },
@@ -10024,7 +10024,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -10902,7 +10902,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },
@@ -11652,7 +11652,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "`namespace` to operate in",
+          "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         },

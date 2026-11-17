@@ -94,13 +94,18 @@ const (
 	// NSWorkspace: management-plane namespace with a default (fleet,
 	// provisioning, CAPI kinds - all default fleet-default) - --namespace
 	// flag with DefaultNamespace fallback, NO --cluster; client is management.
+	// The value is a Fleet workspace; a row whose objects can be elsewhere
+	// says so in NamespaceDesc (bundledeployment: the cluster namespace of a
+	// Fleet cluster; for a cluster Rancher does not provision, etcd-snapshot:
+	// the cluster's id, and the CAPI kinds: the namespace the CAPI cluster was
+	// created in).
 	NSWorkspace NamespacePolicy = "workspace"
 	// NSPlain: ordinary namespace - --namespace flag, required for named
 	// ops; --cluster routes when Scope is Downstream. A Management NSPlain
-	// kind lives on the local cluster: projectroletemplatebinding in a
-	// project's backing namespace (ProjectBackingNamespace),
-	// clusterregistrationtoken in the cluster's management namespace (the
-	// cluster id).
+	// kind lives on the local cluster and describes its --namespace in
+	// NamespaceDesc: projectroletemplatebinding in a project's backing
+	// namespace (ProjectBackingNamespace), clusterregistrationtoken in the
+	// namespace named by the cluster's id.
 	NSPlain NamespacePolicy = "plain"
 )
 
@@ -123,7 +128,7 @@ type Kind struct {
 	Aliases          []string // plural/short forms
 	GVR              schema.GroupVersionResource
 	Policy           NamespacePolicy // namespace semantics + flag generation
-	DefaultNamespace string          // NSWorkspace fallback ("" elsewhere)
+	DefaultNamespace string          // NSWorkspace fallback, shown in --namespace's description ("" elsewhere)
 	K8sKind          string          // manifest `kind:` value ("Deployment") - consumed by parity branch 2 reverse lookup
 	Scope            Scope
 	Deletable        bool // false = no generic delete generated (clusters, nodes)
@@ -245,6 +250,16 @@ type Kind struct {
 	// and read the namespace from the project; --namespace names it directly.
 	// validateKinds rejects the field on any other row.
 	ProjectBackingNamespace bool
+	// NamespaceDesc is the description of the generated --namespace flag of a
+	// Management row. A plain row sets it: its value is the id of the cluster a
+	// cluster registration token belongs to, or a project's backing namespace. A
+	// workspace row sets it only when its objects can be outside a Fleet
+	// workspace (bundledeployment: the cluster namespace of a Fleet cluster;
+	// etcd-snapshot and the CAPI kinds); otherwise the flag is described as a
+	// Fleet workspace with DefaultNamespace. One backtick pair marks the
+	// placeholder. validateKinds rejects the field on a row that is not
+	// Management with a plain or workspace namespace.
+	NamespaceDesc string
 }
 
 // Handle names the positional argument of a kind whose users do not type the
@@ -691,6 +706,7 @@ var table = []Kind{
 		Key: "bundledeployment", Name: "bundledeployment", Aliases: []string{"bundledeployments"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundledeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "BundleDeployment", Scope: Management, Deletable: false,
+		NamespaceDesc:  "cluster namespace of a Fleet cluster (`namespace`): its status.namespace, such as cluster-fleet-...",
 		NoDeleteReason: "Fleet creates and manages it from a bundle; deleting a GitRepo deletes its bundles and their bundle deployments",
 		RedactPaths: [][]string{
 			{"spec", "options", "helm", "values"}, {"spec", "options", "helm", "templateValues"},
@@ -898,7 +914,8 @@ var table = []Kind{
 		Key: "projectroletemplatebinding", Name: "projectroletemplatebinding", Aliases: []string{"projectroletemplatebindings", "prtb"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projectroletemplatebindings"},
 		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true, ProjectBackingNamespace: true,
-		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
+		NamespaceDesc: "the project's backing `namespace` on the local cluster; or pass --project with --cluster",
+		Binding:       safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		// MEMBER column prefers userName → groupPrincipalName → userPrincipalName:
 		// same deliberate divergence as crtb above; see that entry for rationale.
 		Columns: []Column{
@@ -959,6 +976,7 @@ var table = []Kind{
 		Key: "capicluster", Name: "capi-cluster", Aliases: []string{"capiclusters", "capi-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
+		NamespaceDesc:  "`namespace` of the CAPI cluster: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace it was created in",
 		NoDeleteReason: "a controller creates and manages it; delete the object it was created from",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
@@ -966,6 +984,7 @@ var table = []Kind{
 		Key: "capimachine", Name: "machine", Aliases: []string{"machines"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Machine", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
+		NamespaceDesc:  "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
 		NoDeleteReason: "a controller creates and manages it; to delete a machine of a machine pool (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes), change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
@@ -973,6 +992,7 @@ var table = []Kind{
 		Key: "capimachineset", Name: "machineset", Aliases: []string{"machinesets"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinesets"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineSet", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
+		NamespaceDesc:  "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
 		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes); change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
@@ -980,6 +1000,7 @@ var table = []Kind{
 		Key: "capimachinedeployment", Name: "machinedeployment", Aliases: []string{"machinedeployments"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinedeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineDeployment", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
+		NamespaceDesc:  "`namespace` of the CAPI object: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the namespace the CAPI cluster was created in",
 		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster (<cluster> is the cluster, <pool> its machine pool and <nodes> the number of nodes); change the machine pool's number of nodes with `rancher cluster scale <cluster> --pool <pool> --nodes <nodes> --dry-run` and add --apply --yes after reading the preview",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
@@ -991,6 +1012,7 @@ var table = []Kind{
 		Key: "etcdsnapshot", Name: "etcd-snapshot", Aliases: []string{"etcdsnapshots", "etcd-snapshots"},
 		GVR:    schema.GroupVersionResource{Group: "rke.cattle.io", Version: "v1", Resource: "etcdsnapshots"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ETCDSnapshot", Scope: Management, Deletable: false, Completable: true,
+		NamespaceDesc:       "`namespace` of the cluster's snapshots: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the cluster's id (c-...)",
 		NoDeleteReason:      "an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place",
 		NoPatchReason:       "Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them",
 		NoCreateViaManifest: "Rancher creates an etcd snapshot object for each snapshot file; this CLI does not take snapshots",
@@ -1228,6 +1250,7 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterregistrationtokens"},
 		Policy: NSPlain, K8sKind: "ClusterRegistrationToken", Scope: Management, Deletable: false,
 		NoDeleteReason: "this CLI does not delete cluster registration tokens",
+		NamespaceDesc:  "cluster `id` (c-...), the namespace of its cluster registration tokens",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns:        []Column{{Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
 	},
@@ -1361,6 +1384,14 @@ func validateKinds(ts []Kind) error {
 		}
 		if k.ProjectBackingNamespace && (k.Policy != NSPlain || k.Scope != Management) {
 			return fmt.Errorf("kind %q sets ProjectBackingNamespace on a row that is not Management with a plain namespace", k.Key)
+		}
+		if k.NamespaceDesc != "" {
+			if k.Scope != Management || (k.Policy != NSPlain && k.Policy != NSWorkspace) {
+				return fmt.Errorf("kind %q sets NamespaceDesc on a row that is not Management with a plain or workspace namespace", k.Key)
+			}
+			if strings.Count(k.NamespaceDesc, "`") != 2 {
+				return fmt.Errorf("kind %q has a NamespaceDesc without exactly one backtick pair around the placeholder", k.Key)
+			}
 		}
 		if k.ServerTable {
 			if len(k.Columns) > 0 {

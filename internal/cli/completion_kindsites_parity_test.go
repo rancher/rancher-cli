@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"slices"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // newKindSitesServer serves every collection the shared --cluster,
@@ -203,6 +206,64 @@ func TestKindSitesFullCallback(t *testing.T) {
 			assert.Equal(t, tt.hits, s.reset())
 		})
 	}
+	for _, tt := range managementNamespaceSites(t) {
+		t.Run(tt.name, func(t *testing.T) {
+			completionFixture(t, s.srv.URL, true)
+			s.reset()
+			assert.Empty(t, runCompletion(t, tt.words, tt.cur))
+			assert.Empty(t, s.reset(), "no request")
+		})
+	}
+}
+
+// managementNamespaceSite is one --namespace value site of a generated verb
+// of a Management row.
+type managementNamespaceSite struct {
+	name  string
+	words []string
+	cur   string
+}
+
+// managementNamespaceSites lists, for every Management row with a plain or
+// workspace namespace and each of its generated get, patch and delete the
+// manifest has, the --namespace value sites in four spellings, with and
+// without a typed --cluster. The value is a namespace of the local cluster,
+// and the shared source lists the namespaces of the typed cluster instead.
+// No site offers candidates.
+func managementNamespaceSites(t *testing.T) []managementNamespaceSite {
+	t.Helper()
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	commands := map[string]bool{}
+	for _, c := range m.Commands {
+		commands[c.Name] = true
+	}
+	var sites []managementNamespaceSite
+	for _, k := range kinds.All() {
+		if k.Scope != kinds.Management || (k.Policy != kinds.NSPlain && k.Policy != kinds.NSWorkspace) {
+			continue
+		}
+		require.True(t, commands["get "+k.Name], "the manifest has no get %s", k.Name)
+		for _, verb := range []string{"get", "patch", "delete"} {
+			name := verb + " " + k.Name
+			if !commands[name] {
+				continue
+			}
+			for _, typed := range [][]string{{verb, k.Name}, {verb, k.Name, "--cluster", "c-aaa11"}} {
+				suffix := ""
+				if len(typed) > 2 {
+					suffix = " with --cluster"
+				}
+				sites = append(sites,
+					managementNamespaceSite{name: name + " --namespace" + suffix, words: append(slices.Clone(typed), "--namespace")},
+					managementNamespaceSite{name: name + " -n" + suffix, words: append(slices.Clone(typed), "-n")},
+					managementNamespaceSite{name: name + " --namespace=" + suffix, words: typed, cur: "--namespace="},
+					managementNamespaceSite{name: name + " -n=" + suffix, words: typed, cur: "-n="},
+				)
+			}
+		}
+	}
+	return sites
 }
 
 // TestKindSitesUnderAnExecCredentialOnlyToken asserts, through the real

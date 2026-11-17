@@ -962,7 +962,14 @@ rancher oidc-client rotate-secret my-app --apply --yes
 - **Routing:** `--cluster` (display name or id) routes to a downstream cluster;
   `--namespace` (`-n`) scopes namespaced kinds. Scope is per-invocation only -
   no cluster or project is persisted or implied. Fleet kinds default to the
-  `fleet-default` workspace.
+  `fleet-default` workspace. `bundledeployment` takes the cluster namespace of
+  its Fleet cluster. For a cluster Rancher provisions, `etcd-snapshot` and the
+  CAPI kinds take the namespace of its provisioning cluster (default
+  `fleet-default`); for a cluster Rancher does not provision, `etcd-snapshot`
+  takes the cluster's id (`c-...`) and the CAPI kinds take the namespace the
+  CAPI cluster was created in. `clusterregistrationtoken` takes the cluster's id
+  (`c-...`). `projectroletemplatebinding` takes the project's backing
+  namespace.
 - **Ids:** `get`, `patch` and `delete` of a `user`, `project`, `roletemplate`,
   `globalrole` or `nodedriver` take the object's id (the argument is `id` in
   the schema), not its username or display name. A `NOT_FOUND` on a typed

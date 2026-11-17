@@ -113,11 +113,15 @@ func (c getCmd) Describe() runtime.Descriptor {
 
 // getFlags declares the routing flags a kind's namespace policy needs:
 //   - NSCluster: --cluster (it becomes the namespace).
-//   - NSWorkspace: --namespace only (client is always management).
+//   - NSWorkspace: --namespace only (client is always management). It is
+//     described by the row's NamespaceDesc; when NamespaceDesc is empty, as a
+//     Fleet workspace with the row's DefaultNamespace.
 //   - NSPlain: --namespace, plus --cluster when the kind is Downstream; a
 //     row with ProjectBackingNamespace takes an optional --cluster, which
 //     names the cluster of --project, and a --namespace that names the
-//     project's backing namespace directly.
+//     project's backing namespace directly. A Management row describes
+//     --namespace with its NamespaceDesc; a Downstream row's value is an
+//     ordinary namespace of the typed cluster.
 //   - NSNone: --cluster only when the kind is Downstream; nothing otherwise.
 //
 // A project scopable kind takes --project. Every kind additionally gains
@@ -134,19 +138,28 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 		f.Desc = "cluster `id|name`; required to get one " + k.Name + " by " + argName(k) + "; leave it out to list " + kinds.Plural(k.Name) + " in every cluster"
 		flags = []runtime.ArgSpec{f}
 	case kinds.NSWorkspace:
-		flags = []runtime.ArgSpec{engine.NamespaceFlag(false)}
+		namespace := engine.NamespaceFlag(false)
+		namespace.Desc = k.NamespaceDesc
+		if namespace.Desc == "" {
+			namespace.Desc = "Fleet workspace (`namespace`) (default: " + k.DefaultNamespace + ")"
+		}
+		flags = []runtime.ArgSpec{namespace}
 	case kinds.NSPlain:
 		switch {
 		case k.ProjectBackingNamespace:
 			cluster := engine.ClusterFlag(false, true)
 			cluster.Desc = "cluster `id|name` of the project (only with --project)"
 			namespace := engine.NamespaceFlag(false)
-			namespace.Desc = "the project's backing `namespace` on the local cluster; or pass --project with --cluster"
+			namespace.Desc = k.NamespaceDesc
 			flags = []runtime.ArgSpec{cluster, namespace}
 		case k.Scope == kinds.Downstream:
 			flags = []runtime.ArgSpec{engine.ClusterFlag(true, true), engine.NamespaceFlag(false)}
 		default:
-			flags = []runtime.ArgSpec{engine.NamespaceFlag(false)}
+			namespace := engine.NamespaceFlag(false)
+			if k.NamespaceDesc != "" {
+				namespace.Desc = k.NamespaceDesc
+			}
+			flags = []runtime.ArgSpec{namespace}
 		}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {
