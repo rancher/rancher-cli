@@ -75,9 +75,17 @@ type WaitParams struct {
 	// RecordErr says whether a List or Get error becomes the last error the
 	// timeout names.
 	RecordErr func(ctx context.Context, err error) bool
-	// OnAbort returns the error that ends the wait for an authentication or
-	// certificate failure.
+	// OnAbort returns the end of the wait for an authentication or
+	// certificate failure, and for a Get error StopOn accepts: the error
+	// that ends the wait, or nil to end it with success.
 	OnAbort func(err error) error
+	// StopOn, when set, names Get errors that end the wait at once through
+	// OnAbort instead of being retried. It sees only the responses of Get:
+	// a List, watch open or stream error never reaches it (a 403 there makes
+	// the wait poll), because a caller who may get an object but not list it
+	// gets a refused List first. Nil leaves the other Get errors to the
+	// usual retry.
+	StopOn func(err error) bool
 	// OnCancel returns the error for a wait the caller cancelled.
 	OnCancel func(ctx context.Context, last *unstructured.Unstructured, lastErr *clierr.Error) error
 	// OnTimeout returns the error for a wait that ran out of time.
@@ -329,6 +337,8 @@ func WaitObject(ctx context.Context, client ClusterClient, p WaitParams) error {
 			case err != nil && clierr.IsNotFound(err):
 				return err
 			case err != nil && WaitShouldStop(err):
+				return p.OnAbort(err)
+			case err != nil && p.StopOn != nil && p.StopOn(err):
 				return p.OnAbort(err)
 			case err != nil:
 				if p.RecordErr(ctx, err) {

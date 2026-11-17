@@ -685,7 +685,7 @@ var detailsRows = map[string]detailsRow{
 			{name: "default"},
 			{name: "a failed object shows its message", sets: []string{"Objects[].Outcome"}, set: setDetails("Objects[].Outcome", safety.OutcomeFailed)},
 		},
-		notShown: map[string]string{"Objects[].Code": detailsNeverPrinted},
+		notShown: map[string]string{"Objects[].Code": detailsNeverPrinted, "CommittedContextDetails.SecretName": detailsNeverPrinted},
 	},
 	"internal/skillinstall Report": {
 		typ: reflect.TypeFor[skillinstall.Report](),

@@ -2171,6 +2171,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the amazonec2config <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2179,6 +2180,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the amazonec2config is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2208,6 +2219,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the azureconfig <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2216,6 +2228,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the azureconfig is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2246,12 +2268,23 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Deletes the clusterroletemplatebinding <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
           "desc": "cluster `id|name` of the clusterroletemplatebinding",
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "wait until the clusterroletemplatebinding is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2282,6 +2315,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the configmap <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2302,6 +2336,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the configmap is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2331,6 +2375,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the cronjob <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2351,6 +2396,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the cronjob is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2381,6 +2436,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the daemonset <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2401,6 +2457,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the daemonset is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2431,6 +2497,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the deployment <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2451,6 +2518,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the deployment is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2480,6 +2557,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the digitaloceanconfig <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2488,6 +2566,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the digitaloceanconfig is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2517,6 +2605,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the gitrepo <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2525,6 +2614,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the gitrepo is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2554,7 +2653,20 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Deletes the globalrolebinding <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait until the globalrolebinding is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "gates": [
         "--apply",
         "--yes"
@@ -2581,6 +2693,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the harvesterconfig <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2589,6 +2702,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the harvesterconfig is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2618,6 +2741,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the helmop <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2626,6 +2750,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the helmop is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2656,6 +2790,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the horizontalpodautoscaler <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2676,6 +2811,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the horizontalpodautoscaler is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2706,6 +2851,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the ingress <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2726,6 +2872,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the ingress is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2755,6 +2911,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the job <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2775,6 +2932,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the job is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2805,6 +2972,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the k3k-cluster <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2825,6 +2993,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the k3k-cluster is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2854,7 +3032,20 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Deletes the kubeconfig <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait until the kubeconfig is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "gates": [
         "--apply",
         "--yes"
@@ -2882,6 +3073,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the limitrange <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2902,6 +3094,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the limitrange is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2931,6 +3133,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the managedchart <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -2939,6 +3142,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the managedchart is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2971,7 +3184,20 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the management-token <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning. When the token to delete is the token this command uses (from a login or RANCHER_CLI_TOKEN) and Rancher marks it as derived, the command sends the delete and does not wait: the server refuses every read made with a deleted token. The result is deletion started with a note: log in again or, if RANCHER_CLI_TOKEN holds the token, set it to another token or unset it.",
       "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait until the management-token is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "gates": [
         "--apply",
         "--yes",
@@ -3000,6 +3226,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the namespace <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3011,6 +3238,16 @@
         {
           "desc": "the namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the namespace is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3041,6 +3278,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the networkpolicy <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3061,6 +3299,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the networkpolicy is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3090,7 +3338,20 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the oidcclient <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait until the oidcclient is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "gates": [
         "--apply",
         "--yes"
@@ -3120,6 +3381,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the persistentvolumeclaim <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3140,6 +3402,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the persistentvolumeclaim is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3170,6 +3442,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the pod <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3190,6 +3463,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the pod is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3220,6 +3503,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the poddisruptionbudget <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3240,6 +3524,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the poddisruptionbudget is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3270,12 +3564,23 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Deletes the project <id> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning. With the wait on and without --delete-namespaces, the command reads the project's backing namespace on the local cluster (status.backingNamespace, else the project id) before the delete and waits for it too when it can read it. With --delete-namespaces the command does not wait: it refuses --timeout and refuses --wait except --wait=false.",
       "destructive": "true",
       "flags": [
         {
           "desc": "cluster `id|name` of the project",
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "wait until the project is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         },
         {
@@ -3311,6 +3616,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Deletes the projectroletemplatebinding <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3329,6 +3635,16 @@
         {
           "desc": "project `id|name` (with --cluster) the projectroletemplatebinding is in",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the projectroletemplatebinding is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3359,6 +3675,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the provisioning-cluster <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3367,6 +3684,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the provisioning-cluster is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3397,6 +3724,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the replicaset <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3417,6 +3745,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the replicaset is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3447,6 +3785,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the resourcequota <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3467,6 +3806,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the resourcequota is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3496,6 +3845,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the secret <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3516,6 +3866,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the secret is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3546,6 +3906,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the service <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3566,6 +3927,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the service is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3596,6 +3967,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the serviceaccount <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3616,6 +3988,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the serviceaccount is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3646,6 +4028,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the statefulset <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3666,6 +4049,16 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the statefulset is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3696,12 +4089,23 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the storageclass <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
           "desc": "target cluster `id|name`",
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "wait until the storageclass is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3731,7 +4135,20 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Deletes the token <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait until the token is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "gates": [
         "--apply",
         "--yes"
@@ -3759,7 +4176,20 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "Deletes the user <id> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
+      "flags": [
+        {
+          "desc": "wait until the user is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
       "gates": [
         "--apply",
         "--yes"
@@ -3786,6 +4216,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Deletes the vmwarevsphereconfig <name> with a resourceVersion precondition from its server-side dry-run preview. By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). --timeout (a positive duration, default 5m) limits how long it waits. A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, the command stops waiting for that object; the result says deletion started, with a warning.",
       "destructive": "true",
       "flags": [
         {
@@ -3794,6 +4225,16 @@
           ],
           "desc": "Fleet workspace (`namespace`) (default: fleet-default)",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until the vmwarevsphereconfig is gone before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 10m (default 5m)",
+          "name": "timeout",
           "type": "string"
         }
       ],

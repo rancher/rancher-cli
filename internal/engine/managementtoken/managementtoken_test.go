@@ -231,13 +231,16 @@ func TestDeleteGuardDerivedTokenExecUsesGuardFetchRV(t *testing.T) {
 
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok)
-	_, exec, err := mc.Plan(t.Context(), stubInput{args: []string{"my-token-abc"}})
+	// A 1s --timeout makes a lost OwnToken mark fail at once: trackingClient
+	// never responds NOT_FOUND, and without the mark the wait runs to its
+	// limit.
+	_, exec, err := mc.Plan(t.Context(), stubInput{args: []string{"my-token-abc"}, s: map[string]string{"timeout": "1s"}})
 	require.NoError(t, err, "derived token must pass through the guard without error")
 	require.NotNil(t, exec)
 
 	assert.Equal(t, 1, client.getCount, "guard must issue exactly one GET, not two")
 
-	_, execErr := exec(t.Context())
+	res, execErr := exec(t.Context())
 	require.NoError(t, execErr)
 
 	// The real delete (non-dry-run) must carry the rv from the guard's single GET.
@@ -250,6 +253,34 @@ func TestDeleteGuardDerivedTokenExecUsesGuardFetchRV(t *testing.T) {
 	require.NotNil(t, realDel, "exec must issue a real delete")
 	assert.Equal(t, "999", realDel.rv,
 		"delete must use the guard's fetched rv, not a second read's rv")
+
+	// The token to delete is the token this command uses: no read follows
+	// the delete, and the result says the deletion started.
+	assert.Equal(t, 1, client.getCount, "no GET after the delete of the token the command uses")
+	data, ok := res.Data.(map[string]any)
+	require.True(t, ok, "the result data is a map")
+	assert.Equal(t, "my-token-abc", data["deleted"])
+	assert.Equal(t, false, data["waited"])
+	require.Len(t, res.Warnings, 1, "one note about the deleted token")
+}
+
+// TestDeleteGuardRefusesABadTimeoutBeforeAnyRequest asserts that a
+// --timeout that is not a positive duration is refused on the active-token
+// path before the command looks up the id of the token it uses or sends any
+// request.
+func TestDeleteGuardRefusesABadTimeoutBeforeAnyRequest(t *testing.T) {
+	t.Parallel()
+	k := managementTokenKind(t)
+	client := &trackingClient{objects: []*unstructured.Unstructured{tokenObjDerived("my-token-abc", true)}}
+	namer := &stubNamer{id: "my-token-abc"}
+	cmd := managementtoken.NewDeleteGuard(k, &stubFactory{client: client}, namer)
+
+	err := planMutating(t, cmd, stubInput{args: []string{"my-token-abc"}, s: map[string]string{"timeout": "0s"}})
+	requireValidation(t, err)
+	require.ErrorContains(t, err, "--timeout")
+	assert.Equal(t, 0, client.getCount, "no GET before the refusal")
+	assert.Empty(t, client.deletes, "no DELETE before the refusal")
+	assert.Equal(t, 0, namer.calls, "the id of the token the command uses is not looked up before the refusal")
 }
 
 func tokenObj(name string) *unstructured.Unstructured {
@@ -278,9 +309,15 @@ func (i stubInput) Strings(string) []string { return nil }
 func (i stubInput) IsSet(string) bool       { return false }
 func (i stubInput) Args() []string          { return i.args }
 
-type stubNamer struct{ id string }
+type stubNamer struct {
+	id    string
+	calls int
+}
 
-func (s *stubNamer) ActiveTokenID() (string, error) { return s.id, nil }
+func (s *stubNamer) ActiveTokenID() (string, error) {
+	s.calls++
+	return s.id, nil
+}
 
 var _ engine.SessionTokenNamer = (*stubNamer)(nil)
 

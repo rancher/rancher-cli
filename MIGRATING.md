@@ -70,6 +70,7 @@ conformance test (`internal/cli/migrating_test.go` +
 
 | Before | Now |
 |---|---|
+| `rancher delete <kind>` returned once the server accepted the request and printed `deleted` | `rancher delete <kind>` waits until the object is gone (default 5m); exit 1 with `details.committed` when it is not gone in time; with `--wait=false` it returns at once and prints `deletion started` |
 | `rancher create secret <name> --project <p> --project-scoped --cluster <c>` | `rancher create secret <name> --project <p> --cluster <c>` - `--project-scoped` is gone; `--project` alone creates the project-scoped secret, and `--project` with `--namespace` is refused |
 | `rancher project remove-namespace <ns> --project <p> --cluster <c>` | `rancher project remove-namespace <ns> --cluster <c>` - the namespace's own annotation names its project; a typed `--project` is refused, and when the namespace and `--cluster` are typed the refusal names this command |
 | a namespace created by the old CLI's `namespaces create` carries the `field.cattle.io/creatorId` annotation | Rancher deletes such a namespace, with its workloads, when its project is deleted, and keeps every namespace without that annotation (the ones this CLI, kubectl and the dashboard create). `rancher delete project <id> --cluster <c> --dry-run` lists each namespace as "rancher deletes" or "rancher keeps"; `--delete-namespaces` deletes the kept ones too |

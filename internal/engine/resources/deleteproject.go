@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -38,21 +39,30 @@ const (
 	warningDeleteNamespaces = `deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project's role bindings and project-scoped secrets are deleted`
 )
 
-// DeleteProjectPartialFailure is the details payload of a `delete project
-// --delete-namespaces` run that stopped after it started: every namespace
-// and the project with what happened to each.
+// DeleteProjectPartialFailure is the details payload of a `delete project`
+// run that stopped after it started: every namespace and the project with
+// what happened to each. When the server accepted the project's delete and
+// the wait after it ended with an error, the committed details sit beside
+// the objects; nil otherwise.
 type DeleteProjectPartialFailure struct {
 	Objects []safety.Object `json:"objects"`
+	*clierr.CommittedContextDetails
 }
 
-// TextDetails lists each outcome with the names that have it.
+// TextDetails lists each outcome with the names that have it, then the
+// committed lines.
 func (p DeleteProjectPartialFailure) TextDetails() []clierr.DetailLine {
-	return runtime.ObjectDetailLines(p.Objects, "")
+	lines := runtime.ObjectDetailLines(p.Objects, "")
+	if p.CommittedContextDetails != nil {
+		lines = append(lines, p.CommittedContextDetails.TextDetails()...)
+	}
+	return lines
 }
 
 // MapText maps the message of every object, which can hold the text of the
-// error a delete failed with and so a remedy command. The names are the
-// server's, the kind, outcome and code are the CLI's own words.
+// error a delete failed with and so a remedy command, and the recovery of
+// the committed details. The names are the server's, the kind, outcome and
+// code are the CLI's own words. The committed details are mapped on a copy.
 func (p DeleteProjectPartialFailure) MapText(f func(string) string) clierr.TextDetails {
 	objects := make([]safety.Object, len(p.Objects))
 	for i, o := range p.Objects {
@@ -60,6 +70,11 @@ func (p DeleteProjectPartialFailure) MapText(f func(string) string) clierr.TextD
 		objects[i] = o
 	}
 	p.Objects = objects
+	if p.CommittedContextDetails != nil {
+		if mapped, ok := p.CommittedContextDetails.MapText(f).(clierr.CommittedContextDetails); ok {
+			p.CommittedContextDetails = &mapped
+		}
+	}
 	return p
 }
 
@@ -101,19 +116,74 @@ type namespaceRead struct {
 }
 
 func (c *deleteProjectCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	w, err := ParseDeleteWait(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	withNamespaces := in.Bool(FlagDeleteNamespaces)
+	if withNamespaces {
+		// A run with --delete-namespaces does not wait.
+		if in.IsSet(flagWait) && in.Bool(flagWait) {
+			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--wait conflicts with --"+FlagDeleteNamespaces+", which does not wait; remove --wait or use --wait=false")
+		}
+		if in.String(flagTimeout) != "" {
+			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--timeout conflicts with --"+FlagDeleteNamespaces+", which does not wait; remove --timeout")
+		}
+	}
 	local, ns, name, project, effectCluster, err := c.inner.fetch(ctx, in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, innerExec, err := PlanFromFetched(ctx, local, c.inner.k, ns, name, project, effectCluster)
+	if !withNamespaces && w.mode == waitOn {
+		if w, err = waitForBackingNamespace(ctx, local, project, w); err != nil {
+			return safety.Effect{}, nil, err
+		}
+	}
+	eff, innerExec, err := PlanFromFetched(ctx, local, c.inner.k, ns, name, project, effectCluster, w)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
 	rd := c.readNamespaces(ctx, effectCluster, name)
-	if in.Bool(FlagDeleteNamespaces) {
-		return c.planDeleteNamespaces(ctx, eff, rd, local, project)
+	if withNamespaces {
+		var warning string
+		if w.mode == waitOn {
+			warning = clierr.Text("with --"+FlagDeleteNamespaces+" the command does not wait for the namespaces and the project to be deleted",
+				clierr.Lead("; check with "), deleteRecovery(c.inner.k, ns, name, effectCluster))
+		}
+		return c.planDeleteNamespaces(ctx, eff, rd, local, project, warning)
 	}
 	return c.planKeep(ctx, eff, innerExec, rd)
+}
+
+// backingNamespace is the namespace on the local cluster that holds the
+// project's objects, as Rancher names it: status.backingNamespace, else the
+// project id.
+func backingNamespace(project *unstructured.Unstructured) string {
+	if bn, _, _ := unstructured.NestedString(project.Object, "status", "backingNamespace"); bn != "" {
+		return bn
+	}
+	return project.GetName()
+}
+
+// waitForBackingNamespace reads the project's backing namespace before the
+// delete, on the local cluster where Rancher deletes it with the project:
+// one the caller can read is waited for too; one the caller cannot read is
+// not, with a warning; one that is not there needs no wait. Any other
+// response fails the Plan before anything that changes the server is sent.
+func waitForBackingNamespace(ctx context.Context, local engine.ClusterClient, project *unstructured.Unstructured, w DeleteWait) (DeleteWait, error) {
+	nsKind, _ := kinds.Lookup(namespaceKind)
+	name := backingNamespace(project)
+	obj, err := local.Get(ctx, nsKind.GVR, "", name)
+	switch {
+	case err == nil:
+		return w.AlsoWaitFor(deleteTarget{gvr: nsKind.GVR, name: name, uid: string(obj.GetUID()), kind: namespaceKind,
+			recovery: clierr.NewCommand("get").Word(nsKind.Word()).Arg(name).FlagValue("--cluster", engine.LocalCluster), readBefore: true}), nil
+	case readRefused(err):
+		return w.NotWaitedFor(fmt.Sprintf("you cannot get namespace %s (the project's backing namespace on the local cluster); the command does not wait for it", name)), nil
+	case clierr.IsNotFound(err):
+		return w, nil
+	}
+	return w, err
 }
 
 // readNamespaces reads the project's member namespaces on the cluster the
@@ -187,28 +257,56 @@ func (c *deleteProjectCmd) planKeep(ctx context.Context, eff safety.Effect, inne
 }
 
 // withObjects wraps the generic delete's executor so the result lists
-// objs: the namespaces in text and the "objects" array in the data.
+// objs: the namespaces in text and the "objects" array in the data. The
+// result keeps the wait's outcome and warnings; an error after the server
+// accepted the delete keeps its committed details beside objs.
 func (c *deleteProjectCmd) withObjects(exec runtime.ExecuteFunc, objs []safety.Object) runtime.ExecuteFunc {
 	return func(ctx context.Context) (runtime.Result, error) {
 		res, err := exec(ctx)
 		if err != nil {
-			return res, err
+			return res, withCommittedObjects(err, objs)
 		}
 		data, _ := res.Data.(map[string]any)
 		name, _ := data["deleted"].(string)
-		return projectResult(c.k, name, objs), nil
+		waited, _ := data["waited"].(bool)
+		out := projectResult(c.k, name, objs, waited)
+		out.Warnings = res.Warnings
+		return out, nil
 	}
 }
 
-// projectResult is the result of a project delete: the project's line, the
-// namespace lines, and the objects in the data.
-func projectResult(k kinds.Kind, name string, objs []safety.Object) runtime.Result {
+// withCommittedObjects returns an error that carries committed details with
+// objs beside them; any other error (a delete the server refused) is
+// returned as it is.
+func withCommittedObjects(err error, objs []safety.Object) error {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok {
+		return err
+	}
+	committed, ok := ce.Details.(clierr.CommittedContextDetails)
+	if !ok {
+		return err
+	}
 	if objs == nil {
 		objs = []safety.Object{}
 	}
-	res := runtime.MutationText(k.Name, name, "deleted", runtime.ObjectLines(objs, projectKind)...)
+	return engine.CommittedPartialSuccess(err, committed).WithDetails(DeleteProjectPartialFailure{Objects: objs, CommittedContextDetails: &committed})
+}
+
+// projectResult is the result of a project delete: the project's line, the
+// namespace lines, and the objects in the data. waited says whether the
+// command saw the project and its backing namespace deleted.
+func projectResult(k kinds.Kind, name string, objs []safety.Object, waited bool) runtime.Result {
+	if objs == nil {
+		objs = []safety.Object{}
+	}
+	verb := "deletion started"
+	if waited {
+		verb = "deleted"
+	}
+	res := runtime.MutationText(k.Name, name, verb, runtime.ObjectLines(objs, projectKind)...)
 	res.Kind = resultKind(k) + "Delete"
-	res.Data = map[string]any{"deleted": name, "objects": objs}
+	res.Data = map[string]any{"deleted": name, "waited": waited, "objects": objs}
 	return res
 }
 
@@ -275,8 +373,9 @@ func deleteProjectHint(project, cluster string) clierr.Command {
 // planDeleteNamespaces is the run with --delete-namespaces: every member
 // namespace the CLI may delete is dry-run deleted with its own
 // resourceVersion; the executor deletes them one at a time, then the
-// project.
-func (c *deleteProjectCmd) planDeleteNamespaces(ctx context.Context, eff safety.Effect, rd namespaceRead, local engine.ClusterClient, project *unstructured.Unstructured) (safety.Effect, runtime.ExecuteFunc, error) {
+// project, and does not wait. warning, when not empty, is the result's
+// warning that says so.
+func (c *deleteProjectCmd) planDeleteNamespaces(ctx context.Context, eff safety.Effect, rd namespaceRead, local engine.ClusterClient, project *unstructured.Unstructured, warning string) (safety.Effect, runtime.ExecuteFunc, error) {
 	name, cluster := eff.DisplayName, eff.Cluster
 	if rd.err != nil {
 		return safety.Effect{}, nil, readFailure(rd.err, name, cluster)
@@ -316,13 +415,13 @@ func (c *deleteProjectCmd) planDeleteNamespaces(ctx context.Context, eff safety.
 	objs = append(objs, safety.Object{Kind: projectKind, Name: name, Outcome: safety.OutcomeWillBeDeleted})
 	eff.Objects = objs
 	eff.Warnings = append(eff.Warnings, warningDeleteNamespaces)
-	return eff, c.execDeleteNamespaces(eff, rd.downstream, local, project, toDelete), nil
+	return eff, c.execDeleteNamespaces(eff, rd.downstream, local, project, toDelete, warning), nil
 }
 
 // execDeleteNamespaces deletes the namespaces one at a time in name order,
 // each with the resourceVersion it was read with, then the project. A
 // failed namespace delete stops the run and keeps the project.
-func (c *deleteProjectCmd) execDeleteNamespaces(eff safety.Effect, downstream, local engine.ClusterClient, project *unstructured.Unstructured, toDelete []unstructured.Unstructured) runtime.ExecuteFunc {
+func (c *deleteProjectCmd) execDeleteNamespaces(eff safety.Effect, downstream, local engine.ClusterClient, project *unstructured.Unstructured, toDelete []unstructured.Unstructured, warning string) runtime.ExecuteFunc {
 	rvByName := make(map[string]string, len(toDelete))
 	for i := range toDelete {
 		rvByName[toDelete[i].GetName()] = toDelete[i].GetResourceVersion()
@@ -360,7 +459,11 @@ func (c *deleteProjectCmd) execDeleteNamespaces(eff safety.Effect, downstream, l
 		if err := c.deleteProject(ctx, local, eff, project, &objs[len(objs)-1]); err != nil {
 			return runtime.Result{}, withProjectOutcome(err, objs)
 		}
-		return projectResult(c.k, eff.DisplayName, objs), nil
+		res := projectResult(c.k, eff.DisplayName, objs, false)
+		if warning != "" {
+			res.Warnings = []string{warning}
+		}
+		return res, nil
 	}
 }
 

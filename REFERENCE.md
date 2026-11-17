@@ -960,7 +960,13 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   other change, or a fourth conflict, is `CONFLICT` with the project kept.
   Re-run the same command after any partial result: it reads the project's
   namespaces again and skips the ones already being deleted. The result's `kind`
-  stays `ProjectDelete`; its `data` has the fields `deleted` and `objects`.
+  stays `ProjectDelete`; its `data` has the fields `deleted`, `waited` and
+  `objects`. The first line is `project/<id> deleted` when the command saw the
+  project and its backing namespace deleted, else `project/<id> deletion
+  started`; with `--delete-namespaces` it is always `deletion started`. When the
+  wait of a run without `--delete-namespaces` ends with an error,
+  `data.error.details` has `committed`, `resourceKind`, `resourceName` and
+  `recovery` beside `objects`.
 - `user`, `project`, `roletemplate`, `globalrole` and `nodedriver` take the
   object's id as the argument, named `id` in help and the schema: the NAME
   column of `get`, not the username or display name. When `get`, `patch` or
@@ -1161,6 +1167,51 @@ names `get`. The commands that wait on an OIDC client watch the object the same
 way, with a poll interval of 2 seconds instead of 5 and a default timeout of 60
 seconds; with `get` alone they poll every 2 seconds, and the second GET comes 4
 seconds after the first request.
+
+Waiting for deletion: `delete <kind>` waits until the object is gone unless
+`--wait=false` is given; the other exceptions are below. The object is gone
+when a read of it responds `NOT_FOUND`, a watch reports it deleted, or an
+object with the same name has a different uid from the deleted one (a new
+object took the name). An object that still exists is not gone, even with a
+`metadata.deletionTimestamp` (Terminating); when the command read no uid
+before the delete, only `NOT_FOUND` or the watch ends the wait. The wait reads
+the object as the wait of `get <kind>` does, from the moment the server
+accepts the delete request. `--timeout` is a positive duration, `5m` by
+default, and is one time limit for all the objects the command waits for.
+`--wait=false` returns once the server accepts the request, and the first line
+says `deletion started` instead of `deleted`; `--wait=false` with `--timeout`
+is refused. With `-o json`, `data.waited` is `true` only when the command saw
+every object deleted. A timeout (exit 1), an interrupt (exit 130), or an
+authentication (`AUTH`, exit 3) or certificate (`TLS_TRUST`, exit 10) failure
+after the server accepted the delete request is an error that is not
+retryable. Its `data.error.details` say the deletion was requested
+(`committed: true`) and name the object (`resourceKind`, `resourceName`) and a
+`rancher get` command that reads it (`recovery`). The next step is that read,
+not a second delete; after an `AUTH` error, log in again before the read (if
+`RANCHER_CLI_TOKEN` holds the token the command uses, set it to another token
+or unset it).
+Deleting the ext token the command uses ends with an `AUTH` error after the
+delete, with the committed details, because before the delete the command does
+not check whether the token to delete is the ext token it uses. When the
+server refuses (403) a read of an object the command read before the delete,
+the wait for that object ends: the result says `deletion started` with a
+warning that your access ended after the request and the deletion is not
+confirmed, and `data.waited` is `false`. A project owner's access ends when
+Rancher deletes the project, which ends the owner's wait this way. Deleting
+the token the command uses (from a login or `RANCHER_CLI_TOKEN`) does not wait
+when Rancher marks it as derived, since the server refuses every read made
+with a deleted token: the result says `deletion started` with a note to log in
+again (or, if `RANCHER_CLI_TOKEN` holds the token, to set it to another token
+or unset it). With the wait on and without `--delete-namespaces`,
+`delete project` also reads the project's backing namespace on the local
+cluster before the delete (`status.backingNamespace`, else the project id) and
+waits for it too when it can read it; when that read is refused (403) it does
+not wait for the namespace, warns, and `data.waited` is `false`. Any other
+server or network error on that read stops the command before it sends the
+delete, and fails a `--dry-run` the same way; nothing that changes the server
+is sent. With `--delete-namespaces` the command does not wait: it refuses
+`--timeout` and refuses `--wait` except `--wait=false`, and it prints a
+warning that it does not wait, except with `--wait=false`.
 
 `rancher kubeconfig` prints one context through the Rancher proxy and, when the
 cluster has the Authorized Cluster Endpoint enabled and the
@@ -3238,8 +3289,9 @@ The error's `details` hold the certificate's kind, subject, issuer and
 fingerprint (for `auth login` and the sign-in of kubectl's credential plugin,
 inside the login failure's `primary` error; for `support-bundle`, in
 `details.first`). Where a command already wrote to
-the server (the four OIDC client commands and `create user`), the error's
-`details` are what the command already changed, and its message names the
+the server (the four OIDC client commands, `create user`, and a `delete` whose
+wait ends with the failure), the error's `details` are what the command already
+changed, and its message names the
 certificate's subject, issuer and fingerprint. The message names the remedy
 for the command that failed: a command that takes `--cacert` names it, `auth
 get-token` and `rancher token` name their own flags, a command that reads a

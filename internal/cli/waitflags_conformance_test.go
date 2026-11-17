@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -106,27 +107,44 @@ func wantGetWaitCommands() []string {
 	return want
 }
 
-// TestOnlyGetAndAppActionsDeclareTheWaitFlags asserts that the commands
-// declaring --wait are exactly the generic gets plus app install, app
-// uninstall and app upgrade, so delete, patch and the clusterregistrationtoken
-// get do not offer a flag they ignore or refuse, and that every command
-// declaring --for declares --wait. The --timeout of the access and oidc-client
-// commands is a time limit, not a wait, and those commands declare no --wait.
-// App install, app uninstall and app upgrade declare --wait and --timeout for
-// their wait of Helm's run.
-func TestOnlyGetAndAppActionsDeclareTheWaitFlags(t *testing.T) {
+// TestOnlyGetDeleteAndAppActionsDeclareTheWaitFlags asserts that the
+// commands declaring --wait are exactly the generic gets, every delete, and
+// app install, app uninstall and app upgrade; that patch and the
+// clusterregistrationtoken get do not offer a flag they ignore or refuse;
+// that every delete declares --wait and --timeout and no --for, since a
+// delete waits for the object to be gone and for nothing else; that no patch
+// declares any of the three; and that every command declaring --for declares
+// --wait. The --timeout of the access and oidc-client commands is a time
+// limit, not a wait, and those commands declare no --wait. App install, app
+// uninstall and app upgrade declare --wait and --timeout for their wait of
+// Helm's run.
+func TestOnlyGetDeleteAndAppActionsDeclareTheWaitFlags(t *testing.T) {
 	t.Parallel()
 	wr, err := buildWiredRegistry("v-test", nil)
 	require.NoError(t, err)
 	cmds := wr.reg.Commands()
 
-	var got []string
+	var got, deletes []string
 	for _, c := range cmds {
-		if slices.Contains(declaredFlags(c), "wait") {
-			got = append(got, c.Describe().Name)
+		name := c.Describe().Name
+		flags := declaredFlags(c)
+		if slices.Contains(flags, "wait") {
+			got = append(got, name)
+		}
+		switch {
+		case strings.HasPrefix(name, "delete "):
+			deletes = append(deletes, name)
+			assert.Contains(t, flags, "wait", name)
+			assert.Contains(t, flags, "timeout", name)
+			assert.NotContains(t, flags, "for", name)
+		case strings.HasPrefix(name, "patch "):
+			for _, flag := range []string{"wait", "for", "timeout"} {
+				assert.NotContains(t, flags, flag, name)
+			}
 		}
 	}
-	want := append(wantGetWaitCommands(), "app install", "app uninstall", "app upgrade")
+	require.NotEmpty(t, deletes)
+	want := slices.Concat(wantGetWaitCommands(), deletes, []string{"app install", "app uninstall", "app upgrade"})
 	assert.ElementsMatch(t, want, got)
 	assert.Empty(t, commandsDeclaringForWithoutWait(cmds))
 }

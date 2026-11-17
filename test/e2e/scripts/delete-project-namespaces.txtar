@@ -47,6 +47,7 @@ exec rancher delete project del-ns --cluster testcluster --delete-namespaces --a
 cp stdout done.json
 jsonquery done.json kind ProjectDelete
 jsonquery done.json data.deleted del-ns
+jsonquery done.json data.waited false
 jsonquery done.json data.objects.0.name del-ns-a
 jsonquery done.json data.objects.0.outcome 'deletion started'
 jsonquery done.json data.objects.1.outcome 'deletion started'

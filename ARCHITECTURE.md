@@ -637,7 +637,8 @@ note of the kind's `create` verb (state `available`; the verb describes
 `create resource`); a row cannot set it together with
 `NoCreateViaManifest`), `GetDesc` (the
 description of the generated `get`; a row with a `SystemFilter` gets the filter's sentence
-first and `GetDesc` after it), `Binding` (contract/stability for the generated generic
+first and `GetDesc` after it), `DeleteDesc` (text appended to the description of the
+generated `delete`; only a `Deletable` row sets it), `Binding` (contract/stability for the generated generic
 ops), and the table: `Columns` for a kind with its own, or `ServerTable` for a
 built-in Kubernetes kind whose text table the cluster's API server serves (kubectl's
 columns and cells; such a row has no `Columns`, `SystemFilter`, `RedactPaths` or
@@ -1246,7 +1247,7 @@ table whose MCP keys are conformance-tested, and each op's safety binding has ex
 owner (kind table for generated ops, bespoke `Resolver` for the rest), with overlaps
 rejected at `BuildRoot`.
 
-Verb reservation. get/create/patch/delete are reserved for kind-table resources - a GVR, a name, stored server state, and the full contract those verbs imply (list/named duality, --wait on get, -o name, generated siblings, schema kind vocabulary). Computed or derived views get dedicated verbs (inspect, top, usage, images). This mirrors kubectl's own get vs top/describe split and is deliberate: a hypothetical get usage could not be named, waited on, or deleted without breaking get's own contract. New surface work follows this rule.
+Verb reservation. get/create/patch/delete are reserved for kind-table resources - a GVR, a name, stored server state, and the full contract those verbs imply (list/named duality, --wait on get and delete, -o name, generated siblings, schema kind vocabulary). Computed or derived views get dedicated verbs (inspect, top, usage, images). This mirrors kubectl's own get vs top/describe split and is deliberate: a hypothetical get usage could not be named, waited on, or deleted without breaking get's own contract. New surface work follows this rule.
 
 **Rancher's Helm catalog is read with `get`, and changed only through Rancher's install, upgrade and uninstall actions.** The clusterrepo, app and operation rows (`catalog.cattle.io`) are read with `get` on every cluster through `--cluster`, the local cluster included, and use the Kubernetes names. Patch, delete and create from a manifest are refused, and each refusal and its reason sit in the kind table (`NoPatchReason`, `NoDeleteReason`, `NoCreateViaManifest`) next to the row, not in bespoke code. Rancher creates and updates app and operation objects itself, and deleting an app object leaves the release installed. A Helm release is installed with `rancher app install`, changed with `rancher app upgrade` and removed with `rancher app uninstall`, which POST the install and upgrade actions of a ClusterRepo and the uninstall action of an App through `engine.ActionClient`; Rancher fetches the chart, runs Helm in its own pod and records the release as an App. The CLI renders no chart, stores no release and runs no `helm`. App values, chart default values and install notes are hidden from every output by default (`RedactPaths`), and the operation row hides `status.token`. The columns follow the table the Rancher server returns. Charts are not a stored object and have their own read command, `rancher charts`, not a row.
 
@@ -1256,7 +1257,7 @@ Verb reservation. get/create/patch/delete are reserved for kind-table resources 
 
 **A catalog action is sent once, and a doubtful answer is never retried.** `engine.ActionClient` POSTs the action with no retry. After a 500, 502 or 504, or a lost answer, nobody can tell from the answer whether Rancher ran it, so the error is GENERIC, not retryable, and names what to read first (the namespace's operations and the App, with the request id the CLI put on the release). Every other refusal keeps the status mapping every command uses and adds Rancher's own text. No value from the values files reaches the server's text as shown: before that text is shown, every occurrence of such a value, raw or JSON-escaped, is replaced by `<hidden>`, and overlapping occurrences are replaced as one. A value only the CLI adds is shown as is in that text. The preview shows the values the CLI adds and the registry host, for a chart that declares a registry path.
 
-**`app install --wait`, `app upgrade --wait` and `app uninstall --wait` read the Operation, then the App, on the shared wait loop.** Rancher runs Helm in the operation's pod. A wait reads the Operation until it is done or `Stalled`, then the App until it shows how the run ended: for an install or an upgrade, the revision that carries the request id at `deployed` or `failed`; for an uninstall, the App gone, or `uninstalled` with `--keep-history`. Rancher writes the App from the release Secret apart from the Operation, and the App can lag; a read of at most 30 seconds after the Operation's end covers a status that is not final yet, and one deadline bounds the whole wait. `--timeout` is at most 55m because Rancher removes the operation one hour after it starts. When the caller cannot get operations in the namespace, the wait reads the App only and says so. An error after Rancher accepted the request is not retryable and carries the committed details with the command to run next, because the request already ran on the server. The shared loop's `WhileAbsent` keeps a wait going while the object does not exist yet, and `OnDeleted` lets a wait decide on a watch Deleted event; every other wait sets neither.
+**`app install --wait`, `app upgrade --wait` and `app uninstall --wait` read the Operation, then the App, on the shared wait loop.** Rancher runs Helm in the operation's pod. A wait reads the Operation until it is done or `Stalled`, then the App until it shows how the run ended: for an install or an upgrade, the revision that carries the request id at `deployed` or `failed`; for an uninstall, the App gone, or `uninstalled` with `--keep-history`. Rancher writes the App from the release Secret apart from the Operation, and the App can lag; a read of at most 30 seconds after the Operation's end covers a status that is not final yet, and one deadline bounds the whole wait. `--timeout` is at most 55m because Rancher removes the operation one hour after it starts. When the caller cannot get operations in the namespace, the wait reads the App only and says so. An error after Rancher accepted the request is not retryable and carries the committed details with the command to run next, because the request already ran on the server. The shared loop's `WhileAbsent` keeps a wait going while the object does not exist yet, and `OnDeleted` lets a wait decide on a watch Deleted event; the app waits and the delete wait set `OnDeleted`, and only the app waits set `WhileAbsent`; no other wait sets either.
 
 **Hidden paths reach into lists through a wildcard segment.** A `"*"` segment of a `RedactPaths` entry matches any one segment of an object path: a list index, the `-` of a JSON patch append, or a map key. The code that removes hidden values from get output and apply results, and the diff redaction, search lists as well as maps. The helmop and bundle rows hide the Helm `values` and `templateValues` of the object and of every item of `spec.targets`, and the bundledeployment row hides them under `spec.options` and `spec.stagedOptions`, because these values often hold credentials. The input must be JSON-shaped (`map[string]any`, `[]any` and scalars): a typed Go slice or map is not searched, and code that builds an object in Go converts it to unstructured JSON before any output.
 
@@ -1388,6 +1389,59 @@ list. rotate-secret reads the client Secret once the controller has removed
 the regenerate annotation, and reads it again every 2 seconds while the stream
 is open if that read failed with a temporary error, because the watch does not
 see the Secret.
+
+**A `delete` waits until the object is gone unless `--wait=false`.** `kubectl
+delete` waits by default and the CLI matches it: the result line says
+`deleted` only when the object is gone. `--timeout` is a positive duration
+with no maximum (nothing on the server limits a deletion); the default, 5m,
+keeps an unattended delete from hanging. `--wait=false` with `--timeout` is a
+VALIDATION error, and there is no `--for` because the only end is the object
+being gone. Every delete command reaches the wait through `PlanFromFetched`,
+which refuses a `DeleteWait` that `ParseDeleteWait` did not make; a source
+scan in `test/conformance` fails on any other delete request outside a dry-run
+unless it is listed with a reason. The one listed delete command, `delete
+project --delete-namespaces`, does not wait and refuses `--timeout` and
+`--wait` except `--wait=false`. `ParseDeleteWait` runs before any request,
+`--dry-run` included, and a dry-run never waits.
+
+**The result line says `deleted` only when the CLI saw every object gone.**
+Any other result says `deletion started` with `data.waited` false. An object
+is gone when a GET responds 404, a watch reports it deleted, or an object of
+the same name has a different uid from the one the command read before the
+delete request (a controller created a new one), both uids non-empty. An
+object with a `deletionTimestamp` is still there. One time limit, started
+after the server accepts the delete request, covers every object waited for: a
+plain `delete project` waits for the Project and then its backing namespace on
+the local cluster (`status.backingNamespace`, else the project id). A timeout,
+an interrupt, or an authentication or certificate failure after the delete
+request is an error that is not retryable. It carries the committed details
+with a `rancher get` command as the recovery, because a second delete does not
+help.
+
+**A refused read after the delete request ends the wait only for an object the
+command read before the delete.** Deleting a project removes the caller's own
+project role bindings shortly afterward, and the caller's reads then return
+403; without this rule a delete that worked would exit 6. A 403 on an object
+the command read before the delete ends that object's wait with `deletion
+started`, a warning that the caller's access ended after the delete request,
+and `data.waited` false. A 403 on any other object is an error that keeps its
+code and carries the committed details, because the caller may never have been
+able to read it. The project's backing namespace is read once before the
+delete request for the same reason: a namespace the caller can read is waited
+for, one that returns 403 is not waited for and gets a warning, and one that
+is not found needs no wait. Only the response to a GET reaches
+`WaitParams.StopOn`; a 403 on a list or a watch still switches the wait to
+polling.
+
+**Deleting the token this command uses sends the delete request and does not
+wait.** In `delete management-token`, when the active token's id is the
+argument and Rancher marks the token as derived, the command makes no read
+after the delete request and returns `deletion started` with a warning to log
+in again. The CLI decides this before the delete request from the token's id,
+not from a refused read afterward: Rancher responds to a read made with a
+deleted token with an empty 403, the same response a token that never existed
+gets; no read can confirm the delete. A management token the command does not
+use waits like every other kind.
 
 **A release is rehearsed before its tag, and the tag run ships the rehearsed
 bytes.** A manual run of `release.yaml` on main (`workflow_dispatch` with the

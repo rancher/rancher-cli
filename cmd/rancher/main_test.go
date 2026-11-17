@@ -61,7 +61,7 @@ func TestFailingInvocationsWriteTheirErrorOnce(t *testing.T) {
 		want   int
 	}{
 		{"unknown flag on a leaf", []string{"get", "pod", "--bogus"}, flagErr, 1},
-		{"unknown --wait on delete", []string{"delete", "pod", "web", "--wait"}, flagErr, 1},
+		{"unknown --for on delete", []string{"delete", "pod", "web", "--for", "x"}, flagErr, 1},
 		{"unknown --for on patch, which takes a secret input and names the flag by position", []string{"patch", "pod", "web", "--for", "x"}, "unknown flag at argument 4 after rancher", 1},
 		{"unknown --timeout on the clusterregistrationtoken get", []string{"get", "clusterregistrationtoken", "x", "--timeout", "1s"}, flagErr, 1},
 		{"unknown flag on a group, with no leaf command on the line, is named by position", []string{"get", "--bogus"}, "unknown flag at argument 2 after rancher", 1},

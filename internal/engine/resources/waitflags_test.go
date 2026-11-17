@@ -22,10 +22,11 @@ func flagNames(d runtime.Descriptor) []string {
 	return names
 }
 
-// TestGetDeclaresTheWaitFlagsAndDeleteAndPatchDoNot asserts every kind's get
-// declares --wait, --for and --timeout while its delete and patch declare
-// none of them.
-func TestGetDeclaresTheWaitFlagsAndDeleteAndPatchDoNot(t *testing.T) {
+// TestGetAndDeleteDeclareTheirWaitFlagsAndPatchKeepsTheOtherDeleteFlags
+// asserts every kind's get declares --wait, --for and --timeout, its delete
+// declares --wait and --timeout and not --for, and its patch declares none
+// of them while keeping every other flag of the delete.
+func TestGetAndDeleteDeclareTheirWaitFlagsAndPatchKeepsTheOtherDeleteFlags(t *testing.T) {
 	t.Parallel()
 	for _, k := range kinds.All() {
 		got := flagNames(NewGet(k, nil).Describe())
@@ -33,10 +34,15 @@ func TestGetDeclaresTheWaitFlagsAndDeleteAndPatchDoNot(t *testing.T) {
 		patch := flagNames(NewPatch(k, nil, nil).Describe())
 		for _, name := range waitFlagNames {
 			assert.Contains(t, got, name, "get %s", k.Name)
-			assert.NotContains(t, del, name, "delete %s", k.Name)
 			assert.NotContains(t, patch, name, "patch %s", k.Name)
 		}
+		assert.Contains(t, del, "wait", "delete %s", k.Name)
+		assert.Contains(t, del, "timeout", "delete %s", k.Name)
+		assert.NotContains(t, del, "for", "delete %s", k.Name)
 		for _, name := range del {
+			if name == "wait" || name == "timeout" {
+				continue
+			}
 			assert.Contains(t, patch, name, "patch %s keeps delete's flag %s", k.Name, name)
 		}
 	}

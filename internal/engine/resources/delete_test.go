@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -19,6 +20,47 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// deletedNames is what a server responds with after a delete the CLI sent
+// for real: a GET of the deleted name responds NOT_FOUND, and so does a GET
+// of a deleted Project's backing namespace (status.backingNamespace, else
+// the project id), which Rancher deletes with the project. The fakes of this
+// package record each accepted non-dry-run delete in one.
+type deletedNames struct {
+	mu   sync.Mutex
+	gone map[string]bool
+}
+
+// record marks ns/name deleted; obj is the object the fake held under that
+// name, nil when it held none.
+func (d *deletedNames) record(gvr schema.GroupVersionResource, ns, name string, obj *unstructured.Unstructured) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.gone == nil {
+		d.gone = map[string]bool{}
+	}
+	d.gone[ns+"/"+name] = true
+	if gvr.Group == "management.cattle.io" && gvr.Resource == "projects" {
+		backing := name
+		if obj != nil {
+			if bn, _, _ := unstructured.NestedString(obj.Object, "status", "backingNamespace"); bn != "" {
+				backing = bn
+			}
+		}
+		d.gone["/"+backing] = true
+	}
+}
+
+// notFound is the NOT_FOUND a GET of ns/name responds with once it is deleted,
+// else nil.
+func (d *deletedNames) notFound(ns, name string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.gone[ns+"/"+name] {
+		return clierr.New(clierr.CodeNotFound, name+" not found")
+	}
+	return nil
+}
+
 type delCall struct {
 	ns, name, rv string
 	dryRun       bool
@@ -32,11 +74,15 @@ type delClient struct {
 	dryRunErr error
 	execErr   error // returned only for the non-dry-run real delete
 	deletes   []delCall
+	deleted   deletedNames
 }
 
-func (d *delClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
+func (d *delClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	if d.getErr != nil {
 		return nil, d.getErr
+	}
+	if err := d.deleted.notFound(ns, name); err != nil {
+		return nil, err
 	}
 	return d.obj, nil
 }
@@ -52,10 +98,13 @@ func (d *delClient) Create(context.Context, schema.GroupVersionResource, string,
 func (d *delClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
 	return nil, nil
 }
-func (d *delClient) Delete(_ context.Context, _ schema.GroupVersionResource, ns, name, rv string, dryRun bool) error {
+func (d *delClient) Delete(_ context.Context, gvr schema.GroupVersionResource, ns, name, rv string, dryRun bool) error {
 	d.deletes = append(d.deletes, delCall{ns: ns, name: name, rv: rv, dryRun: dryRun})
 	if dryRun {
 		return d.dryRunErr
+	}
+	if d.execErr == nil {
+		d.deleted.record(gvr, ns, name, d.obj)
 	}
 	return d.execErr
 }
@@ -452,4 +501,35 @@ func TestDeleteAndPatchRequiredClusterDescDropsTheListAdvice(t *testing.T) {
 			}
 		}
 	}
+}
+
+// deleteGenericDesc is the description every generated delete starts with.
+func deleteGenericDesc(k kinds.Kind) string {
+	return "Deletes the " + k.Name + " <" + argName(k) + "> with a resourceVersion precondition from its server-side dry-run preview. " +
+		"By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), " +
+		"a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). " +
+		"--timeout (a positive duration, default 5m) limits how long it waits. " +
+		"A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion " +
+		"was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, " +
+		"the command stops waiting for that object; the result says deletion started, with a warning."
+}
+
+// TestDeleteDescEndsWithTheRowsDeleteDesc asserts every generated delete
+// describes the wait, and that only the project and management-token rows
+// add their own text after it.
+func TestDeleteDescEndsWithTheRowsDeleteDesc(t *testing.T) {
+	t.Parallel()
+	var withText []string
+	for _, k := range kinds.All() {
+		desc := NewDelete(k, nil).Describe().Desc
+		if k.DeleteDesc == "" {
+			assert.Equal(t, deleteGenericDesc(k), desc, k.Name)
+			continue
+		}
+		withText = append(withText, k.Key)
+		assert.Equal(t, deleteGenericDesc(k)+" "+k.DeleteDesc, desc, k.Name)
+	}
+	assert.ElementsMatch(t, []string{"project", "managementtoken"}, withText)
+	project := mustKind(t, "project")
+	assert.Equal(t, deleteGenericDesc(project)+" "+project.DeleteDesc, NewDeleteProject(project, nil, nil).Describe().Desc)
 }

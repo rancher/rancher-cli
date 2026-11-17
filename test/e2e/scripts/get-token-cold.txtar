@@ -21,6 +21,7 @@ jsonquery execcred.json kind ExecCredential
 
 exec rancher delete token fac-token-1 --apply --yes -o json
 jsonquery stdout data.deleted fac-token-1
+jsonquery stdout data.waited true
 
 # Deterministic per-instance token names/secrets let this replay the
 # just-revoked bearer verbatim - actual reuse of a dead credential, not an

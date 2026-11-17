@@ -16,6 +16,8 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/access"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -293,22 +295,56 @@ func TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader(t *testi
 	}
 }
 
-// TestAccessTimeoutOffersTheDurationLadder asserts every access command
-// completes --timeout from the same static ladder, each value one the
-// command accepts, with no request made.
-func TestAccessTimeoutOffersTheDurationLadder(t *testing.T) {
+// TestTimeoutOffersTheDurationLadder asserts every access command and
+// every delete completes --timeout from the same static ladder, each value
+// one the command accepts, with no request made, and that a delete offers
+// nothing where it refuses --timeout: after --wait=false (in any spelling
+// the parser reads as false) and, for delete project, after
+// --delete-namespaces.
+func TestTimeoutOffersTheDurationLadder(t *testing.T) {
 	// NOT parallel: mutates storedConfig and the token environment.
 	f := newAccessFixture(t)
 	storeAccessConfig(t, f, true)
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "timeout", FlagSpelling: "--timeout"}
-	for _, d := range []runtime.Descriptor{canDescriptor(), listDescriptor(), whoCanDescriptor(), explainDescriptor(), clustersDescriptor(), projectsDescriptor()} {
+	ladder := []string{"10m", "1m", "2m", "30s", "5m"}
+	pod, ok := kinds.Lookup("pod")
+	require.True(t, ok)
+	project, ok := kinds.Lookup("project")
+	require.True(t, ok)
+	deletePod := resources.NewDelete(pod, nil).Describe()
+	deleteProject := resources.NewDeleteProject(project, nil, nil).Describe()
+	for _, d := range []runtime.Descriptor{canDescriptor(), listDescriptor(), whoCanDescriptor(), explainDescriptor(), clustersDescriptor(), projectsDescriptor(), deletePod, deleteProject} {
 		require.True(t, slices.ContainsFunc(d.Flags, func(a runtime.ArgSpec) bool { return a.Name == "timeout" }), d.Name+" carries --timeout")
 		f.reset()
-		assert.Equal(t, []string{"10m", "1m", "2m", "30s", "5m"}, dispatchSite(accessCtx(t), site, d, nil, nil, []string{"--timeout"}), d.Name)
+		assert.Equal(t, ladder, dispatchSite(accessCtx(t), site, d, nil, nil, []string{"--timeout"}), d.Name)
 		assert.Empty(t, f.served(), d.Name+": the ladder is static")
 	}
 	equals := CompletionSite{Kind: SiteFlagValue, FlagName: "timeout", FlagSpelling: "--timeout", EqualsForm: true}
 	assert.Equal(t, []string{"--timeout=10m", "--timeout=1m", "--timeout=2m", "--timeout=30s", "--timeout=5m"}, dispatchSite(accessCtx(t), equals, projectsDescriptor(), nil, nil, []string{"--timeout="}))
+	assert.Equal(t, []string{"--timeout=10m", "--timeout=1m", "--timeout=2m", "--timeout=30s", "--timeout=5m"}, dispatchSite(accessCtx(t), equals, deletePod, nil, nil, []string{"x", "--timeout="}))
+
+	for _, tc := range []struct {
+		d    runtime.Descriptor
+		tail []string
+	}{
+		{deletePod, []string{"x", "--wait=false", "--timeout"}},
+		{deletePod, []string{"x", "--wait=0", "--timeout"}},
+		{deletePod, []string{"x", "--wait=FALSE", "--timeout"}},
+		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces", "--timeout"}},
+		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces=true", "--timeout"}},
+	} {
+		assert.Empty(t, dispatchSite(accessCtx(t), site, tc.d, nil, nil, tc.tail), "%s %v", tc.d.Name, tc.tail)
+	}
+	for _, tc := range []struct {
+		d    runtime.Descriptor
+		tail []string
+	}{
+		{deletePod, []string{"x", "--wait", "--timeout"}},
+		{deletePod, []string{"x", "--wait=true", "--timeout"}},
+		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces=false", "--timeout"}},
+	} {
+		assert.Equal(t, ladder, dispatchSite(accessCtx(t), site, tc.d, nil, nil, tc.tail), "%s %v", tc.d.Name, tc.tail)
+	}
 }
 
 // projectsCompleter is the zero-dependency probe of `access projects`, the

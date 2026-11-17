@@ -41,9 +41,10 @@ type localClient struct {
 	resource string // the resource of the row under test, served from its namespaces
 	bindings []unstructured.Unstructured
 
-	gets   []localGet
-	lists  []routeListCall
-	writes []localWrite
+	gets    []localGet
+	lists   []routeListCall
+	writes  []localWrite
+	deleted deletedNames
 }
 
 var _ engine.ClusterClient = (*localClient)(nil)
@@ -63,6 +64,9 @@ func localBinding(k kinds.Kind, ns, name string) unstructured.Unstructured {
 
 func (c *localClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	c.gets = append(c.gets, localGet{resource: gvr.Resource, ns: ns, name: name})
+	if err := c.deleted.notFound(ns, name); err != nil {
+		return nil, err
+	}
 	switch gvr.Resource {
 	case "projects":
 		if ns != "c-x" || name != "p-x" {
@@ -106,8 +110,11 @@ func (c *localClient) Update(_ context.Context, _ schema.GroupVersionResource, n
 	return obj, nil
 }
 
-func (c *localClient) Delete(_ context.Context, _ schema.GroupVersionResource, ns, name, _ string, dryRun bool) error {
+func (c *localClient) Delete(_ context.Context, gvr schema.GroupVersionResource, ns, name, _ string, dryRun bool) error {
 	c.writes = append(c.writes, localWrite{op: "delete", ns: ns, name: name, dryRun: dryRun})
+	if !dryRun {
+		c.deleted.record(gvr, ns, name, nil)
+	}
 	return nil
 }
 

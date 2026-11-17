@@ -276,6 +276,18 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   `kube-public` (and `local`, `fleet-local` on the local cluster) are
   `not deleted`. A failure stops the run, keeps the project and carries every
   item in `data.error.details.objects`; re-run the same command.
+  `delete project` without `--delete-namespaces` also waits for the
+  project's backing namespace when you can read it; with
+  `--delete-namespaces` the command does not wait, refuses `--timeout` and
+  refuses `--wait` except `--wait=false`.
+- `delete` waits until the object is gone (default `--timeout 5m`);
+  `--wait=false` returns at once and prints `deletion started`. Read
+  `data.waited` and the warnings. Without `--wait=false`, a `data.waited`
+  of `false` means the deletion was requested and the command did not see
+  every object deleted; a warning says which object and why. On an error with
+  `data.error.details.committed` true (a timeout, an interrupt, `AUTH`,
+  `TLS_TRUST`), run `data.error.details.recovery`, a `rancher get` command;
+  never run the delete again.
 - `project remove-namespace <ns>` also accepts a namespace with the project
   label and no project annotation, and makes sure its project label is
   removed.
@@ -539,6 +551,7 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 rancher get gitrepo main --wait --timeout 5m                       # kind's default wait condition
 rancher get cluster c-abc --wait --for condition=Ready --timeout 10m
 rancher get pod x --wait --for state=running
+rancher delete namespace demo --cluster c --apply --yes --timeout 10m   # waits until the namespace is gone
 ```
 
 `--for <condition>` on its own also starts the wait; `--timeout` on its own

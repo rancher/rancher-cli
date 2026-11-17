@@ -67,13 +67,14 @@ func (c patchCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// patchFlags is delete's Route flag set (same Required-per-policy rules - patch
-// is always a named op) plus the two input sources, spelled as kubectl spells
+// patchFlags is namedFlags (the Route flag set a delete has too, with the same
+// Required-per-policy rules - patch is always a named op; a patch does not
+// wait) plus the two input sources, spelled as kubectl spells
 // them: --patch/-p (inline) and --patch-file (a file or "-" for stdin), and
 // --type, which names the patch format. Exactly one source is required,
 // enforced in Plan.
 func patchFlags(k kinds.Kind) []runtime.ArgSpec {
-	flags := deleteFlags(k)
+	flags := namedFlags(k)
 	return append(flags,
 		runtime.ArgSpec{Name: flagPatch, Type: "string", Aliases: []string{"p"}, Desc: "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge"},
 		runtime.ArgSpec{Name: flagPatchFile, Type: "string", Desc: "patch `file`, or - for stdin"},

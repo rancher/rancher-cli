@@ -162,6 +162,10 @@ var errorRows = []struct {
 	{"DeleteProjectPartialFailure.Objects.Message", false, false, func(s string) *clierr.Error {
 		return withDetails(resources.DeleteProjectPartialFailure{Objects: []safety.Object{{Kind: "namespace", Name: "ns", Outcome: safety.OutcomeFailed, Code: clierr.CodeGeneric, Message: s}}})
 	}},
+	{"DeleteProjectPartialFailure.CommittedContextDetails.Recovery", false, false, func(s string) *clierr.Error {
+		return withDetails(resources.DeleteProjectPartialFailure{Objects: []safety.Object{},
+			CommittedContextDetails: &clierr.CommittedContextDetails{Committed: true, ResourceKind: "project", ResourceName: "p", Recovery: s}})
+	}},
 	{"RevocationReport.NotRevoked.Error", false, false, func(s string) *clierr.Error {
 		return withDetails(token.RevocationReport{NotRevoked: []token.NotRevokedToken{liveToken(func(n *token.NotRevokedToken) { n.Error = s })}})
 	}},
@@ -370,9 +374,9 @@ var siteRowCounts = map[string]int{
 	"internal/runtime.renderEffect expandAll":       2,
 	"internal/runtime.renderEffect ExpandLines":     1,
 	"internal/runtime.renderEffect expandData":      1,
-	"internal/runtime.renderErrDrained ExpandError": 19,
+	"internal/runtime.renderErrDrained ExpandError": 20,
 	"internal/runtime.renderErrDrained expandAll":   1,
-	"internal/cli.renderDepsError ExpandError":      19,
+	"internal/cli.renderDepsError ExpandError":      20,
 	"internal/cli.completionDebugf ExpandText":      1,
 }
 

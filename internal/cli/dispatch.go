@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -294,10 +295,15 @@ func dispatchSite(
 		if cands := enumCandidates(site, d); len(cands) > 0 {
 			return cands
 		}
-		// The access commands' --timeout: a static ladder of durations,
-		// owned here like an enum (no network, no delegation).
-		if accessTimeoutSite(site, d) {
-			return resolveStaticEnum(accessTimeoutSuggestions, site)
+		// The --timeout of the access commands and of every delete: a
+		// static ladder of durations, owned here like an enum (no network,
+		// no delegation). Owned even when empty: a delete offers nothing
+		// where it refuses --timeout.
+		if timeoutLadderSite(site, d) {
+			if timeoutRefused(d, tail) {
+				return nil
+			}
+			return resolveStaticEnum(timeoutSuggestions, site)
 		}
 		// `auth login --credential-store`: the three stores that can be
 		// named without knowing anything about the machine. The flag
@@ -582,19 +588,54 @@ func credentialStoreSite(site CompletionSite, d runtime.Descriptor) bool {
 		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "credential-store" })
 }
 
-// accessTimeoutSuggestions are the static --timeout candidates for the
-// access commands: any positive duration is valid, so the suggestions are
-// a ladder to pick from, each one a value the command accepts verbatim.
-var accessTimeoutSuggestions = []string{"30s", "1m", "2m", "5m", "10m"}
+// timeoutSuggestions are the static --timeout candidates for the access
+// commands and the deletes. Any positive duration is valid; the suggestions
+// are a ladder to pick from, each one a value the command accepts verbatim.
+var timeoutSuggestions = []string{"30s", "1m", "2m", "5m", "10m"}
 
-// accessTimeoutSite reports a --timeout flag-value site on an access
-// command whose descriptor carries the flag: the one value-taking flag of
-// the group with no enum and no server-side source. Ownership follows the
+// timeoutLadderSite reports a --timeout flag-value site on an access
+// command or a delete whose descriptor carries the flag: a value-taking
+// flag with no enum and no server-side source. Ownership follows the
 // descriptor, so a command without the flag gets no ladder.
-func accessTimeoutSite(site CompletionSite, d runtime.Descriptor) bool {
+func timeoutLadderSite(site CompletionSite, d runtime.Descriptor) bool {
 	return site.Kind == SiteFlagValue && site.FlagName == "timeout" &&
-		strings.HasPrefix(d.Name, "access ") &&
+		(strings.HasPrefix(d.Name, "access ") || strings.HasPrefix(d.Name, "delete ")) &&
 		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "timeout" })
+}
+
+// timeoutRefused reports whether the words typed so far make a delete
+// refuse --timeout: --wait with a value the parser reads as false
+// (strconv.ParseBool, as for every bool flag), or, for delete project,
+// --delete-namespaces bare or with a value it reads as true. A bool flag
+// takes a value only joined with "=". Words after "--" are arguments, not
+// flags.
+func timeoutRefused(d runtime.Descriptor, tail []string) bool {
+	if !strings.HasPrefix(d.Name, "delete ") {
+		return false
+	}
+	for _, word := range tail {
+		if word == "--" {
+			return false
+		}
+		name, value, joined := strings.Cut(strings.TrimPrefix(word, "--"), "=")
+		if !strings.HasPrefix(word, "--") {
+			continue
+		}
+		switch name {
+		case "wait":
+			if b, err := strconv.ParseBool(value); joined && err == nil && !b {
+				return true
+			}
+		case resources.FlagDeleteNamespaces:
+			if !joined {
+				return true
+			}
+			if b, err := strconv.ParseBool(value); err == nil && b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // liveCandidates answers a live site through the completion source that

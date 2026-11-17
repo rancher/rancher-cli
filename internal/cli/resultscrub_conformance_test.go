@@ -362,6 +362,10 @@ type scrubFake struct {
 	list func(gvr schema.GroupVersionResource) []unstructured.Unstructured
 	// lists are the List calls received, in order.
 	lists []scrubListCall
+	// gone holds the "<namespace>/<name>" of every object a real delete
+	// deleted, and the backing namespace of a deleted Project, which Rancher
+	// deletes with the project: a GET of one responds NOT_FOUND.
+	gone map[string]bool
 }
 
 // scrubListCall is one List the fake received: the resource and the label
@@ -455,6 +459,12 @@ func walkStrings(v any, visit func(string)) {
 }
 
 func (f *scrubFake) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	f.mu.Lock()
+	gone := f.gone[ns+"/"+name]
+	f.mu.Unlock()
+	if gone {
+		return nil, clierr.New(clierr.CodeNotFound, name+" not found")
+	}
 	if f.oidc != nil {
 		switch gvr.Resource {
 		case "oidcclients":
@@ -571,7 +581,21 @@ func (f *scrubFake) Update(_ context.Context, gvr schema.GroupVersionResource, _
 	return f.answer(gvr, obj.DeepCopy()), nil
 }
 
-func (f *scrubFake) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+func (f *scrubFake) Delete(_ context.Context, gvr schema.GroupVersionResource, ns, name, _ string, dryRun bool) error {
+	if dryRun {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gone == nil {
+		f.gone = map[string]bool{}
+	}
+	f.gone[ns+"/"+name] = true
+	if gvr.Group == "management.cattle.io" && gvr.Resource == "projects" {
+		// Get returns every Project with status.backingNamespace
+		// "<namespace>-<name>".
+		f.gone["/"+ns+"-"+name] = true
+	}
 	return nil
 }
 
@@ -775,7 +799,7 @@ func generatedScrubRows() []scrubRow {
 		}
 		del := scrubRow{
 			command: "delete " + k.Name, kind: k.Key, class: classNames,
-			reason: "the result is {deleted: name}: it never holds the object, which the command reads only for its resourceVersion",
+			reason: "the result is {deleted: name, waited: bool}: it never holds the object, which the command reads for its resourceVersion and, after the delete, to see it gone",
 			input: func(*plantSet) fieldCoverageInput {
 				return fieldCoverageInput{args: []string{scrubObjectName}, values: routing}
 			},

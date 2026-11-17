@@ -93,6 +93,7 @@ exec rancher auth login recover-e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCH
 exec rancher config use-server recover-e2e
 exec rancher delete token $LEFTOVER --apply --yes -o json
 jsonquery stdout data.deleted $LEFTOVER
+jsonquery stdout data.waited true
 exec rancher auth logout recover-e2e -o json
 jsonquery stdout 'data.revoked.#' 1
 jsonquery stdout 'data.notRevoked.#' 0

@@ -73,7 +73,7 @@ func TestWorkspaceRowFlagOrder(t *testing.T) {
 	k := mustLookup(t, "gitrepo")
 	assert.Equal(t, []string{FlagNamespace, flagWait, flagFor, flagTimeout}, flagNamesOf(getFlags(k)))
 	assert.Equal(t, []string{FlagNamespace, flagPatch, flagPatchFile, flagPatchType}, flagNamesOf(patchFlags(k)))
-	assert.Equal(t, []string{FlagNamespace}, flagNamesOf(deleteFlags(k)))
+	assert.Equal(t, []string{FlagNamespace, flagWait, flagTimeout}, flagNamesOf(deleteFlags(k)))
 	for verb, flags := range map[string][]runtime.ArgSpec{
 		"get":    getFlags(k),
 		"patch":  patchFlags(k),

@@ -1,0 +1,80 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# A delete waits until the object is gone. The test cluster deletes a
+# configmap when the delete request arrives; the wait ends at its first read.
+exec rancher create resource -f cm-wait.yaml --cluster testcluster --apply -o json
+exec rancher delete configmap dw-wait --cluster testcluster --namespace default --apply --yes -o json
+jsonquery stdout kind ConfigMapDelete
+jsonquery stdout data.deleted dw-wait
+jsonquery stdout data.waited true
+! exec rancher get configmap dw-wait --cluster testcluster --namespace default -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+# --wait=false returns once the server accepts the delete request.
+exec rancher create resource -f cm-nowait.yaml --cluster testcluster --apply -o json
+exec rancher delete configmap dw-nowait --cluster testcluster --namespace default --apply --yes --wait=false -o json
+jsonquery stdout data.deleted dw-nowait
+jsonquery stdout data.waited false
+exec rancher create resource -f cm-nowait-text.yaml --cluster testcluster --apply -o json
+exec rancher delete configmap dw-nowait-text --cluster testcluster --namespace default --apply --yes --wait=false
+stdout 'configmap/dw-nowait-text deletion started$'
+
+# --wait=false with --timeout, and a --timeout that is not a positive
+# duration, are refused before anything is deleted.
+exec rancher create resource -f cm-keep.yaml --cluster testcluster --apply -o json
+! exec rancher delete configmap dw-keep --cluster testcluster --namespace default --apply --yes --wait=false --timeout 1m -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher delete configmap dw-keep --cluster testcluster --namespace default --apply --yes --timeout 0s -o json
+jsonquery stderr data.error.code VALIDATION
+exec rancher get configmap dw-keep --cluster testcluster --namespace default -o json
+jsonquery stdout data.metadata.name dw-keep
+
+# The test cluster has no namespace controller: a deleted namespace stays
+# Terminating, and the wait ends at --timeout with an error that says the
+# deletion was requested and names a get command to check it.
+exec rancher create namespace dw-terminating --cluster testcluster --apply
+! exec rancher delete namespace dw-terminating --cluster testcluster --apply --yes --timeout 2s -o json
+jsonquery stderr data.error.code GENERIC
+jsonquery stderr data.error.details.committed true
+jsonquery stderr data.error.details.resourceKind namespace
+jsonquery stderr data.error.details.resourceName dw-terminating
+jsonget stderr data.error.details.recovery recovery.txt
+grep '^rancher ' recovery.txt
+grep 'get namespace ''dw-terminating''' recovery.txt
+
+-- cm-wait.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dw-wait
+  namespace: default
+data:
+  foo: bar
+
+-- cm-nowait.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dw-nowait
+  namespace: default
+data:
+  foo: bar
+
+-- cm-nowait-text.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dw-nowait-text
+  namespace: default
+data:
+  foo: bar
+
+-- cm-keep.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dw-keep
+  namespace: default
+data:
+  foo: bar

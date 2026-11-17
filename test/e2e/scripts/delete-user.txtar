@@ -23,7 +23,8 @@ jsonquery stderr data.error.code CONFIRMATION_REQUIRED
 jsonquery stderr data.error.message 'confirmation required for this mutation; re-run with --yes'
 
 # Gate passes with --apply --yes; the user is deleted.
-exec rancher delete user u-e2e --apply --yes
+exec rancher delete user u-e2e --apply --yes -o json
+jsonquery stdout data.waited true
 
 # Gone: get by name returns NOT_FOUND with the curated message and list hint.
 ! exec rancher get user u-e2e -o json

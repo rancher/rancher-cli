@@ -1202,3 +1202,30 @@ func TestIsReference(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateRejectsDeleteDescOnARowWithoutTheGeneratedDelete asserts a
+// row that sets DeleteDesc must be Deletable: the text describes the
+// generated delete, which a row with Deletable false does not have.
+func TestValidateRejectsDeleteDescOnARowWithoutTheGeneratedDelete(t *testing.T) {
+	t.Parallel()
+	row := func(deletable bool) []Kind {
+		return []Kind{{Key: "foo", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Deletable: deletable, DeleteDesc: "more about this delete"}}
+	}
+	require.NoError(t, validateKinds(row(true)))
+	err := validateKinds(row(false))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "DeleteDesc")
+}
+
+// TestDeleteDescRowsAreTheProjectAndManagementToken asserts which rows add
+// text to their generated delete's description.
+func TestDeleteDescRowsAreTheProjectAndManagementToken(t *testing.T) {
+	t.Parallel()
+	var got []string
+	for _, k := range All() {
+		if k.DeleteDesc != "" {
+			got = append(got, k.Key)
+		}
+	}
+	assert.ElementsMatch(t, []string{"project", "managementtoken"}, got)
+}

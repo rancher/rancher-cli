@@ -10,7 +10,7 @@ import (
 )
 
 type guardedDeleteCmd struct {
-	inner runtime.MutatingCommand
+	inner deleteCmd
 	guard func(ctx context.Context, in runtime.Input) error
 	// prePlan controls when the guard runs relative to the inner Plan.
 	//
@@ -56,12 +56,7 @@ func NewGuardedDeletePrePlan(k kinds.Kind, clients engine.ClusterClientFactory, 
 }
 
 func newGuardedDelete(k kinds.Kind, clients engine.ClusterClientFactory, prePlan bool, guard func(ctx context.Context, in runtime.Input) error, warnings ...string) runtime.Command {
-	inner, ok := NewDelete(k, clients).(runtime.MutatingCommand)
-	if !ok {
-		// Unreachable: NewDelete always returns a MutatingCommand.
-		panic("NewDelete did not return a runtime.MutatingCommand")
-	}
-	return &guardedDeleteCmd{inner: inner, guard: guard, prePlan: prePlan, warnings: warnings}
+	return &guardedDeleteCmd{inner: deleteCmd{k: k, clients: clients}, guard: guard, prePlan: prePlan, warnings: warnings}
 }
 
 func (c *guardedDeleteCmd) Describe() runtime.Descriptor {
@@ -69,12 +64,17 @@ func (c *guardedDeleteCmd) Describe() runtime.Descriptor {
 }
 
 func (c *guardedDeleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	// A bad --wait or --timeout is refused before the guard sends anything.
+	w, err := ParseDeleteWait(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
 	if c.prePlan && c.guard != nil {
 		if err := c.guard(ctx, in); err != nil {
 			return safety.Effect{}, nil, err
 		}
 	}
-	eff, exec, err := c.inner.Plan(ctx, in)
+	eff, exec, err := c.inner.planWith(ctx, in, w)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

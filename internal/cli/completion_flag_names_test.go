@@ -196,8 +196,8 @@ func TestPatchTypeCompletion(t *testing.T) {
 }
 
 // TestWaitFlagCompletion asserts `get pod --<TAB>` offers --wait, --for and
-// --timeout, and that `delete pod`, `patch pod` and `get
-// clusterregistrationtoken` offer none of them.
+// --timeout, `delete pod --<TAB>` offers --wait and --timeout and not --for,
+// and `patch pod` and `get clusterregistrationtoken` offer none of them.
 func TestWaitFlagCompletion(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -208,7 +208,11 @@ func TestWaitFlagCompletion(t *testing.T) {
 	for _, flag := range waitFlags {
 		assert.Contains(t, tokens, flag, "get pod")
 	}
-	for _, words := range [][]string{{"delete", "pod"}, {"patch", "pod"}, {"get", "clusterregistrationtoken"}} {
+	tokens = extractTokens(runNameLikeCompletion(t, []string{"delete", "pod"}, "--"))
+	assert.Contains(t, tokens, "--wait", "delete pod")
+	assert.Contains(t, tokens, "--timeout", "delete pod")
+	assert.NotContains(t, tokens, "--for", "delete pod")
+	for _, words := range [][]string{{"patch", "pod"}, {"get", "clusterregistrationtoken"}} {
 		tokens := extractTokens(runNameLikeCompletion(t, words, "--"))
 		require.NotEmpty(t, tokens, strings.Join(words, " "))
 		for _, flag := range waitFlags {

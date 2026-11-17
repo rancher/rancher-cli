@@ -2,6 +2,8 @@ package resources
 
 import (
 	"context"
+	"slices"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -19,7 +21,7 @@ type deleteCmd struct {
 // NewDelete builds `delete <kind> <name>` (mutating) from a Kind. Plan fetches
 // the object, captures its resourceVersion, dry-run-deletes for an admission
 // preview, and returns an Effect plus an executor that deletes with the RV
-// precondition - the end-to-end proof of Approach B.
+// precondition and, unless --wait=false, waits until the object is gone.
 func NewDelete(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {
 	return &deleteCmd{k: k, clients: clients}
 }
@@ -32,6 +34,7 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 		// for kind names (ingress -> "an", user -> "a"), and get pluralizes
 		// instead because it lists (see plural in get.go); patch matches this.
 		Usage:       "Delete the " + c.k.Name,
+		Desc:        deleteDesc(c.k),
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{argSpec(c.k, true)},
 		Flags:       deleteFlags(c.k),
@@ -42,9 +45,41 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// deleteFlags is get's flag set without the wait flags (--wait, --for and
-// --timeout: a delete never waits), with the flags a delete (always a named
-// op) requires marked Required so the pipeline rejects before Plan:
+// deleteDesc is the description of the generated delete: how it waits,
+// then the row's own text.
+func deleteDesc(k kinds.Kind) string {
+	desc := "Deletes the " + k.Name + " <" + argName(k) + "> with a resourceVersion precondition from its server-side dry-run preview. " +
+		"By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), " +
+		"a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). " +
+		"--timeout (a positive duration, default 5m) limits how long it waits. " +
+		"A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion " +
+		"was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, " +
+		"the command stops waiting for that object; the result says deletion started, with a warning."
+	if k.DeleteDesc != "" {
+		desc += " " + k.DeleteDesc
+	}
+	return desc
+}
+
+// deleteFlags is namedFlags followed by the delete's wait flags: every
+// delete waits until the object is gone unless --wait=false is given, and
+// --timeout limits the wait. A delete takes no --for: gone is the only
+// condition it waits for.
+func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
+	return append(namedFlags(k), deleteWaitFlags(k)...)
+}
+
+// deleteWaitFlags are --wait and --timeout of a delete of k.
+func deleteWaitFlags(k kinds.Kind) []runtime.ArgSpec {
+	return []runtime.ArgSpec{
+		{Name: flagWait, Type: "bool", Desc: "wait until the " + k.Name + " is gone before returning (default true; --wait=false returns once the server accepts the request)"},
+		{Name: flagTimeout, Type: "string", Desc: "wait `timeout`, a positive duration, e.g. 10m (default 5m)"},
+	}
+}
+
+// namedFlags is get's flag set without get's wait flags (--wait, --for and
+// --timeout), with the flags a named op on one object (delete and patch)
+// requires marked Required so the pipeline rejects before Plan:
 //   - an NSCluster kind's --cluster (it becomes the namespace; an empty value
 //     must not fall through to the local cluster);
 //   - an NSPlain kind's --namespace (an empty value would 404 opaquely).
@@ -55,7 +90,7 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 // required: Route refuses a delete that has no --namespace and no --project
 // with --cluster, and its message names both ways.
 // --project describes the named object, never a list.
-func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
+func namedFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := WithoutWaitFlags(getFlags(k))
 	for i := range flags {
 		switch {
@@ -76,11 +111,20 @@ func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 }
 
 func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	w, err := ParseDeleteWait(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	return c.planWith(ctx, in, w)
+}
+
+// planWith is Plan with the wait already read from the flags.
+func (c deleteCmd) planWith(ctx context.Context, in runtime.Input, w DeleteWait) (safety.Effect, runtime.ExecuteFunc, error) {
 	client, ns, name, obj, effectCluster, err := c.fetch(ctx, in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	return PlanFromFetched(ctx, client, c.k, ns, name, obj, effectCluster)
+	return PlanFromFetched(ctx, client, c.k, ns, name, obj, effectCluster, w)
 }
 
 // fetch routes the command, reads the object to delete and returns it with
@@ -115,7 +159,16 @@ func (c deleteCmd) fetch(ctx context.Context, in runtime.Input) (client engine.C
 // exec closure derive their resourceVersion from obj - no second GET occurs,
 // so the guard's safety decision and the deletion's precondition are bound to
 // the same read.
-func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.Kind, ns, name string, obj *unstructured.Unstructured, effectCluster string) (safety.Effect, runtime.ExecuteFunc, error) {
+//
+// obj is the response to a GET of name by this same client, sent before the
+// delete: the wait after the delete therefore treats a later 403 on that
+// object as access that ended after the request. w is how the executor
+// waits after the delete; PlanFromFetched refuses, before any request, a
+// DeleteWait that ParseDeleteWait did not make.
+func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.Kind, ns, name string, obj *unstructured.Unstructured, effectCluster string, w DeleteWait) (safety.Effect, runtime.ExecuteFunc, error) {
+	if w.mode == waitUnset {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: the delete has no wait setting")
+	}
 	rv := obj.GetResourceVersion()
 	// Admission preview: a server-side dry-run delete surfaces RBAC/webhook
 	// denials before the user confirms. A TOCTOU race can also produce a
@@ -123,7 +176,6 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 	if err := client.Delete(ctx, k.GVR, ns, name, rv, true); err != nil {
 		return safety.Effect{}, nil, err
 	}
-	title := resultKind(k)
 	eff := safety.Effect{
 		PreviewSource:     safety.PreviewServerDryRun,
 		Action:            safety.ActionDelete,
@@ -142,14 +194,30 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 	if k.DeleteCascadeWarning != "" {
 		eff.Warnings = append(eff.Warnings, k.DeleteCascadeWarning)
 	}
+	target := deleteTarget{gvr: k.GVR, ns: ns, name: name, uid: string(obj.GetUID()), kind: k.Name,
+		recovery: deleteRecovery(k, ns, name, effectCluster), readBefore: true}
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		if err := client.Delete(ctx, k.GVR, ns, name, rv, false); err != nil {
 			return runtime.Result{}, err
 		}
-		res := runtime.MutationText(k.Name, name, "deleted")
-		res.Kind = title + "Delete"
-		res.Data = map[string]any{"deleted": name}
-		return res, nil
+		var end deleteEnd
+		switch {
+		case w.ownToken:
+			// No read with a deleted token can confirm anything.
+			end.warnings = []string{ownTokenNote}
+		case w.mode == waitOn:
+			// The deadline starts once the server accepted the delete.
+			var err error
+			end, err = waitDeleted(ctx, client, append([]deleteTarget{target}, w.also...), time.Now().Add(w.timeout), w.timeoutText)
+			if err != nil {
+				return runtime.Result{}, err
+			}
+		}
+		if len(w.notWaited) > 0 {
+			end.waited = false
+			end.warnings = append(slices.Clip(w.notWaited), end.warnings...)
+		}
+		return deleteResult(k, name, end), nil
 	}
 	return eff, exec, nil
 }

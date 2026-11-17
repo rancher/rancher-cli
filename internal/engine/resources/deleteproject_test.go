@@ -43,6 +43,7 @@ type projClient struct {
 	selectors []string
 	// lastReview is the object of the last PostReview.
 	lastReview *unstructured.Unstructured
+	deleted    deletedNames
 }
 
 func (c *projClient) record(format string, args ...any) {
@@ -52,6 +53,9 @@ func (c *projClient) record(format string, args ...any) {
 func (c *projClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	key := ns + "/" + name
 	c.record("get %s", key)
+	if err := c.deleted.notFound(ns, name); err != nil {
+		return nil, err
+	}
 	queue := c.objs[key]
 	if len(queue) == 0 {
 		return nil, clierr.New(clierr.CodeNotFound, "not found: "+key)
@@ -80,16 +84,24 @@ func (c *projClient) Update(context.Context, schema.GroupVersionResource, string
 	return nil, errors.New("Update not scripted")
 }
 
-func (c *projClient) Delete(_ context.Context, _ schema.GroupVersionResource, ns, name, rv string, dryRun bool) error {
+func (c *projClient) Delete(_ context.Context, gvr schema.GroupVersionResource, ns, name, rv string, dryRun bool) error {
 	verb := "delete"
 	if dryRun {
 		verb = "dry-run delete"
 	}
 	c.record("%s %s rv=%s", verb, strings.TrimPrefix(ns+"/"+name, "/"), rv)
+	var err error
 	if c.deleteErr != nil {
-		return c.deleteErr(ns, name, rv, dryRun)
+		err = c.deleteErr(ns, name, rv, dryRun)
 	}
-	return nil
+	if err == nil && !dryRun {
+		var held *unstructured.Unstructured
+		if queue := c.objs[ns+"/"+name]; len(queue) > 0 {
+			held = queue[0]
+		}
+		c.deleted.record(gvr, ns, name, held)
+	}
+	return err
 }
 
 func (c *projClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
@@ -342,8 +354,8 @@ func TestDeleteProjectPreviewClassifiesTheNamespaces(t *testing.T) {
 		"  rancher deletes: legacy",
 		"  being deleted: old",
 	}, runtime.ObjectLines(eff.Objects, "project"))
-	assert.Equal(t, []string{"get c-abc/p-1", "dry-run delete c-abc/p-1 rv=5", "list namespaces", "review selfSubjectAccess"}, f.log,
-		"project GET, project dry-run delete, namespace LIST and the visibility review")
+	assert.Equal(t, []string{"get c-abc/p-1", "get /c-abc-p-1", "dry-run delete c-abc/p-1 rv=5", "list namespaces", "review selfSubjectAccess"}, f.log,
+		"project GET, backing namespace GET, project dry-run delete, namespace LIST and the visibility review")
 
 	res, err := exec(t.Context())
 	require.NoError(t, err)
@@ -357,7 +369,7 @@ func TestDeleteProjectPreviewClassifiesTheNamespaces(t *testing.T) {
 			assert.Equal(t, "delete c-abc/p-1 rv=5", call, "only the project is deleted, with its resourceVersion")
 		}
 	}
-	assert.Equal(t, "delete c-abc/p-1 rv=5", f.log[len(f.log)-1])
+	assert.Equal(t, []string{"delete c-abc/p-1 rv=5", "get c-abc/p-1"}, f.log[len(f.log)-2:], "the delete, then the read that sees the project gone")
 }
 
 // TestDeleteProjectPreviewListsAtMostFiveNamesPerOutcome asserts the text
@@ -481,7 +493,7 @@ func TestDeleteProjectPreviewFailedReadWarnsAndDeletes(t *testing.T) {
 	assert.Equal(t, "project/p-1 deleted\n", res.Text)
 	_, objects := resultData(t, res)
 	assert.NotNil(t, objects, "the objects key is an empty list")
-	assert.Equal(t, "delete c-abc/p-1 rv=5", f.log[len(f.log)-1])
+	assert.Equal(t, []string{"delete c-abc/p-1 rv=5", "get c-abc/p-1"}, f.log[len(f.log)-2:], "the delete, then the read that sees the project gone")
 }
 
 // TestDeleteProjectPreviewWarnsWhenTheCallerCannotSeeKeptNamespaces asserts
@@ -721,7 +733,7 @@ func TestDeleteProjectFlagDeletesNamespacesInNameOrderThenTheProject(t *testing.
 	}, f.log[planned:], "name order, each with its resourceVersion, the project last")
 
 	assert.Equal(t, "ProjectDelete", res.Kind)
-	assert.Equal(t, "project/p-1 deleted\n  namespaces:\n    not deleted: default (Kubernetes never deletes it)\n    being deleted: old\n    deletion started: apps, tools\n    already gone: vanished\n", res.Text)
+	assert.Equal(t, "project/p-1 deletion started\n  namespaces:\n    not deleted: default (Kubernetes never deletes it)\n    being deleted: old\n    deletion started: apps, tools\n    already gone: vanished\n", res.Text)
 	deleted, objects := resultData(t, res)
 	assert.Equal(t, "p-1", deleted)
 	assert.Equal(t, []safety.Object{

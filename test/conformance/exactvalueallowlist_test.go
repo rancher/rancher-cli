@@ -163,6 +163,7 @@ var evFilterRows = []evFilterRow{
 	{"internal/engine/oidcclient.createCmd.execute", evPrintable, false, "", "the client id and name the server returned, named in prose"},
 	{"internal/engine/oidcclient.rotateSecretCmd.execute", evPrintable, false, "", "the name of the regenerated secret, named in prose"},
 	{"internal/engine/projects.removeNamespaceCmd.Plan", evPrintable, false, "", "the name of the project a namespace was removed from"},
+	{"internal/engine/resources.deleteTarget.state", evPrintable, false, "", "the finalizers, condition types and condition messages the server sent"},
 	{"internal/engine/resources.summarizeState", evPrintable, false, "", "a condition message the server sent"},
 	{"internal/engine/resources.waitFor", evPrintable, false, "", "the stalled message the server sent"},
 	{"internal/output.Printable", evWithoutUnsafe, false, "", "the filter itself"},

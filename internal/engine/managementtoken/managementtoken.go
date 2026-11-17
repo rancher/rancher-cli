@@ -58,7 +58,9 @@ type deleteGuardCmd struct {
 // decision and execution.
 //
 // When the target name matches the active session token:
-//   - isDerived=true: returns PlanFromFetched from that single GET
+//   - isDerived=true: returns PlanFromFetched from that single GET, with the
+//     delete marked as deleting the token this command uses: the executor
+//     sends the DELETE and does not read after it
 //   - isDerived=false or absent: refuses with VALIDATION
 //   - NOT_FOUND: falls through to the inner Plan's own NOT_FOUND
 //
@@ -81,6 +83,13 @@ func (c *deleteGuardCmd) Describe() runtime.Descriptor {
 }
 
 func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	// A bad --wait or --timeout is refused before any request on every
+	// path; the inner Plan reads the same flags again and gets the same
+	// value.
+	w, err := resources.ParseDeleteWait(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
 	if c.namer == nil {
 		return c.inner.Plan(ctx, in)
 	}
@@ -120,8 +129,10 @@ func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	if isDerived {
 		// Derived token: deletion supported - build plan from the
 		// already-fetched object so the exec's RV precondition is
-		// bound to this read, not a second one.
-		return resources.PlanFromFetched(ctx, mgmt, c.k, ns, args[0], obj, effectCluster)
+		// bound to this read, not a second one. The token to delete is
+		// the token this command uses: after the delete the server
+		// refuses every read made with it, and the command does not wait.
+		return resources.PlanFromFetched(ctx, mgmt, c.k, ns, args[0], obj, effectCluster, w.OwnToken())
 	}
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 		"refusing to delete "+c.k.Name+" "+args[0]+": the CLI is using this token for this command, and deleting it would stop the CLI from reaching the server during the command; "+

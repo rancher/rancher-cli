@@ -195,6 +195,11 @@ type Kind struct {
 	// and the schema's desc): what a reader of the table needs to know that
 	// the columns alone do not say.
 	GetDesc string
+	// DeleteDesc, when non-empty, is appended to the description of the
+	// generated delete (help and the schema's desc): what a reader needs to
+	// know about this kind's delete that the generic text does not say.
+	// Only a Deletable row may set it.
+	DeleteDesc string
 	// ServerTable marks a kind whose text tables (the default format,
 	// table and wide) come from the cluster's API server, as kubectl's do:
 	// get asks for the server's Table and shows its columns and cells, so
@@ -503,6 +508,7 @@ var table = []Kind{
 		// field.cattle.io/creatorId and keeps the rest, removing their project
 		// annotation; role bindings and project-scoped secrets go regardless.
 		DeleteCascadeWarning: "deleting this project keeps its namespaces and their workloads, except a namespace with the field.cattle.io/creatorId annotation (which Rancher writes on namespaces created through its v3 API): that namespace is deleted with everything in it. Rancher removes the project annotation from each kept namespace and deletes the project's role bindings and project-scoped secrets.",
+		DeleteDesc:           "With the wait on and without --delete-namespaces, the command reads the project's backing namespace on the local cluster (status.backingNamespace, else the project id) before the delete and waits for it too when it can read it. With --delete-namespaces the command does not wait: it refuses --timeout and refuses --wait except --wait=false.",
 		Completable:          true,
 		Binding:              safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns: []Column{
@@ -1178,6 +1184,9 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "tokens"},
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Deprecated},
+		DeleteDesc: "When the token to delete is the token this command uses (from a login or RANCHER_CLI_TOKEN) and Rancher marks it as derived, the command sends the delete and does not wait: " +
+			"the server refuses every read made with a deleted token. The result is deletion started with a note: log in again or, " +
+			"if RANCHER_CLI_TOKEN holds the token, set it to another token or unset it.",
 		Columns: []Column{
 			// Plain strings, root-level fields on the v3 Token type (userId,
 			// authProvider, expiresAt, description).
@@ -1410,6 +1419,9 @@ func validateKinds(ts []Kind) error {
 		// the kind's first real mutation.
 		if k.Name == "" {
 			return fmt.Errorf("kind %q has empty Name", k.Key)
+		}
+		if k.DeleteDesc != "" && !k.Deletable {
+			return fmt.Errorf("kind %q sets DeleteDesc but has no generated delete (Deletable is false)", k.Key)
 		}
 	}
 	// Key uniqueness is its own pass: the self-Key exemption in the collision

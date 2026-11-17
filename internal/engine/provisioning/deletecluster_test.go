@@ -33,12 +33,18 @@ type delRecClient struct {
 	getCalls  int
 	dryRunErr error
 	deletes   []delRecCall
+	// deleted is set by the real delete: a GET after it responds NOT_FOUND,
+	// as the server does once the object is gone.
+	deleted bool
 }
 
 func (d *delRecClient) Get(_ context.Context, _ schema.GroupVersionResource, _, _ string) (*unstructured.Unstructured, error) {
 	d.getCalls++
 	if d.getErr != nil {
 		return nil, d.getErr
+	}
+	if d.deleted {
+		return nil, clierr.New(clierr.CodeNotFound, "cluster not found")
 	}
 	return d.obj, nil
 }
@@ -56,6 +62,7 @@ func (d *delRecClient) Delete(_ context.Context, _ schema.GroupVersionResource, 
 	if dryRun {
 		return d.dryRunErr
 	}
+	d.deleted = true
 	return nil
 }
 func (d *delRecClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
@@ -130,7 +137,7 @@ func TestDeleteProvisioningClusterCarriesCascadeWarning(t *testing.T) {
 
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{"deleted": "imported-1"}, res.Data)
+	assert.Equal(t, map[string]any{"deleted": "imported-1", "waited": true}, res.Data)
 }
 
 // TestDeleteProvisioningClusterRVPreconditionMirrorsGeneric asserts that the

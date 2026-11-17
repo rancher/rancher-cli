@@ -213,6 +213,10 @@ Every command that changes the server runs these steps, in order:
    precondition from the resource as it is at that time. Creating an object
    has no precondition (there is no existing object to check).
 
+A `delete` also waits until the object is gone, for up to 5 minutes by
+default (`--timeout`). `--wait=false` returns once the server accepts the
+request and prints `deletion started`.
+
 Rule of thumb: `--apply` means "yes, make the change"; `--yes` means "yes, I
 saw it is destructive".
 
