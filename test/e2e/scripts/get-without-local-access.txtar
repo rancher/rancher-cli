@@ -1,0 +1,14 @@
+# get as a user with no access to the local cluster: Rancher refuses the
+# Kubernetes API's cluster list and cluster get for that user. get then reads
+# the clusters Steve lists for that user.
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=e2e-nocluster:secret
+
+exec rancher get clusters -o json
+cp stdout clusters.json
+jsonquery clusters.json 'data.#' 1
+jsonquery clusters.json data.0.metadata.name local
+
+exec rancher get cluster local -o json
+cp stdout cluster.json
+jsonquery cluster.json data.metadata.name local

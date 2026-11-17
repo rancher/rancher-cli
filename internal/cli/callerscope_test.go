@@ -109,10 +109,8 @@ var callerBespokeRows = map[string]callerRow{
 	"support-bundle":           {args: "support-bundle --clusters prod -o json", target: targetDownstream},
 	"usage":                    {args: "usage --cluster prod -o json", target: targetDownstream},
 	"inspect cluster":          {args: "inspect cluster prod -o json", target: targetClusterObject},
-	"get cluster": {args: "get cluster -o json", target: targetNone, own: "GET " + localClustersPath,
-		kindErr: &callerError{"RBAC", "the server refused list clusters.management.cattle.io" + localRefusal, "rancher access clusters"}},
-	"get cluster c-abc": {args: "get cluster c-abc -o json", target: targetNone, own: "GET " + localClustersPath + "/c-abc",
-		kindErr: &callerError{"RBAC", "the server refused get clusters.management.cattle.io 'c-abc'" + localRefusal, "rancher inspect cluster 'c-abc'"}},
+	"get cluster":              {args: "get cluster -o json", target: targetNone, own: "GET " + localClustersPath},
+	"get cluster c-abc":        {args: "get cluster c-abc -o json", target: targetNone, own: "GET " + localClustersPath + "/c-abc"},
 	"patch cluster": {args: `patch cluster c-abc --patch [{"op":"add","path":"/metadata/labels","value":{"a":"b"}}] --dry-run -o json`, target: targetNone,
 		own:     "GET " + localClustersPath + "/c-abc",
 		kindErr: &callerError{"RBAC", "the server refused get clusters.management.cattle.io 'c-abc'" + localRefusal, "rancher inspect cluster 'c-abc'"}},
@@ -149,9 +147,6 @@ func generatedRow(d runtime.Descriptor, k kinds.Kind) callerRow {
 	row := callerRow{args: strings.Join(append(args, "-o", "json"), " "), target: targetDownstream}
 	if k.Scope == kinds.Management {
 		row.target = targetManagement
-	}
-	if d.Name == "get project" {
-		row.kindErr = &callerError{"RBAC", projectListForbidden, "rancher access projects --cluster '<id>'"}
 	}
 	return row
 }
@@ -503,9 +498,10 @@ func callerRows(t *testing.T) map[string]callerRow {
 // through the steve clusters collection, nothing reaches the local
 // cluster's management clusters API but a generated verb's own request,
 // the declared target is reached on the resolved cluster, no command ends
-// in the local proxy's refusal except the generated verbs that keep
-// kubectl semantics there, whose error names the refused request and the
-// caller-scoped command. In the collision pass a second cluster has the
+// in the local proxy's refusal except patch cluster, which keeps
+// kubectl semantics there: its error names the refused request and a command
+// that works with the caller's permissions. A get of a cluster or a project the
+// proxy refuses is read through Steve and succeeds. In the collision pass a second cluster has the
 // id prod and the display name c-abc: the id wins with a warning, which
 // names --cluster for a flag value and no flag for the positional of get,
 // inspect and patch cluster and for a --clusters or --current-context

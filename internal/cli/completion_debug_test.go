@@ -55,9 +55,9 @@ func runCompletionTraced(t *testing.T, words []string) (stdout, trace string) {
 // NOT parallel: t.Setenv mutates env globals, setStoredConfig mutates storedConfig.
 func TestCompletionDebugTrace(t *testing.T) {
 	items := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "prod"}},
+		{"id": "c-abc", "metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "prod"}},
 	}
-	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
+	srv, _ := makeSteveClustersServer(t, items)
 
 	setupIn := func(t *testing.T, dir string, networkOn bool) {
 		t.Helper()
@@ -104,7 +104,7 @@ func TestCompletionDebugTrace(t *testing.T) {
 			"connection: url=" + srv.URL,
 			"token: RANCHER_CLI_TOKEN (full capability)",
 			"source: claimed by the managementcluster kind source",
-			"GET /k8s/clusters/local/apis/management.cattle.io/v3/clusters: HTTP 200",
+			"GET /v1/management.cattle.io.clusters: HTTP 200",
 			"source: 1 requests, 2 names, 1 descriptions",
 			"done: 2 candidates",
 		}

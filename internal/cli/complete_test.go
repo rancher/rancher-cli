@@ -24,28 +24,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// k8sList is a minimal Kubernetes-style list response for testing.
-// The management K8s API uses the k8s items envelope, not Norman {"data":[...]}.
-type k8sList struct {
-	Items []map[string]any `json:"items"`
-}
-
-func makeListServer(t *testing.T, path string, items []map[string]any) (*httptest.Server, *atomic.Int32) {
-	t.Helper()
-	var hits atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		if r.URL.Path != path {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(k8sList{Items: items})
-	}))
-	t.Cleanup(srv.Close)
-	return srv, &hits
-}
-
 // makeSteveClustersServer serves items as the steve clusters collection
 // in one page, and a GET by id of each id in byID (404 otherwise),
 // recording every request URI.

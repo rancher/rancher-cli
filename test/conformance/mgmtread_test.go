@@ -26,7 +26,6 @@ import (
 // file) and why.
 var mgmtReadAllowed = []struct{ file, fn, why string }{
 	{"internal/engine/kinds/kinds.go", "", "the kind table declares every GVR and the by-name lookups"},
-	{"internal/engine/access/complete/clusters.go", "completeClusters", "the management cluster kind's name source for get/patch cluster"},
 }
 
 var (

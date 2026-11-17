@@ -130,7 +130,8 @@ func TestKindSitesFullCallback(t *testing.T) {
 		{name: "delete projectroletemplatebinding --namespace with a cluster id", words: []string{"delete", "projectroletemplatebinding", "--cluster", "c-aaa11", "--namespace"}, hits: map[string]int{}},
 		{name: "delete projectroletemplatebinding -n= with a cluster id", words: []string{"delete", "projectroletemplatebinding", "--cluster", "c-aaa11"}, cur: "-n=", hits: map[string]int{}},
 		// management kinds on the generated verbs
-		{name: "get cluster", words: []string{"get", "cluster"}, want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
+		{name: "get cluster", words: []string{"get", "cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "patch cluster", words: []string{"patch", "cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
 		// The generated project verbs address a project by id only.
 		{name: "get project with a cluster id", words: []string{"get", "project", "--cluster", "c-aaa11"}, want: projectIDs, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "get project with a cluster display name", words: []string{"get", "project", "--cluster", "prod"}, want: projectIDs, hits: map[string]int{steveClustersPath: 2, steveProjectsPath: 1}},

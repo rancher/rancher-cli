@@ -634,13 +634,17 @@ kubectl's exec plugin resolves its `--cluster` the same way when it has no
 cached credential and creates one, with the warning on stderr; its `NOT_FOUND`
 error lists the clusters you can read.
 
-`get` and `patch` of the `cluster` kind and `get projects` work as in kubectl:
-they go through the local cluster's Kubernetes API, where Rancher returns
-clusters only to users with access to the local cluster, and returns projects
-according to your permissions. When Rancher refuses one of these requests, the
-error names the request and a command to use instead that works with your
-permissions (`rancher access clusters`, `rancher inspect cluster <id>`,
-`rancher access projects --cluster <id>`).
+`get` of the `cluster` kind and `get projects` read through the local
+cluster's Kubernetes API. When Rancher refuses that read (a cluster or project
+member has permission to get a cluster or project by name but not to list them), `get`
+reads the same list or object through the Steve API (`/v1`, the API the Rancher
+UI uses), which returns the clusters and projects you can read. A user with no
+cluster or project role gets an empty list. `--selector` is applied by the CLI
+on that read, and `--wait` polls the object every 5 seconds. When the Steve API also
+refuses, the error names the request and a command to use instead that works
+with your permissions (`rancher access clusters`, `rancher inspect cluster
+<id>`, `rancher access projects --cluster <id>`). `patch` of the `cluster` kind
+is unchanged: it goes through the local cluster's Kubernetes API.
 
 ## Project scope (--project)
 
@@ -739,7 +743,8 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   whose annotation names the project; for every other kind the server filters by
   `--selector` and the CLI keeps only the objects in the project's namespaces.
   `get clusterregistrationtoken` reads through the Steve API and applies the
-  selector itself to the list it gets back.
+  selector itself to the list it gets back, as do `get clusters` and `get
+  projects` when they read through the Steve API.
 - The catalog kinds `clusterrepo`, `app` and `operation` (catalog.cattle.io)
   are read with `get`; a chart is installed, upgraded and uninstalled with
   `app install`, `app upgrade` and `app uninstall` (see "Installing, upgrading

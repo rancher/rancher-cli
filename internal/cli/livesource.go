@@ -71,7 +71,7 @@ var flagSources = map[string]completion.Source{
 // left out); a Completable kind with no entry - the provisioning cluster
 // among them - completes through the generic kinds source.
 var kindSources = map[string]completion.Source{
-	"managementcluster": accesscomplete.ClusterSource(),
+	"managementcluster": accesscomplete.SteveClusterSource(),
 	"project":           projectscomplete.ProjectIDSource(),
 	"user":              usercomplete.UserIDSource(),
 }

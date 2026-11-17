@@ -277,6 +277,16 @@ type Kind struct {
 	// placeholder. validateKinds rejects the field on a row that is not
 	// Management with a plain or workspace namespace.
 	NamespaceDesc string
+	// SteveReadOnForbidden is set on a row whose generated get, when the local
+	// cluster's Kubernetes API responds to it (a list or one object) with 403,
+	// reads the same list or object through the Steve API as the caller.
+	// Rancher gives a cluster or project member permission to get a cluster or
+	// project by name but not to list them, and the Steve API lists what the
+	// caller has permission to get. Any other error is returned unchanged, and
+	// a refusal from Steve returns the Kubernetes API's error. Only a row that
+	// has a Steve reader for this read may set it; a test in this package
+	// asserts which rows do.
+	SteveReadOnForbidden bool
 }
 
 // Handle names the positional argument of a kind whose users do not type the
@@ -489,6 +499,8 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"},
 		Policy: NSNone, K8sKind: "Cluster", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
 
+		SteveReadOnForbidden: true,
+
 		ArgDesc: "cluster id or display name",
 
 		NoDeleteReason: "to delete a provisioning cluster (<name> is its name), run `rancher delete provisioning-cluster <name> --dry-run` and add --apply --yes after reading the preview",
@@ -500,6 +512,8 @@ var table = []Kind{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"},
 		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true, SetsCreatorID: true,
+
+		SteveReadOnForbidden: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
 		ArgDesc: "project id (p-xxxxx when Rancher generated it; a project created with `rancher create project <id>` has that id)",

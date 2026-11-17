@@ -49,10 +49,23 @@ type projectItem struct {
 // one cluster, clusterID.
 func Projects(ctx context.Context, get Getter, clusterID string) ([]Project, error) {
 	r := Request{Type: ProjectsType, Namespace: clusterID}
-	rows, err := ReadCollection(ctx, get, r, func(path string, index int, raw json.RawMessage) (string, Project, error) {
+	rows, err := ReadCollection(ctx, get, r, projectDecoder(clusterID))
+	if err != nil {
+		return nil, collectionRefusal(r, err)
+	}
+	return rows, nil
+}
+
+// projectDecoder decodes one item of the projects collection of clusterID,
+// or of every cluster when clusterID is "".
+func projectDecoder(clusterID string) Decoder[Project] {
+	return func(path string, index int, raw json.RawMessage) (string, Project, error) {
 		var item projectItem
 		if err := json.Unmarshal(raw, &item); err != nil {
-			return "", Project{}, protocolError(path, fmt.Sprintf("item %d is not an object: %s", index, err))
+			if class := jsonClass(raw); class != "object" {
+				return "", Project{}, protocolError(path, fmt.Sprintf("item %d is a JSON %s, not an object", index, class))
+			}
+			return "", Project{}, protocolError(path, fmt.Sprintf("item %d has a field of the wrong type: %s", index, err))
 		}
 		cluster, name, ok := strings.Cut(item.ID, "/")
 		switch {
@@ -70,11 +83,7 @@ func Projects(ctx context.Context, get Getter, clusterID string) ([]Project, err
 			return "", Project{}, protocolError(path, fmt.Sprintf("item %q has metadata.name %q, which differs from its id", item.ID, item.Metadata.Name))
 		}
 		return item.ID, Project{Cluster: cluster, ID: name, DisplayName: item.Spec.DisplayName, System: item.Metadata.Labels[systemProjectLabel] == "true"}, nil
-	})
-	if err != nil {
-		return nil, collectionRefusal(r, err)
 	}
-	return rows, nil
 }
 
 // collectionRefusal words a collection read's non-2xx answer: steve

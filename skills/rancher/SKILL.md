@@ -202,8 +202,8 @@ interpreter, e.g. names and creation times of every kubeconfig token object:
 Anything else is a `VALIDATION` error. `metadata.managedFields` never appears in CLI
 output across all formats. To narrow a list by label, use `--selector`
 (`-l`) with a Kubernetes label selector (`-l app=web,tier!=cache`): the
-server filters, so reach for it before `-o template`. It does not combine
-with a name.
+server filters, except that the CLI applies the selector itself when `get` of clusters or projects reads through the Steve API (`/v1`, the API the Rancher UI uses) after the Kubernetes API refuses it with 403. Reach for it before `-o template`. It does
+not combine with a name.
 
 A list's `data` is a bare array - never `.items` - regardless of kind. Real
 `get clusters -o json` output, trimmed to one cluster and the fields that

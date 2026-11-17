@@ -5,43 +5,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 )
 
-// ClusterSource is the shared --cluster source and the management cluster
-// kind's name source: the management cluster list, every id plus each
-// display name that is unique and is not itself an id, so a value offered
-// is one the commands resolve; each id is described by its display name.
-// It needs a management token and one listing; a typed cluster on the line
-// never concerns it.
-func ClusterSource() completion.Source {
-	return completion.Source{Claim: claimManagementList, Complete: completeClusters}
-}
-
-func claimManagementList(completion.Request) (completion.Requirements, bool) {
-	return completion.ManagementListing(), true
-}
-
-func completeClusters(ctx context.Context, conn *completion.Connection, _ completion.Request) completion.Result {
-	k, ok := kinds.ByKey("managementcluster")
-	if !ok {
-		return completion.Result{}
-	}
-	p, err := completion.ManagementPath(k.GVR.Group, k.GVR.Version, k.GVR.Resource)
-	if err != nil {
-		return completion.Result{}
-	}
-	var list completion.ItemList
-	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
-		return completion.Result{}
-	}
-	names, displayNames := completion.IDsWithDisplayNames(list.Items)
-	return completion.Result{Names: names, Descriptions: displayNames}
-}
-
-// SteveClusterSource is the shared --cluster source and `inspect
-// cluster`'s positional source: the clusters the caller can read, as the
+// SteveClusterSource is the shared --cluster source, the positional source
+// of `inspect cluster` and the name source of every generated verb on the
+// management cluster kind: the clusters the caller can read, as the
 // commands resolve the value against them, every id plus each display name
 // that is unique and is not itself an id; each id is described by its
 // display name. It needs a management token and one walk of the steve

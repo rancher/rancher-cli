@@ -214,7 +214,8 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			"--include-system does not apply to a get of one "+c.k.Name+"; it always returns the object")
 	}
 	labelSelector := in.String(FlagSelector)
-	if _, err := ParseListSelector(c.k.Name, named, labelSelector); err != nil {
+	listSelector, err := ParseListSelector(c.k.Name, named, labelSelector)
+	if err != nil {
 		return runtime.Result{}, err
 	}
 	if !wait && in.IsSet(flagWait) && (forExpr != "" || timeoutStr != "") {
@@ -284,7 +285,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 				return runtime.Result{}, terr
 			}
 			start := time.Now()
-			one, err = waitFor(ctx, client, c.k.GVR, ns, name, cond, timeout, stalledRule{fail: c.k.WaitFailsOnStalled, remedy: c.k.StalledRemedy, cluster: in.String(FlagCluster)})
+			one, err = waitFor(ctx, wrapSteveWait(c, client, ns), c.k.GVR, ns, name, cond, timeout, stalledRule{fail: c.k.WaitFailsOnStalled, remedy: c.k.StalledRemedy, cluster: in.String(FlagCluster)})
 			if err == nil {
 				waitSummary = fmt.Sprintf("wait: %s satisfied after %s", expr, waitElapsed(time.Since(start)))
 				if c.k.WaitFailsOnStalled && !cond.isStalledTarget() {
@@ -297,6 +298,9 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			ans, err = tables.GetTable(ctx, c.k.GVR, ns, name)
 		} else {
 			one, err = client.Get(ctx, c.k.GVR, ns, name)
+			if err != nil {
+				one, err = c.steveGet(ctx, ns, name, false, err)
+			}
 		}
 		if err != nil {
 			// A wait polls through a refusal as transient; only a miss
@@ -340,11 +344,14 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		}
 		return runtime.Result{Kind: title + "List", Data: data, Warnings: tableWarnings}, nil
 	}
+	var listed []unstructured.Unstructured
 	list, lerr := client.List(ctx, c.k.GVR, ns, selector)
-	if lerr != nil {
+	if lerr == nil {
+		listed = list.Items
+	} else if listed, lerr = c.steveList(ctx, ns, listSelector, lerr); lerr != nil {
 		return runtime.Result{}, lerr
 	}
-	items := inScopeItems(list.Items, scope)
+	items := inScopeItems(listed, scope)
 	var warnings []string
 	if c.k.SystemFilter != nil && !in.Bool(flagIncludeSystem) {
 		var hidden int

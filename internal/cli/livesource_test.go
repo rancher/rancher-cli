@@ -219,10 +219,9 @@ func TestPositionalKindsMatchTheWiringTables(t *testing.T) {
 }
 
 // TestClusterSourcesAreTheCallerScopedOnes asserts which cluster source
-// serves each site: a --cluster value and inspect cluster's positional
-// complete with the clusters the caller can read (the set the commands
-// resolve against), and the generated verbs' managementcluster positional
-// with the management API's list, the set get, patch and delete act on.
+// serves each site: a --cluster value, inspect cluster's positional and the
+// generated verbs' managementcluster positional all complete with the
+// clusters the caller can read (the set the commands resolve against).
 func TestClusterSourcesAreTheCallerScopedOnes(t *testing.T) {
 	t.Parallel()
 	same := func(a, b completion.Source) bool {
@@ -230,7 +229,7 @@ func TestClusterSourcesAreTheCallerScopedOnes(t *testing.T) {
 			reflect.ValueOf(a.Complete).Pointer() == reflect.ValueOf(b.Complete).Pointer()
 	}
 	assert.True(t, same(flagSources["cluster"], accesscomplete.SteveClusterSource()), "--cluster")
-	assert.True(t, same(kindSources["managementcluster"], accesscomplete.ClusterSource()), "managementcluster")
+	assert.True(t, same(kindSources["managementcluster"], accesscomplete.SteveClusterSource()), "managementcluster")
 	var inspect completion.Completer
 	for _, e := range buildEntries() {
 		if probe := e.make(runDeps{}); probe.Describe().Name == "inspect cluster" {
@@ -239,5 +238,4 @@ func TestClusterSourcesAreTheCallerScopedOnes(t *testing.T) {
 	}
 	require.NotNil(t, inspect, "inspect cluster has its own source")
 	assert.True(t, same(inspect.LiveSource(), accesscomplete.SteveClusterSource()), "inspect cluster")
-	assert.False(t, same(accesscomplete.SteveClusterSource(), accesscomplete.ClusterSource()))
 }
