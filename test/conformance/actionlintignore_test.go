@@ -50,35 +50,53 @@ func ignoredBy(patterns []string, message string) bool {
 	return false
 }
 
-// TestActionlintIgnoresStayNarrow asserts that the actionlint command of
-// scripts/validate carries two ignores and no more: the one for the
-// self-repository form of a local action, and the one for the
-// self-repository form of the zizmor workflow called from a job. Each drops
+// syncedWorkflow is the workflow scripts/validate lints on its own: it is
+// synced from rancher/renovate-config, whose refreshGroup choice input lists
+// an empty string as its first option.
+const syncedWorkflow = ".github/workflows/renovate-vault.yml"
+
+// emptyOptionMessage is the actionlint message for an empty choice option.
+const emptyOptionMessage = `string should not be empty`
+
+// TestActionlintIgnoresStayNarrow asserts that scripts/validate runs
+// actionlint twice, with these ignores and no others. The first command lints
+// every workflow but the synced one with two ignores: the self-repository
+// form of a local action, and the self-repository form of the zizmor
+// workflow called from a job. The second lints the synced workflow alone
+// with the first of those and the empty choice option message. Each drops
 // its own message; a message for another called workflow, for the relative
-// form, and any other message still fail the gate. When actionlint is
-// installed the check also runs it over the workflows with the ignores
-// taken from the script, and over a copy whose job calls another workflow.
+// form, an empty choice option in any other workflow, and any other message
+// still fail the gate. When actionlint is installed the check also runs both
+// commands over the workflows with the ignores taken from the script, and
+// over a copy whose job calls another workflow.
 func TestActionlintIgnoresStayNarrow(t *testing.T) {
 	t.Parallel()
 	patterns, spelled := actionlintIgnores(t)
-	require.Len(t, patterns, 2, "the actionlint command carries exactly two -ignore arguments")
-	assert.Equal(t, 2, spelled, "no other ignore is spelled outside comments in %s", validateScript)
-	assert.Equal(t, "invalid format because ref is missing", patterns[0])
+	require.Len(t, patterns, 4, "the two actionlint commands carry two -ignore arguments each")
+	assert.Equal(t, 4, spelled, "no other ignore is spelled outside comments in %s", validateScript)
+	first, synced := patterns[:2], patterns[2:]
+	assert.Equal(t, "invalid format because ref is missing", first[0])
+	assert.Equal(t, []string{first[0], emptyOptionMessage}, synced)
+	data, err := os.ReadFile(validateScript)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "synced="+syncedWorkflow+"\n", "the second command lints %s alone", syncedWorkflow)
 
 	const format = ` is not following the format "owner/repo/path/to/workflow.yml@ref" nor "./path/to/workflow.yml". see https://docs.github.com/en/actions/learn-github-actions/reusing-workflows for more details`
 	for _, c := range []struct {
-		name, message string
-		dropped       bool
+		name, message           string
+		droppedMain, droppedSyn bool
 	}{
-		{"local action", `specifying action "$/.github/actions/setup-tools" in invalid format because ref is missing. available formats are "{owner}/{repo}@{ref}" or "{owner}/{repo}/{path}@{ref}"`, true},
-		{"zizmor workflow", `reusable workflow call "$/.github/workflows/zizmor.yaml" at "uses"` + format, true},
-		{"another called workflow", `reusable workflow call "$/.github/workflows/other.yaml" at "uses"` + format, false},
-		{"a path that ends like the zizmor workflow", `reusable workflow call "$/.github/workflows/not-zizmor.yaml" at "uses"` + format, false},
-		{"the relative form, file missing", `could not read reusable workflow file for "./.github/workflows/nothere.yaml": open /tmp/x/.github/workflows/nothere.yaml: no such file or directory`, false},
-		{"the relative form, unknown input", `input "foo" is not defined in "./.github/workflows/zizmor.yaml" reusable workflow. no input is defined`, false},
-		{"an unrelated message", `property "foo" is not defined in object type {}`, false},
+		{"local action", `specifying action "$/.github/actions/setup-tools" in invalid format because ref is missing. available formats are "{owner}/{repo}@{ref}" or "{owner}/{repo}/{path}@{ref}"`, true, true},
+		{"zizmor workflow", `reusable workflow call "$/.github/workflows/zizmor.yaml" at "uses"` + format, true, false},
+		{"another called workflow", `reusable workflow call "$/.github/workflows/other.yaml" at "uses"` + format, false, false},
+		{"a path that ends like the zizmor workflow", `reusable workflow call "$/.github/workflows/not-zizmor.yaml" at "uses"` + format, false, false},
+		{"the relative form, file missing", `could not read reusable workflow file for "./.github/workflows/nothere.yaml": open /tmp/x/.github/workflows/nothere.yaml: no such file or directory`, false, false},
+		{"the relative form, unknown input", `input "foo" is not defined in "./.github/workflows/zizmor.yaml" reusable workflow. no input is defined`, false, false},
+		{"an empty choice option", emptyOptionMessage, false, true},
+		{"an unrelated message", `property "foo" is not defined in object type {}`, false, false},
 	} {
-		assert.Equal(t, c.dropped, ignoredBy(patterns, c.message), c.name)
+		assert.Equal(t, c.droppedMain, ignoredBy(first, c.message), "first command: %s", c.name)
+		assert.Equal(t, c.droppedSyn, ignoredBy(synced, c.message), "second command: %s", c.name)
 	}
 
 	t.Run("actionlint", func(t *testing.T) {
@@ -89,12 +107,12 @@ func TestActionlintIgnoresStayNarrow(t *testing.T) {
 		if err != nil {
 			t.Skip("actionlint is not installed; scripts/validate treats it as best effort")
 		}
-		var args []string
-		for _, p := range patterns {
-			args = append(args, "-ignore", p)
-		}
-		run := func(dir string) (string, int) {
-			cmd := exec.CommandContext(t.Context(), tool, args...)
+		run := func(dir string, ignores []string, files ...string) (string, int) {
+			var args []string
+			for _, p := range ignores {
+				args = append(args, "-ignore", p)
+			}
+			cmd := exec.CommandContext(t.Context(), tool, append(args, files...)...)
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err == nil {
@@ -104,11 +122,31 @@ func TestActionlintIgnoresStayNarrow(t *testing.T) {
 			require.True(t, ok, "%v", err)
 			return string(out), exitErr.ExitCode()
 		}
+		// others lists the workflows of dir but the synced one, as the
+		// first command of scripts/validate does.
+		others := func(dir string) []string {
+			entries, err := os.ReadDir(filepath.Join(dir, ".github", "workflows"))
+			require.NoError(t, err)
+			var files []string
+			for _, e := range entries {
+				f := ".github/workflows/" + e.Name()
+				if (strings.HasSuffix(f, ".yml") || strings.HasSuffix(f, ".yaml")) && f != syncedWorkflow {
+					files = append(files, f)
+				}
+			}
+			require.NotEmpty(t, files)
+			return files
+		}
 
 		root, err := os.Getwd()
 		require.NoError(t, err)
-		out, code := run(root)
-		require.Zero(t, code, "the repository workflows must pass with the ignores:\n%s", out)
+		out, code := run(root, first, others(root)...)
+		require.Zero(t, code, "the repository workflows must pass the first command:\n%s", out)
+		out, code = run(root, synced, syncedWorkflow)
+		require.Zero(t, code, "the synced workflow must pass the second command:\n%s", out)
+		out, code = run(root, first, syncedWorkflow)
+		assert.NotZero(t, code, "the synced workflow needs the empty option ignore; drop it from the second command once the template no longer needs it")
+		assert.Contains(t, out, emptyOptionMessage)
 
 		// A copy of the workflows is a project of its own: an empty .git
 		// directory marks the root, without which actionlint stops with
@@ -124,7 +162,7 @@ func TestActionlintIgnoresStayNarrow(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(filepath.Join(workflows, e.Name()), data, 0o644))
 		}
-		out, code = run(copyDir)
+		out, code = run(copyDir, first, others(copyDir)...)
 		require.Zero(t, code, "the copy must be a valid project:\n%s", out)
 
 		release := filepath.Join(workflows, "release.yaml")
@@ -133,7 +171,7 @@ func TestActionlintIgnoresStayNarrow(t *testing.T) {
 		changed := strings.Replace(string(data), "uses: "+zizmorCallRef, "uses: $/.github/workflows/other.yaml", 1)
 		require.NotEqual(t, string(data), changed, "release.yaml must call %s", zizmorCallRef)
 		require.NoError(t, os.WriteFile(release, []byte(changed), 0o644))
-		out, code = run(copyDir)
+		out, code = run(copyDir, first, others(copyDir)...)
 		assert.NotZero(t, code, "a call to another workflow must still fail")
 		assert.Contains(t, out, "other.yaml")
 	})

@@ -110,9 +110,25 @@ static() {
   # release workflow calls with the same syntax, zizmor.yaml; a call to any
   # other workflow file still fails. Remove both once a release includes
   # rhysd/actionlint#732 (issue #711).
+  #
+  # renovate-vault.yml is synced from rancher/renovate-config, whose
+  # refreshGroup choice input lists an empty string as its first option
+  # (the shared workflow reads it as "keep the configured release ages").
+  # actionlint refuses an empty choice option. That file alone is linted
+  # with an ignore for that message; an empty option in any other workflow
+  # still fails.
   if command -v actionlint >/dev/null 2>&1; then
+    synced=.github/workflows/renovate-vault.yml
+    set --
+    for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+      [ -f "$f" ] && [ "$f" != "$synced" ] && set -- "$@" "$f"
+    done
     actionlint -ignore 'invalid format because ref is missing' \
-      -ignore 'reusable workflow call "\$/\.github/workflows/zizmor\.yaml" at "uses" is not following the format'
+      -ignore 'reusable workflow call "\$/\.github/workflows/zizmor\.yaml" at "uses" is not following the format' \
+      "$@"
+    actionlint -ignore 'invalid format because ref is missing' \
+      -ignore 'string should not be empty' \
+      "$synced"
   else
     echo "warning: actionlint not installed; skipping (install for the workflow gate)" >&2
   fi
