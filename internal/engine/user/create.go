@@ -76,7 +76,7 @@ func (createCmd) Describe() runtime.Descriptor {
 			{Name: "username", Type: "string", Required: true, Desc: "local username (the server assigns the user id)"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)"},
+			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default; a newline inside the password is refused)"},
 			{Name: "display-name", Type: "string", Desc: "display name (default: the username)"},
 			{Name: "enabled", Type: "string", Enum: []string{"true", "false"}, Desc: "account enabled state (server default true)"},
 			{Name: "description", Type: "string", Desc: "short `description` of the user"},
@@ -104,7 +104,7 @@ func (createCmd) LiveSource() completion.Source { return usercomplete.GlobalRole
 
 func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	username := in.Args()[0]
-	password, err := engine.ReadPasswordStdin(c.src, in)
+	password, err := engine.ReadPasswordStdin(c.src, in, "")
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

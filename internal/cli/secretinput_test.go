@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"maps"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +105,8 @@ type secretRow struct {
 	// text its message holds, so a row cannot pass by failing elsewhere.
 	code    string
 	message string
+	// exit, when set, is the exit code the command must end with.
+	exit int
 	// contains are further texts the error's message holds.
 	contains []string
 	// hint, when set, is the text the error's hint must equal.
@@ -183,6 +187,74 @@ func shortPasswordStub(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+// passwordStatusBody returns a Status body the way Rancher writes its response
+// when it refuses a PasswordChangeRequest create request: the text in the
+// message and, when cause is set, in details.causes[0].message. tail is
+// appended to both texts.
+func passwordStatusBody(code int, reason, message, cause, tail string) string {
+	details := ""
+	if cause != "" {
+		details = `,"details":{"causes":[{"message":"` + cause + tail + `"}]}`
+	}
+	return `{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"` + message + tail + `","reason":"` + reason + `"` + details + `,"code":` + strconv.Itoa(code) + `}`
+}
+
+// invalidCurrentPasswordBody is the 500 Rancher responds with when it refuses
+// the current password.
+func invalidCurrentPasswordBody(tail string) string {
+	return passwordStatusBody(500, "InternalError", "Internal error occurred: error updating password: invalid current password",
+		"error updating password: invalid current password", tail)
+}
+
+// notAuthorizedBody is the 401 Rancher responds with when a user changes
+// another user's password without permission to change every user's password.
+func notAuthorizedBody(tail string) string {
+	return passwordStatusBody(401, "Unauthorized", "not authorized to update password", "", tail)
+}
+
+// missingPasswordSecretBody is a 500 whose text the command does not map.
+const missingPasswordSecretBody = `{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"Internal error occurred: error updating password: failed to get password secret: secrets \"u-abc\" not found","reason":"InternalError","details":{"causes":[{"message":"error updating password: failed to get password secret: secrets \"u-abc\" not found"}]},"code":500}`
+
+// permissionsCheckBody is a 401 whose text the command does not map.
+const permissionsCheckBody = `{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"error checking permissions: the server could not check the caller","reason":"Unauthorized","code":401}`
+
+// currentPasswordStub serves the discovery of a server that has the
+// password-change-request resource and responds to its create requests as
+// Rancher does: to a create request with dryRun=All it responds with 201, the
+// request's spec echoed, both passwords included, and no condition; to the
+// real create request it responds with the Status body realBody and the
+// status realStatus, or, when realBody is empty, with 201, the spec echoed and
+// a True PasswordUpdated condition.
+func currentPasswordStub(realStatus int, realBody string) secretStub {
+	return func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/passwordchangerequests") {
+			return shortPasswordStub(w, r)
+		}
+		var sent struct {
+			Spec map[string]any `json:"spec"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&sent); err != nil {
+			writeKubeJSON(w, http.StatusBadRequest, `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"bad request","reason":"BadRequest","code":400}`)
+			return true
+		}
+		status := map[string]any{"conditions": nil}
+		if r.URL.Query().Get("dryRun") != "All" {
+			if realBody != "" {
+				writeKubeJSON(w, realStatus, realBody)
+				return true
+			}
+			status = map[string]any{"conditions": []any{map[string]any{"type": "PasswordUpdated", "status": "True"}}, "summary": "Completed"}
+		}
+		out, err := json.Marshal(map[string]any{"kind": "PasswordChangeRequest", "apiVersion": "ext.cattle.io/v1", "metadata": map[string]any{}, "spec": sent.Spec, "status": status})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return true
+		}
+		writeKubeJSON(w, http.StatusCreated, string(out))
+		return true
+	}
+}
+
 // secretManifest is a Secret manifest whose value field is value.
 func secretManifest(value string) string {
 	return "apiVersion: v1\nkind: Secret\nmetadata:\n  name: x\nstringData:\n  password: " + value + "\n"
@@ -192,10 +264,12 @@ const (
 	createSecretLine = "create secret s --cluster c-x --namespace d --dry-run"
 	createUserLine   = "create user bob --dry-run"
 	passwordLine     = "create password-change-request u-abc --dry-run"
-	machineConfig    = "create machine-config amazonec2config w --dry-run"
-	patchLine        = "patch configmap app --cluster c-x --namespace default --dry-run"
-	createFileLine   = "create resource --cluster c-x --namespace n2 --dry-run"
-	loginLine        = "auth login x --url {url} --cacert {pem}"
+	// passwordApplyLine applies the change and sends the real create request.
+	passwordApplyLine = "create password-change-request u-abc --apply --yes"
+	machineConfig     = "create machine-config amazonec2config w --dry-run"
+	patchLine         = "patch configmap app --cluster c-x --namespace default --dry-run"
+	createFileLine    = "create resource --cluster c-x --namespace n2 --dry-run"
+	loginLine         = "auth login x --url {url} --cacert {pem}"
 )
 
 // secretRows is the table: one or more rows for every secret-bearing flag
@@ -283,6 +357,8 @@ func secretRows() []secretRow {
 		secretRow{flag: "password-stdin", name: passwordLine + ": a password the server refuses as too short", argv: line(passwordLine, "--password-stdin"), stdin: short, stub: shortPasswordStub, canary: short, code: validation, message: "password must be at least 12 characters"},
 	)
 
+	add(currentPasswordRows()...)
+
 	add(
 		secretRow{flag: "token-stdin", name: "a token with no colon", argv: line(loginLine, "--token-stdin"), stdin: c, code: validation, message: "invalid token (expected non-empty id:secret)"},
 		secretRow{flag: "token-stdin", name: "a token with no id", argv: line(loginLine, "--token-stdin"), stdin: ":" + c, code: validation, message: "invalid token (expected non-empty id:secret)"},
@@ -360,6 +436,100 @@ func secretRows() []secretRow {
 		secretRow{flag: "patch", name: "an unknown op names the op field only: the op holds a verb, never a value", argv: line(patchLine, "-p", `[{"op":"`+"bogus"+`","path":"/data/a","value":"`+c+`"}]`), code: validation, message: `patch operation 0 has the unknown operation "bogus"`},
 	)
 	rows = append(rows, secretURLRows()...)
+	return rows
+}
+
+// currentPasswordRows are the rows of create password-change-request that
+// send two lines on stdin or read Rancher's responses to a create request,
+// whether the command maps them or not: each asserts the submitted values are
+// in no output. A row whose input
+// holds the current password on one line and the new password on the other
+// runs twice, with the canary on each line.
+func currentPasswordRows() []secretRow {
+	c := secretCanary
+	const (
+		fixedCurrent = "currentValue1234"
+		fixedNew     = "newPassword1234"
+	)
+	line := func(l string, more ...string) []string { return append(strings.Fields(l), more...) }
+	validation := string(clierr.CodeValidation)
+	both := []string{"--current-password-stdin", "--password-stdin"}
+	var rows []secretRow
+	add := func(r ...secretRow) { rows = append(rows, r...) }
+	// onEachLine adds the row twice: stdin holds the canary as the current
+	// password, then as the new password, the other line a fixed value.
+	onEachLine := func(r secretRow) {
+		for _, l := range []struct{ where, stdin string }{{"the canary on line 1", c + "\n" + fixedNew}, {"the canary on line 2", fixedCurrent + "\n" + c}} {
+			row := r
+			row.name, row.stdin = r.name+", "+l.where, l.stdin
+			add(row)
+		}
+	}
+
+	add(
+		secretRow{flag: "password-stdin", name: passwordApplyLine + ": a 500 whose text is not mapped", argv: line(passwordApplyLine, "--password-stdin"), stdin: c,
+			stub: currentPasswordStub(500, missingPasswordSecretBody), code: string(clierr.CodeGeneric), message: "failed to get password secret"},
+		secretRow{flag: "password-stdin", name: passwordApplyLine + ": a 401 whose text is not mapped", argv: line(passwordApplyLine, "--password-stdin"), stdin: c,
+			stub: currentPasswordStub(401, permissionsCheckBody), code: string(clierr.CodeAuth), message: "error checking permissions"},
+		secretRow{flag: "password-stdin", name: passwordLine + ": one line, a dry-run", argv: line(passwordLine, "--password-stdin"), stdin: c, stub: currentPasswordStub(0, ""),
+			noRefusal: true, instead: "/spec/newPassword"},
+		secretRow{flag: "password-stdin", name: passwordApplyLine + ": one line, applied", argv: line(passwordApplyLine, "--password-stdin"), stdin: c, stub: currentPasswordStub(0, ""),
+			noRefusal: true, instead: "PasswordChangeRequestCompleted"},
+	)
+
+	// Refusals before any request.
+	const flagNeedsPipe = "needs --password-stdin"
+	add(
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": the flag without --password-stdin", argv: line(passwordLine, "--current-password-stdin"), stdin: c + "\n" + fixedNew, code: validation, message: flagNeedsPipe},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": an empty stdin", argv: line(passwordLine, both...), code: validation, message: "stdin is empty"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": one line", argv: line(passwordLine, both...), stdin: c, code: validation, message: "lines found: 1"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": three lines, the canary on line 1", argv: line(passwordLine, both...), stdin: c + "\n" + fixedCurrent + "\n" + fixedNew, code: validation, message: "lines found: 3"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": three lines, the canary on line 3", argv: line(passwordLine, both...), stdin: fixedCurrent + "\n" + fixedNew + "\n" + c, code: validation, message: "lines found: 3"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": line 1 empty", argv: line(passwordLine, both...), stdin: "\n" + c, code: validation, message: "line 1 (the current password) is empty"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": line 2 empty", argv: line(passwordLine, both...), stdin: c + "\n\n", code: validation, message: "line 2 (the new password) is empty"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed after the flag with =", argv: line(passwordLine, "--current-password-stdin="+c, "--password-stdin"), code: validation, message: "invalid value for flag -current-password-stdin: the value must be true or false"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed as an argument", argv: line(passwordLine, "--current-password-stdin", "--password-stdin", c), stdin: fixedCurrent + "\n" + fixedNew, code: validation, message: "unexpected argument at position 2"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed after a flag that does not exist", argv: line(passwordLine, "--current-password", c), code: validation, message: "unknown flag at argument 7 after rancher"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": the password typed after a flag that does not exist, with =", argv: line(passwordLine, "--current-password="+c), code: validation, message: "unknown flag at argument 7 after rancher"},
+	)
+
+	// A refusal of the server before the apply: lines 1 and 2 of one input,
+	// the canary standing for each in turn.
+	short := shortSecretCanary
+	add(
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": a new password the server refuses as too short, the canary on line 2", argv: line(passwordLine, both...), stdin: c + "\n" + short, stub: shortPasswordStub, canary: short, code: validation, message: "password must be at least 12 characters"},
+		secretRow{flag: "current-password-stdin", name: passwordLine + ": a new password the server refuses as too short, the canary on line 1", argv: line(passwordLine, both...), stdin: c + "\n" + short, stub: shortPasswordStub, canary: c, code: validation, message: "password must be at least 12 characters"},
+	)
+
+	// Success: both passwords are echoed by the server and are in no output.
+	onEachLine(secretRow{flag: "current-password-stdin", name: passwordLine + ": both flags, a dry-run", argv: line(passwordLine, both...), stub: currentPasswordStub(0, ""),
+		noRefusal: true, instead: "/spec/currentPassword"})
+	onEachLine(secretRow{flag: "current-password-stdin", name: passwordApplyLine + ": both flags, applied", argv: line(passwordApplyLine, both...), stub: currentPasswordStub(0, ""),
+		noRefusal: true, instead: "PasswordChangeRequestCompleted"})
+
+	// Rancher's two refusals: the canary is also in Rancher's text.
+	planted := " " + c
+	onEachLine(secretRow{flag: "current-password-stdin", name: passwordApplyLine + ": a refused current password", argv: line(passwordApplyLine, both...), stub: currentPasswordStub(500, invalidCurrentPasswordBody(planted)),
+		code: validation, message: "Rancher refused the current password", exit: clierr.ExitCode(clierr.CodeValidation)})
+	add(secretRow{flag: "password-stdin", name: passwordApplyLine + ": a refused current password, one line", argv: line(passwordApplyLine, "--password-stdin"), stdin: c, stub: currentPasswordStub(500, invalidCurrentPasswordBody(planted)),
+		code: validation, message: "Rancher requires the current password", exit: clierr.ExitCode(clierr.CodeValidation)})
+	onEachLine(secretRow{flag: "current-password-stdin", name: passwordApplyLine + ": another user's password", argv: line(passwordApplyLine, both...), stub: currentPasswordStub(401, notAuthorizedBody(planted)),
+		code: string(clierr.CodeRBAC), message: "you can change only your own password", exit: clierr.ExitCode(clierr.CodeRBAC)})
+
+	// A response the command does not map prints Rancher's text as before.
+	onEachLine(secretRow{flag: "current-password-stdin", name: passwordApplyLine + ": a 500 whose text is not mapped", argv: line(passwordApplyLine, both...), stub: currentPasswordStub(500, missingPasswordSecretBody),
+		code: string(clierr.CodeGeneric), message: "failed to get password secret"})
+	onEachLine(secretRow{flag: "current-password-stdin", name: passwordApplyLine + ": a 401 whose text is not mapped", argv: line(passwordApplyLine, both...), stub: currentPasswordStub(401, permissionsCheckBody),
+		code: string(clierr.CodeAuth), message: "error checking permissions"})
+
+	// A newline inside a password piped to --password-stdin is refused, with
+	// the remedy only on the command that has it.
+	add(
+		secretRow{flag: "password-stdin", name: createUserLine + ": a newline inside the password", argv: line(createUserLine, "--password-stdin"), stdin: "abc\n" + c, code: validation,
+			message: "has more than one line", forbid: []string{"--current-password-stdin"}},
+		secretRow{flag: "password-stdin", name: passwordLine + ": a newline inside the password", argv: line(passwordLine, "--password-stdin"), stdin: "abc\n" + c, code: validation,
+			message: "has more than one line", contains: []string{"pass --current-password-stdin"}},
+	)
 	return rows
 }
 
@@ -712,6 +882,9 @@ func TestSecretInputErrorsNeverQuoteTheValue(t *testing.T) {
 			require.NotZero(t, code, "stdout: %s stderr: %s", stdout, stderr)
 			ce := renderedError(t, "json", stderr)
 			assert.Equal(t, row.code, string(ce.Code), "stderr: %s", stderr)
+			if row.exit != 0 {
+				assert.Equal(t, row.exit, code, "stderr: %s", stderr)
+			}
 			message := withoutRunDirectory(ce.Message)
 			assert.Contains(t, message, row.message)
 			for _, want := range row.contains {

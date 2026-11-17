@@ -219,7 +219,7 @@ func createPreviewRows(t *testing.T) []createPreviewRow {
 		{"create token", "internal/engine/extres.createTokenCmd.Plan", coverageCases(t, "create token")},
 		{"create kubeconfig", "internal/engine/extres.createKubeconfigCmd.Plan", coverageCases(t, "create kubeconfig")},
 		{"create password-change-request", "internal/engine/extres.createPasswordChangeRequestCmd.Plan",
-			coverageCases(t, "create password-change-request", "newPassword")},
+			coverageCases(t, "create password-change-request", "newPassword", "currentPassword")},
 		{"create cluster", "internal/engine/provisioning.createClusterCmd.Plan", coverageCases(t, "create cluster")},
 		{"create namespace", "internal/engine/projects.createNamespaceCmd.Plan", []previewCase{{
 			name: "in a project",

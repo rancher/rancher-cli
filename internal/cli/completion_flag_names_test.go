@@ -558,3 +558,18 @@ func TestFlagNameCompletionOffersProjectOnlyWhereTaken(t *testing.T) {
 		}
 	}
 }
+
+// TestFlagNameCompletionOffersCurrentPasswordStdin asserts that `create
+// password-change-request u-abc --<TAB>` and `--cur<TAB>` offer
+// --current-password-stdin. No value completion follows it: a bool flag takes
+// no value.
+func TestFlagNameCompletionOffersCurrentPasswordStdin(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv(config.EnvConfigDir, t.TempDir())
+
+	for _, word := range []string{"--", "--cur"} {
+		tokens := extractTokens(runNameLikeCompletion(t, []string{"create", "password-change-request", "u-abc"}, word))
+		assert.Contains(t, tokens, "--current-password-stdin", "after %q", word)
+	}
+}

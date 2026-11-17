@@ -66,6 +66,46 @@ stdin new-password.txt
 exec rancher create password-change-request $USERID --password-stdin --apply --yes -o json
 jsonquery stdout data.userID $USERID
 
+# --current-password-stdin sends the current password too: stdin holds two
+# lines. The test server echoes the spec and does not check the current
+# password; neither value is printed, and the warning that the dry-run does not
+# check it prints with the preview and with the result.
+stdin two-passwords.txt
+exec rancher create password-change-request $USERID --current-password-stdin --password-stdin --dry-run -o json
+jsonquery stdout 'warnings.0' 'the dry-run does not check the current password. When the change is applied, Rancher checks it only if you lack permission to change every user''s password; with that permission, Rancher ignores line 1 and sets line 2 as the new password'
+! stdout 'CurrentPassw0rd1234'
+! stdout 'FreshPassw0rd5678'
+! stderr 'CurrentPassw0rd1234'
+! stderr 'FreshPassw0rd5678'
+
+stdin two-passwords.txt
+exec rancher create password-change-request $USERID --current-password-stdin --password-stdin --apply --yes -o json
+jsonquery stdout data.userID $USERID
+jsonquery stdout 'warnings.0' 'the dry-run does not check the current password. When the change is applied, Rancher checks it only if you lack permission to change every user''s password; with that permission, Rancher ignores line 1 and sets line 2 as the new password'
+! stdout 'CurrentPassw0rd1234'
+! stdout 'FreshPassw0rd5678'
+! stderr 'CurrentPassw0rd1234'
+! stderr 'FreshPassw0rd5678'
+
+# two lines piped to --password-stdin alone are refused: the command takes a
+# password on one line only.
+stdin two-passwords.txt
+! exec rancher create password-change-request $USERID --password-stdin --dry-run
+stderr 'has more than one line'
+! stdout 'CurrentPassw0rd1234'
+! stdout 'FreshPassw0rd5678'
+! stderr 'CurrentPassw0rd1234'
+! stderr 'FreshPassw0rd5678'
+
+# --current-password-stdin needs --password-stdin.
+stdin two-passwords.txt
+! exec rancher create password-change-request $USERID --current-password-stdin --dry-run
+stderr 'needs --password-stdin'
+! stdout 'CurrentPassw0rd1234'
+! stdout 'FreshPassw0rd5678'
+! stderr 'CurrentPassw0rd1234'
+! stderr 'FreshPassw0rd5678'
+
 # --description and --must-change-password write the User's own fields.
 stdin password.txt
 exec rancher create user e2e-flags-user --password-stdin --description 'build robot' --must-change-password --apply --yes -o json
@@ -98,3 +138,6 @@ jsonquery stdout 'warnings.3' ''
 Sup3rSecretPassw0rd!
 -- new-password.txt --
 AnotherSecretPassw0rd!
+-- two-passwords.txt --
+CurrentPassw0rd1234
+FreshPassw0rd5678

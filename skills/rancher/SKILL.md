@@ -300,9 +300,9 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   null. Hidden values are a secret's `data` and `stringData`, a user's
   `password`, a management token's `token`, an ext token's `status.bearerToken`
   and `status.value`, an ext kubeconfig's `status.value`, a password change
-  request's `spec.newPassword` and the password and key fields of a machine
-  config (for example `secretKey`, `sshKeyContents`, `sessionToken`,
-  `sshPassword`). The `kubectl.kubernetes.io/last-applied-configuration` and
+  request's `spec.currentPassword` and `spec.newPassword`, and the password
+  and key fields of a machine config (for example `secretKey`,
+  `sshKeyContents`, `sessionToken`, `sshPassword`). The `kubectl.kubernetes.io/last-applied-configuration` and
   `objectset.rio.cattle.io/applied` annotations, which hold a copy of the
   object as it was last applied, are hidden too for every sensitive kind and
   every kind with hidden fields. Field names match in any
@@ -897,6 +897,19 @@ Never present a role list as permissions.
   (completes synchronously - no wait needed). Both require a server that
   supports local user passwords; on a server without that support they
   refuse with `CAPABILITY_UNSUPPORTED` (exit `11`) rather than a raw error.
+  Rancher requires the current password when you change your own password
+  without permission to change every user's password (that is, permission to
+  update `users.management.cattle.io` and `secrets` in
+  `cattle-local-user-passwords`). Pipe two lines, line 1 the current password
+  and line 2 the new password, and pass `--current-password-stdin` with
+  `--password-stdin`, for example
+  `printf '%s\n%s\n' "$CURRENTPASSWORD" "$NEWPASSWORD" | rancher create password-change-request <user id> --current-password-stdin --password-stdin --apply --yes`.
+  The dry-run does not check the current password. A refused current password
+  is `VALIDATION` (exit `2`); changing another user's password without
+  permission to change every user's password is `RBAC` (exit `6`). Neither
+  error has a hint, and the password was not changed. A password piped to
+  `--password-stdin` that has a newline inside it is refused, on both
+  commands.
 - `rancher get roletemplates -o json` - filter `context=="cluster"` or
   `context=="project"` to find role names for `--role`; `-o table` shows the
   same as a CONTEXT column. Once a scope flag (`--cluster`, `--project`, or

@@ -2155,8 +2155,8 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 | `CREDENTIAL_TRANSITION_INCOMPLETE` | 3 | a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet; a second store change is refused until it is, and other commands proceed |
 | `CREDENTIAL_STORE_UNAVAILABLE` | 14 | the credential store this directory uses cannot be read or written right now: a locked keychain, a keychain prompt that was cancelled, a keychain that cannot be reached, or a credential helper that is missing, timed out or failed; the message names the store, the entry, the cause as far as it is known, and the remedy |
 | `NOT_FOUND` | 4 | no such resource, server entry, or name: the server answered 404 for an object or for an API through a downstream cluster, the config directory has no such entry, or the name matched nothing in already-fetched data; when the command holds the list of names it could have meant, the error lists them as candidates |
-| `RBAC` | 6 | the server denied the request for lack of permission (HTTP 403) |
-| `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422) |
+| `RBAC` | 6 | the server denied the request for lack of permission (HTTP 403, and for `create password-change-request` the 401 Rancher sends when you change another user's password without permission) |
+| `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, an object the server refused (HTTP 400 or 422), or, for `create password-change-request`, a missing or wrong current password that Rancher reports with a 500 |
 | `PRIME_REQUIRED` | 9 | the command requires Rancher Prime and the connected server does not have it |
 | `TLS_TRUST` | 10 | the server's TLS certificate is not trusted and was not accepted |
 | `CAPABILITY_UNSUPPORTED` | 11 | the workflow the command needs is not supported by the connected server or by this CLI |
@@ -2166,6 +2166,20 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 
 When a candidate list is cut to its first entries,
 `data.error.candidatesTotal` gives the size of the full list.
+
+`rancher create password-change-request` gives two of Rancher's responses to
+a PasswordChangeRequest a different error code, chosen by the text of the
+message. A 500 whose message contains `error updating password: invalid
+current password` is `VALIDATION` (exit 2). Rancher sends it when you change
+your own password without permission to change every user's password and the
+current password (`spec.currentPassword`) is wrong or missing; Rancher gives
+the same response for both. Changing every user's password takes permission
+to update `users.management.cattle.io` and `secrets` in the
+`cattle-local-user-passwords` namespace. A 401 whose message contains `not
+authorized to update password` is `RBAC` (exit 6). Rancher sends it when you
+change another user's password without permission to change every user's
+password. Neither error has a hint. A response with any other text keeps the
+code it gets on every other command (`GENERIC` for a 500, `AUTH` for a 401).
 
 When the error cannot be encoded in the chosen format, or its write to
 stderr fails once, stderr gets the one line `error (CODE): message`, the same

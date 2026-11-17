@@ -976,6 +976,12 @@ func handWrittenScrubRows() []scrubRow {
 				return fieldCoverageInput{args: []string{"u-abc123"}, bools: map[string]bool{"password-stdin": true}, stdin: "pcrPassword1"}
 			},
 			extra: func(*plantSet) []string { return []string{"pcrPassword1"} }},
+		{command: "create password-change-request", variant: "current password", class: classNames,
+			reason: "the result is {userID}: the created object echoes spec.currentPassword and spec.newPassword and is never copied into it",
+			input: func(*plantSet) fieldCoverageInput {
+				return fieldCoverageInput{args: []string{"u-abc123"}, bools: map[string]bool{"current-password-stdin": true, "password-stdin": true}, stdin: "pcrCurrent1\npcrPassword2"}
+			},
+			extra: func(*plantSet) []string { return []string{"pcrCurrent1", "pcrPassword2"} }},
 		{command: "create user", kind: "user", class: classNames,
 			reason: "the result is built from the committed identity fields: the created User and password Secret echo the hashed payload and the password",
 			input: func(*plantSet) fieldCoverageInput {

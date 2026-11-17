@@ -1848,12 +1848,18 @@
       "desc": "Submits an ext.cattle.io/v1 PasswordChangeRequest, which completes synchronously. Requires a server that supports local user passwords (the same support `rancher create user` needs).",
       "destructive": "true",
       "examples": [
-        "echo -n \"$NEWPASSWORD\" | rancher create password-change-request u-abc123 --password-stdin --apply --yes"
+        "printf '%s' \"$NEWPASSWORD\" | rancher create password-change-request u-abc123 --password-stdin --apply --yes",
+        "printf '%s\\n%s\\n' \"$CURRENTPASSWORD\" \"$NEWPASSWORD\" | rancher create password-change-request u-abc123 --current-password-stdin --password-stdin --apply --yes"
       ],
       "flags": [
         {
-          "desc": "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)",
+          "desc": "read the new password from stdin (required; with --current-password-stdin, line 2 of stdin; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default; a newline inside the password is refused)",
           "name": "password-stdin",
+          "type": "bool"
+        },
+        {
+          "desc": "read the current password from stdin: with --password-stdin, stdin holds two lines, line 1 the current password and line 2 the new password. Rancher requires it when you change your own password without permission to change every user's password; there is no --current-password flag because a flag value would be saved in shell history",
+          "name": "current-password-stdin",
           "type": "bool"
         }
       ],
@@ -2105,7 +2111,7 @@
       ],
       "flags": [
         {
-          "desc": "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)",
+          "desc": "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default; a newline inside the password is refused)",
           "name": "password-stdin",
           "type": "bool"
         },
@@ -12511,12 +12517,12 @@
     },
     {
       "code": "RBAC",
-      "desc": "the server denied the request for lack of permission (HTTP 403)",
+      "desc": "the server denied the request for lack of permission (HTTP 403, and for `create password-change-request` the 401 Rancher sends when you change another user's password without permission)",
       "exit": 6
     },
     {
       "code": "VALIDATION",
-      "desc": "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422)",
+      "desc": "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, an object the server refused (HTTP 400 or 422), or, for `create password-change-request`, a missing or wrong current password that Rancher reports with a 500",
       "exit": 2
     },
     {

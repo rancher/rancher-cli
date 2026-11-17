@@ -284,6 +284,27 @@ func TestCreatePasswordStdinRequired(t *testing.T) {
 	assert.Equal(t, 0, client.userCreateCalls, "no network call before the password-stdin gate")
 }
 
+// TestCreateRefusesANewlineInsideThePassword asserts that a password piped to
+// --password-stdin that still contains a newline after one final newline is
+// trimmed is refused before any request, with the text that does not name
+// --current-password-stdin (this command has no such flag), and that a one-line
+// password still plans.
+func TestCreateRefusesANewlineInsideThePassword(t *testing.T) {
+	t.Parallel()
+	client := &fakeUserClient{userPreviewName: "u-preview1"}
+	_, _, err := plan(t, client, fakeSrc{body: []byte("abc\nsecretLineTwo\n")}, planInput("alice"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, "the password read from stdin has more than one line; --password-stdin takes the password on one line", ce.Message)
+	assert.Empty(t, ce.Hint)
+	assert.Equal(t, 0, client.userCreateCalls, "no network call before the password is read")
+
+	_, exec, err := plan(t, &fakeUserClient{userPreviewName: "u-preview1"}, fakeSrc{body: []byte("correctHorseBattery1\n")}, planInput("alice"))
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+}
+
 // TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity
 // asserts the composite's result is built from identity fields only (the
 // hashed password/salt never reach -o json/yaml) and that the committed

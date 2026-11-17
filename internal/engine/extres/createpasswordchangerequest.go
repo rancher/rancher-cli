@@ -34,7 +34,7 @@ type createPasswordChangeRequestCmd struct {
 }
 
 // NewCreatePasswordChangeRequest builds `create password-change-request
-// <user> --password-stdin` (mutating): submits an ext.cattle.io/v1
+// <user> --password-stdin [--current-password-stdin]` (mutating): submits an ext.cattle.io/v1
 // PasswordChangeRequest, the password-change side of the user-password
 // workflow `create user` also uses. The request completes synchronously -
 // the server reports the change already applied in the create response,
@@ -55,10 +55,12 @@ func (createPasswordChangeRequestCmd) Describe() runtime.Descriptor {
 			{Name: "user", Type: "string", Required: true, Desc: "user `id` (see: `rancher get users`)"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default)"},
+			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; with --current-password-stdin, line 2 of stdin; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default; a newline inside the password is refused)"},
+			{Name: "current-password-stdin", Type: "bool", Desc: "read the current password from stdin: with --password-stdin, stdin holds two lines, line 1 the current password and line 2 the new password. Rancher requires it when you change your own password without permission to change every user's password; there is no --current-password flag because a flag value would be saved in shell history"},
 		},
 		Examples: []string{
-			`echo -n "$NEWPASSWORD" | rancher create password-change-request u-abc123 --password-stdin --apply --yes`,
+			`printf '%s' "$NEWPASSWORD" | rancher create password-change-request u-abc123 --password-stdin --apply --yes`,
+			`printf '%s\n%s\n' "$CURRENTPASSWORD" "$NEWPASSWORD" | rancher create password-change-request u-abc123 --current-password-stdin --password-stdin --apply --yes`,
 		},
 		Destructive: "true",
 		Auth:        true,
@@ -70,19 +72,29 @@ func (createPasswordChangeRequestCmd) Describe() runtime.Descriptor {
 
 func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	userID := in.Args()[0]
-	password, err := engine.ReadPasswordStdin(c.src, in)
-	if err != nil {
-		return safety.Effect{}, nil, err
+	sentCurrent := in.Bool("current-password-stdin")
+	spec := map[string]any{"userID": userID}
+	if sentCurrent {
+		current, password, err := engine.ReadCurrentAndNewPasswordStdin(c.src, in)
+		if err != nil {
+			return safety.Effect{}, nil, err
+		}
+		spec["currentPassword"] = current
+		spec["newPassword"] = password
+	} else {
+		password, err := engine.ReadPasswordStdin(c.src, in,
+			"To send the current password too, pass --current-password-stdin and pipe two lines")
+		if err != nil {
+			return safety.Effect{}, nil, err
+		}
+		spec["newPassword"] = password
 	}
 
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "ext.cattle.io/v1",
 		"kind":       "PasswordChangeRequest",
 		"metadata":   map[string]any{},
-		"spec": map[string]any{
-			"userID":      userID,
-			"newPassword": password,
-		},
+		"spec":       spec,
 	}}
 
 	client, err := c.clients.Cluster(ctx, engine.LocalCluster)
@@ -115,11 +127,16 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 		Reversible:        true,
 		Destructive:       true,
 	}
+	if sentCurrent {
+		eff.Warnings = append(eff.Warnings, "the dry-run does not check the current password. "+
+			"When the change is applied, Rancher checks it only if you lack permission to change every user's password; "+
+			"with that permission, Rancher ignores line 1 and sets line 2 as the new password")
+	}
 
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		created, err := client.Create(ctx, passwordChangeRequestGVR, "", obj, false)
 		if err != nil {
-			return runtime.Result{}, err
+			return runtime.Result{}, refusePasswordChange(err, sentCurrent, userID)
 		}
 		if !passwordUpdated(created) {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,

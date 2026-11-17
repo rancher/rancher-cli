@@ -354,7 +354,7 @@ var createFieldCoverageTable = map[string]createFieldCoverage{
 		resource:    "ext.cattle.io/v1 PasswordChangeRequest",
 		gvrResource: "passwordchangerequests",
 		fields: map[string]fieldSource{
-			"currentPassword": omitted(notYetOffered),
+			"currentPassword": byFlag("current-password-stdin"),
 			"newPassword":     byFlag("password-stdin"),
 			"userID":          byArg("user"),
 		},
@@ -362,11 +362,14 @@ var createFieldCoverageTable = map[string]createFieldCoverage{
 			return extres.NewCreatePasswordChangeRequest(r, fieldCoverageSource{in.stdin})
 		},
 		runs: []fieldCoverageRun{{
-			input: fieldCoverageInput{args: []string{"u-abc123"}, bools: map[string]bool{"password-stdin": true}, stdin: "correctHorseBattery1"},
-			want:  map[string]any{"newPassword": "correctHorseBattery1", "userID": "u-abc123"},
+			input: fieldCoverageInput{args: []string{"u-abc123"}, bools: map[string]bool{"current-password-stdin": true, "password-stdin": true}, stdin: "currentHorse1\ncorrectHorseBattery1"},
+			want:  map[string]any{"currentPassword": "currentHorse1", "newPassword": "correctHorseBattery1", "userID": "u-abc123"},
 		}, {
-			input: fieldCoverageInput{args: []string{"u-def456"}, bools: map[string]bool{"password-stdin": true}, stdin: "correctHorseBattery2"},
-			want:  map[string]any{"newPassword": "correctHorseBattery2", "userID": "u-def456"},
+			input: fieldCoverageInput{args: []string{"u-def456"}, bools: map[string]bool{"current-password-stdin": true, "password-stdin": true}, stdin: "currentHorse2\r\ncorrectHorseBattery2"},
+			want:  map[string]any{"currentPassword": "currentHorse2", "newPassword": "correctHorseBattery2", "userID": "u-def456"},
+		}, {
+			input: fieldCoverageInput{args: []string{"u-ghi789"}, bools: map[string]bool{"password-stdin": true}, stdin: "correctHorseBattery3"},
+			want:  map[string]any{"currentPassword": absent, "newPassword": "correctHorseBattery3", "userID": "u-ghi789"},
 		}},
 	},
 	"create cluster": {
