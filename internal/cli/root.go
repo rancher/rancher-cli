@@ -24,6 +24,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/kubeconfig"
 	"github.com/rancher/rancher-cli/internal/engine/managementtoken"
+	"github.com/rancher/rancher-cli/internal/engine/nodes"
 	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/engine/oidcclient"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
@@ -108,6 +109,8 @@ func buildEntries() []entry {
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewClearAutoscaling(d.clients) }},
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewPauseAutoscaling(d.clients) }},
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewResumeAutoscaling(d.clients) }},
+		{group: "node", make: func(d runDeps) runtime.Command { return nodes.NewDrain(d.clients, d.roots) }},
+		{group: "node", make: func(d runDeps) runtime.Command { return nodes.NewStopDrain(d.clients, d.roots) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectCluster(d.clients, d.roots) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
@@ -460,6 +463,7 @@ var groupUsages = map[string]string{
 	"telemetry":   "Local usage recording: status, turn on, turn off, delete, list and send events",
 	"oidc-client": "Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)",
 	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
+	"node":        "Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)",
 	"app":         "Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
@@ -712,6 +716,8 @@ var derivedOpKinds = map[string]string{
 	"cluster clear-autoscaling":  "provisioningcluster",
 	"cluster pause-autoscaling":  "provisioningcluster",
 	"cluster resume-autoscaling": "provisioningcluster",
+	"node drain":                 "managementnode",
+	"node stop-drain":            "managementnode",
 }
 
 // bespokePublicOps is the closed, reviewed set of ContractPublic ops with
@@ -937,6 +943,10 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// provisioning-cluster` is the read path for this family's target.
 		"cluster": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; " +
 			"to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
+		// "node" is both a command group and a kind, the same deliberate
+		// collision as "project" and "cluster": `rancher schema node` returns
+		// this group's card and --kind reaches the node kind card.
+		"node":    "Drain a node of a cluster or stop a running drain, through the management node Rancher keeps for it; Rancher runs the drain. Read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`.",
 		"app":     "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
 		"inspect": "Show the current state, events and related objects of a cluster, workload or project.",
 		"access": "Questions about access, answered by the server: whether a subject can perform a verb on a resource, the rules a subject has in a namespace, " +

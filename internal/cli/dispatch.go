@@ -304,6 +304,14 @@ func dispatchSite(
 			}
 			return resolveStaticEnum(timeoutSuggestions, site)
 		}
+		// node drain's own options: the time Rancher's drain may run and the
+		// seconds each pod gets to stop. Owned like the --timeout candidates above.
+		if drainFlagSite(site, d, "drain-timeout") {
+			return resolveStaticEnum(drainTimeoutSuggestions, site)
+		}
+		if drainFlagSite(site, d, "grace-period") {
+			return resolveStaticEnum(gracePeriodSuggestions, site)
+		}
 		// `auth login --credential-store`: the three stores that can be
 		// named without knowing anything about the machine. The flag
 		// carries no enum, because a typed exec:<name> has to be accepted.
@@ -592,22 +600,44 @@ func credentialStoreSite(site CompletionSite, d runtime.Descriptor) bool {
 // are a ladder to pick from, each one a value the command accepts verbatim.
 var timeoutSuggestions = []string{"30s", "1m", "2m", "5m", "10m"}
 
+// drainTimeoutSuggestions are the static --drain-timeout candidates of node
+// drain, each within the 1s to 3h the flag accepts.
+var drainTimeoutSuggestions = []string{"30s", "1m", "2m", "5m", "10m", "30m", "1h"}
+
+// gracePeriodSuggestions are the static --grace-period candidates of node
+// drain, in whole seconds.
+var gracePeriodSuggestions = []string{"10", "30", "60", "120", "300"}
+
+// nodeDrainCommand reports whether name is node drain or node stop-drain.
+func nodeDrainCommand(name string) bool {
+	return name == "node drain" || name == "node stop-drain"
+}
+
+// drainFlagSite reports a flag-value site of flag on node drain whose
+// descriptor carries the flag.
+func drainFlagSite(site CompletionSite, d runtime.Descriptor, flag string) bool {
+	return site.Kind == SiteFlagValue && site.FlagName == flag && d.Name == "node drain" &&
+		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == flag })
+}
+
 // timeoutLadderSite reports a --timeout flag-value site on an access
-// command or a delete whose descriptor carries the flag: a value-taking
-// flag with no enum and no server-side source. Ownership follows the
-// descriptor, so a command without the flag gets no ladder.
+// command, a delete, node drain or node stop-drain whose descriptor carries
+// the flag: a value-taking flag with no enum and no server-side source.
+// Ownership follows the descriptor, so a command without the flag gets no
+// ladder.
 func timeoutLadderSite(site CompletionSite, d runtime.Descriptor) bool {
 	return site.Kind == SiteFlagValue && site.FlagName == "timeout" &&
-		(strings.HasPrefix(d.Name, "access ") || strings.HasPrefix(d.Name, "delete ")) &&
+		(strings.HasPrefix(d.Name, "access ") || strings.HasPrefix(d.Name, "delete ") || nodeDrainCommand(d.Name)) &&
 		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "timeout" })
 }
 
-// timeoutRefused reports whether the words typed so far make a delete
-// refuse --timeout: --wait with a value the parser reads as false
-// (strconv.ParseBool, as for every bool flag). A bool flag takes a value only
-// joined with "=". Words after "--" are arguments, not flags.
+// timeoutRefused reports whether the words typed so far make a delete, node
+// drain or node stop-drain refuse --timeout: --wait with a value the parser
+// reads as false (strconv.ParseBool, as for every bool flag). A bool flag
+// takes a value only joined with "=". Words after "--" are arguments, not
+// flags.
 func timeoutRefused(d runtime.Descriptor, tail []string) bool {
-	if !strings.HasPrefix(d.Name, "delete ") {
+	if !strings.HasPrefix(d.Name, "delete ") && !nodeDrainCommand(d.Name) {
 		return false
 	}
 	for _, word := range tail {

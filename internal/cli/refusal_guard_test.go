@@ -140,6 +140,14 @@ func refusalCases() []refusalCase {
 		deleteRefusal("clusterrolebinding", "clusterrolebinding",
 			"unknown command \"clusterrolebinding\"; clusterrolebinding cannot be deleted - this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `"+clierr.Rancher+" kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants"),
 
+		patchRefusal("managementnode", "management-node",
+			"management-node: patch is not supported - drain a node with `"+clierr.Rancher+" node drain <node> --cluster <cluster> --dry-run`, stop a drain with `"+clierr.Rancher+" node stop-drain <node> --cluster <cluster> --dry-run`, and cordon or uncordon it by setting spec.unschedulable on the node (<node> is the node's name, <cluster> its cluster); read it with "+clierr.Rancher+" get 'management-node'",
+			"--cluster", "local"),
+		createRefusal("managementnode", "management-node", manifestOf("management.cattle.io/v3", "Node", true),
+			"cannot create a management-node from a manifest; Rancher creates a management node for each node of a cluster"),
+		deleteRefusal("managementnode", "management-node",
+			`unknown command "management-node"; management-node cannot be deleted - Rancher deletes a management node when its node leaves the cluster`),
+
 		createRefusal("clusterrepo", "clusterrepo", manifestOf("catalog.cattle.io/v1", "ClusterRepo", false),
 			"cannot create a clusterrepo from a manifest; this CLI does not add repositories"),
 		createRefusal("app", "app", manifestOf("catalog.cattle.io/v1", "App", true),

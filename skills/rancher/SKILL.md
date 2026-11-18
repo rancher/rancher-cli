@@ -290,6 +290,16 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   `data.error.details.committed` true (a timeout, an interrupt, `AUTH`,
   `TLS_TRUST`), run `data.error.details.recovery`, a `rancher get` command;
   never run the delete again.
+- `node drain <node> --cluster <c>` asks Rancher to drain a node: run it with
+  `--dry-run` first, then `--apply --yes`. The dry-run preview lists the pods on
+  the node in `data.objects` (`kind` pod, `outcome` `will be evicted`, `skipped` or
+  `blocks the drain`, with `message`) and warns that Rancher runs the drain as
+  its system user; relay both before applying. By default it waits until
+  Rancher reports the drain done or failed. `node stop-drain <node> --cluster
+  <c>` stops a running drain with `--apply` alone; the node stays cordoned. Read
+  the state with `rancher get management-node --cluster <c>`. An error with
+  `data.error.details.committed` true means the request was accepted: run
+  `data.error.details.recovery`, never the command again.
 - `project remove-namespace <ns>` also accepts a namespace with the project
   label and no project annotation, and makes sure its project label is
   removed.

@@ -561,7 +561,7 @@ func TestHandleRowsDeclareTheIDArgument(t *testing.T) {
 			assert.Equal(t, runtime.ArgSpec{Name: "id", Type: "string", Required: verb != "get", Desc: k.ArgDesc}, d.Args[0], k.Name+" "+verb)
 		}
 	}
-	assert.Equal(t, 6, count)
+	assert.Equal(t, 7, count)
 
 	cluster := mustKind(t, "cluster")
 	for _, d := range []runtime.Descriptor{NewGet(cluster, nil).Describe(), NewPatch(cluster, nil, nil).Describe()} {

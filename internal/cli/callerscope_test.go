@@ -104,6 +104,8 @@ var callerBespokeRows = map[string]callerRow{
 	"inspect project":          {args: "inspect project web --cluster prod -o json", target: targetManagement},
 	"kubeconfig":               {args: "kubeconfig --cluster prod", target: targetClusterObject},
 	"logs":                     {args: "logs kube-api-auth --cluster prod -o json", target: targetDownstream},
+	"node drain":               {args: "node drain worker-1 --cluster prod --dry-run -o json", target: targetManagement},
+	"node stop-drain":          {args: "node stop-drain worker-1 --cluster prod --dry-run -o json", target: targetManagement},
 	"project add-namespace":    {args: "project add-namespace default --project web --cluster prod --dry-run -o json", target: targetDownstream},
 	"project remove-namespace": {args: "project remove-namespace default --cluster prod --dry-run -o json", target: targetDownstream},
 	"support-bundle":           {args: "support-bundle --clusters prod -o json", target: targetDownstream},
@@ -114,6 +116,14 @@ var callerBespokeRows = map[string]callerRow{
 	"patch cluster": {args: `patch cluster c-abc --patch [{"op":"add","path":"/metadata/labels","value":{"a":"b"}}] --dry-run -o json`, target: targetNone,
 		own:     "GET " + localClustersPath + "/c-abc",
 		kindErr: &callerError{"RBAC", "the server refused get clusters.management.cattle.io 'c-abc'" + localRefusal, "rancher inspect cluster 'c-abc'"}},
+}
+
+// generatedRefusals are the generated commands that end in the local proxy's
+// refusal for the caller of this test, who may not get cluster local, with the
+// error each ends in: the management nodes are outside Rancher's allow list,
+// and get management-node does not read through Steve.
+var generatedRefusals = map[string]*callerError{
+	"get management-node": {"RBAC", "the server refused list nodes.management.cattle.io" + localRefusal, ""},
 }
 
 // generatedRow builds the row of a generated get, patch or delete that
@@ -471,7 +481,9 @@ func callerRows(t *testing.T) map[string]callerRow {
 				// A refused patch does not look up the target cluster; it refuses before any request.
 				continue
 			}
-			rows[d.Name] = generatedRow(d, k)
+			row := generatedRow(d, k)
+			row.kindErr = generatedRefusals[d.Name]
+			rows[d.Name] = row
 			continue
 		}
 		row, ok := callerBespokeRows[d.Name]
@@ -479,7 +491,7 @@ func callerRows(t *testing.T) map[string]callerRow {
 			rows[d.Name] = row
 		}
 	}
-	assert.Equal(t, 121, taking, "the commands that take a cluster or clusters flag")
+	assert.Equal(t, 125, taking, "the commands that take a cluster or clusters flag")
 	for name, row := range callerBespokeRows {
 		if _, ok := rows[name]; !ok {
 			rows[name] = row

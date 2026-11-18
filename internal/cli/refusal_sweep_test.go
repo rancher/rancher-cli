@@ -59,6 +59,7 @@ var refusalExemptions = map[string]refusalExemption{
 	"patch operation":                {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher creates and manages operation objects", nil},
 	"patch etcd-snapshot":            {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher creates and manages etcd snapshot objects from the snapshot files", nil},
 	"patch authconfig":               {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: auth configs are read-only in this CLI for now", nil},
+	"patch management-node":          {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: drain a node with `rancher node drain`, stop a drain with `rancher node stop-drain`, and cordon or uncordon it by setting spec.unschedulable on the node", nil},
 	"patch role":                     {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: this CLI does not change Kubernetes RBAC objects yet", nil},
 	"patch rolebinding":              {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: this CLI does not change Kubernetes RBAC objects yet", nil},
 	"patch clusterrole":              {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: this CLI does not change Kubernetes RBAC objects yet", nil},

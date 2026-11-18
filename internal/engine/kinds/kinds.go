@@ -554,6 +554,31 @@ var table = []Kind{
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable:    true,
 	},
+	// Rancher keeps one management node per node of a cluster, in the
+	// cluster's namespace on the local cluster. It is read-only here: the
+	// drain commands write it.
+	{
+		Key: "managementnode", Name: "management-node", Aliases: []string{"managementnodes", "management-nodes"},
+		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "nodes"},
+		Policy: NSCluster, K8sKind: "Node", Scope: Management, Deletable: false, WaitDefault: "condition=Drained",
+		NoDeleteReason: "Rancher deletes a management node when its node leaves the cluster",
+		NoPatchReason: clierr.Text(
+			clierr.Lead("drain a node with `"), clierr.NewCommand("node drain").Placeholder("<node>").FlagText(" --cluster <cluster>").Flag("--dry-run"),
+			"`, ", clierr.Lead("stop a drain with `"), clierr.NewCommand("node stop-drain").Placeholder("<node>").FlagText(" --cluster <cluster>").Flag("--dry-run"),
+			"`, and cordon or uncordon it by setting spec.unschedulable on the node (<node> is the node's name, <cluster> its cluster)"),
+		NoCreateViaManifest: "Rancher creates a management node for each node of a cluster",
+		Handle:              &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"status", "nodeName"}, Label: "node name"}}},
+		ArgDesc:             "management node id; the name of its node finds the id",
+		Completable:         true,
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		RedactPaths:         [][]string{{"spec", "customConfig", "sshKey"}},
+		Columns: []Column{
+			{Header: "NODE", Path: []string{"status", "nodeName"}},
+			{Header: "DRAINED", Condition: "Drained"},
+			{Header: "REQUEST", Path: []string{"spec", "desiredNodeUnschedulable"}},
+			{Header: "WORKER", Path: []string{"spec", "worker"}, Bool: true},
+		},
+	},
 	{
 		Key: "namespace", Name: "namespace", Aliases: []string{"namespaces", "ns"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"},

@@ -57,7 +57,8 @@ func TestRequirements(t *testing.T) {
 		{key: "rolebinding", want: downstream, ok: true},
 		{key: "clusterrole", want: downstream, ok: true},
 		{key: "clusterrolebinding", want: downstream, ok: true},
-		{key: "project"}, // its own source lists the projects the caller can read
+		{key: "project"},        // its own source lists the projects the caller can read
+		{key: "managementnode"}, // its own source lists the cluster's management nodes
 		{key: "secret"},
 		{key: "capicluster"},
 	}

@@ -261,6 +261,22 @@ func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResourc
 	return out, r.forbiddenHint(gvr, "list", ns, "", mapRequestErr(ctx, http.MethodGet, err, r.request("list", gvr, ns, "")))
 }
 
+var _ engine.FieldSelectorLister = (*dynamicClient)(nil)
+
+// ListFieldSelector lists like List, filtered by a field selector instead of a
+// label selector.
+func (r *dynamicClient) ListFieldSelector(ctx context.Context, gvr schema.GroupVersionResource, ns, fieldSelector string) (*unstructured.UnstructuredList, error) {
+	ctx = kube.WithAnswers(ctx)
+	gvr, err := r.resolveVersion(ctx, gvr)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := opCtx(ctx)
+	defer cancel()
+	out, err := r.ri(gvr, ns).List(ctx, metav1.ListOptions{FieldSelector: fieldSelector})
+	return out, r.forbiddenHint(gvr, "list", ns, "", mapRequestErr(ctx, http.MethodGet, err, r.request("list", gvr, ns, "")))
+}
+
 // Logs fetches a container's log via the typed clientset (pod logs have no
 // dynamic/unstructured API).
 func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.LogOptions) (string, error) {

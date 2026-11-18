@@ -1,0 +1,48 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# The management node CRD has a status subresource, so a seeded status is
+# dropped: the script reads only what the seed's spec and labels show.
+seedobj management.cattle.io/v3/nodes c-test node.yaml
+
+# The management-node kind lists and reads the node Rancher keeps for each node.
+exec rancher get management-nodes --cluster testcluster
+stdout 'NAME\s+NODE\s+DRAINED\s+REQUEST\s+WORKER'
+stdout 'e2e-mnode\s+true'
+exec rancher get management-node e2e-mnode --cluster testcluster -o json
+jsonquery stdout data.spec.worker true
+jsonquery stdout 'data.metadata.labels.management\.cattle\.io/nodename' e2e-node
+
+# The schema shows patch and create as refused and delete as absent, and node
+# drain as destructive.
+exec rancher schema management-node -o json
+jsonquery stdout data.verbs.patch.state refused
+jsonquery stdout data.verbs.create.state refused
+jsonquery stdout data.verbs.delete.state absent
+exec rancher schema node drain -o json
+jsonquery stdout data.destructive true
+
+# A patch is refused before any request.
+! exec rancher patch management-node x --cluster testcluster --patch '[{"op":"add","path":"/metadata/labels/x","value":"y"}]' -o json
+jsonquery stderr data.error.code VALIDATION
+
+# A node Rancher does not manage is NOT_FOUND, and a bad flag is VALIDATION,
+# before any write.
+! exec rancher node drain nosuch --cluster testcluster --dry-run -o json
+jsonquery stderr data.error.code NOT_FOUND
+! exec rancher node drain x --cluster testcluster --grace-period 0 --dry-run -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher node stop-drain x --cluster testcluster --wait=false --timeout 1m -o json
+jsonquery stderr data.error.code VALIDATION
+
+-- node.yaml --
+apiVersion: management.cattle.io/v3
+kind: Node
+metadata:
+  name: e2e-mnode
+  namespace: c-test
+  labels:
+    management.cattle.io/nodename: e2e-node
+spec:
+  worker: true
+  desiredNodeUnschedulable: ""

@@ -165,7 +165,7 @@ func waitForBackingNamespace(ctx context.Context, local engine.ClusterClient, pr
 	case err == nil:
 		return w.AlsoWaitFor(deleteTarget{gvr: nsKind.GVR, name: name, uid: string(obj.GetUID()), kind: namespaceKind,
 			recovery: clierr.NewCommand("get").Word(nsKind.Word()).Arg(name).FlagValue("--cluster", engine.LocalCluster), readBefore: true}), nil
-	case readRefused(err):
+	case ReadRefused(err):
 		return w.NotWaitedFor(fmt.Sprintf("you cannot get namespace %s (the project's backing namespace on the local cluster); the command does not wait for it", name)), nil
 	case clierr.IsNotFound(err):
 		return w, nil

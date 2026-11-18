@@ -23,6 +23,7 @@ var wantGroupTitles = map[string]string{
 	"telemetry":   "Local usage recording: status, turn on, turn off, delete, list and send events",
 	"oidc-client": "Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)",
 	"cluster":     "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster (create one with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
+	"node":        "Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)",
 	"app":         "Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }

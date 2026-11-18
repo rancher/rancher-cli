@@ -38,7 +38,8 @@ var (
 // it takes to make one call down it.
 type guardPath struct {
 	name string
-	// method is the engine.ClusterClient or engine.TableReader method the
+	// method is the engine.ClusterClient, engine.TableReader or
+	// engine.FieldSelectorLister method the
 	// path calls, empty for a path that is no method of either.
 	method string
 	// retries is true where client-go repeats a request answered 429 with a
@@ -106,6 +107,12 @@ func guardPaths() []guardPath {
 			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
 				_, err := guardClient(t, srv, cluster).List(ctx, guardNamespaces, "", "")
+				return err
+			}},
+		{name: "list by field selector", method: "ListFieldSelector", retries: true, named: true, clusterOK: true,
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
+				t.Helper()
+				_, err := guardClient(t, srv, cluster).(engine.FieldSelectorLister).ListFieldSelector(ctx, guardNamespaces, "", "metadata.name=a")
 				return err
 			}},
 		{name: "create", method: "Create", retries: true, named: true, clusterOK: true,
@@ -413,7 +420,7 @@ func TestEveryClientPathWordsAnUnavailableServerTheSame(t *testing.T) {
 }
 
 // TestTheGuardCoversEveryClusterClientMethod asserts every method of
-// engine.ClusterClient and engine.TableReader has a path in the guard, so a
+// engine.ClusterClient, engine.TableReader and engine.FieldSelectorLister has a path in the guard, so a
 // method added without one fails here. A method that sends no request goes
 // in the allowlist with its reason.
 func TestTheGuardCoversEveryClusterClientMethod(t *testing.T) {
@@ -423,7 +430,7 @@ func TestTheGuardCoversEveryClusterClientMethod(t *testing.T) {
 	for _, p := range guardPaths() {
 		covered[p.method] = true
 	}
-	for _, typ := range []reflect.Type{reflect.TypeFor[engine.ClusterClient](), reflect.TypeFor[engine.TableReader]()} {
+	for _, typ := range []reflect.Type{reflect.TypeFor[engine.ClusterClient](), reflect.TypeFor[engine.TableReader](), reflect.TypeFor[engine.FieldSelectorLister]()} {
 		for m := range typ.Methods() {
 			if _, ok := noRequest[m.Name]; ok {
 				continue

@@ -13,6 +13,7 @@ in detail.
 [Projects & access](#projects--access) ·
 [OIDC client](#oidc-client) ·
 [Cluster scaling & autoscaling](#cluster-scaling--autoscaling) ·
+[Nodes](#nodes) ·
 [Read & inspect](#read--inspect) ·
 [Apps](#apps) ·
 [Access](#access) ·
@@ -99,6 +100,17 @@ See also `create oidc-client` in [Create](#create), which creates the client its
 
 See also `create cluster` in [Create](#create) and `delete provisioning-cluster`
 for lifecycle; `get provisioning-cluster` for reads.
+
+## Nodes
+
+| Command | Purpose |
+|---|---|
+| `node drain <node> --cluster <cluster>` | Ask Rancher to drain a node: Rancher cordons it and evicts its pods through the Eviction API; the preview lists the pods and what the drain does to each; waits until Rancher reports the drain done or failed (`--wait=false` returns once the server accepts the request) - destructive; dry-run/apply --yes |
+| `node stop-drain <node> --cluster <cluster>` | Ask Rancher to stop a running drain of a node; the node stays cordoned and evicted pods are not put back; waits until Rancher reports the drain stopped - dry-run/apply |
+
+Read nodes with `get node --cluster <cluster>` and the drain state with
+`get management-node --cluster <cluster>`; see
+[REFERENCE.md](REFERENCE.md#draining-a-node).
 
 ## Read & inspect
 
@@ -188,9 +200,9 @@ Per-kind verb rules and kind notes:
 [REFERENCE.md](REFERENCE.md#project-scope---project).
 
 <!-- conformance:surface-counts -->
-Generated per kind from the 67-kind table: `get <kind>` (67), `patch <kind>`
-(67), `delete <kind>` (39 - 38 deletable kinds, including the Rancher role binding
+Generated per kind from the 68-kind table: `get <kind>` (68), `patch <kind>`
+(68), `delete <kind>` (39 - 38 deletable kinds, including the Rancher role binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-173 generated commands, 246 total together with the fixed commands above. The authoritative, always-current list is
+175 generated commands, 250 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

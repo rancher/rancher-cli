@@ -43,7 +43,8 @@ func TestObjectLinesShowsAtMostFiveNamesAndACount(t *testing.T) {
 
 // TestObjectLinesOrdersOutcomesAndShowsReasons asserts the outcome lines
 // follow one fixed order whatever the order of the objects, and a not
-// deleted or failed name carries its reason in parentheses.
+// deleted, failed, skipped or blocking name carries its reason in
+// parentheses.
 func TestObjectLinesOrdersOutcomesAndShowsReasons(t *testing.T) {
 	t.Parallel()
 	objs := []safety.Object{
@@ -60,6 +61,20 @@ func TestObjectLinesOrdersOutcomesAndShowsReasons(t *testing.T) {
 		"  being deleted: old-ns",
 	}, ObjectLines(objs, "project"), "the headline kind is not listed")
 	assert.Empty(t, ObjectLines(nil, "project"))
+
+	pods := []safety.Object{
+		{Kind: "pod", Name: "kube-system/proxy", Outcome: safety.OutcomeSkipped, Message: "DaemonSet pod"},
+		{Kind: "pod", Name: "apps/web", Outcome: safety.OutcomeWillBeEvicted, Message: "ignored"},
+		{Kind: "pod", Name: "apps/db", Outcome: safety.OutcomeBlocksTheDrain, Message: "Pods with local storage (use --delete-emptydir-data to override)"},
+		{Kind: "pod", Name: "apps/job", Outcome: safety.OutcomeNotDeleted, Message: "kept"},
+	}
+	assert.Equal(t, []string{
+		"pods:",
+		"  not deleted: apps/job (kept)",
+		"  blocks the drain: apps/db (Pods with local storage (use --delete-emptydir-data to override))",
+		"  will be evicted: apps/web",
+		"  skipped: kube-system/proxy (DaemonSet pod)",
+	}, ObjectLines(pods, "node"), "skipped and blocking names show their reason, an evicted name does not")
 }
 
 // TestDryRunTextListsTheEffectObjects asserts the preview body carries the

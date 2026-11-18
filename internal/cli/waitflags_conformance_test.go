@@ -107,9 +107,10 @@ func wantGetWaitCommands() []string {
 	return want
 }
 
-// TestOnlyGetDeleteAndAppActionsDeclareTheWaitFlags asserts that the
-// commands declaring --wait are exactly the generic gets, every delete, and
-// app install, app uninstall and app upgrade; that patch and the
+// TestOnlyGetDeleteAppAndNodeActionsDeclareTheWaitFlags asserts that the
+// commands declaring --wait are exactly the generic gets, every delete,
+// app install, app uninstall and app upgrade, and node drain and node
+// stop-drain; that patch and the
 // clusterregistrationtoken get do not offer a flag they ignore or refuse;
 // that every delete declares --wait and --timeout and no --for, since a
 // delete waits for the object to be gone and for nothing else; that no patch
@@ -117,8 +118,9 @@ func wantGetWaitCommands() []string {
 // --wait. The --timeout of the access and oidc-client commands is a time
 // limit, not a wait, and those commands declare no --wait. App install, app
 // uninstall and app upgrade declare --wait and --timeout for their wait of
-// Helm's run.
-func TestOnlyGetDeleteAndAppActionsDeclareTheWaitFlags(t *testing.T) {
+// Helm's run. Node drain and node stop-drain declare them for their wait of
+// Rancher's drain.
+func TestOnlyGetDeleteAppAndNodeActionsDeclareTheWaitFlags(t *testing.T) {
 	t.Parallel()
 	wr, err := buildWiredRegistry("v-test", nil)
 	require.NoError(t, err)
@@ -144,7 +146,7 @@ func TestOnlyGetDeleteAndAppActionsDeclareTheWaitFlags(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, deletes)
-	want := slices.Concat(wantGetWaitCommands(), deletes, []string{"app install", "app uninstall", "app upgrade"})
+	want := slices.Concat(wantGetWaitCommands(), deletes, []string{"app install", "app uninstall", "app upgrade", "node drain", "node stop-drain"})
 	assert.ElementsMatch(t, want, got)
 	assert.Empty(t, commandsDeclaringForWithoutWait(cmds))
 }

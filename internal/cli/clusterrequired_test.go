@@ -70,6 +70,10 @@ var clusterOptionalRows = map[string]clusterOptionalRow{
 		args:    []string{"get", "project", "x"},
 		message: "--cluster is required when you give the id of one project",
 	},
+	"get management-node": {
+		args:    []string{"get", "management-node", "x"},
+		message: "--cluster is required when you give the id of one management-node",
+	},
 	"auth get-token": {
 		args:    []string{"auth", "get-token"},
 		message: getTokenClusterMessage,

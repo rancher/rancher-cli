@@ -102,6 +102,9 @@ const (
 	OutcomeAlreadyGone     = "already gone"
 	OutcomeFailed          = "failed"
 	OutcomeNotAttempted    = "not attempted"
+	OutcomeWillBeEvicted   = "will be evicted"
+	OutcomeSkipped         = "skipped"
+	OutcomeBlocksTheDrain  = "blocks the drain"
 )
 
 // Effect is the preview of a mutation (from Plan): its Diff lists the fields

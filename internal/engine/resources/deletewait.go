@@ -209,7 +209,7 @@ func (t deleteTarget) wait(ctx context.Context, client engine.ClusterClient, dea
 			return engine.WaitContinue, nil
 		},
 		OnDeleted: func(context.Context) (engine.WaitOutcome, error) { return engine.WaitDone, nil },
-		StopOn:    readRefused,
+		StopOn:    ReadRefused,
 		// A request cut by the wait's own deadline or by a cancel, with no
 		// response, says nothing about the server.
 		RecordErr: func(ctx context.Context, err error) bool {
@@ -217,7 +217,7 @@ func (t deleteTarget) wait(ctx context.Context, client engine.ClusterClient, dea
 			return ctx.Err() == nil || responded
 		},
 		OnAbort: func(err error) error {
-			if !readRefused(err) {
+			if !ReadRefused(err) {
 				return t.abortedError(err)
 			}
 			if !t.readBefore {
@@ -244,8 +244,8 @@ func (t deleteTarget) wait(ctx context.Context, client engine.ClusterClient, dea
 	return warning, err
 }
 
-// readRefused reports a 403: the server responded and refused the read.
-func readRefused(err error) bool {
+// ReadRefused reports a 403: the server responded and refused the read.
+func ReadRefused(err error) bool {
 	if status, ok := clierr.HTTPStatus(err); ok && status == http.StatusForbidden {
 		return true
 	}

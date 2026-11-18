@@ -28,6 +28,9 @@ var objectOutcomeOrder = []string{
 	safety.OutcomeAlreadyGone,
 	safety.OutcomeFailed,
 	safety.OutcomeNotAttempted,
+	safety.OutcomeBlocksTheDrain,
+	safety.OutcomeWillBeEvicted,
+	safety.OutcomeSkipped,
 }
 
 // ObjectDetailLines renders the objects of a preview or result as lines, with
@@ -36,7 +39,8 @@ var objectOutcomeOrder = []string{
 // headline already names), a "<kind>s:" line, then one line per outcome two
 // spaces in, with at most five names and a count of the rest. A name whose
 // object carries a Message shows it in parentheses for the outcomes that give
-// a reason (not deleted, failed). The grouping by kind, the match of an
+// a reason (not deleted, failed, skipped, blocks the drain). The grouping by
+// kind, the match of an
 // outcome and the condition on a message use the values as given.
 func ObjectDetailLines(objs []safety.Object, headlineKind string) []clierr.DetailLine {
 	var kindOrder []string
@@ -69,7 +73,7 @@ func ObjectDetailLines(objs []safety.Object, headlineKind string) []clierr.Detai
 					sep = ": "
 				}
 				parts = append(parts, clierr.ValuePart(sep, o.Name))
-				if o.Message != "" && (outcome == safety.OutcomeNotDeleted || outcome == safety.OutcomeFailed) {
+				if o.Message != "" && (outcome == safety.OutcomeNotDeleted || outcome == safety.OutcomeFailed || outcome == safety.OutcomeSkipped || outcome == safety.OutcomeBlocksTheDrain) {
 					parts = append(parts, clierr.ValuePart(" (", o.Message), clierr.LabelPart(")"))
 				}
 			}

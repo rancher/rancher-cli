@@ -81,6 +81,15 @@ type TableReader interface {
 	GetTable(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (TableAnswer, error)
 }
 
+// FieldSelectorLister is implemented by a ClusterClient that can list objects
+// by a field selector, such as spec.nodeName=<node> for the pods of one node.
+// A command type-asserts it, as it does TableReader; a command that requires
+// it while its client lacks it has a bug. The arguments and the errors are
+// those of List, with fieldSelector in place of the label selector.
+type FieldSelectorLister interface {
+	ListFieldSelector(ctx context.Context, gvr schema.GroupVersionResource, ns, fieldSelector string) (*unstructured.UnstructuredList, error)
+}
+
 // DecodeRowObjects decodes each row's raw object of t into
 // *metav1.PartialObjectMetadata. A row without an object is left as it is.
 func DecodeRowObjects(t *metav1.Table) error {

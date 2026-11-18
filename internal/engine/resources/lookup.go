@@ -83,7 +83,7 @@ func lookupHandle(ctx context.Context, clients engine.ClusterClientFactory, clie
 		m := matches[0]
 		msg := base.Message + "; " + quoted + " is the " + strings.Join(m.labels, " and ") + " of " + k.Name + " " + m.id
 		getHint := clierr.NewCommand("get").Word(k.Word()).Arg(m.id)
-		if k.Key == "project" {
+		if k.Policy == kinds.NSCluster {
 			getHint = getHint.FlagValue("--cluster", ns)
 		}
 		return base.WithMessage(msg).WithCandidates(candidates).WithHintCommand(getHint)

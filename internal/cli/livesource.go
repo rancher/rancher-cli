@@ -72,6 +72,7 @@ var flagSources = map[string]completion.Source{
 // among them - completes through the generic kinds source.
 var kindSources = map[string]completion.Source{
 	"managementcluster": accesscomplete.SteveClusterSource(),
+	"managementnode":    kindscomplete.ManagementNodeIDSource(),
 	"project":           projectscomplete.ProjectIDSource(),
 	"user":              usercomplete.UserIDSource(),
 }

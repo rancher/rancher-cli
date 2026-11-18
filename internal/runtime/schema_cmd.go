@@ -52,7 +52,7 @@ func (s *schemaCmd) Describe() Descriptor {
 			// until this list is updated.
 			{Name: "verb", Type: "string",
 				Enum: []string{"access", "app", "auth", "charts", "cluster", "completion", "config", "create", "delete", "get",
-					"grant", "images", "inspect", "kubeconfig", "logs", "oidc-client", "patch",
+					"grant", "images", "inspect", "kubeconfig", "logs", "node", "oidc-client", "patch",
 					"project", "revoke", "schema", "skill", "support-bundle", "telemetry", "token", "usage"},
 				Desc: "show only commands with this verb (the first word of the command name)"},
 			{Name: "destructive", Type: "bool",

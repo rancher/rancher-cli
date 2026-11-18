@@ -32,6 +32,8 @@ func TestHandleRowsAndTheirDescriptions(t *testing.T) {
 			"node driver id (the NAME column of `rancher get nodedrivers`), not the display name"},
 		"authconfig": {[]HandleField{display},
 			"auth config id (the NAME column of `rancher get authconfigs`), not the display name"},
+		"managementnode": {[]HandleField{{Path: []string{"status", "nodeName"}, Label: "node name"}},
+			"management node id; the name of its node finds the id"},
 	}
 	got := map[string]bool{}
 	for _, k := range All() {

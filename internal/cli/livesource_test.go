@@ -185,6 +185,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		"oidc-client rotate-secret", "oidc-client remove-secret",
 		"logs", "inspect project", "inspect cluster",
 		"auth login", "auth get-token", "token",
+		"node drain", "node stop-drain",
 	}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -215,7 +216,7 @@ func TestPositionalKindsMatchTheWiringTables(t *testing.T) {
 	}
 	assert.Equal(t, want, positionalKinds)
 	assert.ElementsMatch(t, []string{"cluster", "project", "namespace", "node", "as"}, slices.Collect(maps.Keys(flagSources)))
-	assert.ElementsMatch(t, []string{"managementcluster", "project", "user"}, slices.Collect(maps.Keys(kindSources)))
+	assert.ElementsMatch(t, []string{"managementcluster", "managementnode", "project", "user"}, slices.Collect(maps.Keys(kindSources)))
 }
 
 // TestClusterSourcesAreTheCallerScopedOnes asserts which cluster source

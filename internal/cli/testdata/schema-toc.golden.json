@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 246,
+  "commandCount": 250,
   "effectSchema": {
     "actions": [
       "create",
@@ -66,7 +66,7 @@
       "serverReads"
     ]
   },
-  "generatedCommandCount": 173,
+  "generatedCommandCount": 175,
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
@@ -344,6 +344,20 @@
     {
       "commands": [
         {
+          "name": "node drain",
+          "usage": "Drain a node: Rancher cordons it and evicts its pods"
+        },
+        {
+          "name": "node stop-drain",
+          "usage": "Stop a running drain of a node; the node stays cordoned"
+        }
+      ],
+      "desc": "Drain a node of a cluster or stop a running drain, through the management node Rancher keeps for it; Rancher runs the drain. Read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`.",
+      "name": "node"
+    },
+    {
+      "commands": [
+        {
           "name": "inspect cluster",
           "usage": "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration"
         },
@@ -410,7 +424,7 @@
       ],
       "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "generated": {
-        "count": 67,
+        "count": 68,
         "pattern": "get <kind>"
       },
       "name": "get"
@@ -476,7 +490,7 @@
     {
       "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
       "generated": {
-        "count": 67,
+        "count": 68,
         "pattern": "patch <kind>"
       },
       "name": "patch"
@@ -490,11 +504,12 @@
       "name": "delete"
     }
   ],
-  "kindCount": 67,
+  "kindCount": 68,
   "kinds": [
     "cluster",
     "project",
     "node",
+    "management-node",
     "namespace",
     "pod",
     "deployment",

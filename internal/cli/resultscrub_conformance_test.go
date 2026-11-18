@@ -1137,7 +1137,7 @@ func handWrittenScrubRows() []scrubRow {
 				}
 			}},
 	}
-	return rows
+	return append(rows, nodeScrubRows()...)
 }
 
 // scrubRun is what one row wrote in one format.

@@ -73,7 +73,7 @@ what drifted the previous revision of this doc).
 | `internal/runtime/completion/completiontest` | Test doubles the live completion sources' tests share: a server answering fixed bodies by path that records every request URI and Accept header, and the fixture documents more than one package asserts against (cloud credentials, the two discovery roots, the subject users). Imported by test code only. |
 | `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, the optional `TableReader` port (the cluster's API server's table, as kubectl asks for it), downstream-cluster resolution, the optional `ObjectWatcher` port (list and watch one named object) and the shared wait loop (`WaitObject`: List and watch by name, with polling as the fallback; the generated wait, the OIDC client waits and the app install, app upgrade and app uninstall waits run on it), and reusable plan/execute helpers, including the diff a create preview lists and the hiding of secret values in every preview diff; depends only on runtime + safety + clierr contracts and the kind table (`kinds`), which supplies the paths a preview hides. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, contract bindings, table columns (or `ServerTable`, for a built-in kind whose table the cluster's API server serves). |
-| `internal/engine/kinds/complete` | The generic live completion source of the kind table: for any Completable kind, its objects' names derived from the row's group, version, resource, namespace policy and scope, each described by the fields of the row's `Handle.Lookup` when it has one (`KindSource`), plus the shared `--namespace` and `--node` sources, which are that derivation for the namespace and node kinds, and `ClusterRepoSource` (the `--repo` value of `charts` and `app install`: the typed cluster's ClusterRepos that are not disabled), and the `--chart` and `--version` sources of `app install`, which read the filtered index of the typed `--repo` through one request builder of `internal/runtime/completion` and filter it on what the index shows alone (not hidden, not deprecated, no chart to install first, a fixed namespace and release name that match the typed words). For a row that sets `SteveReadOnForbidden`, the generic source lists the objects through the Steve API. A restricted `complete` package under the import and declaration fences. |
+| `internal/engine/kinds/complete` | The generic live completion source of the kind table: for any Completable kind, its objects' names derived from the row's group, version, resource, namespace policy and scope, each described by the fields of the row's `Handle.Lookup` when it has one (`KindSource`), plus the shared `--namespace` and `--node` sources, which are that derivation for the namespace and node kinds, and `ClusterRepoSource` (the `--repo` value of `charts` and `app install`: the typed cluster's ClusterRepos that are not disabled), and the `--chart` and `--version` sources of `app install`, which read the filtered index of the typed `--repo` through one request builder of `internal/runtime/completion` and filter it on what the index shows alone (not hidden, not deprecated, no chart to install first, a fixed namespace and release name that match the typed words), `DrainNodeSource` (the node positional of `node drain` and `node stop-drain`: the typed cluster's nodes the command is allowed on, from one Steve list of the cluster's management nodes) and `ManagementNodeIDSource` (the management-node kind's ids, each described by its node's name). For a row that sets `SteveReadOnForbidden`, the generic source lists the objects through the Steve API. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (`Route`, given the operation: cluster/namespace, plus the `--project` refusal for a kind or operation it does not apply to and membership validation against the project the pipeline resolved) and table projection: a kind's own columns, or, for a `ServerTable` kind rendered as a text table, the table the API server answered with. The `get` of a row that sets `SteveReadOnForbidden` (the cluster, project, provisioning-cluster and etcd-snapshot kinds) reads the same list or object through the Steve API when the Kubernetes API responds with 403. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
 | `internal/engine/catalog` | The charts and versions Rancher's catalog offers and the install, upgrade and uninstall of a chart: the Helm repository index of a ClusterRepo through the one steve link read (`ReadIndex`, with `ReadInfo` for one version's default values and annotations: the only place the commands build a link request, apart from the completion read of the same index; neither sends a parameter that changes which versions the server lists), the version shown for a chart (the first version Rancher serves that is not a prerelease; Rancher serves them newest first and no comparer reorders them) and the deprecated versions left out, the `charts` command with its `--repo` completion, and the `app install`, `app upgrade` and `app uninstall` commands. All three mutating commands are previewed from server reads (`previewSource: serverReads`), carry no resourceVersion precondition, and read the App, the operations and (install, upgrade) the index entry again in Execute before the one POST through `engine.ActionClient`. The values of an install or an upgrade live in one type (`Values`) that prints as `<hidden>` everywhere; only the request body builder writes them, and the error answer of the action passes through its filter. |
@@ -83,6 +83,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing - reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the server replaces the `{token}` placeholder in the command and manifest fields with the token) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
 | `internal/engine/provisioning/complete` | The provisioning commands' live completion sources: `CreateClusterSource` (create cluster's `--machine-config` live half, the typed kind's configs answered behind its `<kind>/` prefix, and `--cloud-credential`, the cattle-global-data credential Secrets by id and unique display name) and `PoolSource` (the cluster-family verbs' `--pool`, the machine pools of the cluster typed as the first positional). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
+| `internal/engine/nodes` | `node drain` and `node stop-drain`: the management node of a node found by its label and by `status.nodeName`, its state read through Steve and checked with the rules of `internal/engine/kinds` (`NodeDrainRule`), the pods kubectl drain would evict or refuse listed as the caller through the optional `engine.FieldSelectorLister`, the planned update of the management node's `spec.desiredNodeUnschedulable` and `spec.nodeDrainInput` through `engine.PlanUpdateObserved`, and the wait on `engine.WaitObject` that ends with how Rancher's drain ended. |
 | `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (create the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
 | `internal/engine/oidcclient/complete` | The oidc-client secret verbs' live completion source: `SecretNameSource`, the secret name rotate-secret and remove-secret take as their second positional, read from the status of the client typed as the first. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write) plus one `GlobalRoleBinding` per global role (the roles the server marks `newUserDefault`, or the ones typed with `--global-role`; every write is previewed by a dry-run first, and a user with no global role cannot create a token), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) - the sanctioned two-resource public-API way to create a local user with a password, never Norman. |
@@ -152,6 +153,7 @@ graph TD
     steve["internal/engine/steve"]
     provisioning["internal/engine/provisioning"]
     provisioningcomplete["internal/engine/provisioning/complete"]
+    nodes["internal/engine/nodes"]
     extres["internal/engine/extres"]
     oidcclient["internal/engine/oidcclient"]
     oidcclientcomplete["internal/engine/oidcclient/complete"]
@@ -217,6 +219,7 @@ graph TD
     cli --> kinds
     cli --> projects
     cli --> provisioning
+    cli --> nodes
     cli --> managementtoken
     cli --> extres
     cli --> oidcclient
@@ -343,6 +346,16 @@ graph TD
 
     provisioningcomplete --> kinds
     provisioningcomplete --> completion
+
+    nodes --> engine
+    nodes --> kinds
+    nodes --> kindscomplete
+    nodes --> resources
+    nodes --> steve
+    nodes --> runtime
+    nodes --> safety
+    nodes --> clierr
+    nodes --> completion
 
     extres --> engine
     extres --> kinds
@@ -1617,6 +1630,27 @@ refusal as RBAC again. A 409 from an admission webhook on a write that sends a
 `resourceVersion` is a CONFLICT with the webhook's message and is not retryable:
 a retry gets the same denial. Any other 409 on such a write keeps the retryable
 message that the resource changed on the server since it was last read.
+
+**`node drain` and `node stop-drain` write Rancher's management node, after
+checking that Rancher offers the action.** Rancher drains a node when
+`spec.desiredNodeUnschedulable` of its management node is `drain`, with the
+options in `spec.nodeDrainInput`, and stops the drain when it is `stopDrain`.
+`node drain` writes both fields and `node stop-drain` writes the first. Both
+write through the local cluster's Kubernetes API, with a server-side dry-run
+and a `resourceVersion` precondition, like the CLI's other writes to
+Kubernetes objects. Rancher accepts a drain request for a node in any state.
+Before it writes, the CLI checks the rules by which the Rancher UI offers each
+action: the node is a worker or has no role, and its state allows the action.
+If the node changed after that check, the precondition refuses the write. A
+user with no access to the local cluster cannot read or update management
+nodes through its Kubernetes API. Both commands need that access, and their
+help says so. A Cluster Owner without it gets an RBAC error. The `node drain`
+preview lists the node's pods in every namespace with one list filtered by the
+field selector `spec.nodeName`, a list method no other command uses. Once
+Rancher has accepted the request, an error from the wait (a timeout, a cancel,
+the node removed, or a drain Rancher reports as failed) is not retryable: the
+request is already in place. The error says what was requested and gives the
+command that reads the management node, as `delete --wait` does.
 
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or

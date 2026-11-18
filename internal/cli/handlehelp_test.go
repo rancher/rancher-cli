@@ -43,7 +43,7 @@ func TestHelpNamesTheIDOnKindsWithAHandle(t *testing.T) {
 			assert.Equal(t, "rancher delete "+k.Name+" [options] <id>", usage(t, "delete", k.Name), k.Name)
 		}
 	}
-	assert.Equal(t, 6, count)
+	assert.Equal(t, 7, count)
 	assert.Equal(t, "rancher get cluster [options] [name]", usage(t, "get", "cluster"))
 	assert.Equal(t, "rancher patch cluster [options] <name>", usage(t, "patch", "cluster"))
 	assert.Equal(t, "rancher delete clusterroletemplatebinding [options] <name>", usage(t, "delete", "clusterroletemplatebinding"))

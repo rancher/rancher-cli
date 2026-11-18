@@ -6452,6 +6452,59 @@
     },
     {
       "aliases": [
+        "managementnodes",
+        "management-nodes"
+      ],
+      "args": [
+        {
+          "desc": "management node id; the name of its node finds the id",
+          "name": "id",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "desc": "cluster `id|name`; required to get one management-node by id; leave it out to list management-nodes in every cluster",
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get management-node",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List management-nodes or show one"
+    },
+    {
+      "aliases": [
         "managementtokens",
         "management-tokens",
         "v3token",
@@ -8503,6 +8556,121 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Show logs of Rancher components (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)"
+    },
+    {
+      "args": [
+        {
+          "desc": "node `name`, the NAME column of `rancher get node --cluster <cluster>`",
+          "name": "node",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Asks Rancher to drain the node <node> of the cluster given with --cluster: the command writes the drain request and its options on the node's management node, and Rancher runs kubectl drain as its system user for the cluster, which cordons the node and evicts its pods through the Eviction API, respecting PodDisruptionBudgets. The preview lists the pods on the node and what the drain does to each (text output names up to five pods per outcome; -o json lists every pod). Rancher offers drain only for worker nodes that are active or cordoned (it shows a node whose drain failed on a kubectl flag or a timeout as cordoned); the command refuses the others with Rancher's state. By default it waits until Rancher reports the drain done or failed (--wait=false returns once the server accepts the request). Requires --yes with --apply. It needs access to Rancher's local cluster.",
+      "destructive": "true",
+      "examples": [
+        "rancher node drain worker-1 --cluster prod --dry-run",
+        "rancher node drain worker-1 --cluster prod --force --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "also evict pods that no controller manages",
+          "name": "force",
+          "type": "bool"
+        },
+        {
+          "desc": "also evict pods with emptyDir volumes; their emptyDir data is deleted",
+          "name": "delete-emptydir-data",
+          "type": "bool"
+        },
+        {
+          "desc": "`seconds` each pod gets to stop, 1 or more (default: each pod's own)",
+          "name": "grace-period",
+          "type": "string"
+        },
+        {
+          "desc": "how long Rancher's drain may run, a duration such as 5m, from 1s to 3h in whole seconds (default 2m, as in Rancher; a large node can need more)",
+          "name": "drain-timeout",
+          "type": "string"
+        },
+        {
+          "desc": "wait until Rancher reports the drain done or failed (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration (default --drain-timeout plus 1m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "node",
+      "name": "node drain",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Drain a node: Rancher cordons it and evicts its pods"
+    },
+    {
+      "args": [
+        {
+          "desc": "node `name`, the NAME column of `rancher get node --cluster <cluster>`",
+          "name": "node",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Asks Rancher to stop the running drain of the node <node> of the cluster given with --cluster. Pods already evicted are not put back and the node stays cordoned; uncordon it by setting spec.unschedulable to false on the node. By default it waits until Rancher reports the drain stopped (--wait=false returns once the server accepts the request). It needs access to Rancher's local cluster.",
+      "destructive": "false",
+      "examples": [
+        "rancher node stop-drain worker-1 --cluster prod --dry-run",
+        "rancher node stop-drain worker-1 --cluster prod --apply"
+      ],
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "wait until Rancher reports the drain stopped (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration (default 2m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "node",
+      "name": "node stop-drain",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Stop a running drain of a node; the node stays cordoned"
     },
     {
       "args": [
@@ -11012,6 +11180,65 @@
     },
     {
       "aliases": [
+        "managementnodes",
+        "management-nodes"
+      ],
+      "args": [
+        {
+          "desc": "management node id; the name of its node finds the id",
+          "name": "id",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: drain a node with `rancher node drain <node> --cluster <cluster> --dry-run`, stop a drain with `rancher node stop-drain <node> --cluster <cluster> --dry-run`, and cordon or uncordon it by setting spec.unschedulable on the node (<node> is the node's name, <cluster> its cluster).",
+      "destructive": "false",
+      "flags": [
+        {
+          "desc": "cluster `id|name` of the management-node",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch management-node",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: management-node cannot be patched"
+    },
+    {
+      "aliases": [
         "managementtokens",
         "management-tokens",
         "v3token",
@@ -12964,6 +13191,7 @@
             "inspect",
             "kubeconfig",
             "logs",
+            "node",
             "oidc-client",
             "patch",
             "project",
@@ -13860,6 +14088,14 @@
     },
     {
       "commands": [
+        "node drain",
+        "node stop-drain"
+      ],
+      "desc": "Drain a node of a cluster or stop a running drain, through the management node Rancher keeps for it; Rancher runs the drain. Read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`.",
+      "name": "node"
+    },
+    {
+      "commands": [
         "inspect cluster",
         "inspect pod",
         "inspect deployment",
@@ -13888,6 +14124,7 @@
         "get cluster",
         "get project",
         "get node",
+        "get management-node",
         "get namespace",
         "get pod",
         "get deployment",
@@ -13984,6 +14221,7 @@
         "patch cluster",
         "patch project",
         "patch node",
+        "patch management-node",
         "patch namespace",
         "patch pod",
         "patch deployment",
@@ -14187,6 +14425,44 @@
       },
       "version": "v1",
       "waitDefault": "condition=Ready"
+    },
+    {
+      "aliases": [
+        "managementnodes",
+        "management-nodes"
+      ],
+      "completable": true,
+      "group": "management.cattle.io",
+      "key": "managementnode",
+      "name": "management-node",
+      "namespacePolicy": "cluster",
+      "resource": "nodes",
+      "scope": "management",
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "Rancher creates a management node for each node of a cluster",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "Rancher deletes a management node when its node leaves the cluster",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "drain a node with `rancher node drain <node> --cluster <cluster> --dry-run`, stop a drain with `rancher node stop-drain <node> --cluster <cluster> --dry-run`, and cordon or uncordon it by setting spec.unschedulable on the node (<node> is the node's name, <cluster> its cluster)",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v3",
+      "waitDefault": "condition=Drained"
     },
     {
       "aliases": [

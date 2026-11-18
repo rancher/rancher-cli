@@ -13,6 +13,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Kinds & verbs](#kinds--verbs)
 - [Cluster provisioning](#cluster-provisioning)
 - [Installing, upgrading and uninstalling apps](#installing-upgrading-and-uninstalling-apps)
+- [Draining a node](#draining-a-node)
 - [Composite commands](#composite-commands)
 - [Access management](#access-management)
 - [Diagnostics & support](#diagnostics--support)
@@ -787,6 +788,18 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   command's arguments joined with commas, and TARGET-NAMESPACE is the namespace
   of the pod that ran the command, where the Rancher UI's "Tgt Namespace" is
   the release's namespace.
+- `management-node` is read-only: Rancher keeps one management node for each node of
+  a cluster, in the cluster's namespace on the local cluster, and the drain
+  commands write it (see "Draining a node"). `get management-node` takes
+  `--cluster` and shows the columns NODE (the name of the node), DRAINED (the
+  `Drained` condition), REQUEST (`spec.desiredNodeUnschedulable`) and WORKER.
+  The argument is the management node's id. When the argument matches no id but
+  is a node's name, the error names the id. `patch` is refused with
+  `VALIDATION` and the reason, before any request, `create resource` refuses a
+  manifest of it, and `delete` does not exist for it: `rancher delete
+  management-node` fails with the reason. The CLI hides `spec.customConfig.sshKey`.
+  The group `node` and the kind `node` share a name, so `rancher schema node` shows
+  the `node` group card and `rancher schema --kind node` the node kind card.
 - `rancher charts --cluster <id|name>` lists the charts the ClusterRepos of one
   cluster offer, with each chart's newest version that is not a prerelease:
   Rancher serves each chart's versions newest first, and the CLI keeps that
@@ -1906,6 +1919,148 @@ waiting for release <release>; last state: ...`; an operation whose
 `status.observedGeneration` is behind `metadata.generation` shows as `behind`
 there. The `INTERRUPTED` error of Ctrl-C carries the same details and, for an
 install, the request id.
+
+## Draining a node
+
+`rancher node drain <node> --cluster <cluster>` asks Rancher to drain a node,
+and `rancher node stop-drain <node> --cluster <cluster>` asks it to stop a
+running drain. `<node>` is the name of the node, the NAME column of `rancher
+get node --cluster <cluster>`.
+
+**What the command writes.** Rancher keeps one management node for each node of
+a cluster: a `management.cattle.io/v3` Node in the cluster's namespace on the
+local cluster. `node drain` sets `spec.desiredNodeUnschedulable` to `drain` and
+`spec.nodeDrainInput` to the five options Rancher's own drain action writes
+(`force`, `ignoreDaemonSets`, `deleteLocalData`, `gracePeriod` and `timeout`);
+`node stop-drain` sets `spec.desiredNodeUnschedulable` to `stopDrain` and
+nothing else. The write is checked by a server-side dry-run and sent with the
+resourceVersion read from the management node as a precondition; it needs
+`--apply`, and for `node drain` also `--yes`. `previewSource` is `serverDryRun`. The CLI finds the
+management node by the label `management.cattle.io/nodename`, or among every
+management node of the cluster's namespace when the label finds none, and reads
+the state Rancher shows for it through the Steve API.
+
+**Who runs the drain.** Rancher runs `kubectl drain` as its system user for the
+cluster, not with your permissions. It cordons the node and evicts the pods
+through the Eviction API, so a PodDisruptionBudget that allows no disruption
+blocks an eviction until the drain times out. The command needs access to the
+local cluster, where Rancher keeps the management nodes: `get` and `list` on the
+management nodes of the cluster and `update` on `nodes.management.cattle.io` in
+the cluster's namespace there.
+
+**Options of `node drain`.** `ignoreDaemonSets` is always sent as true, as the
+Rancher UI sends it; without it kubectl refuses every node that runs a
+DaemonSet pod. The other options and their defaults:
+
+| Flag | Field | Default |
+|---|---|---|
+| `--force` | `force` | false: pods that no controller manages block the drain |
+| `--delete-emptydir-data` | `deleteLocalData` | false: pods with an emptyDir volume block the drain |
+| `--grace-period <seconds>` | `gracePeriod` | each pod's own (-1); 1 or more |
+| `--drain-timeout <duration>` | `timeout` | 2m, Rancher's default; 1s to 3h in whole seconds; a large node can need more |
+| `--wait` | - | true; `--wait=false` returns once the server accepts the request |
+| `--timeout <duration>` | - | `--drain-timeout` plus 1m; the wait only, refused with `--wait=false` |
+
+A request with no `timeout` would run kubectl with no time limit, so the
+command always sends all five fields.
+
+**The preview.** It lists the pods on the node, read with your permissions through a field
+selector in every namespace, and what kubectl drain does to each: `will be
+evicted`; `skipped` for a DaemonSet pod or a mirror pod; `blocks the drain` for
+a pod with an emptyDir volume without `--delete-emptydir-data` or with no
+controller without `--force`, with kubectl's text. A pod that has finished
+(phase Succeeded or Failed) passes every filter except the mirror pod filter. Text output names up to five pods
+per outcome; `-o json` lists every pod. When a pod blocks the drain the preview
+warns that kubectl refuses the node before it evicts anything and Rancher then
+marks the drain failed. A pod List that fails is a warning, not an error. The
+list is read at the preview; Rancher lists the pods again when it runs. A
+DaemonSet pod whose DaemonSet is gone cannot be told apart from the pod list
+alone: kubectl evicts it with `--force` and refuses the node without it, and the
+preview says so when a DaemonSet pod is listed and `--force` is not typed. A
+drain of the local cluster's own node warns that evicting Rancher's own pods can
+stop the drain and the API the command uses.
+
+**When Rancher offers the actions.** Rancher offers drain and stop drain only
+for worker nodes (a node with none of the roles etcd, controlPlane and worker
+counts as a worker), and the CLI repeats that rule on the state the Steve API
+reports, so it refuses with Rancher's state:
+
+| Node | `node drain` | `node stop-drain` |
+|---|---|---|
+| not a worker | refused (`VALIDATION`) | refused (`VALIDATION`) |
+| state other than active, cordoned, draining or drained (for example `unavailable`) | refused, with Rancher's state and message | refused, the same |
+| active | allowed | refused: not draining (a drain that is requested and has not started: Rancher offers no stop until it starts) |
+| cordoned (a failed drain whose message names `--ignore-daemonsets`, `--delete-emptydir-data`, `--force` or a timeout reads as cordoned) | allowed | refused: not draining |
+| draining | refused: already draining, with `rancher node stop-drain <node> --cluster <cluster> --dry-run` as the hint | allowed |
+| drained | refused: already drained | refused: not draining, it is drained |
+
+A node that is cordoned and not ready reads as cordoned, so drain is allowed on
+it; a node that is not ready and not cordoned reads as `unavailable`, and the
+refusal says to cordon it first by setting `spec.unschedulable` to true on the
+node. A drain of a schedulable node whose `Drained` condition is still True is
+refused with a retryable `CONFLICT`: Rancher removes the condition on its next
+sync of the node. `--dry-run` shows the same refusals.
+
+**The wait.** After the write the command reads the management node until
+Rancher reports how the request ended, within `--timeout`:
+
+| `desiredNodeUnschedulable` | `Drained` | End of `node drain` |
+|---|---|---|
+| `drain` | absent, Unknown, True, or False as read before the write | keeps waiting |
+| `drain` | False, updated after the write | error: Rancher could not drain the node and retries until you stop it; hint `rancher node stop-drain <node> --cluster <cluster> --dry-run` |
+| empty | True | success: `node/<node> drained` |
+| empty | Unknown, or False as read before the write | keeps waiting |
+| empty | False, updated after the write | error: the drain failed and the node stays cordoned; the hint is the drain command again with the flag the message names (`--force`, `--delete-emptydir-data`), or for a drain that did not complete in time a `--drain-timeout` of twice the time used, up to 3h, and the commands that read the PodDisruptionBudgets of the namespaces of the pods the preview listed as `will be evicted` |
+| empty | absent | keeps waiting; at the timeout the error says the request was removed and Rancher reported neither done nor failed |
+| `stopDrain`, `true`, `false` | any | error: another request changed the node |
+
+`node stop-drain` ends with `node/<node> drain stopped; the node stays
+cordoned` when the request is empty and the `Drained` condition is gone. A new
+drain after the stop, a request of `drain`, `true` or `false`, and a timeout end
+it with an error. Every error after Rancher accepted the request is `GENERIC`
+and not retryable, with `committed: true`, `resourceKind: node`, the node's name
+and `rancher get management-node <id> --cluster <cluster>` as the recovery,
+because a second drain is not the next step. A timeout reads `timed out after
+<duration> waiting for node <node> to drain; the drain was requested and goes on
+in Rancher; last state: ...`; the drain goes on in Rancher. A node that is gone
+ends the wait with an error that says so. A 403 on the reads after the write
+ends the command with exit 0, the no-wait result and a warning that the request
+was not confirmed. Ctrl-C ends the wait with the message "stopped waiting for
+node <node> to drain; the drain was requested" (for `node stop-drain`: "stopped
+waiting for the drain of node <node> to stop; the stop was requested").
+
+With `--wait=false` no read follows the write and `data.waited` is false. The
+result is `node/<node> drain requested` or `node/<node> stop requested`, with
+`data.node` and `data.managementNode` (`<cluster id>/<management node name>`).
+A waited drain adds `data.drained` and `data.condition`, the type, status,
+reason and message of the `Drained` condition.
+
+**Errors before the write.**
+
+| Case | Code |
+|---|---|
+| a bad `--grace-period`, `--drain-timeout` or `--timeout`, or `--wait=false` with `--timeout` | `VALIDATION` |
+| no management node for the node | `NOT_FOUND`, with `rancher get node --cluster <cluster>` as the hint |
+| two management nodes for the node | `AMBIGUOUS_SELECTION`, with their ids |
+| the list or the Steve read refused with 403 | `RBAC`, naming the request; for the list, also that the command needs access to the local cluster |
+| the node changed between the list and the Steve read | `CONFLICT`, retryable |
+| the dry-run write refused with 403 | `RBAC`, with what the write needs on the local cluster added to the message; an admission refusal is `VALIDATION` |
+| the resourceVersion changed since the read | `CONFLICT`, retryable |
+
+**Cordon and uncordon.** Set `spec.unschedulable` on the node with a merge patch
+through `rancher patch node <node> --cluster <cluster> --type merge --patch
+'{"spec":{"unschedulable":true}}' --dry-run` (false to uncordon), then add
+`--apply`. Stopping a drain leaves the node cordoned, so uncordon it the same
+way.
+
+**Completion.** `<node>` completes live with the nodes the command is allowed
+on, and needs `--cluster` typed first: put `--cluster` before the TAB, as in
+`rancher node drain --cluster prod <TAB>`.
+
+**What has not run against a real Rancher.** The PodDisruptionBudget hints and
+the stop of a running drain follow Rancher's source code. The end texts of a
+drain that kubectl refuses or that times out follow Rancher's controller and
+kubectl.
 
 ## Composite commands
 

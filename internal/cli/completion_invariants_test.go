@@ -232,7 +232,7 @@ func TestSecretNotCompletable(t *testing.T) {
 	assert.False(t, k.Completable, "secret must not be completable")
 }
 
-func TestCompletableAllowlistIsExactlyTwentyTwoKinds(t *testing.T) {
+func TestCompletableAllowlistIsExactlyTwentyThreeKinds(t *testing.T) {
 	t.Parallel()
 	var completable []string
 	for _, k := range kinds.All() {
@@ -242,8 +242,8 @@ func TestCompletableAllowlistIsExactlyTwentyTwoKinds(t *testing.T) {
 	}
 	sort.Strings(completable)
 	assert.Equal(t,
-		[]string{"app", "authconfig", "cluster", "clusterrepo", "clusterrole", "clusterrolebinding", "deployment", "etcd-snapshot", "globalrole", "managedchart", "namespace", "node", "nodedriver", "oidcclient", "operation", "pod", "project", "provisioning-cluster", "role", "rolebinding", "roletemplate", "user"},
-		completable, "allowlist must be exactly these twenty-two kinds (oidcclient is the first Prime-capability kind)")
+		[]string{"app", "authconfig", "cluster", "clusterrepo", "clusterrole", "clusterrolebinding", "deployment", "etcd-snapshot", "globalrole", "managedchart", "management-node", "namespace", "node", "nodedriver", "oidcclient", "operation", "pod", "project", "provisioning-cluster", "role", "rolebinding", "roletemplate", "user"},
+		completable, "allowlist must be exactly these twenty-three kinds (oidcclient is the first Prime-capability kind)")
 }
 
 // Full-callback tests for the live-completion flag-value sites. Each

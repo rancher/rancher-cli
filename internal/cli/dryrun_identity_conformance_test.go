@@ -79,6 +79,8 @@ var dryRunBespokeEffectCommands = map[string]string{
 	"app install":                    "internal/engine/catalog/install_test.go: TestInstallPlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
 	"app upgrade":                    "internal/engine/catalog/upgrade_test.go: TestUpgradePlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
 	"app uninstall":                  "internal/engine/catalog/uninstall_test.go: TestUninstallPlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
+	"node drain":                     "internal/engine/nodes/drain_test.go: TestDrainPlanDisplayIdentity asserts DisplayKind/DisplayName (the node name) and that the committed result names the node",
+	"node stop-drain":                "internal/engine/nodes/stopdrain_test.go: TestStopDrainPlanDisplayIdentity asserts DisplayKind/DisplayName (the node name) and that the committed result names the node",
 }
 
 // dryRunGenericFamilyPrefixes names the two generated command families
