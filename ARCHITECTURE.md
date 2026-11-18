@@ -586,7 +586,9 @@ with no capability checker set up fails loudly rather than silently skipping the
 **Server-side dry-run has real RBAC semantics.** `--dry-run` sends `DryRunAll` to the API
 server, which authorizes it with the *same* verb as the real write. An agent with
 read-only permissions gets an `RBAC` error (exit code 6) from `--dry-run` - that means
-"the write would be denied", **not** "dry-run is broken".
+"the write would be denied", **not** "dry-run is broken". A ResourceQuota,
+LimitRanger, PodSecurity or ValidatingAdmissionPolicy refusal on `--dry-run` is
+`VALIDATION` (exit code 2): the server refused the object, not your access.
 
 **Deliberate Plan-time network write: `create cluster` sets the creatorId annotation.**
 Before the server-side dry-run, `create cluster` gets the caller's user ID with an
@@ -1560,6 +1562,35 @@ missing. The server's error stays as the cause. Rancher gives a missing and a
 wrong current password the same text; the message follows what the command
 sent. The published meanings of RBAC and VALIDATION in `internal/clierr` name
 this exception.
+
+**A 403 from Kubernetes admission is not always RBAC: the CLI tells them apart
+by the Status message.** The API server returns 403 both for a missing
+permission and for a write whose object admission refuses. A 403 becomes
+VALIDATION (exit 2) with the Status message when the text right after
+Kubernetes' `is forbidden: ` (`<resource> "<name>" is forbidden: `, with no name
+or no resource when the server writes none) is an admission text that refuses a
+write. An admission text is a message the Kubernetes API server returns when
+admission refuses a write or when it could not check the write yet; the
+`admissionTexts` list in `internal/clierr/admission.go` holds them. Most are
+refusals: a ResourceQuota, LimitRanger, PodSecurity, namespace lifecycle (a
+namespace that is being deleted or may not be deleted) or
+ValidatingAdmissionPolicy refusal. Four are a temporary 403 from Kubernetes
+admission: the server is not ready to handle the request, LimitRanger failed to
+enforce limit ranges, the ResourceQuota status is unknown, or the previous
+version of the object was not found and ResourceQuota cannot compute its
+usage. A temporary 403 becomes a retryable GENERIC with the Status message and
+" - retry later". The CLI matches an admission text only at the beginning of the text
+right after Kubernetes' `is forbidden: `. The authorizer's 403 (`User "..."
+cannot ...`), an admission webhook's own 403, the other 403s from Kubernetes
+admission that are not in the list, a 403 whose message does not begin as
+Kubernetes writes it and every other 403 stay RBAC. The CLI reads the Status
+message on every request, whatever its verb. The Kubernetes wording is the same
+from 1.32 to 1.37; if a Kubernetes release changes the wording of an admission
+text in the list, the CLI reports that refusal as RBAC again. A 409 from an
+admission webhook on a write that sends a `resourceVersion` is a CONFLICT with
+the webhook's message and is not retryable: a retry gets the same denial. Any
+other 409 on such a write keeps the retryable message that the resource changed
+on the server since it was last read.
 
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or

@@ -587,11 +587,11 @@ func denialRows(t *testing.T) []webhookRow {
 	}
 	precondition := localRequest()
 	precondition.Precondition = true
-	const canned = "the resource changed on the server since it was last read; retry the command"
 	se := deniedBy("x.example.io", &metav1.Status{Code: http.StatusConflict, Message: "the object is not allowed"})
-	want := webhookWant{code: clierr.CodeConflict, message: canned, retryable: true}
-	rows = append(rows, onTwoPaths(t, "denial 409 on a write with a precondition", se, precondition, want, false)...)
-	rows = append(rows, typedRow("denial 409 on a write with a precondition behind a prefix",
+	want := webhookWant{code: clierr.CodeConflict, message: denied + ": the object is not allowed"}
+	rows = append(rows, onTwoPaths(t, "denial 409 on a write with a precondition keeps the webhook's message", se, precondition, want, false)...)
+	want.message = callerPrefix + ": " + want.message
+	rows = append(rows, typedRow("denial 409 on a write with a precondition keeps the webhook's message behind a prefix",
 		fmt.Errorf(callerPrefix+": %w", se), precondition, want, false))
 	dryRun := apierrors.NewBadRequest(`admission webhook "x.example.io" does not support dry run`)
 	rows = append(rows, onThreePaths(t, "dry run unsupported", dryRun, localRequest(),
@@ -1063,9 +1063,7 @@ func perCodeRows(t *testing.T) []webhookRow {
 		{"403", 403, localRequest(), webhookWant{code: clierr.CodeRBAC, message: shown}},
 		{"404", 404, localRequest(), webhookWant{code: clierr.CodeNotFound, message: shown}},
 		{"409", 409, localRequest(), webhookWant{code: clierr.CodeConflict, message: shown}},
-		{"409 with a precondition", 409, precondition, webhookWant{
-			code: clierr.CodeConflict, message: "the resource changed on the server since it was last read; retry the command", retryable: true,
-		}},
+		{"409 with a precondition keeps the webhook's message", 409, precondition, webhookWant{code: clierr.CodeConflict, message: shown}},
 		{"410", 410, localRequest(), webhookWant{code: clierr.CodeGeneric, message: shown}},
 		{"422", 422, localRequest(), webhookWant{code: clierr.CodeValidation, message: shown}},
 		{"429 with the server named", 429, localRequest(), webhookWant{code: clierr.CodeGeneric, message: answered("429 Too Many Requests"), retryable: true}},

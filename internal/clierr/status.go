@@ -180,7 +180,9 @@ func HTTPStatus(err error) (int, bool) {
 // Status carries a second cause that records the server's message has
 // already been taken from the body, so classifying it does not take it
 // again; a 5xx among them is an unexpected server response, as client-go
-// marks it.
+// marks it. A 403 whose message was cut to maxServerMessage bytes carries,
+// after those two, a cause with the whole message, which only the admission
+// text match reads.
 func ResponseError(method string, status int, body []byte) *apierrors.StatusError {
 	if st, ok := statusBody(status, body); ok {
 		return &apierrors.StatusError{ErrStatus: st}
@@ -192,6 +194,11 @@ func ResponseError(method string, status int, body []byte) *apierrors.StatusErro
 	}
 	se := apierrors.NewGenericServerResponse(status, method, schema.GroupResource{}, "", message, 0, true)
 	se.ErrStatus.Details.Causes = append(se.ErrStatus.Details.Causes, metav1.StatusCause{Type: causeServerMessageTaken})
+	if full := fullServerMessage(body); status == http.StatusForbidden && full != message {
+		// The message is cut to maxServerMessage bytes; the admission text match
+		// reads the whole message.
+		se.ErrStatus.Details.Causes = append(se.ErrStatus.Details.Causes, metav1.StatusCause{Type: causeServerMessageFull, Message: full})
+	}
 	return se
 }
 
@@ -199,6 +206,30 @@ func ResponseError(method string, status int, body []byte) *apierrors.StatusErro
 // quoted message is already the server's message as the CLI shows it, not
 // the body client-go quotes.
 const causeServerMessageTaken metav1.CauseType = "ServerMessageTaken"
+
+// causeServerMessageFull carries the message of a 403 before ResponseError
+// cut it to maxServerMessage bytes.
+const causeServerMessageFull metav1.CauseType = "ServerMessageFull"
+
+// fullForbiddenMessage returns the server's whole 403 message, uncut. It uses,
+// in this order: the message saved in the ServerMessageFull cause; the message
+// of the JSON error object inside the Status message, when the error ends with
+// that Status message; the `reason` argument, which is the Status message.
+func fullForbiddenMessage(se *apierrors.StatusError, reason string, wrapped bool) string {
+	if se.ErrStatus.Details != nil {
+		for _, c := range se.ErrStatus.Details.Causes {
+			if c.Type == causeServerMessageFull {
+				return strings.TrimSpace(c.Message)
+			}
+		}
+	}
+	if wrapped {
+		if m, ok := objectMessageBound(strings.TrimSpace(se.ErrStatus.Message), keepText, uncut); ok {
+			return m
+		}
+	}
+	return reason
+}
 
 // statusText is the standard text of an HTTP status, else "status <code>".
 func statusText(code int) string {
@@ -249,18 +280,33 @@ func keepText(s string) string { return s }
 // decodeMessage is serverMessage with filter run on the decoded text before
 // it is bounded.
 func decodeMessage(body []byte, filter func(string) string) string {
+	return decodeMessageBound(body, filter, bounded)
+}
+
+// uncut returns s unchanged. It stands in for bounded where the message is
+// only read, never shown.
+func uncut(s string) string { return s }
+
+// fullServerMessage is serverMessage with no cut to maxServerMessage bytes:
+// the message the admission text match reads, while the message the CLI shows
+// stays cut.
+func fullServerMessage(body []byte) string { return decodeMessageBound(body, keepText, uncut) }
+
+// decodeMessageBound is decodeMessage with the function that cuts the message
+// passed as an argument.
+func decodeMessageBound(body []byte, filter, bound func(string) string) string {
 	text := strings.TrimSpace(string(body))
 	if text == "" {
 		return ""
 	}
-	if m, ok := objectMessageFiltered(text, filter); ok {
+	if m, ok := objectMessageBound(text, filter, bound); ok {
 		return m
 	}
 	if json.Valid([]byte(text)) {
 		return ""
 	}
 	line, _, _ := strings.Cut(text, "\n")
-	return bounded(strings.TrimRight(filter(line), "\r"))
+	return bound(strings.TrimRight(filter(line), "\r"))
 }
 
 // objectMessage decodes text as a JSON error object.
@@ -269,6 +315,12 @@ func objectMessage(text string) (string, bool) { return objectMessageFiltered(te
 // objectMessageFiltered is objectMessage with filter run on the message
 // before it is trimmed and bounded.
 func objectMessageFiltered(text string, filter func(string) string) (string, bool) {
+	return objectMessageBound(text, filter, bounded)
+}
+
+// objectMessageBound is objectMessageFiltered with the function that cuts the
+// message passed as an argument.
+func objectMessageBound(text string, filter, bound func(string) string) (string, bool) {
 	if !strings.HasPrefix(text, "{") {
 		return "", false
 	}
@@ -276,7 +328,7 @@ func objectMessageFiltered(text string, filter func(string) string) (string, boo
 	if json.Unmarshal([]byte(text), &obj) != nil {
 		return "", false
 	}
-	return bounded(strings.TrimSpace(filter(obj.Message))), true
+	return bound(strings.TrimSpace(filter(obj.Message))), true
 }
 
 // bounded cuts s to maxServerMessage bytes on a character boundary.
@@ -344,6 +396,16 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 		}
 		return New(CodeNotFound, msg)
 	case apierrors.IsForbidden(se):
+		// A 403 whose message is an admission text is not a missing
+		// permission. The admission text match reads the server's own text, not
+		// msg, which starts with the caller's prefix, and runs for every request:
+		// a write can reach admission with no verb or no request.
+		if entry, ok := matchAdmissionText(fullForbiddenMessage(se, reason, wrapped)); ok {
+			if entry.retryable {
+				return Retryable(CodeGeneric, msg+" - retry later")
+			}
+			return New(CodeValidation, msg)
+		}
 		if noReason {
 			msg = prefix + forbiddenText(req)
 		}
@@ -360,12 +422,13 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 			return ce
 		}
 		return New(CodeAuth, msg)
-	case apierrors.IsConflict(se) && req != nil && req.Precondition:
+	case apierrors.IsConflict(se) && req != nil && req.Precondition && !webhookDenial(serverDetail(se, reason, noReason)):
 		// A resourceVersion precondition race: another writer updated the
 		// object between the read and this write; a fresh read-modify-write
-		// resolves it. The reason alone cannot tell this from a webhook's
-		// refusal. A webhook 409 on a write that sent a resourceVersion
-		// therefore gets the same message.
+		// resolves it. A 409 on a write that sent a resourceVersion is read
+		// as that race, except when the server's text says an admission
+		// webhook denied the request: a retry gets the same denial, and the
+		// CONFLICT case below shows the webhook's message.
 		return Retryable(CodeConflict, "the resource changed on the server since it was last read; retry the command")
 	case apierrors.IsConflict(se):
 		// A 409 can mean the resourceVersion is out of date only for a write
@@ -766,15 +829,11 @@ func errorTextWithoutResponseBodies(s string, keepFirst bool) string {
 // other text, a name that is not double-quoted included.
 func webhookCallParts(text string) (name, quoted, reason string, ok bool) {
 	rest, found := strings.CutPrefix(text, webhookCallLead)
-	if !found || !strings.HasPrefix(rest, `"`) {
+	if !found {
 		return "", "", "", false
 	}
-	quoted, err := strconv.QuotedPrefix(rest[:min(len(rest), maxQuotedWebhookName)])
-	if err != nil {
-		return "", "", "", false
-	}
-	name, err = strconv.Unquote(quoted)
-	if err != nil || name == "" {
+	quoted, name, found = quotedName(rest)
+	if !found {
 		return "", "", "", false
 	}
 	rest = rest[len(quoted):]

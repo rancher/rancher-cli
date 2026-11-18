@@ -162,16 +162,40 @@ func expectedArm(arm statusArm) (code string, retryable bool) {
 const (
 	staleWriteText = "the resource changed on the server since it was last read; retry the command"
 	webhookText    = `admission webhook "x.example.io" denied the request: duplicate not allowed`
+	// resourceVersionConflictText is the message Kubernetes writes for a write
+	// whose resourceVersion is out of date.
+	resourceVersionConflictText = `Operation cannot be fulfilled on widgets.example.io "w-x": the object has been modified; please apply your changes to the latest version and try again`
 )
 
+// conflictMessage is one 409 message for the conflict table: its text, the
+// part of it every result must keep, and whether it is an admission webhook's
+// denial.
+type conflictMessage struct {
+	name    string
+	text    string
+	keeps   string
+	webhook bool
+}
+
+// conflictMessages are the two messages a 409 carries: Kubernetes'
+// resourceVersion conflict, and a webhook's denial.
+var conflictMessages = []conflictMessage{
+	{"resourceVersion conflict", resourceVersionConflictText, "the object has been modified", false},
+	{"webhook denial", webhookText, "duplicate not allowed", true},
+}
+
 // TestEveryReasonVerbAndPreconditionClassifiesAConflictOnlyWhenItCarriedOne
-// asserts a 409 gets the retryable message that the resource changed since it
-// was last read only for a request that sent a resourceVersion precondition,
-// for every StatusReason apimachinery defines, the reason a webhook invents
-// and the empty reason, under the canonical code of each and under 409, for
-// every verb and no request. Every other 409 is a CONFLICT that is not
-// retryable and keeps the Status message. Every other arm of the table ignores
-// the precondition.
+// asserts a 409 whose message is Kubernetes' resourceVersion conflict gets
+// the retryable message that the resource changed since it was last read only
+// for a request that sent a resourceVersion precondition, and a 409 whose
+// message is an admission webhook's denial never gets it: it is a CONFLICT
+// that is not retryable and keeps the webhook's message whether or not the
+// request sent a precondition. This holds for every StatusReason apimachinery
+// defines, the reason a webhook invents and the empty reason, under the
+// canonical code of each and under 409, for every verb and no request. Every
+// other 409 is a CONFLICT that is not retryable and keeps the Status message.
+// Every other row of the table ignores the precondition and whether the
+// message is a webhook's denial; a webhook's denial with a 403 stays RBAC.
 func TestEveryReasonVerbAndPreconditionClassifiesAConflictOnlyWhenItCarriedOne(t *testing.T) {
 	t.Parallel()
 	inSource := statusReasonsInSource(t)
@@ -192,19 +216,32 @@ func TestEveryReasonVerbAndPreconditionClassifiesAConflictOnlyWhenItCarriedOne(t
 			code int
 			arm  statusArm
 		}
-		cases := []codeArm{{row.code, row.canonical}}
+		codeArms := []codeArm{{row.code, row.canonical}}
 		if row.code != http.StatusConflict {
-			cases = append(cases, codeArm{http.StatusConflict, row.at409})
+			codeArms = append(codeArms, codeArm{http.StatusConflict, row.at409})
+		}
+		type conflictCase struct {
+			codeArm
+			msg conflictMessage
+		}
+		var cases []conflictCase
+		for _, ca := range codeArms {
+			for _, msg := range conflictMessages {
+				cases = append(cases, conflictCase{ca, msg})
+			}
 		}
 		for _, tc := range cases {
-			t.Run(fmt.Sprintf("reason=%q code=%d", reason, tc.code), func(t *testing.T) {
+			t.Run(fmt.Sprintf("reason=%q code=%d %s", reason, tc.code, tc.msg.name), func(t *testing.T) {
 				t.Parallel()
 				newErr := func() error {
 					return &apierrors.StatusError{ErrStatus: metav1.Status{
 						Status: metav1.StatusFailure, Reason: metav1.StatusReason(reason),
-						Code: int32(tc.code), Message: webhookText,
+						Code: int32(tc.code), Message: tc.msg.text,
 					}}
 				}
+				// A 409 is read as a resourceVersion race on a write that sent
+				// one, unless the message is a webhook's denial.
+				stale := tc.arm == armConflict && !tc.msg.webhook
 				code, retryable := expectedArm(tc.arm)
 				results := make(map[string]*Error, len(shapes))
 				for _, s := range shapes {
@@ -212,18 +249,18 @@ func TestEveryReasonVerbAndPreconditionClassifiesAConflictOnlyWhenItCarriedOne(t
 					require.NotNil(t, ce, s.name)
 					results[s.name] = ce
 					switch {
-					case tc.arm == armConflict && s.precondition():
+					case stale && s.precondition():
 						assert.Equal(t, CodeConflict, ce.Code, s.name)
 						assert.True(t, ce.Retryable, s.name)
 						assert.Equal(t, staleWriteText, ce.Message, s.name)
 					case tc.arm == armConflict:
 						assert.Equal(t, CodeConflict, ce.Code, s.name)
 						assert.False(t, ce.Retryable, s.name)
-						assert.Contains(t, ce.Message, "duplicate not allowed", s.name)
+						assert.Equal(t, tc.msg.text, ce.Message, s.name)
 					default:
 						assert.Equal(t, code, ce.Code, s.name)
 						assert.Equal(t, retryable, ce.Retryable, s.name)
-						assert.Contains(t, ce.Message, "duplicate not allowed", s.name)
+						assert.Contains(t, ce.Message, tc.msg.keeps, s.name)
 					}
 				}
 				for _, s := range shapes {
@@ -251,7 +288,7 @@ func TestEveryReasonVerbAndPreconditionClassifiesAConflictOnlyWhenItCarriedOne(t
 						assert.Equal(t, other.Hint, ce.Hint, s.name)
 					}
 				}
-				if tc.arm == armConflict {
+				if stale {
 					assert.NotEqual(t, results["get precondition=true"].Retryable, results["get precondition=false"].Retryable)
 				}
 			})

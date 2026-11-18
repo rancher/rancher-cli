@@ -332,7 +332,9 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   write. An `RBAC` error on dry-run means the write would be denied too. The
   exception is a Rancher action the CLI previews from server reads (`app
   install`, `app upgrade`, `app uninstall`): its Effect has `previewSource: serverReads`, built from server
-  reads, with no `resourceVersion` and `conflictDetection` false.
+  reads, with no `resourceVersion` and `conflictDetection` false. A ResourceQuota,
+  LimitRanger, PodSecurity or ValidatingAdmissionPolicy refusal on dry-run is
+  `VALIDATION`: the server refused the object, not your access.
 - The dry-run's `resourceVersion`/`conflictDetection` fields describe THAT
   invocation only. An Effect with `previewSource: serverReads` carries no
   resourceVersion and no conflict detection at all; `--apply` reads the state
@@ -494,9 +496,11 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   message says how to apply it.
 - `retryable: true` (timeouts, a 429, a 502/503/504, another 5xx whose body is
   not a Kubernetes Status, a 409 on an update or delete that sent a
-  resourceVersion, the two CONFLICTs from a check in the CLI named below, and a
-  500 the API server returns for a failed admission webhook call that did not
-  reach the webhook or came back with a 503 that is not a Kubernetes Status)
+  resourceVersion, the two CONFLICTs from a check in the CLI named below, a
+  temporary 403 from Kubernetes admission (see the next bullet), and a 500 the
+  API server returns for a failed admission webhook call
+  that did not reach the webhook or came back with a 503 that is not a
+  Kubernetes Status)
   → retry is reasonable; otherwise do not repeat the identical call. A failed
   admission webhook call did not reach the webhook when the connection was
   refused, there was no route to host, the host name did not resolve,
@@ -506,8 +510,11 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   an update or delete that sent a resourceVersion is `CONFLICT` with the message
   "the resource changed on the server since it was last read; retry the
   command". An update here is a command that changes an existing object, such as
-  `rancher patch`. An admission webhook's 409 on such a write gets the same
-  message, and a retry gets the same refusal. A 409 on any other request is
+  `rancher patch`. An admission webhook's 409 on such a write (its message
+  starts `admission webhook "<name>" denied the request:` or is `admission
+  webhook "<name>" denied the request without explanation`) is `CONFLICT` with the
+  webhook's message and is not retryable: a retry gets the same denial. A 409
+  on any other request is
   `CONFLICT` and is not retryable. Its message is the server's message. The one
   exception is a create whose response body is not a Kubernetes Status: its
   message ends with "the server reported a conflict". Two CONFLICTs come from a
@@ -518,6 +525,12 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   now identifies another entry or none (the message starts "config.yaml changed
   while this call was running"). Any other CONFLICT from a check in the CLI
   carries its own `retryable`.
+- A temporary 403 from Kubernetes admission (the server could not check the
+  request yet) is `GENERIC` and retryable. The message is the Status message,
+  followed by " - retry later". The four are: the server is not ready to handle
+  the request, LimitRanger failed to enforce limit ranges, the ResourceQuota
+  status is unknown, and ResourceQuota cannot get the previous usage because
+  the previous version of the object was not found.
 - `TLS_TRUST` (exit `10`) means the server's certificate failed
   verification: act on the remedy the message names (a different CA, the
   server URL, or the server's administrator), or tell the user; never retry the

@@ -24,9 +24,17 @@ type conflictEnvelope struct {
 	} `json:"data"`
 }
 
+const (
+	// webhookConflictMessage is the message of an admission webhook's denial.
+	webhookConflictMessage = `admission webhook "x.example.io" denied the request: duplicate not allowed`
+	// resourceVersionConflictMessage is the message Kubernetes writes for a
+	// write whose resourceVersion is out of date.
+	resourceVersionConflictMessage = `Operation cannot be fulfilled on pods "web": the object has been modified; please apply your changes to the latest version and try again`
+)
+
 // conflictServer responds to a read with a Pod that has a resourceVersion and
-// to every write with a Status 409 from an admission webhook.
-func conflictServer(t *testing.T) {
+// to every write with a Status 409 that carries message.
+func conflictServer(t *testing.T, message string) {
 	t.Helper()
 	extraArgsEnv(t)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,8 +44,14 @@ func conflictServer(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Conflict","code":409,` +
-			`"message":"admission webhook \"x.example.io\" denied the request: duplicate not allowed"}`))
+		body, err := json.Marshal(map[string]any{
+			"kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "Conflict", "code": 409, "message": message,
+		})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv(config.EnvURL, srv.URL)
@@ -45,14 +59,14 @@ func conflictServer(t *testing.T) {
 }
 
 // TestCreateResourceWebhookConflictIsNotRetryable asserts a create whose
-// dry run an admission webhook refuses with a 409 is CONFLICT at exit 5,
+// dry run an admission webhook denies with a 409 is CONFLICT at exit 5,
 // not retryable, and shows the webhook's message: the request sent no
 // resourceVersion. A 409 on it does not mean the resourceVersion is out of
 // date. Not parallel: it sets the process environment and the captured command
 // line.
 func TestCreateResourceWebhookConflictIsNotRetryable(t *testing.T) {
 	restoreRawArgv(t)
-	conflictServer(t)
+	conflictServer(t, webhookConflictMessage)
 	manifest := filepath.Join(t.TempDir(), "cm.yaml")
 	require.NoError(t, os.WriteFile(manifest, []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm1\n  namespace: default\n"), 0o600))
 	root, err := BuildRoot("v-test")
@@ -68,13 +82,14 @@ func TestCreateResourceWebhookConflictIsNotRetryable(t *testing.T) {
 	assert.Contains(t, env.Data.Error.Message, "duplicate not allowed")
 }
 
-// TestPatchConflictIsRetryable asserts a patch whose write gets a 409 is the
-// retryable CONFLICT with the message that the resource changed since it was
-// last read: a patch writes the object it read with its resourceVersion. Not
-// parallel: it sets the process environment and the captured command line.
+// TestPatchConflictIsRetryable asserts a patch whose write gets a 409 with
+// Kubernetes' resourceVersion conflict message is the retryable CONFLICT
+// with the message that the resource changed since it was last read: a patch
+// writes the object it read with its resourceVersion. Not parallel: it sets
+// the process environment and the captured command line.
 func TestPatchConflictIsRetryable(t *testing.T) {
 	restoreRawArgv(t)
-	conflictServer(t)
+	conflictServer(t, resourceVersionConflictMessage)
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 
@@ -89,4 +104,28 @@ func TestPatchConflictIsRetryable(t *testing.T) {
 	assert.Equal(t, "CONFLICT", env.Data.Error.Code)
 	assert.True(t, env.Data.Error.Retryable)
 	assert.Equal(t, "the resource changed on the server since it was last read; retry the command", env.Data.Error.Message)
+}
+
+// TestPatchWebhookConflictIsNotRetryable asserts a patch whose write an
+// admission webhook denies with a 409 is CONFLICT at exit 5, not retryable,
+// and shows the webhook's message: the patch sent a resourceVersion, but the
+// webhook denied the request, and repeating the patch gets the same denial.
+// Not parallel: it sets the process environment and the captured command line.
+func TestPatchWebhookConflictIsNotRetryable(t *testing.T) {
+	restoreRawArgv(t)
+	conflictServer(t, webhookConflictMessage)
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+
+	_, stderr, code := runBounded(t, root, []string{
+		"patch", "pod", "web", "--type", "merge", "-p", `{"metadata":{"labels":{"a":"b"}}}`,
+		"--cluster", "local", "--namespace", "default", "-o", "json", "--dry-run",
+	})
+
+	assert.Equal(t, 5, code, stderr)
+	var env conflictEnvelope
+	require.NoError(t, json.Unmarshal([]byte(stderr), &env), stderr)
+	assert.Equal(t, "CONFLICT", env.Data.Error.Code)
+	assert.False(t, env.Data.Error.Retryable)
+	assert.Contains(t, env.Data.Error.Message, webhookConflictMessage)
 }
