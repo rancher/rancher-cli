@@ -267,19 +267,21 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
 `create project --cluster <c> --display-name <name>` lets Rancher generate the id (`p-xxxxx`); read it from `data.metadata.name` of the `--apply` result before `get`, `patch` or `delete project`.
 
 - `delete project <id> --cluster <c>` lists the project's namespaces in the
-  dry-run Effect and in the result: `data.objects`, one item per namespace
-  with `kind`, `name`, `outcome` (and `code`, `message` for a failure). Rancher
+  dry-run Effect and in the result: `data.objects`, one item per namespace with
+  `kind`, `name`, `outcome` (and `code`, `message` for a failure). Rancher
   deletes the namespaces with the `field.cattle.io/creatorId` annotation
-  (`rancher deletes`) and keeps the rest (`rancher keeps`); relay the lists
-  and the warnings before applying. `--delete-namespaces` also deletes the
-  namespaces, one at a time, then the project; `default`, `kube-system`,
-  `kube-public` (and `local`, `fleet-local` on the local cluster) are
-  `not deleted`. A failure stops the run, keeps the project and carries every
-  item in `data.error.details.objects`; re-run the same command.
-  `delete project` without `--delete-namespaces` also waits for the
-  project's backing namespace when you can read it; with
-  `--delete-namespaces` the command does not wait, refuses `--timeout` and
-  refuses `--wait` except `--wait=false`.
+  (`rancher deletes`) and keeps the rest (`rancher keeps`); relay the lists and
+  the warnings before applying. `--delete-namespaces` also deletes the
+  namespaces, one at a time, waits until each is gone, then deletes the project
+  and waits for it; `default`, `kube-system`, `kube-public` (and `local`,
+  `fleet-local` on the local cluster) are `not deleted`. A namespace the command
+  deleted and saw gone is `deleted` in `data.objects`; one that was already
+  being deleted stays `being deleted`. A failure, or a namespace not gone within
+  `--timeout`, stops the run and the project is not deleted; the error carries
+  every item in `data.error.details.objects` (the project `not attempted`) and
+  `data.error.details.recovery`, `rancher get project`; run the same command
+  again. `delete project` also waits for the project's backing namespace when
+  you can read it, with or without `--delete-namespaces`.
 - `delete` waits until the object is gone (default `--timeout 5m`);
   `--wait=false` returns at once and prints `deletion started`. Read
   `data.waited` and the warnings. Without `--wait=false`, a `data.waited`

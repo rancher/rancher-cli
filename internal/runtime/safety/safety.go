@@ -98,6 +98,7 @@ const (
 	OutcomeNotDeleted      = "not deleted"
 	OutcomeBeingDeleted    = "being deleted"
 	OutcomeDeletionStarted = "deletion started"
+	OutcomeDeleted         = "deleted"
 	OutcomeAlreadyGone     = "already gone"
 	OutcomeFailed          = "failed"
 	OutcomeNotAttempted    = "not attempted"

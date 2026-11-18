@@ -194,8 +194,6 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 	if k.DeleteCascadeWarning != "" {
 		eff.Warnings = append(eff.Warnings, k.DeleteCascadeWarning)
 	}
-	target := deleteTarget{gvr: k.GVR, ns: ns, name: name, uid: string(obj.GetUID()), kind: k.Name,
-		recovery: deleteRecovery(k, ns, name, effectCluster), readBefore: true}
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		if err := client.Delete(ctx, k.GVR, ns, name, rv, false); err != nil {
 			return runtime.Result{}, err
@@ -208,7 +206,7 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 		case w.mode == waitOn:
 			// The deadline starts once the server accepted the delete.
 			var err error
-			end, err = waitDeleted(ctx, client, append([]deleteTarget{target}, w.also...), time.Now().Add(w.timeout), w.timeoutText)
+			end, err = waitDeleted(ctx, client, append([]deleteTarget{newDeleteTarget(k, ns, name, obj, effectCluster)}, w.also...), time.Now().Add(w.timeout), w.timeoutText)
 			if err != nil {
 				return runtime.Result{}, err
 			}

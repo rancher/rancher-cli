@@ -2,6 +2,14 @@ package runtime
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -120,4 +128,67 @@ func TestObjectLinesGroupAndCompareByTheValuesAsGiven(t *testing.T) {
 		lines := ObjectLines(objs, "project")
 		assert.Equal(t, []string{"namespaces:", "  failed: a (first)", "  failed: b"}, lines)
 	})
+}
+
+// outcomeConstants are the string values of the constants of file whose
+// names start with Outcome.
+func outcomeConstants(t *testing.T, file *ast.File) []string {
+	t.Helper()
+	var values []string
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if !strings.HasPrefix(name.Name, "Outcome") {
+					continue
+				}
+				require.Less(t, i, len(vs.Values), "%s has a value", name.Name)
+				lit, ok := vs.Values[i].(*ast.BasicLit)
+				require.True(t, ok && lit.Kind == token.STRING, "%s is a string literal", name.Name)
+				value, err := strconv.Unquote(lit.Value)
+				require.NoError(t, err)
+				values = append(values, value)
+			}
+		}
+	}
+	return values
+}
+
+// TestEveryOutcomeConstantIsInObjectOutcomeOrder asserts objectOutcomeOrder
+// lists the value of every Outcome constant of the safety package, in any of
+// its non-test files, and no other value, and lists no value twice. Every
+// constant whose name starts with Outcome is taken as an outcome value and
+// must be a string literal. A constant left out would still print, but after
+// the listed outcomes in the order it first appears.
+func TestEveryOutcomeConstantIsInObjectOutcomeOrder(t *testing.T) {
+	t.Parallel()
+	dir := "safety"
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	var constants []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, 0)
+		require.NoError(t, err)
+		constants = append(constants, outcomeConstants(t, file)...)
+	}
+	require.NotEmpty(t, constants, "the scan found the Outcome constants")
+	for _, value := range constants {
+		assert.Contains(t, objectOutcomeOrder, value, "the outcome %q is in objectOutcomeOrder", value)
+	}
+	for _, value := range objectOutcomeOrder {
+		assert.Contains(t, constants, value, "objectOutcomeOrder holds %q, which is no Outcome constant", value)
+	}
+	sorted := slices.Sorted(slices.Values(objectOutcomeOrder))
+	assert.Equal(t, len(sorted), len(slices.Compact(sorted)), "objectOutcomeOrder has no duplicate")
 }

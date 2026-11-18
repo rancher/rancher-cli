@@ -299,8 +299,8 @@ func TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader(t *testi
 // every delete completes --timeout from the same static ladder, each value
 // one the command accepts, with no request made, and that a delete offers
 // nothing where it refuses --timeout: after --wait=false (in any spelling
-// the parser reads as false) and, for delete project, after
-// --delete-namespaces.
+// the parser reads as false). delete project completes it after
+// --delete-namespaces, which waits like every other delete.
 func TestTimeoutOffersTheDurationLadder(t *testing.T) {
 	// NOT parallel: mutates storedConfig and the token environment.
 	f := newAccessFixture(t)
@@ -330,8 +330,7 @@ func TestTimeoutOffersTheDurationLadder(t *testing.T) {
 		{deletePod, []string{"x", "--wait=false", "--timeout"}},
 		{deletePod, []string{"x", "--wait=0", "--timeout"}},
 		{deletePod, []string{"x", "--wait=FALSE", "--timeout"}},
-		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces", "--timeout"}},
-		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces=true", "--timeout"}},
+		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces", "--wait=false", "--timeout"}},
 	} {
 		assert.Empty(t, dispatchSite(accessCtx(t), site, tc.d, nil, nil, tc.tail), "%s %v", tc.d.Name, tc.tail)
 	}
@@ -341,6 +340,8 @@ func TestTimeoutOffersTheDurationLadder(t *testing.T) {
 	}{
 		{deletePod, []string{"x", "--wait", "--timeout"}},
 		{deletePod, []string{"x", "--wait=true", "--timeout"}},
+		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces", "--timeout"}},
+		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces=true", "--timeout"}},
 		{deleteProject, []string{"p", "--cluster", "c", "--delete-namespaces=false", "--timeout"}},
 	} {
 		assert.Equal(t, ladder, dispatchSite(accessCtx(t), site, tc.d, nil, nil, tc.tail), "%s %v", tc.d.Name, tc.tail)

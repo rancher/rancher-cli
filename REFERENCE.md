@@ -944,34 +944,53 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   can get namespaces only through your project, and a warning names the kept
   namespaces you will not be able to get after the delete. A failed review
   gives no warning. `--delete-namespaces` also deletes the project's namespaces:
-  one at a time, in name order, each with the resourceVersion it was read with,
-  then the project. Each namespace the command will delete gets a server-side
-  dry-run delete first; the namespaces left alone, described next, get none. The
-  command is refused before anything is deleted if the server refuses a dry-run
-  delete, if you cannot get one of the namespaces it will delete, or if reading
-  the project's namespaces fails. Namespaces already being deleted are listed
-  and left alone. Kubernetes never deletes `default`, `kube-system` and
-  `kube-public` on any cluster, and Rancher never deletes `local` and
-  `fleet-local` on the local cluster: they are listed as `not deleted` with that
-  reason and skipped. With `--delete-namespaces` the outcomes are `will be
-  deleted` (dry-run), `deletion started`, `already gone` (the namespace was gone
-  when the delete was sent), `not deleted`, `being deleted`, `failed` and `not
-  attempted`; the project comes last in the list. A failed namespace delete
-  stops the run and keeps the project: the error carries the failing call's code
-  and `data.error.details.objects` holds every item with its outcome. When the
-  project changes while its namespaces are being deleted, the project delete is
-  retried up to three times with the new resourceVersion if only its used
-  resource quota (`spec.resourceQuota.usedLimit`) and its status changed; any
-  other change, or a fourth conflict, is `CONFLICT` with the project kept.
-  Re-run the same command after any partial result: it reads the project's
-  namespaces again and skips the ones already being deleted. The result's `kind`
-  stays `ProjectDelete`; its `data` has the fields `deleted`, `waited` and
-  `objects`. The first line is `project/<id> deleted` when the command saw the
-  project and its backing namespace deleted, else `project/<id> deletion
-  started`; with `--delete-namespaces` it is always `deletion started`. When the
-  wait of a run without `--delete-namespaces` ends with an error,
+  one at a time, in name order, each with the resourceVersion it was read with.
+  It then waits until every namespace it deleted, and every namespace that was
+  already being deleted, is gone, deletes the project, and waits until the
+  project and its backing namespace are gone, all within one `--timeout`. Each
+  namespace the command will delete gets a server-side dry-run delete first; the
+  namespaces left alone, described next, get none. The command is refused before
+  anything is deleted if the server refuses a dry-run delete, if you cannot get
+  one of the namespaces it will delete, or if reading the project's namespaces
+  fails. Namespaces already being deleted are listed and left alone. Kubernetes
+  never deletes `default`, `kube-system` and `kube-public` on any cluster, and
+  Rancher never deletes `local` and `fleet-local` on the local cluster: they are
+  listed as `not deleted` with that reason and skipped. With
+  `--delete-namespaces` the outcomes are `will be deleted` (dry-run), `deletion
+  started`, `deleted` (the command saw the object gone after its own delete),
+  `already gone` (the namespace was gone when the delete was sent), `not
+  deleted`, `being deleted` (a namespace that was already Terminating: the
+  command does not delete it again and waits for it; the result still says
+  `being deleted` after it is gone), `failed` and `not attempted`; the project
+  comes last in the list. If a namespace delete fails, the command stops and
+  does not delete the project: the error carries the failing call's code and
+  `data.error.details.objects` holds every item with its outcome. If the wait
+  for a namespace ends with an error (a timeout, an interrupt, `AUTH` or
+  `TLS_TRUST`), the command does not delete the project: it sends no project
+  delete, and the message says the project was kept and to run the same command
+  again. `data.error.details` has `committed`, `resourceKind` `project`,
+  `resourceName` and `recovery` (`rancher get project`) beside `objects`, which
+  lists the project as `not attempted`. When the project changes while its
+  namespaces are being deleted, the project delete is retried up to three times
+  with the new resourceVersion if only its used resource quota
+  (`spec.resourceQuota.usedLimit`) and its status changed; any other change, or
+  a fourth conflict, is `CONFLICT` and the project is not deleted. The wait for
+  the namespaces can last up to `--timeout` after the dry-run preview read the
+  project. The project can change in that time too. A change other than its used
+  resource quota and its status ends with `CONFLICT`: the project is not deleted
+  and its namespaces are deleted or being deleted. Run the same command again after any partial result: it reads the project's namespaces again, waits for the
+  ones already being deleted, and deletes the project only when they are gone.
+  The result's `kind` stays `ProjectDelete`; its `data` has the fields
+  `deleted`, `waited` and `objects`. The first line is `project/<id> deleted`
+  when the command saw the project and its backing namespace deleted, else
+  `project/<id> deletion started`. The first line also says `deletion started`
+  with `--wait=false`, or when the server refused (403) a read during the wait.
+  The project's item in `data.objects` says `deleted` once the command saw the
+  project gone. If the server refused the read of its backing namespace, the
+  item says `deleted` and the first line says `deletion started`. When the wait
+  for the project or its backing namespace ends with an error,
   `data.error.details` has `committed`, `resourceKind`, `resourceName` and
-  `recovery` beside `objects`.
+  `recovery` of that object beside `objects`.
 - `user`, `project`, `roletemplate`, `globalrole` and `nodedriver` take the
   object's id as the argument, named `id` in help and the schema: the NAME
   column of `get`, not the username or display name. When `get`, `patch` or
@@ -1174,49 +1193,49 @@ seconds; with `get` alone they poll every 2 seconds, and the second GET comes 4
 seconds after the first request.
 
 Waiting for deletion: `delete <kind>` waits until the object is gone unless
-`--wait=false` is given; the other exceptions are below. The object is gone
-when a read of it responds `NOT_FOUND`, a watch reports it deleted, or an
-object with the same name has a different uid from the deleted one (a new
-object took the name). An object that still exists is not gone, even with a
-`metadata.deletionTimestamp` (Terminating); when the command read no uid
-before the delete, only `NOT_FOUND` or the watch ends the wait. The wait reads
-the object as the wait of `get <kind>` does, from the moment the server
-accepts the delete request. `--timeout` is a positive duration, `5m` by
+`--wait=false` is given; the one other exception, the token this command uses,
+is below. The object is gone when a read of it responds `NOT_FOUND`, a watch
+reports it deleted, or an object with the same name has a different uid from the
+deleted one (a new object took the name). An object that still exists is not
+gone, even with a `metadata.deletionTimestamp` (Terminating); when the command
+read no uid before the delete, only `NOT_FOUND` or the watch ends the wait. The
+wait reads the object as the wait of `get <kind>` does, from the moment the
+server accepts the delete request. `--timeout` is a positive duration, `5m` by
 default, and is one time limit for all the objects the command waits for.
 `--wait=false` returns once the server accepts the request, and the first line
-says `deletion started` instead of `deleted`; `--wait=false` with `--timeout`
-is refused. With `-o json`, `data.waited` is `true` only when the command saw
-every object deleted. A timeout (exit 1), an interrupt (exit 130), or an
+says `deletion started` instead of `deleted`; `--wait=false` with `--timeout` is
+refused. With `-o json`, `data.waited` is `true` only when the command saw every
+object deleted. A timeout (exit 1), an interrupt (exit 130), or an
 authentication (`AUTH`, exit 3) or certificate (`TLS_TRUST`, exit 10) failure
-after the server accepted the delete request is an error that is not
-retryable. Its `data.error.details` say the deletion was requested
-(`committed: true`) and name the object (`resourceKind`, `resourceName`) and a
-`rancher get` command that reads it (`recovery`). The next step is that read,
-not a second delete; after an `AUTH` error, log in again before the read (if
-`RANCHER_CLI_TOKEN` holds the token the command uses, set it to another token
-or unset it).
-Deleting the ext token the command uses ends with an `AUTH` error after the
+after the server accepted the delete request is an error that is not retryable.
+Its `data.error.details` say the deletion was requested (`committed: true`) and
+name the object (`resourceKind`, `resourceName`) and a `rancher get` command
+that reads it (`recovery`). The next step is that read, not a second delete;
+after an `AUTH` error, log in again before the read (if `RANCHER_CLI_TOKEN`
+holds the token this command uses, set it to another token or unset it).
+Deleting the ext token this command uses ends with an `AUTH` error after the
 delete, with the committed details, because before the delete the command does
-not check whether the token to delete is the ext token it uses. When the
-server refuses (403) a read of an object the command read before the delete,
-the wait for that object ends: the result says `deletion started` with a
-warning that your access ended after the request and the deletion is not
-confirmed, and `data.waited` is `false`. A project owner's access ends when
-Rancher deletes the project, which ends the owner's wait this way. Deleting
-the token the command uses (from a login or `RANCHER_CLI_TOKEN`) does not wait
-when Rancher marks it as derived, since the server refuses every read made
-with a deleted token: the result says `deletion started` with a note to log in
-again (or, if `RANCHER_CLI_TOKEN` holds the token, to set it to another token
-or unset it). With the wait on and without `--delete-namespaces`,
-`delete project` also reads the project's backing namespace on the local
-cluster before the delete (`status.backingNamespace`, else the project id) and
-waits for it too when it can read it; when that read is refused (403) it does
-not wait for the namespace, warns, and `data.waited` is `false`. Any other
-server or network error on that read stops the command before it sends the
-delete, and fails a `--dry-run` the same way; nothing that changes the server
-is sent. With `--delete-namespaces` the command does not wait: it refuses
-`--timeout` and refuses `--wait` except `--wait=false`, and it prints a
-warning that it does not wait, except with `--wait=false`.
+not check whether the token to delete is the ext token it uses. When the server
+refuses (403) a read of an object the command read before the delete, the wait
+for that object ends: the result says `deletion started` with a warning that
+your access ended after the request and the deletion is not confirmed, and
+`data.waited` is `false`. A project owner's access ends when Rancher deletes the
+project, which ends the owner's wait this way. Deleting the token this command
+uses (from a login or `RANCHER_CLI_TOKEN`) does not wait when Rancher marks it
+as derived, since the server refuses every read made with a deleted token: the
+result says `deletion started` with a note to log in again (or, if
+`RANCHER_CLI_TOKEN` holds the token, to set it to another token or unset it).
+With the wait on, `delete project` also reads the project's backing namespace on
+the local cluster before the delete (`status.backingNamespace`, else the project
+id) and waits for it too when it can read it, with or without
+`--delete-namespaces`; when that read is refused (403) it does not wait for the
+namespace, warns, and `data.waited` is `false`. Any other server or network
+error on that read stops the command before it sends the delete, and fails a
+`--dry-run` the same way; nothing that changes the server is sent. With
+`--delete-namespaces` the command waits for the namespaces and then for the
+project, as described under `delete project`; `--wait` and `--timeout` work as
+for every other delete, and `--wait=false` skips the wait and the read of the
+backing namespace.
 
 `rancher kubeconfig` prints one context through the Rancher proxy and, when the
 cluster has the Authorized Cluster Endpoint enabled and the

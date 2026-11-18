@@ -116,6 +116,18 @@ type deleteTarget struct {
 	// delete: a refused read after it means the delete took away the
 	// caller's access, not that the caller never had it.
 	readBefore bool
+	// subjectKind and subjectName, when set, replace the target's kind and
+	// name in the committed details of an error: when the wait for a
+	// namespace of a project fails, the details name the project, which the
+	// command did not delete.
+	subjectKind, subjectName string
+}
+
+// newDeleteTarget is the target of the wait for obj, an object of kind k that
+// the command read before it sent the delete.
+func newDeleteTarget(k kinds.Kind, ns, name string, obj *unstructured.Unstructured, effectCluster string) deleteTarget {
+	return deleteTarget{gvr: k.GVR, ns: ns, name: name, uid: string(obj.GetUID()), kind: k.Name,
+		recovery: deleteRecovery(k, ns, name, effectCluster), readBefore: true}
 }
 
 // deleteRecovery builds the get command that reads the object just deleted,
@@ -273,7 +285,11 @@ func (t deleteTarget) state(obj *unstructured.Unstructured) string {
 }
 
 func (t deleteTarget) committed() clierr.CommittedContextDetails {
-	return clierr.CommittedContextDetails{Committed: true, ResourceKind: t.kind, ResourceName: t.name, Recovery: t.recovery.Field()}
+	kind, name := t.kind, t.name
+	if t.subjectKind != "" {
+		kind, name = t.subjectKind, t.subjectName
+	}
+	return clierr.CommittedContextDetails{Committed: true, ResourceKind: kind, ResourceName: name, Recovery: t.recovery.Field()}
 }
 
 // committedError is the error that ends the wait with code GENERIC: the

@@ -15,7 +15,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
-	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -605,10 +604,8 @@ func timeoutLadderSite(site CompletionSite, d runtime.Descriptor) bool {
 
 // timeoutRefused reports whether the words typed so far make a delete
 // refuse --timeout: --wait with a value the parser reads as false
-// (strconv.ParseBool, as for every bool flag), or, for delete project,
-// --delete-namespaces bare or with a value it reads as true. A bool flag
-// takes a value only joined with "=". Words after "--" are arguments, not
-// flags.
+// (strconv.ParseBool, as for every bool flag). A bool flag takes a value only
+// joined with "=". Words after "--" are arguments, not flags.
 func timeoutRefused(d runtime.Descriptor, tail []string) bool {
 	if !strings.HasPrefix(d.Name, "delete ") {
 		return false
@@ -624,13 +621,6 @@ func timeoutRefused(d runtime.Descriptor, tail []string) bool {
 		switch name {
 		case "wait":
 			if b, err := strconv.ParseBool(value); joined && err == nil && !b {
-				return true
-			}
-		case resources.FlagDeleteNamespaces:
-			if !joined {
-				return true
-			}
-			if b, err := strconv.ParseBool(value); err == nil && b {
 				return true
 			}
 		}

@@ -44,6 +44,15 @@ type projClient struct {
 	// lastReview is the object of the last PostReview.
 	lastReview *unstructured.Unstructured
 	deleted    deletedNames
+	// lingers is how many GETs of a "namespace/name" key return the object
+	// stored under it before the key responds with NOT_FOUND, whether or not the
+	// object was deleted.
+	lingers    map[string]int
+	lingerSeen map[string]int
+	// getErr is the response of every GET of a "namespace/name" key.
+	getErr map[string]error
+	// onGet is called at the start of every GET with its key.
+	onGet func(key string)
 }
 
 func (c *projClient) record(format string, args ...any) {
@@ -53,6 +62,22 @@ func (c *projClient) record(format string, args ...any) {
 func (c *projClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	key := ns + "/" + name
 	c.record("get %s", key)
+	if c.onGet != nil {
+		c.onGet(key)
+	}
+	if err := c.getErr[key]; err != nil {
+		return nil, err
+	}
+	if limit, ok := c.lingers[key]; ok {
+		if c.lingerSeen == nil {
+			c.lingerSeen = map[string]int{}
+		}
+		if c.lingerSeen[key] >= limit || len(c.objs[key]) == 0 {
+			return nil, clierr.New(clierr.CodeNotFound, "not found: "+key)
+		}
+		c.lingerSeen[key]++
+		return c.objs[key][0].DeepCopy(), nil
+	}
 	if err := c.deleted.notFound(ns, name); err != nil {
 		return nil, err
 	}
@@ -278,6 +303,18 @@ func objectsByName(objs []safety.Object) map[string]string {
 	out := map[string]string{}
 	for _, o := range objs {
 		out[o.Kind+"/"+o.Name] = o.Outcome
+	}
+	return out
+}
+
+// deletesOf is the requests of log that delete something and are not a dry
+// run, in order.
+func deletesOf(log []string) []string {
+	var out []string
+	for _, call := range log {
+		if strings.HasPrefix(call, "delete ") {
+			out = append(out, call)
+		}
 	}
 	return out
 }
@@ -576,7 +613,7 @@ func TestDeleteProjectFlagListsAndDryRunsEveryNamespace(t *testing.T) {
 		"  being deleted: old",
 	}, runtime.ObjectLines(eff.Objects, "project"))
 	assert.Equal(t, []string{
-		"get c-abc/p-1", "dry-run delete c-abc/p-1 rv=5", "list namespaces",
+		"get c-abc/p-1", "get /c-abc-p-1", "dry-run delete c-abc/p-1 rv=5", "list namespaces",
 		"dry-run delete apps rv=11", "dry-run delete legacy rv=13", "dry-run delete tools rv=12",
 	}, f.log, "no review, and no namespace is written before the apply")
 	assert.Equal(t, "5", eff.ResourceVersion)
@@ -680,7 +717,7 @@ func TestDeleteProjectFlagRefusesAFailedRead(t *testing.T) {
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
 	assert.Equal(t, "could not read the project's namespaces: the token expired; --delete-namespaces needs the full list before it deletes anything; the hint previews deleting the project without its namespaces: add --apply --yes after reading the preview", ce.Message)
 	assert.Equal(t, clierr.Rancher+" delete project 'p-1' --cluster 'c-abc' --dry-run", ce.Hint)
-	assert.Equal(t, []string{"get c-abc/p-1", "dry-run delete c-abc/p-1 rv=5", "list namespaces"}, f.log)
+	assert.Equal(t, []string{"get c-abc/p-1", "get /c-abc-p-1", "dry-run delete c-abc/p-1 rv=5", "list namespaces"}, f.log)
 }
 
 // TestDeleteProjectFlagRefusedNamespaceDryRunRefusesBeforeAnyWrite asserts a
@@ -710,7 +747,8 @@ func TestDeleteProjectFlagRefusedNamespaceDryRunRefusesBeforeAnyWrite(t *testing
 
 // TestDeleteProjectFlagDeletesNamespacesInNameOrderThenTheProject asserts
 // the executor deletes the namespaces one at a time sorted by name, each
-// with its own resourceVersion, treats NOT_FOUND as already gone, and
+// with its own resourceVersion, treats NOT_FOUND as already gone, waits for
+// the namespaces it deleted and for the one already being deleted, and
 // deletes the project last with its resourceVersion.
 func TestDeleteProjectFlagDeletesNamespacesInNameOrderThenTheProject(t *testing.T) {
 	t.Parallel()
@@ -730,19 +768,24 @@ func TestDeleteProjectFlagDeletesNamespacesInNameOrderThenTheProject(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		"delete apps rv=11", "delete tools rv=12", "delete vanished rv=14", "delete c-abc/p-1 rv=5",
-	}, f.log[planned:], "name order, each with its resourceVersion, the project last")
+	}, deletesOf(f.log[planned:]), "name order, each with its resourceVersion, the project last")
+	assert.Equal(t, []string{
+		"delete apps rv=11", "delete tools rv=12", "delete vanished rv=14",
+		"get /apps", "get /old", "get /tools",
+		"delete c-abc/p-1 rv=5", "get c-abc/p-1",
+	}, f.log[planned:], "every namespace is waited for in name order before the project is deleted; the project is waited for after")
 
 	assert.Equal(t, "ProjectDelete", res.Kind)
-	assert.Equal(t, "project/p-1 deletion started\n  namespaces:\n    not deleted: default (Kubernetes never deletes it)\n    being deleted: old\n    deletion started: apps, tools\n    already gone: vanished\n", res.Text)
+	assert.Equal(t, "project/p-1 deleted\n  namespaces:\n    not deleted: default (Kubernetes never deletes it)\n    being deleted: old\n    deleted: apps, tools\n    already gone: vanished\n", res.Text)
 	deleted, objects := resultData(t, res)
 	assert.Equal(t, "p-1", deleted)
 	assert.Equal(t, []safety.Object{
-		{Kind: "namespace", Name: "apps", Outcome: "deletion started"},
+		{Kind: "namespace", Name: "apps", Outcome: "deleted"},
 		{Kind: "namespace", Name: "default", Outcome: "not deleted", Message: "Kubernetes never deletes it"},
 		{Kind: "namespace", Name: "old", Outcome: "being deleted"},
-		{Kind: "namespace", Name: "tools", Outcome: "deletion started"},
+		{Kind: "namespace", Name: "tools", Outcome: "deleted"},
 		{Kind: "namespace", Name: "vanished", Outcome: "already gone"},
-		{Kind: "project", Name: "p-1", Outcome: "deletion started"},
+		{Kind: "project", Name: "p-1", Outcome: "deleted"},
 	}, objects)
 	assert.Equal(t, "will be deleted", eff.Objects[len(eff.Objects)-1].Outcome, "the planned list is not changed by the run")
 }
@@ -767,7 +810,7 @@ func TestDeleteProjectFlagStopsAtTheFirstFailedNamespace(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Empty(t, ce.Hint)
-	assert.Equal(t, "delete project partially applied: deletion started for 1 namespaces, failed on tools, 1 not attempted; the project was kept; re-run the same command; it reads the project's namespaces again", ce.Message)
+	assert.Equal(t, "delete project partially applied: deletion started for 1 namespaces, failed on tools, 1 not attempted; the project was kept; run the same command again, which reads the project's current namespaces", ce.Message)
 	assert.Equal(t, []safety.Object{
 		{Kind: "namespace", Name: "apps", Outcome: "deletion started"},
 		{Kind: "namespace", Name: "old", Outcome: "being deleted"},
@@ -802,7 +845,7 @@ func TestDeleteProjectFlagFailureCounts(t *testing.T) {
 	}{
 		{
 			name: "the first namespace fails", failing: "apps",
-			message: "delete project partially applied: deletion started for 0 namespaces, failed on apps, 2 not attempted; the project was kept; re-run the same command; it reads the project's namespaces again",
+			message: "delete project partially applied: deletion started for 0 namespaces, failed on apps, 2 not attempted; the project was kept; run the same command again, which reads the project's current namespaces",
 			want: []safety.Object{
 				{Kind: "namespace", Name: "apps", Outcome: "failed", Code: clierr.CodeRBAC, Message: "forbidden"},
 				{Kind: "namespace", Name: "tools", Outcome: "not attempted"},
@@ -812,7 +855,7 @@ func TestDeleteProjectFlagFailureCounts(t *testing.T) {
 		},
 		{
 			name: "an already gone namespace before the failure", gone: "apps", failing: "tools",
-			message: "delete project partially applied: deletion started for 0 namespaces, failed on tools, 1 not attempted; the project was kept; re-run the same command; it reads the project's namespaces again",
+			message: "delete project partially applied: deletion started for 0 namespaces, failed on tools, 1 not attempted; the project was kept; run the same command again, which reads the project's current namespaces",
 			want: []safety.Object{
 				{Kind: "namespace", Name: "apps", Outcome: "already gone"},
 				{Kind: "namespace", Name: "tools", Outcome: "failed", Code: clierr.CodeRBAC, Message: "forbidden"},
@@ -883,10 +926,10 @@ func TestDeleteProjectFlagRetriesAConflictThatChangedOnlyTheUsedLimit(t *testing
 	res, err := exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"delete c-abc/p-1 rv=5", "get c-abc/p-1", "delete c-abc/p-1 rv=7",
-	}, f.log[planned+1:])
+		"delete c-abc/p-1 rv=5", "get c-abc/p-1", "delete c-abc/p-1 rv=7", "get c-abc/p-1",
+	}, f.log[planned+2:], "the re-read after the conflict, the retry, then the read that sees the project gone")
 	_, objects := resultData(t, res)
-	assert.Equal(t, safety.Object{Kind: "project", Name: "p-1", Outcome: "deletion started"}, objects[len(objects)-1])
+	assert.Equal(t, safety.Object{Kind: "project", Name: "p-1", Outcome: "deleted"}, objects[len(objects)-1])
 }
 
 // TestDeleteProjectFlagProjectChangedIsAConflict asserts a conflict after a
@@ -915,11 +958,11 @@ func TestDeleteProjectFlagProjectChangedIsAConflict(t *testing.T) {
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeConflict, ce.Code)
-			assert.Equal(t, "project p-1 changed after it was read; its namespaces are being deleted and the project was kept; re-run the same command", ce.Message)
+			assert.Equal(t, "project p-1 changed after it was read; its namespaces were deleted or are being deleted and the project was kept; run the same command again", ce.Message)
 			objs := detailsOf(t, err).Objects
-			assert.Equal(t, "deletion started", objectsByName(objs)["namespace/apps"])
+			assert.Equal(t, "deleted", objectsByName(objs)["namespace/apps"])
 			assert.Equal(t, "failed", objectsByName(objs)["project/p-1"])
-			assert.Equal(t, []string{"delete apps rv=1", "delete c-abc/p-1 rv=5", "get c-abc/p-1"}, f.log[planned:], "the project is not deleted with the changed object")
+			assert.Equal(t, []string{"delete apps rv=1", "get /apps", "delete c-abc/p-1 rv=5", "get c-abc/p-1"}, f.log[planned:], "the project is not deleted with the changed object")
 		})
 	}
 }
@@ -947,9 +990,9 @@ func TestDeleteProjectFlagDoesNotRetryAConflictThatIsNotRetryable(t *testing.T) 
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Equal(t, refused, ce.Message)
-	assert.Equal(t, []string{"delete apps rv=1", "delete c-abc/p-1 rv=5"}, f.log[planned:], "the project is deleted once and not read again")
+	assert.Equal(t, []string{"delete apps rv=1", "get /apps", "delete c-abc/p-1 rv=5"}, f.log[planned:], "the project is deleted once and not read again")
 	objs := detailsOf(t, err).Objects
-	assert.Equal(t, "deletion started", objectsByName(objs)["namespace/apps"])
+	assert.Equal(t, "deleted", objectsByName(objs)["namespace/apps"])
 	assert.Equal(t, "failed", objectsByName(objs)["project/p-1"])
 }
 
@@ -1023,7 +1066,7 @@ func TestDeleteProjectFlagGivesUpAfterThreeRetries(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
-	assert.Equal(t, "project p-1 changed after it was read; its namespaces are being deleted and the project was kept; re-run the same command", ce.Message)
+	assert.Equal(t, "project p-1 changed after it was read; its namespaces were deleted or are being deleted and the project was kept; run the same command again", ce.Message)
 	var deletes int
 	for _, call := range f.log[planned:] {
 		if strings.HasPrefix(call, "delete c-abc/p-1") {
@@ -1051,7 +1094,8 @@ func TestDeleteProjectFlagProjectDeleteFailureKeepsItsCode(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "projects is forbidden", ce.Message)
-	assert.Equal(t, map[string]string{"namespace/apps": "deletion started", "project/p-1": "failed"}, objectsByName(detailsOf(t, err).Objects))
+	assert.Equal(t, map[string]string{"namespace/apps": "deleted", "project/p-1": "failed"}, objectsByName(detailsOf(t, err).Objects),
+		"a namespace the command saw gone before the project delete failed is deleted")
 }
 
 // TestDeleteProjectRefusesBeforeReadingNamespaces asserts a project the
@@ -1065,5 +1109,5 @@ func TestDeleteProjectRefusesBeforeReadingNamespaces(t *testing.T) {
 	}
 	_, _, err := f.plan(t, true)
 	require.ErrorContains(t, err, "forbidden")
-	assert.Equal(t, []string{"get c-abc/p-1", "dry-run delete c-abc/p-1 rv=5"}, f.log)
+	assert.Equal(t, []string{"get c-abc/p-1", "get /c-abc-p-1", "dry-run delete c-abc/p-1 rv=5"}, f.log)
 }

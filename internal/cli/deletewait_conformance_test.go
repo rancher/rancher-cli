@@ -17,6 +17,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,11 +49,6 @@ const (
 func dwRefusedWarning(kind, name string) string {
 	return "your access to " + kind + " " + name + " ended after the delete request; the deletion was requested and not confirmed"
 }
-
-// dwDeleteNamespacesWarning is the warning of a delete project run with
-// --delete-namespaces.
-var dwDeleteNamespacesWarning = "with --delete-namespaces the command does not wait for the namespaces and the project to be deleted; check with " +
-	clierr.Rancher + " get project '" + dwObject + "' --cluster '" + dwCluster + "'"
 
 // dwRequest is one request a fake client received.
 type dwRequest struct {
@@ -95,10 +91,26 @@ type dwServer struct {
 	// listErr and watchErr are the responses of ListObject and WatchObject
 	// of a watching client.
 	listErr, watchErr error
+	// terminating serves dwMember as a namespace that is being deleted
+	// before the run starts: the List says Terminating, and its GETs respond
+	// as after a delete, with no delete sent.
+	terminating bool
+	// extraMembers are further namespaces of the project the List serves;
+	// a name in notFoundOnDelete responds NOT_FOUND to its delete.
+	extraMembers     []string
+	notFoundOnDelete map[string]bool
 }
 
 func newDWServer() *dwServer {
-	return &dwServer{n: map[string]int{}, never: map[string]bool{}, gone: map[string]bool{}, after: map[string]int{}, uid: "u1"}
+	return &dwServer{n: map[string]int{}, never: map[string]bool{}, gone: map[string]bool{}, after: map[string]int{}, notFoundOnDelete: map[string]bool{}, uid: "u1"}
+}
+
+// beingDeleted makes dwMember a namespace that is already being deleted.
+func (s *dwServer) beingDeleted() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.terminating = true
+	s.gone[dwMember] = true
 }
 
 func (s *dwServer) record(cluster, verb string, gvr schema.GroupVersionResource, ns, name string) {
@@ -160,6 +172,10 @@ func (s *dwServer) object(gvr schema.GroupVersionResource, ns, name, uid string)
 	case gvr.Resource == "namespaces":
 		obj.Object["kind"] = "Namespace"
 		_ = unstructured.SetNestedField(obj.Object, "Active", "status", "phase")
+		// A namespace belongs to the project dwObject on dwCluster through its
+		// field.cattle.io/projectId annotation and label.
+		obj.SetAnnotations(map[string]string{"field.cattle.io/projectId": dwCluster + ":" + dwObject})
+		obj.SetLabels(map[string]string{"kubernetes.io/metadata.name": name, "field.cattle.io/projectId": dwObject})
 	}
 	return obj
 }
@@ -237,6 +253,9 @@ func (s *dwServer) delete(cluster string, gvr schema.GroupVersionResource, ns, n
 	if s.deleteErr != nil {
 		return s.deleteErr
 	}
+	if s.notFoundOnDelete[name] {
+		return dwNotFound(name)
+	}
 	s.gone[name] = true
 	if dwIsProjects(gvr) {
 		s.gone[dwCluster+"-"+name] = true
@@ -260,7 +279,16 @@ func (c *dwClient) List(_ context.Context, gvr schema.GroupVersionResource, ns, 
 	c.s.record(c.cluster, "list", gvr, ns, "")
 	out := &unstructured.UnstructuredList{}
 	if gvr.Resource == "namespaces" {
-		out.Items = append(out.Items, *c.s.object(gvr, "", dwMember, "u-ns"))
+		member := c.s.object(gvr, "", dwMember, c.s.uid)
+		c.s.mu.Lock()
+		if c.s.terminating {
+			_ = unstructured.SetNestedField(member.Object, "Terminating", "status", "phase")
+		}
+		c.s.mu.Unlock()
+		out.Items = append(out.Items, *member)
+		for _, name := range c.s.extraMembers {
+			out.Items = append(out.Items, *c.s.object(gvr, "", name, c.s.uid))
+		}
 	}
 	return out, nil
 }
@@ -362,7 +390,12 @@ func (n dwNamer) ActiveTokenID() (string, error) { return n.id, nil }
 
 // dwRow is one delete command of the registry and the flags that route it.
 type dwRow struct {
+	// name titles the row's subtests; command is the registered command it
+	// runs, which differs from name for the row of a flag.
 	name    string
+	command string
+	// flagRun is the row of delete project with --delete-namespaces.
+	flagRun bool
 	k       kinds.Kind
 	e       entry
 	routing map[string]string
@@ -371,6 +404,17 @@ type dwRow struct {
 }
 
 func (r dwRow) project() bool { return r.k.Key == "project" }
+
+// registeredRows are the rows that run a registered command by its name.
+func registeredRows(rows []dwRow) int {
+	n := 0
+	for _, r := range rows {
+		if !r.flagRun {
+			n++
+		}
+	}
+	return n
+}
 
 // dwRows is every entry whose command name starts with "delete ".
 func dwRows(t *testing.T) []dwRow {
@@ -404,7 +448,14 @@ func dwRows(t *testing.T) []dwRow {
 		if k.Scope == kinds.Management {
 			cluster = engine.LocalCluster
 		}
-		rows = append(rows, dwRow{name: d.Name, k: k, e: e, routing: routing, cluster: cluster})
+		row := dwRow{name: d.Name, command: d.Name, k: k, e: e, routing: routing, cluster: cluster}
+		rows = append(rows, row)
+		if row.project() {
+			flagRow := row
+			flagRow.name += " --" + resources.FlagDeleteNamespaces
+			flagRow.flagRun = true
+			rows = append(rows, flagRow)
+		}
 	}
 	return rows
 }
@@ -414,7 +465,15 @@ func (r dwRow) input(values map[string]string, bools map[string]bool) fieldCover
 	v := map[string]string{}
 	maps.Copy(v, r.routing)
 	maps.Copy(v, values)
-	return fieldCoverageInput{args: []string{dwObject}, values: v, bools: bools}
+	b := map[string]bool{}
+	maps.Copy(b, bools)
+	if r.flagRun {
+		b[resources.FlagDeleteNamespaces] = true
+	}
+	if len(b) == 0 {
+		b = nil
+	}
+	return fieldCoverageInput{args: []string{dwObject}, values: v, bools: b}
 }
 
 // dwRun is what one Plan and executor run gave.
@@ -445,6 +504,28 @@ type dwData struct {
 	Waited  *bool  `json:"waited"`
 }
 
+// dwObjectItem is an item of the objects a project delete reports.
+type dwObjectItem struct {
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Outcome string `json:"outcome"`
+}
+
+// dwOutcomes maps "kind/name" to the outcome of each item of objects as the
+// JSON envelope carries them.
+func dwOutcomes(t *testing.T, objects any) map[string]string {
+	t.Helper()
+	raw, err := json.Marshal(objects)
+	require.NoError(t, err)
+	var entries []dwObjectItem
+	require.NoError(t, json.Unmarshal(raw, &entries))
+	out := map[string]string{}
+	for _, e := range entries {
+		out[e.Kind+"/"+e.Name] = e.Outcome
+	}
+	return out
+}
+
 func (run dwRun) data(t *testing.T) dwData {
 	t.Helper()
 	raw, err := json.Marshal(run.res.Data)
@@ -453,6 +534,15 @@ func (run dwRun) data(t *testing.T) dwData {
 	require.NoError(t, json.Unmarshal(raw, &d))
 	require.NotNil(t, d.Waited, "the result data has waited")
 	return d
+}
+
+func (run dwRun) outcomes(t *testing.T) map[string]string {
+	t.Helper()
+	raw, err := json.Marshal(run.res.Data)
+	require.NoError(t, err)
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(raw, &data))
+	return dwOutcomes(t, data["objects"])
 }
 
 func (run dwRun) firstLine() string {
@@ -531,7 +621,7 @@ func TestEveryDeleteWaitsUntilTheObjectIsGone(t *testing.T) {
 			registered++
 		}
 	}
-	require.Equal(t, registered, len(rows), "one row per registered delete command")
+	require.Equal(t, registered, registeredRows(rows), "one row per registered delete command")
 
 	for _, r := range rows {
 		t.Run(r.name+" default", func(t *testing.T) {
@@ -554,6 +644,9 @@ func TestEveryDeleteWaitsUntilTheObjectIsGone(t *testing.T) {
 						assert.Equal(t, r.cluster, req.cluster, "%s %s", req.verb, req.name)
 					}
 				}
+				if r.flagRun {
+					dwRequireNamespacesFirst(t, s, run)
+				}
 			})
 		})
 
@@ -565,6 +658,10 @@ func TestEveryDeleteWaitsUntilTheObjectIsGone(t *testing.T) {
 				require.NotNil(t, s.afterDelete())
 				assert.Empty(t, s.afterDelete(), "nothing is sent after the delete")
 				assert.Zero(t, s.count("get", dwBacking, s.requests()), "the backing namespace is not read")
+				if r.flagRun {
+					assert.Zero(t, s.count("get", dwMember, s.requests()), "the namespace is not read")
+					assert.Equal(t, map[string]string{"namespace/" + dwMember: "deletion started", "project/" + dwObject: "deletion started"}, run.outcomes(t))
+				}
 			})
 		})
 
@@ -616,6 +713,9 @@ func TestEveryDeleteWaitsUntilTheObjectIsGone(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				s := newDWServer()
 				s.never[dwObject], s.never[dwBacking] = true, true
+				if r.flagRun {
+					s.n[dwMember] = 0
+				}
 				run := r.run(t, s, nil, false, r.input(map[string]string{"timeout": "1s"}, nil))
 				ce := run.requireCommittedError(t, r, clierr.CodeGeneric, 1)
 				assert.Equal(t, time.Second, run.elapsed)
@@ -722,6 +822,9 @@ func TestEveryDeleteWaitsUntilTheObjectIsGone(t *testing.T) {
 		if r.project() {
 			dwProjectRows(t, r)
 		}
+		if r.flagRun {
+			dwFlagRows(t, r, wr.reg, gets)
+		}
 	}
 }
 
@@ -762,11 +865,232 @@ func dwProjectRows(t *testing.T, r dwRow) {
 			s := newDWServer()
 			s.n[dwObject] = 1
 			s.never[dwBacking] = true
+			if r.flagRun {
+				s.n[dwMember] = 0
+			}
 			run := r.run(t, s, nil, false, r.input(map[string]string{"timeout": "12s"}, nil))
 			ce := run.requireCommittedError(t, r, clierr.CodeGeneric, 1)
 			assert.Equal(t, 12*time.Second, run.elapsed, "one time limit covers the project and its backing namespace")
 			require.ErrorContains(t, ce, "timed out after 12s waiting for namespace "+dwBacking+" to be deleted")
 			assert.Equal(t, 2, s.count("get", dwObject, s.afterDelete()))
+		})
+	})
+}
+
+// dwProjectKept is the end of the message of a run that stopped because of a
+// namespace and did not delete the project.
+const dwProjectKept = "; the project was kept; run the same command again, which reads the project's current namespaces"
+
+// dwProjectRecovery is the get command the details of an error give as the
+// recovery when the project was not deleted.
+var dwProjectRecovery = clierr.Rancher + " get project '" + dwObject + "' --cluster '" + dwCluster + "'"
+
+// dwRequireNamespacesFirst asserts, for a successful run with
+// --delete-namespaces, that the namespace is read dwAfter+1 times after its
+// delete, all before the project's delete, that every request goes to the
+// cluster that holds the object, and that the result lists the namespace and
+// the project as deleted.
+func dwRequireNamespacesFirst(t *testing.T, s *dwServer, run dwRun) {
+	t.Helper()
+	reqs := s.requests()
+	memberDelete, projectDelete, lastMemberGet := -1, -1, -1
+	var memberGets int
+	for i, req := range reqs {
+		switch {
+		case req.verb == "delete" && req.name == dwMember:
+			memberDelete = i
+		case req.verb == "delete" && req.name == dwObject:
+			projectDelete = i
+		case req.verb == "get" && req.name == dwMember && memberDelete >= 0:
+			memberGets++
+			lastMemberGet = i
+		}
+		switch req.name {
+		case dwMember:
+			assert.Equal(t, dwCluster, req.cluster, "%s %s goes to the cluster of the project", req.verb, req.name)
+		case dwObject, dwBacking:
+			assert.Equal(t, engine.LocalCluster, req.cluster, "%s %s goes to the local cluster", req.verb, req.name)
+		}
+	}
+	require.GreaterOrEqual(t, memberDelete, 0, "the namespace is deleted")
+	require.Greater(t, projectDelete, memberDelete, "the project is deleted after the namespace")
+	assert.Equal(t, dwAfter+1, memberGets, "the namespace is read until the server responds NOT_FOUND")
+	assert.Less(t, lastMemberGet, projectDelete, "the project is deleted after the last read of the namespace")
+	assert.Equal(t, map[string]string{"namespace/" + dwMember: "deleted", "project/" + dwObject: "deleted"}, run.outcomes(t))
+	assert.Equal(t, "project/"+dwObject+" deleted", run.firstLine())
+}
+
+// dwRequireNamespaceError asserts the run failed in the wait for a namespace
+// with the error code `code` and did not delete the project: committed
+// details that name the project, the project not attempted, no delete of the
+// project.
+func dwRequireNamespaceError(t *testing.T, s *dwServer, run dwRun, code string) *clierr.Error {
+	t.Helper()
+	require.NoError(t, run.planErr)
+	ce, ok := errors.AsType[*clierr.Error](run.execErr)
+	require.True(t, ok, "a clierr error: %v", run.execErr)
+	assert.Equal(t, code, ce.Code)
+	assert.False(t, ce.Retryable)
+	assert.True(t, strings.HasSuffix(ce.Message, dwProjectKept), ce.Message)
+	details := dwDetails(t, ce)
+	assert.Equal(t, true, details["committed"])
+	assert.Equal(t, "project", details["resourceKind"])
+	assert.Equal(t, dwObject, details["resourceName"])
+	assert.Equal(t, dwProjectRecovery, details["recovery"])
+	assert.Equal(t, "not attempted", dwOutcomes(t, details["objects"])["project/"+dwObject])
+	assert.Zero(t, s.count("delete", dwObject, s.requests()), "the project is not deleted")
+	return ce
+}
+
+// dwFlagRows asserts the rows only delete project --delete-namespaces has:
+// if the wait for a namespace fails, the project is not deleted; a namespace
+// that was being deleted is waited for with no delete; a refused read of a
+// namespace is a warning; namespaces that are already gone or not deleted are
+// not read; and one time limit covers every wait.
+func dwFlagRows(t *testing.T, r dwRow, reg *runtime.Registry, gets map[string]entry) {
+	t.Helper()
+	for _, tc := range []struct {
+		name string
+		err  func() error
+		code string
+		exit int
+	}{
+		{"authentication failure", dwAuthErr, clierr.CodeAuth, 3},
+		{"certificate failure", dwTLSErr, clierr.CodeTLSTrust, 10},
+	} {
+		t.Run(r.name+" "+tc.name+" after the delete of a namespace", func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				s := newDWServer()
+				s.afterGet = func(name string, i int) (*unstructured.Unstructured, error, bool) {
+					if name == dwMember && i == 1 {
+						return nil, tc.err(), true
+					}
+					return nil, nil, false
+				}
+				run := r.run(t, s, nil, false, r.input(nil, nil))
+				ce := dwRequireNamespaceError(t, s, run, tc.code)
+				assert.Equal(t, tc.exit, ce.ExitCode())
+				assert.NotEmpty(t, ce.Hint)
+				assert.Equal(t, map[string]string{"namespace/" + dwMember: "deletion started", "project/" + dwObject: "not attempted"}, dwOutcomes(t, dwDetails(t, ce)["objects"]))
+			})
+		})
+	}
+
+	t.Run(r.name+" timeout of a namespace", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newDWServer()
+			s.never[dwMember] = true
+			run := r.run(t, s, nil, false, r.input(map[string]string{"timeout": "1s"}, nil))
+			ce := dwRequireNamespaceError(t, s, run, clierr.CodeGeneric)
+			assert.Equal(t, time.Second, run.elapsed)
+			assert.Equal(t, dwProjectRecovery, ce.Hint)
+			require.ErrorContains(t, ce, "timed out after 1s waiting for namespace "+dwMember+" to be deleted; the deletion was requested")
+			recovery, _ := dwDetails(t, ce)["recovery"].(string)
+			dwRequireRecoveryReadsTheObject(t, r, gets, s, recovery)
+			assert.Equal(t, map[string]string{"namespace/" + dwMember: "deletion started", "project/" + dwObject: "not attempted"}, dwOutcomes(t, dwDetails(t, ce)["objects"]))
+		})
+	})
+
+	t.Run(r.name+" interrupt during the wait for a namespace", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newDWServer()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			s.cancel = cancel
+			_, ce := dwRunPipeline(ctx, t, reg, r, s, nil, r.input(nil, nil), false)
+			require.NotNil(t, ce)
+			assert.Equal(t, clierr.CodeInterrupted, ce.Code)
+			assert.Equal(t, 130, ce.ExitCode())
+			details := dwDetails(t, ce)
+			assert.Equal(t, true, details["committed"])
+			assert.Equal(t, "project", details["resourceKind"])
+			assert.Equal(t, dwProjectRecovery, details["recovery"])
+			assert.Equal(t, "not attempted", dwOutcomes(t, details["objects"])["project/"+dwObject])
+			assert.Zero(t, s.count("delete", dwObject, s.requests()), "the project is not deleted")
+		})
+	})
+
+	t.Run(r.name+" a namespace that is being deleted", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newDWServer()
+			s.beingDeleted()
+			run := r.run(t, s, nil, false, r.input(nil, nil))
+			run.requireSuccess(t, true, nil)
+			reqs := s.requests()
+			assert.Zero(t, s.count("delete", dwMember, reqs), "no delete of the namespace")
+			assert.Zero(t, s.count("dry-run delete", dwMember, reqs), "no dry-run delete of the namespace")
+			assert.Equal(t, dwAfter+1, s.count("get", dwMember, reqs))
+			var lastGet, projectDelete int
+			for i, req := range reqs {
+				if req.verb == "get" && req.name == dwMember {
+					lastGet = i
+				}
+				if req.verb == "delete" && req.name == dwObject {
+					projectDelete = i
+				}
+			}
+			assert.Less(t, lastGet, projectDelete, "the project is deleted after the last read of the namespace")
+			assert.Equal(t, map[string]string{"namespace/" + dwMember: "being deleted", "project/" + dwObject: "deleted"}, run.outcomes(t))
+		})
+	})
+
+	t.Run(r.name+" a namespace that is being deleted and never goes", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newDWServer()
+			s.beingDeleted()
+			s.never[dwMember] = true
+			run := r.run(t, s, nil, false, r.input(map[string]string{"timeout": "1s"}, nil))
+			ce := dwRequireNamespaceError(t, s, run, clierr.CodeGeneric)
+			require.ErrorContains(t, ce, "timed out after 1s waiting for namespace "+dwMember+" to be deleted")
+			assert.Equal(t, map[string]string{"namespace/" + dwMember: "being deleted", "project/" + dwObject: "not attempted"}, dwOutcomes(t, dwDetails(t, ce)["objects"]))
+			assert.Zero(t, s.count("delete", dwMember, s.requests()), "no delete of the namespace")
+		})
+	})
+
+	t.Run(r.name+" read of a namespace refused after the delete", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newDWServer()
+			s.afterGet = func(name string, i int) (*unstructured.Unstructured, error, bool) {
+				if name == dwMember && i == 1 {
+					return nil, dwForbidden(), true
+				}
+				return nil, nil, false
+			}
+			run := r.run(t, s, nil, false, r.input(nil, nil))
+			run.requireSuccess(t, false, []string{dwRefusedWarning("namespace", dwMember)})
+			assert.Equal(t, 1, s.count("get", dwMember, s.requests()), "one read of the namespace")
+			assert.Equal(t, map[string]string{"namespace/" + dwMember: "deletion started", "project/" + dwObject: "deleted"}, run.outcomes(t))
+			after := s.afterDelete()
+			assert.Equal(t, dwAfter+1, s.count("get", dwObject, after), "the project is still deleted and waited for")
+			assert.Equal(t, dwAfter+1, s.count("get", dwBacking, after))
+		})
+	})
+
+	t.Run(r.name+" namespaces that are already gone or not deleted are not read", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newDWServer()
+			s.extraMembers = []string{"default", "gone-ns"}
+			s.notFoundOnDelete["gone-ns"] = true
+			run := r.run(t, s, nil, false, r.input(nil, nil))
+			run.requireSuccess(t, true, nil)
+			assert.Zero(t, s.count("get", "default", s.requests()))
+			assert.Zero(t, s.count("get", "gone-ns", s.requests()))
+			assert.Equal(t, map[string]string{
+				"namespace/" + dwMember: "deleted", "namespace/default": "not deleted", "namespace/gone-ns": "already gone", "project/" + dwObject: "deleted",
+			}, run.outcomes(t))
+		})
+	})
+
+	t.Run(r.name+" one time limit for the namespace and the project", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := newDWServer()
+			s.n[dwMember] = 1
+			s.never[dwObject] = true
+			run := r.run(t, s, nil, false, r.input(map[string]string{"timeout": "12s"}, nil))
+			ce := run.requireCommittedError(t, r, clierr.CodeGeneric, 1)
+			assert.Equal(t, 12*time.Second, run.elapsed, "one time limit covers the namespace and the project")
+			require.ErrorContains(t, ce, "timed out after 12s waiting for project "+dwObject+" to be deleted")
+			assert.Equal(t, 2, s.count("get", dwMember, s.requests()))
 		})
 	})
 }
@@ -781,7 +1105,7 @@ func dwRunPipeline(ctx context.Context, t *testing.T, reg *runtime.Registry, r d
 		Out: &out, Err: &errOut, Format: "json",
 		Apply: true, Yes: true, AllowDeprecated: true, DryRun: dryRun,
 		Capability: scrubAllowAll{}, Projects: scrubProjects{},
-	}, reg.Binding(r.name))
+	}, reg.Binding(r.command))
 }
 
 // dwRequireRecoveryReadsTheObject runs the recovery command through the
@@ -965,60 +1289,6 @@ func TestDeleteWaitWithAWatchingClient(t *testing.T) {
 				run := r.run(t, s, nil, true, r.input(nil, nil))
 				_ = run.requireCommittedError(t, r, tc.code, tc.exit)
 				assert.Len(t, s.afterDelete(), tc.requests)
-			})
-		})
-	}
-}
-
-// TestDeleteProjectWithNamespacesDoesNotWait asserts that delete project
-// --delete-namespaces does not wait: before any request it refuses
-// --timeout and refuses --wait except --wait=false; the run says the
-// deletion started and warns that it does not wait, except with
-// --wait=false.
-func TestDeleteProjectWithNamespacesDoesNotWait(t *testing.T) {
-	t.Parallel()
-	var r dwRow
-	for _, row := range dwRows(t) {
-		if row.name == "delete project" {
-			r = row
-		}
-	}
-	require.NotEmpty(t, r.name)
-	for _, tc := range []struct {
-		name   string
-		values map[string]string
-		bools  map[string]bool
-		want   string
-	}{
-		{"--wait", nil, map[string]bool{"delete-namespaces": true, "wait": true}, "--wait conflicts with --delete-namespaces, which does not wait; remove --wait or use --wait=false"},
-		{"--timeout 1m", map[string]string{"timeout": "1m"}, map[string]bool{"delete-namespaces": true}, "--timeout conflicts with --delete-namespaces, which does not wait; remove --timeout"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				s := newDWServer()
-				run := r.run(t, s, nil, false, r.input(tc.values, tc.bools))
-				require.ErrorContains(t, run.planErr, tc.want)
-				assert.Equal(t, clierr.CodeValidation, clierr.From(run.planErr).Code)
-				assert.Empty(t, s.requests(), "no request")
-			})
-		})
-	}
-	for _, tc := range []struct {
-		name     string
-		bools    map[string]bool
-		warnings []string
-	}{
-		{"default", map[string]bool{"delete-namespaces": true}, []string{dwDeleteNamespacesWarning}},
-		{"--wait=false", map[string]bool{"delete-namespaces": true, "wait": false}, nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				s := newDWServer()
-				run := r.run(t, s, nil, false, r.input(nil, tc.bools))
-				run.requireSuccess(t, false, tc.warnings)
-				require.NotNil(t, s.afterDelete())
-				assert.Empty(t, s.afterDelete(), "nothing is sent after the project's delete")
-				assert.Zero(t, s.count("get", dwBacking, s.requests()), "the backing namespace is not read")
 			})
 		})
 	}

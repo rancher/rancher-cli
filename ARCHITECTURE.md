@@ -1406,24 +1406,26 @@ VALIDATION error, and there is no `--for` because the only end is the object
 being gone. Every delete command reaches the wait through `PlanFromFetched`,
 which refuses a `DeleteWait` that `ParseDeleteWait` did not make; a source
 scan in `test/conformance` fails on any other delete request outside a dry-run
-unless it is listed with a reason. The one listed delete command, `delete
-project --delete-namespaces`, does not wait and refuses `--timeout` and
-`--wait` except `--wait=false`. `ParseDeleteWait` runs before any request,
-`--dry-run` included, and a dry-run never waits.
+unless the function that sends it also waits for the object it deleted, or the
+request is listed with a reason (revoke, which deletes role bindings and is not
+a delete command). `delete project --delete-namespaces` waits like every other
+delete. `ParseDeleteWait` runs before any request, `--dry-run` included, and a
+dry-run never waits.
 
-**The result line says `deleted` only when the CLI saw every object gone.**
-Any other result says `deletion started` with `data.waited` false. An object
-is gone when a GET responds 404, a watch reports it deleted, or an object of
-the same name has a different uid from the one the command read before the
-delete request (a controller created a new one), both uids non-empty. An
-object with a `deletionTimestamp` is still there. One time limit, started
-after the server accepts the delete request, covers every object waited for: a
-plain `delete project` waits for the Project and then its backing namespace on
-the local cluster (`status.backingNamespace`, else the project id). A timeout,
-an interrupt, or an authentication or certificate failure after the delete
-request is an error that is not retryable. It carries the committed details
-with a `rancher get` command as the recovery, because a second delete does not
-help.
+**The result line says `deleted` only when the CLI saw every object gone.** Any
+other result says `deletion started` with `data.waited` false. An object is gone
+when a GET responds 404, a watch reports it deleted, or an object of the same
+name has a different uid from the one the command read before the delete request
+(a controller created a new one), both uids non-empty. An object with a
+`deletionTimestamp` is still there. One time limit, started after the server
+accepts the delete request, covers every object waited for: a `delete project`
+waits for the Project and then its backing namespace on the local cluster
+(`status.backingNamespace`, else the project id); with `--delete-namespaces` it
+first waits for each namespace it deleted and each namespace that was already
+being deleted, under the same time limit. A timeout, an interrupt, or an
+authentication or certificate failure after the delete request is an error that
+is not retryable. It carries the committed details with a `rancher get` command
+as the recovery, because a second delete does not help.
 
 **A refused read after the delete request ends the wait only for an object the
 command read before the delete.** Deleting a project removes the caller's own
@@ -1433,12 +1435,20 @@ the command read before the delete ends that object's wait with `deletion
 started`, a warning that the caller's access ended after the delete request,
 and `data.waited` false. A 403 on any other object is an error that keeps its
 code and carries the committed details, because the caller may never have been
-able to read it. The project's backing namespace is read once before the
-delete request for the same reason: a namespace the caller can read is waited
-for, one that returns 403 is not waited for and gets a warning, and one that
-is not found needs no wait. Only the response to a GET reaches
-`WaitParams.StopOn`; a 403 on a list or a watch still switches the wait to
-polling.
+able to read it. The project's backing namespace is read once before the delete
+request, with or without `--delete-namespaces`, for the same reason: a namespace
+the caller can read is waited for, one that returns 403 is not waited for and
+gets a warning, and one that is not found needs no wait. Only the response to a
+GET reaches `WaitParams.StopOn`; a 403 on a list or a watch still switches the
+wait to polling.
+
+**`delete project --delete-namespaces` waits for the namespaces before it
+deletes the project.** The project's role bindings still exist while the CLI
+reads the namespaces, and the project owner can no longer read the namespaces
+shortly after the project delete request. If a namespace is not gone within the
+time limit, the command ends with an error and does not delete the project. The
+next run of the same command reads the namespaces again and deletes the project
+only when none is left.
 
 **Deleting the token this command uses sends the delete request and does not
 wait.** In `delete management-token`, when the active token's id is the

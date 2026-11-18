@@ -24,6 +24,7 @@ var objectOutcomeOrder = []string{
 	safety.OutcomeNotDeleted,
 	safety.OutcomeBeingDeleted,
 	safety.OutcomeDeletionStarted,
+	safety.OutcomeDeleted,
 	safety.OutcomeAlreadyGone,
 	safety.OutcomeFailed,
 	safety.OutcomeNotAttempted,

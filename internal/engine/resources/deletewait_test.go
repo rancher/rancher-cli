@@ -233,69 +233,6 @@ func TestDeleteWaitRefusedReadOfAnObjectReadBeforeEndsWithAWarning(t *testing.T)
 	})
 }
 
-// TestDeleteProjectWithNamespacesRefusesWaitTrueAndTimeout asserts
-// --delete-namespaces refuses a --wait of true and a --timeout before any
-// request.
-func TestDeleteProjectWithNamespacesRefusesWaitTrueAndTimeout(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name string
-		in   input
-		want string
-	}{
-		{"--wait", input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-abc"},
-			b: map[string]bool{FlagDeleteNamespaces: true, "wait": true}, isSet: map[string]bool{FlagDeleteNamespaces: true, "wait": true}},
-			"--wait conflicts with --delete-namespaces, which does not wait; remove --wait or use --wait=false"},
-		{"--timeout", input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-abc", "timeout": "1m"},
-			b: map[string]bool{FlagDeleteNamespaces: true}, isSet: map[string]bool{FlagDeleteNamespaces: true, "timeout": true}},
-			"--timeout conflicts with --delete-namespaces, which does not wait; remove --timeout"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			f := newProjectFixture(t, member("apps", "3"))
-			_, _, err := f.cmd.Plan(t.Context(), tc.in)
-			require.ErrorContains(t, err, tc.want)
-			assert.Equal(t, clierr.CodeValidation, clierr.From(err).Code)
-			assert.Empty(t, f.log, "no request")
-		})
-	}
-}
-
-// TestDeleteProjectWithNamespacesDoesNotWait asserts a run with
-// --delete-namespaces says deletion started and waited false, warns that
-// it does not wait, except with --wait=false, and reads nothing after the
-// project's delete.
-func TestDeleteProjectWithNamespacesDoesNotWait(t *testing.T) {
-	t.Parallel()
-	warning := "with --delete-namespaces the command does not wait for the namespaces and the project to be deleted; check with " +
-		clierr.Rancher + " get project 'p-1' --cluster 'c-abc'"
-	for _, tc := range []struct {
-		name     string
-		in       input
-		warnings []string
-	}{
-		{"default", input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-abc"}, b: map[string]bool{FlagDeleteNamespaces: true},
-			isSet: map[string]bool{FlagDeleteNamespaces: true}}, []string{warning}},
-		{"--wait=false", input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-abc"}, b: map[string]bool{FlagDeleteNamespaces: true, "wait": false},
-			isSet: map[string]bool{FlagDeleteNamespaces: true, "wait": true}}, nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			f := newProjectFixture(t, member("apps", "3"))
-			_, exec, err := f.cmd.Plan(t.Context(), tc.in)
-			require.NoError(t, err)
-			res, err := exec(t.Context())
-			require.NoError(t, err)
-			assert.Equal(t, "project/p-1 deletion started\n  namespaces:\n    deletion started: apps\n", res.Text)
-			data, ok := res.Data.(map[string]any)
-			require.True(t, ok)
-			assert.Equal(t, false, data["waited"])
-			assert.Equal(t, tc.warnings, res.Warnings)
-			assert.Equal(t, "delete c-abc/p-1 rv=5", f.log[len(f.log)-1], "nothing is read after the project's delete")
-		})
-	}
-}
-
 // TestDeleteProjectPartialFailureCarriesTheCommittedFields asserts the
 // committed fields sit beside objects in the JSON when the details carry
 // them and are absent otherwise, and that the text lists the objects first.

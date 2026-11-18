@@ -42,8 +42,9 @@ exec rancher get namespace del-ns-a --cluster testcluster -o json
 jsonquery stdout data.status.phase Active
 
 # the run deletes the namespaces, then the project. A namespace is Terminating
-# here, not gone: the test cluster has no namespace controller to finish it.
-exec rancher delete project del-ns --cluster testcluster --delete-namespaces --apply --yes -o json
+# here, not gone: the test cluster has no namespace controller to finish it,
+# so this run does not wait.
+exec rancher delete project del-ns --cluster testcluster --delete-namespaces --apply --yes --wait=false -o json
 cp stdout done.json
 jsonquery done.json kind ProjectDelete
 jsonquery done.json data.deleted del-ns
@@ -59,3 +60,20 @@ exec rancher get namespace del-ns-b --cluster testcluster -o json
 jsonquery stdout data.status.phase Terminating
 ! exec rancher get project del-ns --cluster testcluster -o json
 jsonquery stderr data.error.code NOT_FOUND
+
+# a run that waits stops when a namespace is not gone: the project is not
+# deleted, and the error names the project's get command and every object.
+exec rancher create project del-wait --cluster testcluster --apply
+exec rancher create namespace del-wait-a --project del-wait --cluster testcluster --apply
+! exec rancher delete project del-wait --cluster testcluster --delete-namespaces --apply --yes --timeout 2s -o json
+cp stderr kept.json
+jsonquery kept.json data.error.code GENERIC
+jsonquery kept.json data.error.details.committed true
+jsonquery kept.json data.error.details.resourceKind project
+jsonquery kept.json data.error.details.resourceName del-wait
+jsonquery kept.json data.error.details.objects.0.name del-wait-a
+jsonquery kept.json data.error.details.objects.0.outcome 'deletion started'
+jsonquery kept.json data.error.details.objects.1.kind project
+jsonquery kept.json data.error.details.objects.1.outcome 'not attempted'
+exec rancher get project del-wait --cluster testcluster -o json
+jsonquery stdout data.metadata.name del-wait
