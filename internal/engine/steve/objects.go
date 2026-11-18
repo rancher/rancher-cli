@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	utiljson "k8s.io/apimachinery/pkg/util/json"
 )
 
 // objectRow is one collection item kept as Steve returned it: the raw JSON as
@@ -37,11 +38,13 @@ func objectDecoder[T comparable](inner Decoder[T], required ...[]string) Decoder
 	}
 }
 
+// objectsOf decodes the items as the Kubernetes client does: a whole number is
+// an int64, which the table cells of a numeric column read.
 func objectsOf(r Request, rows []objectRow) ([]unstructured.Unstructured, error) {
 	out := make([]unstructured.Unstructured, 0, len(rows))
 	for _, row := range rows {
 		var obj unstructured.Unstructured
-		if err := json.Unmarshal([]byte(row.JSON), &obj.Object); err != nil || obj.Object == nil {
+		if err := utiljson.Unmarshal([]byte(row.JSON), &obj.Object); err != nil || obj.Object == nil {
 			return nil, protocolError(r.Path(), fmt.Sprintf("item %q is not a JSON object", row.ID))
 		}
 		out = append(out, obj)
@@ -69,6 +72,64 @@ func ProjectObjects(ctx context.Context, get Getter, clusterID string) ([]unstru
 		return nil, collectionRefusal(r, err)
 	}
 	return objectsOf(r, rows)
+}
+
+// typeItemDecoder decodes the id of one item of a collection of one Steve type
+// in namespace, or of every namespace when namespace is "". The id of a
+// namespaced item is <namespace>/<name>.
+func typeItemDecoder(namespace string) Decoder[struct{}] {
+	return func(path string, index int, raw json.RawMessage) (string, struct{}, error) {
+		var item map[string]any
+		if err := json.Unmarshal(raw, &item); err != nil || item == nil {
+			return "", struct{}{}, protocolError(path, fmt.Sprintf("item %d is a JSON %s, not an object", index, jsonClass(raw)))
+		}
+		id, _, _ := unstructured.NestedString(item, "id")
+		itemNamespace, _, _ := unstructured.NestedString(item, "metadata", "namespace")
+		switch {
+		case id == "":
+			return "", struct{}{}, protocolError(path, fmt.Sprintf("item %d has no id", index))
+		case namespace != "" && itemNamespace != namespace:
+			return "", struct{}{}, protocolError(path, fmt.Sprintf("item %q is in namespace %q, not %q", id, itemNamespace, namespace))
+		}
+		return id, struct{}{}, nil
+	}
+}
+
+// TypeObjects reads the objects of Steve type typ in namespace that the caller
+// can read, each as Steve returns it. namespace is "" for every namespace. A
+// non-2xx response is returned as the getter's error, whose status
+// clierr.HTTPStatus reads: the texts of collectionRefusal describe the
+// clusters and projects collections and do not hold for another type.
+func TypeObjects(ctx context.Context, get Getter, typ, namespace string) ([]unstructured.Unstructured, error) {
+	r := Request{Type: typ, Namespace: namespace}
+	rows, err := ReadCollection(ctx, get, r, objectDecoder(typeItemDecoder(namespace), []string{"metadata", "name"}))
+	if err != nil {
+		return nil, err
+	}
+	return objectsOf(r, rows)
+}
+
+// GetTypeObject reads object name of Steve type typ in namespace and returns
+// it as Steve returns it, with whole numbers decoded as int64 as objectsOf
+// does. A non-2xx response is returned as the getter's error, whose status
+// clierr.HTTPStatus reads.
+func GetTypeObject(ctx context.Context, get Getter, typ, namespace, name string) (*unstructured.Unstructured, error) {
+	r := Request{Type: typ, Namespace: namespace, Name: name}
+	body, err := get(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	obj := &unstructured.Unstructured{}
+	if err := utiljson.Unmarshal(body, &obj.Object); err != nil || obj.Object == nil {
+		return nil, protocolError(r.Path(), "not a JSON object")
+	}
+	if got := obj.GetName(); got != name {
+		return nil, protocolError(r.Path(), fmt.Sprintf("the response names %q, not the object requested", got))
+	}
+	if ns := obj.GetNamespace(); ns != namespace {
+		return nil, protocolError(r.Path(), fmt.Sprintf("the response is in namespace %q, not %q", ns, namespace))
+	}
+	return obj, nil
 }
 
 // GetProject reads project id of clusterID through Steve. A non-2xx response

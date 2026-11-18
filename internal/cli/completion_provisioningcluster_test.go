@@ -27,17 +27,17 @@ func provisioningClusterServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 			w.Header().Set("Content-Type", "application/json")
 			switch ns {
 			case "fleet-default":
-				_, _ = w.Write([]byte(`{"items":[
-					{"metadata":{"name":"my-rke2","namespace":"fleet-default"}},
-					{"metadata":{"name":"my-k3s","namespace":"fleet-default"}}
-				]}`))
+				_, _ = w.Write([]byte(`{"data":[
+					{"id":"fleet-default/my-rke2","metadata":{"name":"my-rke2","namespace":"fleet-default"}},
+					{"id":"fleet-default/my-k3s","metadata":{"name":"my-k3s","namespace":"fleet-default"}}
+				],"revision":"1"}`))
 			default:
-				_, _ = fmt.Fprintf(w, `{"items":[{"metadata":{"name":"ns-cluster","namespace":%q}}]}`, ns)
+				_, _ = fmt.Fprintf(w, `{"data":[{"id":"%[1]s/ns-cluster","metadata":{"name":"ns-cluster","namespace":%[1]q}}],"revision":"1"}`, ns)
 			}
 		}
 	}
-	mux.HandleFunc("/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters", handler("fleet-default"))
-	mux.HandleFunc("/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-west/clusters", handler("fleet-west"))
+	mux.HandleFunc("/v1/provisioning.cattle.io.clusters/fleet-default", handler("fleet-default"))
+	mux.HandleFunc("/v1/provisioning.cattle.io.clusters/fleet-west", handler("fleet-west"))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv, &hits

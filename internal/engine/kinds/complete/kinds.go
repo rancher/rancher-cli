@@ -31,7 +31,9 @@ func requirements(k kinds.Kind) (completion.Requirements, bool) {
 // serves the kind's name positional on the generated verbs and, for the
 // namespace and node kinds, the shared --namespace and --node flags. A kind
 // with a Handle also describes each name by the fields of the row's
-// Handle.Lookup (a display name); a kind without one gets no description.
+// Handle.Lookup (a display name); a kind without one gets no description. A
+// kind that sets SteveReadOnForbidden lists its objects through the Steve
+// API for every caller, in one request.
 func KindSource(key string) completion.Source {
 	k, known := kinds.ByKey(key)
 	return completion.Source{
@@ -62,14 +64,25 @@ func NodeSource() completion.Source { return KindSource("node") }
 // downstream kind under a typed --project answers nothing when the project
 // already scopes it; a namespaced kind needs --namespace typed (or the
 // row's default namespace for a workspace kind) and the namespace must be
-// a path segment.
+// a path segment. A kind that sets SteveReadOnForbidden is listed through the
+// Steve API, which has the objects under data; the names are each object's
+// metadata.name, never Steve's id, which is <namespace>/<name>. The server's
+// order is kept and a continue token is not followed.
 func listNames(ctx context.Context, conn *completion.Connection, req completion.Request, k kinds.Kind) completion.Result {
 	p, ok := listPath(req, k)
 	if !ok {
 		return completion.Result{}
 	}
 	var list completion.ItemList
-	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
+	if k.SteveReadOnForbidden {
+		var page struct {
+			Data []map[string]any `json:"data"`
+		}
+		if err := conn.GetJSON(ctx, p, "", &page); err != nil {
+			return completion.Result{}
+		}
+		list = completion.ItemList{Items: page.Data}
+	} else if err := conn.GetJSON(ctx, p, "", &list); err != nil {
 		return completion.Result{}
 	}
 	paths := k.DescriptionPaths()
@@ -95,13 +108,26 @@ func listNames(ctx context.Context, conn *completion.Connection, req completion.
 
 // listPath derives the collection path for k at the site, one arm per
 // (scope, namespace policy) class, or reports false when a typed project
-// scopes the kind out or the site gives it no namespace to list in.
+// scopes the kind out or the site gives it no namespace to list in. A kind
+// that sets SteveReadOnForbidden is listed at the Steve collection path of the
+// typed --namespace, or of the row's default namespace when none is typed.
+// Only a row with a workspace namespace has such a path; any other row that
+// sets SteveReadOnForbidden lists nothing.
 func listPath(req completion.Request, k kinds.Kind) (completion.Path, bool) {
 	if k.Scope == kinds.Downstream && kinds.ProjectScopable(k) && req.Project != "" {
 		return completion.Path{}, false
 	}
 	g, v, r := k.GVR.Group, k.GVR.Version, k.GVR.Resource
 	ns := completion.TailFlag(req.Tail, "namespace")
+	if k.SteveReadOnForbidden {
+		if k.Policy != kinds.NSWorkspace {
+			return completion.Path{}, false
+		}
+		if ns == "" {
+			ns = k.DefaultNamespace
+		}
+		return built(completion.SteveNamespacedCollectionPath(k.SteveType(), ns))
+	}
 	switch {
 	case k.Scope == kinds.Downstream && k.Policy == kinds.NSNone:
 		return built(completion.ClusterPath(req.ClusterID, g, v, r))

@@ -102,6 +102,7 @@ var byIDReadAllowlist = map[string]byIDAllowance{
 	"internal/engine/steve/objects.go:GetClusterObject": {1, "internal/engine/steve:TestClusterLookupsRefusedByIDAreRBAC", ""},
 	"internal/engine/steve/objects.go:GetProject":       {1, "internal/engine/steve:TestGetProjectKeepsTheStatusOfARefusedRead", ""},
 	"internal/engine/steve/projects.go:resolveProject":  {1, "internal/engine/steve:TestProjectLookupsRefusedByIDAreRBAC", ""},
+	"internal/engine/steve/objects.go:GetTypeObject":    {1, "", "a provisioning cluster or etcd snapshot by name, not a cluster or project"},
 
 	"internal/engine/inspect/project.go:(*projectCmd).Execute": {1, "", "a read after a resolution; the status table classifies its 403 as RBAC"},
 	"internal/engine/inspect/user.go:projectDisplayName":       {1, "", "a read after a resolution; the status table classifies its 403 as RBAC"},

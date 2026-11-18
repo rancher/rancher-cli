@@ -11,8 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// listBody is the two-item list every path of the fixture answers.
-const listBody = `{"items":[{"metadata":{"name":"b"}},{"metadata":{"name":"a"}}]}`
+// listBody is the two-item list every path of the fixture responds with, under
+// items as the Kubernetes API returns it and under data as the Steve API does.
+const listBody = `{"items":[{"metadata":{"name":"b"}},{"metadata":{"name":"a"}}],"data":[{"id":"ns/b","metadata":{"name":"b"}},{"id":"ns/a","metadata":{"name":"a"}}]}`
 
 func mustKind(t *testing.T, key string) kinds.Kind {
 	t.Helper()
@@ -92,7 +93,8 @@ func TestKindSourceClaim(t *testing.T) {
 // cluster's proxy, namespaced kinds in the typed --namespace, management
 // kinds through the management cluster, a workspace kind in its default
 // namespace unless --namespace is typed, a cluster-namespaced kind in the
-// resolved cluster's namespace.
+// resolved cluster's namespace, and a kind that sets SteveReadOnForbidden
+// through the Steve API.
 func TestKindSourceCompletePaths(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -110,8 +112,10 @@ func TestKindSourceCompletePaths(t *testing.T) {
 		{name: "role in a typed namespace", key: "role", req: completion.Request{ClusterID: "c-x", Tail: []string{"get", "role", "--cluster", "c-x", "--namespace", "default"}}, path: "/k8s/clusters/c-x/apis/rbac.authorization.k8s.io/v1/namespaces/default/roles"},
 		{name: "nodedriver", key: "nodedriver", req: completion.Request{}, path: "/k8s/clusters/local/apis/management.cattle.io/v3/nodedrivers"},
 		{name: "oidcclient", key: "oidcclient", req: completion.Request{}, path: "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients"},
-		{name: "provisioning cluster in the default namespace", key: "provisioningcluster", req: completion.Request{}, path: "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"},
-		{name: "provisioning cluster in a typed namespace", key: "provisioningcluster", req: completion.Request{Tail: []string{"--namespace", "team-a"}}, path: "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters"},
+		{name: "provisioning cluster in the default namespace", key: "provisioningcluster", req: completion.Request{}, path: "/v1/provisioning.cattle.io.clusters/fleet-default"},
+		{name: "provisioning cluster in a typed namespace", key: "provisioningcluster", req: completion.Request{Tail: []string{"--namespace", "team-a"}}, path: "/v1/provisioning.cattle.io.clusters/team-a"},
+		{name: "etcd snapshot in the default namespace", key: "etcdsnapshot", req: completion.Request{}, path: "/v1/rke.cattle.io.etcdsnapshots/fleet-default"},
+		{name: "etcd snapshot in a typed namespace", key: "etcdsnapshot", req: completion.Request{Tail: []string{"--namespace", "local"}}, path: "/v1/rke.cattle.io.etcdsnapshots/local"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -229,7 +233,8 @@ func TestKindSourceDescribesTheKindsThatHaveAHandle(t *testing.T) {
 // description fields its objects carry.
 func TestKindSourceDescribesNothingWithoutAHandle(t *testing.T) {
 	t.Parallel()
-	body := `{"items":[{"metadata":{"name":"a"},"displayName":"A","description":"d","spec":{"displayName":"A","description":"d"}}]}`
+	item := `{"metadata":{"name":"a"},"displayName":"A","description":"d","spec":{"displayName":"A","description":"d"}}`
+	body := `{"items":[` + item + `],"data":[` + item + `]}`
 	tests := []struct {
 		key string
 		req completion.Request
@@ -240,6 +245,7 @@ func TestKindSourceDescribesNothingWithoutAHandle(t *testing.T) {
 		{key: "node", req: completion.Request{ClusterID: "c-x"}},
 		{key: "oidcclient", req: completion.Request{}},
 		{key: "provisioningcluster", req: completion.Request{}},
+		{key: "etcdsnapshot", req: completion.Request{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
@@ -322,4 +328,54 @@ func TestClusterRepoSourceAnswersNothingWithoutACluster(t *testing.T) {
 		assert.Empty(t, got.Names, "cluster %q", id)
 		assert.Empty(t, ls.Requested(), "cluster %q", id)
 	}
+}
+
+// TestKindSourceReadsTheNamesOfASteveKindFromMetadataName asserts the names of
+// a kind that sets SteveReadOnForbidden come from metadata.name of the items
+// under data, never from the id of a namespaced item (<namespace>/<name>), in
+// the server's order, and that a response with no data has no names.
+func TestKindSourceReadsTheNamesOfASteveKindFromMetadataName(t *testing.T) {
+	t.Parallel()
+	body := `{"data":[{"id":"fleet-default/web","metadata":{"name":"web","namespace":"fleet-default"}},{"id":"fleet-default/api","metadata":{"name":"api","namespace":"fleet-default"}},{"id":"fleet-default/noname","metadata":{}}],"revision":"1"}`
+	ls := completiontest.NewFixed(t, body)
+	got := KindSource("provisioningcluster").Complete(t.Context(), ls.Conn(1), completion.Request{})
+	assert.Equal(t, []string{"web", "api"}, got.Names)
+
+	kubernetes := completiontest.NewFixed(t, `{"items":[{"metadata":{"name":"web"}}]}`)
+	assert.Empty(t, KindSource("provisioningcluster").Complete(t.Context(), kubernetes.Conn(1), completion.Request{}).Names)
+}
+
+// TestListPathReadsSteveForAWorkspaceRowThatSetsSteveReadOnForbidden asserts the path of a kind that
+// sets SteveReadOnForbidden and has a workspace namespace is the Steve
+// collection of the typed --namespace, or of the row's default namespace.
+func TestListPathReadsSteveForAWorkspaceRowThatSetsSteveReadOnForbidden(t *testing.T) {
+	t.Parallel()
+	for key, typ := range map[string]string{
+		"provisioningcluster": "provisioning.cattle.io.clusters",
+		"etcdsnapshot":        "rke.cattle.io.etcdsnapshots",
+	} {
+		k := mustKind(t, key)
+		require.True(t, k.SteveReadOnForbidden, key)
+		p, ok := listPath(completion.Request{}, k)
+		require.True(t, ok, key)
+		assert.Equal(t, "/v1/"+typ+"/fleet-default", p.String(), key)
+		p, ok = listPath(completion.Request{Tail: []string{"--namespace", "team-a"}}, k)
+		require.True(t, ok, key)
+		assert.Equal(t, "/v1/"+typ+"/team-a", p.String(), key)
+	}
+}
+
+// TestListPathOffersNothingForARowThatSetsSteveReadOnForbiddenWithoutAWorkspaceNamespace asserts a kind that
+// sets SteveReadOnForbidden and has no workspace namespace lists nothing: the
+// generic source builds the Steve path of a workspace row only.
+func TestListPathOffersNothingForARowThatSetsSteveReadOnForbiddenWithoutAWorkspaceNamespace(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "managementcluster")
+	require.True(t, k.SteveReadOnForbidden)
+	require.Equal(t, kinds.NSNone, k.Policy)
+	_, ok := listPath(completion.Request{}, k)
+	assert.False(t, ok)
+	k.Policy = kinds.NSPlain
+	_, ok = listPath(completion.Request{Tail: []string{"--namespace", "x"}}, k)
+	assert.False(t, ok)
 }

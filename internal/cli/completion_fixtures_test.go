@@ -25,8 +25,8 @@ const (
 	nodeDriversPath      = "/k8s/clusters/local/apis/management.cattle.io/v3/nodedrivers"
 	oidcClientsPath      = "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients"
 	oidcClientPath       = "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients/my-client"
-	provDefaultPath      = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
-	provTeamPath         = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters"
+	provDefaultPath      = "/v1/provisioning.cattle.io.clusters/fleet-default"
+	provTeamPath         = "/v1/provisioning.cattle.io.clusters/team-a"
 	provProdPath         = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters/prod"
 	downNamespacesPath   = "/k8s/clusters/c-aaa11/api/v1/namespaces"
 	downTeamNamespaces   = "/k8s/clusters/c-ddd44/api/v1/namespaces"
@@ -146,6 +146,12 @@ func (s *pathCountingServer) reset() map[string]int {
 
 // items wraps object literals into a Kubernetes list body.
 func items(rows ...string) string { return `{"items":[` + strings.Join(rows, ",") + `]}` }
+
+// steveItems wraps object literals into a Steve collection body: the objects
+// are under data.
+func steveItems(rows ...string) string {
+	return `{"data":[` + strings.Join(rows, ",") + `],"revision":"1"}`
+}
 
 // plain is an object literal with a name alone.
 func plain(name string) string { return `{"metadata":{"name":"` + name + `"}}` }

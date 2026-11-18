@@ -11,22 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// etcdSnapshotServer serves the rke.cattle.io/v1 etcdsnapshots list of the
-// namespaces fleet-default and c-m-abc on the local management cluster.
+// etcdSnapshotServer serves the Steve collection of the rke.cattle.io
+// etcdsnapshots of the namespaces fleet-default and c-m-abc.
 func etcdSnapshotServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	const base = "/k8s/clusters/local/apis/rke.cattle.io/v1/namespaces/"
+	const base = "/v1/rke.cattle.io.etcdsnapshots/"
 	mux := http.NewServeMux()
-	mux.HandleFunc(base+"fleet-default/etcdsnapshots", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(base+"fleet-default", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"items":[
-			{"metadata":{"name":"prod-etcd-snapshot-n1-1700000000","namespace":"fleet-default"}},
-			{"metadata":{"name":"prod-etcd-snapshot-n2-1700000001","namespace":"fleet-default"}}
-		]}`))
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"fleet-default/prod-etcd-snapshot-n1-1700000000","metadata":{"name":"prod-etcd-snapshot-n1-1700000000","namespace":"fleet-default"}},
+			{"id":"fleet-default/prod-etcd-snapshot-n2-1700000001","metadata":{"name":"prod-etcd-snapshot-n2-1700000001","namespace":"fleet-default"}}
+		],"revision":"1"}`))
 	})
-	mux.HandleFunc(base+"c-m-abc/etcdsnapshots", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(base+"c-m-abc", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"imported-etcd-snapshot-n1-1700000002","namespace":"c-m-abc"}}]}`))
+		_, _ = w.Write([]byte(`{"data":[{"id":"c-m-abc/imported-etcd-snapshot-n1-1700000002","metadata":{"name":"imported-etcd-snapshot-n1-1700000002","namespace":"c-m-abc"}}],"revision":"1"}`))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

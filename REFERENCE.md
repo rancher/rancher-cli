@@ -654,6 +654,16 @@ with your permissions (`rancher access clusters`, `rancher inspect cluster
 <id>`, `rancher access projects --cluster <id>`). `patch` of the `cluster` kind
 is unchanged: it goes through the local cluster's Kubernetes API.
 
+`get` of provisioning clusters and etcd snapshots also reads through the Steve
+API when the local cluster's Kubernetes API responds with 403: it reads the
+same list or object as the caller. Rancher gives a member or owner
+permission to get some objects by name but not to list them (a cluster, a
+project, a provisioning cluster and the objects that belong to it, such as
+its etcd snapshots), and the Steve API lists what the caller has permission to
+get. A Cluster Owner with no other role lists the provisioning clusters they
+own. Name completion of a provisioning cluster or an etcd snapshot lists the
+objects through the Steve API.
+
 ## Project scope (--project)
 
 `--project <id-or-name>` selects a project on the cluster that `--cluster`
@@ -756,8 +766,9 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   whose annotation names the project; for every other kind the server filters by
   `--selector` and the CLI keeps only the objects in the project's namespaces.
   `get clusterregistrationtoken` reads through the Steve API and applies the
-  selector itself to the list it gets back, as do `get clusters` and `get
-  projects` when they read through the Steve API.
+  selector itself to the list it gets back, as do `get` of clusters, projects,
+  provisioning clusters and etcd snapshots when they read through the Steve
+  API.
 - The catalog kinds `clusterrepo`, `app` and `operation` (catalog.cattle.io)
   are read with `get`; a chart is installed, upgraded and uninstalled with
   `app install`, `app upgrade` and `app uninstall` (see "Installing, upgrading

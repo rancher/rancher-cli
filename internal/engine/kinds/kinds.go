@@ -279,13 +279,16 @@ type Kind struct {
 	NamespaceDesc string
 	// SteveReadOnForbidden is set on a row whose generated get, when the local
 	// cluster's Kubernetes API responds to it (a list or one object) with 403,
-	// reads the same list or object through the Steve API as the caller.
-	// Rancher gives a cluster or project member permission to get a cluster or
-	// project by name but not to list them, and the Steve API lists what the
-	// caller has permission to get. Any other error is returned unchanged, and
-	// a refusal from Steve returns the Kubernetes API's error. Only a row that
-	// has a Steve reader for this read may set it; a test in this package
-	// asserts which rows do.
+	// reads the same list or object through the Steve API as the caller, and
+	// whose name completion lists the objects through the Steve API. Rancher
+	// gives a member or owner permission to get some objects by name but not
+	// to list them (a cluster, a project, a provisioning cluster and the
+	// objects that belong to it, such as its etcd snapshots), and the
+	// Steve API lists what the caller has permission to get. Any other error
+	// is returned unchanged, and a refusal from Steve returns the Kubernetes
+	// API's error. Only a Management row with a Steve reader may set it; a
+	// test in this package lists the rows Rancher grants by name and asserts
+	// which of them set it.
 	SteveReadOnForbidden bool
 }
 
@@ -397,6 +400,16 @@ func hintToken(k Kind) string {
 // conversions of a non-constant string to clierr.CommandWord that the
 // command-word conformance rules allow.
 func (k Kind) Word() clierr.CommandWord { return clierr.CommandWord(k.Name) }
+
+// SteveType is the type of the kind as the Steve API spells it in a /v1 path:
+// the group and the resource joined by a dot, or the resource alone when the
+// group is empty.
+func (k Kind) SteveType() string {
+	if k.GVR.Group == "" {
+		return k.GVR.Resource
+	}
+	return k.GVR.Group + "." + k.GVR.Resource
+}
 
 // AliasWord is the word NotFoundCurated's list hint names: the kind's first
 // alias, or the plural of its name without hyphens when it has none.
@@ -1084,6 +1097,9 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Completable: true, Sensitive: true, WaitDefault: "condition=Ready",
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+
+		SteveReadOnForbidden: true,
+
 		// The CRD's additionalPrinterColumns declares status.ready's type as
 		// "string", so a plain Path is correct - the typed leaf ladder
 		// renders a real bool leaf identically if the wire ever carries one.
@@ -1135,6 +1151,9 @@ var table = []Kind{
 		Key: "etcdsnapshot", Name: "etcd-snapshot", Aliases: []string{"etcdsnapshots", "etcd-snapshots"},
 		GVR:    schema.GroupVersionResource{Group: "rke.cattle.io", Version: "v1", Resource: "etcdsnapshots"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ETCDSnapshot", Scope: Management, Deletable: false, Completable: true,
+
+		SteveReadOnForbidden: true,
+
 		NamespaceDesc:       "`namespace` of the cluster's snapshots: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the cluster's id (c-...)",
 		NoDeleteReason:      "an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place",
 		NoPatchReason:       "Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them",
@@ -1514,6 +1533,9 @@ func validateKinds(ts []Kind) error {
 		if k.ProjectBackingNamespace && (k.Policy != NSPlain || k.Scope != Management) {
 			return fmt.Errorf("kind %q sets ProjectBackingNamespace on a row that is not Management with a plain namespace", k.Key)
 		}
+		if k.SteveReadOnForbidden && k.Scope != Management {
+			return fmt.Errorf("kind %q sets SteveReadOnForbidden but is not a Management kind; the Steve read reaches only the local cluster", k.Key)
+		}
 		if k.NamespaceDesc != "" {
 			if k.Scope != Management || (k.Policy != NSPlain && k.Policy != NSWorkspace) {
 				return fmt.Errorf("kind %q sets NamespaceDesc on a row that is not Management with a plain or workspace namespace", k.Key)
@@ -1534,6 +1556,9 @@ func validateKinds(ts []Kind) error {
 			}
 			if k.RedactReferences {
 				return fmt.Errorf("kind %q sets ServerTable together with RedactReferences (the server's table is shown as it is)", k.Key)
+			}
+			if k.SteveReadOnForbidden {
+				return fmt.Errorf("kind %q sets ServerTable together with SteveReadOnForbidden (a table the server refuses is not read through the Steve API)", k.Key)
 			}
 		}
 		if k.RedactReferences && (k.NoPatchReason == "" || k.NoCreateViaManifest == "") {

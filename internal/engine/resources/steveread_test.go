@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -338,6 +339,20 @@ func TestGetAnAdministratorReadsKubernetesOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "c-a", decodeOne(t, res)["metadata"].(map[string]any)["name"])
 	assert.Zero(t, f.rootCalls)
+
+	for key, twin := range map[string]unstructured.Unstructured{
+		"provisioningcluster": kubernetesProvisioningCluster("prod", "fleet-default", "True", nil),
+		"etcdsnapshot":        kubernetesEtcdSnapshot(),
+	} {
+		client := &memClient{items: []unstructured.Unstructured{twin}}
+		f := &steveFactory{client: client, root: &steveRoot{serve: func(string, int) (int, any) { return http.StatusInternalServerError, nil }}}
+		res, err := runGet(t, key, f, input{})
+		require.NoError(t, err, key)
+		assert.Len(t, decodeList(t, res), 1, key)
+		_, err = runGet(t, key, f, input{args: []string{twin.GetName()}})
+		require.NoError(t, err, key)
+		assert.Zero(t, f.rootCalls, key)
+	}
 }
 
 // TestGetClustersAMemberReadsThroughSteve asserts a list the Kubernetes API
@@ -682,7 +697,8 @@ func rowReadFactory(client engine.ClusterClient) (*steveFactory, *steveRoot) {
 // table, steveList, steveGet (in a get and in a wait) and the Get of a
 // steveWaitClient return a Kubernetes 403 unchanged and ask for no root
 // client, except on the rows that set SteveReadOnForbidden, which ask for it
-// in each.
+// in each, return Steve's error (never the internal error of a row with no
+// reader) and read only the collection or object of their own Steve type.
 func TestNoOtherRowReadsThroughSteve(t *testing.T) {
 	t.Parallel()
 	denied := kubernetesStatus(http.StatusForbidden, true)
@@ -713,10 +729,293 @@ func TestNoOtherRowReadsThroughSteve(t *testing.T) {
 			if k.SteveReadOnForbidden {
 				assert.NotZero(t, f.rootCalls, "%s of %s reads through Steve", name, k.Key)
 				assert.NotEmpty(t, root.requested())
+				assert.NotContains(t, err.Error(), "internal error", "%s of %s has a Steve reader", name, k.Key)
+				st, ok := clierr.HTTPStatus(err)
+				assert.True(t, ok, "%s of %s returns the error of Steve's response", name, k.Key)
+				assert.Equal(t, http.StatusInternalServerError, st, "%s of %s", name, k.Key)
+				for _, p := range root.requested() {
+					assert.True(t, strings.HasPrefix(p, "/v1/"+k.SteveType()), "%s of %s reads %s, not its own Steve type %s", name, k.Key, p, k.SteveType())
+				}
 				continue
 			}
 			assert.Equal(t, error(denied), err, "%s of %s returns the Kubernetes error", name, k.Key)
 			assert.Zero(t, f.rootCalls, "%s of %s must not ask for the root client", name, k.Key)
 		}
+	}
+}
+
+const (
+	steveProvisioningClustersPath = "/v1/provisioning.cattle.io.clusters"
+	steveEtcdSnapshotsPath        = "/v1/rke.cattle.io.etcdsnapshots"
+	etcdSnapshotName              = "prod-etcd-snapshot-node-1-1794614404-abcde"
+)
+
+// steveProvisioningCluster is a provisioning cluster as Steve returns it: the
+// Kubernetes object plus what Steve adds.
+func steveProvisioningCluster(name, ns, ready string, labels map[string]any) map[string]any {
+	meta := map[string]any{
+		"name": name, "namespace": ns, "fields": []any{name, true}, "relationships": []any{},
+		"state": map[string]any{"name": "active"},
+	}
+	if labels != nil {
+		meta["labels"] = labels
+	}
+	return map[string]any{
+		"id": ns + "/" + name, "_id": ns + "/" + name, "type": "provisioning.cattle.io.cluster", "links": map[string]any{"self": "x"},
+		"apiVersion": "provisioning.cattle.io/v1", "kind": "Cluster",
+		"metadata": meta,
+		"spec":     map[string]any{"kubernetesVersion": "v1.33.1+rke2r1"},
+		"status": map[string]any{
+			"clusterName": "c-m-abc", "ready": true,
+			"conditions": []any{
+				map[string]any{"type": "Ready", "status": ready, "error": false, "transitioning": false, "lastUpdateTime": "2026-01-01T00:00:00Z"},
+			},
+		},
+	}
+}
+
+// kubernetesProvisioningCluster is the provisioning cluster the Kubernetes API
+// returns for the same input as steveProvisioningCluster.
+func kubernetesProvisioningCluster(name, ns, ready string, labels map[string]any) unstructured.Unstructured {
+	meta := map[string]any{"name": name, "namespace": ns}
+	if labels != nil {
+		meta["labels"] = labels
+	}
+	return unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "provisioning.cattle.io/v1", "kind": "Cluster",
+		"metadata": meta,
+		"spec":     map[string]any{"kubernetesVersion": "v1.33.1+rke2r1"},
+		"status": map[string]any{
+			"clusterName": "c-m-abc", "ready": true,
+			"conditions": []any{map[string]any{"type": "Ready", "status": ready, "lastUpdateTime": "2026-01-01T00:00:00Z"}},
+		},
+	}}
+}
+
+// steveEtcdSnapshot is an etcd snapshot as Steve returns it.
+func steveEtcdSnapshot() map[string]any {
+	return map[string]any{
+		"id": "fleet-default/" + etcdSnapshotName, "_id": "fleet-default/" + etcdSnapshotName, "type": "rke.cattle.io.etcdsnapshot",
+		"links":      map[string]any{"self": "x"},
+		"apiVersion": "rke.cattle.io/v1", "kind": "ETCDSnapshot",
+		"metadata": map[string]any{
+			"name": etcdSnapshotName, "namespace": "fleet-default", "fields": []any{etcdSnapshotName}, "relationships": nil,
+			"state": map[string]any{"name": "active"},
+		},
+		"spec":         map[string]any{"clusterName": "prod"},
+		"snapshotFile": map[string]any{"name": "etcd-snapshot-node-1-1794614404", "nodeName": "node-1", "size": float64(1048576), "createdAt": "2026-01-02T00:00:00Z", "status": "successful"},
+	}
+}
+
+// kubernetesEtcdSnapshot is the etcd snapshot the Kubernetes API returns for
+// the same input as steveEtcdSnapshot.
+func kubernetesEtcdSnapshot() unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "rke.cattle.io/v1", "kind": "ETCDSnapshot",
+		"metadata":     map[string]any{"name": etcdSnapshotName, "namespace": "fleet-default"},
+		"spec":         map[string]any{"clusterName": "prod"},
+		"snapshotFile": map[string]any{"name": "etcd-snapshot-node-1-1794614404", "nodeName": "node-1", "size": int64(1048576), "createdAt": "2026-01-02T00:00:00Z", "status": "successful"},
+	}}
+}
+
+// typeResponse returns the collection items at each path of collections as
+// Steve does; any other path responds with 404.
+func typeResponse(collections map[string][]map[string]any) func(string, int) (int, any) {
+	return func(path string, _ int) (int, any) {
+		if items, ok := collections[path]; ok {
+			return http.StatusOK, steveCollection(items...)
+		}
+		return http.StatusNotFound, nil
+	}
+}
+
+// assertNoSteveFields asserts each decoded item has none of the fields Steve
+// adds.
+func assertNoSteveFields(t *testing.T, items []map[string]any) {
+	t.Helper()
+	for _, item := range items {
+		for _, k := range []string{"id", "_id", "type", "links", "actions"} {
+			assert.NotContains(t, item, k)
+		}
+		meta, ok := item["metadata"].(map[string]any)
+		require.True(t, ok)
+		for _, k := range []string{"fields", "state", "relationships"} {
+			assert.NotContains(t, meta, k)
+		}
+	}
+}
+
+// TestGetProvisioningClustersAnOwnerReadsThroughSteve asserts a list of
+// provisioning clusters the Kubernetes API refused with 403 is read from the
+// Steve collection of the namespace, sorted by name, in the Kubernetes shape,
+// with the table cells of the Kubernetes objects, and that --namespace names
+// the namespace of the request.
+func TestGetProvisioningClustersAnOwnerReadsThroughSteve(t *testing.T) {
+	t.Parallel()
+	client, f, _ := memberFixture(typeResponse(map[string][]map[string]any{
+		steveProvisioningClustersPath + "/fleet-default": {steveProvisioningCluster("prod", "fleet-default", "True", nil)},
+		steveProvisioningClustersPath + "/team-a": {
+			steveProvisioningCluster("web", "team-a", "False", nil), steveProvisioningCluster("api", "team-a", "True", nil),
+		},
+	}))
+	res, err := runGet(t, "provisioningcluster", f, input{})
+	require.NoError(t, err)
+	items := decodeList(t, res)
+	assert.Equal(t, []string{"fleet-default/prod"}, namesOf(items))
+	assertNoSteveFields(t, items)
+	assert.Equal(t, 1, client.listCalls)
+
+	want := newTable(mustKind(t, "provisioningcluster"), []unstructured.Unstructured{kubernetesProvisioningCluster("prod", "fleet-default", "True", nil)}, false)
+	got, ok := res.Data.(table)
+	require.True(t, ok)
+	assert.Equal(t, want.Rows(), got.Rows())
+	assert.Equal(t, want.WideRows(), got.WideRows())
+
+	res, err = runGet(t, "provisioningcluster", f, input{s: map[string]string{"namespace": "team-a"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"team-a/api", "team-a/web"}, namesOf(decodeList(t, res)))
+	assert.Equal(t, []string{steveProvisioningClustersPath + "/fleet-default", steveProvisioningClustersPath + "/team-a"}, f.root.requested())
+}
+
+// TestGetEtcdSnapshotsAnOwnerReadsThroughSteve asserts a list of etcd
+// snapshots the Kubernetes API refused with 403 has the snapshot Steve
+// returns for the caller, in the Kubernetes shape, equal to the Kubernetes
+// object, and that the columns STATUS, CLUSTER, NODE, SIZE-BYTES and
+// CREATED-AT read their values (SIZE-BYTES as a whole number, as when the
+// Kubernetes API returns the snapshot).
+func TestGetEtcdSnapshotsAnOwnerReadsThroughSteve(t *testing.T) {
+	t.Parallel()
+	_, f, _ := memberFixture(typeResponse(map[string][]map[string]any{
+		steveEtcdSnapshotsPath + "/fleet-default": {steveEtcdSnapshot()},
+	}))
+	res, err := runGet(t, "etcdsnapshot", f, input{})
+	require.NoError(t, err)
+	items := decodeList(t, res)
+	require.Len(t, items, 1)
+	assertNoSteveFields(t, items)
+	twin := kubernetesEtcdSnapshot()
+	var twinJSON map[string]any
+	raw, err := json.Marshal(twin.Object)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &twinJSON))
+	assert.Equal(t, twinJSON, items[0])
+	assert.Equal(t, []string{steveEtcdSnapshotsPath + "/fleet-default"}, f.root.requested())
+
+	got, ok := res.Data.(table)
+	require.True(t, ok)
+	want := newTable(mustKind(t, "etcdsnapshot"), []unstructured.Unstructured{twin}, false)
+	assert.Equal(t, want.Rows(), got.Rows())
+	require.Len(t, got.Rows(), 1)
+	assert.Equal(t, []string{etcdSnapshotName, "successful", "prod", "node-1", "1048576", "2026-01-02T00:00:00Z"}, got.Rows()[0][:6], "NAME, STATUS, CLUSTER, NODE, SIZE-BYTES, CREATED-AT")
+}
+
+// TestGetProvisioningClusterAndEtcdSnapshotAnOwnerReadsOneThroughSteve asserts
+// a get of one object the Kubernetes API refused with 403 is read from the
+// Steve object by namespace and name, in the Kubernetes shape, and that a
+// Steve 403 or 404 returns the Kubernetes error.
+func TestGetProvisioningClusterAndEtcdSnapshotAnOwnerReadsOneThroughSteve(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		key, path, name string
+		item            map[string]any
+	}{
+		{"provisioningcluster", steveProvisioningClustersPath + "/fleet-default/prod", "prod", steveProvisioningCluster("prod", "fleet-default", "True", nil)},
+		{"etcdsnapshot", steveEtcdSnapshotsPath + "/fleet-default/" + etcdSnapshotName, etcdSnapshotName, steveEtcdSnapshot()},
+	} {
+		for _, s := range steveItemShapes {
+			t.Run(tc.key+", "+s.name, func(t *testing.T) {
+				t.Parallel()
+				_, f, _ := memberFixture(func(path string, _ int) (int, any) {
+					if path == tc.path {
+						return http.StatusOK, s.shape(tc.item)
+					}
+					return http.StatusNotFound, nil
+				})
+				res, err := runGet(t, tc.key, f, input{args: []string{tc.name}})
+				require.NoError(t, err)
+				obj := decodeOne(t, res)
+				assertNoSteveFields(t, []map[string]any{obj})
+				assert.Equal(t, tc.name, obj["metadata"].(map[string]any)["name"])
+				assert.Equal(t, []string{tc.path}, f.root.requested())
+			})
+		}
+		for _, status := range []int{http.StatusForbidden, http.StatusNotFound} {
+			client, f, denied := memberFixture(func(string, int) (int, any) { return status, nil })
+			_, err := runGet(t, tc.key, f, input{args: []string{tc.name}})
+			assert.Equal(t, error(denied), err, "%s, steve %d", tc.key, status)
+			assert.Equal(t, 1, client.getCalls)
+			_, err = runGet(t, tc.key, f, input{})
+			assert.Equal(t, error(denied), err, "%s list, steve %d", tc.key, status)
+		}
+	}
+}
+
+// TestGetProvisioningClustersThroughSteveAppliesTheSelector asserts the CLI
+// keeps the provisioning clusters whose labels match --selector and sends
+// Steve no selector.
+func TestGetProvisioningClustersThroughSteveAppliesTheSelector(t *testing.T) {
+	t.Parallel()
+	_, f, _ := memberFixture(typeResponse(map[string][]map[string]any{
+		steveProvisioningClustersPath + "/fleet-default": {
+			steveProvisioningCluster("a", "fleet-default", "True", map[string]any{"team": "a"}),
+			steveProvisioningCluster("b", "fleet-default", "True", map[string]any{"team": "b"}),
+		},
+	}))
+	res, err := runGet(t, "provisioningcluster", f, input{s: map[string]string{"selector": "team=a"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"fleet-default/a"}, namesOf(decodeList(t, res)))
+	assert.Equal(t, []string{steveProvisioningClustersPath + "/fleet-default"}, f.root.requested(), "no query: Steve is never sent a selector")
+}
+
+// TestGetWaitAnOwnerOnAProvisioningClusterPollsTheSteveObject asserts a wait
+// on a provisioning cluster whose Kubernetes get is refused with 403 polls the
+// Steve object until the condition holds, and that a Steve 404 ends the wait
+// with NOT_FOUND and the command that lists the provisioning clusters of the
+// namespace.
+func TestGetWaitAnOwnerOnAProvisioningClusterPollsTheSteveObject(t *testing.T) {
+	withFastPoll(t)
+	const path = steveProvisioningClustersPath + "/fleet-default/prod"
+	for _, s := range steveItemShapes {
+		t.Run(s.name, func(t *testing.T) {
+			_, f, _ := memberFixture(func(p string, n int) (int, any) {
+				if p != path {
+					return http.StatusNotFound, nil
+				}
+				ready := "False"
+				if n >= 2 {
+					ready = "True"
+				}
+				return http.StatusOK, s.shape(steveProvisioningCluster("prod", "fleet-default", ready, nil))
+			})
+			res, err := runGet(t, "provisioningcluster", f, waitInput([]string{"prod"}, nil))
+			require.NoError(t, err)
+			assertNoSteveFields(t, []map[string]any{decodeOne(t, res)})
+			for _, p := range f.root.requested() {
+				assert.Equal(t, path, p)
+			}
+		})
+	}
+
+	_, f, _ := memberFixture(func(string, int) (int, any) { return http.StatusNotFound, nil })
+	_, err := runGet(t, "provisioningcluster", f, waitInput([]string{"prod"}, map[string]string{"namespace": "team-a"}))
+	require.Error(t, err)
+	assert.True(t, clierr.IsNotFound(err))
+	assert.Equal(t, clierr.Rancher+" get provisioning-clusters --namespace 'team-a'", asClierr(t, err).Hint)
+}
+
+// TestSteveNotFoundHintNamesTheListOfTheKind asserts the NOT_FOUND error of a
+// Steve 404 during a wait names the command that lists the objects of the kind,
+// in the namespace.
+func TestSteveNotFoundHintNamesTheListOfTheKind(t *testing.T) {
+	t.Parallel()
+	for key, want := range map[string]string{
+		"managementcluster":   clierr.Rancher + " access clusters",
+		"project":             clierr.Rancher + " access projects --cluster 'ns'",
+		"provisioningcluster": clierr.Rancher + " get provisioning-clusters --namespace 'ns'",
+		"etcdsnapshot":        clierr.Rancher + " get etcd-snapshots --namespace 'ns'",
+	} {
+		err := getCmd{k: mustKind(t, key)}.steveNotFound("ns", "x", nil)
+		assert.Equal(t, want, asClierr(t, err).Hint, key)
+		require.ErrorContains(t, err, "not found: 'x'")
 	}
 }

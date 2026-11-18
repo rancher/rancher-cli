@@ -28,9 +28,10 @@ var steveGetPathReaders = []string{"steveList", "steveGet", "newSteveWaitClient"
 const steveObjectReaderFile = "internal/engine/resources/steveread.go"
 
 // steveObjectReaders are the functions of internal/engine/steve that read an
-// object and return it as Steve returns it, and the conversion of what they
-// return.
-var steveObjectReaders = []string{"ClusterObjects", "ProjectObjects", "GetProject", "GetClusterObject", "KubernetesObject"}
+// object and return it as Steve returns it (the readers of a cluster, a
+// project, and a collection or one object of any one Steve type), and the
+// conversion of what they return.
+var steveObjectReaders = []string{"ClusterObjects", "ProjectObjects", "GetProject", "GetClusterObject", "TypeObjects", "GetTypeObject", "KubernetesObject"}
 
 // TestSteveObjectReadersOnlyFromTheGetPath asserts that, in every non-test Go
 // file under internal/, steveList, steveGet, newSteveWaitClient and

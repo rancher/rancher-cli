@@ -357,6 +357,22 @@ func TestValidateRejectsProjectBackingNamespaceOutsideManagementPlainRows(t *tes
 	}
 }
 
+// TestValidateRejectsSteveReadOnForbiddenOutsideManagementRows asserts
+// SteveReadOnForbidden is accepted on a Management row, refused on a
+// downstream row, and refused together with ServerTable.
+func TestValidateRejectsSteveReadOnForbiddenOutsideManagementRows(t *testing.T) {
+	t.Parallel()
+	row := func(scope Scope) []Kind {
+		return []Kind{{Key: "foo", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Policy: NSNone, Scope: scope, SteveReadOnForbidden: true}}
+	}
+	require.NoError(t, validateKinds(row(Management)))
+	err := validateKinds(row(Downstream))
+	require.ErrorContains(t, err, `kind "foo" sets SteveReadOnForbidden but is not a Management kind; the Steve read reaches only the local cluster`)
+
+	table := []Kind{{Key: "foo", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Policy: NSNone, Scope: Management, SteveReadOnForbidden: true, ServerTable: true}}
+	require.ErrorContains(t, validateKinds(table), `kind "foo" sets ServerTable together with SteveReadOnForbidden`)
+}
+
 // TestValidateRejectsNamespaceDescOutsideManagementPlainAndWorkspaceRows
 // asserts NamespaceDesc is accepted on a Management row with a plain or
 // workspace namespace and refused on every other row, and that its text
