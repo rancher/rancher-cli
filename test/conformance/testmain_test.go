@@ -19,6 +19,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv(pasteHelperEnv) == "1" {
 		pasteHelper()
 	}
+	if os.Getenv(stdinHelperEnv) == "1" {
+		stdinHelper()
+	}
 	root, err := moduleRoot()
 	if err != nil {
 		panic(err)

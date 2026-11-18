@@ -962,6 +962,19 @@ Never present a role list as permissions.
   and line 2 the new password, and pass `--current-password-stdin` with
   `--password-stdin`, for example
   `printf '%s\n%s\n' "$CURRENTPASSWORD" "$NEWPASSWORD" | rancher create password-change-request <user id> --current-password-stdin --password-stdin --apply --yes`.
+  In PowerShell 7.1 or later, read both passwords with `Read-Host -MaskInput`,
+  which shows asterisks instead of what you type, and pipe them, the current
+  password first:
+  `$current = Read-Host -MaskInput 'Current password'; $new = Read-Host -MaskInput 'New password'; $current, $new | rancher create password-change-request <user id> --current-password-stdin --password-stdin --apply --yes`.
+  PowerShell 7 sends each password as UTF-8 text followed by a newline, with no
+  byte order mark. A password with non-ASCII characters arrives as UTF-8.
+  Do not pipe a SecureString (`Read-Host -AsSecureString`): PowerShell 7 and
+  Windows PowerShell 5.1 send the text `System.Security.SecureString`, not the
+  password. Windows PowerShell 5.1 sends a byte order mark (the bytes
+  `EF BB BF`) before piped text, and rancher reads it as part of the first
+  line. With its default `$OutputEncoding` it also sends `?` for each
+  non-ASCII character. Either way rancher receives a different password than
+  the one you typed. Use PowerShell 7 to pipe a password.
   The dry-run does not check the current password. A refused current password
   is `VALIDATION` (exit `2`); changing another user's password without
   permission to change every user's password is `RBAC` (exit `6`). Neither

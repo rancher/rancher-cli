@@ -30,8 +30,14 @@ func pasteHelper() {
 	if err != nil {
 		os.Exit(2)
 	}
+	_, _ = io.WriteString(os.Stdout, escapeNonASCII(string(data))+"\n")
+	os.Exit(0)
+}
+
+// escapeNonASCII returns text with every non-ASCII rune as a \u escape.
+func escapeNonASCII(text string) string {
 	var sb strings.Builder
-	for _, r := range string(data) {
+	for _, r := range text {
 		switch {
 		case r < 0x80:
 			sb.WriteRune(r)
@@ -42,9 +48,7 @@ func pasteHelper() {
 			fmt.Fprintf(&sb, `\u%04x\u%04x`, 0xd800+(r>>10), 0xdc00+(r&0x3ff))
 		}
 	}
-	sb.WriteString("\n")
-	_, _ = io.WriteString(os.Stdout, sb.String())
-	os.Exit(0)
+	return sb.String()
 }
 
 // pasteShell is one shell the tests paste a printed command into: the program

@@ -129,6 +129,7 @@ func shellPackageDirs(t *testing.T) []string {
 // file starts neither shell fails TestOnlyTheShellPackagesStartFishOrZsh.
 var shellStartersOutsideShellPackages = []struct{ file, why string }{
 	{"test/conformance/exactvaluepaste_test.go", "the conformance job installs fish and zsh with setup-tools; TestCIRunsEveryValidatePartOnce asserts it"},
+	{"test/conformance/stdinpipe_test.go", "the conformance job installs fish and zsh with setup-tools; TestCIRunsEveryValidatePartOnce asserts it"},
 }
 
 // TestOnlyTheShellPackagesStartFishOrZsh asserts that no Go file git lists

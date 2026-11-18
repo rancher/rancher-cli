@@ -168,6 +168,8 @@ func TestReadCurrentAndNewPasswordStdinAccepts(t *testing.T) {
 		{"a bare final carriage return stays in line 2", "a\nb\r", "a", "b\r"},
 		{"a carriage return inside a line stays", "a\rb\nc", "a\rb", "c"},
 		{"a byte order mark stays in line 1", "\ufeffa\nb\n", "\ufeffa", "b"},
+		{"the two passwords PowerShell 7 pipes on Windows", "cur rent$HOME\\x\r\nnew pa$$ss\\y\r\n", "cur rent$HOME\\x", "new pa$$ss\\y"},
+		{"the byte order mark Windows PowerShell 5.1 sends is part of the first password", "\ufeffcur rent$HOME\\x\r\nnew pa$$ss\\y\r\n", "\ufeffcur rent$HOME\\x", "new pa$$ss\\y"},
 		{"a line 2 of 1 MiB", "a\n" + long + "\n", "a", long},
 		{"interior whitespace stays", "a b\n c \n", "a b", " c "},
 	} {
