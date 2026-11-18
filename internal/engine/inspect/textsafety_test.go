@@ -107,6 +107,8 @@ func TestClusterTextKeepsEveryServerValueOnItsLine(t *testing.T) {
 			"Machines[].Name", "Machines[].Phase", "Machines[].Error",
 			"Registration.NodeCommand", "Registration.InsecureNodeCommand", "Registration.Command",
 			"Registration.InsecureCommand", "Registration.ManifestURL",
+			"Registration.WithOptions.NodeCommand", "Registration.WithOptions.InsecureNodeCommand",
+			"Registration.WithOptions.WindowsNodeCommand", "Registration.WithOptions.InsecureWindowsNodeCommand",
 		},
 		rawByRule: map[string]string{
 			"Cluster.ID":             "a Kubernetes object name, which holds no newline",

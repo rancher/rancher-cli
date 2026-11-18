@@ -334,6 +334,7 @@ graph TD
     provisioning --> runtime
     provisioning --> safety
     provisioning --> clierr
+    provisioning --> config
     provisioning --> provisioningcomplete
     provisioning --> completion
 
@@ -1517,7 +1518,14 @@ quoting function, or a `%q` or `%#v` verb) of a value from `ShellQuote`,
 `clierr.Rancher` or the command builder: Go quoting wraps the value in double
 quotes, where a shell expands `$` and a backquote, reads a backslash as an
 escape and keeps the single quotes of `ShellQuote` as part of the value. Such
-a value is printed with `%s`.
+a value is printed with `%s`. One kind of printed command is not built by the
+command builder: the node commands that `inspect cluster --registration`
+composes with node command options. Each is Rancher's node command as the
+server returns it, followed by the options. Each option value is printed with
+`clierr.FlagFragment` and each option name is a fixed string. Every accepted
+value has only characters from a fixed set, and `NotQuotable` reports none of
+the accepted values. A test refuses any other code that composes a node command,
+and a test asserts the exact text of every composed command.
 
 **A server URL with an @ after the host is refused, and a cache record is served
 only through an entry whose URL can be used.** Such a URL is most likely a user

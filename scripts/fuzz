@@ -134,6 +134,7 @@ TARGETS=(
   "FuzzScrubObject|./internal/engine"
   "FuzzTableRender|./internal/engine/resources"
   "FuzzDetect|./internal/invocation"
+  "FuzzNodeCommandOptionValue|./internal/engine/provisioning"
 )
 
 run_fuzz_target() {

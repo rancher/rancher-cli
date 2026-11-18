@@ -22,12 +22,14 @@ type input struct {
 	s    map[string]string
 	b    map[string]bool
 	ss   map[string][]string
+	// set names the flags typed on the command line, for IsSet.
+	set map[string]bool
 }
 
 func (i input) String(k string) string    { return i.s[k] }
 func (i input) Bool(k string) bool        { return i.b[k] }
 func (i input) Strings(k string) []string { return i.ss[k] }
-func (i input) IsSet(string) bool         { return false }
+func (i input) IsSet(k string) bool       { return i.set[k] }
 func (i input) Args() []string            { return i.args }
 
 // registrationInput returns an input for a named cluster with --registration set.
@@ -181,7 +183,7 @@ func (f *fakeClient) Logs(_ context.Context, _ string, _ string, opts engine.Log
 var _ engine.ClusterClient = (*fakeClient)(nil)
 
 // fakeFactory hands back a fixed (or per-cluster) client for any cluster id.
-// mu guards clusterCalls: the --all-clusters fan-out calls Cluster()
+// mu guards clusterCalls and resolveCalls: the --all-clusters fan-out calls Cluster()
 // concurrently from multiple goroutines.
 type fakeFactory struct {
 	mu sync.Mutex
@@ -193,6 +195,21 @@ type fakeFactory struct {
 	resolveErr    error
 
 	clusterCalls []string
+	resolveCalls []string
+
+	// serverVersion and serverVersionErr are what ServerVersion returns; the
+	// method makes the fake an engine.ServerVersionProvider; versionCalls
+	// counts the calls.
+	serverVersion    string
+	serverVersionErr error
+	versionCalls     int
+}
+
+func (f *fakeFactory) ServerVersion(context.Context) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.versionCalls++
+	return f.serverVersion, f.serverVersionErr
 }
 
 func (f *fakeFactory) Cluster(_ context.Context, id string) (engine.ClusterClient, error) {
@@ -211,6 +228,9 @@ func (f *fakeFactory) Cluster(_ context.Context, id string) (engine.ClusterClien
 }
 
 func (f *fakeFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
+	f.mu.Lock()
+	f.resolveCalls = append(f.resolveCalls, nameOrID)
+	f.mu.Unlock()
 	if f.resolveErr != nil {
 		return "", f.resolveErr
 	}
@@ -220,7 +240,10 @@ func (f *fakeFactory) ResolveCluster(_ context.Context, nameOrID string) (string
 	return nameOrID, nil
 }
 
-var _ engine.ClusterClientFactory = (*fakeFactory)(nil)
+var (
+	_ engine.ClusterClientFactory  = (*fakeFactory)(nil)
+	_ engine.ServerVersionProvider = (*fakeFactory)(nil)
+)
 
 func (*fakeClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
 	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")

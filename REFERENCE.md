@@ -1325,10 +1325,49 @@ Imported and custom clusters need no machine config: `create cluster
 <name> --import` or `--custom`. A custom cluster gets its nodes from the node
 commands (`nodeCommand`, `insecureNodeCommand`) that `inspect cluster <name>
 --registration` fetches. Those commands carry no role flag, and run as printed
-they stop with `You must select at least one role.` Add at least one role flag
-(`--etcd`, `--controlplane`, `--worker`; the script also takes `--all-roles`,
-and `--no-roles` for a node with no role). The Rancher UI adds `--etcd
---controlplane --worker` unless the role checkboxes are cleared.
+they stop with `You must select at least one role.` Add node command options to
+`inspect cluster <name> --registration` and the CLI composes the commands as
+the Rancher UI does, under `registration.withOptions` (`nodeCommand`,
+`insecureNodeCommand`): Rancher's node command, then the options, each value in
+single quotes. The options are `--etcd`, `--controlplane` and `--worker` (all
+three when none is given, as in the Rancher UI, where the role checkboxes start
+checked), `--node-name`, `--address` and `--internal-address` (one address, or
+several separated by `,`), and `--label key=value` and `--taint key=value:effect`
+(`NoSchedule`, `PreferNoSchedule` or `NoExecute`), both repeatable. The composed
+Linux command writes each `--taint` as `--taints`, as the Rancher UI does. For
+example:
+
+```
+rancher inspect cluster <name> --registration --worker --label tier=db -o json
+```
+
+The options need `--registration` and apply only to a custom cluster
+(`spec.rkeConfig` set, no machine pools); on an imported or node-driver
+cluster, and on a cluster with no provisioning.cattle.io Cluster (such as
+`local`), they are refused. Each value is checked before any request. It is
+refused, never changed, when it has a character the Rancher UI would remove, or
+when it breaks the Kubernetes rule for a label or taint key or value, or for a
+node name (a lowercase DNS subdomain). A label key that Rancher sets on the node
+itself, such as `cattle.io/os` or `rke.cattle.io/node-name`, is refused too, as
+is a label key given twice.
+
+`--windows` composes the Windows node commands instead, under
+`registration.withOptions` (`windowsNodeCommand`, `insecureWindowsNodeCommand`),
+with `-Address`, `-InternalAddress`, `-NodeName` and one `-Taint`. Rancher's
+Windows node command already ends in `-Worker` and passes `-Label`: with
+`--windows`, a role flag, `--label` and a second `--taint` are refused.
+`--windows` is also refused where the Rancher UI shows no Windows node command
+for the server's Rancher version: a K3s cluster; a Kubernetes version below
+v1.21.0 (the version is read from the provisioning `spec.kubernetesVersion`
+below Rancher v2.15, else from the management Cluster's
+`status.info.kubernetesVersion`); or a CNI other than calico (a cluster with no
+CNI set is accepted; Rancher v2.14 and newer also accept flannel from
+Kubernetes v1.29.2). A Kubernetes version that is not MAJOR.MINOR.PATCH, such as
+the pre-release `v1.29.2-rc1+rke2r1`, is refused too, because this CLI compares
+only such versions with v1.21.0. When the cluster is not connected yet, lacks a
+node for any of the etcd, control plane and worker roles (one node can have
+several roles), or reports no Kubernetes version yet, the command fails with a
+retryable `GENERIC` error: try again later.
 
 A `creatorId annotation not set` warning from `create cluster` means the
 CLI could not set the `field.cattle.io/creatorId` annotation: the
@@ -1856,7 +1895,11 @@ message of the first failing condition, preferring a condition whose reason
 contains `Error`), and the registration commands (node command and import
 command). Registration commands are not fetched by default - they contain the
 cluster registration token; pass `--registration` to fetch them, or use `get
-clusterregistrationtoken default-token --namespace <cluster-id>`. The
+clusterregistrationtoken default-token --namespace <cluster-id>`. The node
+command options (`--etcd`, `--controlplane`, `--worker`, `--node-name`,
+`--address`, `--internal-address`, `--label`, `--taint`, `--windows`) need `--registration`
+and add the composed commands under `registration.withOptions`; with any of
+these flags, a failed registration token read fails the command. The
 management read is mandatory (unknown/ambiguous cluster or a failed read is a
 structured error, non-zero exit); if reading the provisioning, members,
 machines or registration section fails, the command shows a note or warning

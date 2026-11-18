@@ -46,9 +46,8 @@ import (
 // that use the code without attaching candidates to the error built from it;
 // each value says why.
 var ambiguousSelectionAllowlist = map[string]string{
-	"internal/engine/inspect/cluster.go:correlateProvisioningCluster": "the error is kept only as a degraded entry's code",
-	"internal/token/noterminal.go:withNoTerminalRemedies":             "the candidates are passed to noTerminalError, limited to the auth configs that sign in without a terminal",
-	"internal/commands/auth/login.go:promptForToken":                  "a terminal menu answer; the two choices are printed just above the prompt",
+	"internal/token/noterminal.go:withNoTerminalRemedies": "the candidates are passed to noTerminalError, limited to the auth configs that sign in without a terminal",
+	"internal/commands/auth/login.go:promptForToken":      "a terminal menu answer; the two choices are printed just above the prompt",
 }
 
 // ambiguousSelectionScan is the result of scanning one file.

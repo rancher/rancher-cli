@@ -426,17 +426,26 @@ Follow through to readiness and access - and read the registration
 
 ```
 rancher create cluster web --custom --k8s-version v1.32.4+rke2r1 --apply
-rancher inspect cluster web --registration -o json      # data.registration.nodeCommand: run on each node, with a role flag added
+rancher inspect cluster web --registration --etcd --controlplane --worker -o json   # data.registration.withOptions.nodeCommand: run on each node
 rancher get cluster web --wait --timeout 15m   # kind default: condition=Ready
 rancher kubeconfig --cluster web > kc.yaml
 ```
 
 The node commands (`nodeCommand`, `insecureNodeCommand`) carry no role flag,
-and run as printed they stop with `You must select at least one role.` Add at
-least one role flag after the command (`--etcd`, `--controlplane`, `--worker`;
-the script also takes `--all-roles`, and `--no-roles` for a node with no role).
-The Rancher UI adds `--etcd --controlplane --worker` unless the role checkboxes
-are cleared. Ask the user which roles each node takes when that is not stated.
+and run as printed they stop with `You must select at least one role.` Never
+edit a printed command: pass the node command options to `inspect cluster <name>
+--registration` and run the command it composes, from
+`data.registration.withOptions`. The options are `--etcd`, `--controlplane`,
+`--worker` (all three when none is given), `--node-name`, `--address`,
+`--internal-address`, `--label key=value` and `--taint key=value:effect`; they
+apply only to a custom cluster. A value with a character the Rancher UI would
+remove, a value that breaks the Kubernetes rule for its flag, or a label key
+Rancher sets on the node itself is refused with VALIDATION naming the flag: fix
+the value and run again. For a Windows worker
+add `--windows` (no role flag, no `--label`, at most one `--taint`) and run
+`data.registration.withOptions.windowsNodeCommand` in PowerShell; a retryable
+`GENERIC` refusal means the cluster is not ready for Windows nodes yet. Ask the
+user which roles each node takes when that is not stated.
 
 `inspect cluster <name-or-id>` is the one-call cluster triage: management
 identity and version, the provisioning CR's ready flag and conditions, machine

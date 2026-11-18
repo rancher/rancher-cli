@@ -8203,11 +8203,56 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management.cattle.io Cluster's id, name, state, and kubernetesVersion (the observed version first, then the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management.cattle.io Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (a condition with status Unknown is ignored and never shows the agent as not connected) and each field only when its own condition does; an agent that is not connected or a False Ready condition adds a warning - the status of the provisioning.cattle.io Cluster cannot show an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, each row reporting principal, displayName, role, binding (the name of the ClusterRoleTemplateBinding), and system; a failed binding read leaves the members field out of the JSON while the text output shows members: unavailable, with a warning naming the cause; a failure to look up display names leaves out only the display names, never rows; entries whose principal id starts with system: (Rancher's system principals, e.g. system://provisioning/...) carry system: true (accounts Rancher uses internally, not bindings an administrator added)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message - preferring conditions whose reason contains \"Error\"; a failed list leaves the machines field out of the JSON while the text output shows machines: unavailable, with a warning naming the cause; left out when the provisioning cluster was not found), and the commands in the default cluster registration token: nodeCommand and insecureNodeCommand (to add nodes), command and insecureCommand (to import a cluster), and manifestUrl. On an imported cluster (provisioning spec.rkeConfig absent), notApplicable lists the node command fields that are present but do not apply; such fields are marked, never left out. By default the registration section holds only a message and a hint, and the commands are left out, because they contain the cluster registration token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show them. Each section can be missing without affecting the others: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read leave out their sections with a warning naming the cause. If you cannot read part of the data, the command still exits 0: each section it could not read in full is named in data.degraded ({section, state, code, target}), and each entry has one warning. Finding the cluster by id or name and reading its management.cattle.io Cluster are required: the command fails when any of them fails. Sections that can degrade: provisioning (unavailable - the lookup of the provisioning.cattle.io Cluster that matches this cluster, one entry covering the status, machinePools, and machines, which are then left out), machines (unavailable - a machine list that failed after that Cluster was found), members (unavailable - the binding list; a failure to look up display names stays a warning), registration (unavailable - reading the cluster registration token).",
+      "desc": "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management.cattle.io Cluster's id, name, state, and kubernetesVersion (the observed version first, then the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management.cattle.io Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (a condition with status Unknown is ignored and never shows the agent as not connected) and each field only when its own condition does; an agent that is not connected or a False Ready condition adds a warning - the status of the provisioning.cattle.io Cluster cannot show an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, each row reporting principal, displayName, role, binding (the name of the ClusterRoleTemplateBinding), and system; a failed binding read leaves the members field out of the JSON while the text output shows members: unavailable, with a warning naming the cause; a failure to look up display names leaves out only the display names, never rows; entries whose principal id starts with system: (Rancher's system principals, e.g. system://provisioning/...) carry system: true (accounts Rancher uses internally, not bindings an administrator added)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message - preferring conditions whose reason contains \"Error\"; a failed list leaves the machines field out of the JSON while the text output shows machines: unavailable, with a warning naming the cause; left out when the provisioning cluster was not found), and the commands in the default cluster registration token: nodeCommand and insecureNodeCommand (to add nodes), command and insecureCommand (to import a cluster), and manifestUrl. On an imported cluster (provisioning spec.rkeConfig absent), notApplicable lists the node command fields that are present but do not apply; such fields are marked, never left out. By default the registration section has only a message and a hint, and the commands are left out, because they contain the cluster registration token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show them. With --registration, the node command options (--etcd, --controlplane, --worker, --node-name, --address, --internal-address, --label, --taint, --windows) compose the node commands as the Rancher UI does: registration.withOptions has nodeCommand and insecureNodeCommand: Rancher's node command, then the options in the Rancher UI's order, with each value in single quotes and all three roles when no role flag is given. The options apply only to a custom cluster (spec.rkeConfig set and no machine pools); on any other cluster, and without --registration, they are refused. Each value is checked before any request. A value is refused and never changed when it has a character the Rancher UI would remove, or when it breaks the Kubernetes rule for a label or taint key or value, or for a node name; a label key Rancher sets on the node itself is refused too. With any node command option, a failed registration token read fails the command. --windows composes windowsNodeCommand and insecureWindowsNodeCommand instead (-Address, -InternalAddress, -NodeName, and one -Taint; no role flag and no --label: the Windows node command already ends in -Worker and passes -Label), only where the Rancher UI shows the Windows node command for the server's Rancher version: the cluster is not K3s, runs Kubernetes v1.21.0 or newer, has calico or no CNI set (flannel too from Kubernetes v1.29.2 on Rancher v2.14 and newer), is connected and has etcd, control plane and worker nodes. A Kubernetes version that is not MAJOR.MINOR.PATCH, a pre-release included, is refused too. A cluster that is not ready yet gives a retryable error. Each section can be missing without affecting the others: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read leave out their sections with a warning naming the cause. If you cannot read part of the data, the command still exits 0: each section it could not read in full is named in data.degraded ({section, state, code, target}), and each entry has one warning. Finding the cluster by id or name and reading its management.cattle.io Cluster are required: the command fails when any of them fails. Sections that can degrade: provisioning (unavailable - the lookup of the provisioning.cattle.io Cluster that matches this cluster, one entry covering the status, machinePools, and machines, which are then left out), machines (unavailable - a machine list that failed after that Cluster was found), members (unavailable - the binding list; a failure to look up display names stays a warning), registration (unavailable - reading the cluster registration token).",
       "flags": [
         {
           "desc": "show the registration commands (they contain the cluster registration token and are left out by default); also available with: `rancher get clusterregistrationtoken default-token --namespace <cluster-id>`",
           "name": "registration",
+          "type": "bool"
+        },
+        {
+          "desc": "with --registration: add the etcd role to the node command (no role flag adds all three)",
+          "name": "etcd",
+          "type": "bool"
+        },
+        {
+          "desc": "with --registration: add the control plane role to the node command (no role flag adds all three)",
+          "name": "controlplane",
+          "type": "bool"
+        },
+        {
+          "desc": "with --registration: add the worker role to the node command (no role flag adds all three)",
+          "name": "worker",
+          "type": "bool"
+        },
+        {
+          "desc": "with --registration: the node `name` the node command registers (a lowercase DNS subdomain)",
+          "name": "node-name",
+          "type": "string"
+        },
+        {
+          "desc": "with --registration: the node `address` the node command registers (Node Public IP in the Rancher UI), or several separated by \",\"",
+          "name": "address",
+          "type": "string"
+        },
+        {
+          "desc": "with --registration: the node internal `address` the node command registers (Node Private IP in the Rancher UI), or several separated by \",\"",
+          "name": "internal-address",
+          "type": "string"
+        },
+        {
+          "desc": "with --registration: a node label `key=value` for the node command (repeatable)",
+          "name": "label",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "with --registration: a node taint `key=value:effect` for the node command, effect NoSchedule, PreferNoSchedule or NoExecute (repeatable)",
+          "name": "taint",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "with --registration: compose the Windows node commands instead of the Linux ones, where the Rancher UI shows them",
+          "name": "windows",
           "type": "bool"
         }
       ],

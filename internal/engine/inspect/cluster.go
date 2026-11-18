@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // conditionMessageLimit is the text-view truncation bound for condition
@@ -83,9 +84,27 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 			"command and insecureCommand (to import a cluster), and manifestUrl. " +
 			"On an imported cluster (provisioning spec.rkeConfig absent), notApplicable lists the node command fields " +
 			"that are present but do not apply; such fields are marked, never left out. " +
-			"By default the registration section holds only a message and a hint, and the commands are left out, " +
+			"By default the registration section has only a message and a hint, and the commands are left out, " +
 			"because they contain the cluster registration token (a credential that lets anyone add nodes to the cluster); " +
 			"pass --registration to fetch and show them. " +
+			"With --registration, the node command options (--etcd, --controlplane, --worker, --node-name, --address, " +
+			"--internal-address, --label, --taint, --windows) compose the node commands as the Rancher UI does: " +
+			"registration.withOptions has nodeCommand and insecureNodeCommand: Rancher's node command, then the options in the Rancher UI's order, " +
+			"with each value in single quotes and all three roles when no role flag is given. " +
+			"The options apply only to a custom cluster (spec.rkeConfig set and no machine pools); on any other cluster, " +
+			"and without --registration, they are refused. Each value is checked before any request. " +
+			"A value is refused and never changed when it has a character the Rancher UI would remove, " +
+			"or when it breaks the Kubernetes rule for a label or taint key or value, or for a node name; " +
+			"a label key Rancher sets on the node itself is refused too. " +
+			"With any node command option, a failed registration token read fails the command. " +
+			"--windows composes windowsNodeCommand and insecureWindowsNodeCommand instead (-Address, -InternalAddress, -NodeName, " +
+			"and one -Taint; no role flag and no --label: the Windows node command already ends in -Worker and passes -Label), " +
+			"only where the Rancher UI shows the Windows node command for the server's Rancher version: " +
+			"the cluster is not K3s, runs Kubernetes v1.21.0 or newer, has calico or no CNI set " +
+			"(flannel too from Kubernetes v1.29.2 on Rancher v2.14 and newer), is connected and has etcd, " +
+			"control plane and worker nodes. " +
+			"A Kubernetes version that is not MAJOR.MINOR.PATCH, a pre-release included, is refused too. " +
+			"A cluster that is not ready yet gives a retryable error. " +
 			"Each section can be missing without affecting the others: provisioningNote marks a confirmed missing " +
 			"provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read leave out their " +
 			"sections with a warning naming the cause. " +
@@ -99,11 +118,22 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 			"registration (unavailable - reading the cluster registration token).",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
-		Flags: []runtime.ArgSpec{{
-			Name: "registration",
-			Type: "bool",
-			Desc: "show the registration commands (they contain the cluster registration token and are left out by default); also available with: `rancher get clusterregistrationtoken default-token --namespace <cluster-id>`",
-		}},
+		Flags: []runtime.ArgSpec{
+			{
+				Name: "registration",
+				Type: "bool",
+				Desc: "show the registration commands (they contain the cluster registration token and are left out by default); also available with: `rancher get clusterregistrationtoken default-token --namespace <cluster-id>`",
+			},
+			{Name: provisioning.NodeOptionEtcd, Type: "bool", Desc: "with --registration: add the etcd role to the node command (no role flag adds all three)"},
+			{Name: provisioning.NodeOptionControlPlane, Type: "bool", Desc: "with --registration: add the control plane role to the node command (no role flag adds all three)"},
+			{Name: provisioning.NodeOptionWorker, Type: "bool", Desc: "with --registration: add the worker role to the node command (no role flag adds all three)"},
+			{Name: provisioning.NodeOptionNodeName, Type: "string", Once: true, Desc: "with --registration: the node `name` the node command registers (a lowercase DNS subdomain)"},
+			{Name: provisioning.NodeOptionAddress, Type: "string", Once: true, Desc: "with --registration: the node `address` the node command registers (Node Public IP in the Rancher UI), or several separated by \",\""},
+			{Name: provisioning.NodeOptionInternalAddress, Type: "string", Once: true, Desc: "with --registration: the node internal `address` the node command registers (Node Private IP in the Rancher UI), or several separated by \",\""},
+			{Name: provisioning.NodeOptionLabel, Type: "stringSlice", Desc: "with --registration: a node label `key=value` for the node command (repeatable)"},
+			{Name: provisioning.NodeOptionTaint, Type: "stringSlice", Desc: "with --registration: a node taint `key=value:effect` for the node command, effect NoSchedule, PreferNoSchedule or NoExecute (repeatable)"},
+			{Name: provisioning.NodeOptionWindows, Type: "bool", Desc: "with --registration: compose the Windows node commands instead of the Linux ones, where the Rancher UI shows them"},
+		},
 		Auth:  true,
 		Shape: runtime.ShapeText,
 	}
@@ -114,6 +144,22 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 func (*clusterCmd) LiveSource() completion.Source { return accesscomplete.SteveClusterSource() }
 
 func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	// The node command options are checked on the typed input, before any
+	// request: a refused value costs no request, and no option is accepted
+	// without --registration, which alone reads the token.
+	if err := c.optionTypedFalse(in); err != nil {
+		return runtime.Result{}, err
+	}
+	typed := nodeCommandOptionsFrom(in)
+	options, err := provisioning.ValidateNodeCommandOptions(typed)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	optionFlags := typed.SetFlags()
+	if len(optionFlags) > 0 && !in.Bool("registration") {
+		return runtime.Result{}, optionsNeedRegistrationError(in.Args()[0], typed, optionFlags[0])
+	}
+
 	clusterID, err := engine.ResolveClusterArgument(ctx, c.clients, in.Args()[0])
 	if err != nil {
 		return runtime.Result{}, err
@@ -172,13 +218,21 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		lookup   provLookup
 		members  *[]rbac.MemberRow
 		mwarn    []string
+		// What the node command options need from the provisioning
+		// Cluster: its machine pools, its desired Kubernetes version and
+		// CNI, and why the lookup failed (the degraded entry keeps only its
+		// code and warning).
+		poolCount      int
+		desiredVersion string
+		cni            string
+		lookupErr      error
 	)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		var prov *unstructured.Unstructured
 		var absentNote string
 		var perr error
-		prov, lookup, absentNote, perr = correlateProvisioningCluster(gctx, mgmt, sec, clusterID)
+		prov, lookup, absentNote, perr, lookupErr = correlateProvisioningCluster(gctx, mgmt, sec, clusterID)
 		if perr != nil {
 			return perr
 		}
@@ -189,6 +243,9 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 			imported = provisioning.IsImported(prov)
 			pools := machinePoolsFrom(prov)
 			res.MachinePools = &pools
+			poolCount = len(pools)
+			desiredVersion, _, _ = unstructured.NestedString(prov.Object, "spec", "kubernetesVersion")
+			cni, _, _ = unstructured.NestedString(prov.Object, "spec", "rkeConfig", "machineGlobalConfig", "cni")
 			machs, machErr := clusterMachines(gctx, mgmt, sec, prov.GetName())
 			if machErr != nil {
 				return machErr
@@ -217,7 +274,26 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	}
 
 	if in.Bool("registration") {
-		reg, rwarn, rerr := c.fetchRegistration(ctx, sec, clusterID)
+		var withOptions *provisioning.ValidNodeCommandOptions
+		optionFlag := ""
+		if len(optionFlags) > 0 {
+			withOptions, optionFlag = &options, optionFlags[0]
+			check := optionsCheck{
+				flag: optionFlag, clusterID: clusterID,
+				lookup: lookup, lookupErr: lookupErr, imported: imported, poolCount: poolCount,
+				desiredVersion: desiredVersion, cni: cni,
+			}
+			if err := check.customCluster(); err != nil {
+				return runtime.Result{}, err
+			}
+			if options.Windows() {
+				check.cluster, check.mgmt = obj, mgmt
+				if err := c.windowsApplies(ctx, check); err != nil {
+					return runtime.Result{}, err
+				}
+			}
+		}
+		reg, rwarn, rerr := c.fetchRegistration(ctx, sec, clusterID, withOptions, optionFlag)
 		if rerr != nil {
 			return runtime.Result{}, rerr
 		}
@@ -287,12 +363,14 @@ const (
 // note (non-empty only when provAbsent), scoped to the namespace that was
 // searched - derived from provKind.DefaultNamespace, never a second
 // hardcoded string. An expired context is the one list failure that does
-// NOT degrade: it returns as the error.
-func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient, sec *sections, clusterID string) (*unstructured.Unstructured, provLookup, string, error) {
+// NOT degrade: it returns as the fourth value, the error. The fifth is why
+// the lookup is unavailable (the list failure, or the error naming the
+// matches), nil otherwise.
+func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient, sec *sections, clusterID string) (*unstructured.Unstructured, provLookup, string, error, error) {
 	provKind, _ := kinds.Lookup("provisioning-cluster")
 	list, err := mgmt.List(ctx, provKind.GVR, provKind.DefaultNamespace, "")
 	if err != nil {
-		return nil, provUnavailable, "", sec.Unavailable(sectionProvisioning, err)
+		return nil, provUnavailable, "", sec.Unavailable(sectionProvisioning, err), err
 	}
 	var matches []*unstructured.Unstructured
 	for i := range list.Items {
@@ -303,14 +381,20 @@ func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient
 	}
 	switch len(matches) {
 	case 0:
-		return nil, provAbsent, "no provisioning.cattle.io Cluster for this cluster in " + provKind.DefaultNamespace, nil
+		return nil, provAbsent, "no provisioning.cattle.io Cluster for this cluster in " + provKind.DefaultNamespace, nil, nil
 	case 1:
-		return matches[0], provFound, "", nil
+		return matches[0], provFound, "", nil, nil
 	default:
+		candidates := make([]clierr.Candidate, 0, len(matches))
+		for _, m := range matches {
+			id := m.GetNamespace() + "/" + m.GetName()
+			candidates = append(candidates, clierr.Candidate{ID: id, Name: id})
+		}
+		slices.SortFunc(candidates, func(a, b clierr.Candidate) int { return strings.Compare(a.ID, b.ID) })
 		ambiguous := clierr.New(clierr.CodeAmbiguousSelection, fmt.Sprintf(
 			"%d provisioning.cattle.io Clusters report status.clusterName %q; cannot tell which one belongs to this cluster",
-			len(matches), clusterID))
-		return nil, provUnavailable, "", sec.Unavailable(sectionProvisioning, ambiguous)
+			len(matches), clusterID)).WithCandidates(candidates)
+		return nil, provUnavailable, "", sec.Unavailable(sectionProvisioning, ambiguous), ambiguous
 	}
 }
 
@@ -432,14 +516,27 @@ func machinePoolsFrom(prov *unstructured.Unstructured) []machinePool {
 // absent from the wire, never "registration":{}. The named-get and
 // list-get policies live solely in their respective callers in
 // internal/engine/provisioning.
-func (c *clusterCmd) fetchRegistration(ctx context.Context, sec *sections, clusterID string) (*registration, []string, error) {
+//
+// With node command options (options non-nil, optionFlag the option flag a
+// refusal names) a failed read fails the command instead: the caller asked
+// for a command that cannot be composed. withOptions then has the commands
+// composed from the token's node commands; a node command of the token that is
+// left out or empty leaves its composed command out with a warning, and the
+// section counts as empty only when withOptions is empty too.
+func (c *clusterCmd) fetchRegistration(ctx context.Context, sec *sections, clusterID string, options *provisioning.ValidNodeCommandOptions, optionFlag string) (*registration, []string, error) {
+	failed := func(err error) error {
+		if options != nil {
+			return readErrorWithMessage(ctx, err, "--"+optionFlag+": cannot read the cluster registration token: ")
+		}
+		return sec.Unavailable(sectionRegistration, err)
+	}
 	root, err := c.roots.Root()
 	if err != nil {
-		return nil, nil, sec.Unavailable(sectionRegistration, err)
+		return nil, nil, failed(err)
 	}
 	obj, err := provisioning.FetchDefaultCRT(ctx, root, clusterID)
 	if err != nil {
-		return nil, nil, sec.Unavailable(sectionRegistration, err)
+		return nil, nil, failed(err)
 	}
 	dropped := map[string]bool{}
 	var warnings []string
@@ -465,6 +562,24 @@ func (c *clusterCmd) fetchRegistration(ctx context.Context, sec *sections, clust
 	}
 	if !dropped["manifestUrl"] {
 		reg.ManifestURL = obj.ManifestURL
+	}
+	if options != nil {
+		var composed registrationWithOptions
+		var result provisioning.ComposeResult
+		if options.Windows() {
+			composed.WindowsNodeCommand, result = provisioning.ComposeNodeCommand(obj.WindowsNodeCommand, *options)
+			warnings = appendLeftOut(warnings, clusterID, "windowsNodeCommand", result)
+			composed.InsecureWindowsNodeCommand, result = provisioning.ComposeNodeCommand(obj.InsecureWindowsNodeCommand, *options)
+			warnings = appendLeftOut(warnings, clusterID, "insecureWindowsNodeCommand", result)
+		} else {
+			composed.NodeCommand, result = provisioning.ComposeNodeCommand(obj.NodeCommand, *options)
+			warnings = appendLeftOut(warnings, clusterID, regFieldNodeCommand, result)
+			composed.InsecureNodeCommand, result = provisioning.ComposeNodeCommand(obj.InsecureNodeCommand, *options)
+			warnings = appendLeftOut(warnings, clusterID, regFieldInsecureNodeCommand, result)
+		}
+		if composed != (registrationWithOptions{}) {
+			reg.WithOptions = &composed
+		}
 	}
 	// Withheld, Hint, and NotApplicable are never assigned inside this
 	// function - their only write sites are in Execute, after this
@@ -684,7 +799,7 @@ func withheldMessage() string {
 // paste-valid command, never prose. The default registration token lives at
 // default-token in the cluster's own namespace (namespace = management
 // cluster id), so the concrete get command can be rendered with the values
-// Execute already holds. Tests assert an exact match so any wording change
+// Execute already has. Tests assert an exact match so any wording change
 // fails loudly. The hint is a remedy command, so the json and yaml output name
 // the invocation's config directory in it.
 func withheldHint(clusterID string) clierr.Command {
@@ -723,6 +838,233 @@ type registration struct {
 	Withheld bool   `json:"withheld,omitempty"`
 	Message  string `json:"message,omitempty"`
 	Hint     string `json:"hint,omitempty"`
+	// WithOptions has the node commands composed with the typed node
+	// command options; nil without an option flag and when no composed
+	// command is left, never {}.
+	WithOptions *registrationWithOptions `json:"withOptions,omitempty"`
+}
+
+// registrationWithOptions carries the composed node commands under the same
+// field names as the token's node commands. Only ComposeNodeCommand results
+// are written to its fields; a field whose node command in the token is left
+// out or empty is left out.
+type registrationWithOptions struct {
+	NodeCommand                string `json:"nodeCommand,omitempty"`
+	InsecureNodeCommand        string `json:"insecureNodeCommand,omitempty"`
+	WindowsNodeCommand         string `json:"windowsNodeCommand,omitempty"`
+	InsecureWindowsNodeCommand string `json:"insecureWindowsNodeCommand,omitempty"`
+}
+
+// appendLeftOut adds the warning that says why ComposeNodeCommand left a
+// composed node command out: the token's node command still has the token
+// placeholder or is empty, or a value is one no supported shell reads as
+// written. The warning names the field, never the command.
+func appendLeftOut(warnings []string, clusterID, field string, result provisioning.ComposeResult) []string {
+	switch result {
+	case provisioning.BaseNotFormatted:
+		return append(warnings, fmt.Sprintf("registration token %s/default-token: %s not formatted by the server; the node command with options is left out", clusterID, field))
+	case provisioning.ValueNotQuotable:
+		return append(warnings, clierr.WithLeftOutNote(fmt.Sprintf("registration token %s/default-token: %s with options", clusterID, field)))
+	}
+	return warnings
+}
+
+// optionTypedFalse refuses a boolean node command option typed as false
+// (--worker=false): the node command gets only the options typed, and a role
+// typed as false would read as one turned off while a command with no role
+// flag gets all three roles.
+func (c *clusterCmd) optionTypedFalse(in runtime.Input) error {
+	for _, f := range c.Describe().Flags {
+		if f.Type != "bool" || !slices.Contains(provisioning.NodeOptionFlags, f.Name) {
+			continue
+		}
+		if !in.IsSet(f.Name) || in.Bool(f.Name) {
+			continue
+		}
+		if f.Name == provisioning.NodeOptionWindows {
+			return clierr.New(clierr.CodeValidation, "--"+f.Name+"=false: remove --"+f.Name)
+		}
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+			"--%s=false: give only the flags for the roles the node takes (--etcd, --controlplane, --worker); with no role flag it takes all three", f.Name))
+	}
+	return nil
+}
+
+// nodeCommandOptionsFrom reads the node command option flags as typed.
+func nodeCommandOptionsFrom(in runtime.Input) provisioning.NodeCommandOptions {
+	return provisioning.NodeCommandOptions{
+		Etcd:            in.Bool(provisioning.NodeOptionEtcd),
+		ControlPlane:    in.Bool(provisioning.NodeOptionControlPlane),
+		Worker:          in.Bool(provisioning.NodeOptionWorker),
+		NodeName:        in.String(provisioning.NodeOptionNodeName),
+		Address:         in.String(provisioning.NodeOptionAddress),
+		InternalAddress: in.String(provisioning.NodeOptionInternalAddress),
+		Labels:          in.Strings(provisioning.NodeOptionLabel),
+		Taints:          in.Strings(provisioning.NodeOptionTaint),
+		Windows:         in.Bool(provisioning.NodeOptionWindows),
+	}
+}
+
+// optionsNeedRegistrationError refuses a node command option without
+// --registration. Its hint is the typed command with --registration added:
+// the cluster argument as typed and every option flag that is set, in
+// NodeOptionFlags order; other typed flags are not repeated.
+func optionsNeedRegistrationError(clusterArg string, o provisioning.NodeCommandOptions, flag string) error {
+	cmd := clierr.NewCommand("inspect cluster").Arg(clusterArg).Flag("--registration")
+	if o.Etcd {
+		cmd = cmd.Flag("--etcd")
+	}
+	if o.ControlPlane {
+		cmd = cmd.Flag("--controlplane")
+	}
+	if o.Worker {
+		cmd = cmd.Flag("--worker")
+	}
+	if o.NodeName != "" {
+		cmd = cmd.FlagValue("--node-name", o.NodeName)
+	}
+	if o.Address != "" {
+		cmd = cmd.FlagValue("--address", o.Address)
+	}
+	if o.InternalAddress != "" {
+		cmd = cmd.FlagValue("--internal-address", o.InternalAddress)
+	}
+	for _, l := range o.Labels {
+		cmd = cmd.FlagValue("--label", l)
+	}
+	for _, t := range o.Taints {
+		cmd = cmd.FlagValue("--taint", t)
+	}
+	if o.Windows {
+		cmd = cmd.Flag("--windows")
+	}
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"--%s needs --registration: it adds options to the node command, which contains the cluster registration token", flag)).
+		WithHintCommand(cmd)
+}
+
+// readErrorWithMessage returns a failed read as a refusal of a node command
+// option, with prefix before the read's message. A *clierr.Error keeps its
+// code and its other fields; any other error is GENERIC with it as the cause.
+// A canceled or expired context returns as itself.
+func readErrorWithMessage(ctx context.Context, err error, prefix string) error {
+	if lookupCanceled(ctx, err) {
+		return err
+	}
+	return clierr.Wrap(err, prefix+err.Error())
+}
+
+// optionsCheck has what customCluster and windowsApplies need to decide
+// whether node command options apply to the cluster: the reads inspect cluster
+// made before the token read.
+type optionsCheck struct {
+	flag      string // the option flag a refusal names
+	clusterID string
+	lookup    provLookup
+	lookupErr error
+	imported  bool
+	poolCount int
+	// desiredVersion and cni are the provisioning Cluster's
+	// spec.kubernetesVersion and spec.rkeConfig.machineGlobalConfig.cni.
+	desiredVersion string
+	cni            string
+	// cluster is the management Cluster, mgmt the client of the local
+	// cluster; --windows alone reads them.
+	cluster *unstructured.Unstructured
+	mgmt    engine.ClusterClient
+}
+
+// managementNodeGVR is the management.cattle.io v3 Node: Rancher's record of
+// a node of a downstream cluster, in the cluster's namespace.
+var managementNodeGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "nodes"}
+
+// windowsReadPrefix starts the refusal of --windows when a read it needs
+// fails.
+const windowsReadPrefix = "--" + provisioning.NodeOptionWindows + ": cannot tell whether the cluster accepts Windows nodes: "
+
+// windowsApplies refuses --windows where the Rancher UI shows no Windows node
+// command for the server's Rancher version, in this order: an unavailable
+// provisioning lookup (before any other read), the server version and the
+// cluster's configuration, then whether the cluster is connected, then its
+// management Nodes, which must have an etcd, a control plane and a worker
+// node. The server version is read only here.
+func (c *clusterCmd) windowsApplies(ctx context.Context, k optionsCheck) error {
+	if k.lookup == provUnavailable {
+		return readErrorWithMessage(ctx, k.lookupErr, windowsReadPrefix)
+	}
+	facts := provisioning.WindowsClusterFacts{DesiredVersion: k.desiredVersion, CNI: k.cni}
+	facts.Provider, _, _ = unstructured.NestedString(k.cluster.Object, "status", "provider")
+	facts.ObservedVersion, _, _ = unstructured.NestedString(k.cluster.Object, "status", "info", "kubernetesVersion")
+	if versions, ok := c.clients.(engine.ServerVersionProvider); ok {
+		if v, err := versions.ServerVersion(ctx); err == nil {
+			facts.ServerVersion, facts.ServerVersionRead = v, true
+		}
+	}
+	if err := provisioning.CheckWindowsCommand(facts); err != nil {
+		return err
+	}
+	if !connectedForWindows(k.cluster) {
+		return provisioning.WindowsNotReadyError()
+	}
+	nodes, err := k.mgmt.List(ctx, managementNodeGVR, k.clusterID, "")
+	if err != nil {
+		return readErrorWithMessage(ctx, err, windowsReadPrefix)
+	}
+	var etcd, controlPlane, worker bool
+	for i := range nodes.Items {
+		spec := nodes.Items[i].Object
+		e, _, _ := unstructured.NestedBool(spec, "spec", "etcd")
+		cp, _, _ := unstructured.NestedBool(spec, "spec", "controlPlane")
+		w, _, _ := unstructured.NestedBool(spec, "spec", "worker")
+		etcd, controlPlane, worker = etcd || e, controlPlane || cp, worker || w
+	}
+	if !etcd || !controlPlane || !worker {
+		return provisioning.WindowsNotReadyError()
+	}
+	return nil
+}
+
+// connectedForWindows reports whether the management Cluster is ready for the
+// Windows node command as the Rancher UI checks it: when a Connected condition
+// exists, its status must be True; only without one is the Ready condition
+// used, and it must be True.
+func connectedForWindows(obj *unstructured.Unstructured) bool {
+	var connected, ready string
+	var hasConnected, hasReady bool
+	engine.EachCondition(obj.Object, func(typ, status, _, _ string) bool {
+		switch typ {
+		case "Connected":
+			hasConnected, connected = true, status
+		case "Ready":
+			hasReady, ready = true, status
+		}
+		return true
+	})
+	if hasConnected {
+		return connected == "True"
+	}
+	return hasReady && ready == "True"
+}
+
+// customCluster refuses node command options on a cluster that is not
+// custom: one with no provisioning Cluster, an imported one (no
+// spec.rkeConfig) or one with machine pools. When the lookup is unavailable
+// the check does not refuse: the node commands are still composed, and the
+// warning that it cannot determine whether they apply is kept.
+func (k optionsCheck) customCluster() error {
+	var reason string
+	switch {
+	case k.lookup == provAbsent:
+		reason = "has no provisioning.cattle.io Cluster"
+	case k.lookup == provFound && k.imported:
+		reason = "is imported"
+	case k.lookup == provFound && k.poolCount > 0:
+		reason = "has machine pools"
+	default:
+		return nil
+	}
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"--%s: node command options apply only to a custom cluster; %s %s", k.flag, k.clusterID, reason))
 }
 
 // The registration field names shared by the notApplicable writer
@@ -782,6 +1124,12 @@ func renderClusterText(r clusterResult) string {
 		writeRegistrationField(&b, "import command", r.Registration.Command)
 		writeRegistrationField(&b, "import command (insecure)", r.Registration.InsecureCommand)
 		writeRegistrationField(&b, "manifestUrl", r.Registration.ManifestURL)
+		if w := r.Registration.WithOptions; w != nil {
+			writeRegistrationField(&b, "node command with options", w.NodeCommand)
+			writeRegistrationField(&b, "node command with options (insecure)", w.InsecureNodeCommand)
+			writeRegistrationField(&b, "Windows node command with options", w.WindowsNodeCommand)
+			writeRegistrationField(&b, "Windows node command with options (insecure)", w.InsecureWindowsNodeCommand)
+		}
 	}
 	return b.String()
 }

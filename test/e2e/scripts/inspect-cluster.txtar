@@ -31,6 +31,15 @@ exec rancher inspect cluster c-fixture -o json
 jsonquery stdout data.registration.withheld true
 ! stdout e2e-crt-real-token-c-fixture
 
+# Node command options: the composed command under withOptions, Rancher's
+# node command unchanged; an option without --registration is refused.
+exec rancher inspect cluster c-fixture --registration --worker --label tier=db -o json
+jsonquery stdout data.registration.withOptions.nodeCommand 'sudo docker run -d --privileged --net=host --name=cattle-agent rancher/rancher-agent --server https://rancher.example --token e2e-crt-real-token-c-fixture --worker --label ''tier=db'''
+jsonquery stdout data.registration.nodeCommand 'sudo docker run -d --privileged --net=host --name=cattle-agent rancher/rancher-agent --server https://rancher.example --token e2e-crt-real-token-c-fixture'
+! exec rancher inspect cluster c-fixture --label tier=db -o json
+jsonquery stderr data.error.code VALIDATION
+! stderr e2e-crt-real-token-c-fixture
+
 # Node-driver cluster: pools carry the machineConfigRef from the create
 # cluster flow.
 exec rancher create cluster insp-node --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
@@ -87,6 +96,11 @@ stdout e2e-crt-real-token-c-import
 exec rancher inspect cluster c-import --registration
 stdout 'none \(imported or custom cluster\)'
 stdout 'node command \[not applicable: imported cluster\]:'
+
+# Node command options apply only to a custom cluster.
+! exec rancher inspect cluster c-import --registration --worker -o json
+jsonquery stderr data.error.code VALIDATION
+! stdout .
 
 # system member: seed the c-import namespace (required for namespaced CRTBs)
 # then create a system:// CRTB - follows the project-members.txtar pattern.
