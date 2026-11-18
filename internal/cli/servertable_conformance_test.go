@@ -51,6 +51,10 @@ var serverTableInventory = map[string]string{
 	"poddisruptionbudget":     serverTableReason,
 	"resourcequota":           serverTableReason,
 	"storageclass":            serverTableReason,
+	"role":                    serverTableReason,
+	"rolebinding":             serverTableReason,
+	"clusterrole":             serverTableReason,
+	"clusterrolebinding":      serverTableReason,
 }
 
 // TestServerTableKindsConformance asserts the kinds marked ServerTable are
@@ -109,6 +113,8 @@ var serverTableProbes = map[string]serverTableProbeRef{
 	"namespace":               serverTableClusterScoped,
 	"persistentvolume":        serverTableClusterScoped,
 	"storageclass":            serverTableClusterScoped,
+	"clusterrole":             serverTableClusterScoped,
+	"clusterrolebinding":      serverTableClusterScoped,
 	"pod":                     serverTableNamespaced,
 	"deployment":              serverTableNamespaced,
 	"service":                 serverTableNamespaced,
@@ -128,6 +134,8 @@ var serverTableProbes = map[string]serverTableProbeRef{
 	"networkpolicy":           serverTableNamespaced,
 	"poddisruptionbudget":     serverTableNamespaced,
 	"resourcequota":           serverTableNamespaced,
+	"role":                    serverTableNamespaced,
+	"rolebinding":             serverTableNamespaced,
 }
 
 // TestEveryServerTableKindHasAProbe asserts that every kind marked

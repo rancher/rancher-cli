@@ -4847,6 +4847,112 @@
     },
     {
       "aliases": [
+        "clusterroles"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `rancher access can <verb> <resource> --cluster <cluster> --as <subject>`.",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get clusterrole",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List clusterroles or show one"
+    },
+    {
+      "aliases": [
+        "clusterrolebindings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `rancher access can <verb> <resource> --cluster <cluster> --as <subject>`.",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get clusterrolebinding",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List clusterrolebindings or show one"
+    },
+    {
+      "aliases": [
         "clusterroletemplatebindings",
         "crtb"
       ],
@@ -7287,6 +7393,138 @@
     },
     {
       "aliases": [
+        "roles"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `rancher access can <verb> <resource> --cluster <cluster> --as <subject>`.",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get role",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List roles or show one"
+    },
+    {
+      "aliases": [
+        "rolebindings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "desc": "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `rancher access can <verb> <resource> --cluster <cluster> --as <subject>`.",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get rolebinding",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List rolebindings or show one"
+    },
+    {
+      "aliases": [
         "roletemplates"
       ],
       "args": [
@@ -9002,6 +9240,122 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Refused: clusterrepo cannot be patched"
+    },
+    {
+      "aliases": [
+        "clusterroles"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants.",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch clusterrole",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: clusterrole cannot be patched"
+    },
+    {
+      "aliases": [
+        "clusterrolebindings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants.",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch clusterrolebinding",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: clusterrolebinding cannot be patched"
     },
     {
       "aliases": [
@@ -11634,6 +11988,150 @@
     },
     {
       "aliases": [
+        "roles"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants.",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch role",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: role cannot be patched"
+    },
+    {
+      "aliases": [
+        "rolebindings"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants.",
+      "destructive": "true",
+      "flags": [
+        {
+          "desc": "target cluster `id|name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` to operate in",
+          "name": "namespace",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "patch",
+      "name": "patch rolebinding",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: rolebinding cannot be patched"
+    },
+    {
+      "aliases": [
         "roletemplates"
       ],
       "args": [
@@ -13367,6 +13865,10 @@
         "get poddisruptionbudget",
         "get resourcequota",
         "get storageclass",
+        "get role",
+        "get rolebinding",
+        "get clusterrole",
+        "get clusterrolebinding",
         "get gitrepo",
         "get helmop",
         "get bundle",
@@ -13459,6 +13961,10 @@
         "patch poddisruptionbudget",
         "patch resourcequota",
         "patch storageclass",
+        "patch role",
+        "patch rolebinding",
+        "patch clusterrole",
+        "patch clusterrolebinding",
         "patch gitrepo",
         "patch helmop",
         "patch bundle",
@@ -14287,6 +14793,154 @@
           "contract": "internal",
           "stability": "beta",
           "state": "available"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "roles"
+      ],
+      "completable": true,
+      "group": "rbac.authorization.k8s.io",
+      "key": "role",
+      "name": "role",
+      "namespacePolicy": "plain",
+      "resource": "roles",
+      "scope": "downstream",
+      "sensitive": true,
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "rolebindings"
+      ],
+      "completable": true,
+      "group": "rbac.authorization.k8s.io",
+      "key": "rolebinding",
+      "name": "rolebinding",
+      "namespacePolicy": "plain",
+      "resource": "rolebindings",
+      "scope": "downstream",
+      "sensitive": true,
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "clusterroles"
+      ],
+      "completable": true,
+      "group": "rbac.authorization.k8s.io",
+      "key": "clusterrole",
+      "name": "clusterrole",
+      "namespacePolicy": "none",
+      "resource": "clusterroles",
+      "scope": "downstream",
+      "sensitive": true,
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v1"
+    },
+    {
+      "aliases": [
+        "clusterrolebindings"
+      ],
+      "completable": true,
+      "group": "rbac.authorization.k8s.io",
+      "key": "clusterrolebinding",
+      "name": "clusterrolebinding",
+      "namespacePolicy": "none",
+      "resource": "clusterrolebindings",
+      "scope": "downstream",
+      "sensitive": true,
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `rancher kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants",
+          "stability": "beta",
+          "state": "refused"
         }
       },
       "version": "v1"

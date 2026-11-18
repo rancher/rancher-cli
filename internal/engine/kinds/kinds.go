@@ -701,6 +701,55 @@ var table = []Kind{
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable: true,
 	},
+	// These rows are read-only: patch, create and delete are refused.
+	{
+		Key: "role", Name: "role", Aliases: []string{"roles"},
+		GVR:    schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"},
+		Policy: NSPlain, K8sKind: "Role", Scope: Downstream, Deletable: false, Completable: true, Sensitive: true,
+		GetDesc: "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `" + clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as <subject>`.",
+
+		NoPatchReason:       "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants",
+		NoDeleteReason:      "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants",
+		NoCreateViaManifest: "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable:         true,
+	},
+	{
+		Key: "rolebinding", Name: "rolebinding", Aliases: []string{"rolebindings"},
+		GVR:    schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"},
+		Policy: NSPlain, K8sKind: "RoleBinding", Scope: Downstream, Deletable: false, Completable: true, Sensitive: true,
+		GetDesc: "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `" + clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as <subject>`.",
+
+		NoPatchReason:       "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants",
+		NoDeleteReason:      "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants",
+		NoCreateViaManifest: "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable:         true,
+	},
+	{
+		Key: "clusterrole", Name: "clusterrole", Aliases: []string{"clusterroles"},
+		GVR:    schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"},
+		Policy: NSNone, K8sKind: "ClusterRole", Scope: Downstream, Deletable: false, Completable: true, Sensitive: true,
+		GetDesc: "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `" + clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as <subject>`.",
+
+		NoPatchReason:       "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants",
+		NoDeleteReason:      "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants",
+		NoCreateViaManifest: "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable:         true,
+	},
+	{
+		Key: "clusterrolebinding", Name: "clusterrolebinding", Aliases: []string{"clusterrolebindings"},
+		GVR:    schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"},
+		Policy: NSNone, K8sKind: "ClusterRoleBinding", Scope: Downstream, Deletable: false, Completable: true, Sensitive: true,
+		GetDesc: "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `" + clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as <subject>`.",
+
+		NoPatchReason:       "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants",
+		NoDeleteReason:      "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants",
+		NoCreateViaManifest: "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable:         true,
+	},
 
 	{
 		Key: "gitrepo", Name: "gitrepo", Aliases: []string{"gitrepos"},

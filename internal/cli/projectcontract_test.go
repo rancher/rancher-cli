@@ -552,7 +552,7 @@ func TestProjectContract(t *testing.T) {
 			hints = append(hints, r.err.Hint)
 		})
 	}
-	assert.Equal(t, 79, declaring, "the commands that take --project")
+	assert.Equal(t, 83, declaring, "the commands that take --project")
 
 	t.Run("usage --by project", func(t *testing.T) {
 		r := h.run(t, "usage", "--cluster", "c-abc", "--by", "project", "--project", "web", "-o", "json")

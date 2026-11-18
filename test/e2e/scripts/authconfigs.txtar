@@ -74,10 +74,16 @@ jsonquery stdout data.verbs.delete.state absent
 # name that does not exist would return NOT_FOUND if a request were made.
 ! exec rancher patch authconfig no-such-auth-config --patch '[{"op":"add","path":"/metadata/labels/x","value":"y"}]' --apply -o json
 jsonquery stderr data.error.code VALIDATION
+jsonget stderr data.error.message msg.txt
+grep 'auth configs are read-only in this CLI for now' msg.txt
 ! exec rancher create resource -f missing.yaml --apply -o json
 jsonquery stderr data.error.code VALIDATION
+jsonget stderr data.error.message msg.txt
+grep 'adding an auth config is not supported' msg.txt
 ! exec rancher delete authconfig no-such-auth-config --apply --yes -o json
 jsonquery stderr data.error.code VALIDATION
+jsonget stderr data.error.message msg.txt
+grep 'deleting an auth config is not supported' msg.txt
 
 -- local.yaml --
 apiVersion: management.cattle.io/v3

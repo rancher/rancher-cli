@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 238,
+  "commandCount": 246,
   "effectSchema": {
     "actions": [
       "create",
@@ -66,7 +66,7 @@
       "serverReads"
     ]
   },
-  "generatedCommandCount": 165,
+  "generatedCommandCount": 173,
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
@@ -410,7 +410,7 @@
       ],
       "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "generated": {
-        "count": 63,
+        "count": 67,
         "pattern": "get <kind>"
       },
       "name": "get"
@@ -476,7 +476,7 @@
     {
       "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
       "generated": {
-        "count": 63,
+        "count": 67,
         "pattern": "patch <kind>"
       },
       "name": "patch"
@@ -490,7 +490,7 @@
       "name": "delete"
     }
   ],
-  "kindCount": 63,
+  "kindCount": 67,
   "kinds": [
     "cluster",
     "project",
@@ -517,6 +517,10 @@
     "poddisruptionbudget",
     "resourcequota",
     "storageclass",
+    "role",
+    "rolebinding",
+    "clusterrole",
+    "clusterrolebinding",
     "gitrepo",
     "helmop",
     "bundle",

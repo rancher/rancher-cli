@@ -1,0 +1,81 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+env PATCH_BODY='[{"op":"add","path":"/metadata/labels/x","value":"y"}]'
+
+# The cluster roles and cluster role bindings the harness seeds appear in the
+# server's Table.
+exec rancher get clusterroles --cluster testcluster
+stdout 'NAME\s+CREATED AT'
+stdout 'e2e-pod-reader'
+exec rancher get clusterrolebindings --cluster testcluster
+stdout 'NAME\s+ROLE\s+AGE'
+stdout 'e2e-cluster-lister\s+ClusterRole/e2e-cluster-lister'
+exec rancher get clusterrolebindings --cluster testcluster -o wide
+stdout 'NAME\s+ROLE\s+AGE\s+USERS\s+GROUPS\s+SERVICEACCOUNTS'
+
+# Roles and role bindings are listed in a namespace; without --namespace the
+# list covers every namespace and has a NAMESPACE column.
+exec rancher get roles --cluster testcluster -n team-a
+stdout 'e2e-authenticated-deployments'
+exec rancher get rolebindings --cluster testcluster -n team-a
+stdout 'e2e-std-pods'
+exec rancher get rolebindings --cluster testcluster
+stdout 'NAMESPACE\s+NAME\s+ROLE\s+AGE'
+stdout 'team-a\s+e2e-std-pods'
+
+# A get of one object with -o json prints the object.
+exec rancher get rolebinding e2e-std-pods --cluster testcluster -n team-a -o json
+jsonquery stdout data.roleRef.name e2e-pod-reader
+jsonquery stdout data.subjects.0.name e2e-std
+exec rancher get clusterrole e2e-pod-reader --cluster testcluster -o json
+jsonquery stdout data.metadata.name e2e-pod-reader
+
+# The schema shows patch and create as refused and delete as absent.
+exec rancher schema role -o json
+jsonquery stdout data.verbs.patch.state refused
+jsonquery stdout data.verbs.create.state refused
+jsonquery stdout data.verbs.delete.state absent
+exec rancher schema rolebinding -o json
+jsonquery stdout data.verbs.patch.state refused
+jsonquery stdout data.verbs.create.state refused
+jsonquery stdout data.verbs.delete.state absent
+exec rancher schema clusterrole -o json
+jsonquery stdout data.verbs.patch.state refused
+jsonquery stdout data.verbs.create.state refused
+jsonquery stdout data.verbs.delete.state absent
+exec rancher schema clusterrolebinding -o json
+jsonquery stdout data.verbs.patch.state refused
+jsonquery stdout data.verbs.create.state refused
+jsonquery stdout data.verbs.delete.state absent
+
+# patch, create and delete are refused with VALIDATION before any request: a
+# name that does not exist would return NOT_FOUND if a request were made.
+! exec rancher patch role no-such-role --cluster testcluster -n team-a --patch $PATCH_BODY -o json
+jsonquery stderr data.error.code VALIDATION
+jsonget stderr data.error.message msg.txt
+grep 'this CLI does not change Kubernetes RBAC objects yet' msg.txt
+! exec rancher create resource -f role.yaml --cluster testcluster -o json
+jsonquery stderr data.error.code VALIDATION
+jsonget stderr data.error.message msg.txt
+grep 'this CLI does not create Kubernetes RBAC objects yet' msg.txt
+! exec rancher delete clusterrolebinding no-such-binding --cluster testcluster -o json
+jsonquery stderr data.error.code VALIDATION
+jsonget stderr data.error.message msg.txt
+grep 'this CLI does not delete Kubernetes RBAC objects yet' msg.txt
+
+# A standard user who may not list cluster roles gets the RBAC error. Keep this
+# last: the token set here applies to the rest of the script.
+env RANCHER_CLI_TOKEN=e2e-std:secret
+! exec rancher get clusterroles --cluster testcluster -o json
+jsonquery stderr data.error.code RBAC
+
+-- role.yaml --
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: no-such-role
+  namespace: team-a
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]

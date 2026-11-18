@@ -1019,6 +1019,23 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   generated verbs are for working from manifests or with declarative tools;
   `get projectroletemplatebindings --project <p> --cluster <c>` lists the
   bindings of a project.
+- `role`, `rolebinding`, `clusterrole` and `clusterrolebinding` are the
+  Kubernetes RBAC objects of one cluster (rbac.authorization.k8s.io/v1). Read
+  them with `get` and `--cluster` (`local` is the local cluster). `role` and
+  `rolebinding` take `--namespace` and `--project`; the other two are not
+  namespaced. The columns come from the server's Table: NAME, ROLE and AGE for a
+  RoleBinding or ClusterRoleBinding, with USERS, GROUPS and SERVICEACCOUNTS
+  under `-o wide`, and NAME and CREATED AT for a Role or ClusterRole. Get
+  output hides the `kubectl.kubernetes.io/last-applied-configuration` and
+  `objectset.rio.cattle.io/applied` annotations. `patch` and `create resource`
+  with a manifest of one of them are refused with `VALIDATION` before any
+  request, and there is no `delete` (`rancher delete role` fails with
+  `VALIDATION` and an "unknown command" message that gives the reason). To
+  change the access Rancher grants, use `grant` and `revoke`, which manage the
+  Rancher role bindings listed above. Completion offers only names made of
+  letters, digits, `.`, `_`, `-` and `+` that do not start with `-` or `+`.
+  Type any other name, such as `system:node` or `oidc-user@example.com`, in
+  full.
 
 `rancher schema <kind>` shows the verbs of one kind: available (with contract
 and stability), refused (with the reason), or not available (with the reason).
@@ -1884,6 +1901,9 @@ must list the bindings, and it fails when Rancher refuses the read of them. It m
 equal to the id, and `userPrincipalName` equal to the `local://<id>` you typed; a binding that has
 only `userPrincipalName` is not found when you pass an id without `local://`.
 
+`get` reads the Kubernetes role bindings and roles that `access explain` names:
+`rolebinding`, `clusterrolebinding`, `role` and `clusterrole`.
+
 `access can` and `access list` ask the cluster's own authorizer through
 the Rancher proxy (SelfSubjectAccessReview, SubjectAccessReview,
 SelfSubjectRulesReview); nothing is inferred from bindings. For
@@ -2142,7 +2162,8 @@ The table of a built-in Kubernetes kind (node, namespace, pod, deployment,
 service, configmap, secret, statefulset, daemonset, replicaset, job, cronjob,
 ingress, persistentvolume, persistentvolumeclaim, serviceaccount, event,
 horizontalpodautoscaler, limitrange, networkpolicy, poddisruptionbudget,
-resourcequota, storageclass) comes from the cluster's API server, as
+resourcequota, storageclass, role, rolebinding, clusterrole,
+clusterrolebinding) comes from the cluster's API server, as
 kubectl's does: the server's column names and cells, the same as
 `kubectl get` shows, and with `-o wide` the columns the
 server marks as wide. The columns follow the cluster's Kubernetes version.

@@ -70,6 +70,7 @@ const (
 	reasonK3k        = "a list of a k3k cluster in a missing namespace is empty, as kubectl get -n prints it"
 	reasonCatalog    = "a list of a catalog kind in a missing namespace is empty, as kubectl get -n prints it"
 	reasonETCDSnap   = "a list of an etcd snapshot in a missing namespace is empty, as kubectl get -n prints it"
+	reasonRBAC       = "a list of an RBAC kind in a missing namespace is empty, as kubectl get -n prints it"
 	reasonCRT        = "the root API list of registration tokens is filtered by namespace and a namespace with none is an empty list"
 )
 
@@ -109,6 +110,8 @@ var missingKinds = []missingKind{
 	{"k3k-cluster", true, "apis/k3k.io/v1beta1", "clusters", "gpd", reasonK3k},
 	{"app", true, "apis/catalog.cattle.io/v1", "apps", "g", reasonCatalog},
 	{"operation", true, "apis/catalog.cattle.io/v1", "operations", "g", reasonCatalog},
+	{"role", true, "apis/rbac.authorization.k8s.io/v1", "roles", "g", reasonRBAC},
+	{"rolebinding", true, "apis/rbac.authorization.k8s.io/v1", "rolebindings", "g", reasonRBAC},
 	{"gitrepo", false, "apis/fleet.cattle.io/v1alpha1", "gitrepos", "gpd", reasonFleet},
 	{"helmop", false, "apis/fleet.cattle.io/v1alpha1", "helmops", "gpd", reasonFleet},
 	{"bundle", false, "apis/fleet.cattle.io/v1alpha1", "bundles", "gp", reasonFleet},
@@ -193,6 +196,12 @@ func missingRows() []missingRow {
 			code: clierr.CodeValidation},
 		missingRow{name: "patch operation", class: classRefused,
 			argv: []string{"patch", "operation", "x", "--patch", missingPatchBody, "--dry-run", "--cluster", "c-abc", "--namespace", missingNamespace, "-o", "json"},
+			code: clierr.CodeValidation},
+		missingRow{name: "patch role", class: classRefused,
+			argv: []string{"patch", "role", "x", "--patch", missingPatchBody, "--dry-run", "--cluster", "c-abc", "--namespace", missingNamespace, "-o", "json"},
+			code: clierr.CodeValidation},
+		missingRow{name: "patch rolebinding", class: classRefused,
+			argv: []string{"patch", "rolebinding", "x", "--patch", missingPatchBody, "--dry-run", "--cluster", "c-abc", "--namespace", missingNamespace, "-o", "json"},
 			code: clierr.CodeValidation},
 		missingRow{name: "patch etcd-snapshot", class: classRefused,
 			argv: []string{"patch", "etcd-snapshot", "x", "--patch", missingPatchBody, "--dry-run", "--namespace", missingNamespace, "-o", "json"},
@@ -451,8 +460,8 @@ func TestEveryNamespaceCommandHasAMissingNamespaceRow(t *testing.T) {
 			"add its row to "+table+" in this file, saying what it does with a namespace that does not exist")
 	}
 	commands, rowCount := len(declaring), len(rows)
-	assert.Equal(t, 130, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
-	assert.Equal(t, 172, rowCount, "the rows; uncovered commands: %v", uncovered)
+	assert.Equal(t, 134, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
+	assert.Equal(t, 178, rowCount, "the rows; uncovered commands: %v", uncovered)
 
 	h := newMissingHarness(t)
 	for _, row := range rows {

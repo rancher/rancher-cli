@@ -187,6 +187,27 @@ func TestEveryRowHidesTheHiddenAnnotationsWhenItHidesAnything(t *testing.T) {
 	}
 }
 
+// TestRBACRowsHideAppliedAnnotations asserts get output of each Kubernetes
+// RBAC kind hides the kubectl last-applied-configuration annotation and the
+// Rancher objectset applied annotation.
+func TestRBACRowsHideAppliedAnnotations(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"role", "rolebinding", "clusterrole", "clusterrolebinding"} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			k, ok := Lookup(key)
+			require.True(t, ok)
+			r := k.ReadRedaction()
+			assert.False(t, r.IsZero())
+			assert.True(t, r.IsRead())
+			assert.True(t, r.Hides())
+			for _, name := range []string{"kubectl.kubernetes.io/last-applied-configuration", "objectset.rio.cattle.io/applied"} {
+				assert.True(t, r.Covers([]string{"metadata", "annotations", name}), name)
+			}
+		})
+	}
+}
+
 // TestRedactionCoversAWildcardSegment asserts a "*" segment of a hidden path
 // matches exactly one segment of the object path, whatever it is (an index,
 // the "-" of an append, any name), with the other segments compared ignoring

@@ -42,6 +42,10 @@ var cliOnlyKinds = map[string]bool{
 	"poddisruptionbudget":     true, // no rancher-ai-mcp tool counterpart
 	"resourcequota":           true, // no rancher-ai-mcp tool counterpart
 	"storageclass":            true, // no rancher-ai-mcp tool counterpart
+	"role":                    true, // no rancher-ai-mcp tool counterpart
+	"rolebinding":             true, // no rancher-ai-mcp tool counterpart
+	"clusterrole":             true, // no rancher-ai-mcp tool counterpart
+	"clusterrolebinding":      true, // no rancher-ai-mcp tool counterpart
 }
 
 func TestConformsToMCPVocabulary(t *testing.T) {
@@ -1228,4 +1232,95 @@ func TestDeleteDescRowsAreTheProjectAndManagementToken(t *testing.T) {
 		}
 	}
 	assert.ElementsMatch(t, []string{"project", "managementtoken"}, got)
+}
+
+// TestRBACRows asserts each Kubernetes RBAC row field by field: the names, the
+// group and version, the scope, the ServerTable and Completable fields, the
+// three refusal texts and the description, that the Columns,
+// DeleteCascadeWarning, DeleteDesc, CreateWarning, WaitDefault, RedactPaths,
+// SystemFilter, DefaultNamespace, ArgDesc and Handle fields are empty, and
+// that the row resolves by alias, by kind and by GVR.
+func TestRBACRows(t *testing.T) {
+	t.Parallel()
+	const group = "rbac.authorization.k8s.io"
+	patchReason := "this CLI does not change Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant and revoke commands for access that Rancher grants"
+	deleteReason := "this CLI does not delete Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the revoke command for access that Rancher grants"
+	createReason := "this CLI does not create Kubernetes RBAC objects yet; use kubectl with a kubeconfig from `" + clierr.Rancher + " kubeconfig --cluster <cluster>` (<cluster> is the cluster's id or name), or the grant command for access that Rancher grants"
+	getDesc := "Kubernetes RBAC objects of one cluster. Rancher creates many of them from its role templates, global roles and Rancher role bindings. This CLI shows them and does not change them yet. To see what a subject may do, run `" + clierr.Rancher + " access can <verb> <resource> --cluster <cluster> --as <subject>`."
+
+	tests := []struct {
+		key      string
+		plural   string
+		k8sKind  string
+		policy   NamespacePolicy
+		resource string
+	}{
+		{"role", "roles", "Role", NSPlain, "roles"},
+		{"rolebinding", "rolebindings", "RoleBinding", NSPlain, "rolebindings"},
+		{"clusterrole", "clusterroles", "ClusterRole", NSNone, "clusterroles"},
+		{"clusterrolebinding", "clusterrolebindings", "ClusterRoleBinding", NSNone, "clusterrolebindings"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			t.Parallel()
+			k, ok := ByKey(tt.key)
+			require.True(t, ok)
+			assert.Equal(t, tt.key, k.Key)
+			assert.Equal(t, tt.key, k.Name)
+			assert.Equal(t, []string{tt.plural}, k.Aliases)
+			assert.Equal(t, schema.GroupVersionResource{Group: group, Version: "v1", Resource: tt.resource}, k.GVR)
+			assert.Equal(t, tt.policy, k.Policy)
+			assert.Equal(t, tt.k8sKind, k.K8sKind)
+			assert.Equal(t, Downstream, k.Scope)
+			assert.True(t, k.ServerTable)
+			assert.True(t, k.Sensitive)
+			assert.True(t, k.Completable)
+			assert.Equal(t, safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta}, k.Binding)
+			assert.False(t, k.Deletable)
+			assert.Empty(t, k.Columns)
+			assert.Empty(t, k.DeleteCascadeWarning)
+			assert.Empty(t, k.DeleteDesc)
+			assert.Empty(t, k.CreateWarning)
+			assert.Empty(t, k.WaitDefault)
+			assert.Empty(t, k.ArgDesc)
+			assert.Empty(t, k.Handle)
+			assert.Empty(t, k.RedactPaths)
+			assert.Empty(t, k.SystemFilter)
+			assert.Empty(t, k.DefaultNamespace)
+			assert.Equal(t, patchReason, k.NoPatchReason)
+			assert.Equal(t, deleteReason, k.NoDeleteReason)
+			assert.Equal(t, createReason, k.NoCreateViaManifest)
+			assert.Equal(t, getDesc, k.GetDesc)
+
+			byAlias, ok := Lookup(tt.plural)
+			require.True(t, ok)
+			assert.Equal(t, tt.key, byAlias.Key)
+			byKind, ok := LookupGVK(group+"/v1", tt.k8sKind)
+			require.True(t, ok)
+			assert.Equal(t, tt.key, byKind.Key)
+			byGVR, ok := ByGVR(k.GVR)
+			require.True(t, ok)
+			assert.Equal(t, tt.key, byGVR.Key)
+		})
+	}
+}
+
+// TestEveryRBACRowIsReadOnly asserts every Kubernetes RBAC row is read-only:
+// patch, create and delete are refused, and the set of such rows is the four
+// known ones.
+func TestEveryRBACRowIsReadOnly(t *testing.T) {
+	t.Parallel()
+	var keys []string
+	for _, k := range All() {
+		if k.GVR.Group != "rbac.authorization.k8s.io" {
+			continue
+		}
+		keys = append(keys, k.Key)
+		assert.False(t, k.Deletable, k.Key)
+		assert.NotEmpty(t, k.NoDeleteReason, k.Key)
+		assert.NotEmpty(t, k.NoPatchReason, k.Key)
+		assert.NotEmpty(t, k.NoCreateViaManifest, k.Key)
+	}
+	slices.Sort(keys)
+	assert.Equal(t, []string{"clusterrole", "clusterrolebinding", "role", "rolebinding"}, keys)
 }
