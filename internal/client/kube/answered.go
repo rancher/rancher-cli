@@ -30,6 +30,24 @@ func SetRetryLimitsForTest(waitCap, budget time.Duration) (restore func()) {
 	return func() { retryAfterCap, retryBudget = oldCap, oldBudget }
 }
 
+// RetryWaitGrantedForTest returns the total 429 wait granted so far to the
+// call whose record ctx carries, as the call's budget counts it, and zero when
+// ctx carries no record. The transport grants a wait for each 429 with a whole
+// number of seconds in Retry-After, up to what is left of the budget, whether
+// or not the request is repeated. It reads the wait granted, not the time
+// spent waiting.
+// In non-test code so other packages' tests can reach it, as
+// SetRetryLimitsForTest is.
+func RetryWaitGrantedForTest(ctx context.Context) time.Duration {
+	a := answersOf(ctx)
+	if a == nil {
+		return 0
+	}
+	a.budget.mu.Lock()
+	defer a.budget.mu.Unlock()
+	return a.budget.spent
+}
+
 // answers is what one call learned from its responses: the status of the
 // response to the request in flight, or to the last request when none is, and
 // the time it has agreed to wait for 429 answers. The state belongs to the

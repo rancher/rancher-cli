@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -58,8 +59,15 @@ type guardPath struct {
 	// plain is true where the error is not a *clierr.Error, only an error
 	// whose chain holds the answered status.
 	plain bool
-	// run makes one call, through the cluster, against srv.
-	run func(t *testing.T, srv *testtransport.Answers, cluster string) error
+	// noRecord is true where no answered transport sees the call's requests,
+	// so no wait is ever granted to it.
+	// Every other path is granted its wait by that transport on a 429 with a
+	// whole number of seconds in Retry-After, whether or not the path repeats
+	// the request.
+	noRecord bool
+	// run makes one call, through the cluster, against srv, with the context
+	// that carries the call's record of answers.
+	run func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error
 }
 
 // guardEff is the configuration of a call against srv, with the server's
@@ -89,83 +97,83 @@ func unavailableObject() *unstructured.Unstructured {
 func guardPaths() []guardPath {
 	return []guardPath{
 		{name: "get", method: "Get", retries: true, named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).Get(t.Context(), guardNamespaces, "", "a")
+				_, err := guardClient(t, srv, cluster).Get(ctx, guardNamespaces, "", "a")
 				return err
 			}},
 		{name: "list", method: "List", retries: true, named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).List(t.Context(), guardNamespaces, "", "")
+				_, err := guardClient(t, srv, cluster).List(ctx, guardNamespaces, "", "")
 				return err
 			}},
 		{name: "create", method: "Create", retries: true, named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).Create(t.Context(), guardNamespaces, "", unavailableObject(), true)
+				_, err := guardClient(t, srv, cluster).Create(ctx, guardNamespaces, "", unavailableObject(), true)
 				return err
 			}},
 		{name: "update", method: "Update", retries: true, named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).Update(t.Context(), guardNamespaces, "", unavailableObject(), false)
+				_, err := guardClient(t, srv, cluster).Update(ctx, guardNamespaces, "", unavailableObject(), false)
 				return err
 			}},
 		{name: "delete", method: "Delete", retries: true, named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				return guardClient(t, srv, cluster).Delete(t.Context(), guardNamespaces, "", "a", "", false)
+				return guardClient(t, srv, cluster).Delete(ctx, guardNamespaces, "", "a", "", false)
 			}},
 		{name: "logs", method: "Logs", retries: true, named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).Logs(t.Context(), "ns", "pod", engine.LogOptions{})
+				_, err := guardClient(t, srv, cluster).Logs(ctx, "ns", "pod", engine.LogOptions{})
 				return err
 			}},
 		{name: "list table", method: "ListTable", retries: true, named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).(engine.TableReader).ListTable(t.Context(), guardNamespaces, "", "")
+				_, err := guardClient(t, srv, cluster).(engine.TableReader).ListTable(ctx, guardNamespaces, "", "")
 				return err
 			}},
 		{name: "get table", method: "GetTable", retries: true, named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).(engine.TableReader).GetTable(t.Context(), guardNamespaces, "", "a")
+				_, err := guardClient(t, srv, cluster).(engine.TableReader).GetTable(ctx, guardNamespaces, "", "a")
 				return err
 			}},
 		{name: "version resolution", retries: true, named: true, clusterOK: true, prefix: `discovering version for group "apps": `,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).Get(t.Context(), guardDeployment, "ns", "d")
+				_, err := guardClient(t, srv, cluster).Get(ctx, guardDeployment, "ns", "d")
 				return err
 			}},
 		{name: "version resolution of a list table", retries: true, named: true, clusterOK: true, prefix: `discovering version for group "apps": `,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).(engine.TableReader).ListTable(t.Context(), guardDeployment, "ns", "")
+				_, err := guardClient(t, srv, cluster).(engine.TableReader).ListTable(ctx, guardDeployment, "ns", "")
 				return err
 			}},
 		{name: "version resolution of a get table", retries: true, named: true, clusterOK: true, prefix: `discovering version for group "apps": `,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).(engine.TableReader).GetTable(t.Context(), guardDeployment, "ns", "d")
+				_, err := guardClient(t, srv, cluster).(engine.TableReader).GetTable(ctx, guardDeployment, "ns", "d")
 				return err
 			}},
 		{name: "server resources", method: "ServerResources", several: true, named: true, clusterOK: true, prefix: "GET /api: ",
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				_, err := guardClient(t, srv, cluster).ServerResources(t.Context())
+				_, err := guardClient(t, srv, cluster).ServerResources(ctx)
 				return err
 			}},
 		{name: "post review", method: "PostReview", named: true, clusterOK: true,
-			run: func(t *testing.T, srv *testtransport.Answers, cluster string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
 				gvk, _ := engine.ReviewGVK(engine.ReviewSelfSubjectAccess)
 				obj := &unstructured.Unstructured{}
 				obj.SetGroupVersionKind(gvk)
-				resp, err := guardClient(t, srv, cluster).PostReview(t.Context(), engine.ReviewRequest{Kind: engine.ReviewSelfSubjectAccess, Object: obj})
+				resp, err := guardClient(t, srv, cluster).PostReview(ctx, engine.ReviewRequest{Kind: engine.ReviewSelfSubjectAccess, Object: obj})
 				if err != nil {
 					return err
 				}
@@ -175,39 +183,39 @@ func guardPaths() []guardPath {
 				return resp.Mapped
 			}},
 		{name: "preflight", retries: true, named: true,
-			run: func(t *testing.T, srv *testtransport.Answers, _ string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, _ string) error {
 				t.Helper()
-				_, err := Preflight(t.Context(), guardEff(srv))
+				_, err := Preflight(ctx, guardEff(srv))
 				return err
 			}},
 		{name: "owner", retries: true, named: true,
-			run: func(t *testing.T, srv *testtransport.Answers, _ string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, _ string) error {
 				t.Helper()
-				_, err := Owner(t.Context(), guardEff(srv))
+				_, err := Owner(ctx, guardEff(srv))
 				return err
 			}},
 		{name: "identity", retries: true, named: true,
-			run: func(t *testing.T, srv *testtransport.Answers, _ string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, _ string) error {
 				t.Helper()
-				_, err := Identity(t.Context(), guardEff(srv))
+				_, err := Identity(ctx, guardEff(srv))
 				return err
 			}},
 		{name: "effective token metadata", retries: true, named: true,
-			run: func(t *testing.T, srv *testtransport.Answers, _ string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, _ string) error {
 				t.Helper()
-				_, err := EffectiveTokenMetadata(t.Context(), guardEff(srv), "t")
+				_, err := EffectiveTokenMetadata(ctx, guardEff(srv), "t")
 				return err
 			}},
 		{name: "v3 token metadata", retries: true, named: true,
-			run: func(t *testing.T, srv *testtransport.Answers, _ string) error {
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, _ string) error {
 				t.Helper()
-				_, err := V3TokenMetadata(t.Context(), guardEff(srv), "t")
+				_, err := V3TokenMetadata(ctx, guardEff(srv), "t")
 				return err
 			}},
-		{name: "server info", plain: true,
-			run: func(t *testing.T, srv *testtransport.Answers, _ string) error {
+		{name: "server info", plain: true, noRecord: true,
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, _ string) error {
 				t.Helper()
-				_, err := GetServerInfo(t.Context(), guardEff(srv))
+				_, err := GetServerInfo(ctx, guardEff(srv))
 				return err
 			}},
 	}
@@ -222,9 +230,11 @@ type unavailableRow struct {
 
 // guardResult is what one call down a path came to.
 type guardResult struct {
-	err     error
-	count   int
-	elapsed time.Duration
+	err   error
+	count int
+	// granted is the total 429 wait granted to the call, as its record counts
+	// it; the call's time is not measured.
+	granted time.Duration
 	// server is the server as output may show it.
 	server string
 }
@@ -234,16 +244,18 @@ type guardResult struct {
 func answerOf(t *testing.T, p guardPath, row unavailableRow, retryAfter, cluster string) guardResult {
 	t.Helper()
 	srv := testtransport.NewAnswers(t, true, row.status, retryAfter, row.contentType, row.body)
-	start := time.Now()
-	err := p.run(t, srv, cluster)
-	return guardResult{err: err, count: srv.Count(), elapsed: time.Since(start), server: config.DisplayServerURL(srv.URL())}
+	ctx := kube.WithAnswers(t.Context())
+	err := p.run(t, ctx, srv, cluster)
+	return guardResult{err: err, count: srv.Count(), granted: kube.RetryWaitGrantedForTest(ctx), server: config.DisplayServerURL(srv.URL())}
 }
 
-// guardSeams shortens the call deadline to 4 seconds and a 429 wait to one
-// second, for the test and its subtests.
+// guardSeams shortens a 429 wait to one second and sets the call deadline to
+// 20 seconds, for the test and its subtests. The deadline is far above any
+// wait a call makes here, so a slow dial or handshake on a loaded runner does
+// not end the call before its first request.
 func guardSeams(t *testing.T) {
 	t.Helper()
-	t.Cleanup(SetRequestTimeoutForTest(4 * time.Second))
+	t.Cleanup(SetRequestTimeoutForTest(20 * time.Second))
 	t.Cleanup(kube.SetRetryLimitsForTest(time.Second, time.Second))
 }
 
@@ -286,13 +298,16 @@ func (p guardPath) assertAnswered(t *testing.T, err error, status int) *clierr.E
 // way a command sends a request to the server, that a server answering a 5xx
 // with a Retry-After header of 1 or 120 seconds gets the same one request as
 // one answering with none, and that the call returns a retryable GENERIC
-// error that holds the answered status, in well under the call deadline,
-// with a message that names the server and the status and never says the
-// server is slow, cannot be reached, or that a cluster is to be inspected.
-// Where client-go repeats a request, a 429 with a Retry-After header of 1 or
-// 120 seconds, answered on every try, makes exactly two requests and
-// returns before the deadline: the call's budget allows one wait. A path
-// that repeats nothing sends one.
+// error that holds the answered status and is granted no wait, with a
+// message that names the server and the status and never says the server is
+// slow, cannot be reached, or that a cluster is to be inspected. Where
+// client-go repeats a request, a 429 with a Retry-After header of 1 or 120
+// seconds, answered on every try, makes exactly two requests: the call's
+// budget allows one wait. A path that repeats nothing sends one. Every path
+// with a record of its answers is granted the cap on that 429, one second
+// here, whether or not it repeats the request, because the answered
+// transport grants the wait when it sees the answer; a path with no record
+// is granted none.
 func TestEveryClientPathFailsAtOnceOnAnUnavailableServer(t *testing.T) {
 	guardSeams(t)
 	for _, p := range guardPaths() {
@@ -313,7 +328,7 @@ func TestEveryClientPathFailsAtOnceOnAnUnavailableServer(t *testing.T) {
 					for _, retryAfter := range []string{"1", "120"} {
 						got := answerOf(t, p, row, retryAfter, "local")
 						assert.Equal(t, base.count, got.count, "Retry-After %s", retryAfter)
-						assert.Less(t, got.elapsed, 2*time.Second, "Retry-After %s", retryAfter)
+						assert.Zero(t, got.granted, "a %d is granted no wait, Retry-After %s", status, retryAfter)
 						ce := p.assertAnswered(t, got.err, status)
 						if p.named {
 							assert.Contains(t, ce.Message, p.prefix+got.server+" answered HTTP "+strconv.Itoa(status))
@@ -336,7 +351,11 @@ func TestEveryClientPathFailsAtOnceOnAnUnavailableServer(t *testing.T) {
 						want = 2
 					}
 					assert.Equal(t, want, got.count, "Retry-After %s", retryAfter)
-					assert.Less(t, got.elapsed, 3500*time.Millisecond, "Retry-After %s", retryAfter)
+					wantGranted := time.Second
+					if p.noRecord {
+						wantGranted = 0
+					}
+					assert.Equal(t, wantGranted, got.granted, "the wait granted for a 429, Retry-After %s", retryAfter)
 					ce := p.assertAnswered(t, got.err, 429)
 					if p.named {
 						assert.Contains(t, ce.Message, p.prefix+got.server+" answered HTTP 429 Too Many Requests")
@@ -475,12 +494,13 @@ func TestEveryConfigFromRESTConfigCarriesTheAnsweredTransport(t *testing.T) {
 
 // TestA429WaitIsLimitedToTheCapOnEveryRetryingPath asserts a Retry-After
 // header of 120 seconds on a 429 answered on every try is cut to the cap, one
-// second here, with a budget of two: the call sends three requests, waits
-// two seconds in all and returns the 429, on every path where client-go
-// repeats a request. The count is the main sign; the deadline is far off the
-// two seconds, so a stalled runner does not end the call first.
+// second here, with a budget of two: the call sends three requests, is
+// granted two seconds in all (one for each of the first two 429 answers, none
+// for the third) and returns the 429, on every path where client-go repeats a
+// request. The count is the primary check; the deadline is far above the two
+// seconds, so a slow runner does not end the call first.
 func TestA429WaitIsLimitedToTheCapOnEveryRetryingPath(t *testing.T) {
-	t.Cleanup(SetRequestTimeoutForTest(8 * time.Second))
+	t.Cleanup(SetRequestTimeoutForTest(20 * time.Second))
 	t.Cleanup(kube.SetRetryLimitsForTest(time.Second, 2*time.Second))
 	row := unavailableRow{status: 429, contentType: "application/json", body: cloudflareBody}
 	for _, p := range guardPaths() {
@@ -491,7 +511,7 @@ func TestA429WaitIsLimitedToTheCapOnEveryRetryingPath(t *testing.T) {
 			t.Parallel()
 			got := answerOf(t, p, row, "120", "local")
 			assert.Equal(t, 3, got.count)
-			assert.Less(t, got.elapsed, 6*time.Second)
+			assert.Equal(t, 2*time.Second, got.granted, "the wait granted over three 429 answers")
 			_ = p.assertAnswered(t, got.err, 429)
 		})
 	}

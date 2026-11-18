@@ -147,6 +147,32 @@ func TestSetRetryLimitsForTestChangesTheCapAndTheBudget(t *testing.T) {
 	assert.Equal(t, "5", h)
 }
 
+// TestRetryWaitGrantedForTestReadsTheWaitOfTheCall asserts the accessor reads
+// zero for a context with no record, and for a record the sum of the waits
+// granted through it and through a record of its own that shares its budget.
+// The limits are a 3 second cap and a 10 second budget.
+func TestRetryWaitGrantedForTestReadsTheWaitOfTheCall(t *testing.T) {
+	t.Cleanup(SetRetryLimitsForTest(3*time.Second, 10*time.Second))
+
+	assert.Zero(t, RetryWaitGrantedForTest(t.Context()))
+
+	ctx := WithAnswers(t.Context())
+	assert.Zero(t, RetryWaitGrantedForTest(ctx), "nothing granted yet")
+
+	send(t, ctx, answerWith{status: 429, retryAfter: "120"})
+	assert.Equal(t, 3*time.Second, RetryWaitGrantedForTest(ctx))
+
+	child := WithNewAnswers(ctx)
+	send(t, child, answerWith{status: 429, retryAfter: "2"})
+	assert.Equal(t, 5*time.Second, RetryWaitGrantedForTest(ctx), "the child's grant counts toward the parent's total")
+	assert.Equal(t, 5*time.Second, RetryWaitGrantedForTest(child))
+
+	send(t, ctx, answerWith{status: 503, retryAfter: "120"})
+	assert.Equal(t, 5*time.Second, RetryWaitGrantedForTest(ctx), "a 5xx is granted nothing")
+
+	assert.Zero(t, RetryWaitGrantedForTest(WithAnswers(t.Context())), "another call has its own budget")
+}
+
 // TestTheAnsweredTransportRecordsTheStatusOfEveryAnswer asserts a call's
 // record holds the status of the last response of any code, none for a
 // call with no response, and none for a failed request; a nested call
