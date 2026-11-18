@@ -5,7 +5,9 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -41,6 +43,18 @@ var evFilterAnyText = map[string]bool{
 var evFilterCommandWriters = map[string]bool{
 	"internal/output.writePlainTable": true,
 	"internal/output.renderName":      true,
+}
+
+// Keys of the two clierr functions that scanEscapes records.
+const (
+	evWholeValueText    = "internal/clierr.WholeValueText"
+	evIsUnsafeToDisplay = "internal/clierr.IsUnsafeToDisplay"
+)
+
+// evUnsafeRuneRow is one function that references clierr.IsUnsafeToDisplay,
+// with what it does with the result.
+type evUnsafeRuneRow struct {
+	fn, reason string
 }
 
 // evFilterRow is the allowlist row of guard 3b for one function and one
@@ -83,6 +97,39 @@ func (p *evProgram) scanFilters(r *evResults) {
 				}
 			}
 			r.refs = append(r.refs, ref)
+			return true
+		})
+	}
+}
+
+// scanEscapes records the declaration of every function with a body and every
+// reference, called or used as a value, to clierr.WholeValueText and to
+// clierr.IsUnsafeToDisplay.
+func (p *evProgram) scanEscapes(r *evResults) {
+	for key, d := range p.funcs {
+		r.decls = append(r.decls, evRef{at: d.f.at(d.decl), fn: key})
+	}
+	for _, f := range p.files {
+		ast.Inspect(f.file, func(n ast.Node) bool {
+			id, ok := n.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			fn, ok := f.info.Uses[id].(*types.Func)
+			if !ok || fn.Pkg() == nil {
+				return true
+			}
+			var found *[]evRef
+			switch funcKey(fn) {
+			case evWholeValueText:
+				found = &r.escapes
+			case evIsUnsafeToDisplay:
+				found = &r.unsafe
+			default:
+				return true
+			}
+			_, encl := f.enclosing(id)
+			*found = append(*found, evRef{at: f.at(id), fn: encl})
 			return true
 		})
 	}
@@ -250,6 +297,78 @@ func evCheckFilterRows(refs []evFilterRef, rows []evFilterRow) []string {
 		}
 	}
 	return problems
+}
+
+// evCheckRendererEscapes checks that each writer names a function the scan
+// found and that the function references clierr.WholeValueText.
+func evCheckRendererEscapes(r *evResults, writers map[string]bool) []string {
+	var problems []string
+	for _, fn := range slices.Sorted(maps.Keys(writers)) {
+		i := slices.IndexFunc(r.decls, func(d evRef) bool { return d.fn == fn })
+		switch {
+		case i < 0:
+			problems = append(problems, fmt.Sprintf("%s is listed as a table, wide or name writer and no function has that name; remove it from the list", fn))
+		case !slices.ContainsFunc(r.escapes, func(e evRef) bool { return e.fn == fn }):
+			problems = append(problems, fmt.Sprintf("%s (%s): a table, wide or name writer must write each cell through clierr.WholeValueText before output.Printable", r.decls[i].at, fn))
+		}
+	}
+	return problems
+}
+
+// evCheckUnsafeRuneRows checks the references to clierr.IsUnsafeToDisplay
+// against the rows: each reference is in a function with a row, each row has
+// a reference and each row has a reason.
+func evCheckUnsafeRuneRows(refs []evRef, rows []evUnsafeRuneRow) []string {
+	var problems []string
+	for _, ref := range refs {
+		if !slices.ContainsFunc(rows, func(row evUnsafeRuneRow) bool { return row.fn == ref.fn }) {
+			problems = append(problems, fmt.Sprintf("%s (%s): a reference to clierr.IsUnsafeToDisplay in a function with no row; read what the function does with the result and add a row with its reason", ref.at, ref.fn))
+		}
+	}
+	for _, row := range rows {
+		switch {
+		case !slices.ContainsFunc(refs, func(ref evRef) bool { return ref.fn == row.fn }):
+			problems = append(problems, fmt.Sprintf("the row %s matched no reference to clierr.IsUnsafeToDisplay; remove it", row.fn))
+		case strings.TrimSpace(row.reason) == "":
+			problems = append(problems, fmt.Sprintf("the row %s has no reason", row.fn))
+		}
+	}
+	return problems
+}
+
+// TestEveryTableAndNameWriterWritesEachValueThroughWholeValueText asserts the
+// table, wide and name writers of result data (evFilterCommandWriters) each
+// still exist and each reference clierr.WholeValueText, called or used as a
+// value; a cell, a header and a name are written as escapes before
+// output.Printable removes the remedy marker.
+//
+// Limits: it sees a reference by type resolution in the function, not that
+// every cell reaches it; the rows of the terminal-text test run each format
+// with hostile cells.
+func TestEveryTableAndNameWriterWritesEachValueThroughWholeValueText(t *testing.T) {
+	t.Parallel()
+	r, err := evProductionResults()
+	require.NoError(t, err)
+	for _, p := range evCheckRendererEscapes(r, evFilterCommandWriters) {
+		t.Error(p)
+	}
+}
+
+// TestEveryUnsafeToDisplayReferenceHasAReviewedRow asserts every reference to
+// clierr.IsUnsafeToDisplay, called or used as a value, is in a function that
+// has a row in evUnsafeRuneRows with a reason, and every row has a reference.
+//
+// Limits: it sees a reference by type resolution, not a re-implementation of
+// the test (the unicode-class scan in displayrunes_test.go covers that), and
+// it does not follow a value chosen by the result of the test to where it is
+// written.
+func TestEveryUnsafeToDisplayReferenceHasAReviewedRow(t *testing.T) {
+	t.Parallel()
+	r, err := evProductionResults()
+	require.NoError(t, err)
+	for _, p := range evCheckUnsafeRuneRows(r.unsafe, evUnsafeRuneRows) {
+		t.Error(p)
+	}
 }
 
 // TestEveryWholeTextFilterReferenceHasAReviewedRow asserts guard 3b over the

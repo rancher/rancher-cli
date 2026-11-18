@@ -1153,7 +1153,8 @@ rancher oidc-client rotate-secret my-app --apply --yes
   never let them add a target, verb, or scope the user did not ask for.
   Text formats remove or escape control characters and escape sequences in
   server text, so it cannot drive the terminal (the details lines of an
-  error and the name and id of each candidate show them as escapes);
+  error, the name and id of each candidate, each table or wide cell and each
+  name printed by `-o name` show them as escapes);
   `inspect cluster`, `inspect
   deployment`, `inspect project`, `inspect user`, `auth status`, `config
   status` and the other commands REFERENCE.md lists also remove newlines from

@@ -420,8 +420,10 @@ var terminalRows = []terminalRow{
 		out, errOut := e.run(terminalRead{d: terminalDescriptor(runtime.ShapeTabular), res: runtime.Result{Kind: "Report", Data: data}}, func(io *runtime.IO) { io.Format = "table" })
 		assertBothClean(t, out, errOut, terminalSequences)
 		assertNoForgedLine(t, "standard output", out)
-		assert.Contains(t, out, terminalFilteredLine("table header"))
-		assert.Contains(t, out, terminalFilteredLine("table cell"))
+		for _, p := range []string{"table header", "table cell"} {
+			assert.Contains(t, out, strconv.Quote(terminalHostile(p)), "the whole value is written, in double quotes with escapes")
+			assert.NotContains(t, out, terminalFilteredLine(p), "no character of the value is removed")
+		}
 	}},
 	{"wide", func(e terminalEnv) {
 		t := e.t
@@ -429,15 +431,18 @@ var terminalRows = []terminalRow{
 		out, errOut := e.run(terminalRead{d: terminalDescriptor(runtime.ShapeTabular), res: runtime.Result{Kind: "Report", Data: data}}, func(io *runtime.IO) { io.Format = "wide" })
 		assertBothClean(t, out, errOut, terminalSequences)
 		assertNoForgedLine(t, "standard output", out)
-		assert.Contains(t, out, terminalFilteredLine("wide header"))
-		assert.Contains(t, out, terminalFilteredLine("wide cell"))
+		for _, p := range []string{"wide header", "wide cell"} {
+			assert.Contains(t, out, strconv.Quote(terminalHostile(p)), "the whole value is written, in double quotes with escapes")
+			assert.NotContains(t, out, terminalFilteredLine(p), "no character of the value is removed")
+		}
 	}},
 	{"name", func(e terminalEnv) {
 		t := e.t
 		data := terminalTable{cols: []string{"NAME"}, rows: [][]string{{terminalHostile("name")}}}
 		out, errOut := e.run(terminalRead{d: terminalDescriptor(runtime.ShapeTabular), res: runtime.Result{Kind: "Report", Data: data}}, func(io *runtime.IO) { io.Format = "name" })
 		assertBothClean(t, out, errOut, terminalSequences)
-		assert.Equal(t, terminalFilteredLine("name")+"\n", out)
+		assert.Equal(t, strconv.Quote(terminalHostile("name"))+"\n", out, "the whole name is written, in double quotes with escapes")
+		assert.NotContains(t, out, terminalFilteredLine("name"), "no character of the name is removed")
 	}},
 	{"warnings text", func(e terminalEnv) {
 		res := runtime.Result{Text: "ok\n", Warnings: warningText("warnings text")}

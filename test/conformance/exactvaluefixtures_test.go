@@ -21,15 +21,15 @@ import (
 // packages whose name starts with "accepted" hold the accepted shapes and no
 // such comment.
 var evFixtureDirs = []string{
-	"acceptedcommands", "acceptedfilters", "acceptedorigins", "acceptedwords",
+	"acceptedcommands", "acceptedfilters", "acceptedorigins", "acceptedrenderers", "acceptedunsafe", "acceptedwords",
 	"filterbuilder", "filtermessage", "filterunlisted",
 	"fragmentraw", "fragmentthenraw", "fragmentword",
 	"hintcommand", "kindassign", "kindliteral",
 	"leadalone", "leadconcat", "leadempty", "leadprose", "leadword",
 	"originconcat", "originfield", "originfuncvalue", "originhelper", "originlocal", "originparam", "origintrim",
 	"quoteaddassign", "quoteappend", "quotecommand", "quoteloop", "quoteparam", "quotereturn", "quotevar",
-	"rawoperand", "recoverystring", "revokebuilder", "stringhelper", "textpart", "textthen", "twocommands", "typedline",
-	"wordconversion", "worddecl", "wordgeneric", "wordjson", "wordjsonstruct", "wordreflect", "wordsscan", "wordunsafe",
+	"rawoperand", "recoverystring", "rendererunescaped", "revokebuilder", "stringhelper", "textpart", "textthen", "twocommands", "typedline",
+	"unsafeunlisted", "wordconversion", "worddecl", "wordgeneric", "wordjson", "wordjsonstruct", "wordreflect", "wordsscan", "wordunsafe",
 }
 
 const evFixturePkg = evFixturesDir + "/"
@@ -57,6 +57,20 @@ var evFixtureFilterRows = []evFilterRow{
 	{evFixturePkg + "originfield.revoke", "internal/output.Printable", false, "", "a fixture"},
 	{evFixturePkg + "originlocal.build", "internal/output.Printable", false, "", "a fixture"},
 	{evFixturePkg + "originparam.caller", "internal/output.Printable", false, "", "a fixture"},
+}
+
+// evFixtureWriters are the table, wide and name writers of the fixtures.
+var evFixtureWriters = map[string]bool{
+	evFixturePkg + "acceptedrenderers.writes":        true,
+	evFixturePkg + "acceptedrenderers.writesByValue": true,
+	evFixturePkg + "rendererunescaped.writes":        true,
+}
+
+// evFixtureUnsafeRuneRows are the functions of the fixtures that reference
+// clierr.IsUnsafeToDisplay and have a row.
+var evFixtureUnsafeRuneRows = []evUnsafeRuneRow{
+	{evFixturePkg + "acceptedunsafe.called", "a fixture"},
+	{evFixturePkg + "acceptedunsafe.asValue", "a fixture"},
 }
 
 var evFixtureCommandRows = []evCommandRow{
@@ -91,6 +105,12 @@ func evFixtureReported(t *testing.T) map[string]map[int][]string {
 	}
 	for _, p := range evCheckFilterRows(r.refs, evFixtureFilterRows) {
 		add(p, "3b")
+	}
+	for _, p := range evCheckRendererEscapes(r, evFixtureWriters) {
+		add(p, "3c")
+	}
+	for _, p := range evCheckUnsafeRuneRows(r.unsafe, evFixtureUnsafeRuneRows) {
+		add(p, "3d")
 	}
 	for _, rule := range []string{"4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8", "4.9"} {
 		left, _ := evApplyCommandRows(r.byRule(rule), rule, evFixtureCommandRows)
@@ -163,8 +183,10 @@ func TestExactValueFixturesAreAllListed(t *testing.T) {
 // TestExactValueAllowlistRowsMustMatch asserts the allowlist rules of the
 // scans on the fixtures: a row of each kind that matches nothing is
 // reported, a filter row that says a command may pass a filter that changes
-// it is refused outside the table, wide and name writers, and a relayed-text
-// reason the walk no longer needs is reported.
+// it is refused outside the table, wide and name writers, a relayed-text
+// reason the walk no longer needs is reported, a listed writer that names no
+// function is reported, and a row for a function with no reference to
+// clierr.IsUnsafeToDisplay or with no reason is reported.
 func TestExactValueAllowlistRowsMustMatch(t *testing.T) {
 	t.Parallel()
 	r, err := evFixtureResults()
@@ -187,6 +209,17 @@ func TestExactValueAllowlistRowsMustMatch(t *testing.T) {
 	rows = slices.Clone(evFixtureFilterRows)
 	rows[0].relays = "no longer needed"
 	assert.Contains(t, evCheckFilterRows(r.refs, rows), fmt.Sprintf("the row %s / internal/output.Printable gives a reason for relayed text the walk no longer reaches; remove the reason", rows[0].fn))
+
+	writers := maps.Clone(evFixtureWriters)
+	writers["a.gone"] = true
+	assert.Contains(t, evCheckRendererEscapes(r, writers), "a.gone is listed as a table, wide or name writer and no function has that name; remove it from the list")
+	assert.Empty(t, evCheckRendererEscapes(r, map[string]bool{evFixturePkg + "acceptedrenderers.writes": true}))
+
+	unsafeRows := append(slices.Clone(evFixtureUnsafeRuneRows), evUnsafeRuneRow{"a.gone", "x"})
+	assert.Contains(t, evCheckUnsafeRuneRows(r.unsafe, unsafeRows), "the row a.gone matched no reference to clierr.IsUnsafeToDisplay; remove it")
+	unsafeRows = slices.Clone(evFixtureUnsafeRuneRows)
+	unsafeRows[0].reason = " "
+	assert.Contains(t, evCheckUnsafeRuneRows(r.unsafe, unsafeRows), fmt.Sprintf("the row %s has no reason", unsafeRows[0].fn))
 
 	_, unusedRows := evApplyCommandRows(r.byRule("4.5"), "4.5", append(slices.Clone(evFixtureCommandRows), evCommandRow{"4.5", "a.gone", "x"}))
 	assert.Equal(t, []string{"a.gone"}, unusedRows)

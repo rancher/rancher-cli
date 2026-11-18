@@ -124,8 +124,9 @@ func (t serverTable) body(wide bool) [][]string {
 // cellString renders one Table cell as kubectl does: nil is empty, a string
 // is shown as it is, any other value as fmt.Sprint prints it, and a value
 // that runs past its first line (a newline, carriage return or form feed) is
-// cut there and ends in "...". The table writer then removes control and
-// format characters.
+// cut there and ends in "...". The table writer then writes a value that has
+// a control character, a format character or an invalid byte in double quotes,
+// with each such character as an escape.
 func cellString(v any) string {
 	var s string
 	switch c := v.(type) {

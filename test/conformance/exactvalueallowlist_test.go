@@ -199,6 +199,17 @@ var evFilterRows = []evFilterRow{
 	{"internal/ui.Prompter.writeErr", evPrintableLines, true, "", "text written to stderr, which can hold a remedy"},
 }
 
+// evUnsafeRuneRows is every function that references
+// clierr.IsUnsafeToDisplay, the test for a character a terminal cannot show
+// as text, with what it does with the result.
+var evUnsafeRuneRows = []evUnsafeRuneRow{
+	{"internal/clierr.NotPrintable", "the one test for a value that cannot be printed as it is; IDText and WholeValueText use it"},
+	{"internal/clierr.WithoutUnsafeToDisplay", "the filter's own definition: removes each such character from a text"},
+	{"internal/config.EntryNameProblem", "refuses a new entry name that holds such a character; prints nothing"},
+	{"internal/output.printableKeepingNewlines", "the filter for a text with lines: removes each such character except the newline"},
+	{"internal/token.successTextID", "chooses the quoted form of a user id in a success text"},
+}
+
 // evCommandRows are the guard 4 sites that stay as they are, each with its
 // reason.
 var evCommandRows = []evCommandRow{

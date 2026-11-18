@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 	"text/template"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/yamlwrite"
 )
@@ -262,11 +263,14 @@ func (h *headerBoldWriter) flush() error {
 	return err
 }
 
-// writePlainTable is the one place table cells reach the writer, so it is
-// where every header and cell passes the terminal-safety boundary
-// (Printable): a server-sourced value with an embedded newline or escape
-// sequence cannot forge a row or drive the terminal, whatever Tabular
-// produced it.
+// writePlainTable is the one place table cells reach the writer. Every
+// header and cell passes the terminal-safety boundary here: it is written
+// as clierr.WholeValueText writes it, then passed through Printable. A
+// server-sourced value with an embedded newline or escape sequence prints
+// as escapes inside a double-quoted string and cannot forge a row or drive
+// the terminal, and two values that differ by a hidden character print
+// differently, whatever Tabular produced them. Printable then removes only
+// the remedy marker of a command in a cell.
 func writePlainTable(w io.Writer, cols []string, rows [][]string) error {
 	tw := tabwriter.NewWriter(w, 0, 8, 3, ' ', 0)
 	// A tabwriter that failed to write is not written to again: its state
@@ -278,7 +282,7 @@ func writePlainTable(w io.Writer, cols []string, rows [][]string) error {
 					return err
 				}
 			}
-			if _, err := fmt.Fprint(tw, Printable(cell)); err != nil {
+			if _, err := fmt.Fprint(tw, Printable(clierr.WholeValueText(cell))); err != nil {
 				return err
 			}
 		}
@@ -297,6 +301,8 @@ func writePlainTable(w io.Writer, cols []string, rows [][]string) error {
 }
 
 // renderName emits one identifier per line (the NAME column) for `-o name`.
+// Each is written as clierr.WholeValueText writes it, then passed through
+// Printable, as a table cell is.
 func renderName(w io.Writer, env *Envelope) error {
 	t, ok := env.Data.(Tabular)
 	if !ok {
@@ -314,7 +320,7 @@ func renderName(w io.Writer, env *Envelope) error {
 	}
 	for _, row := range t.Rows() {
 		if nameIdx < len(row) {
-			if _, err := fmt.Fprintln(w, Printable(row[nameIdx])); err != nil {
+			if _, err := fmt.Fprintln(w, Printable(clierr.WholeValueText(row[nameIdx]))); err != nil {
 				return err
 			}
 		}

@@ -15,15 +15,16 @@ import (
 // separators U+2028 and U+2029, so a string that originates from IdP
 // claims, condition messages, object descriptions, or any other server
 // data can neither drive the terminal nor forge, reorder, or hide what a
-// text format shows. The table, wide, and name renderers apply it to every
-// cell; text builders apply it at each insertion of a server field; the
-// runtime applies it to warning lines, to the message and hint of an error
-// and to the preview fields. Each value in the details lines of an error
-// is shown as clierr.IDText shows it, and each candidate's name and id as
+// text format shows. Text builders apply it at each insertion of a server
+// field; the runtime applies it to warning lines, to the message and hint
+// of an error and to the preview fields. Each value in the details lines of
+// an error is shown as clierr.IDText shows it, and each candidate's name and
+// id, each table or wide cell and each name that -o name prints as
 // clierr.WholeValueText shows it: these runes and each invalid byte as
 // escapes and nothing removed. Two values that differ by a hidden character
 // or an invalid byte print differently, and Printable has nothing to remove
-// from them.
+// from them. The table, wide and name renderers still apply it after that,
+// which removes the remedy marker of a command in a cell.
 // Structured formats (json, yaml, template) never pass through it - they
 // return the bytes verbatim. A whole text with its own lines goes through
 // PrintableLines, which the runtime applies to every text print and

@@ -2244,15 +2244,15 @@ Some commands (e.g. `logs`) render a plain-text default
 under `table`/default format instead, with warnings on stderr as
 `# warning: <w>` lines; `-o json`/`yaml`/`template=`/`name` still see the
 normal envelope over `data`.
-Every text format - `table`, `wide`, `name`, the text of composites and
+Every text format - the text of composites and
 `access`, the dry-run preview, and the `# warning:` lines and `error (...)`
 lines on stderr - removes control characters (including the escape character
 that starts an ANSI sequence, carriage return and tab) and Unicode format
 characters from server-sourced text before it reaches the terminal, so server
 text cannot drive the terminal. Progress messages on stderr get the same
-treatment under every `-o` format. Table cells, `-o name`, the `# warning:`
+treatment under every `-o` format. The `# warning:`
 and `error (...)` lines, the summary line and the dry-run preview also remove
-newlines, so a value cannot add a row or a line there. In the text of
+newlines, so a value cannot add a line there. In the text of
 `inspect cluster`, `inspect deployment`, `inspect project`, `inspect user`,
 `config status`, `config set-token-reuse`, `create token`,
 `project remove-namespace`, the OIDC client commands and `auth status`, in the
@@ -2265,12 +2265,14 @@ user id is the exception in these texts: one that holds a control character,
 an invisible format character or a line or paragraph separator is written as a
 double-quoted string with each of them as an escape; no character is removed.
 The same holds for each value in the details lines under an `error (...)`
-line, and for the name and id of each candidate in the `candidates` line under
-it: one that holds a control character, an invisible format character or a line
-or paragraph separator is written as a double-quoted string with escapes, as a
-user id is, and nothing is removed. A candidate name or id that is already such
-a double-quoted string with escapes, as Go writes it, is written in double
-quotes again, with its quotes and backslashes escaped, unless it holds a single
+line and for the name and id of each candidate in the `candidates` line under
+it. Each cell and header of the `table` and `wide` formats and each name that
+`-o name` prints is written the same way. A value that has a control
+character, an invisible format character, a line or paragraph separator or an
+invalid UTF-8 byte is written as a double-quoted string with escapes, as a user
+id is, and nothing is removed. A value in any of these places that is already
+such a double-quoted string with escapes, as Go writes it, is written in double
+quotes again, with its quotes and backslashes escaped, unless it has a single
 quote.
 Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
 `template=` (the bytes are
@@ -3079,10 +3081,10 @@ empty `--cluster`. `--name` values and server entry names starting with
 `user-id:` are reserved, as `legacy:` ones are; `rancher kubeconfig` refuses to
 write a `--name` that would start with either. A new server entry name cannot
 hold a control character, an invisible or direction-control character (Unicode
-category Cf) or a line or paragraph separator, because a terminal removes them
-when it prints the name and a command that names the entry would name another;
-a name that is not valid UTF-8 is refused too. An entry already stored with such
-a name keeps working. A login that records no owner (a
+category Cf) or a line or paragraph separator, because some text removes them
+when it prints the name, and a command that names the entry would then name
+another; a name that is not valid UTF-8 is refused too. An entry already stored
+with such a name keeps working. A login that records no owner (a
 pasted token stored with `--no-verify`, or one made before owners were
 recorded) gets no `--user-id`, and answers a call with `--user-id` only through
 the `--name` that identifies it; `rancher kubeconfig` says how to log in so it

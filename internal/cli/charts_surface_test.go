@@ -267,7 +267,8 @@ func TestChartsEnvelope(t *testing.T) {
 }
 
 // TestChartsTable asserts the text table: the five columns, no hidden
-// column, and no escape or control rune of the server's description.
+// column, and the server's description with its escape and control characters
+// written as escapes inside double quotes.
 func TestChartsTable(t *testing.T) {
 	s := newChartsServer(t, false)
 	chartsFixture(t, s.srv)
@@ -277,7 +278,7 @@ func TestChartsTable(t *testing.T) {
 	text := string(stdout)
 	header, _, _ := strings.Cut(text, "\n")
 	assert.Equal(t, []string{"REPOSITORY", "NAME", "VERSION", "APP", "VERSION", "DESCRIPTION"}, strings.Fields(header))
-	assert.Contains(t, text, "a[31mred and")
+	assert.Contains(t, text, `"a\x1b[31mred\a and\nnew"`)
 	for _, r := range text {
 		if r != '\n' {
 			assert.False(t, r < 0x20 || r == 0x7f, "control rune %U in the table", r)

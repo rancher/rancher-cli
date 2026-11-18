@@ -87,11 +87,24 @@ type evFilterRef struct {
 	relayed        []string
 }
 
+// evRef is a place in the source named by its position and the key of the
+// function that has it: a reference to a function, or the declaration of one
+// (then fn is the function's own key).
+type evRef struct {
+	at, fn string
+}
+
 // evResults is what the scans found in one or more loads. used names the
-// allowlist rows the walk of guard 3a consulted.
+// allowlist rows the walk of guard 3a consulted. decls is the declaration of
+// every function with a body, escapes every reference to
+// clierr.WholeValueText and unsafe every reference to
+// clierr.IsUnsafeToDisplay, each called or used as a value.
 type evResults struct {
 	findings []evFinding
 	refs     []evFilterRef
+	decls    []evRef
+	escapes  []evRef
+	unsafe   []evRef
 	used     map[string]bool
 	files    map[string]bool
 }
@@ -111,12 +124,31 @@ func (r *evResults) merge(o *evResults) {
 			r.refs = append(r.refs, ref)
 		}
 	}
+	r.decls = evMergeRefs(r.decls, o.decls)
+	r.escapes = evMergeRefs(r.escapes, o.escapes)
+	r.unsafe = evMergeRefs(r.unsafe, o.unsafe)
 	for k := range o.used {
 		r.used[k] = true
 	}
 	for k := range o.files {
 		r.files[k] = true
 	}
+}
+
+// evMergeRefs returns the references in have, followed by those in more that
+// are not in have.
+func evMergeRefs(have, more []evRef) []evRef {
+	seen := make(map[evRef]bool, len(have)+len(more))
+	for _, ref := range have {
+		seen[ref] = true
+	}
+	for _, ref := range more {
+		if !seen[ref] {
+			seen[ref] = true
+			have = append(have, ref)
+		}
+	}
+	return have
 }
 
 // byRule is the findings of one rule.
@@ -936,6 +968,7 @@ func (p *evProgram) scan(allow evAllow) *evResults {
 	}
 	p.scanOrigins(r, allow)
 	p.scanFilters(r)
+	p.scanEscapes(r)
 	p.scanWordOrigins(r)
 	p.scanKinds(r)
 	p.scanTextCalls(r)
