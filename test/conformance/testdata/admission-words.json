@@ -1,0 +1,399 @@
+{
+  "modules": [
+    "k8s.io/apiserver",
+    "k8s.io/kubernetes",
+    "k8s.io/pod-security-admission"
+  ],
+  "texts": [
+    {
+      "id": "quota-exceeded",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/resourcequota",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "exceeded quota: q1, requested: count/configmaps=1, used: count/configmaps=1, limited: count/configmaps=1",
+          "words": ["exceeded quota: ", ", requested: ", ", used: ", ", limited: "]
+        }
+      ]
+    },
+    {
+      "id": "quota-insufficient",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/resourcequota",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "insufficient quota to consume: requests.storage",
+          "words": ["insufficient quota to consume: "]
+        }
+      ]
+    },
+    {
+      "id": "quota-constraint",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/resourcequota",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "failed quota: compute: must specify limits.cpu for: web",
+          "words": ["failed quota: ", ": "]
+        }
+      ]
+    },
+    {
+      "id": "quota-negative",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/resourcequota",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "quota usage is negative for resource(s): requests.cpu",
+          "words": ["quota usage is negative for resource(s): "]
+        }
+      ]
+    },
+    {
+      "id": "limitrange-list",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/limitranger",
+      "retryable": false,
+      "reason": "This text is a bracketed list of LimitRanger texts: k8s.io/apimachinery writes the opening bracket before the first one. k8s.io/apimachinery is not one of the checked modules. The words of this text are the words of limitrange-minimum, limitrange-maximum and limitrange-ratio."
+    },
+    {
+      "id": "limitrange-minimum",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/limitranger",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "minimum memory usage per Container is 64Mi, but request is 32Mi",
+          "words": ["minimum ", " usage per ", " is "]
+        }
+      ]
+    },
+    {
+      "id": "limitrange-maximum",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/limitranger",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "maximum cpu usage per Container is 1, but limit is 2",
+          "words": ["maximum ", " usage per ", " is "]
+        }
+      ]
+    },
+    {
+      "id": "limitrange-ratio",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/limitranger",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "cpu max limit to request ratio per Container is 2, but provided ratio is 4.000000",
+          "words": [" max limit to request ratio per ", " is "]
+        }
+      ]
+    },
+    {
+      "id": "podsecurity",
+      "module": "k8s.io/pod-security-admission",
+      "dir": "admission",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "violates PodSecurity \"restricted:latest\": privileged (container \"c\" must not set securityContext.privileged=true)",
+          "words": ["violates PodSecurity ", ": "]
+        }
+      ]
+    },
+    {
+      "id": "namespace-terminating",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/namespace/lifecycle",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "unable to create new content in namespace ns1 because it is being terminated",
+          "words": ["unable to create new content in namespace ", " because it is being terminated"]
+        }
+      ]
+    },
+    {
+      "id": "namespace-immortal",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/namespace/lifecycle",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "this namespace may not be deleted",
+          "words": ["this namespace may not be deleted"]
+        }
+      ]
+    },
+    {
+      "id": "validatingadmissionpolicy",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/policy/validating",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "ValidatingAdmissionPolicy 'no-team' with binding 'no-team-binding' denied request: failed expression: has(object.metadata.labels.team)",
+          "words": ["ValidatingAdmissionPolicy '", "' with binding '", "' denied request: "]
+        },
+        {
+          "sample": "ValidatingAdmissionPolicy 'no-team' denied request: failed expression: has(object.metadata.labels.team)",
+          "words": ["ValidatingAdmissionPolicy '", "' denied request: "]
+        }
+      ]
+    },
+    {
+      "id": "serviceaccount-not-found",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/serviceaccount",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "error looking up service account ns1/sa1: serviceaccount \"sa1\" not found",
+          "words": ["error looking up service account ", ": "]
+        }
+      ]
+    },
+    {
+      "id": "serviceaccount-none-specified",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/serviceaccount",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "no service account specified for pod ns1/web-1",
+          "words": ["no service account specified for pod ", "/"]
+        }
+      ]
+    },
+    {
+      "id": "serviceaccount-secret-reference",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/serviceaccount",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "volume with secret.secretName=\"s1\" is not allowed because service account sa1 does not reference that secret",
+          "words": ["volume with secret.secretName=\"", "\" is not allowed because service account ", " does not reference that secret"]
+        },
+        {
+          "sample": "init container c1 with envVar E1 referencing secret.secretName=\"s1\" is not allowed because service account sa1 does not reference that secret",
+          "words": ["init container ", " with envVar ", " referencing secret.secretName=\"", "\" is not allowed because service account ", " does not reference that secret"]
+        },
+        {
+          "sample": "init container c1 with envFrom referencing secret.secretName=\"s1\" is not allowed because service account sa1 does not reference that secret",
+          "words": ["init container ", " with envFrom referencing secret.secretName=\"", "\" is not allowed because service account ", " does not reference that secret"]
+        },
+        {
+          "sample": "container c1 with envVar E1 referencing secret.secretName=\"s1\" is not allowed because service account sa1 does not reference that secret",
+          "words": ["container ", " with envVar ", " referencing secret.secretName=\"", "\" is not allowed because service account ", " does not reference that secret"]
+        },
+        {
+          "sample": "container c1 with envFrom referencing secret.secretName=\"s1\" is not allowed because service account sa1 does not reference that secret",
+          "words": ["container ", " with envFrom referencing secret.secretName=\"", "\" is not allowed because service account ", " does not reference that secret"]
+        },
+        {
+          "sample": "imagePullSecrets[0].name=\"s1\" is not allowed because service account sa1 does not reference that imagePullSecret",
+          "words": ["imagePullSecrets[", "].name=\"", "\" is not allowed because service account ", " does not reference that imagePullSecret"]
+        }
+      ]
+    },
+    {
+      "id": "priorityclass-not-found",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/priority",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "no PriorityClass with name high was found",
+          "words": ["no PriorityClass with name ", " was found"]
+        }
+      ]
+    },
+    {
+      "id": "priority-set-in-pod",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/priority",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "the integer value of priority (1000) must not be provided in pod spec; priority admission controller computed 0 from the given PriorityClass name",
+          "words": ["the integer value of priority (", ") must not be provided in pod spec; priority admission controller computed ", " from the given PriorityClass name"]
+        }
+      ]
+    },
+    {
+      "id": "preemptionpolicy-set-in-pod",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/priority",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "the string value of PreemptionPolicy (Never) must not be provided in pod spec; priority admission controller computed PreemptLowerPriority from the given PriorityClass name",
+          "words": ["the string value of PreemptionPolicy (", ") must not be provided in pod spec; priority admission controller computed ", " from the given PriorityClass name"]
+        }
+      ]
+    },
+    {
+      "id": "priorityclass-default-exists",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/priority",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "PriorityClass first is already marked as default. Only one default can exist",
+          "words": ["PriorityClass ", " is already marked as default. Only one default can exist"]
+        }
+      ]
+    },
+    {
+      "id": "runtimeclass-not-found",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/runtimeclass",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "pod rejected: RuntimeClass \"gvisor\" not found",
+          "words": ["pod rejected: RuntimeClass ", " not found"]
+        }
+      ]
+    },
+    {
+      "id": "runtimeclass-overhead-mismatch",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/runtimeclass",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "pod rejected: Pod's Overhead doesn't match RuntimeClass's defined Overhead",
+          "words": ["pod rejected: Pod's Overhead doesn't match RuntimeClass's defined Overhead"]
+        }
+      ]
+    },
+    {
+      "id": "runtimeclass-overhead-unexpected",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/runtimeclass",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "pod rejected: Pod Overhead set without corresponding RuntimeClass defined Overhead",
+          "words": ["pod rejected: Pod Overhead set without corresponding RuntimeClass defined Overhead"]
+        }
+      ]
+    },
+    {
+      "id": "runtimeclass-node-selector-conflict",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/runtimeclass",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "conflict: runtimeClass.scheduling.nodeSelector[disktype] = ssd; pod.spec.nodeSelector[disktype] = hdd",
+          "words": ["conflict: runtimeClass.scheduling.nodeSelector[", "] = ", "; pod.spec.nodeSelector[", "] = "]
+        }
+      ]
+    },
+    {
+      "id": "pvc-resize-unbound",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/storage/persistentvolume/resize",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "Only bound persistent volume claims can be expanded",
+          "words": ["Only bound persistent volume claims can be expanded"]
+        }
+      ]
+    },
+    {
+      "id": "pvc-resize-unsupported",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/storage/persistentvolume/resize",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize",
+          "words": ["only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize"]
+        }
+      ]
+    },
+    {
+      "id": "csr-system-masters",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/certificates/subjectrestriction",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "use of kubernetes.io/kube-apiserver-client signer with system:masters group is not allowed",
+          "words": ["use of ", " signer with system:masters group is not allowed"]
+        }
+      ]
+    },
+    {
+      "id": "not-ready",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/namespace/lifecycle",
+      "retryable": true,
+      "variants": [
+        {
+          "dir": "pkg/admission/plugin/namespace/lifecycle",
+          "sample": "not yet ready to handle request",
+          "words": ["not yet ready to handle request"]
+        },
+        {
+          "dir": "pkg/admission/plugin/webhook/generic",
+          "sample": "not yet ready to handle request",
+          "words": ["not yet ready to handle request"]
+        },
+        {
+          "dir": "pkg/admission/plugin/policy/generic",
+          "sample": "not yet ready to handle request",
+          "words": ["not yet ready to handle request"]
+        }
+      ]
+    },
+    {
+      "id": "limitrange-error",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/limitranger",
+      "retryable": true,
+      "variants": [
+        {
+          "sample": "unable to create /v1, Resource=pods at this time because there was an error enforcing limit ranges",
+          "words": ["unable to ", " at this time because there was an error enforcing limit ranges"]
+        }
+      ]
+    },
+    {
+      "id": "quota-status-unknown",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/resourcequota",
+      "retryable": true,
+      "variants": [
+        {
+          "sample": "status unknown for quota: q1",
+          "words": ["status unknown for quota: "]
+        }
+      ]
+    },
+    {
+      "id": "quota-previous-usage",
+      "module": "k8s.io/apiserver",
+      "dir": "pkg/admission/plugin/resourcequota",
+      "retryable": true,
+      "variants": [
+        {
+          "sample": "unable to get previous usage since prior version of object was not found",
+          "words": ["unable to get previous usage since prior version of object was not found"]
+        }
+      ]
+    }
+  ]
+}

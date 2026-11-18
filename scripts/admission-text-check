@@ -1,0 +1,682 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Checks that the words of every admission text in
+# internal/clierr/admission.go are still written by Kubernetes. The CLI
+# reports a 403 whose text is one of those texts as VALIDATION (or a retryable
+# GENERIC) and not as RBAC; when a Kubernetes release rewords one, the CLI
+# reports that 403 as RBAC again and no unit test fails.
+#
+# test/conformance/testdata/admission-words.json (the words file) lists, for
+# each text of the list, the fixed words its matcher needs and the module and
+# directory whose Go code writes the text. Where Kubernetes writes one text in
+# more than one form, the words file lists each form as a variant, with its own
+# words. For each edition and each text, this script parses the non-test .go
+# files under that directory, recursively, with go/parser and looks for one
+# string literal (or one concatenation of string literals) that has all the
+# words of a variant, in order, in the same literal. Comments and _test.go files
+# never count. A text passes when at least one of its variants is found in each
+# edition's module version. A variant that no longer exists while another does
+# is not a failure. A text with no words (a "reason" row) is not read.
+#
+# The editions and their Kubernetes versions:
+#   community, prime  the modules k8s.io/apiserver, k8s.io/kubernetes and
+#                     k8s.io/pod-security-admission as the root go.mod of
+#                     github.com/rancher/rancher requires them at the
+#                     pseudo-version that internal/cli/testdata/rancher-api-fields.golden.json
+#                     records for each pinned oracle image.
+#                     make rancher-api-fields checks the golden against the
+#                     registry labels. This script needs no Docker.
+#   repository        the same modules at the versions of this repository's
+#                     go.mod. k8s.io/pod-security-admission is not named
+#                     there; it is taken at the version of k8s.io/apiserver,
+#                     the version Kubernetes releases it with.
+# A module's version is the new version of the replace directive whose old path
+# is the module and whose old version is empty, otherwise the version of its
+# require directive. A replace by a local path, a replace to another module path
+# and a module named by neither stop the script with a message naming the
+# edition and the module.
+#
+# The script needs network access to the Go module proxy when the module cache
+# does not have the modules yet. It downloads each distinct module version once
+# with go mod download, in a throwaway module in a temporary directory removed
+# on exit, never in this repository: a go.mod or go.sum here that named the
+# Rancher module would make manifest scanners report every advisory of its
+# dependency tree against this repository. The module cache stays the default
+# one, because the unpacked files are read-only and a cache inside the temporary
+# directory would make the removal on exit fail. The k8s.io/kubernetes downloads
+# of the editions are large. The script writes nothing in the repository and has
+# no update mode.
+#
+# Hooks, for tests only; nothing in the script stops another use of them:
+#   ADMISSION_TEXT_CHECK_GOMOD_DIR     a directory with one <edition>.mod file
+#       (a go.mod) per edition. It replaces the download of the root go.mod of
+#       github.com/rancher/rancher. For the repository edition it replaces the
+#       read of this repository's go.mod when repository.mod is there; without
+#       that file the repository edition reads this repository's go.mod. go mod
+#       edit -json still reads each file. The replace and require rules run
+#       offline. A directory with no .mod file, or with a .mod file that is not
+#       the file of a checked edition, stops the script.
+#   ADMISSION_TEXT_CHECK_MODULES_FILE  a JSON file
+#       {"<edition>": {"<module>": {"dir": "<directory>", "version": "<v>"}}}.
+#       It names the editions to check and replaces the downloads. Without
+#       ADMISSION_TEXT_CHECK_GOMOD_DIR it also replaces the version lookup and
+#       "version" is required. With both, "version" is optional and, when
+#       present, must equal the version the go.mod file has.
+#   ADMISSION_TEXT_CHECK_WORDS_FILE    the path of a words file read in place
+#       of test/conformance/testdata/admission-words.json.
+#   ADMISSION_TEXT_CHECK_BINARY        the absolute path of the compiled check
+#       program. When a file is there, the script runs it as it is, without
+#       building the program and without checking that it matches this script.
+#       When no file is there, the script builds the program to that path first.
+#       The script exits 1 when the path is relative or the file is not
+#       executable. Do not set it for a real run.
+#
+# Exit 0: every text passes in every edition. Exit 1: a text fails (one line
+# for each variant that is missing), or a version, download, modules file or
+# words file problem, with the step named. A run that checks no text, no module
+# or no edition exits 1.
+#
+# The check searches only for the words the words file lists. The tests in
+# test/conformance show that each listed word is needed and that no other word
+# of the example message in a row is. A word a matcher needs that no example
+# message shows (a rare form of a text) is found only by reading the matchers
+# in internal/clierr/admission.go.
+
+cd "$(dirname "$0")/.."
+WORDS="test/conformance/testdata/admission-words.json"
+GOLDEN="internal/cli/testdata/rancher-api-fields.golden.json"
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# run runs a command with its output saved in a file; on failure it prints what
+# it was doing, the command and its output, then exits.
+run() {
+  local what=$1 log
+  shift
+  log="$work/run.log"
+  if ! "$@" >"$log" 2>&1; then
+    echo "error: $what failed: $*" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+}
+
+# The temporary modules must not use this repository's go.work or a vendor
+# directory, and may change their own go.mod and go.sum.
+export GOWORK=off GOFLAGS=-mod=mod
+
+mkdir -p "$work/resolve" "$work/check"
+(cd "$work/resolve" && run "creating the module that resolves versions" go mod init admissiontextresolve)
+
+cat >"$work/check/main.go" <<'GOEOF'
+// Command check reads the words file, resolves the module versions of each
+// edition, finds the directory of each module version and looks for the words
+// of each admission text in the string literals of that directory.
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+)
+
+const (
+	rancherModule      = "github.com/rancher/rancher"
+	apiserverModule    = "k8s.io/apiserver"
+	podSecurityModule  = "k8s.io/pod-security-admission"
+	repositoryEdition  = "repository"
+	envGoModDir        = "ADMISSION_TEXT_CHECK_GOMOD_DIR"
+	envModulesFile     = "ADMISSION_TEXT_CHECK_MODULES_FILE"
+	envWordsFile       = "ADMISSION_TEXT_CHECK_WORDS_FILE"
+	failureLineFormat  = "error: admission text %s (%s %s@%s): no string literal under %s has the words %s in this order"
+	goldenEditionError = "the golden %s has no entry for the edition %s"
+)
+
+type wordsFile struct {
+	Modules []string  `json:"modules"`
+	Texts   []textRow `json:"texts"`
+}
+
+type textRow struct {
+	ID        string    `json:"id"`
+	Module    string    `json:"module"`
+	Dir       string    `json:"dir"`
+	Retryable bool      `json:"retryable"`
+	Variants  []variant `json:"variants"`
+	Reason    string    `json:"reason"`
+}
+
+type variant struct {
+	Dir    string   `json:"dir"`
+	Sample string   `json:"sample"`
+	Words  []string `json:"words"`
+}
+
+type goldenFile struct {
+	Oracles map[string]struct {
+		Image         string `json:"image"`
+		PseudoVersion string `json:"pseudoVersion"`
+	} `json:"oracles"`
+}
+
+type hookModule struct {
+	Dir     string `json:"dir"`
+	Version string `json:"version"`
+}
+
+type goModEdit struct {
+	Require []struct {
+		Path    string
+		Version string
+	}
+	Replace []struct {
+		Old struct{ Path, Version string }
+		New struct{ Path, Version string }
+	}
+}
+
+func fatalf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "error: "+format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	if len(os.Args) != 4 {
+		fatalf("usage: check <words file> <golden file> <resolve directory>")
+	}
+	wordsPath, goldenPath, resolveDir := os.Args[1], os.Args[2], os.Args[3]
+	if v := os.Getenv(envWordsFile); v != "" {
+		wordsPath = v
+	}
+	words := readWords(wordsPath)
+	golden := readGolden(goldenPath)
+	goModDir := os.Getenv(envGoModDir)
+	hook := readModulesHook(os.Getenv(envModulesFile))
+
+	editions := []string{"community", "prime", repositoryEdition}
+	if hook != nil {
+		editions = slices.Sorted(maps.Keys(hook))
+		if len(editions) == 0 {
+			fatalf("the modules file %s names no edition", os.Getenv(envModulesFile))
+		}
+	}
+
+	if goModDir != "" {
+		checkGoModDir(goModDir, editions)
+	}
+	versions := map[string]map[string]string{}
+	for _, edition := range editions {
+		if oracle, ok := golden.Oracles[edition]; ok {
+			fmt.Printf("edition %s: %s at %s\n", edition, oracle.Image, oracle.PseudoVersion)
+		} else if edition == repositoryEdition {
+			fmt.Printf("edition %s: the go.mod of this repository\n", edition)
+		} else {
+			fmt.Printf("edition %s: the modules named in %s\n", edition, envModulesFile)
+		}
+		versions[edition] = resolveVersions(edition, words.Modules, golden, goModDir, hook, resolveDir)
+	}
+	for _, edition := range editions {
+		for _, module := range words.Modules {
+			fmt.Printf("resolved %s %s@%s\n", edition, module, versions[edition][module])
+		}
+	}
+
+	downloaded := map[string]string{}
+	dirs := map[string]map[string]string{}
+	for _, edition := range editions {
+		dirs[edition] = map[string]string{}
+		for _, module := range words.Modules {
+			version := versions[edition][module]
+			if hook != nil {
+				entry, ok := hook[edition][module]
+				if !ok || entry.Dir == "" {
+					fatalf("the modules file %s names no directory for %s of the edition %s", os.Getenv(envModulesFile), module, edition)
+				}
+				dirs[edition][module] = entry.Dir
+				continue
+			}
+			key := module + "@" + version
+			if _, ok := downloaded[key]; !ok {
+				downloaded[key] = download(edition, key, resolveDir)
+			}
+			dirs[edition][module] = downloaded[key]
+		}
+	}
+
+	literalCache := map[string][]string{}
+	var failures []string
+	withWords := 0
+	for _, text := range words.Texts {
+		if len(text.Variants) > 0 {
+			withWords++
+		}
+	}
+	for _, edition := range editions {
+		for _, text := range words.Texts {
+			if len(text.Variants) == 0 {
+				continue
+			}
+			found := false
+			var missing []string
+			for _, v := range text.Variants {
+				dir := v.Dir
+				if dir == "" {
+					dir = text.Dir
+				}
+				root := filepath.Join(dirs[edition][text.Module], filepath.FromSlash(dir))
+				literals, ok := literalCache[root]
+				if !ok {
+					literals = readLiterals(root)
+					literalCache[root] = literals
+				}
+				if slices.ContainsFunc(literals, func(lit string) bool { return holdsInOrder(lit, v.Words) }) {
+					found = true
+					break
+				}
+				quoted := make([]string, len(v.Words))
+				for i, w := range v.Words {
+					quoted[i] = strconv.Quote(w)
+				}
+				missing = append(missing, fmt.Sprintf(failureLineFormat, text.ID, edition, text.Module, versions[edition][text.Module], dir, strings.Join(quoted, " | ")))
+			}
+			if !found {
+				failures = append(failures, missing...)
+			}
+		}
+	}
+	if len(failures) > 0 {
+		for _, line := range failures {
+			fmt.Fprintln(os.Stderr, line)
+		}
+		os.Exit(1)
+	}
+	for _, edition := range editions {
+		for _, module := range words.Modules {
+			fmt.Printf("ok %s %s@%s\n", edition, module, versions[edition][module])
+		}
+	}
+	fmt.Printf("checked %d texts (%d with words) in %d editions\n", len(words.Texts), withWords, len(editions))
+}
+
+func readWords(path string) wordsFile {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fatalf("reading the words file %s: %v", path, err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		fatalf("the words file %s is empty", path)
+	}
+	var w wordsFile
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&w); err != nil {
+		fatalf("the words file %s is not valid: %v", path, err)
+	}
+	if len(w.Modules) == 0 {
+		fatalf("the words file %s lists no modules", path)
+	}
+	if len(w.Texts) == 0 {
+		fatalf("the words file %s lists no texts", path)
+	}
+	seen := map[string]bool{}
+	for _, t := range w.Texts {
+		switch {
+		case t.ID == "":
+			fatalf("the words file %s has a text with no id", path)
+		case seen[t.ID]:
+			fatalf("the words file %s lists the text %s twice", path, t.ID)
+		case !slices.Contains(w.Modules, t.Module):
+			fatalf("the words file %s: the module %q of the text %s is not in its modules list", path, t.Module, t.ID)
+		case (len(t.Variants) == 0) == (t.Reason == ""):
+			fatalf("the words file %s: the text %s needs \"variants\" or \"reason\", one of the two", path, t.ID)
+		}
+		seen[t.ID] = true
+		if t.Dir != "" && !relativeDir(t.Dir) {
+			fatalf("the words file %s: the directory %q of the text %s must be a relative path with no \"..\" element", path, t.Dir, t.ID)
+		}
+		for _, v := range t.Variants {
+			if v.Dir != "" && !relativeDir(v.Dir) {
+				fatalf("the words file %s: the directory %q of a variant of the text %s must be a relative path with no \"..\" element", path, v.Dir, t.ID)
+			}
+			if len(v.Words) == 0 {
+				fatalf("the words file %s: a variant of the text %s has no words", path, t.ID)
+			}
+			if v.Dir == "" && t.Dir == "" {
+				fatalf("the words file %s: a variant of the text %s has no directory", path, t.ID)
+			}
+		}
+	}
+	return w
+}
+
+// checkGoModDir stops the program when the go.mod directory has no .mod file or
+// a .mod file whose name is not that of a checked edition, such as a misspelled
+// repository.mod.
+func checkGoModDir(dir string, editions []string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fatalf("reading the go.mod directory %s: %v", dir, err)
+	}
+	found := 0
+	for _, entry := range entries {
+		name, ok := strings.CutSuffix(entry.Name(), ".mod")
+		if !ok {
+			continue
+		}
+		found++
+		if !slices.Contains(editions, name) {
+			fatalf("the go.mod directory %s has %s, which is not the file of a checked edition (%s)", dir, entry.Name(), strings.Join(editions, ", "))
+		}
+	}
+	if found == 0 {
+		fatalf("the go.mod directory %s has no .mod file", dir)
+	}
+}
+
+// relativeDir reports whether dir is a relative path with no .. element.
+func relativeDir(dir string) bool {
+	if strings.HasPrefix(dir, "/") || strings.Contains(dir, `\`) || filepath.IsAbs(dir) {
+		return false
+	}
+	return !slices.Contains(strings.Split(dir, "/"), "..")
+}
+
+func readGolden(path string) goldenFile {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fatalf("reading the golden %s: %v", path, err)
+	}
+	var g goldenFile
+	if err := json.Unmarshal(data, &g); err != nil {
+		fatalf("the golden %s is not valid: %v", path, err)
+	}
+	return g
+}
+
+func readModulesHook(path string) map[string]map[string]hookModule {
+	if path == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fatalf("reading the modules file %s: %v", path, err)
+	}
+	hook := map[string]map[string]hookModule{}
+	if err := json.Unmarshal(data, &hook); err != nil {
+		fatalf("the modules file %s is not valid: %v", path, err)
+	}
+	if hook == nil {
+		fatalf("the modules file %s is not a JSON object", path)
+	}
+	return hook
+}
+
+// goCommand runs go in dir and returns its standard output.
+func goCommand(dir string, args ...string) (string, error) {
+	cmd := exec.Command("go", args...)
+	cmd.Dir = dir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%w: %s%s", err, stdout.String(), stderr.String())
+	}
+	return stdout.String(), nil
+}
+
+// goModFile returns the go.mod file that names the module versions of the
+// edition, or "" when the modules file names them (versionsFromHook).
+//
+// With a go.mod directory, an edition reads its <edition>.mod file there; the
+// repository edition reads this repository's go.mod when the directory has no
+// repository.mod. With no go.mod directory and a modules file, no edition reads
+// a go.mod. With neither, the repository edition reads this repository's go.mod
+// and each other edition reads the root go.mod of the Rancher module at the
+// pseudo-version the golden records.
+func goModFile(edition string, golden goldenFile, goModDir string, versionsFromHook bool, resolveDir string) string {
+	if goModDir != "" {
+		file := filepath.Join(goModDir, edition+".mod")
+		if _, err := os.Stat(file); err == nil || edition != repositoryEdition {
+			return file
+		}
+	}
+	if versionsFromHook && goModDir == "" {
+		return ""
+	}
+	if edition == repositoryEdition {
+		abs, err := filepath.Abs("go.mod")
+		if err != nil {
+			fatalf("finding the go.mod of this repository: %v", err)
+		}
+		return abs
+	}
+	oracle, ok := golden.Oracles[edition]
+	if !ok || oracle.PseudoVersion == "" {
+		fatalf(goldenEditionError, "internal/cli/testdata/rancher-api-fields.golden.json", edition)
+	}
+	return rancherGoMod(edition, oracle.PseudoVersion, resolveDir)
+}
+
+// resolveVersions returns the version of each module for the edition.
+func resolveVersions(edition string, modules []string, golden goldenFile, goModDir string, hook map[string]map[string]hookModule, resolveDir string) map[string]string {
+	goMod := goModFile(edition, golden, goModDir, hook != nil, resolveDir)
+
+	versions := map[string]string{}
+	if goMod != "" {
+		out, err := goCommand(resolveDir, "mod", "edit", "-json", goMod)
+		if err != nil {
+			fatalf("reading the go.mod file %s of the edition %s: %v", goMod, edition, err)
+		}
+		var edit goModEdit
+		if err := json.Unmarshal([]byte(out), &edit); err != nil {
+			fatalf("reading the go.mod file %s of the edition %s: %v", goMod, edition, err)
+		}
+		for _, module := range modules {
+			version, found := moduleVersion(edition, module, edit)
+			if !found && edition == repositoryEdition && module == podSecurityModule {
+				version, found = moduleVersion(edition, apiserverModule, edit)
+			}
+			if !found {
+				fatalf("the edition %s: no replace or require directive names %s in %s", edition, module, goMod)
+			}
+			versions[module] = version
+		}
+	}
+	if hook != nil {
+		for _, module := range modules {
+			entry, ok := hook[edition][module]
+			switch {
+			case !ok:
+				fatalf("the modules file %s names no %s for the edition %s", os.Getenv(envModulesFile), module, edition)
+			case goMod == "" && entry.Version == "":
+				fatalf("the modules file %s has no version for %s of the edition %s", os.Getenv(envModulesFile), module, edition)
+			case goMod != "" && entry.Version != "" && entry.Version != versions[module]:
+				fatalf("the edition %s: the go.mod file has %s@%s but the modules file %s names version %s for it", edition, module, versions[module], os.Getenv(envModulesFile), entry.Version)
+			case goMod == "":
+				versions[module] = entry.Version
+			}
+		}
+	}
+	return versions
+}
+
+// moduleVersion applies the replace-over-require rule. It stops the program on
+// a replace it cannot follow.
+func moduleVersion(edition, module string, edit goModEdit) (string, bool) {
+	for _, r := range edit.Replace {
+		if r.Old.Path != module || r.Old.Version != "" {
+			continue
+		}
+		if r.New.Version == "" {
+			fatalf("the edition %s: %s is replaced by the local path %s", edition, module, r.New.Path)
+		}
+		if r.New.Path != module {
+			fatalf("the edition %s: %s is replaced by another module, %s", edition, module, r.New.Path)
+		}
+		return r.New.Version, true
+	}
+	for _, r := range edit.Require {
+		if r.Path == module {
+			return r.Version, true
+		}
+	}
+	return "", false
+}
+
+// rancherGoMod returns the path of the go.mod file of the root Rancher module
+// at the pseudo-version.
+func rancherGoMod(edition, pseudoVersion, resolveDir string) string {
+	target := rancherModule + "@" + pseudoVersion
+	out, err := goCommand(resolveDir, "list", "-m", "-json", target)
+	if err != nil {
+		fatalf("cannot resolve %s for the edition %s: %v", target, edition, err)
+	}
+	var info struct{ GoMod string }
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		fatalf("reading the output of go list for %s: %v", target, err)
+	}
+	if info.GoMod == "" {
+		fmt.Fprintf(os.Stderr, "note: go list gave no GoMod file for %s; using go mod download\n", target)
+		out, err = goCommand(resolveDir, "mod", "download", "-json", target)
+		if err != nil {
+			fatalf("cannot download %s for the edition %s: %v", target, edition, err)
+		}
+		if err := json.Unmarshal([]byte(out), &info); err != nil {
+			fatalf("reading the output of go mod download for %s: %v", target, err)
+		}
+	}
+	if info.GoMod == "" {
+		fatalf("no go.mod file for %s (edition %s)", target, edition)
+	}
+	if _, err := os.Stat(info.GoMod); err != nil {
+		fatalf("the go.mod file of %s (edition %s): %v", target, edition, err)
+	}
+	return info.GoMod
+}
+
+// download returns the directory of the module version in the module cache.
+func download(edition, target, resolveDir string) string {
+	out, err := goCommand(resolveDir, "mod", "download", "-json", target)
+	if err != nil {
+		fatalf("cannot download %s for the edition %s: %v", target, edition, err)
+	}
+	var info struct{ Dir, Error string }
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		fatalf("reading the output of go mod download for %s: %v", target, err)
+	}
+	if info.Error != "" || info.Dir == "" {
+		fatalf("cannot download %s for the edition %s: %s", target, edition, info.Error)
+	}
+	return info.Dir
+}
+
+// readLiterals returns every string literal, and every concatenation of string
+// literals, of the non-test .go files under root. A root that does not exist
+// has none.
+func readLiterals(root string) []string {
+	var literals []string
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return fmt.Errorf("parsing %s: %w", path, err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.BasicLit:
+				if s, ok := foldString(n); ok {
+					literals = append(literals, s)
+				}
+			case *ast.BinaryExpr:
+				if s, ok := foldString(n); ok {
+					literals = append(literals, s)
+				}
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		fatalf("reading the Go files under %s: %v", root, err)
+	}
+	return literals
+}
+
+// foldString returns the value of a string literal or of a concatenation of
+// string literals.
+func foldString(e ast.Expr) (string, bool) {
+	switch e := e.(type) {
+	case *ast.BasicLit:
+		if e.Kind != token.STRING {
+			return "", false
+		}
+		s, err := strconv.Unquote(e.Value)
+		return s, err == nil
+	case *ast.ParenExpr:
+		return foldString(e.X)
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		left, ok := foldString(e.X)
+		if !ok {
+			return "", false
+		}
+		right, ok := foldString(e.Y)
+		return left + right, ok
+	}
+	return "", false
+}
+
+// holdsInOrder reports whether text has every word, in order, without
+// overlap.
+func holdsInOrder(text string, words []string) bool {
+	pos := 0
+	for _, w := range words {
+		i := strings.Index(text[pos:], w)
+		if i < 0 {
+			return false
+		}
+		pos += i + len(w)
+	}
+	return true
+}
+GOEOF
+
+program=${ADMISSION_TEXT_CHECK_BINARY:-$work/check/check}
+case $program in
+  /*) ;;
+  *)
+    echo "error: ADMISSION_TEXT_CHECK_BINARY must be an absolute path: $program" >&2
+    exit 1
+    ;;
+esac
+if [ -e "$program" ] && { [ ! -f "$program" ] || [ ! -x "$program" ]; }; then
+  echo "error: ADMISSION_TEXT_CHECK_BINARY is not an executable file: $program" >&2
+  exit 1
+fi
+if [ ! -e "$program" ]; then
+  (cd "$work/check" && run "creating the module of the check program" go mod init admissiontextcheck)
+  (cd "$work/check" && run "building the check program" go build -o "$program" .)
+fi
+
+"$program" "$WORDS" "$GOLDEN" "$work/resolve"

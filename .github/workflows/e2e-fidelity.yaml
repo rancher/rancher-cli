@@ -59,3 +59,21 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make rancher-api-fields
+
+  # Checks that the words of every admission text in
+  # internal/clierr/admission.go are written in the Kubernetes modules
+  # (k8s.io/apiserver, k8s.io/kubernetes, k8s.io/pod-security-admission) at
+  # the versions the Rancher commit of each pinned Rancher image requires and
+  # at the versions in this repository's go.mod. It needs the Go module proxy
+  # and runs here, not on every pull request.
+  admission-text-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make admission-text-check

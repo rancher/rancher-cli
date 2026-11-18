@@ -28,9 +28,12 @@ import (
 // k8s.io/pod-security-admission v0.37.1. The wording of every admission text is
 // the same from Kubernetes 1.32 to 1.37; only the line numbers move. If a
 // Kubernetes release changes the wording of an admission text, the CLI reports
-// that 403 as RBAC again, and no test here detects that. A new 403 from a
-// server other than Kubernetes admission whose text begins with an admission
-// text would be reported as VALIDATION, and no test here detects that either.
+// that 403 as RBAC again; the weekly make admission-text-check fails when a
+// Kubernetes module no longer writes that text at the versions the Rancher
+// commit of each pinned Rancher image requires or at the versions in go.mod. A
+// new 403 from a server other than Kubernetes admission whose text begins with
+// an admission text would be reported as VALIDATION, and no test here detects
+// that.
 //
 // In an admission text, <q>, <res>, <type>, <ns>, <p> and <b> each stand for
 // one or more characters with no space, ending at the first place where the

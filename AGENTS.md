@@ -25,6 +25,7 @@ Go: the version go.mod names (1.27). Automation is `make`, dispatching to
 | `make e2e-fidelity-downstream-update` | re-record the downstream fidelity goldens from that server instead of the pinned oracle |
 | `make rancher-api-fields` | compare `internal/cli/testdata/rancher-api-fields.golden.json` with the Rancher API types at the commit each oracle image names in its labels, pseudo-versions included (needs the Go module proxy and the images' registries; runs weekly in e2e-fidelity.yaml) |
 | `make rancher-api-fields-update` | rewrite that golden after an oracle image bump (review the diff like the schema golden) |
+| `make admission-text-check` | check that the words of every admission text in `internal/clierr/admission.go` are written together, in order, in one string literal of the module that writes the text (`k8s.io/apiserver`, `k8s.io/kubernetes` or `k8s.io/pod-security-admission`), at the versions the Rancher commit of each pinned Rancher image requires and at the versions in this repository's `go.mod` (there `k8s.io/pod-security-admission` takes the version of `k8s.io/apiserver`; needs the Go module proxy; runs weekly in e2e-fidelity.yaml) |
 | `make dev` | run the binary hermetically (temp config dir, file credential store) |
 
 `make` with no target runs `ci` (the full pipeline).
