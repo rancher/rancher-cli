@@ -332,10 +332,10 @@ func TestSignInCancelledDuringTheLoginKeepsTheMarker(t *testing.T) {
 
 // TestSignInClusterLookupFailureDeletesTheLoginToken asserts that for a
 // cluster the user cannot read, which Rancher refuses (HTTP 403) when the
-// sign-in gets it by its id, the sign-in fails with the lookup's own RBAC error. It deletes
-// the login token with its own bearer, reports in the failure details that the
-// token was deleted, offers no hint and gives a remedy that says an
-// administrator can grant the access.
+// sign-in gets it by its id, the sign-in fails with the lookup's own RBAC
+// error. It deletes the login token with its own bearer, reports in the
+// failure details that the token was deleted, offers no hint and gives a
+// remedy that says an administrator can grant the access.
 func TestSignInClusterLookupFailureDeletesTheLoginToken(t *testing.T) {
 	t.Parallel()
 	f, log, _, err := signInAgainst(t, testrancher.Options{}, "nope")
@@ -395,10 +395,10 @@ func lookupServer(t *testing.T, collectionStatus, byIDStatus int) *httptest.Serv
 }
 
 // TestLookupWithNoReadableClusterRBACMessage asserts the exec plugin's RBAC
-// error for a refused (HTTP 403) get of a cluster by its id, from a user who can read no
-// cluster: the message says the user can read no cluster and who grants the
-// roles, names no command and carries no candidate. The sign-in remedy still
-// says who can grant the access.
+// error for a refused (HTTP 403) get of a cluster by its id, from a user who
+// can read no cluster: the message says the user can read no cluster and who
+// grants the roles, names no command and carries no candidate. The sign-in
+// remedy still says who can grant the access.
 func TestLookupWithNoReadableClusterRBACMessage(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -421,10 +421,10 @@ func TestLookupWithNoReadableClusterRBACMessage(t *testing.T) {
 }
 
 // TestLookupRefusalRecoveryPerFailure asserts the remedy of a failed cluster
-// lookup. When Rancher refuses (HTTP 403) the get of the cluster by its id it
-// says who can grant the access, and the returned error is the lookup's own error. A 403 on the
-// clusters collection, a 401 and any other failure get no remedy. A NOT_FOUND
-// error gets the remedy that says to correct --cluster.
+// lookup. When Rancher refuses (HTTP 403) the get of the cluster by its id, the
+// remedy says who can grant the access, and the returned error is the lookup's
+// own error. A 403 on the clusters collection, a 401 and any other failure get
+// no remedy. A NOT_FOUND error gets the remedy that says to correct --cluster.
 func TestLookupRefusalRecoveryPerFailure(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

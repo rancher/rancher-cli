@@ -2298,9 +2298,8 @@ const pluginClusterListMax = 10
 // get of the cluster by its id list the clusters the user can read and name no
 // command: the plugin's remedy commands add only --config, no global flag
 // selects a server entry, and after a failed sign-in the config directory has
-// no login. With no cluster to list the
-// suffix is empty and steve.ResolveCluster writes the RBAC message for a user
-// who can read none.
+// no login. With no cluster to list the suffix is empty and
+// steve.ResolveCluster writes the RBAC message for a user who can read none.
 func pluginClusterText(v string, list []steve.Cluster) engine.MatchText {
 	names := make([]string, 0, min(len(list), pluginClusterListMax)+1)
 	for _, c := range list[:min(len(list), pluginClusterListMax)] {

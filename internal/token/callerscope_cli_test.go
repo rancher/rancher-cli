@@ -143,10 +143,11 @@ func storedLoginNoMatchError(t *testing.T, g *gatedCLIFacade, value string) (cod
 }
 
 // TestStoredLoginNoMatchRefusedByIDIsRBACListingTheReadableClusters asserts
-// that for a cluster the user cannot read, which the test server (gatedCLIFacade,
-// the caller-scope gate in front of it) refuses (HTTP 403) when the exec plugin
-// gets it by its id, the exec plugin returns an RBAC error. The error names the clusters the
-// user can read and no command, carries them as candidates and creates nothing.
+// that the exec plugin returns an RBAC error for a cluster the user cannot
+// read. The test server (gatedCLIFacade, the caller-scope gate in front of it)
+// refuses (HTTP 403) the plugin's get of that cluster by its id. The error
+// names the clusters the user can read and no command, carries them as
+// candidates and creates nothing.
 func TestStoredLoginNoMatchRefusedByIDIsRBACListingTheReadableClusters(t *testing.T) {
 	g := newGatedCLIFacade(t)
 	code, message, hint, candidates := storedLoginNoMatchError(t, g, "web")

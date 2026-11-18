@@ -2800,8 +2800,9 @@ func TestPluginClusterTextListsAtMostTen(t *testing.T) {
 
 // TestPluginClusterTextRBACSuffix asserts the exec plugin's RBAC error for a
 // refused (HTTP 403) get of a cluster by its id lists the clusters the user can
-// read and names no command. With no cluster to list the suffix is empty and
-// steve.ResolveCluster writes the message.
+// read and names no command. The list has ten clusters at most, which
+// TestPluginClusterTextListsAtMostTen asserts. With no cluster to list the
+// suffix is empty and steve.ResolveCluster writes the message.
 func TestPluginClusterTextRBACSuffix(t *testing.T) {
 	t.Parallel()
 	list := []steve.Cluster{{ID: "c-abc", DisplayName: "prod"}, {ID: "c-def"}}

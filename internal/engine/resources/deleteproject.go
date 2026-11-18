@@ -112,7 +112,7 @@ type namespaceRead struct {
 	downstream engine.ClusterClient
 	members    []unstructured.Unstructured
 	// viaSteve is true when the namespace LIST was refused and steve's list
-	// answered.
+	// responded instead.
 	viaSteve bool
 	err      error
 }
@@ -194,7 +194,7 @@ func (rd namespaceRead) terminating(ns *unstructured.Unstructured) bool {
 }
 
 // unknown reports whether the run cannot tell what Rancher does with ns:
-// steve answered with the few fields it shows for a namespace the caller
+// steve responded with the few fields it shows for a namespace the caller
 // cannot get.
 func (rd namespaceRead) unknown(ns *unstructured.Unstructured) bool {
 	return rd.viaSteve && !steve.ReadableInFull(ns)
@@ -299,8 +299,8 @@ func projectResult(k kinds.Kind, name string, objs []safety.Object, waited bool)
 
 // cannotSeeOutsideProjects asks the cluster whether the caller may get
 // namespaces with no name given: a grant by name, which is all a project
-// role carries, does not answer yes. The answer is advisory: a failed
-// request is no.
+// role carries, does not allow that. The response is advisory: a failed
+// request returns false, and the caller adds no warning.
 func (c *deleteProjectCmd) cannotSeeOutsideProjects(ctx context.Context, downstream engine.ClusterClient) bool {
 	gvk, ok := engine.ReviewGVK(engine.ReviewSelfSubjectAccess)
 	if !ok {
