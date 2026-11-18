@@ -30,6 +30,9 @@ type admissionRow struct {
 	// noJSON skips Rancher's error JSON, which cannot carry an empty message
 	// and shows the message with its trailing space cut.
 	noJSON bool
+	// negativeFor is the id of the list entry whose text this row nearly
+	// matches. The row stays RBAC. The test fails for an entry with no such row.
+	negativeFor string
 }
 
 // kubernetesForbidden is the 403 apierrors.NewForbidden builds for a refusal
@@ -145,6 +148,42 @@ var admissionSamples = []admissionSample{
 	{"validatingadmissionpolicy", "with a binding", `ValidatingAdmissionPolicy 'no-team' with binding 'no-team-binding' denied request: failed expression: has(object.metadata.labels.team)`, true, false},
 	// k8s.io/apiserver@v0.37.1/pkg/admission/plugin/policy/validating/dispatcher.go:307
 	{"validatingadmissionpolicy", "with no binding", `ValidatingAdmissionPolicy 'no-team' denied request: failed expression: has(object.metadata.labels.team)`, true, false},
+	// ServiceAccount: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:164, :228 and :389, with the
+	// text after the colon from k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:155
+	{"serviceaccount-not-found", "", `error looking up service account ns1/sa1: serviceaccount "sa1" not found`, true, false},
+	{"serviceaccount-not-found", "the default account", `error looking up service account ns1/default: serviceaccount "default" not found`, false, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:223 and :384
+	{"serviceaccount-none-specified", "", `no service account specified for pod ns1/web-1`, true, false},
+	{"serviceaccount-none-specified", "a pod with no name yet", `no service account specified for pod ns1/`, false, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:330
+	{"serviceaccount-secret-reference", "a volume", `volume with secret.secretName="s1" is not allowed because service account sa1 does not reference that secret`, true, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:338
+	{"serviceaccount-secret-reference", "an init container with an environment variable", `init container c1 with envVar E1 referencing secret.secretName="s1" is not allowed because service account sa1 does not reference that secret`, false, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:345
+	{"serviceaccount-secret-reference", "an init container with envFrom", `init container c1 with envFrom referencing secret.secretName="s1" is not allowed because service account sa1 does not reference that secret`, false, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:355
+	{"serviceaccount-secret-reference", "a container with an environment variable", `container c1 with envVar E1 referencing secret.secretName="s1" is not allowed because service account sa1 does not reference that secret`, false, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:362
+	{"serviceaccount-secret-reference", "a container with envFrom", `container c1 with envFrom referencing secret.secretName="s1" is not allowed because service account sa1 does not reference that secret`, false, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:375
+	{"serviceaccount-secret-reference", "an image pull secret", `imagePullSecrets[0].name="s1" is not allowed because service account sa1 does not reference that imagePullSecret`, false, false},
+	// Priority: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:363
+	{"priorityclass-not-found", "", `no PriorityClass with name high was found`, true, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:185
+	{"priority-set-in-pod", "", `the integer value of priority (1000) must not be provided in pod spec; priority admission controller computed 0 from the given PriorityClass name`, true, false},
+	{"priority-set-in-pod", "a negative priority", `the integer value of priority (-5) must not be provided in pod spec; priority admission controller computed 100 from the given PriorityClass name`, false, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:193
+	{"preemptionpolicy-set-in-pod", "", `the string value of PreemptionPolicy (Never) must not be provided in pod spec; priority admission controller computed PreemptLowerPriority from the given PriorityClass name`, true, false},
+	// RuntimeClass: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/runtimeclass/admission.go:158
+	{"runtimeclass-not-found", "", `pod rejected: RuntimeClass "gvisor" not found`, true, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/runtimeclass/admission.go:179 and :227
+	{"runtimeclass-overhead-mismatch", "", `pod rejected: Pod's Overhead doesn't match RuntimeClass's defined Overhead`, true, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/runtimeclass/admission.go:232
+	{"runtimeclass-overhead-unexpected", "", `pod rejected: Pod Overhead set without corresponding RuntimeClass defined Overhead`, true, false},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/runtimeclass/admission.go:205; a label value can be empty,
+	// and the server writes the text only when the two values differ
+	{"runtimeclass-node-selector-conflict", "", `conflict: runtimeClass.scheduling.nodeSelector[disktype] = ssd; pod.spec.nodeSelector[disktype] = hdd`, true, false},
+	{"runtimeclass-node-selector-conflict", "an empty RuntimeClass nodeSelector value", `conflict: runtimeClass.scheduling.nodeSelector[k] = ; pod.spec.nodeSelector[k] = v`, false, false},
 	// k8s.io/apiserver@v0.37.1/pkg/admission/plugin/namespace/lifecycle/admission.go:117,
 	// k8s.io/apiserver@v0.37.1/pkg/admission/plugin/webhook/generic/webhook.go:421, :429 and
 	// k8s.io/apiserver@v0.37.1/pkg/admission/plugin/policy/generic/plugin.go:323, :331
@@ -183,61 +222,66 @@ func admissionRows() []admissionRow {
 	rbac := func(name string, se *apierrors.StatusError) {
 		rows = append(rows, admissionRow{name: name, se: se})
 	}
-	// A message that ends right after the fixed words keeps a trailing space,
-	// which the Rancher error JSON removes.
-	rbacNoJSON := func(name string, se *apierrors.StatusError) {
-		rows = append(rows, admissionRow{name: name, se: se, noJSON: true})
+	// rbacFor adds a row that stays RBAC for a text that nearly matches the list
+	// entry with the given id. A message that ends right after the fixed words
+	// keeps a trailing space, which the Rancher error JSON removes: rbacForNoJSON
+	// leaves out the Rancher error JSON for that row.
+	rbacFor := func(entry, name string, se *apierrors.StatusError) {
+		rows = append(rows, admissionRow{name: name, se: se, negativeFor: entry})
+	}
+	rbacForNoJSON := func(entry, name string, se *apierrors.StatusError) {
+		rows = append(rows, admissionRow{name: name, se: se, noJSON: true, negativeFor: entry})
 	}
 	const quota = `exceeded quota: q1, requested: pods=1, used: pods=1, limited: pods=1`
 
 	// The fixed words of an admission text that must be the whole text, given
 	// extra text after them.
-	rbac("not-ready with text after it", kubernetesForbidden("pods", "p", `not yet ready to handle request, try again`))
-	rbac("quota-previous-usage with text after it", kubernetesForbidden("pods", "p", `unable to get previous usage since prior version of object was not found: x`))
-	rbac("namespace-immortal with text after it", kubernetesForbidden("namespaces", "default", `this namespace may not be deleted: x`))
-	rbac("namespace-terminating with text after it", kubernetesForbidden("configmaps", "c1", `unable to create new content in namespace ns1 because it is being terminated: x`))
-	rbac("namespace-terminating with an empty namespace", kubernetesForbidden("configmaps", "c1", `unable to create new content in namespace  because it is being terminated`))
+	rbacFor("not-ready", "not-ready with text after it", kubernetesForbidden("pods", "p", `not yet ready to handle request, try again`))
+	rbacFor("quota-previous-usage", "quota-previous-usage with text after it", kubernetesForbidden("pods", "p", `unable to get previous usage since prior version of object was not found: x`))
+	rbacFor("namespace-immortal", "namespace-immortal with text after it", kubernetesForbidden("namespaces", "default", `this namespace may not be deleted: x`))
+	rbacFor("namespace-terminating", "namespace-terminating with text after it", kubernetesForbidden("configmaps", "c1", `unable to create new content in namespace ns1 because it is being terminated: x`))
+	rbacFor("namespace-terminating", "namespace-terminating with an empty namespace", kubernetesForbidden("configmaps", "c1", `unable to create new content in namespace  because it is being terminated`))
 
 	// The fixed words of an admission text that need a value after them, given
 	// none.
-	rbacNoJSON("quota-insufficient with nothing after it", kubernetesForbidden("pods", "p", `insufficient quota to consume: `))
-	rbacNoJSON("quota-constraint with nothing after it", kubernetesForbidden("pods", "p", `failed quota: compute: `))
-	rbacNoJSON("quota-negative with nothing after it", kubernetesForbidden("pods", "p", `quota usage is negative for resource(s): `))
-	rbacNoJSON("limitrange-minimum with nothing after it", kubernetesForbidden("pods", "p", `minimum memory usage per Container is `))
-	rbacNoJSON("limitrange-maximum with nothing after it", kubernetesForbidden("pods", "p", `maximum cpu usage per Container is `))
-	rbacNoJSON("limitrange-ratio with nothing after it", kubernetesForbidden("pods", "p", `cpu max limit to request ratio per Container is `))
-	rbac("podsecurity with a value that has no colon", kubernetesForbidden("pods", "p", `violates PodSecurity "restricted": privileged`))
-	rbac("podsecurity with an empty level", kubernetesForbidden("pods", "p", `violates PodSecurity ":latest": privileged`))
-	rbac("podsecurity with an empty version", kubernetesForbidden("pods", "p", `violates PodSecurity "restricted:": privileged`))
-	rbac("podsecurity with a space in the value", kubernetesForbidden("pods", "p", `violates PodSecurity "a b:c": privileged`))
-	rbac("validatingadmissionpolicy with no colon after denied request", kubernetesForbidden("pods", "p", `ValidatingAdmissionPolicy 'no-team' denied requestx failed expression: x`))
-	rbac("validatingadmissionpolicy with a binding and no colon after denied request", kubernetesForbidden("pods", "p", `ValidatingAdmissionPolicy 'no-team' with binding 'b' denied requestx failed expression: x`))
-	rbacNoJSON("podsecurity with nothing after it", kubernetesForbidden("pods", "p", `violates PodSecurity "restricted:latest": `))
-	rbac("podsecurity with a name that is not quoted", kubernetesForbidden("pods", "p", `violates PodSecurity restricted:latest: privileged`))
-	rbacNoJSON("quota-status-unknown with nothing after it", kubernetesForbidden("pods", "p", `status unknown for quota: `))
+	rbacForNoJSON("quota-insufficient", "quota-insufficient with nothing after it", kubernetesForbidden("pods", "p", `insufficient quota to consume: `))
+	rbacForNoJSON("quota-constraint", "quota-constraint with nothing after it", kubernetesForbidden("pods", "p", `failed quota: compute: `))
+	rbacForNoJSON("quota-negative", "quota-negative with nothing after it", kubernetesForbidden("pods", "p", `quota usage is negative for resource(s): `))
+	rbacForNoJSON("limitrange-minimum", "limitrange-minimum with nothing after it", kubernetesForbidden("pods", "p", `minimum memory usage per Container is `))
+	rbacForNoJSON("limitrange-maximum", "limitrange-maximum with nothing after it", kubernetesForbidden("pods", "p", `maximum cpu usage per Container is `))
+	rbacForNoJSON("limitrange-ratio", "limitrange-ratio with nothing after it", kubernetesForbidden("pods", "p", `cpu max limit to request ratio per Container is `))
+	rbacFor("podsecurity", "podsecurity with a value that has no colon", kubernetesForbidden("pods", "p", `violates PodSecurity "restricted": privileged`))
+	rbacFor("podsecurity", "podsecurity with an empty level", kubernetesForbidden("pods", "p", `violates PodSecurity ":latest": privileged`))
+	rbacFor("podsecurity", "podsecurity with an empty version", kubernetesForbidden("pods", "p", `violates PodSecurity "restricted:": privileged`))
+	rbacFor("podsecurity", "podsecurity with a space in the value", kubernetesForbidden("pods", "p", `violates PodSecurity "a b:c": privileged`))
+	rbacFor("validatingadmissionpolicy", "validatingadmissionpolicy with no colon after denied request", kubernetesForbidden("pods", "p", `ValidatingAdmissionPolicy 'no-team' denied requestx failed expression: x`))
+	rbacFor("validatingadmissionpolicy", "validatingadmissionpolicy with a binding and no colon after denied request", kubernetesForbidden("pods", "p", `ValidatingAdmissionPolicy 'no-team' with binding 'b' denied requestx failed expression: x`))
+	rbacForNoJSON("podsecurity", "podsecurity with nothing after it", kubernetesForbidden("pods", "p", `violates PodSecurity "restricted:latest": `))
+	rbacFor("podsecurity", "podsecurity with a name that is not quoted", kubernetesForbidden("pods", "p", `violates PodSecurity restricted:latest: privileged`))
+	rbacForNoJSON("quota-status-unknown", "quota-status-unknown with nothing after it", kubernetesForbidden("pods", "p", `status unknown for quota: `))
 
 	// An empty or spaced value of a placeholder.
-	rbac("quota-exceeded with an empty quota name", kubernetesForbidden("pods", "p", `exceeded quota: , requested: x, used: y, limited: z`))
-	rbac("quota-exceeded with a space in the quota name", kubernetesForbidden("pods", "p", `exceeded quota: q 1, requested: x, used: y, limited: z`))
-	rbac("quota-exceeded with the markers out of order", kubernetesForbidden("pods", "p", `exceeded quota: q1, requested: x, limited: z, used: y`))
-	rbac("quota-exceeded with a marker missing", kubernetesForbidden("pods", "p", `exceeded quota: q1, requested: x, used: y`))
-	rbac("quota-constraint with an empty quota name", kubernetesForbidden("pods", "p", `failed quota: : must specify limits.cpu`))
-	rbac("limitrange-minimum with an empty resource", kubernetesForbidden("pods", "p", `minimum  usage per Container is 64Mi, but request is 32Mi`))
-	rbac("limitrange-minimum with a space in the resource", kubernetesForbidden("pods", "p", `minimum a b usage per Container is 64Mi, but request is 32Mi`))
-	rbac("limitrange-maximum with an empty type", kubernetesForbidden("pods", "p", `maximum cpu usage per  is 1, but limit is 2`))
-	rbac("limitrange-ratio with a space in the type", kubernetesForbidden("pods", "p", `cpu max limit to request ratio per Con tainer is 2, but provided ratio is 4`))
-	rbac("validatingadmissionpolicy with an empty policy name", kubernetesForbidden("pods", "p", `ValidatingAdmissionPolicy '' denied request: failed expression: x`))
-	rbac("validatingadmissionpolicy with an empty binding name", kubernetesForbidden("pods", "p", `ValidatingAdmissionPolicy 'no-team' with binding '' denied request: failed expression: x`))
+	rbacFor("quota-exceeded", "quota-exceeded with an empty quota name", kubernetesForbidden("pods", "p", `exceeded quota: , requested: x, used: y, limited: z`))
+	rbacFor("quota-exceeded", "quota-exceeded with a space in the quota name", kubernetesForbidden("pods", "p", `exceeded quota: q 1, requested: x, used: y, limited: z`))
+	rbacFor("quota-exceeded", "quota-exceeded with the markers out of order", kubernetesForbidden("pods", "p", `exceeded quota: q1, requested: x, limited: z, used: y`))
+	rbacFor("quota-exceeded", "quota-exceeded with a marker missing", kubernetesForbidden("pods", "p", `exceeded quota: q1, requested: x, used: y`))
+	rbacFor("quota-constraint", "quota-constraint with an empty quota name", kubernetesForbidden("pods", "p", `failed quota: : must specify limits.cpu`))
+	rbacFor("limitrange-minimum", "limitrange-minimum with an empty resource", kubernetesForbidden("pods", "p", `minimum  usage per Container is 64Mi, but request is 32Mi`))
+	rbacFor("limitrange-minimum", "limitrange-minimum with a space in the resource", kubernetesForbidden("pods", "p", `minimum a b usage per Container is 64Mi, but request is 32Mi`))
+	rbacFor("limitrange-maximum", "limitrange-maximum with an empty type", kubernetesForbidden("pods", "p", `maximum cpu usage per  is 1, but limit is 2`))
+	rbacFor("limitrange-ratio", "limitrange-ratio with a space in the type", kubernetesForbidden("pods", "p", `cpu max limit to request ratio per Con tainer is 2, but provided ratio is 4`))
+	rbacFor("validatingadmissionpolicy", "validatingadmissionpolicy with an empty policy name", kubernetesForbidden("pods", "p", `ValidatingAdmissionPolicy '' denied request: failed expression: x`))
+	rbacFor("validatingadmissionpolicy", "validatingadmissionpolicy with an empty binding name", kubernetesForbidden("pods", "p", `ValidatingAdmissionPolicy 'no-team' with binding '' denied request: failed expression: x`))
 
 	// limitrange-error is retryable, never VALIDATION; it needs both its beginning and its end.
-	rbac("limitrange-error with the beginning only", kubernetesForbidden("pods", "p", `unable to x at this time`))
-	rbac("limitrange-error with the end only", kubernetesForbidden("pods", "p", `creating pods at this time because there was an error enforcing limit ranges`))
-	rbac("limitrange-error with nothing between its beginning and its end", kubernetesForbidden("pods", "p", `unable to  at this time because there was an error enforcing limit ranges`))
+	rbacFor("limitrange-error", "limitrange-error with the beginning only", kubernetesForbidden("pods", "p", `unable to x at this time`))
+	rbacFor("limitrange-error", "limitrange-error with the end only", kubernetesForbidden("pods", "p", `creating pods at this time because there was an error enforcing limit ranges`))
+	rbacFor("limitrange-error", "limitrange-error with nothing between its beginning and its end", kubernetesForbidden("pods", "p", `unable to  at this time because there was an error enforcing limit ranges`))
 
 	// The CLI reads only the first item of a bracketed list.
-	rbac("a bracketed list whose first item is not a LimitRanger text", kubernetesForbidden("pods", "p", `[something else, maximum cpu usage per Container is 1, but limit is 2]`))
-	rbac("a bracketed quota text", kubernetesForbidden("pods", "p", `[`+quota+`, `+quota+`]`))
-	rbac("a bracket followed by a space and a LimitRanger text", kubernetesForbidden("pods", "p", `[ maximum cpu usage per Container is 1, but limit is 2]`))
+	rbacFor("limitrange-list", "a bracketed list whose first item is not a LimitRanger text", kubernetesForbidden("pods", "p", `[something else, maximum cpu usage per Container is 1, but limit is 2]`))
+	rbacFor("limitrange-list", "a bracketed quota text", kubernetesForbidden("pods", "p", `[`+quota+`, `+quota+`]`))
+	rbacFor("limitrange-list", "a bracket followed by a space and a LimitRanger text", kubernetesForbidden("pods", "p", `[ maximum cpu usage per Container is 1, but limit is 2]`))
 
 	// The beginning of the message, built by hand.
 	rbac("a resource with a space in it", handBuiltForbidden(`pod s "p" is forbidden: `+quota))
@@ -278,6 +322,143 @@ func admissionRows() []admissionRow {
 	// (k8s.io/apiserver@v0.37.1/pkg/admission/plugin/webhook/errors/statuserror.go:28-57).
 	rbac("a webhook denial with 403 whose text is an admission text", handBuiltForbidden(`admission webhook "x.example.io" denied the request: `+quota))
 	rbac("a webhook denial with 403 whose text is an admission text, after `is forbidden: `", kubernetesForbidden("pods", "p", `admission webhook "x.example.io" denied the request: `+quota))
+
+	// Texts of a resource that is not a pod, with the beginning the server writes for it.
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:300
+	rows = append(rows, admissionRow{
+		name: "priorityclass-default-exists", id: "priorityclass-default-exists",
+		se: kubernetesForbidden("priorityclasses.scheduling.k8s.io", "x", `PriorityClass first is already marked as default. Only one default can exist`),
+	})
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/storage/persistentvolume/resize/admission.go:102
+	rows = append(rows, admissionRow{
+		name: "pvc-resize-unbound", id: "pvc-resize-unbound",
+		se: kubernetesForbidden("persistentvolumeclaims", "c", `Only bound persistent volume claims can be expanded`),
+	})
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/storage/persistentvolume/resize/admission.go:108-109
+	rows = append(rows, admissionRow{
+		name: "pvc-resize-unsupported", id: "pvc-resize-unsupported",
+		se: kubernetesForbidden("persistentvolumeclaims", "c", `only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize`),
+	})
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/certificates/subjectrestriction/admission.go:87-88
+	rows = append(rows, admissionRow{
+		name: "csr-system-masters", id: "csr-system-masters",
+		se: kubernetesForbidden("certificatesigningrequests.certificates.k8s.io", "c", `use of kubernetes.io/kube-apiserver-client signer with system:masters group is not allowed`),
+	})
+	// An empty pod value: the server writes the text with a space after `=`, which the
+	// CLI trims and Rancher's error JSON cannot carry.
+	rows = append(rows, admissionRow{
+		name: "runtimeclass-node-selector-conflict an empty pod nodeSelector value", id: "runtimeclass-node-selector-conflict", noJSON: true,
+		se: kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[k] = v; pod.spec.nodeSelector[k] = `),
+	})
+
+	// Admission texts that must match the whole message, given more text after them.
+	rbacFor("runtimeclass-overhead-mismatch", "runtimeclass-overhead-mismatch with text after it", kubernetesForbidden("pods", "p", `pod rejected: Pod's Overhead doesn't match RuntimeClass's defined Overhead: x`))
+	rbacFor("runtimeclass-overhead-unexpected", "runtimeclass-overhead-unexpected with text after it", kubernetesForbidden("pods", "p", `pod rejected: Pod Overhead set without corresponding RuntimeClass defined Overhead: x`))
+	rbacFor("pvc-resize-unbound", "pvc-resize-unbound with text after it", kubernetesForbidden("persistentvolumeclaims", "c", `Only bound persistent volume claims can be expanded: x`))
+	rbacFor("pvc-resize-unsupported", "pvc-resize-unsupported with text after it", kubernetesForbidden("persistentvolumeclaims", "c", `only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize: x`))
+	rbacFor("priorityclass-default-exists", "priorityclass-default-exists with text after it", kubernetesForbidden("priorityclasses.scheduling.k8s.io", "x", `PriorityClass first is already marked as default. Only one default can exist: x`))
+	rbacFor("csr-system-masters", "csr-system-masters with text after it", kubernetesForbidden("certificatesigningrequests.certificates.k8s.io", "c", `use of kubernetes.io/kube-apiserver-client signer with system:masters group is not allowed: x`))
+	rbacFor("serviceaccount-none-specified", "serviceaccount-none-specified with text after it", kubernetesForbidden("pods", "p", `no service account specified for pod ns1/web-1 x`))
+	rbacFor("serviceaccount-not-found", "serviceaccount-not-found with text after it", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1: serviceaccount "sa1" not found: x`))
+	rbacFor("runtimeclass-not-found", "runtimeclass-not-found with text after it", kubernetesForbidden("pods", "p", `pod rejected: RuntimeClass "gvisor" not found: x`))
+	rbacFor("priorityclass-not-found", "priorityclass-not-found with text after it", kubernetesForbidden("pods", "p", `no PriorityClass with name high was found: x`))
+	rbacFor("priority-set-in-pod", "priority-set-in-pod with text after it", kubernetesForbidden("pods", "p", `the integer value of priority (1) must not be provided in pod spec; priority admission controller computed 0 from the given PriorityClass name: x`))
+	rbacFor("preemptionpolicy-set-in-pod", "preemptionpolicy-set-in-pod with text after it", kubernetesForbidden("pods", "p", `the string value of PreemptionPolicy (Never) must not be provided in pod spec; priority admission controller computed PreemptLowerPriority from the given PriorityClass name: x`))
+	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with text after it", kubernetesForbidden("pods", "p", `volume with secret.secretName="s1" is not allowed because service account sa1 does not reference that secret: x`))
+	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with a space in the pod nodeSelector value", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[k] = v; pod.spec.nodeSelector[k] = w x`))
+
+	// An admission text with a placeholder that is empty or has a space in it.
+	rbacFor("serviceaccount-not-found", "serviceaccount-not-found with an empty namespace and name", kubernetesForbidden("pods", "p", `error looking up service account : serviceaccount "x" not found`))
+	rbacFor("serviceaccount-not-found", "serviceaccount-not-found with a space in the namespace and name", kubernetesForbidden("pods", "p", `error looking up service account ns/a b: serviceaccount "x" not found`))
+	rbacFor("serviceaccount-not-found", "serviceaccount-not-found with an empty quoted name", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1: serviceaccount "" not found`))
+	rbacFor("serviceaccount-not-found", "serviceaccount-not-found with an unquoted name", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1: serviceaccount sa1 not found`))
+	rbacFor("serviceaccount-none-specified", "serviceaccount-none-specified with no slash", kubernetesForbidden("pods", "p", `no service account specified for pod web-1`))
+	rbacForNoJSON("serviceaccount-none-specified", "serviceaccount-none-specified with an empty value", kubernetesForbidden("pods", "p", `no service account specified for pod `))
+	rbacFor("serviceaccount-none-specified", "serviceaccount-none-specified with a space in the value", kubernetesForbidden("pods", "p", `no service account specified for pod ns1/web 1`))
+	rbacFor("priorityclass-not-found", "priorityclass-not-found with an empty name", kubernetesForbidden("pods", "p", `no PriorityClass with name  was found`))
+	rbacFor("priorityclass-not-found", "priorityclass-not-found with a space in the name", kubernetesForbidden("pods", "p", `no PriorityClass with name a b was found`))
+	rbacFor("priorityclass-default-exists", "priorityclass-default-exists with an empty name", kubernetesForbidden("priorityclasses.scheduling.k8s.io", "x", `PriorityClass  is already marked as default. Only one default can exist`))
+	rbacFor("priority-set-in-pod", "priority-set-in-pod with an empty priority", kubernetesForbidden("pods", "p", `the integer value of priority () must not be provided in pod spec; priority admission controller computed 0 from the given PriorityClass name`))
+	rbacFor("priority-set-in-pod", "priority-set-in-pod with an empty computed priority", kubernetesForbidden("pods", "p", `the integer value of priority (1) must not be provided in pod spec; priority admission controller computed  from the given PriorityClass name`))
+	rbacFor("preemptionpolicy-set-in-pod", "preemptionpolicy-set-in-pod with an empty policy", kubernetesForbidden("pods", "p", `the string value of PreemptionPolicy () must not be provided in pod spec; priority admission controller computed PreemptLowerPriority from the given PriorityClass name`))
+	rbacFor("preemptionpolicy-set-in-pod", "preemptionpolicy-set-in-pod with an empty computed policy", kubernetesForbidden("pods", "p", `the string value of PreemptionPolicy (Never) must not be provided in pod spec; priority admission controller computed  from the given PriorityClass name`))
+	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with an empty secret name", kubernetesForbidden("pods", "p", `volume with secret.secretName="" is not allowed because service account sa1 does not reference that secret`))
+	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with an empty service account name", kubernetesForbidden("pods", "p", `volume with secret.secretName="s1" is not allowed because service account  does not reference that secret`))
+	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with a space in the service account name", kubernetesForbidden("pods", "p", `volume with secret.secretName="s1" is not allowed because service account a b does not reference that secret`))
+	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with an empty image pull secret name", kubernetesForbidden("pods", "p", `imagePullSecrets[0].name="" is not allowed because service account sa1 does not reference that imagePullSecret`))
+	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with a space in the container name", kubernetesForbidden("pods", "p", `container c 1 with envFrom referencing secret.secretName="s1" is not allowed because service account sa1 does not reference that secret`))
+	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with a space in the environment variable name", kubernetesForbidden("pods", "p", `container c1 with envVar E 1 referencing secret.secretName="s1" is not allowed because service account sa1 does not reference that secret`))
+	rbacFor("runtimeclass-not-found", "runtimeclass-not-found with an empty quoted name", kubernetesForbidden("pods", "p", `pod rejected: RuntimeClass "" not found`))
+	rbacFor("runtimeclass-not-found", "runtimeclass-not-found with an unquoted name", kubernetesForbidden("pods", "p", `pod rejected: RuntimeClass gvisor not found`))
+	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with different keys", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[k] = a; pod.spec.nodeSelector[j] = b`))
+	rbacForNoJSON("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with both values empty", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[k] = ; pod.spec.nodeSelector[k] = `))
+	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with an empty key", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[] = a; pod.spec.nodeSelector[] = b`))
+	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with an empty pod key", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[k] = a; pod.spec.nodeSelector[] = b`))
+	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with a space in the key", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[a b] = a; pod.spec.nodeSelector[a b] = b`))
+	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with a space in the RuntimeClass nodeSelector value", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[k] = a b; pod.spec.nodeSelector[k] = c`))
+
+	// A ServiceAccount lookup error other than NotFound, and texts of the
+	// ServiceAccount admission plugin that match no admission text in the list.
+	rbac("ServiceAccount lookup error when the server did not respond in time", kubernetesForbidden("pods", "p", `error looking up service account ns/sa: the server was unable to return a response in the time allotted, but may still be processing the request (get serviceaccounts sa)`))
+	rbac("ServiceAccount lookup error with a deadline exceeded", kubernetesForbidden("pods", "p", `error looking up service account ns/sa: context deadline exceeded`))
+	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with the start of one text and the end of another", kubernetesForbidden("pods", "p", `volume with secret.secretName="s" is not allowed because service account sa does not reference that imagePullSecret`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:403; the server returns this text in a 500, not a 403
+	rbac("an ephemeral container secret text", kubernetesForbidden("pods", "p", `ephemeral container c with envVar e referencing secret.secretName="s" is not allowed because service account sa does not reference that secret`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:199, :207 and :213
+	rbac("ServiceAccount mirror pod text about service accounts", kubernetesForbidden("pods", "p", `a mirror pod may not reference service accounts`))
+	rbac("ServiceAccount mirror pod text about secrets", kubernetesForbidden("pods", "p", `a mirror pod may not reference secrets`))
+	rbac("ServiceAccount mirror pod text about service account token volume projections", kubernetesForbidden("pods", "p", `a mirror pod may not use ServiceAccountToken volume projections`))
+
+	// An admission text that stops before its last words.
+	rbacFor("priorityclass-not-found", "priorityclass-not-found without its last words", kubernetesForbidden("pods", "p", `no PriorityClass with name x`))
+	rbacFor("priority-set-in-pod", "priority-set-in-pod without its last words", kubernetesForbidden("pods", "p", `the integer value of priority (5) must not be provided in pod spec`))
+	rbac("a text that begins like a node selector conflict and stops", kubernetesForbidden("pods", "p", `conflict: x`))
+	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict without the pod nodeSelector part", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[a] = b`))
+	rbac("a text that begins like a rejected pod and stops", kubernetesForbidden("pods", "p", `pod rejected: x`))
+
+	// The texts of Priority about a pod group, which do not match the texts about a pod.
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:235 and :232
+	rbac("priority text about the preemption policy of a pod group", kubernetesForbidden("pods", "p", `the string value of PreemptionPolicy (x) must not be provided in pod group spec; priority admission controller computed y from the given PriorityClass name`))
+	rbac("priority text about the preemption policy of a PriorityClass in a pod group", kubernetesForbidden("pods", "p", `preemptionPolicy set in the PriorityClass object (Never) must match one of the allowed values of PreemptionPolicy type in pod group`))
+
+	// Texts that stay RBAC: permission checks and lister errors of other default-on
+	// plugins, texts that cannot reach a client, and texts of plugins that are off
+	// by default or exist only in later Kubernetes releases. A change that adds one
+	// of them to the list must change its row.
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/certificates/signing/admission.go:102
+	rbac("CertificateSigning", kubernetesForbidden("certificatesigningrequests.certificates.k8s.io", "c", `user not permitted to sign requests with signerName "x"`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/certificates/ctbattest/admission.go:121
+	rbac("ClusterTrustBundleAttest", kubernetesForbidden("clustertrustbundles.certificates.k8s.io", "b", `user not permitted to attest for signerName "x"`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/gc/gc_admission.go:141
+	rbac("OwnerReferencesPermissionEnforcement with no RESTMapping", kubernetesForbidden("pods", "p", `cannot set blockOwnerDeletion in this case because cannot find RESTMapping for APIVersion v1 Kind Pod: x`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/gc/gc_admission.go:149
+	rbac("OwnerReferencesPermissionEnforcement with no permission on finalizers", kubernetesForbidden("pods", "p", `cannot set blockOwnerDeletion if an ownerReference refers to a resource you can't set finalizers on: x, y`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/certificates/subjectrestriction/admission.go:71
+	rbac("CertificateSubjectRestriction with an unexpected type", kubernetesForbidden("certificatesigningrequests.certificates.k8s.io", "c", `expected type CertificateSigningRequest, got: *core.Pod`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/certificates/subjectrestriction/admission.go:80
+	rbac("CertificateSubjectRestriction with a request that does not parse", kubernetesForbidden("certificatesigningrequests.certificates.k8s.io", "c", `failed to parse CSR: x`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/nodetaint/admission.go:71
+	rbac("TaintNodesByCondition with an unexpected type", kubernetesForbidden("nodes", "n1", `unexpected type *core.Pod`))
+	// The text of these two is whatever error the lister returns; the rows use a listing error as an example:
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/storage/storageclass/setdefault/admission.go:110 and
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/network/defaultingressclass/admission.go:115.
+	rbac("DefaultStorageClass with a lister error", kubernetesForbidden("persistentvolumeclaims", "c", `error listing storage classes: x`))
+	rbac("DefaultIngressClass with a lister error", kubernetesForbidden("ingresses.networking.k8s.io", "i", `error listing ingress classes: x`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/podnodeselector/admission.go:117, :144 and :153
+	rbac("PodNodeSelector with a conflict with the namespace selector", kubernetesForbidden("pods", "p", `pod node label selector conflicts with its namespace node label selector`))
+	rbac("PodNodeSelector with a conflict with the namespace whitelist", kubernetesForbidden("pods", "p", `pod node label selector labels conflict with its namespace whitelist`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/network/denyserviceexternalips/admission.go:91
+	rbac("DenyServiceExternalIPs", kubernetesForbidden("services", "s", `Use of external IPs is denied by admission control`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/antiaffinity/admission.go:77
+	rbac("LimitPodHardAntiAffinityTopology", kubernetesForbidden("pods", "p", `affinity.PodAntiAffinity.RequiredDuringScheduling has TopologyKey x but only key kubernetes.io/hostname is allowed`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/deny/admission.go:47 and :52
+	rbac("AlwaysDeny", kubernetesForbidden("pods", "p", `admission control is denying all modifications`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/alwayspullimages/admission.go:100
+	rbac("AlwaysPullImages", kubernetesForbidden("pods", "p", `spec.containers[0].imagePullPolicy: Unsupported value: "IfNotPresent": supported values: "Always"`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/podresize/admission.go:179, through :182-192
+	rbac("PodResizeValidator", kubernetesForbidden("pods", "p", `pod resize is only supported on linux nodes, node "n" is "windows"`))
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/nodedeclaredfeatures/admission.go:197
+	rbac("NodeDeclaredFeatureValidator", kubernetesForbidden("pods", "p", `pod update requires features f which are not available on node "n"`))
 
 	// Rancher's own texts.
 	rbac("Rancher's token text", kubernetesForbidden("tokens.ext.cattle.io", "", `user u-1 is not a Rancher user`))
@@ -357,20 +538,23 @@ var admissionPaths = []struct {
 // TestAdmissionTextsGetTheirCodeAndEveryOther403StaysRBAC asserts every
 // admission text in the list gets its result and every other 403 stays RBAC
 // with the Status message. A 403 that refuses the object (ResourceQuota,
-// LimitRanger, PodSecurity, namespace lifecycle, ValidatingAdmissionPolicy) is
-// VALIDATION at exit 2; a temporary 403 (the server is not ready, LimitRanger
-// failed to enforce limit ranges, the ResourceQuota status is unknown, the
-// previous version of the object was not found) is a retryable
-// GENERIC with the Status message and " - retry later", also when the request
-// names a server; both have no hint. A message that does not begin as
+// LimitRanger, PodSecurity, namespace lifecycle, ValidatingAdmissionPolicy,
+// ServiceAccount, Priority, RuntimeClass, PersistentVolumeClaimResize,
+// CertificateSubjectRestriction) is VALIDATION at exit 2; a temporary 403 (the
+// server is not ready, LimitRanger failed to enforce limit ranges, the
+// ResourceQuota status is unknown, the previous version of the object was not
+// found) is a retryable GENERIC with the Status message and " - retry later",
+// also when the request names a server; both have no hint. A message that
+// does not begin as
 // Kubernetes writes it, an admission text anywhere but at the beginning of the
 // text after `forbidden: `, the authorizer's texts, a webhook's own
 // 403 and Rancher's texts stay RBAC. Every row runs through the typed Status,
 // behind a caller's prefix and as Rancher's error JSON, with every kind of
 // request: every verb, an action with no verb, a request that names a server,
 // an unresolved cluster, and no request at all. The test fails for an entry
-// with no row, a row for an id that is not in the list, a repeated id or row
-// name, and a set of retryable entries other than the four.
+// with no row, an entry with no row for a text that nearly matches it and stays
+// RBAC, a row for an id that is not in the list, a repeated id or row name, and
+// a set of retryable entries other than the four.
 //
 // The test does not detect a Kubernetes release that changes the wording of an
 // admission text, or a new 403 from a server other than Kubernetes admission
@@ -406,6 +590,17 @@ func TestAdmissionTextsGetTheirCodeAndEveryOther403StaysRBAC(t *testing.T) {
 	}
 	for id := range ids {
 		assert.True(t, covered[id], "the list entry %s has no row", id)
+	}
+	negative := map[string]bool{}
+	for _, r := range rows {
+		if r.negativeFor != "" {
+			assert.Empty(t, r.id, "the row %q is a negative row and names no id", r.name)
+			assert.True(t, ids[r.negativeFor], "the row %q is a negative row for %s, which is not in the list", r.name, r.negativeFor)
+			negative[r.negativeFor] = true
+		}
+	}
+	for id := range ids {
+		assert.True(t, negative[id], "the list entry %s has no row for a text that nearly matches it", id)
 	}
 
 	shapes := append(conflictShapes(),

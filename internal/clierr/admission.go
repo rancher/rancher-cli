@@ -35,7 +35,10 @@ import (
 // In an admission text, <q>, <res>, <type>, <ns>, <p> and <b> each stand for
 // one or more characters with no space, ending at the first place where the
 // next fixed words of the admission text follow. The other words must match
-// exactly.
+// exactly. Each matcher from serviceAccountNotFound on names its own
+// placeholders in its comment. The one exception is
+// runtimeclass-node-selector-conflict, where one of the two values after `] = `
+// may be empty.
 
 // admissionText is one entry of the admissionTexts list.
 type admissionText struct {
@@ -81,6 +84,37 @@ var admissionTexts = []admissionText{
 	{id: "namespace-immortal", match: exactText("this namespace may not be deleted")},
 	// ValidatingAdmissionPolicy: k8s.io/apiserver@v0.37.1/pkg/admission/plugin/policy/validating/dispatcher.go:305, :307.
 	{id: "validatingadmissionpolicy", match: validatingAdmissionPolicy},
+	// ServiceAccount: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:164, :228 and :389; the
+	// text after the colon is written at :314 of the same file and by
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:155. Any other lookup error is not matched.
+	{id: "serviceaccount-not-found", match: serviceAccountNotFound},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:223 and :384; a defensive check, because
+	// Admit sets `default` for a pod with no ServiceAccount name first.
+	{id: "serviceaccount-none-specified", match: serviceAccountNoneSpecified},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:330, :338, :345, :355, :362 and :375.
+	{id: "serviceaccount-secret-reference", match: serviceAccountSecretReference},
+	// Priority: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:363.
+	{id: "priorityclass-not-found", match: priorityClassNotFound},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:185.
+	{id: "priority-set-in-pod", match: prioritySetInPod},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:193.
+	{id: "preemptionpolicy-set-in-pod", match: preemptionPolicySetInPod},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/priority/admission.go:300.
+	{id: "priorityclass-default-exists", match: priorityClassDefaultExists},
+	// RuntimeClass: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/runtimeclass/admission.go:158.
+	{id: "runtimeclass-not-found", match: runtimeClassNotFound},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/runtimeclass/admission.go:179 and :227.
+	{id: "runtimeclass-overhead-mismatch", match: exactText("pod rejected: Pod's Overhead doesn't match RuntimeClass's defined Overhead")},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/runtimeclass/admission.go:232.
+	{id: "runtimeclass-overhead-unexpected", match: exactText("pod rejected: Pod Overhead set without corresponding RuntimeClass defined Overhead")},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/runtimeclass/admission.go:205.
+	{id: "runtimeclass-node-selector-conflict", match: runtimeClassNodeSelectorConflict},
+	// PersistentVolumeClaimResize: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/storage/persistentvolume/resize/admission.go:102.
+	{id: "pvc-resize-unbound", match: exactText("Only bound persistent volume claims can be expanded")},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/storage/persistentvolume/resize/admission.go:108-109.
+	{id: "pvc-resize-unsupported", match: exactText("only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize")},
+	// CertificateSubjectRestriction: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/certificates/subjectrestriction/admission.go:87-88.
+	{id: "csr-system-masters", match: exactText("use of kubernetes.io/kube-apiserver-client signer with system:masters group is not allowed")},
 
 	// The texts below do not refuse the object: they are temporary 403s, the
 	// server could not check the request yet.
@@ -336,4 +370,136 @@ func validatingAdmissionPolicy(text string) bool {
 		}
 	}
 	return strings.HasPrefix(rest, " denied request: ")
+}
+
+// serviceAccountNotFound matches exactly `error looking up service account
+// <ns>/<name>: serviceaccount "<sa>" not found`, with a non-empty <sa> in Go
+// double quotes. <ns>/<name> is one or more characters with no space. Any other
+// lookup error is not matched, and neither is a text with anything after
+// `not found`.
+func serviceAccountNotFound(text string) bool {
+	rest, ok := cutWords(text, "error looking up service account ", ": serviceaccount ")
+	if !ok {
+		return false
+	}
+	quoted, _, ok := quotedName(rest)
+	return ok && rest[len(quoted):] == " not found"
+}
+
+// serviceAccountNoneSpecified matches exactly `no service account specified
+// for pod <ns>/<name>`. <ns>/<name> is one or more characters with no space,
+// with a `/` among them; <name> is empty for a pod that has a generateName only.
+func serviceAccountNoneSpecified(text string) bool {
+	rest, ok := strings.CutPrefix(text, "no service account specified for pod ")
+	return ok && rest != "" && !strings.Contains(rest, " ") && strings.Contains(rest, "/")
+}
+
+// serviceAccountSecretTexts are the six texts of the ServiceAccount admission
+// plugin that name a secret the ServiceAccount does not reference. Each is a
+// list of fixed words: the words the text begins with, then the words that
+// follow each placeholder. The text must end right after the last of them.
+var serviceAccountSecretTexts = [][]string{
+	// A volume.
+	{`volume with secret.secretName="`, `" is not allowed because service account `, ` does not reference that secret`},
+	// An init container or a container, with an environment variable or envFrom.
+	{"init container ", " with envVar ", ` referencing secret.secretName="`, `" is not allowed because service account `, ` does not reference that secret`},
+	{"init container ", ` with envFrom referencing secret.secretName="`, `" is not allowed because service account `, ` does not reference that secret`},
+	{"container ", " with envVar ", ` referencing secret.secretName="`, `" is not allowed because service account `, ` does not reference that secret`},
+	{"container ", ` with envFrom referencing secret.secretName="`, `" is not allowed because service account `, ` does not reference that secret`},
+	// An image pull secret.
+	{"imagePullSecrets[", `].name="`, `" is not allowed because service account `, ` does not reference that imagePullSecret`},
+}
+
+// serviceAccountSecretReference matches one of the texts in
+// serviceAccountSecretTexts, for example `volume with secret.secretName="<s>"
+// is not allowed because service account <sa> does not reference that secret`.
+// <s> (the secret name between literal double quotes), <sa>, <c> (a container
+// name), <e> (an environment variable name) and <i> (the index in
+// imagePullSecrets) are each one or more characters with no space. A text about
+// an ephemeral container is not matched: the server returns it with a 500, not
+// a 403.
+func serviceAccountSecretReference(text string) bool {
+	for _, words := range serviceAccountSecretTexts {
+		if rest, ok := cutWords(text, words[0], words[1:]...); ok && rest == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// priorityClassNotFound matches exactly `no PriorityClass with name <name> was
+// found`. <name> is one or more characters with no space.
+func priorityClassNotFound(text string) bool {
+	rest, ok := cutWords(text, "no PriorityClass with name ", " was found")
+	return ok && rest == ""
+}
+
+// prioritySetInPod matches exactly `the integer value of priority (<priority>)
+// must not be provided in pod spec; priority admission controller computed
+// <computed priority> from the given PriorityClass name`. <priority> and
+// <computed priority> are each one or more characters with no space. The
+// texts about a pod group start differently and are not matched.
+func prioritySetInPod(text string) bool {
+	rest, ok := cutWords(text, "the integer value of priority (", ") must not be provided in pod spec; priority admission controller computed ", " from the given PriorityClass name")
+	return ok && rest == ""
+}
+
+// preemptionPolicySetInPod matches exactly `the string value of
+// PreemptionPolicy (<policy>) must not be provided in pod spec; priority
+// admission controller computed <computed policy> from the given PriorityClass
+// name`. <policy> and <computed policy> are each one or more characters with
+// no space. The texts about a pod group are not matched.
+func preemptionPolicySetInPod(text string) bool {
+	rest, ok := cutWords(text, "the string value of PreemptionPolicy (", ") must not be provided in pod spec; priority admission controller computed ", " from the given PriorityClass name")
+	return ok && rest == ""
+}
+
+// priorityClassDefaultExists matches exactly `PriorityClass <name> is already
+// marked as default. Only one default can exist`. <name> is one or more
+// characters with no space.
+func priorityClassDefaultExists(text string) bool {
+	rest, ok := cutWords(text, "PriorityClass ", " is already marked as default. Only one default can exist")
+	return ok && rest == ""
+}
+
+// runtimeClassNotFound matches exactly `pod rejected: RuntimeClass "<name>"
+// not found`, with a non-empty <name> in Go double quotes.
+func runtimeClassNotFound(text string) bool {
+	rest, ok := strings.CutPrefix(text, "pod rejected: RuntimeClass ")
+	if !ok {
+		return false
+	}
+	quoted, _, ok := quotedName(rest)
+	return ok && rest[len(quoted):] == " not found"
+}
+
+// runtimeClassNodeSelectorConflict matches exactly `conflict:
+// runtimeClass.scheduling.nodeSelector[<k>] = <v>; pod.spec.nodeSelector[<k>] =
+// <w>`, with the same <k> on both sides. <k> is one or more characters with no
+// space. <v> and <w> are each zero or more characters with no space: a label
+// value can be empty, and the server writes the text only when they differ, so
+// at most one is empty. The server writes a space after `] =` even when <w> is
+// empty, and the CLI trims the message. A message that ends right after `] =`
+// is matched, and so is one that ends with `] = `.
+func runtimeClassNodeSelectorConflict(text string) bool {
+	rest, ok := strings.CutPrefix(text, "conflict: runtimeClass.scheduling.nodeSelector[")
+	if !ok {
+		return false
+	}
+	key, rest, ok := strings.Cut(rest, "] = ")
+	if !ok || key == "" || strings.Contains(key, " ") {
+		return false
+	}
+	runtimeValue, rest, ok := strings.Cut(rest, "; pod.spec.nodeSelector["+key+"] =")
+	if !ok || strings.Contains(runtimeValue, " ") {
+		return false
+	}
+	podValue := ""
+	if rest != "" {
+		podValue, ok = strings.CutPrefix(rest, " ")
+		if !ok || strings.Contains(podValue, " ") {
+			return false
+		}
+	}
+	return runtimeValue != "" || podValue != ""
 }
