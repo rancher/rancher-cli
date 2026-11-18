@@ -351,21 +351,25 @@ func TestResolveProjectFallsBackToOneGetByID(t *testing.T) {
 	}}, local.gets)
 }
 
-// TestResolveProjectGetFallbackErrors asserts a refused or missing GET
-// keeps the NOT_FOUND the listing produced, and any other GET failure is
-// returned as it is.
+// TestResolveProjectGetFallbackErrors asserts a refused GET returns an RBAC
+// error, a missing one returns the NOT_FOUND error the listing produced, and
+// any other GET failure is returned unchanged.
 func TestResolveProjectGetFallbackErrors(t *testing.T) {
 	t.Parallel()
-	wantMsg := "project not found: 'web'; it is not among the projects you can read on cluster 'c-abc'; pass a project id or display name"
-	for name, code := range map[string]string{"forbidden": clierr.CodeRBAC, "not found": clierr.CodeNotFound} {
+	notFound := "project not found: 'web'; it is not among the projects you can read on cluster 'c-abc'; pass a project id or display name"
+	refused := "you cannot read project 'web' on cluster 'c-abc'"
+	for name, want := range map[string]struct{ code, msg string }{
+		"forbidden": {clierr.CodeRBAC, refused},
+		"not found": {clierr.CodeNotFound, notFound},
+	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			_, get := projectFixture(t, steveProject("c-abc", "p-2", "db"))
-			local := &fakeCluster{getErr: clierr.New(code, "from the GET")}
+			local := &fakeCluster{getErr: clierr.New(want.code, "from the GET")}
 			_, _, err := ResolveProject(t.Context(), get, local, "c-abc", "web")
 			ce := codeOf(t, err)
-			assert.Equal(t, clierr.CodeNotFound, ce.Code)
-			assert.Equal(t, wantMsg, ce.Message)
+			assert.Equal(t, want.code, ce.Code)
+			assert.Equal(t, want.msg, ce.Message)
 			assert.Len(t, local.gets, 1)
 		})
 	}

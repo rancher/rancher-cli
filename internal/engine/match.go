@@ -14,6 +14,10 @@ type MatchText struct {
 	Flag         clierr.CommandWord // "--project"; "" when the value is a positional argument
 	NotFound     string             // the NOT_FOUND message
 	NotFoundHint clierr.Command     // the NOT_FOUND hint; the zero Command is no hint
+	// RBACSuffix is appended to the RBAC message of a lookup when Rancher
+	// refuses (HTTP 403) the get of the cluster by its id; empty appends
+	// nothing. MatchOne ignores it.
+	RBACSuffix string
 }
 
 // MatchOne picks the object v names among ids, by id or by display name.

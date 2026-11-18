@@ -1228,7 +1228,7 @@ fan-out); `""` is rejected. `ResolveCluster(nameOrID)` maps a display name or ID
 cluster ID among the clusters the caller can read: one read of steve's
 `/v1/management.cattle.io.clusters` per invocation, matched by `steve.ResolveCluster`
 (an id wins over another cluster's display name, with a warning the factory hands
-the pipeline as a notice; one GET by id on a miss), memoized per value. `""` and
+the pipeline as a notice; one GET by id when nothing matches (a 403 on it is `RBAC`)), memoized per value. `""` and
 `local` are the local cluster and send no request.
 Server identity is deliberately **not** on the port interface - it lives on the concrete
 factory and the adapter reads it to stamp `Effect.Server`, so a `Plan`/`Execute` pair can

@@ -117,7 +117,8 @@ func collectionRefusal(r Request, err error) error {
 // caller can read on clusterID. When v is one project's id and also other
 // projects' display name, the id wins and warning names the others. When nothing matches, one GET by id
 // through the local cluster covers a project steve's cache has not listed
-// yet; its 403 or 404 keeps the NOT_FOUND.
+// yet; its 403 returns an RBAC error with the candidates of that NOT_FOUND
+// error, and its 404 returns it.
 func ResolveProject(ctx context.Context, get Getter, local engine.ClusterClient, clusterID, v string) (p Project, warning string, err error) {
 	return resolveProject(ctx, get, local, clusterID, v, "--project")
 }
@@ -126,6 +127,18 @@ func ResolveProject(ctx context.Context, get Getter, local engine.ClusterClient,
 // positional argument: its warning names no flag.
 func ResolveProjectArgument(ctx context.Context, get Getter, local engine.ClusterClient, clusterID, v string) (p Project, warning string, err error) {
 	return resolveProject(ctx, get, local, clusterID, v, "")
+}
+
+// projectRefusedByID returns the RBAC error returned when Rancher refuses
+// (HTTP 403) the get of project v on clusterID by its id. Rancher refuses it
+// for a project the caller cannot read and for an id no project has. The
+// message therefore does not say whether the project exists. The hint is the
+// command that lists the projects on the cluster, whether the caller can read
+// any or none; it is left out for a cluster id the shell would misread.
+func projectRefusedByID(clusterID, v string, getterErr error, candidates []clierr.Candidate) *clierr.Error {
+	return clierr.New(clierr.CodeRBAC, fmt.Sprintf("you cannot read project %s on cluster %s", clierr.ShellQuote(v), clierr.ShellQuote(clusterID))).
+		WithHintCommand(clierr.NewCommand("access projects").FlagValue("--cluster", clusterID)).
+		WithCause(getterErr).WithCandidates(candidates)
 }
 
 func resolveProject(ctx context.Context, get Getter, local engine.ClusterClient, clusterID, v string, flag clierr.CommandWord) (p Project, warning string, err error) {
@@ -155,14 +168,20 @@ func resolveProject(ctx context.Context, get Getter, local engine.ClusterClient,
 	if err == nil {
 		return Project{Cluster: clusterID, ID: id, DisplayName: display[id]}, warning, nil
 	}
-	if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeNotFound || len(validation.IsDNS1123Subdomain(v)) > 0 {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok || ce.Code != clierr.CodeNotFound || len(validation.IsDNS1123Subdomain(v)) > 0 {
 		return Project{}, "", err
 	}
 	projectKind, _ := kinds.Lookup("project")
 	obj, gerr := local.Get(ctx, projectKind.GVR, clusterID, v)
 	if gerr != nil {
-		if ge, ok := errors.AsType[*clierr.Error](gerr); ok && (ge.Code == clierr.CodeNotFound || ge.Code == clierr.CodeRBAC) {
-			return Project{}, "", err
+		if ge, ok := errors.AsType[*clierr.Error](gerr); ok {
+			switch ge.Code {
+			case clierr.CodeNotFound:
+				return Project{}, "", err
+			case clierr.CodeRBAC:
+				return Project{}, "", projectRefusedByID(clusterID, v, gerr, ce.Candidates)
+			}
 		}
 		return Project{}, "", gerr
 	}

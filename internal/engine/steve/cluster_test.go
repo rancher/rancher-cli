@@ -27,7 +27,8 @@ func cliText(v string) engine.MatchText {
 
 func pluginText(v string) engine.MatchText {
 	t := cliText(v)
-	t.NotFound += "; the clusters you can read: 'c-abc' (prod)"
+	t.RBACSuffix = "; the clusters you can read: 'c-abc' (prod)"
+	t.NotFound += t.RBACSuffix
 	t.NotFoundHint = clierr.Command{}
 	return t
 }
@@ -123,8 +124,8 @@ func TestResolveClusterMatchSendsNoRequest(t *testing.T) {
 }
 
 // TestResolveClusterGetByIDOnAMiss asserts the one GET by id a miss sends:
-// a 200 resolves to the value, a 403 or 404 keeps the NOT_FOUND, and any
-// other status is returned.
+// a 200 resolves to the value, a 403 returns an RBAC error, a 404 returns the
+// NOT_FOUND error, and any other status is returned.
 func TestResolveClusterGetByIDOnAMiss(t *testing.T) {
 	t.Parallel()
 	for _, text := range []func(string) engine.MatchText{cliText, pluginText} {
@@ -138,17 +139,25 @@ func TestResolveClusterGetByIDOnAMiss(t *testing.T) {
 		assert.Equal(t, []string{clusterByIDPath("c-new")}, srv.requests())
 	}
 
-	for _, status := range []int{http.StatusForbidden, http.StatusNotFound} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			t.Parallel()
-			srv := newServer(t, map[string]route{clusterByIDPath("c-new"): {status: status}})
-			_, _, err := ResolveCluster(t.Context(), srv.getter(), readable, "c-new", cliText("c-new"))
-			ce := codeOf(t, err)
-			assert.Equal(t, clierr.CodeNotFound, ce.Code)
-			assert.Equal(t, "cluster not found: 'c-new'; it is not among the clusters you can read; pass a cluster id or display name", ce.Message)
-			assert.Len(t, srv.requests(), 1)
-		})
-	}
+	t.Run("403", func(t *testing.T) {
+		t.Parallel()
+		srv := newServer(t, map[string]route{clusterByIDPath("c-new"): {status: http.StatusForbidden}})
+		_, _, err := ResolveCluster(t.Context(), srv.getter(), readable, "c-new", cliText("c-new"))
+		ce := codeOf(t, err)
+		assert.Equal(t, clierr.CodeRBAC, ce.Code)
+		assert.Equal(t, "you cannot read cluster 'c-new' (GET /v1/management.cattle.io.clusters/c-new answered 403)", ce.Message)
+		assert.Len(t, srv.requests(), 1)
+	})
+
+	t.Run("404", func(t *testing.T) {
+		t.Parallel()
+		srv := newServer(t, map[string]route{clusterByIDPath("c-new"): {status: http.StatusNotFound}})
+		_, _, err := ResolveCluster(t.Context(), srv.getter(), readable, "c-new", cliText("c-new"))
+		ce := codeOf(t, err)
+		assert.Equal(t, clierr.CodeNotFound, ce.Code)
+		assert.Equal(t, "cluster not found: 'c-new'; it is not among the clusters you can read; pass a cluster id or display name", ce.Message)
+		assert.Len(t, srv.requests(), 1)
+	})
 
 	t.Run("500", func(t *testing.T) {
 		t.Parallel()

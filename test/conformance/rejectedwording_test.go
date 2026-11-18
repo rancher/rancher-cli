@@ -504,7 +504,6 @@ var wordingPathAllowlist = []wordingPath{
 	{"exec entry", "internal/token/noterminal.go", "", 3, "text not yet reworded"},
 	{"exec entry", "internal/token/owner.go", "", 8, "text not yet reworded"},
 	{"exec entry", "internal/token/regenerate.go", "", 1, "text not yet reworded"},
-	{"exec entry", "internal/token/signin.go", "", 1, "text not yet reworded"},
 	{"exec entry", "skills/rancher/SKILL.md", "8. kubectl interop", 4, "text not yet reworded"},
 	{"executable", "install.sh", "", 1, "a file permission in an error message, not a program"},
 	{"exit status", "internal/runtime/pipeline.go", "", 1, "text not yet reworded"},

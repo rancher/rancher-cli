@@ -628,11 +628,19 @@ local cluster can use it the same way an administrator does. An id takes
 precedence over another cluster's display name, with a warning naming that
 cluster; two clusters with the same display name give `AMBIGUOUS_SELECTION`
 (pass the id). If a cluster was created moments ago and the list does not show
-it yet, the CLI gets it by its id. `local` is always the local cluster, and
-where a command allows it, leaving out `--cluster` means the local cluster.
-kubectl's exec plugin resolves its `--cluster` the same way when it has no
-cached credential and creates one, with the warning on stderr; its `NOT_FOUND`
-error lists the clusters you can read.
+it yet, the CLI gets it by its id. If Rancher refuses that request (HTTP 403),
+the command fails with `RBAC` (exit 6), the hint `rancher access clusters` and
+the clusters you can read as candidates (if you can read no cluster, neither the
+hint nor candidates); a value that cannot be a cluster id,
+or that Rancher responds to with 404, is `NOT_FOUND`. Every command that takes
+`--cluster` works this way except `rancher access projects --cluster`, which
+only matches the clusters it lists and reports `NOT_FOUND` for any other value.
+`local` is always the local cluster, and where a command allows it, leaving out
+`--cluster` means the local cluster. kubectl's exec plugin resolves its
+`--cluster` the same way when it has no cached credential and creates one, with
+the warning on stderr; its `NOT_FOUND` error lists the clusters you can read,
+and so does its `RBAC` error when Rancher refuses the get by id; neither error
+names a command to run.
 
 `get` of the `cluster` kind and `get projects` read through the local
 cluster's Kubernetes API. When Rancher refuses that read (a cluster or project
@@ -666,7 +674,12 @@ projects Rancher lists for you on that cluster, by id or display name. An id
 takes precedence over another project's display name, with a warning naming that
 project; two projects with the same display name give `AMBIGUOUS_SELECTION`
 (pass the id). If a project was created moments ago and the list does not show
-it yet, the CLI gets it by its id. Without `--cluster` the command refuses and
+it yet, the CLI gets it by its id. If Rancher refuses that request (HTTP 403),
+the command fails with `RBAC` (exit 6), the hint `rancher access projects
+--cluster <id>` and the projects you can read on that cluster as candidates; a
+value that cannot be a project id, or that Rancher responds to with 404, is
+`NOT_FOUND`.
+Without `--cluster` the command refuses and
 names the clusters a project with that id or display name is on; it never
 picks one.
 

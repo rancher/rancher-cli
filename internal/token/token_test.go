@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2793,6 +2794,69 @@ func TestPluginClusterTextListsAtMostTen(t *testing.T) {
 	text := pluginClusterText("web", list)
 	assert.True(t, strings.HasSuffix(text.NotFound, "'c-08', 'c-09', and 2 more"), text.NotFound)
 	assert.NotContains(t, text.NotFound, "'c-10'")
+	assert.True(t, strings.HasSuffix(text.RBACSuffix, "; the clusters you can read: 'c-00', 'c-01', 'c-02', 'c-03', 'c-04', 'c-05', 'c-06', 'c-07', 'c-08', 'c-09', and 2 more"), text.RBACSuffix)
+	assert.True(t, strings.HasSuffix(text.NotFound, text.RBACSuffix), "one list builds both texts")
+}
+
+// TestPluginClusterTextRBACSuffix asserts the exec plugin's RBAC error for a
+// refused (HTTP 403) get of a cluster by its id lists the clusters the user can
+// read and names no command. With no cluster to list the suffix is empty and
+// steve.ResolveCluster writes the message.
+func TestPluginClusterTextRBACSuffix(t *testing.T) {
+	t.Parallel()
+	list := []steve.Cluster{{ID: "c-abc", DisplayName: "prod"}, {ID: "c-def"}}
+	assert.Equal(t, "; the clusters you can read: 'c-abc' (prod), 'c-def'", pluginClusterText("web", list).RBACSuffix)
+	assert.Empty(t, pluginClusterText("web", nil).RBACSuffix)
+	assert.Equal(t, clierr.Command{}, pluginClusterText("web", list).NotFoundHint)
+}
+
+// TestThePluginReadsTheClusterCollectionOnlyWhenItSignsIn asserts that with a
+// cached credential the exec plugin sends no request to the clusters
+// collection or by id. At a sign-in with a value that matches a cluster it
+// reads the collection once and gets no cluster by its id. With a value that
+// matches none it reads the collection once and then gets that value by its id
+// once.
+func TestThePluginReadsTheClusterCollectionOnlyWhenItSignsIn(t *testing.T) {
+	var mu sync.Mutex
+	var clusterReads []string
+	record := func(r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, steveClustersPath) {
+			mu.Lock()
+			clusterReads = append(clusterReads, r.URL.Path)
+			mu.Unlock()
+		}
+	}
+	reads := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(clusterReads)
+	}
+	reset := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		clusterReads = nil
+	}
+
+	for _, reuse := range []bool{false, true} {
+		for _, value := range []string{"c-test", "testcluster"} {
+			reset()
+			x := newPluginFixture(t, reuse, testrancher.Options{RequestHook: record})
+			_, err := x.getToken(t, value, "n", localPrompter())
+			require.NoError(t, err)
+			assert.Equal(t, []string{steveClustersPath}, reads(), "a matching value makes one read of the collection: %s, reuse an existing token %t", value, reuse)
+
+			reset()
+			_, err = x.getToken(t, value, "n", ui.Discard())
+			require.NoError(t, err)
+			assert.Empty(t, reads(), "a cached credential means no cluster request: %s, reuse an existing token %t", value, reuse)
+		}
+
+		reset()
+		x := newPluginFixture(t, reuse, testrancher.Options{RequestHook: record})
+		_, err := x.getToken(t, "nope", "n", localPrompter())
+		require.Error(t, err)
+		assert.Equal(t, []string{steveClustersPath, steveClustersPath + "/nope"}, reads(), "reuse an existing token %t", reuse)
+	}
 }
 
 // steveClustersPath is the steve collection of the clusters a bearer can

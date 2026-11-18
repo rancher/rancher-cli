@@ -2293,10 +2293,14 @@ func resolveClusterIDForCreate(ctx context.Context, client *http.Client, base, b
 // pluginClusterListMax bounds the clusters a plugin NOT_FOUND names.
 const pluginClusterListMax = 10
 
-// pluginClusterText words the plugin's cluster lookup of v. Its NOT_FOUND
-// lists the clusters the user can read and names no command: the plugin's
-// remedies add only --config, no global flag selects a server entry, and
-// after a failed sign-in the directory holds no login.
+// pluginClusterText returns the message texts for the exec plugin's lookup of
+// cluster v. Its NOT_FOUND error and its RBAC error for a refused (HTTP 403)
+// get of the cluster by its id list the clusters the user can read and name no
+// command: the plugin's remedy commands add only --config, no global flag
+// selects a server entry, and after a failed sign-in the config directory has
+// no login. With no cluster to list the
+// suffix is empty and steve.ResolveCluster writes the RBAC message for a user
+// who can read none.
 func pluginClusterText(v string, list []steve.Cluster) engine.MatchText {
 	names := make([]string, 0, min(len(list), pluginClusterListMax)+1)
 	for _, c := range list[:min(len(list), pluginClusterListMax)] {
@@ -2309,10 +2313,14 @@ func pluginClusterText(v string, list []steve.Cluster) engine.MatchText {
 	if more := len(list) - pluginClusterListMax; more > 0 {
 		names = append(names, fmt.Sprintf("and %d more", more))
 	}
+	readable := ""
+	if len(names) > 0 {
+		readable = "; the clusters you can read: " + strings.Join(names, ", ")
+	}
 	return engine.MatchText{Noun: "cluster", Plural: "clusters", Flag: "--cluster",
 		NotFound: "cluster not found: " + clierr.ShellQuote(v) +
-			"; it is not among the clusters you can read; pass a cluster id or display name; the clusters you can read: " +
-			strings.Join(names, ", ")}
+			"; it is not among the clusters you can read; pass a cluster id or display name" + readable,
+		RBACSuffix: readable}
 }
 
 // pluginGetter sends steve GETs with bearer through client. Every non-2xx

@@ -67,11 +67,14 @@ jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.message 'namespace not found: ghost'
 jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' get namespaces --cluster ''c-test'''
 
-# a caller without cluster access is refused, not answered: the cluster is
-# not among the clusters it can read
+# a user with no access to the cluster gets exit 6 (RBAC): the cluster is not
+# among the clusters it can read, and Rancher refuses (HTTP 403) the get of it
+# by its id
 env RANCHER_CLI_TOKEN=e2e-nocluster:secret
-! exec rancher access can get pods --cluster testcluster -n team-a
-stderr 'cluster not found: ''testcluster''; it is not among the clusters you can read'
+! exec rancher access can get pods --cluster testcluster -n team-a -o json
+jsonquery stderr data.error.code RBAC
+jsonquery stderr data.error.message 'you cannot read cluster ''testcluster'' (GET /v1/management.cattle.io.clusters/testcluster answered 403)'
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' access clusters'
 
 # a caller who may not impersonate falls back to SubjectAccessReview, and
 # is refused there too (std cannot create reviews): RBAC exit, globalroles

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/testtransport"
@@ -328,25 +330,132 @@ func TestSignInCancelledDuringTheLoginKeepsTheMarker(t *testing.T) {
 	assert.Empty(t, f.DeleteRequests())
 }
 
-// TestSignInClusterLookupFailureDeletesTheLoginToken asserts a cluster that
-// is not among the user's clusters fails the sign-in with the lookup's own
-// NOT_FOUND, deletes the login token with its own bearer, carries its fate
-// and offers no hint.
+// TestSignInClusterLookupFailureDeletesTheLoginToken asserts that for a
+// cluster the user cannot read, which Rancher refuses (HTTP 403) when the
+// sign-in gets it by its id, the sign-in fails with the lookup's own RBAC error. It deletes
+// the login token with its own bearer, reports in the failure details that the
+// token was deleted, offers no hint and gives a remedy that says an
+// administrator can grant the access.
 func TestSignInClusterLookupFailureDeletesTheLoginToken(t *testing.T) {
 	t.Parallel()
 	f, log, _, err := signInAgainst(t, testrancher.Options{}, "nope")
 	ce, d := failureOf(t, err)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Contains(t, ce.Message, "the clusters you can read: 'c-test' (testcluster)")
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Contains(t, ce.Message, "you cannot read cluster 'nope' (GET /v1/management.cattle.io.clusters/nope answered 403)")
+	assert.Contains(t, ce.Message, "; the clusters you can read: 'c-test' (testcluster)")
 	assert.Empty(t, ce.Hint)
 	assert.Equal(t, clierr.StageClusterToken, d.Stage)
 	require.NotNil(t, d.SessionToken)
 	assert.Equal(t, ResultRevoked, sessionCleanup(t, d))
 	assert.Nil(t, d.ClusterToken)
-	assert.Equal(t, correctCluster, d.Recovery, "signing in again would name the same cluster")
+	assert.Equal(t, fmt.Sprintf(grantCluster, "'nope'"), d.Recovery)
 	assert.Empty(t, log.find(http.MethodPost, ExtTokensPath), "no cluster token is created")
 	assert.Equal(t, []string{"POST /v1/logout v3"}, log.sequence()[len(log.sequence())-1:])
 	assert.Len(t, f.DeleteRequests(), 1)
+}
+
+// TestSignInClusterNotAnIDFailsWithTheLookupsNotFound asserts a value that
+// cannot be a cluster id fails the sign-in with the lookup's own NOT_FOUND
+// error, which lists the clusters the user can read. It deletes the login
+// token and the remedy says to correct --cluster.
+func TestSignInClusterNotAnIDFailsWithTheLookupsNotFound(t *testing.T) {
+	t.Parallel()
+	f, log, _, err := signInAgainst(t, testrancher.Options{}, "my cluster")
+	ce, d := failureOf(t, err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Contains(t, ce.Message, "the clusters you can read: 'c-test' (testcluster)")
+	assert.Empty(t, ce.Hint)
+	assert.Equal(t, ResultRevoked, sessionCleanup(t, d))
+	assert.Equal(t, correctCluster, d.Recovery, "signing in again would name the same cluster")
+	assert.Empty(t, log.find(http.MethodPost, ExtTokensPath), "no cluster token is created")
+	for _, r := range log.all() {
+		assert.False(t, strings.HasPrefix(r.path, testrancher.ClustersCollectionPath+"/"), "a value that is not an id is not sent as a get by id: %s", r.path)
+	}
+	assert.Len(t, f.DeleteRequests(), 1)
+}
+
+// lookupServer is a test server. Its clusters collection lists c-test, or
+// responds with collectionStatus when that is not 0. A get of any other
+// cluster by its id gets the response byIDStatus.
+func lookupServer(t *testing.T, collectionStatus, byIDStatus int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/management.cattle.io.clusters" && collectionStatus != 0:
+			w.WriteHeader(collectionStatus)
+		case r.URL.Path == "/v1/management.cattle.io.clusters":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"count":1,"revision":"1","data":[{"id":"c-test","metadata":{"name":"c-test"},"spec":{"displayName":"testcluster"}}]}`)
+		default:
+			w.WriteHeader(byIDStatus)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestLookupWithNoReadableClusterRBACMessage asserts the exec plugin's RBAC
+// error for a refused (HTTP 403) get of a cluster by its id, from a user who can read no
+// cluster: the message says the user can read no cluster and who grants the
+// roles, names no command and carries no candidate. The sign-in remedy still
+// says who can grant the access.
+func TestLookupWithNoReadableClusterRBACMessage(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/management.cattle.io.clusters" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"revision":"1","data":[]}`)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+	_, _, err := resolveClusterIDForCreate(t.Context(), srv.Client(), srv.URL, "bearer", "web")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Equal(t, "you cannot read cluster 'web' (GET /v1/management.cattle.io.clusters/web answered 403); you can read no cluster on this server; a Rancher administrator grants cluster and project roles", ce.Message)
+	assert.Empty(t, ce.Hint)
+	assert.Empty(t, ce.Candidates)
+	assert.Equal(t, fmt.Sprintf(grantCluster, "'web'"), lookupRefusal(err).retry)
+}
+
+// TestLookupRefusalRecoveryPerFailure asserts the remedy of a failed cluster
+// lookup. When Rancher refuses (HTTP 403) the get of the cluster by its id it
+// says who can grant the access, and the returned error is the lookup's own error. A 403 on the
+// clusters collection, a 401 and any other failure get no remedy. A NOT_FOUND
+// error gets the remedy that says to correct --cluster.
+func TestLookupRefusalRecoveryPerFailure(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                   string
+		collectionStatus, byID int
+		code, recovery         string
+		// same: the refusal returns the lookup's error unchanged. refusedByID:
+		// the error comes from a refused (HTTP 403) get of the cluster by its id.
+		same, refusedByID bool
+	}{
+		{name: "403 by id", byID: http.StatusForbidden, code: clierr.CodeRBAC, recovery: fmt.Sprintf(grantCluster, "'web'"), same: true, refusedByID: true},
+		{name: "403 on the collection", collectionStatus: http.StatusForbidden, code: clierr.CodeRBAC, same: true},
+		{name: "404 by id", byID: http.StatusNotFound, code: clierr.CodeNotFound, recovery: correctCluster, same: true},
+		{name: "401 by id", byID: http.StatusUnauthorized, code: clierr.CodeAuth},
+		{name: "500 by id", byID: http.StatusInternalServerError, code: clierr.CodeGeneric, same: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := lookupServer(t, tc.collectionStatus, tc.byID)
+			_, _, err := resolveClusterIDForCreate(t.Context(), srv.Client(), srv.URL, "bearer", "web")
+			require.Error(t, err)
+			r := lookupRefusal(err)
+			assert.Equal(t, tc.recovery, r.retry)
+			assert.Equal(t, tc.code, clierr.From(r.err).Code)
+			if tc.same {
+				assert.Same(t, err, r.err, "the refusal returns the lookup's error unchanged")
+			}
+			_, byID := steve.RefusedClusterID(err)
+			assert.Equal(t, tc.refusedByID, byID)
+		})
+	}
 }
 
 // visibleClusters is a cluster list that shows the user a cluster the ext store
@@ -379,18 +488,18 @@ func TestSignInClusterTokenCreateRefused(t *testing.T) {
 	}{
 		{"no access", testrancher.Options{ExtCreateClusterAccess: clusterAccess, ClusterVisibility: visibleClusters}, "c-denied", clierr.CodeRBAC,
 			"Rancher refused to create a token for cluster 'c-denied' for this user: tokens.ext.cattle.io is forbidden: user user-e2e is not allowed to access cluster c-denied",
-			"an administrator can grant the user access to cluster 'c-denied', or the user can correct --cluster in the kubeconfig exec entry"},
+			"an administrator can grant you access to cluster 'c-denied', or you can correct --cluster in the `exec` block of your kubeconfig"},
 		{"no such cluster", testrancher.Options{ExtCreateClusterAccess: clusterAccess, ClusterVisibility: visibleClusters}, "c-gone", clierr.CodeValidation,
 			"Rancher refused to create a token for cluster 'c-gone' for this user: cluster c-gone not found",
-			"the user can correct --cluster in the kubeconfig exec entry"},
+			"you can correct --cluster in the `exec` block of your kubeconfig"},
 		{"a 403 with no message", testrancher.Options{ScopedCreateStatus: http.StatusForbidden}, "c-test", clierr.CodeRBAC,
 			"Rancher refused to create a token for cluster 'c-test' for this user: ",
-			"an administrator can grant the user access to cluster 'c-test', or the user can correct --cluster in the kubeconfig exec entry"},
+			"an administrator can grant you access to cluster 'c-test', or you can correct --cluster in the `exec` block of your kubeconfig"},
 		{"rejected", testrancher.Options{ScopedCreateStatus: http.StatusUnauthorized}, "c-test", clierr.CodeAuth,
 			"the server rejected the token this sign-in just created", signInAgain},
 		{"Norman 403", testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateStatus: http.StatusForbidden}, "c-test", clierr.CodeRBAC,
 			"the token this sign-in just created cannot create tokens",
-			"an administrator can grant the user access to cluster 'c-test', or the user can correct --cluster in the kubeconfig exec entry"},
+			"an administrator can grant you access to cluster 'c-test', or you can correct --cluster in the `exec` block of your kubeconfig"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -450,7 +559,8 @@ func TestSignInRecoveryFitsEveryFailureRow(t *testing.T) {
 		{name: "a login answered 200", opts: testrancher.Options{LoginStatus: http.StatusOK}, cluster: "c-test", want: signInAgain},
 		{name: "a lost login response", opts: testrancher.Options{DropLoginResponse: true}, cluster: "c-test", suffix: "; " + signInAgain},
 		{name: "a cancelled login", cancel: cancelOn(func(r *http.Request) bool { return r.URL.Path == "/v1-public/login" }), cluster: "c-test", suffix: "; " + signInAgain},
-		{name: "a cluster that is not found", cluster: "nope", want: correctCluster},
+		{name: "a cluster Rancher refuses by id", cluster: "nope", want: fmt.Sprintf(grantCluster, "'nope'")},
+		{name: "a cluster value that cannot be an id", cluster: "my cluster", want: correctCluster},
 		{name: "a cancelled lookup", cancel: cancelOn(func(r *http.Request) bool { return r.URL.Path == testrancher.ClustersCollectionPath }), cluster: "c-test", want: signInAgain},
 		{name: "a create answered 500", opts: testrancher.Options{ScopedCreateStatus: http.StatusInternalServerError}, cluster: "c-test", suffix: "; " + signInAgain},
 		{name: "a lost create response", opts: testrancher.Options{DropDerivedCreateResponse: true}, cluster: "c-test", suffix: "; " + signInAgain},
@@ -459,10 +569,10 @@ func TestSignInRecoveryFitsEveryFailureRow(t *testing.T) {
 		}, cluster: "c-test", suffix: "; " + signInAgain},
 		{name: "a create answered 401", opts: testrancher.Options{ScopedCreateStatus: http.StatusUnauthorized}, cluster: "c-test", want: signInAgain},
 		{name: "an ext create answered 403", opts: testrancher.Options{ExtCreateClusterAccess: clusterAccess, ClusterVisibility: visibleClusters}, cluster: "c-denied",
-			want: "an administrator can grant the user access to cluster 'c-denied', or " + correctCluster},
+			want: "an administrator can grant you access to cluster 'c-denied', or " + correctCluster},
 		{name: "an ext create answered 400", opts: testrancher.Options{ExtCreateClusterAccess: clusterAccess, ClusterVisibility: visibleClusters}, cluster: "c-gone", want: correctCluster},
 		{name: "a Norman create answered 403", opts: testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateStatus: http.StatusForbidden}, cluster: "c-test",
-			want: "an administrator can grant the user access to cluster 'c-test', or " + correctCluster},
+			want: "an administrator can grant you access to cluster 'c-test', or " + correctCluster},
 		{name: "a Norman create answered 400", opts: testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateStatus: http.StatusBadRequest}, cluster: "c-test", want: correctCluster},
 		{name: "a scope mismatch", opts: testrancher.Options{ScopedCreateClusterName: &other}, cluster: "c-test", want: signInAgain},
 		{name: "a server with no token create", opts: testrancher.Options{Legacy: true}, cluster: "c-test", want: "this command needs Rancher " + config.MinRancherVersion + " or later"},

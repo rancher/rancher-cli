@@ -120,26 +120,58 @@ func TestStoredLoginMissCreatesTheTokenForTheResolvedClusterUnderTheGate(t *test
 	}
 }
 
-// TestStoredLoginMissNotFoundListsTheReadableClusters asserts the plugin's
-// NOT_FOUND names the clusters the user can read and no command, and
-// creates nothing.
-func TestStoredLoginMissNotFoundListsTheReadableClusters(t *testing.T) {
-	g := newGatedCLIFacade(t)
+// storedLoginNoMatchError runs the exec plugin with a stored login and a
+// cluster value, and returns the error it renders, decoded.
+func storedLoginNoMatchError(t *testing.T, g *gatedCLIFacade, value string) (code, message, hint string, candidates []clierr.Candidate) {
+	t.Helper()
 	dir := storedLoginCLIDir(t, g.srv.URL)
-	_, stderr, err := runCLI(t, "", "--config", dir, "auth", "get-token", "--server", g.srv.URL, "--cluster", "web", "-o", "json")
+	_, stderr, err := runCLI(t, "", "--config", dir, "auth", "get-token", "--server", g.srv.URL, "--cluster", value, "-o", "json")
 	require.Error(t, err)
 	var env struct {
 		Data struct {
 			Error struct {
 				Code, Message, Hint string
+				Candidates          []clierr.Candidate
 			} `json:"error"`
 		} `json:"data"`
 	}
 	i := strings.Index(stderr, "{")
 	require.GreaterOrEqual(t, i, 0, stderr)
 	require.NoError(t, json.Unmarshal([]byte(stderr[i:]), &env), stderr)
-	assert.Equal(t, clierr.CodeNotFound, env.Data.Error.Code)
-	assert.Equal(t, "cluster not found: 'web'; it is not among the clusters you can read; pass a cluster id or display name; the clusters you can read: 'c-abc' (prod), 'c-def' (c-abc)", env.Data.Error.Message)
-	assert.Empty(t, env.Data.Error.Hint)
+	e := env.Data.Error
+	return e.Code, e.Message, e.Hint, e.Candidates
+}
+
+// TestStoredLoginNoMatchRefusedByIDIsRBACListingTheReadableClusters asserts
+// that for a cluster the user cannot read, which the test server (gatedCLIFacade,
+// the caller-scope gate in front of it) refuses (HTTP 403) when the exec plugin
+// gets it by its id, the exec plugin returns an RBAC error. The error names the clusters the
+// user can read and no command, carries them as candidates and creates nothing.
+func TestStoredLoginNoMatchRefusedByIDIsRBACListingTheReadableClusters(t *testing.T) {
+	g := newGatedCLIFacade(t)
+	code, message, hint, candidates := storedLoginNoMatchError(t, g, "web")
+	assert.Equal(t, clierr.CodeRBAC, code)
+	assert.Equal(t, "you cannot read cluster 'web' (GET /v1/management.cattle.io.clusters/web answered 403); the clusters you can read: 'c-abc' (prod), 'c-def' (c-abc)", message)
+	assert.Empty(t, hint)
+	assert.Equal(t, []clierr.Candidate{{ID: "c-abc", Name: "prod"}, {ID: "c-def", Name: "c-abc"}}, candidates)
 	assert.Empty(t, g.clusterCreates())
+}
+
+// TestStoredLoginNoMatchNotAnIDIsNotFoundListingTheReadableClusters asserts
+// that for a value that cannot be a cluster id the exec plugin returns a
+// NOT_FOUND error that names the clusters the user can read and no command,
+// and never gets the value by its id.
+func TestStoredLoginNoMatchNotAnIDIsNotFoundListingTheReadableClusters(t *testing.T) {
+	g := newGatedCLIFacade(t)
+	code, message, hint, candidates := storedLoginNoMatchError(t, g, "my web")
+	assert.Equal(t, clierr.CodeNotFound, code)
+	assert.Equal(t, "cluster not found: 'my web'; it is not among the clusters you can read; pass a cluster id or display name; the clusters you can read: 'c-abc' (prod), 'c-def' (c-abc)", message)
+	assert.Empty(t, hint)
+	assert.Equal(t, []clierr.Candidate{{ID: "c-abc", Name: "prod"}, {ID: "c-def", Name: "c-abc"}}, candidates)
+	assert.Empty(t, g.clusterCreates())
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, p := range g.paths {
+		assert.False(t, strings.HasPrefix(p, testrancher.ClustersCollectionPath+"/"), "a value that is not an id is not sent as a get by id: %s", p)
+	}
 }

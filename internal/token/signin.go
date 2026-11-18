@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 // signInAgain is the way to sign in again after a failed sign-in of the exec
@@ -39,11 +40,13 @@ func (r signInRefusal) recovery(userID string) string {
 }
 
 const (
-	// correctCluster is the way on after Rancher refused the cluster the
-	// exec entry names: signing in again would name the same cluster.
-	correctCluster = "the user can correct --cluster in the kubeconfig exec entry"
-	// grantCluster is the way on after Rancher refused the user the cluster.
-	grantCluster = "an administrator can grant the user access to cluster %s, or " + correctCluster
+	// correctCluster is the remedy when the cluster that the `exec` block
+	// names does not exist or is not among the clusters the user can read:
+	// signing in again would name the same cluster.
+	correctCluster = "you can correct --cluster in the `exec` block of your kubeconfig"
+	// grantCluster is the remedy after Rancher refuses the user access to the
+	// cluster.
+	grantCluster = "an administrator can grant you access to cluster %s, or " + correctCluster
 )
 
 // clusterTokenNoun is what a message calls the token the sign-in creates: a
@@ -72,11 +75,19 @@ func signInTokenError(err error, scoped bool) error {
 	return err
 }
 
-// lookupRefusal words a failure of the cluster lookup. A cluster that is not
-// among the user's keeps its list and tells the user to correct --cluster.
+// lookupRefusal returns the refusal for a failure of the cluster lookup. A
+// cluster that is not among the clusters the user can read returns the
+// lookup's NOT_FOUND error, which lists them, with a remedy that says to
+// correct --cluster. When Rancher refuses (HTTP 403) the get of the cluster by
+// its id, the error is returned unchanged, with a remedy that says who can
+// grant the access. A 403 on the clusters collection and every other failure
+// get no remedy.
 func lookupRefusal(err error) signInRefusal {
 	if clierr.AsNotFound(err) != nil {
 		return signInRefusal{err: err, retry: correctCluster}
+	}
+	if id, ok := steve.RefusedClusterID(err); ok {
+		return signInRefusal{err: err, retry: fmt.Sprintf(grantCluster, clierr.ShellQuote(id))}
 	}
 	return signInRefusal{err: signInTokenError(err, true)}
 }
