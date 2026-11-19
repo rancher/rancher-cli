@@ -59,7 +59,7 @@ conformance test (`internal/cli/migrating_test.go` +
 | `server switch` | → `rancher config use-server` |
 | `settings ls` | → `rancher get settings` |
 | `settings get` | → `rancher get setting <name>` |
-| `settings set` | → `rancher patch setting <name> --patch '<RFC 6902 JSON patch>' --apply` |
+| `settings set` | → `rancher patch setting <name> --patch '<RFC 6902 JSON patch>' --apply --yes` |
 | `ssh <node>` | DROPPED - RKE1/node-driver only, Norman-only; keep the legacy binary for this |
 | `token` | Existing Rancher-generated kubeconfigs that call `rancher token --server <url> --user <user-id>` keep working after a binary swap - the shim delegates to `auth get-token` machinery and also takes `--cacerts <path>`. Regenerate kubeconfigs (`rancher kubeconfig --cluster <id>`) to move them to `auth get-token` directly. A kubeconfig Rancher writes in the form `rancher auth get-token --server <url> [--cluster <id>] --user-id <id> [--auth-provider <auth config>]` runs as written: `--user-id` chooses the stored login that records that user and the plugin refuses a token of another user, and `--auth-provider` (the auth config's exact name) chooses the sign-in and the plugin refuses a token made through another auth config. Logins made before this release and pasted tokens record their auth config on the first kubectl call that names one; nothing needs to be redone. A `--no-verify` login records no owner and no auth config; a call with `--user-id` reaches it only through the `--name` that identifies it. Server-side token management: `rancher get tokens` / `create token` / `delete token`. Local exec-credential cache: `auth list-tokens` / `auth delete-token`. |
 | `token delete` | → `rancher auth delete-token` |
@@ -139,7 +139,7 @@ KUBECONFIG=~/.kube/config:<(rancher kubeconfig --cluster X) kubectl config view 
 
 **No `rancher` binary on the target machine?** (CI, teammates without the
 CLI) `rancher kubeconfig`'s exec mode is not the only option: `rancher create
-kubeconfig [--clusters ...] --apply` creates a server-side, embedded, revocable
+kubeconfig [--clusters ...] --apply --yes` creates a server-side, embedded, revocable
 kubeconfig (same as the Dashboard's "Download KubeConfig") that needs no
 local `rancher` binary to authenticate - the output goes straight to stdout,
 with a shown-once notice on where its server-assigned name is.
