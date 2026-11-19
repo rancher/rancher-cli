@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/iotest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -143,6 +144,49 @@ func TestReadLineReadsFromInputUngated(t *testing.T) {
 	got, err := p.ReadLine(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "id:secret", got)
+}
+
+// TestReadLineDropsLeadingByteOrderMarks asserts that every byte order mark at
+// the start of the line is dropped, that a mark anywhere else stays, and that
+// a line of marks only reads as an empty line, not as the end of input.
+func TestReadLineDropsLeadingByteOrderMarks(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, in, want string }{
+		{"no mark", "id:secret\n", "id:secret"},
+		{"one mark", "\ufeffid:secret\n", "id:secret"},
+		{"two marks", "\ufeff\ufeffid:secret\n", "id:secret"},
+		{"one mark and a crlf", "\ufeffid:secret\r\n", "id:secret"},
+		{"a mark inside a value stays", "id:\ufeffsecret\n", "id:\ufeffsecret"},
+		{"a mark after the first character stays", "i\ufeffd:secret\n", "i\ufeffd:secret"},
+		{"a mark after a leading mark and a character stays", "\ufeffi\ufeffd:secret\n", "i\ufeffd:secret"},
+		{"a mark at the end stays", "id:secret\ufeff\n", "id:secret\ufeff"},
+		{"a line of marks only", "\ufeff\ufeff\nid:secret\n", ""},
+		{"a mark at the start of line 2 is not read", "id:secret\n\ufeffnext\n", "id:secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := New(&bytes.Buffer{}, strings.NewReader(tc.in), true, false)
+			got, err := p.ReadLine(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestReadLineDropsMarksOfEveryLineItReads asserts the documented limit: the
+// drop applies to the start of each line ReadLine reads, not only to the start
+// of stdin: a second call on one Prompter drops a mark at the start of line 2.
+// The reader gives one byte at a time, so the first call takes only line 1.
+func TestReadLineDropsMarksOfEveryLineItReads(t *testing.T) {
+	t.Parallel()
+	in := iotest.OneByteReader(strings.NewReader("\ufeffid:secret\n\ufeffnext\n"))
+	p := New(&bytes.Buffer{}, in, true, false)
+	first, err := p.ReadLine(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "id:secret", first)
+	second, err := p.ReadLine(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "next", second)
 }
 
 func TestReadLineEmptyIsEOF(t *testing.T) {

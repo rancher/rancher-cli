@@ -1016,15 +1016,25 @@ Never present a role list as permissions.
   which shows asterisks instead of what you type, and pipe them, the current
   password first:
   `$current = Read-Host -MaskInput 'Current password'; $new = Read-Host -MaskInput 'New password'; $current, $new | rancher create password-change-request <user id> --current-password-stdin --password-stdin --apply --yes`.
+  Windows PowerShell 5.1 has no `Read-Host -MaskInput`, which hides what you
+  type.
   PowerShell 7 sends each password as UTF-8 text followed by a newline, with no
-  byte order mark. A password with non-ASCII characters arrives as UTF-8.
+  byte order mark by default and one when `$OutputEncoding` is
+  `[System.Text.Encoding]::UTF8`. A password with non-ASCII characters arrives
+  as UTF-8.
   Do not pipe a SecureString (`Read-Host -AsSecureString`): PowerShell 7 and
   Windows PowerShell 5.1 send the text `System.Security.SecureString`, not the
   password. Windows PowerShell 5.1 sends a byte order mark (the bytes
-  `EF BB BF`) before piped text, and rancher reads it as part of the first
-  line. With its default `$OutputEncoding` it also sends `?` for each
-  non-ASCII character. Either way rancher receives a different password than
-  the one you typed. Use PowerShell 7 to pipe a password.
+  `EF BB BF`) before piped text, and two of them when `$OutputEncoding` is set
+  to `[System.Text.Encoding]::UTF8`. `rancher` drops every byte order mark at
+  the start of stdin, which lets you pipe an ASCII password from Windows
+  PowerShell 5.1.
+  Windows PowerShell 5.1 sends `?` for each non-ASCII character with its default
+  `$OutputEncoding` (US-ASCII), and rancher receives a different password than
+  the one you typed.
+  For a password with non-ASCII characters, set
+  `$OutputEncoding = [System.Text.Encoding]::UTF8` before the command that pipes
+  it, or use PowerShell 7.
   The dry-run does not check the current password. A refused current password
   is `VALIDATION` (exit `2`); changing another user's password without
   permission to change every user's password is `RBAC` (exit `6`). Neither

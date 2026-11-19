@@ -118,6 +118,48 @@ func TestReadPasswordStdinRefusesANewlineInsideTheValue(t *testing.T) {
 	}
 }
 
+// TestReadPasswordStdinDropsLeadingByteOrderMarks asserts that every byte
+// order mark at the start of stdin is dropped, with and without a CRLF
+// newline, and that a mark after the first character, or after a leading mark
+// and a character, is part of the password.
+func TestReadPasswordStdinDropsLeadingByteOrderMarks(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, in, want string
+	}{
+		{"no mark", "secretValue1\n", "secretValue1"},
+		{"one mark", "\ufeffsecretValue1\n", "secretValue1"},
+		{"two marks", "\ufeff\ufeffsecretValue1\n", "secretValue1"},
+		{"three marks", "\ufeff\ufeff\ufeffsecretValue1", "secretValue1"},
+		{"one mark and a crlf", "\ufeffsecretValue1\r\n", "secretValue1"},
+		{"two marks and a crlf", "\ufeff\ufeffsecretValue1\r\n", "secretValue1"},
+		{"a mark after the first character", "s\ufeffecretValue1\n", "s\ufeffecretValue1"},
+		{"a mark at the end", "secretValue1\ufeff\n", "secretValue1\ufeff"},
+		{"a mark after a leading mark and a character", "\ufeffs\ufeffecretValue1\n", "s\ufeffecretValue1"},
+		{"two marks after a leading mark and a character", "\ufeffs\ufeff\ufeffecretValue1\n", "s\ufeff\ufeffecretValue1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ReadPasswordStdin(stdinSrc{body: []byte(tc.in)}, stdinInput{set: true}, "")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestReadPasswordStdinRefusesInputOfByteOrderMarksOnly asserts that stdin of
+// only byte order marks is empty once they are dropped, and that marks before
+// a newline leave an empty line 1 that keeps its refusal.
+func TestReadPasswordStdinRefusesInputOfByteOrderMarksOnly(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{"\ufeff", "\ufeff\ufeff", "\ufeff\n", "\ufeff\ufeff\r\n"} {
+		_, err := ReadPasswordStdin(stdinSrc{body: []byte(in)}, stdinInput{set: true}, "")
+		requireRefusal(t, err, "the password read from stdin is empty")
+	}
+	_, err := ReadPasswordStdin(stdinSrc{body: []byte("\ufeff\nsecretValue1")}, stdinInput{set: true}, "")
+	requireRefusal(t, err, "the password read from stdin has more than one line", "secretValue1")
+}
+
 // TestReadPasswordStdinMissingFlagHasNoHint asserts that omitting
 // --password-stdin is a VALIDATION error whose message names the
 // requirement and that carries no hint: the password is a value the CLI
@@ -152,8 +194,8 @@ func TestReadPasswordStdinReadErrorIsGeneric(t *testing.T) {
 // TestReadCurrentAndNewPasswordStdinAccepts asserts the two-line input forms
 // the reader accepts and the values it returns: each newline is `\n` or
 // a CRLF pair, one final newline is trimmed, a carriage return that is not
-// part of a newline is kept, and the byte order mark and a long line 2 are
-// kept.
+// part of a newline is kept, every byte order mark at the start of stdin is
+// dropped, and a long line 2 is kept.
 func TestReadCurrentAndNewPasswordStdinAccepts(t *testing.T) {
 	t.Parallel()
 	long := strings.Repeat("x", 1<<20)
@@ -167,9 +209,17 @@ func TestReadCurrentAndNewPasswordStdinAccepts(t *testing.T) {
 		{"a crlf and no final newline", "a\r\nb", "a", "b"},
 		{"a bare final carriage return stays in line 2", "a\nb\r", "a", "b\r"},
 		{"a carriage return inside a line stays", "a\rb\nc", "a\rb", "c"},
-		{"a byte order mark stays in line 1", "\ufeffa\nb\n", "\ufeffa", "b"},
+		{"a byte order mark at the start is dropped", "\ufeffa\nb\n", "a", "b"},
+		{"two byte order marks at the start are dropped", "\ufeff\ufeffa\nb\n", "a", "b"},
+		{"a byte order mark and crlf newlines", "\ufeffa\r\nb\r\n", "a", "b"},
+		{"two byte order marks and crlf newlines", "\ufeff\ufeffa\r\nb\r\n", "a", "b"},
+		{"a byte order mark at the start of line 2 stays", "a\n\ufeffb\n", "a", "\ufeffb"},
+		{"a byte order mark at the start of each line", "\ufeffa\n\ufeffb\n", "a", "\ufeffb"},
+		{"a byte order mark after the first character stays", "a\ufeffb\nc\n", "a\ufeffb", "c"},
+		{"a byte order mark after a leading mark and a character stays", "\ufeffa\ufeffb\nc\n", "a\ufeffb", "c"},
+		{"a byte order mark inside line 2 stays", "a\nb\ufeffc\n", "a", "b\ufeffc"},
 		{"the two passwords PowerShell 7 pipes on Windows", "cur rent$HOME\\x\r\nnew pa$$ss\\y\r\n", "cur rent$HOME\\x", "new pa$$ss\\y"},
-		{"the byte order mark Windows PowerShell 5.1 sends is part of the first password", "\ufeffcur rent$HOME\\x\r\nnew pa$$ss\\y\r\n", "\ufeffcur rent$HOME\\x", "new pa$$ss\\y"},
+		{"the byte order mark Windows PowerShell 5.1 sends is dropped", "\ufeffcur rent$HOME\\x\r\nnew pa$$ss\\y\r\n", "cur rent$HOME\\x", "new pa$$ss\\y"},
 		{"a line 2 of 1 MiB", "a\n" + long + "\n", "a", long},
 		{"interior whitespace stays", "a b\n c \n", "a b", " c "},
 	} {
@@ -203,6 +253,12 @@ func TestReadCurrentAndNewPasswordStdinRefuses(t *testing.T) {
 		{"line 1 empty with a crlf", "\r\nsecretTwo", "line 1 (the current password) is empty"},
 		{"line 2 empty", "secretOne\n\n", "line 2 (the new password) is empty"},
 		{"line 2 empty with a crlf", "secretOne\r\n\r\n", "line 2 (the new password) is empty"},
+		{"only byte order marks", "\ufeff\ufeff", stdinEmpty},
+		{"a byte order mark only", "\ufeff", stdinEmpty},
+		{"byte order marks and one line", "\ufeff\ufeffsecretOne", "lines found: 1"},
+		{"a byte order mark and a newline", "\ufeff\nsecretTwo", "line 1 (the current password) is empty"},
+		{"two byte order marks and a crlf", "\ufeff\ufeff\r\nsecretTwo", "line 1 (the current password) is empty"},
+		{"a byte order mark and line 2 empty", "\ufeffsecretOne\n\n", "line 2 (the new password) is empty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

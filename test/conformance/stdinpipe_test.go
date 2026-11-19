@@ -20,6 +20,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
@@ -283,10 +285,15 @@ Write-Output "info: maskinput $((Get-Command Read-Host).Parameters.ContainsKey('
 // pwsh is the check of the stdin bytes under PowerShell 7 and ps51 the check
 // under Windows PowerShell 5.1; a case with no check only logs them. example
 // marks the case that also asserts the arguments of the example and, under
-// PowerShell 7, that Read-Host has the MaskInput parameter.
+// PowerShell 7, that Read-Host has the MaskInput parameter. reads is what the
+// reader of the command the case pipes into returns for the bytes the shell
+// sent, the password, or the current password and then the new password for
+// the example; reads51 is the same under Windows PowerShell 5.1 and nil means
+// the same as reads.
 type powerShellCase struct {
 	name, setup, body string
 	pwsh, ps51        func(t *testing.T, stdin string)
+	reads, reads51    []string
 	example           bool
 }
 
@@ -326,16 +333,17 @@ var powerShellCases = []powerShellCase{
 		// A character outside ASCII reaches rancher as UTF-8 under PowerShell 7
 		// and as ? under the default $OutputEncoding of Windows PowerShell 5.1,
 		// which also sends a byte order mark before the text.
-		pwsh: stdinEquals(nonAscii + newline),
-		ps51: stdinEquals(bom + "b?" + newline),
+		pwsh:  stdinEquals(nonAscii + newline),
+		ps51:  stdinEquals(bom + "b?" + newline),
+		reads: []string{nonAscii}, reads51: []string{"b?"},
 	},
 	{
 		name: "nonAsciiUtf8NoBom", setup: "$OutputEncoding = [System.Text.UTF8Encoding]::new()\n$v = 'b' + [char]0xE9\n", body: "$v | " + powerShellTarget,
-		ps51: stdinStartsWithByteOrderMark,
+		ps51: stdinStartsWithByteOrderMark, reads: []string{nonAscii},
 	},
 	{
 		name: "nonAsciiEncodingUtf8", setup: "$OutputEncoding = [System.Text.Encoding]::UTF8\n$v = 'b' + [char]0xE9\n", body: "$v | " + powerShellTarget,
-		ps51: stdinStartsWithByteOrderMark,
+		ps51: stdinStartsWithByteOrderMark, reads: []string{nonAscii},
 	},
 	{
 		// A SecureString arrives as the name of its type, never as the password;
@@ -345,6 +353,7 @@ var powerShellCases = []powerShellCase{
 		body:  "$s | " + powerShellTarget,
 		pwsh:  stdinEquals(secureStringText + newline),
 		ps51:  stdinEquals(bom + secureStringText + newline),
+		reads: []string{secureStringText},
 	},
 }
 
@@ -357,8 +366,33 @@ var powerShellExampleCase = powerShellCase{
 	example: true,
 	// The current password, a newline, the new password and a newline; Windows
 	// PowerShell 5.1 sends a byte order mark before the current password.
-	pwsh: stdinEquals(powerShellCurrent + newline + powerShellNew + newline),
-	ps51: stdinEquals(bom + powerShellCurrent + newline + powerShellNew + newline),
+	pwsh:  stdinEquals(powerShellCurrent + newline + powerShellNew + newline),
+	ps51:  stdinEquals(bom + powerShellCurrent + newline + powerShellNew + newline),
+	reads: []string{powerShellCurrent, powerShellNew},
+}
+
+// stdinSource is the stdin of a run as the source the password readers take.
+type stdinSource []byte
+
+func (s stdinSource) Read(string) ([]byte, error) { return s, nil }
+
+// assertPasswordRead asserts the values the password reader of the command a
+// case pipes into returns for the bytes the shell sent:
+// engine.ReadCurrentAndNewPasswordStdin for the example, which has
+// --current-password-stdin, and engine.ReadPasswordStdin for the other cases.
+func assertPasswordRead(t *testing.T, example bool, stdin []byte, want []string) {
+	t.Helper()
+	if example {
+		in := cmdtest.Input{Flag: map[string]bool{"password-stdin": true, "current-password-stdin": true}}
+		current, newPassword, err := engine.ReadCurrentAndNewPasswordStdin(stdinSource(stdin), in)
+		require.NoError(t, err)
+		assert.Equal(t, want, []string{current, newPassword})
+		return
+	}
+	in := cmdtest.Input{Flag: map[string]bool{"password-stdin": true}}
+	password, err := engine.ReadPasswordStdin(stdinSource(stdin), in, "")
+	require.NoError(t, err)
+	assert.Equal(t, want, []string{password})
 }
 
 // testPowerShellStdin runs the cases and then the example under the shell,
@@ -378,6 +412,13 @@ func testPowerShellStdin(t *testing.T, sh pasteShell, version51 bool) {
 			}
 			if check != nil {
 				check(t, string(run.stdin))
+			}
+			want := c.reads
+			if version51 && c.reads51 != nil {
+				want = c.reads51
+			}
+			if want != nil {
+				assertPasswordRead(t, c.example, run.stdin, want)
 			}
 			if c.example {
 				assert.Equal(t, stdinCommandWords(powerShellPipelineHalf), run.args)
@@ -417,7 +458,10 @@ func TestPowerShellExampleIsInTheSkill(t *testing.T) {
 // and a newline on stdin, with the newline of the platform. A character
 // outside ASCII arrives as UTF-8. A SecureString arrives as the name of its
 // type. The command of the example arrives with its arguments, and Read-Host
-// has the MaskInput parameter. The test also logs the other encodings.
+// has the MaskInput parameter. The test also logs the other encodings. For
+// each case it asserts the value the password reader of the command returns
+// for the bytes the shell sent, the value the case piped, also when PowerShell 7
+// sends one byte order mark because $OutputEncoding is [System.Text.Encoding]::UTF8.
 func TestStdinPipePwsh(t *testing.T) {
 	t.Parallel()
 	program, err := exec.LookPath("pwsh")
@@ -427,7 +471,12 @@ func TestStdinPipePwsh(t *testing.T) {
 // TestStdinPipePowerShell51 asserts under Windows PowerShell 5.1 that it sends
 // a byte order mark before piped text, that a character outside ASCII arrives
 // as ? under the default $OutputEncoding, and that a SecureString arrives as
-// the name of its type. It runs on Windows only.
+// the name of its type. For each case it asserts the value the password reader
+// of the command returns for the bytes the shell sent: the one byte order mark
+// it sends by default and the two it sends when $OutputEncoding is
+// [System.Text.Encoding]::UTF8 are dropped; an ASCII or non-ASCII password is
+// the value the case piped, and the default $OutputEncoding still gives ? for a
+// non-ASCII character. It runs on Windows only.
 func TestStdinPipePowerShell51(t *testing.T) {
 	t.Parallel()
 	if !testfs.OnWindows() {

@@ -1602,6 +1602,13 @@ forgotten `--current-password-stdin`, would set a password nobody can type and
 exit 0. Rancher accepts such a password; the CLI refuses it on purpose,
 because a mistake should fail instead of succeeding silently.
 
+**Every secret read from stdin drops each byte order mark at the start of
+stdin.** Windows PowerShell 5.1 sends one mark before piped text, and two when
+`$OutputEncoding` is `[System.Text.Encoding]::UTF8`; without the drop the first
+password or token would carry three extra bytes for each mark. Only marks at
+the very start of stdin are dropped; a mark anywhere else is part of the
+value.
+
 **Two Rancher responses to a password change get another code, chosen by their
 text.** A 500 with "error updating password: invalid current password" becomes
 VALIDATION (exit 2), because the fix is a different password. A 401 "not

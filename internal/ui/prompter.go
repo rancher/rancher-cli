@@ -169,9 +169,14 @@ func (p *Prompter) writeErr(s string) {
 // It is for explicit programmatic input (e.g. --token-stdin) fed by a pipe or file
 // redirect, which is not a terminal - distinct from PromptSecret (interactive,
 // TTY-gated, no-echo). Returns io.EOF only when the read yields no bytes; data
-// present on the final read is returned with no error.
+// present on the final read is returned with no error. Every byte order mark
+// (U+FEFF) at the start of the line is dropped on every call, not only on the
+// first. Windows PowerShell 5.1 sends one mark before piped text, or two when its
+// $OutputEncoding is `[System.Text.Encoding]::UTF8`. A mark anywhere else stays.
+// Its one caller, auth login --token-stdin, reads one line, the token.
 func (p *Prompter) ReadLine(ctx context.Context) (string, error) {
-	return p.readLine(ctx)
+	line, err := p.readLine(ctx)
+	return strings.TrimLeft(line, "\ufeff"), err
 }
 
 // readLine reads a single line in a goroutine and aborts on ctx cancellation.
