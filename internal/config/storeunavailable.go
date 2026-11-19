@@ -38,7 +38,7 @@ func keychainError(op, entry string, err error, tail string) error {
 	verb := map[string]string{"get": "read", "set": "store", "delete": "delete"}[op]
 	return clierr.Retryable(clierr.CodeCredentialStoreUnavailable, fmt.Sprintf(
 		"the keychain could not %s the credential for %s: %s; %s, then run this command again%s",
-		verb, clierr.ShellQuote(entry), keychainCause(err), keychainRemedy(), tail)).
+		verb, clierr.ShellQuote(entry), keychainCause(err), keychainRemedyFor(err), tail)).
 		WithCause(err)
 }
 
@@ -77,7 +77,7 @@ func keychainAwaitsUnlock(err error) bool {
 func keychainUnusableAtFirstLogin(entry string, err error, alt string) error {
 	return clierr.Retryable(clierr.CodeCredentialStoreUnavailable, fmt.Sprintf(
 		"the keychain could not store the credential for %s: %s; %s, then run this command again%s",
-		clierr.ShellQuote(entry), keychainCause(err), keychainRemedy(), alt)).
+		clierr.ShellQuote(entry), keychainCause(err), keychainRemedyFor(err), alt)).
 		WithCause(err)
 }
 
@@ -88,7 +88,7 @@ func keychainUnusableAtFirstLogin(entry string, err error, alt string) error {
 func keychainUnusableForKeychainDirectory(readsNow, credentialsFile string, err error, alt string) error {
 	return clierr.Retryable(clierr.CodeCredentialStoreUnavailable, fmt.Sprintf(
 		"the keychain cannot be used right now (%s), and a login that asks for auto never moves this directory's credentials out of %s into the plaintext file %s; %s, then run this command again%s",
-		keychainCause(err), readsNow, credentialsFile, keychainRemedy(), alt)).
+		keychainCause(err), readsNow, credentialsFile, keychainRemedyFor(err), alt)).
 		WithCause(err)
 }
 
@@ -140,8 +140,22 @@ func keychainRemedy() string {
 	case "windows":
 		return "make Windows Credential Manager reachable for this user"
 	default:
-		return "unlock the Secret Service keyring, or run in a session with a D-Bus session bus"
+		return "unlock the keychain, or run in a session with a D-Bus session bus"
 	}
+}
+
+// keychainRemedyFor is keychainRemedy for the failure err. With no D-Bus
+// session bus there is no keychain to unlock, so the remedy is only a
+// session with one; when the user could not be looked up the bus may exist,
+// and the remedy is to give the address or fix the lookup.
+func keychainRemedyFor(err error) string {
+	if errors.Is(err, errUserLookup) {
+		return "set DBUS_SESSION_BUS_ADDRESS to the address of the session bus, or set USER and HOME"
+	}
+	if errors.Is(err, errNoSessionBus) {
+		return "run in a session with a D-Bus session bus"
+	}
+	return keychainRemedy()
 }
 
 // helperUnavailable is CREDENTIAL_STORE_UNAVAILABLE for a credential

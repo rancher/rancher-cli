@@ -42,7 +42,7 @@ any distro including musl/distroless).
 | | Config dir (default) | Credential store (default) | File fallback |
 |---|---|---|---|
 | macOS | `~/.config/rancher` | Keychain | `0600` file |
-| Linux | `~/.config/rancher` | Secret Service (D-Bus; absent when headless → file) | `0600` file |
+| Linux | `~/.config/rancher` | Secret Service (needs a D-Bus session bus; without one, a first login uses the file store) | `0600` file |
 | Windows | `%APPDATA%\rancher` | Credential Manager | owner-only-ACL file |
 
 The CLI creates a missing config directory readable by your account only:
@@ -145,8 +145,21 @@ on` or `off`. An edit that changes whether usage recording is on is refused
 too, because only `rancher telemetry off` deletes what is recorded: use
 `rancher telemetry on` or `off`.
 
+On Linux the keychain is the Secret Service, which needs a D-Bus session bus:
+`DBUS_SESSION_BUS_ADDRESS` is set to an address, `/run/user/<uid>/bus` exists,
+or `/run/user/<uid>/dbus-session` starts with `DBUS_SESSION_BUS_ADDRESS=` and
+an address. When none of these holds, rancher-cli does not start a session bus
+(so no `dbus-daemon` or `gnome-keyring-daemon` is left running) and the
+keychain is unavailable. A first login on an `auto` directory then pins the
+file store. rancher-cli then sets `DBUS_SESSION_BUS_ADDRESS=disabled:` in its
+own environment when it first uses the keychain, and programs it starts after
+that, such as a credential helper or an editor, see that value. A directory
+whose backend is the keychain fails as described next, and a login that asks
+for `auto` on a directory whose credentials are in a credential helper fails
+too.
+
 A directory whose backend is the keychain reads only the keychain: on a
-headless machine (no D-Bus, locked keychain) every command fails with the
+headless machine (no D-Bus session bus, locked keychain) every command fails with the
 way out rather than falling back to a file-stored token, so a headless
 machine wants `RANCHER_CLI_CREDENTIAL_STORE=file` from the start, before
 the first login records it.

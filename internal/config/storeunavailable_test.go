@@ -115,8 +115,8 @@ func TestKeychainRemedyNamesEachSystemsOwnStep(t *testing.T) {
 	for goos, want := range map[string]string{
 		"darwin":  "unlock the keychain with security unlock-keychain, or approve the macOS prompt",
 		"windows": "make Windows Credential Manager reachable for this user",
-		"linux":   "unlock the Secret Service keyring, or run in a session with a D-Bus session bus",
-		"freebsd": "unlock the Secret Service keyring, or run in a session with a D-Bus session bus",
+		"linux":   "unlock the keychain, or run in a session with a D-Bus session bus",
+		"freebsd": "unlock the keychain, or run in a session with a D-Bus session bus",
 	} {
 		withKeychainOS(t, goos)
 		assert.Equal(t, want, keychainRemedy(), goos)

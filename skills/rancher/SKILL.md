@@ -590,8 +590,9 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   list as complete.
 - `CREDENTIAL_STORE_UNAVAILABLE` (exit `14`, retryable) means the keychain
   or credential helper this directory uses cannot be read or written right
-  now: a locked keychain, a cancelled keychain prompt, a helper that is
-  missing or failing. The message names the store, the entry, the cause and
+  now: a locked keychain, a cancelled keychain prompt, no D-Bus session bus
+  on Linux (rancher-cli does not start one), a helper that is missing or
+  failing. The message names the store, the entry, the cause and
   the remedy (on macOS: unlock the keychain with `security unlock-keychain`,
   or approve the prompt). That remedy needs the person at the keyboard: tell
   the user, and run the command again only after they have acted. It is

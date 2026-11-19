@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,6 +28,10 @@ import (
 // tests (see TestMain).
 const mainChildEnv = "RANCHER_MAIN_TEST_CHILD"
 
+// mainChildBusCheckEnv set to "1" in the environment of a child makes it
+// run the session bus check of the keychain (see TestMain).
+const mainChildBusCheckEnv = "RANCHER_MAIN_TEST_BUS_CHECK"
+
 // TestMain runs main itself when runMainProcess starts the test binary as a
 // child, so a test sees main as a process does: its exit code, stdout and
 // stderr. The child's arguments are the command line main reads. The test
@@ -34,6 +39,12 @@ const mainChildEnv = "RANCHER_MAIN_TEST_CHILD"
 // closing any httptest server closes that transport's idle connections.
 func TestMain(m *testing.M) {
 	if os.Getenv(mainChildEnv) == "1" {
+		if os.Getenv(mainChildBusCheckEnv) == "1" {
+			// The child is a test binary, which skips the session bus
+			// check unless told to run it; the process tests of the
+			// keychain need the check a built binary runs.
+			config.SetSessionBusCheckForTest()
+		}
 		main()
 		os.Exit(0)
 	}
@@ -51,11 +62,19 @@ func TestMain(m *testing.M) {
 // working directory, and returns its stdout, stderr and exit code.
 func runMainProcess(t *testing.T, env []string, dir string, words ...string) (string, string, int) {
 	t.Helper()
+	return runMainProcessStdin(t, nil, env, dir, words...)
+}
+
+// runMainProcessStdin is runMainProcess with stdin as the child's standard
+// input; nil is the null device.
+func runMainProcessStdin(t *testing.T, stdin io.Reader, env []string, dir string, words ...string) (string, string, int) {
+	t.Helper()
 	exe, err := os.Executable()
 	require.NoError(t, err)
 	cmd := exec.CommandContext(t.Context(), exe, words...)
 	cmd.Env = append(slices.Clone(env), mainChildEnv+"=1")
 	cmd.Dir = dir
+	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
