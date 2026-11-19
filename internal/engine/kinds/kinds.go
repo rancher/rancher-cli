@@ -284,11 +284,13 @@ type Kind struct {
 	// gives a member or owner permission to get some objects by name but not
 	// to list them (a cluster, a project, a provisioning cluster and the
 	// objects that belong to it, such as its etcd snapshots), and the
-	// Steve API lists what the caller has permission to get. Any other error
-	// is returned unchanged, and a refusal from Steve returns the Kubernetes
-	// API's error. Only a Management row with a Steve reader may set it; a
-	// test in this package lists the rows Rancher grants by name and asserts
-	// which of them set it.
+	// Steve API lists what the caller has permission to get. A row may also
+	// set it when Rancher's proxy to the local cluster refuses the kind to a
+	// caller who cannot get the local cluster, while Rancher's RBAC allows list
+	// and get (the management nodes). Any other error is returned unchanged,
+	// and a refusal from Steve returns the Kubernetes API's error. Only a
+	// Management row with a Steve reader may set it; a test in this package
+	// lists both kinds of row and asserts which of them set it.
 	SteveReadOnForbidden bool
 }
 
@@ -566,12 +568,13 @@ var table = []Kind{
 			clierr.Lead("drain a node with `"), clierr.NewCommand("node drain").Placeholder("<node>").FlagText(" --cluster <cluster>").Flag("--dry-run"),
 			"`, ", clierr.Lead("stop a drain with `"), clierr.NewCommand("node stop-drain").Placeholder("<node>").FlagText(" --cluster <cluster>").Flag("--dry-run"),
 			"`, and cordon or uncordon it by setting spec.unschedulable on the node (<node> is the node's name, <cluster> its cluster)"),
-		NoCreateViaManifest: "Rancher creates a management node for each node of a cluster",
-		Handle:              &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"status", "nodeName"}, Label: "node name"}}},
-		ArgDesc:             "management node id; the name of its node finds the id",
-		Completable:         true,
-		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		RedactPaths:         [][]string{{"spec", "customConfig", "sshKey"}},
+		NoCreateViaManifest:  "Rancher creates a management node for each node of a cluster",
+		Handle:               &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"status", "nodeName"}, Label: "node name"}}},
+		ArgDesc:              "management node id; the name of its node finds the id",
+		Completable:          true,
+		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		RedactPaths:          [][]string{{"spec", "customConfig", "sshKey"}},
+		SteveReadOnForbidden: true,
 		Columns: []Column{
 			{Header: "NODE", Path: []string{"status", "nodeName"}},
 			{Header: "DRAINED", Condition: "Drained"},

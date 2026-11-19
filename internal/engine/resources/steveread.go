@@ -39,11 +39,12 @@ func steveRefused(err error) bool {
 // steveList reads through Steve, as the caller, the list that a Kubernetes
 // List refused with k8sErr. It reads only for a row that sets
 // SteveReadOnForbidden and only when k8sErr is a 403 from the Kubernetes API.
-// ns is the namespace of the list: the id of the cluster for projects ("" for
-// the projects of every cluster), and the namespace of the objects for
-// provisioning clusters and etcd snapshots. sel, nil for none, is applied here
-// because Steve ignores a label selector. In every other case, and when Steve
-// responds with 403 or 404, the result is k8sErr.
+// ns is the namespace of the list: the id of the cluster for projects and
+// management nodes ("" for the projects or management nodes of every cluster),
+// and the namespace of the objects for provisioning clusters and etcd
+// snapshots. sel, nil for none, is applied here because Steve ignores a label
+// selector. In every other case, and when Steve responds with 403 or 404, the
+// result is k8sErr.
 func (c getCmd) steveList(ctx context.Context, ns string, sel labels.Selector, k8sErr error) ([]unstructured.Unstructured, error) {
 	if !c.k.SteveReadOnForbidden {
 		return nil, k8sErr
@@ -59,7 +60,7 @@ func (c getCmd) steveList(ctx context.Context, ns string, sel labels.Selector, k
 		items, err = steve.ClusterObjects(ctx, get)
 	case "project":
 		items, err = steve.ProjectObjects(ctx, get, ns)
-	case "provisioningcluster", "etcdsnapshot":
+	case "provisioningcluster", "etcdsnapshot", "managementnode":
 		items, err = steve.TypeObjects(ctx, get, c.k.SteveType(), ns)
 	default:
 		return nil, clierr.New(clierr.CodeGeneric, "internal error: the get command has no way to read a "+c.k.Name+" through the Steve API; report this as a defect in rancher-cli")
@@ -89,11 +90,11 @@ func (c getCmd) steveList(ctx context.Context, ns string, sel labels.Selector, k
 
 // steveGet reads the object a Kubernetes Get refused with k8sErr through
 // Steve, as the caller, under the same conditions as steveList. ns is the
-// namespace of the object: the id of its cluster for a project, "" for a
-// cluster, and the namespace of the object for a provisioning cluster or an
-// etcd snapshot. When Steve responds with 403 or 404 the result is k8sErr, except
-// while waiting: a Steve 404 there is NOT_FOUND, the object is gone, and the
-// wait ends.
+// namespace of the object: the id of its cluster for a project or a
+// management node, "" for a cluster, and the namespace of the object for a
+// provisioning cluster or an etcd snapshot. When Steve responds with 403 or
+// 404 the result is k8sErr, except while waiting: a Steve 404 there is
+// NOT_FOUND, the object is gone, and the wait ends.
 func (c getCmd) steveGet(ctx context.Context, ns, name string, waiting bool, k8sErr error) (*unstructured.Unstructured, error) {
 	if !c.k.SteveReadOnForbidden {
 		return nil, k8sErr
@@ -109,7 +110,7 @@ func (c getCmd) steveGet(ctx context.Context, ns, name string, waiting bool, k8s
 		obj, err = steve.GetClusterObject(ctx, get, name)
 	case "project":
 		obj, err = steve.GetProject(ctx, get, ns, name)
-	case "provisioningcluster", "etcdsnapshot":
+	case "provisioningcluster", "etcdsnapshot", "managementnode":
 		obj, err = steve.GetTypeObject(ctx, get, c.k.SteveType(), ns, name)
 	default:
 		return nil, clierr.New(clierr.CodeGeneric, "internal error: the get command has no way to read a "+c.k.Name+" through the Steve API; report this as a defect in rancher-cli")
@@ -137,6 +138,8 @@ func (c getCmd) steveNotFound(ns, name string, cause error) error {
 		hint = clierr.NewCommand("get provisioning-clusters").FlagValue("--namespace", ns)
 	case "etcdsnapshot":
 		hint = clierr.NewCommand("get etcd-snapshots").FlagValue("--namespace", ns)
+	case "managementnode":
+		hint = clierr.NewCommand("get management-nodes").FlagValue("--cluster", ns)
 	}
 	return clierr.New(clierr.CodeNotFound, c.k.Name+" not found: "+clierr.ShellQuote(name)).
 		WithHintCommand(hint).WithCause(cause)

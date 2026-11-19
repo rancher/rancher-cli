@@ -669,15 +669,18 @@ with your permissions (`rancher access clusters`, `rancher inspect cluster
 <id>`, `rancher access projects --cluster <id>`). `patch` of the `cluster` kind
 is unchanged: it goes through the local cluster's Kubernetes API.
 
-`get` of provisioning clusters and etcd snapshots also reads through the Steve
-API when the local cluster's Kubernetes API responds with 403: it reads the
-same list or object as the caller. Rancher gives a member or owner
+`get` of provisioning clusters, etcd snapshots and management nodes also reads
+through the Steve API when the local cluster's Kubernetes API responds with 403:
+it reads the same list or object as the caller. Rancher gives a member or owner
 permission to get some objects by name but not to list them (a cluster, a
 project, a provisioning cluster and the objects that belong to it, such as
 its etcd snapshots), and the Steve API lists what the caller has permission to
 get. A Cluster Owner with no other role lists the provisioning clusters they
-own. Name completion of a provisioning cluster or an etcd snapshot lists the
-objects through the Steve API.
+own. Management nodes are read this way for a different reason: Rancher's RBAC
+allows a Cluster Owner or Manage Nodes user to list and get them, but Rancher's
+proxy to the local cluster refuses them to a caller who cannot get the local
+cluster. Name completion of a provisioning cluster, an etcd snapshot or a
+management node lists the objects through the Steve API.
 
 ## Project scope (--project)
 
@@ -782,8 +785,8 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   `--selector` and the CLI keeps only the objects in the project's namespaces.
   `get clusterregistrationtoken` reads through the Steve API and applies the
   selector itself to the list it gets back, as do `get` of clusters, projects,
-  provisioning clusters and etcd snapshots when they read through the Steve
-  API.
+  provisioning clusters, etcd snapshots and management nodes when they read
+  through the Steve API.
 - The catalog kinds `clusterrepo`, `app` and `operation` (catalog.cattle.io)
   are read with `get`; a chart is installed, upgraded and uninstalled with
   `app install`, `app upgrade` and `app uninstall` (see "Installing, upgrading
@@ -807,9 +810,13 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   commands write it (see "Draining a node"). `get management-node` takes
   `--cluster` and shows the columns NODE (the name of the node), DRAINED (the
   `Drained` condition), REQUEST (`spec.desiredNodeUnschedulable`) and WORKER.
+  A Cluster Owner or Manage Nodes user without access to the local cluster reads
+  the same list or object through the Steve API, because the local cluster's
+  Kubernetes API responds with 403.
   The argument is the management node's id. When the argument matches no id but
-  is a node's name, the error names the id. `patch` is refused with
-  `VALIDATION` and the reason, before any request, `create resource` refuses a
+  is a node's name, the error names the id; naming the id needs access to
+  Rancher's local cluster. `patch` is refused with `VALIDATION` and the
+  reason, before any request, `create resource` refuses a
   manifest of it, and `delete` does not exist for it: `rancher delete
   management-node` fails with the reason. The CLI hides `spec.customConfig.sshKey`.
   The group `node` and the kind `node` share a name, so `rancher schema node` shows

@@ -28,9 +28,19 @@ var clusterIndexedGroups = []string{
 	"operation.cattle.io",
 }
 
+// refusedByTheLocalProxy lists every row that sets SteveReadOnForbidden because
+// Rancher's proxy to the local cluster refuses the kind to a caller who cannot
+// get the local cluster while Rancher's RBAC allows list and get, each with that
+// reason. Such a row is in neither grantedByName nor
+// grantedByNameReadThroughKubernetes.
+var refusedByTheLocalProxy = map[string]string{
+	"managementnode": "Rancher's proxy to the local cluster refuses the kind to a caller who cannot get the local cluster, while Rancher's RBAC allows list and get",
+}
+
 // grantedByNameReadThroughKubernetes lists every granted row that does not set
 // SteveReadOnForbidden, each with its reason. A row that sets the flag is in
-// no list.
+// no list; refusedByTheLocalProxy holds the rows that set it because of
+// Rancher's proxy to the local cluster.
 var grantedByNameReadThroughKubernetes = map[string]string{
 	"capicluster":           "the row finds its version by discovery, and the Steve API returns the version it prefers, which can differ",
 	"capimachine":           "the row finds its version by discovery, and the Steve API returns the version it prefers, which can differ",
@@ -49,7 +59,8 @@ var grantedByNameReadThroughKubernetes = map[string]string{
 // TestSteveReadRowsAreTheRowsRancherGrantsByName asserts that every row for
 // which Rancher gives permission to get but not to list either sets
 // SteveReadOnForbidden or is listed with the reason it reads through the
-// Kubernetes API, never both, and that no other row sets it or is listed.
+// Kubernetes API, never both, that every row in refusedByTheLocalProxy sets it
+// and is in no other list, and that no other row sets it or is listed.
 func TestSteveReadRowsAreTheRowsRancherGrantsByName(t *testing.T) {
 	t.Parallel()
 	granted := func(k Kind) bool {
@@ -60,12 +71,19 @@ func TestSteveReadRowsAreTheRowsRancherGrantsByName(t *testing.T) {
 	for _, k := range All() {
 		keys[k.Key] = true
 		reason, listed := grantedByNameReadThroughKubernetes[k.Key]
+		localReason, refused := refusedByTheLocalProxy[k.Key]
 		switch {
 		case granted(k) && k.SteveReadOnForbidden:
 			assert.False(t, listed, "row %s sets SteveReadOnForbidden and is also listed as read through the Kubernetes API", k.Key)
+			assert.False(t, refused, "row %s is granted by name and also listed in refusedByTheLocalProxy", k.Key)
 		case granted(k):
+			assert.False(t, refused, "row %s is granted by name and also listed in refusedByTheLocalProxy", k.Key)
 			assert.True(t, listed, "row %s is one Rancher gives permission to get but not to list: set SteveReadOnForbidden, or list it in grantedByNameReadThroughKubernetes with a reason", k.Key)
 			assert.NotEmpty(t, reason, "row %s is listed without a reason", k.Key)
+		case refused:
+			assert.True(t, k.SteveReadOnForbidden, "row %s is listed in refusedByTheLocalProxy but does not set SteveReadOnForbidden", k.Key)
+			assert.NotEmpty(t, localReason, "row %s is listed in refusedByTheLocalProxy without a reason", k.Key)
+			assert.False(t, listed, "row %s is listed as read through the Kubernetes API and as refused by Rancher's proxy to the local cluster", k.Key)
 		default:
 			assert.False(t, k.SteveReadOnForbidden, "row %s sets SteveReadOnForbidden but Rancher gives no permission to get it by name", k.Key)
 			assert.False(t, listed, "row %s is listed in grantedByNameReadThroughKubernetes but Rancher gives no permission to get it by name", k.Key)
@@ -74,6 +92,9 @@ func TestSteveReadRowsAreTheRowsRancherGrantsByName(t *testing.T) {
 	for key := range grantedByNameReadThroughKubernetes {
 		assert.True(t, keys[key], "grantedByNameReadThroughKubernetes lists %q, which is no row", key)
 	}
+	for key := range refusedByTheLocalProxy {
+		assert.True(t, keys[key], "refusedByTheLocalProxy lists %q, which is no row", key)
+	}
 	var readThroughSteve []string
 	for _, k := range All() {
 		if k.SteveReadOnForbidden {
@@ -81,7 +102,7 @@ func TestSteveReadRowsAreTheRowsRancherGrantsByName(t *testing.T) {
 		}
 	}
 	slices.Sort(readThroughSteve)
-	require.Equal(t, []string{"etcdsnapshot", "managementcluster", "project", "provisioningcluster"}, readThroughSteve)
+	require.Equal(t, []string{"etcdsnapshot", "managementcluster", "managementnode", "project", "provisioningcluster"}, readThroughSteve)
 }
 
 // TestSteveTypeSpellsTheTypeAsSteveDoesInAPath asserts the type of a row with

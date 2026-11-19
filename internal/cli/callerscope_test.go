@@ -121,7 +121,9 @@ var callerBespokeRows = map[string]callerRow{
 // generatedRefusals are the generated commands that end in the local proxy's
 // refusal for the caller of this test, who may not get cluster local, with the
 // error each ends in: the management nodes are outside Rancher's allow list,
-// and get management-node does not read through Steve.
+// and get management-node tries the Steve API next, which the test server
+// answers with 404 for a management node; a Steve 404 returns the Kubernetes
+// error.
 var generatedRefusals = map[string]*callerError{
 	"get management-node": {"RBAC", "the server refused list nodes.management.cattle.io" + localRefusal, ""},
 }

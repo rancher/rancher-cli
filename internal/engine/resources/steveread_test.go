@@ -747,6 +747,7 @@ func TestNoOtherRowReadsThroughSteve(t *testing.T) {
 const (
 	steveProvisioningClustersPath = "/v1/provisioning.cattle.io.clusters"
 	steveEtcdSnapshotsPath        = "/v1/rke.cattle.io.etcdsnapshots"
+	steveManagementNodesPath      = "/v1/management.cattle.io.nodes"
 	etcdSnapshotName              = "prod-etcd-snapshot-node-1-1794614404-abcde"
 )
 
@@ -815,6 +816,41 @@ func kubernetesEtcdSnapshot() unstructured.Unstructured {
 		"metadata":     map[string]any{"name": etcdSnapshotName, "namespace": "fleet-default"},
 		"spec":         map[string]any{"clusterName": "prod"},
 		"snapshotFile": map[string]any{"name": "etcd-snapshot-node-1-1794614404", "nodeName": "node-1", "size": int64(1048576), "createdAt": "2026-01-02T00:00:00Z", "status": "successful"},
+	}}
+}
+
+// steveManagementNode is a management node as Steve returns it: the Kubernetes
+// object plus what Steve adds. drained is the status of the Drained condition.
+func steveManagementNode(cluster, id, node, drained string) map[string]any {
+	return map[string]any{
+		"id": cluster + "/" + id, "_id": cluster + "/" + id, "type": "management.cattle.io.node", "links": map[string]any{"self": "x"},
+		"actions":    map[string]any{"drain": "x"},
+		"apiVersion": "management.cattle.io/v3", "kind": "Node",
+		"metadata": map[string]any{
+			"name": id, "namespace": cluster, "fields": []any{id}, "relationships": nil,
+			"state": map[string]any{"name": "active"},
+		},
+		"spec": map[string]any{"worker": true, "desiredNodeUnschedulable": "false"},
+		"status": map[string]any{
+			"nodeName": node,
+			"conditions": []any{
+				map[string]any{"type": "Drained", "status": drained, "error": false, "transitioning": false, "lastUpdateTime": "2026-01-01T00:00:00Z"},
+			},
+		},
+	}
+}
+
+// kubernetesManagementNode is the management node the Kubernetes API returns
+// for the same input as steveManagementNode.
+func kubernetesManagementNode(cluster, id, node, drained string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "management.cattle.io/v3", "kind": "Node",
+		"metadata": map[string]any{"name": id, "namespace": cluster},
+		"spec":     map[string]any{"worker": true, "desiredNodeUnschedulable": "false"},
+		"status": map[string]any{
+			"nodeName":   node,
+			"conditions": []any{map[string]any{"type": "Drained", "status": drained, "lastUpdateTime": "2026-01-01T00:00:00Z"}},
+		},
 	}}
 }
 
@@ -950,6 +986,122 @@ func TestGetProvisioningClusterAndEtcdSnapshotAnOwnerReadsOneThroughSteve(t *tes
 	}
 }
 
+// TestGetManagementNodesAnOwnerReadsThroughSteve asserts a list of management
+// nodes the Kubernetes API refused with 403 is read from the Steve collection
+// of the cluster's namespace with --cluster, in the Kubernetes shape and with
+// the table cells of the Kubernetes objects, and that with no --cluster it is
+// one request to the collection of every namespace, sorted by namespace then
+// name.
+func TestGetManagementNodesAnOwnerReadsThroughSteve(t *testing.T) {
+	t.Parallel()
+	_, f, _ := memberFixture(typeResponse(map[string][]map[string]any{
+		steveManagementNodesPath + "/c-a": {
+			steveManagementNode("c-a", "m-2", "worker-2", "False"), steveManagementNode("c-a", "m-1", "worker-1", "True"),
+		},
+		steveManagementNodesPath: {
+			steveManagementNode("c-b", "m-0", "worker-0", "True"), steveManagementNode("c-a", "m-2", "worker-2", "False"),
+			steveManagementNode("c-a", "m-1", "worker-1", "True"),
+		},
+	}))
+	res, err := runGet(t, "managementnode", f, input{s: map[string]string{"cluster": "c-a"}})
+	require.NoError(t, err)
+	items := decodeList(t, res)
+	assert.Equal(t, []string{"c-a/m-1", "c-a/m-2"}, namesOf(items))
+	assertNoSteveFields(t, items)
+	assert.Equal(t, []string{steveManagementNodesPath + "/c-a"}, f.root.requested())
+
+	want := newTable(mustKind(t, "managementnode"), []unstructured.Unstructured{
+		kubernetesManagementNode("c-a", "m-1", "worker-1", "True"), kubernetesManagementNode("c-a", "m-2", "worker-2", "False"),
+	}, false)
+	got, ok := res.Data.(table)
+	require.True(t, ok)
+	assert.Equal(t, want.Rows(), got.Rows())
+	assert.Equal(t, want.WideRows(), got.WideRows())
+
+	_, f, _ = memberFixture(typeResponse(map[string][]map[string]any{
+		steveManagementNodesPath: {
+			steveManagementNode("c-b", "m-0", "worker-0", "True"), steveManagementNode("c-a", "m-2", "worker-2", "False"),
+			steveManagementNode("c-a", "m-1", "worker-1", "True"),
+		},
+	}))
+	res, err = runGet(t, "managementnode", f, input{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"c-a/m-1", "c-a/m-2", "c-b/m-0"}, namesOf(decodeList(t, res)))
+	assert.Equal(t, []string{steveManagementNodesPath}, f.root.requested(), "no --cluster: one request, with no namespace")
+}
+
+// TestGetManagementNodeAnOwnerReadsOneThroughSteve asserts a get of one
+// management node the Kubernetes API refused with 403 is read from the Steve
+// object by cluster and id, in the Kubernetes shape, and that a Steve 403 or 404
+// returns the Kubernetes error.
+func TestGetManagementNodeAnOwnerReadsOneThroughSteve(t *testing.T) {
+	t.Parallel()
+	const path = steveManagementNodesPath + "/c-a/m-1"
+	in := input{args: []string{"m-1"}, s: map[string]string{"cluster": "c-a"}}
+	for _, s := range steveItemShapes {
+		t.Run(s.name, func(t *testing.T) {
+			t.Parallel()
+			_, f, _ := memberFixture(func(p string, _ int) (int, any) {
+				if p == path {
+					return http.StatusOK, s.shape(steveManagementNode("c-a", "m-1", "worker-1", "True"))
+				}
+				return http.StatusNotFound, nil
+			})
+			res, err := runGet(t, "managementnode", f, in)
+			require.NoError(t, err)
+			obj := decodeOne(t, res)
+			assertNoSteveFields(t, []map[string]any{obj})
+			assert.Equal(t, "m-1", obj["metadata"].(map[string]any)["name"])
+			assert.Equal(t, []string{path}, f.root.requested())
+		})
+	}
+	for _, status := range []int{http.StatusForbidden, http.StatusNotFound} {
+		client, f, denied := memberFixture(func(string, int) (int, any) { return status, nil })
+		_, err := runGet(t, "managementnode", f, in)
+		assert.Equal(t, error(denied), err, "steve %d", status)
+		assert.Equal(t, 1, client.getCalls)
+		_, err = runGet(t, "managementnode", f, input{s: map[string]string{"cluster": "c-a"}})
+		assert.Equal(t, error(denied), err, "list, steve %d", status)
+	}
+}
+
+// TestGetWaitAnOwnerOnAManagementNodePollsTheSteveObject asserts a wait on a
+// management node whose Kubernetes get is refused with 403 polls the Steve
+// object until the Drained condition holds, and that a Steve 404 ends the wait
+// with NOT_FOUND and the command that lists the management nodes of the cluster.
+func TestGetWaitAnOwnerOnAManagementNodePollsTheSteveObject(t *testing.T) {
+	withFastPoll(t)
+	const path = steveManagementNodesPath + "/c-a/m-1"
+	extra := map[string]string{"cluster": "c-a"}
+	for _, s := range steveItemShapes {
+		t.Run(s.name, func(t *testing.T) {
+			_, f, _ := memberFixture(func(p string, n int) (int, any) {
+				if p != path {
+					return http.StatusNotFound, nil
+				}
+				drained := "False"
+				if n >= 2 {
+					drained = "True"
+				}
+				return http.StatusOK, s.shape(steveManagementNode("c-a", "m-1", "worker-1", drained))
+			})
+			res, err := runGet(t, "managementnode", f, waitInput([]string{"m-1"}, extra))
+			require.NoError(t, err)
+			assertNoSteveFields(t, []map[string]any{decodeOne(t, res)})
+			assert.GreaterOrEqual(t, len(f.root.requested()), 2)
+			for _, p := range f.root.requested() {
+				assert.Equal(t, path, p)
+			}
+		})
+	}
+
+	_, f, _ := memberFixture(func(string, int) (int, any) { return http.StatusNotFound, nil })
+	_, err := runGet(t, "managementnode", f, waitInput([]string{"m-1"}, extra))
+	require.Error(t, err)
+	assert.True(t, clierr.IsNotFound(err))
+	assert.Equal(t, clierr.Rancher+" get management-nodes --cluster 'c-a'", asClierr(t, err).Hint)
+}
+
 // TestGetProvisioningClustersThroughSteveAppliesTheSelector asserts the CLI
 // keeps the provisioning clusters whose labels match --selector and sends
 // Steve no selector.
@@ -1013,6 +1165,7 @@ func TestSteveNotFoundHintNamesTheListOfTheKind(t *testing.T) {
 		"project":             clierr.Rancher + " access projects --cluster 'ns'",
 		"provisioningcluster": clierr.Rancher + " get provisioning-clusters --namespace 'ns'",
 		"etcdsnapshot":        clierr.Rancher + " get etcd-snapshots --namespace 'ns'",
+		"managementnode":      clierr.Rancher + " get management-nodes --cluster 'ns'",
 	} {
 		err := getCmd{k: mustKind(t, key)}.steveNotFound("ns", "x", nil)
 		assert.Equal(t, want, asClierr(t, err).Hint, key)
