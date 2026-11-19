@@ -33,9 +33,9 @@ func nestedMap(obj map[string]any, path ...string) map[string]any {
 	return m
 }
 
-// conditionMessage returns the message of the status condition of the given
-// type, "" when the object has no such condition.
-func conditionMessage(obj map[string]any, condType string) string {
+// conditionOf returns the status and message of the status condition of the
+// given type, and whether the object has such a condition.
+func conditionOf(obj map[string]any, condType string) (status, message string, found bool) {
 	v, _ := nested(obj, "status", "conditions")
 	conditions, _ := v.([]any)
 	for _, c := range conditions {
@@ -44,9 +44,31 @@ func conditionMessage(obj map[string]any, condType string) string {
 			continue
 		}
 		if t, _ := cond["type"].(string); t == condType {
-			msg, _ := cond["message"].(string)
-			return msg
+			status, _ = cond["status"].(string)
+			message, _ = cond["message"].(string)
+			return status, message, true
 		}
 	}
-	return ""
+	return "", "", false
+}
+
+// conditionMessage returns the message of the status condition of the given
+// type, "" when the object has no such condition.
+func conditionMessage(obj map[string]any, condType string) string {
+	_, message, _ := conditionOf(obj, condType)
+	return message
+}
+
+// Ready applies the rule the Rancher UI uses to offer etcd snapshots,
+// restores and rotations on a cluster: a management Cluster is ready when its
+// Connected condition is True; a cluster with no Connected condition is ready
+// when its Ready condition is True. condType, status and message are those of
+// the condition the check used, all empty when the cluster reports neither.
+func Ready(mgmtCluster map[string]any) (ready bool, condType, status, message string) {
+	for _, t := range []string{"Connected", "Ready"} {
+		if s, m, found := conditionOf(mgmtCluster, t); found {
+			return s == "True", t, s, m
+		}
+	}
+	return false, "", "", ""
 }

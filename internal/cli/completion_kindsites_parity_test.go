@@ -35,8 +35,8 @@ func newKindSitesServer(t *testing.T) *pathCountingServer {
 			`{"metadata":{"name":"hidden-role"},"displayName":"Hidden","hidden":true,"locked":true}`),
 		oidcClientsPath:    items(plain("other"), plain("my-client")),
 		oidcClientPath:     `{"metadata":{"name":"my-client"},"status":{"clientSecrets":{"secret-2":{},"secret-1":{}}}}`,
-		provDefaultPath:    steveItems(plain("prod"), plain("dev")),
-		provTeamPath:       steveItems(plain("team")),
+		provDefaultPath:    steveItems(`{"metadata":{"name":"prod"},"spec":{"rkeConfig":{}}}`, plain("dev"), `{"metadata":{"name":"edge"},"spec":{"rkeConfig":null}}`),
+		provTeamPath:       steveItems(`{"metadata":{"name":"team"},"spec":{"rkeConfig":{"machinePools":[]}}}`),
 		provProdPath:       `{"metadata":{"name":"prod"},"spec":{"rkeConfig":{"machinePools":[{"name":"pool-b"},{"name":"pool-a"}]}}}`,
 		downNamespacesPath: items(plain("kube-system"), plain("default")),
 		downTeamNamespaces: items(plain("team")),
@@ -72,7 +72,7 @@ func TestKindSitesFullCallback(t *testing.T) {
 	projects := []string{"Default", "System", "p-1:Default", "p-2:System"}
 	projectIDs := []string{"p-1:Default", "p-2:System"}
 	users := []string{"sameid:sameid (Same Id)", "u-alice:alice (Alice Smith)", "u-badname:bad name!", "u-bob:bob", "u-nopids:nopids"}
-	provClusters := []string{"dev", "prod"}
+	provClusters := []string{"dev", "edge", "prod"}
 	namespaces := []string{"default", "kube-system"}
 	tests := []struct {
 		name  string
@@ -171,6 +171,9 @@ func TestKindSitesFullCallback(t *testing.T) {
 		{name: "cluster clear-autoscaling", words: []string{"cluster", "clear-autoscaling"}, want: provClusters, hits: map[string]int{provDefaultPath: 1}},
 		{name: "cluster pause-autoscaling", words: []string{"cluster", "pause-autoscaling"}, want: provClusters, hits: map[string]int{provDefaultPath: 1}},
 		{name: "cluster resume-autoscaling", words: []string{"cluster", "resume-autoscaling"}, want: provClusters, hits: map[string]int{provDefaultPath: 1}},
+		{name: "cluster save-etcd-snapshot offers only clusters with rkeConfig", words: []string{"cluster", "save-etcd-snapshot"}, want: []string{"prod"}, hits: map[string]int{provDefaultPath: 1}},
+		{name: "cluster save-etcd-snapshot in a typed namespace", words: []string{"cluster", "save-etcd-snapshot", "--namespace", "team-a"}, want: []string{"team"}, hits: map[string]int{provTeamPath: 1}},
+		{name: "cluster save-etcd-snapshot with the network off", words: []string{"cluster", "save-etcd-snapshot"}, noNet: true, hits: map[string]int{}},
 		{name: "oidc-client add-secret", words: []string{"oidc-client", "add-secret"}, want: []string{"my-client", "other"}, hits: map[string]int{oidcClientsPath: 1}},
 		{name: "oidc-client rotate-secret", words: []string{"oidc-client", "rotate-secret"}, want: []string{"my-client", "other"}, hits: map[string]int{oidcClientsPath: 1}},
 		{name: "oidc-client remove-secret", words: []string{"oidc-client", "remove-secret"}, want: []string{"my-client", "other"}, hits: map[string]int{oidcClientsPath: 1}},

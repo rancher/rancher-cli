@@ -28,3 +28,7 @@ func (clearAutoscalingCmd) LiveSource() completion.Source { return complete.Pool
 // positional and --k8s-version after it, each completing only values the
 // command accepts; every other site is declined.
 func (upgradeCmd) LiveSource() completion.Source { return complete.UpgradeSource() }
+
+// LiveSource returns the source that completes the <cluster> argument of the
+// command; every other site is declined.
+func (saveEtcdSnapshotCmd) LiveSource() completion.Source { return complete.SaveEtcdSnapshotSource() }

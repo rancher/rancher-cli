@@ -1105,6 +1105,9 @@ func handWrittenScrubRows() []scrubRow {
 		{command: "cluster upgrade", variant: "imported", kind: "managementcluster", class: classNames, reason: upgradeResultReason,
 			input: upgradeScrubInput("node-1"), deps: upgradeScrubDeps(true),
 			setup: func(f *scrubFake, _ *plantSet) { f.decorate = upgradeImportedScrubObject }},
+		{command: "cluster save-etcd-snapshot", kind: "provisioningcluster", class: classNames, reason: saveEtcdSnapshotResultReason,
+			input: saveScrubInput("node-1"), deps: saveScrubDeps,
+			setup: func(f *scrubFake, _ *plantSet) { f.decorate = saveScrubObject }},
 		{command: "app install", kind: "operation", class: classNames, reason: appResultReason,
 			input: in([]string{appRelease}, map[string]string{"cluster": "prod", "namespace": appNS, "repo": appRepo, "chart": appChart}),
 			deps: appScrubDeps(func(s *appServer) {
@@ -1467,6 +1470,50 @@ func (upgradeScrubRoot) GetJSON(_ context.Context, path string) ([]byte, error) 
 			`"metadata":{"name":"c-m-scrub","resourceVersion":"5","annotations":{"rancher.io/imported-cluster-version-management":"true"}},` +
 			`"spec":{"rke2Config":{"kubernetesVersion":"v1.31.4+rke2r1"}},` +
 			`"status":{"driver":"rke2","version":{"gitVersion":"v1.31.4+rke2r1"}}}`), nil
+	}
+	return nil, clierr.New(clierr.CodeNotFound, path+" not found")
+}
+
+// saveEtcdSnapshotResultReason says why the cluster save-etcd-snapshot row
+// shows no value of the object: the result has the cluster name, its
+// namespace and id, the field written and the generation.
+const saveEtcdSnapshotResultReason = "the result of cluster save-etcd-snapshot is the cluster name, its namespace and id, the field it wrote and the generation; it has no value of the object"
+
+// saveScrubInput is the input of a cluster save-etcd-snapshot row: the
+// cluster and --wait=false. The row then ends when the server accepts the
+// update.
+func saveScrubInput(cluster string) func(*plantSet) fieldCoverageInput {
+	return func(*plantSet) fieldCoverageInput {
+		return fieldCoverageInput{args: []string{cluster}, bools: map[string]bool{"wait": false}}
+	}
+}
+
+// saveScrubObject makes the row's provisioning Cluster a custom cluster
+// linked to the management Cluster saveScrubRoots serves.
+func saveScrubObject(obj *unstructured.Unstructured) {
+	_ = unstructured.SetNestedField(obj.Object, map[string]any{}, "spec", "rkeConfig")
+	_ = unstructured.SetNestedField(obj.Object, "c-m-scrub", "status", "clusterName")
+}
+
+// saveScrubDeps returns the deps of a cluster save-etcd-snapshot row: the
+// fake, with a root that serves a ready management Cluster.
+func saveScrubDeps(t *testing.T, f *scrubFake, _ *plantSet) runDeps {
+	t.Helper()
+	return runDeps{clients: f, roots: saveScrubRoots{}, serverBase: scrubBase{}}
+}
+
+// saveScrubRoots serves the ready management Cluster of a save row.
+type saveScrubRoots struct{}
+
+func (saveScrubRoots) Root() (engine.RootClient, error) { return saveScrubRoot{}, nil }
+
+type saveScrubRoot struct{}
+
+func (saveScrubRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
+	if path == "/v1/management.cattle.io.clusters/c-m-scrub" {
+		return []byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","id":"c-m-scrub","type":"management.cattle.io.cluster",` +
+			`"metadata":{"name":"c-m-scrub","resourceVersion":"5"},` +
+			`"status":{"driver":"rke2","conditions":[{"type":"Connected","status":"True"}]}}`), nil
 	}
 	return nil, clierr.New(clierr.CodeNotFound, path+" not found")
 }

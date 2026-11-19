@@ -1159,6 +1159,56 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Requests an etcd snapshot of a provisioned cluster by writing the next generation of spec.rkeConfig.etcdSnapshotCreate on its provisioning cluster, as the Rancher UI does, then waits until Rancher reports the snapshot taken and lists the cluster's snapshots. Rancher takes the snapshot with its own controllers on every etcd node. The command refuses while another operation is in progress on the cluster, because Rancher runs one operation at a time, and while the cluster is not ready. Running the command again while its own snapshot is in progress changes nothing and waits for that snapshot. --wait=false returns once the server accepts the request. Imported clusters, hosted clusters and the local cluster are refused.",
+      "destructive": "true",
+      "examples": [
+        "rancher cluster save-etcd-snapshot my-cluster --dry-run",
+        "rancher cluster save-etcd-snapshot my-cluster --apply --yes"
+      ],
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until Rancher reports the operation done before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 1h (default 30m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "cluster",
+      "name": "cluster save-etcd-snapshot",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Take an etcd snapshot of an RKE2 or K3s cluster"
+    },
+    {
+      "args": [
+        {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
       "desc": "Sets spec.rkeConfig.machinePools[].quantity on the machine pool named by --pool. Refuses when the machine pool has autoscalingMinSize or autoscalingMaxSize set and autoscaling is not paused: the server accepts the change, but the cluster autoscaler sets the number of nodes back to its own value minutes later. Run `rancher cluster pause-autoscaling` first. Refuses on a cluster with no machine pools (imported, custom or local). Every scale, up or down, requires --yes with --apply, like any change to a provisioning cluster. --nodes 0 is allowed on every machine pool, including a control-plane or etcd machine pool; the CLI sets no minimum of its own.",
       "destructive": "true",
       "examples": [
@@ -14138,9 +14188,10 @@
         "cluster clear-autoscaling",
         "cluster pause-autoscaling",
         "cluster resume-autoscaling",
-        "cluster upgrade"
+        "cluster upgrade",
+        "cluster save-etcd-snapshot"
       ],
-      "desc": "Scale a machine pool, manage cluster-autoscaler settings or upgrade the Kubernetes version of a cluster; to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
+      "desc": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster or take an etcd snapshot; to create or delete a provisioning cluster use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
       "name": "cluster"
     },
     {
@@ -16051,7 +16102,7 @@
       "verbs": {
         "create": {
           "contract": "internal",
-          "note": "Rancher creates an etcd snapshot object for each snapshot file; this CLI does not take snapshots",
+          "note": "Rancher creates an etcd snapshot object for each snapshot file; to take a snapshot of a cluster Rancher provisions (<cluster> is its name), preview it with `rancher cluster save-etcd-snapshot <cluster> --dry-run` and add --apply --yes after reading the preview",
           "stability": "beta",
           "state": "refused"
         },

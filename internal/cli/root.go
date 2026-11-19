@@ -110,6 +110,7 @@ func buildEntries() []entry {
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewPauseAutoscaling(d.clients) }},
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewResumeAutoscaling(d.clients) }},
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewUpgrade(d.clients, d.roots) }},
+		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewSaveEtcdSnapshot(d.clients, d.roots) }},
 		{group: "node", make: func(d runDeps) runtime.Command { return nodes.NewDrain(d.clients, d.roots) }},
 		{group: "node", make: func(d runDeps) runtime.Command { return nodes.NewStopDrain(d.clients, d.roots) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectCluster(d.clients, d.roots) }},
@@ -463,7 +464,7 @@ var groupUsages = map[string]string{
 	"skill":       "Install, remove and check the agent skills that come with rancher-cli",
 	"telemetry":   "Local usage recording: status, turn on, turn off, delete, list and send events",
 	"oidc-client": "Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)",
-	"cluster":     "Scale a machine pool, manage cluster-autoscaler settings or upgrade the Kubernetes version of a cluster (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
+	"cluster":     "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster or take an etcd snapshot (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
 	"node":        "Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)",
 	"app":         "Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
@@ -721,6 +722,7 @@ var derivedOpKinds = map[string]string{
 	"cluster pause-autoscaling":  "provisioningcluster",
 	"cluster resume-autoscaling": "provisioningcluster",
 	"cluster upgrade":            "provisioningcluster",
+	"cluster save-etcd-snapshot": "provisioningcluster",
 	"node drain":                 "managementnode",
 	"node stop-drain":            "managementnode",
 }
@@ -946,8 +948,8 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// allowlist. Lifecycle CRUD (`create cluster`, `delete
 		// provisioning-cluster`, `get cluster`) stays where it is; `get
 		// provisioning-cluster` is the read path for this family's target.
-		"cluster": "Scale a machine pool, manage cluster-autoscaler settings or upgrade the Kubernetes version of a cluster; " +
-			"to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
+		"cluster": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster or take an etcd snapshot; " +
+			"to create or delete a provisioning cluster use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
 		// "node" is both a command group and a kind, the same deliberate
 		// collision as "project" and "cluster": `rancher schema node` returns
 		// this group's card and --kind reaches the node kind card.

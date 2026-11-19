@@ -672,8 +672,10 @@ func TestUpgradeLocalIsRefusedBeforeAnyRead(t *testing.T) {
 }
 
 // TestUpgradeRunningOperations asserts each of the four operations in progress
-// refuses with a retryable GENERIC and no hint, a running upgrade alone does
-// not refuse, and a control plane that cannot be read warns and goes on.
+// makes the command refuse with a retryable GENERIC error, and that only the
+// refusal for an etcd snapshot has a hint, the command that waits for it. A
+// running upgrade alone does not refuse, and a control plane that cannot be
+// read warns and goes on.
 func TestUpgradeRunningOperations(t *testing.T) {
 	t.Parallel()
 	requests := map[string]map[string]any{
@@ -692,9 +694,14 @@ func TestUpgradeRunningOperations(t *testing.T) {
 			ce := asCode(t, err)
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
 			assert.True(t, ce.Retryable)
-			assert.Empty(t, ce.Hint)
 			assert.Contains(t, ce.Message, "in progress")
-			assert.Contains(t, ce.Message, "Rancher runs one operation at a time; try again after it ends")
+			if field == "etcdSnapshotCreate" {
+				assert.Equal(t, clierr.NewCommand("cluster save-etcd-snapshot").Arg("prod").Flag("--dry-run").Field(), ce.Hint)
+				assert.Contains(t, ce.Message, "Rancher runs one operation at a time; to wait for it, run the command in the hint")
+			} else {
+				assert.Empty(t, ce.Hint)
+				assert.Contains(t, ce.Message, "Rancher runs one operation at a time; try again after it ends")
+			}
 			assert.Empty(t, f.local.updates, "no dry-run")
 		})
 	}

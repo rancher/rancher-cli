@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 251,
+  "commandCount": 252,
   "effectSchema": {
     "actions": [
       "create",
@@ -340,9 +340,13 @@
         {
           "name": "cluster upgrade",
           "usage": "Upgrade the Kubernetes version of an RKE2 or K3s cluster"
+        },
+        {
+          "name": "cluster save-etcd-snapshot",
+          "usage": "Take an etcd snapshot of an RKE2 or K3s cluster"
         }
       ],
-      "desc": "Scale a machine pool, manage cluster-autoscaler settings or upgrade the Kubernetes version of a cluster; to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
+      "desc": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster or take an etcd snapshot; to create or delete a provisioning cluster use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
       "name": "cluster"
     },
     {

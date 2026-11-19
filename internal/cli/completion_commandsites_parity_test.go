@@ -175,6 +175,11 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		// and declare no --pool: the token is no flag-value site.
 		{name: "cluster pause-autoscaling has no --pool", words: []string{"cluster", "pause-autoscaling", "prod", "--pool"}, hits: map[string]int{}},
 		{name: "cluster resume-autoscaling has no --pool", words: []string{"cluster", "resume-autoscaling", "prod", "--pool"}, hits: map[string]int{}},
+		{name: "cluster save-etcd-snapshot has no --pool", words: []string{"cluster", "save-etcd-snapshot", "prod", "--pool"}, hits: map[string]int{}},
+		// the cluster commands' --timeout ladder
+		{name: "cluster save-etcd-snapshot --timeout", words: []string{"cluster", "save-etcd-snapshot", "prod", "--timeout"}, want: []string{"10m", "1h", "2h", "30m"}, hits: map[string]int{}},
+		{name: "cluster save-etcd-snapshot --timeout after --wait=false", words: []string{"cluster", "save-etcd-snapshot", "prod", "--wait=false", "--timeout"}, hits: map[string]int{}},
+		{name: "cluster save-etcd-snapshot --timeout after --wait=true", words: []string{"cluster", "save-etcd-snapshot", "prod", "--wait=true", "--timeout"}, want: []string{"10m", "1h", "2h", "30m"}, hits: map[string]int{}},
 		// logs --pod
 		{name: "logs --pod of a local-only target", words: []string{"logs", "webhook", "--pod"}, want: webhookPods, hits: map[string]int{localCattlePods: 1}},
 		{name: "logs --pod= equals form", words: []string{"logs", "webhook"}, cur: "--pod=", want: []string{"--pod=rancher-webhook-1", "--pod=rancher-webhook-2"}, hits: map[string]int{localCattlePods: 1}},

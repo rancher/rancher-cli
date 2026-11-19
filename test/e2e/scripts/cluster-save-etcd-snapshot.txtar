@@ -1,0 +1,102 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed a custom cluster (an empty rkeConfig), its RKEControlPlane and one
+# etcd snapshot object. The harness runs no controllers: the status writes
+# below stand in for Rancher's. The Steve API of the harness serves only its
+# own management clusters; it refuses the read of the cluster's management
+# Cluster that checks readiness, and the command warns that it skipped the
+# check. provisioningcluster is Sensitive: every write needs --yes.
+exec rancher create resource -f save-cluster.yaml --apply --yes
+flipstatus local provisioning.cattle.io/v1/clusters fleet-default e2e-save {"clusterName":"c-m-save1"}
+seedobj rke.cattle.io/v1/rkecontrolplanes fleet-default save-plane.yaml
+seedobj rke.cattle.io/v1/etcdsnapshots fleet-default save-snapshot.yaml
+
+# the preview: a server-side dry-run, not reversible, with the one field in
+# the diff.
+exec rancher cluster save-etcd-snapshot e2e-save --dry-run -o json
+jsonquery stdout data.reversible false
+jsonquery stdout data.previewSource serverDryRun
+jsonquery stdout 'data.diff.#' 1
+jsonquery stdout 'data.diff.0.path' /spec/rkeConfig/etcdSnapshotCreate
+jsonquery stdout 'warnings.#(%"cannot read the management cluster of cluster e2e-save *")#|#' 1
+
+# an apply without --yes is refused, and nothing is written.
+! exec rancher cluster save-etcd-snapshot e2e-save --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+exec rancher get provisioning-cluster e2e-save -o json
+! stdout etcdSnapshotCreate
+
+# the run that waits: Rancher copies the request into the status of the
+# RKEControlPlane and ends the phase at Finished once the write is in.
+exec rancher cluster save-etcd-snapshot e2e-save --apply --yes --timeout 2m -o json &savecmd&
+waitobj provisioning.cattle.io/v1/clusters fleet-default e2e-save spec.rkeConfig.etcdSnapshotCreate.generation
+waitwatchopen e2e-save
+flipstatus local rke.cattle.io/v1/rkecontrolplanes fleet-default e2e-save {"etcdSnapshotCreate":{"generation":1},"etcdSnapshotCreatePhase":"Finished"}
+wait savecmd
+jsonquery stdout data.waited true
+jsonquery stdout data.written true
+jsonquery stdout data.generation 1
+jsonquery stdout data.phase Finished
+jsonquery stdout data.snapshots.0.name e2e-snapshot
+
+# with --wait=false the command returns once the server accepts the request;
+# it writes the next generation, 2.
+exec rancher cluster save-etcd-snapshot e2e-save --apply --yes --wait=false
+stdout 'cluster/e2e-save etcd snapshot requested'
+exec rancher get provisioning-cluster e2e-save -o json
+jsonquery stdout data.spec.rkeConfig.etcdSnapshotCreate.generation 2
+
+# generation 2 is now in progress: running the command again changes nothing.
+exec rancher cluster save-etcd-snapshot e2e-save --apply --yes --wait=false
+stdout 'cluster/e2e-save changed nothing; the etcd snapshot already requested is in progress'
+
+# a flag error is refused before any request.
+! exec rancher cluster save-etcd-snapshot e2e-save --wait=false --timeout 5m
+stderr 'error \(VALIDATION\):'
+stderr 'conflicts with --timeout'
+
+# a cluster with no spec.rkeConfig that Rancher has not linked to a management
+# Cluster yet is refused, retryable.
+exec rancher create resource -f save-unlinked.yaml --apply --yes
+! exec rancher cluster save-etcd-snapshot e2e-save-unlinked --dry-run
+stderr 'error \(GENERIC, retryable\):'
+stderr 'Rancher has not linked cluster e2e-save-unlinked to its management cluster yet'
+
+-- save-cluster.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-save
+  namespace: fleet-default
+spec:
+  kubernetesVersion: v1.30.5+rke2r1
+  rkeConfig: {}
+-- save-unlinked.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-save-unlinked
+  namespace: fleet-default
+spec: {}
+-- save-plane.yaml --
+apiVersion: rke.cattle.io/v1
+kind: RKEControlPlane
+metadata:
+  name: e2e-save
+  namespace: fleet-default
+spec:
+  clusterName: e2e-save
+-- save-snapshot.yaml --
+apiVersion: rke.cattle.io/v1
+kind: ETCDSnapshot
+metadata:
+  name: e2e-snapshot
+  namespace: fleet-default
+spec:
+  clusterName: e2e-save
+snapshotFile:
+  name: e2e-snapshot.zip
+  nodeName: node-1
+  status: successful
+  createdAt: "2026-11-18T10:00:00Z"

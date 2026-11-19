@@ -946,6 +946,15 @@ Never present a role list as permissions.
   cluster's name. For an imported cluster, or a cluster imported through Rancher
   Turtles, `<name>` is the cluster's id (`c-...`). It is read-only: `patch`,
   `create resource` and `delete` fail with `VALIDATION`.
+- `rancher cluster save-etcd-snapshot <cluster>` takes an etcd snapshot of a
+  cluster that Rancher provisions with RKE2 or K3s. Preview it with `--dry-run`,
+  then run it with `--apply --yes`; the command waits until Rancher reports the
+  snapshot taken and lists the cluster's snapshots. Take a snapshot before an
+  upgrade or another change that is hard to undo. It refuses while another
+  operation is in progress on the cluster (the error is retryable: try again
+  after the operation ends) and while the cluster is not ready. If you run it
+  again while its own snapshot is in progress, it changes nothing and waits for
+  that snapshot. `--wait=false` returns once the server accepts the request.
 - `rancher get authconfigs` lists the auth configs of the Rancher server (TYPE
   says which auth provider; NAME is the auth config's id), and `rancher get
   authconfig <id> -o json` shows one. Before Rancher v2.16 the list holds one

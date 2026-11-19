@@ -261,18 +261,19 @@ var clusterValueSilentSites = map[string]string{
 // command's own source claims the site first and is guarded under its
 // own wiring.
 var clusterValueWiringsWithoutSites = map[string]string{
-	"kind managementcluster":            "the commands that carry it take no --cluster",
-	"kind user":                         "the commands that carry it take no --cluster",
-	"command create cluster":            "the command takes no --cluster",
-	"command create user":               "the command takes no --cluster",
-	"command auth login":                "the command takes no --cluster",
-	"command inspect cluster":           "the command takes no --cluster",
-	"command cluster scale":             "the command takes no --cluster",
-	"command cluster upgrade":           "the command takes no --cluster",
-	"command cluster set-autoscaling":   "the command takes no --cluster",
-	"command cluster clear-autoscaling": "the command takes no --cluster",
-	"command oidc-client rotate-secret": "the command takes no --cluster",
-	"command oidc-client remove-secret": "the command takes no --cluster",
+	"kind managementcluster":             "the commands that carry it take no --cluster",
+	"kind user":                          "the commands that carry it take no --cluster",
+	"command create cluster":             "the command takes no --cluster",
+	"command create user":                "the command takes no --cluster",
+	"command auth login":                 "the command takes no --cluster",
+	"command inspect cluster":            "the command takes no --cluster",
+	"command cluster scale":              "the command takes no --cluster",
+	"command cluster upgrade":            "the command takes no --cluster",
+	"command cluster set-autoscaling":    "the command takes no --cluster",
+	"command cluster clear-autoscaling":  "the command takes no --cluster",
+	"command cluster save-etcd-snapshot": "the command takes no --cluster",
+	"command oidc-client rotate-secret":  "the command takes no --cluster",
+	"command oidc-client remove-secret":  "the command takes no --cluster",
 
 	"flag --cluster on access projects": "the command's own source claims the flag",
 

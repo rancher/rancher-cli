@@ -183,7 +183,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{
 		"access projects", "grant", "revoke", "charts", "app install", "app upgrade",
-		"create cluster", "create user", "cluster scale", "cluster upgrade", "cluster set-autoscaling", "cluster clear-autoscaling",
+		"create cluster", "create user", "cluster scale", "cluster upgrade", "cluster set-autoscaling", "cluster clear-autoscaling", "cluster save-etcd-snapshot",
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",
 		"logs", "inspect project", "inspect cluster",

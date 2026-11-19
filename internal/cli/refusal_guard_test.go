@@ -156,7 +156,7 @@ func refusalCases() []refusalCase {
 			"cannot create an operation from a manifest; Rancher creates an operation for each Helm command it runs"),
 
 		createRefusal("etcdsnapshot", "etcd-snapshot", manifestOf("rke.cattle.io/v1", "ETCDSnapshot", true),
-			"cannot create an etcd-snapshot from a manifest; Rancher creates an etcd snapshot object for each snapshot file; this CLI does not take snapshots"),
+			"cannot create an etcd-snapshot from a manifest; Rancher creates an etcd snapshot object for each snapshot file; to take a snapshot of a cluster Rancher provisions (<cluster> is its name), preview it with `"+clierr.Rancher+" cluster save-etcd-snapshot <cluster> --dry-run` and add --apply --yes after reading the preview"),
 
 		deleteRefusal("clusterrepo", "clusterrepo",
 			`unknown command "clusterrepo"; clusterrepo cannot be deleted - this CLI does not delete repositories`),

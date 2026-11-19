@@ -1182,7 +1182,7 @@ var table = []Kind{
 		NamespaceDesc:       "`namespace` of the cluster's snapshots: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the cluster's id (c-...)",
 		NoDeleteReason:      "an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place",
 		NoPatchReason:       "Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them",
-		NoCreateViaManifest: "Rancher creates an etcd snapshot object for each snapshot file; this CLI does not take snapshots",
+		NoCreateViaManifest: "Rancher creates an etcd snapshot object for each snapshot file; to take a snapshot of a cluster Rancher provisions (<cluster> is its name), preview it with `" + clierr.Rancher + " cluster save-etcd-snapshot <cluster> --dry-run` and add --apply --yes after reading the preview",
 		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			{Header: "STATUS", Path: []string{"snapshotFile", "status"}},

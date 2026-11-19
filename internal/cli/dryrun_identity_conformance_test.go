@@ -42,6 +42,7 @@ var dryRunDisplayIdentityGenericCommands = map[string]bool{
 	"cluster clear-autoscaling":  true,
 	"cluster pause-autoscaling":  true,
 	"cluster resume-autoscaling": true,
+	"cluster save-etcd-snapshot": true,
 	"cluster scale":              true,
 	"cluster set-autoscaling":    true,
 	"cluster upgrade":            true,

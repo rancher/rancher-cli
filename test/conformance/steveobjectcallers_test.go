@@ -33,14 +33,32 @@ const steveObjectReaderFile = "internal/engine/resources/steveread.go"
 // conversion of what they return.
 var steveObjectReaders = []string{"ClusterObjects", "ProjectObjects", "GetProject", "GetClusterObject", "TypeObjects", "GetTypeObject", "KubernetesObject"}
 
+// steveFirstReader is the entry of a function that reads through Steve with no
+// Kubernetes read before it: the files that may call it, each named in full,
+// and one reason that names each command that calls it.
+type steveFirstReader struct {
+	files  []string
+	reason string
+}
+
 // steveFirstReaders maps each function of package resources that reads an
-// object through Steve with no Kubernetes read before it to the one file
-// that may call it, and the reason.
-var steveFirstReaders = map[string]struct{ file, reason string }{
+// object through Steve with no Kubernetes read before it to the files that may
+// call it, and the reason.
+var steveFirstReaders = map[string]steveFirstReader{
 	"ManagementClusterThroughSteve": {
-		file:   "internal/engine/provisioning/upgrade.go",
-		reason: "cluster upgrade of an imported cluster: a Cluster Owner can read the management Cluster by name only through Steve, and the update sends the Kubernetes shape of it",
+		files: []string{
+			"internal/engine/provisioning/upgrade.go",
+			"internal/engine/provisioning/day2ops.go",
+		},
+		reason: "cluster upgrade of an imported cluster, and cluster save-etcd-snapshot to refuse an imported cluster and to check that the cluster is ready: a Cluster Owner can read the management Cluster by name only through Steve, and the update of cluster upgrade sends the Kubernetes shape of it",
 	},
+}
+
+// steveFirstReaderOutside reports whether name is a function of
+// steveFirstReaders and path is not one of its files.
+func steveFirstReaderOutside(name, path string) bool {
+	reader, listed := steveFirstReaders[name]
+	return listed && !slices.Contains(reader.files, path)
 }
 
 // TestSteveObjectReadersOnlyFromTheGetPath asserts that, in every non-test Go
@@ -49,10 +67,10 @@ var steveFirstReaders = map[string]struct{ file, reason string }{
 // readers that return an object as Steve returns it, and KubernetesObject,
 // are called only from steveread.go (the steve package itself declares them and
 // its tests call them), and that each function of steveFirstReaders is called
-// only from its one file. Only the generated get and EtcdSnapshotsAfterForbidden
-// (steveread.go) may read a kind through Steve after the Kubernetes API refused
-// it; the functions of steveFirstReaders are the reviewed exceptions that read
-// through Steve first.
+// only from the files of its entry, each of which calls it. Only the generated
+// get and EtcdSnapshotsAfterForbidden (steveread.go) may read a kind through
+// Steve after the Kubernetes API refused it; the functions of steveFirstReaders
+// are the reviewed exceptions that read through Steve first.
 func TestSteveObjectReadersOnlyFromTheGetPath(t *testing.T) {
 	t.Parallel()
 	tree := parseSourceTree()
@@ -74,7 +92,7 @@ func TestSteveObjectReadersOnlyFromTheGetPath(t *testing.T) {
 					offenders = append(offenders, at)
 				case slices.Contains(steveObjectReaders, name) && path != steveObjectReaderFile:
 					offenders = append(offenders, at)
-				case steveFirstReaders[name].file != "" && path != steveFirstReaders[name].file:
+				case steveFirstReaderOutside(name, path):
 					offenders = append(offenders, at)
 				}
 			case *ast.CallExpr:
@@ -89,17 +107,20 @@ func TestSteveObjectReadersOnlyFromTheGetPath(t *testing.T) {
 					offenders = append(offenders, at)
 				case slices.Contains(steveGetPathReaders, id.Name) && !slices.Contains(steveGetPathFiles, path):
 					offenders = append(offenders, at)
-				case steveFirstReaders[id.Name].file != "" && path != steveFirstReaders[id.Name].file:
+				case steveFirstReaderOutside(id.Name, path):
 					offenders = append(offenders, at)
 				}
 			}
 			return true
 		})
 	}
-	assert.Empty(t, offenders, "%v are called only from %v; %v only from %s; the functions of steveFirstReaders only from their file", steveGetPathReaders, steveGetPathFiles, steveObjectReaders, steveObjectReaderFile)
+	assert.Empty(t, offenders, "%v are called only from %v; %v only from %s; the functions of steveFirstReaders only from the files of their entry", steveGetPathReaders, steveGetPathFiles, steveObjectReaders, steveObjectReaderFile)
 	for name, reader := range steveFirstReaders {
 		assert.NotEmpty(t, reader.reason, name)
-		assert.True(t, calledFrom(tree, name, reader.file), "steveFirstReaders lists %s for %s, which does not call it", name, reader.file)
+		assert.NotEmpty(t, reader.files, name)
+		for _, file := range reader.files {
+			assert.True(t, calledFrom(tree, name, file), "steveFirstReaders lists %s for %s, which does not call it", name, file)
+		}
 	}
 }
 

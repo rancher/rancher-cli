@@ -873,7 +873,8 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   any request. There is no `delete` for it: `rancher delete etcd-snapshot` fails
   with `VALIDATION` and an "unknown command" message that gives the reason. The
   columns follow the Rancher UI, since the server's Table has only the Name and
-  Created At columns.
+  Created At columns. `rancher cluster save-etcd-snapshot` takes a snapshot of a
+  provisioned cluster ([Taking an etcd snapshot](#taking-an-etcd-snapshot-of-a-provisioned-cluster)).
 - `managedchart` (`management.cattle.io`) is a chart Rancher installs through
   Fleet on the target clusters: the clusters that `spec.targets` matches, except
   a cluster whose first matching target has `doNotDeploy: true`. Rancher serves
@@ -1475,6 +1476,75 @@ Rancher creates the management cluster, its default and system projects, and the
 registration token `default-token` with its node and import commands. For a
 cluster created without the `field.cattle.io/no-creator-rbac` annotation it
 also creates the creator's owner binding on the cluster.
+
+### Taking an etcd snapshot of a provisioned cluster
+
+`rancher cluster save-etcd-snapshot <cluster>` takes an etcd snapshot of a
+cluster that Rancher provisions with RKE2 or K3s (a node-driver cluster, or a
+custom cluster whose `spec.rkeConfig` is empty), as the Rancher UI does. Preview
+the request, then apply it:
+
+    rancher cluster save-etcd-snapshot <cluster> --dry-run
+    rancher cluster save-etcd-snapshot <cluster> --apply --yes
+
+The command writes the next generation of `spec.rkeConfig.etcdSnapshotCreate` on
+the provisioning cluster, one more than the higher of that field's generation
+and the generation Rancher copied into the status of the cluster's
+RKEControlPlane. The write goes through the usual gates: the server-side dry-run
+preview, `--apply` and `--yes` (the preview says the change is not reversible),
+and the resourceVersion of the preview; a change made in between is refused as
+`CONFLICT`. Rancher takes the snapshot with its own controllers: it runs `rke2
+etcd-snapshot save` or `k3s etcd-snapshot save` on every etcd node, and each
+node keeps its snapshot file. When `spec.rkeConfig.etcd.s3` is set, Rancher also
+sends the file to S3. The preview names the command Rancher runs and, when the
+file goes to S3, the bucket. Rancher creates an etcd snapshot object for each
+snapshot file once it reads the file from the cluster.
+
+The command waits until the request Rancher copied into the status of the
+RKEControlPlane equals the generation written and its `etcdSnapshotCreatePhase`
+is `Finished`; the result then lists the cluster's snapshots, newest first, up
+to ten. The command does not tell which of them this run created, and the etcd
+snapshot object for a snapshot just taken may not be readable yet. A phase
+`Failed` for that generation ends the wait with an error that gives the reason
+and message of the RKEControlPlane's `Ready` condition. When the status of the
+RKEControlPlane has a later generation than the one written, another write
+replaced the request: the wait ends at once with an error that says the snapshot
+this run asked for may not have been taken. A timeout (`--timeout`, default 30m)
+or a stopped command ends the wait with an error that says the snapshot was
+requested and goes on. A cluster deleted during the wait ends it with an error
+that says the cluster was deleted. None of these errors is retryable, and each
+has the same command with `--dry-run` as its hint (for a deleted cluster, `get
+provisioning-clusters`). `--wait=false` returns once the server accepts the
+request. If Rancher refuses (HTTP 403) to get the RKEControlPlane during the
+wait, the command stops waiting and exits 0, with a warning and `waited` false
+in the result.
+
+Rancher runs one operation at a time on a cluster. The command refuses, with a
+retryable `GENERIC` error, while an etcd snapshot restore, a certificate
+rotation, an encryption key rotation or a Kubernetes upgrade is in progress, and
+it refuses while the cluster is not ready: the Rancher UI offers the operation
+only when the management cluster's `Connected` condition is `True`, or, when it
+has no such condition, its `Ready` condition. When the cluster's own snapshot is
+already in progress, run the same command again with `--apply --yes`: it changes
+nothing and waits for that snapshot. A snapshot that ended, `Finished` or
+`Failed`, is not in progress, and the command requests a new one. When the
+RKEControlPlane cannot be read, a warning says so: the command cannot see an
+operation in progress and does not wait.
+
+The cluster must be one Rancher provisions. An imported cluster
+(`spec.rkeConfig` absent or null), a hosted cluster and the local cluster are
+refused with `VALIDATION`; Rancher takes the snapshots of an imported RKE2 or
+K3s cluster through objects the command does not create yet.
+
+The Cluster Owner role grants `update` on the provisioning cluster, which the
+command needs. Tab completion offers the provisioning clusters of the namespace
+that have `spec.rkeConfig`; with no offer, for example when the role does not
+grant `list` on them, type the cluster's name. If the command refuses a request,
+you can preview the same change of the field with `rancher patch
+provisioning-cluster` and read the server's response before you apply it:
+
+    rancher patch provisioning-cluster <cluster> --namespace <namespace> --type merge \
+      --patch '{"spec":{"rkeConfig":{"etcdSnapshotCreate":{"generation":<generation>}}}}' --dry-run
 
 ## Upgrading a cluster's Kubernetes version
 

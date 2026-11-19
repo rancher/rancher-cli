@@ -27,6 +27,13 @@ func runningOperationError(clusterName, namespace string, op clusterops.Operatio
 		}
 		return clierr.New(clierr.CodeGeneric, head+"to wait for it, run the command in the hint with --apply --yes and without --dry-run; while the operation runs, that command changes nothing and waits").
 			WithRetryable(true).WithHintCommand(cmd.Flag("--dry-run"))
+	case clusterops.OperationSnapshot:
+		cmd := clierr.NewCommand("cluster save-etcd-snapshot").Arg(clusterName)
+		if namespace != clusterNamespace {
+			cmd = cmd.FlagValue("--namespace", namespace)
+		}
+		return clierr.New(clierr.CodeGeneric, head+"to wait for it, run the command in the hint with --apply --yes and without --dry-run; while the operation runs, that command changes nothing and waits").
+			WithRetryable(true).WithHintCommand(cmd.Flag("--dry-run"))
 	}
 	return clierr.New(clierr.CodeGeneric, head+"try again after it ends").WithRetryable(true)
 }

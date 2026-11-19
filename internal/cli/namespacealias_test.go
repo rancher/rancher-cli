@@ -38,6 +38,7 @@ func TestShortNamespaceFlagReachesEveryDeclarationFamily(t *testing.T) {
 		{"usage", []string{"usage", "-n", "ns1", "--cluster", "local", "-o", "json"}},
 		{"cluster scale", []string{"cluster", "scale", "prod", "-n", "ns1", "--pool", "p", "--nodes", "2", "-o", "json"}},
 		{"cluster upgrade", []string{"cluster", "upgrade", "prod", "-n", "ns1", "--k8s-version", "v1.31.5+rke2r1", "-o", "json"}},
+		{"cluster save-etcd-snapshot", []string{"cluster", "save-etcd-snapshot", "prod", "-n", "ns1", "-o", "json"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
