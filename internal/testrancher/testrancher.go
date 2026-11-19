@@ -2584,7 +2584,8 @@ var (
 )
 
 // handleRelease serves a channel-server release collection envelope
-// ({"data":[{"version": "..."}, ...]}) - the "data" key is kept identical to
+// ({"data":[{"version": "...", "serverArgs": {}}, ...]}) - every row carries
+// serverArgs, as the rows the Rancher UI offers do; the "data" key is kept identical to
 // internal/engine/provisioning's fetchReleaseVersions decode (channelserver
 // model/config.go:22-30's own collection key; a test against a
 // real server would correct this fixture if the real shape differs). Unlike the
@@ -2596,7 +2597,7 @@ var (
 func (f *Facade) handleRelease(w http.ResponseWriter, versions []string) {
 	data := make([]map[string]any, 0, len(versions))
 	for _, v := range versions {
-		data = append(data, map[string]any{"version": v})
+		data = append(data, map[string]any{"version": v, "serverArgs": map[string]any{}})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }

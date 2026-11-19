@@ -33,13 +33,26 @@ const steveObjectReaderFile = "internal/engine/resources/steveread.go"
 // conversion of what they return.
 var steveObjectReaders = []string{"ClusterObjects", "ProjectObjects", "GetProject", "GetClusterObject", "TypeObjects", "GetTypeObject", "KubernetesObject"}
 
+// steveFirstReaders maps each function of package resources that reads an
+// object through Steve with no Kubernetes read before it to the one file
+// that may call it, and the reason.
+var steveFirstReaders = map[string]struct{ file, reason string }{
+	"ManagementClusterThroughSteve": {
+		file:   "internal/engine/provisioning/upgrade.go",
+		reason: "cluster upgrade of an imported cluster: a Cluster Owner can read the management Cluster by name only through Steve, and the update sends the Kubernetes shape of it",
+	},
+}
+
 // TestSteveObjectReadersOnlyFromTheGetPath asserts that, in every non-test Go
 // file under internal/, steveList, steveGet, newSteveWaitClient and
-// wrapSteveWait are called only from the files of steveGetPathFiles, and that
-// the readers that return an object as Steve returns it, and KubernetesObject,
+// wrapSteveWait are called only from the files of steveGetPathFiles, that the
+// readers that return an object as Steve returns it, and KubernetesObject,
 // are called only from steveread.go (the steve package itself declares them and
-// its tests call them). Only the generated get may read a kind through Steve
-// after the Kubernetes API refused it.
+// its tests call them), and that each function of steveFirstReaders is called
+// only from its one file. Only the generated get and EtcdSnapshotsAfterForbidden
+// (steveread.go) may read a kind through Steve after the Kubernetes API refused
+// it; the functions of steveFirstReaders are the reviewed exceptions that read
+// through Steve first.
 func TestSteveObjectReadersOnlyFromTheGetPath(t *testing.T) {
 	t.Parallel()
 	tree := parseSourceTree()
@@ -61,6 +74,8 @@ func TestSteveObjectReadersOnlyFromTheGetPath(t *testing.T) {
 					offenders = append(offenders, at)
 				case slices.Contains(steveObjectReaders, name) && path != steveObjectReaderFile:
 					offenders = append(offenders, at)
+				case steveFirstReaders[name].file != "" && path != steveFirstReaders[name].file:
+					offenders = append(offenders, at)
 				}
 			case *ast.CallExpr:
 				// A call in the same package has no package qualifier.
@@ -74,10 +89,104 @@ func TestSteveObjectReadersOnlyFromTheGetPath(t *testing.T) {
 					offenders = append(offenders, at)
 				case slices.Contains(steveGetPathReaders, id.Name) && !slices.Contains(steveGetPathFiles, path):
 					offenders = append(offenders, at)
+				case steveFirstReaders[id.Name].file != "" && path != steveFirstReaders[id.Name].file:
+					offenders = append(offenders, at)
 				}
 			}
 			return true
 		})
 	}
-	assert.Empty(t, offenders, "%v are called only from %v; %v only from %s", steveGetPathReaders, steveGetPathFiles, steveObjectReaders, steveObjectReaderFile)
+	assert.Empty(t, offenders, "%v are called only from %v; %v only from %s; the functions of steveFirstReaders only from their file", steveGetPathReaders, steveGetPathFiles, steveObjectReaders, steveObjectReaderFile)
+	for name, reader := range steveFirstReaders {
+		assert.NotEmpty(t, reader.reason, name)
+		assert.True(t, calledFrom(tree, name, reader.file), "steveFirstReaders lists %s for %s, which does not call it", name, reader.file)
+	}
+}
+
+// TestSteveReadersOfTheResourcesFileReadAfterARefusalOrAreListed asserts that
+// each function of steveread.go that is not a method of getCmd and calls a
+// reader of steveObjectReaders (the conversion KubernetesObject aside) either
+// takes a parameter named k8sErr, the Kubernetes error that sends it to Steve,
+// or is a key of steveFirstReaders.
+func TestSteveReadersOfTheResourcesFileReadAfterARefusalOrAreListed(t *testing.T) {
+	t.Parallel()
+	tree := parseSourceTree()
+	require.NoError(t, tree.err)
+	var offenders []string
+	checked := 0
+	for i, file := range tree.files {
+		if tree.paths[i] != steveObjectReaderFile {
+			continue
+		}
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil || isGetCmdMethod(fn) {
+				continue
+			}
+			reads := false
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name != "KubernetesObject" && slices.Contains(steveObjectReaders, sel.Sel.Name) {
+					reads = true
+				}
+				return !reads
+			})
+			if !reads {
+				continue
+			}
+			checked++
+			_, listed := steveFirstReaders[fn.Name.Name]
+			if !listed && !hasParameter(fn, "k8sErr") {
+				offenders = append(offenders, tree.fset.Position(fn.Pos()).String()+": "+fn.Name.Name)
+			}
+		}
+	}
+	assert.Positive(t, checked, "the scan found no function of %s that reads through Steve", steveObjectReaderFile)
+	assert.Empty(t, offenders, "a function of %s outside getCmd that reads through Steve takes the k8sErr that sent it there or is a key of steveFirstReaders", steveObjectReaderFile)
+}
+
+// isGetCmdMethod reports whether fn is a method of getCmd.
+func isGetCmdMethod(fn *ast.FuncDecl) bool {
+	if fn.Recv == nil || len(fn.Recv.List) != 1 {
+		return false
+	}
+	id, ok := fn.Recv.List[0].Type.(*ast.Ident)
+	return ok && id.Name == "getCmd"
+}
+
+// hasParameter reports whether fn declares a parameter named name.
+func hasParameter(fn *ast.FuncDecl, name string) bool {
+	for _, field := range fn.Type.Params.List {
+		for _, id := range field.Names {
+			if id.Name == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// calledFrom reports whether the parsed file at path calls the function name,
+// through a package or by its bare name.
+func calledFrom(tree parsedSourceTree, name, path string) bool {
+	for i, file := range tree.files {
+		if tree.paths[i] != path {
+			continue
+		}
+		found := false
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return !found
+			}
+			switch fn := call.Fun.(type) {
+			case *ast.SelectorExpr:
+				found = found || fn.Sel.Name == name
+			case *ast.Ident:
+				found = found || fn.Name == name
+			}
+			return !found
+		})
+		return found
+	}
+	return false
 }

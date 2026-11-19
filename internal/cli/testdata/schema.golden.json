@@ -1260,6 +1260,62 @@
     {
       "args": [
         {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Sets the Kubernetes version of a provisioned cluster (spec.kubernetesVersion of its provisioning cluster) or of an imported RKE2 or K3s cluster (spec.rke2Config or spec.k3sConfig of its management cluster), then waits until Rancher reports the upgrade done. It accepts the versions the Rancher UI offers: a release of the cluster's own distribution that the server lists and that is not lower than the current version. The preview names the newest successful etcd snapshot, because the upgrade cannot be reversed with this command: to return to an earlier version, restore an etcd snapshot of type Kubernetes version and etcd. Rancher runs the upgrade with its own controllers. Running the command again with the same version while the upgrade is not finished changes nothing and waits. --wait=false returns once the server accepts the request. The local cluster, hosted clusters and imported clusters with version management off are refused.",
+      "destructive": "true",
+      "examples": [
+        "rancher cluster upgrade my-cluster --k8s-version v1.31.4+rke2r1 --dry-run",
+        "rancher cluster upgrade my-cluster --k8s-version v1.31.4+rke2r1 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "Kubernetes `version` to upgrade to, for example v1.31.4+rke2r1",
+          "name": "k8s-version",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "wait until Rancher reports the operation done before returning (default true; --wait=false returns once the server accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, a positive duration, e.g. 1h (default 30m)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "cluster",
+      "name": "cluster upgrade",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Upgrade the Kubernetes version of an RKE2 or K3s cluster"
+    },
+    {
+      "args": [
+        {
           "enum": [
             "bash",
             "zsh",
@@ -14081,9 +14137,10 @@
         "cluster set-autoscaling",
         "cluster clear-autoscaling",
         "cluster pause-autoscaling",
-        "cluster resume-autoscaling"
+        "cluster resume-autoscaling",
+        "cluster upgrade"
       ],
-      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
+      "desc": "Scale a machine pool, manage cluster-autoscaler settings or upgrade the Kubernetes version of a cluster; to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
       "name": "cluster"
     },
     {

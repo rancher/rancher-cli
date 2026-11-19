@@ -282,6 +282,19 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   `data.error.details.recovery`, `rancher get project`; run the same command
   again. `delete project` also waits for the project's backing namespace when
   you can read it, with or without `--delete-namespaces`.
+- `cluster upgrade <cluster> --k8s-version <version>` upgrades an RKE2 or K3s
+  cluster. Preview first (`--dry-run`) and read the preview: the warnings say how
+  Rancher runs the upgrade, and one names the newest successful etcd snapshot
+  of the cluster, because the upgrade cannot be reversed with this command (the
+  way to an earlier version is an etcd snapshot restore of type Kubernetes
+  version and etcd). Then `--apply --yes`; the command waits until Rancher
+  reports the upgrade done (default `--timeout 30m`, `--wait=false` returns at
+  once). A refusal names the rule: the version must be a release of the cluster's
+  own distribution that `rancher get kubernetes-versions` lists and not lower
+  than the current one. A retryable error of code `GENERIC` (an operation in
+  progress, a cluster that has not reported its version) means: try again later.
+  A timeout leaves the upgrade running: run the same command again with the same
+  version to wait again.
 - `delete` waits until the object is gone (default `--timeout 5m`);
   `--wait=false` returns at once and prints `deletion started`. Read
   `data.waited` and the warnings. Without `--wait=false`, a `data.waited`
@@ -607,6 +620,12 @@ default/table format prints the same summary as its own stdout line above the
 table header. When only the verdict matters, the exit code is authoritative;
 `-o name` keeps a successful wait's output to the bare resource name - no need
 to receive or parse the full object.
+
+`cluster upgrade` waits for Rancher to report the upgrade done, not for
+`Ready`: `rancher get provisioning-cluster --wait` returns when the cluster's
+`Ready` condition is `True`, which can be before or during an upgrade. The
+timeout error of `cluster upgrade` (`data.error.details.committed` true) says the
+upgrade goes on; wait again by running the same command with the same version.
 
 ### 7. Triage composites
 

@@ -1019,3 +1019,78 @@ func TestSteveNotFoundHintNamesTheListOfTheKind(t *testing.T) {
 		require.ErrorContains(t, err, "not found: 'x'")
 	}
 }
+
+// TestEtcdSnapshotsAfterForbiddenReturnTheKubernetesShape asserts the reader
+// lists the snapshots of the namespace through Steve after a Kubernetes 403
+// and returns each in the shape the Kubernetes API returns.
+func TestEtcdSnapshotsAfterForbiddenReturnTheKubernetesShape(t *testing.T) {
+	t.Parallel()
+	path := steveEtcdSnapshotsPath + "/fleet-default"
+	root := &steveRoot{serve: func(p string, _ int) (int, any) {
+		if p == path {
+			return http.StatusOK, steveCollection(steveEtcdSnapshot())
+		}
+		return http.StatusForbidden, nil
+	}}
+	f := &steveFactory{root: root}
+
+	got, err := EtcdSnapshotsAfterForbidden(t.Context(), f, "fleet-default", kubernetesStatus(http.StatusForbidden, false))
+	require.NoError(t, err)
+	assert.Equal(t, []string{path}, root.requested())
+	assert.Equal(t, []unstructured.Unstructured{kubernetesEtcdSnapshot()}, got)
+}
+
+// TestEtcdSnapshotsAfterForbiddenKeepTheKubernetesError asserts the reader
+// makes no Steve request for a Kubernetes error that is not a 403, returns the
+// Kubernetes error when Steve responds with 403 or 404, and returns an error
+// with the status Steve responded with for any other status.
+func TestEtcdSnapshotsAfterForbiddenKeepTheKubernetesError(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		k8sErr      error
+		steve       int
+		wantRequest bool
+		wantK8s     bool
+		wantStatus  int
+	}{
+		"Kubernetes 500": {k8sErr: kubernetesStatus(http.StatusInternalServerError, false), wantK8s: true},
+		"Kubernetes 404": {k8sErr: kubernetesStatus(http.StatusNotFound, false), wantK8s: true},
+		"no status":      {k8sErr: clierr.New(clierr.CodeGeneric, "connection refused"), wantK8s: true},
+		"Steve 403":      {k8sErr: kubernetesStatus(http.StatusForbidden, false), steve: http.StatusForbidden, wantRequest: true, wantK8s: true},
+		"Steve 404":      {k8sErr: kubernetesStatus(http.StatusForbidden, false), steve: http.StatusNotFound, wantRequest: true, wantK8s: true},
+		"Steve 500":      {k8sErr: kubernetesStatus(http.StatusForbidden, false), steve: http.StatusInternalServerError, wantRequest: true, wantStatus: http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := &steveRoot{serve: func(string, int) (int, any) { return tc.steve, nil }}
+			got, err := EtcdSnapshotsAfterForbidden(t.Context(), &steveFactory{root: root}, "fleet-default", tc.k8sErr)
+			assert.Nil(t, got)
+			require.Error(t, err)
+			assert.Equal(t, tc.wantRequest, len(root.requested()) == 1, "the Steve request")
+			if tc.wantK8s {
+				assert.Same(t, tc.k8sErr, err)
+				return
+			}
+			status, ok := clierr.HTTPStatus(err)
+			require.True(t, ok)
+			assert.Equal(t, tc.wantStatus, status)
+		})
+	}
+}
+
+// TestEtcdSnapshotsAfterForbiddenReadNothingForARowWithoutTheFlag asserts the
+// reader returns the Kubernetes 403 and makes no Steve request when the row
+// does not set SteveReadOnForbidden.
+func TestEtcdSnapshotsAfterForbiddenReadNothingForARowWithoutTheFlag(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "etcdsnapshot")
+	require.True(t, k.SteveReadOnForbidden)
+	k.SteveReadOnForbidden = false
+	root := &steveRoot{serve: func(string, int) (int, any) { return http.StatusOK, steveCollection(steveEtcdSnapshot()) }}
+	k8sErr := kubernetesStatus(http.StatusForbidden, false)
+
+	got, err := steveEtcdSnapshots(t.Context(), k, &steveFactory{root: root}, "fleet-default", k8sErr)
+	assert.Nil(t, got)
+	assert.Same(t, k8sErr, err)
+	assert.Empty(t, root.requested())
+}

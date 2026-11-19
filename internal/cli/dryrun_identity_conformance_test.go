@@ -44,6 +44,7 @@ var dryRunDisplayIdentityGenericCommands = map[string]bool{
 	"cluster resume-autoscaling": true,
 	"cluster scale":              true,
 	"cluster set-autoscaling":    true,
+	"cluster upgrade":            true,
 	"create cluster":             true,
 	"create kubeconfig":          true,
 	"create machine-config":      true,

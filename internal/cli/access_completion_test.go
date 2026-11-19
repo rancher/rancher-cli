@@ -17,6 +17,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -346,6 +347,38 @@ func TestTimeoutOffersTheDurationLadder(t *testing.T) {
 	} {
 		assert.Equal(t, ladder, dispatchSite(accessCtx(t), site, tc.d, nil, nil, tc.tail), "%s %v", tc.d.Name, tc.tail)
 	}
+}
+
+// TestTimeoutOffersTheClusterLadder asserts a cluster command that declares
+// --timeout completes it from its own static ladder of long waits, with no
+// request made and nothing after --wait=false, that a cluster command with no
+// --timeout gets no ladder, and that the access and delete ladders are
+// unchanged.
+func TestTimeoutOffersTheClusterLadder(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "timeout", FlagSpelling: "--timeout"}
+	withTimeout := runtime.Descriptor{Name: "cluster example", Flags: []runtime.ArgSpec{{Name: "wait", Type: "bool"}, {Name: "timeout", Type: "string"}}}
+	withoutTimeout := runtime.Descriptor{Name: "cluster other", Flags: []runtime.ArgSpec{{Name: "wait", Type: "bool"}}}
+	ladder := []string{"10m", "1h", "2h", "30m"}
+
+	f.reset()
+	assert.Equal(t, ladder, dispatchSite(accessCtx(t), site, withTimeout, nil, nil, []string{"x", "--timeout"}))
+	assert.Empty(t, f.served(), "the ladder is static")
+	assert.Equal(t, ladder, dispatchSite(accessCtx(t), site, withTimeout, nil, nil, []string{"x", "--wait", "--timeout"}))
+	assert.Equal(t, ladder, dispatchSite(accessCtx(t), site, withTimeout, nil, nil, []string{"x", "--wait=true", "--timeout"}))
+	for _, word := range []string{"--wait=false", "--wait=0", "--wait=FALSE"} {
+		assert.Empty(t, dispatchSite(accessCtx(t), site, withTimeout, nil, nil, []string{"x", word, "--timeout"}), word)
+	}
+	assert.Empty(t, dispatchSite(accessCtx(t), site, withoutTimeout, nil, nil, []string{"x", "--timeout"}), "a cluster command with no --timeout")
+
+	upgrade := provisioning.NewUpgrade(nil, nil).(runtime.MutatingCommand).Describe()
+	assert.Equal(t, ladder, dispatchSite(accessCtx(t), site, upgrade, nil, nil, []string{"prod", "--k8s-version", "v1.31.5+rke2r1", "--timeout"}), "cluster upgrade")
+	assert.Empty(t, dispatchSite(accessCtx(t), site, upgrade, nil, nil, []string{"prod", "--wait=false", "--timeout"}), "cluster upgrade after --wait=false")
+
+	accessLadder := []string{"10m", "1m", "2m", "30s", "5m"}
+	assert.Equal(t, accessLadder, dispatchSite(accessCtx(t), site, projectsDescriptor(), nil, nil, []string{"--timeout"}))
 }
 
 // projectsCompleter is the zero-dependency probe of `access projects`, the

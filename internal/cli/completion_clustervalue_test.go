@@ -268,6 +268,7 @@ var clusterValueWiringsWithoutSites = map[string]string{
 	"command auth login":                "the command takes no --cluster",
 	"command inspect cluster":           "the command takes no --cluster",
 	"command cluster scale":             "the command takes no --cluster",
+	"command cluster upgrade":           "the command takes no --cluster",
 	"command cluster set-autoscaling":   "the command takes no --cluster",
 	"command cluster clear-autoscaling": "the command takes no --cluster",
 	"command oidc-client rotate-secret": "the command takes no --cluster",

@@ -294,15 +294,16 @@ func dispatchSite(
 		if cands := enumCandidates(site, d); len(cands) > 0 {
 			return cands
 		}
-		// The --timeout of the access commands and of every delete: a
-		// static ladder of durations, owned here like an enum (no network,
-		// no delegation). Owned even when empty: a delete offers nothing
-		// where it refuses --timeout.
+		// The --timeout of the access commands, of every delete and of the
+		// cluster commands: a static ladder of durations, owned here like
+		// an enum (no network, no delegation). Owned even when empty: a
+		// delete or a cluster command offers nothing where it refuses
+		// --timeout.
 		if timeoutLadderSite(site, d) {
 			if timeoutRefused(d, tail) {
 				return nil
 			}
-			return resolveStaticEnum(timeoutSuggestions, site)
+			return resolveStaticEnum(timeoutLadder(d), site)
 		}
 		// node drain's own options: the time Rancher's drain may run and the
 		// seconds each pod gets to stop. Owned like the --timeout candidates above.
@@ -620,24 +621,37 @@ func drainFlagSite(site CompletionSite, d runtime.Descriptor, flag string) bool 
 		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == flag })
 }
 
+// clusterTimeoutSuggestions are the static --timeout candidates for the
+// cluster commands that wait for Rancher to finish an operation, which takes
+// minutes to hours.
+var clusterTimeoutSuggestions = []string{"10m", "30m", "1h", "2h"}
+
+// timeoutLadder returns the candidates for the --timeout of a command.
+func timeoutLadder(d runtime.Descriptor) []string {
+	if strings.HasPrefix(d.Name, "cluster ") {
+		return clusterTimeoutSuggestions
+	}
+	return timeoutSuggestions
+}
+
 // timeoutLadderSite reports a --timeout flag-value site on an access
-// command, a delete, node drain or node stop-drain whose descriptor carries
-// the flag: a value-taking flag with no enum and no server-side source.
-// Ownership follows the descriptor, so a command without the flag gets no
-// ladder.
+// command, a delete, a cluster command, node drain or node stop-drain whose
+// descriptor carries the flag: a value-taking flag with no enum and no
+// server-side source. Ownership follows the descriptor: a command without the
+// flag gets no ladder.
 func timeoutLadderSite(site CompletionSite, d runtime.Descriptor) bool {
 	return site.Kind == SiteFlagValue && site.FlagName == "timeout" &&
-		(strings.HasPrefix(d.Name, "access ") || strings.HasPrefix(d.Name, "delete ") || nodeDrainCommand(d.Name)) &&
+		(strings.HasPrefix(d.Name, "access ") || strings.HasPrefix(d.Name, "delete ") || strings.HasPrefix(d.Name, "cluster ") || nodeDrainCommand(d.Name)) &&
 		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "timeout" })
 }
 
-// timeoutRefused reports whether the words typed so far make a delete, node
-// drain or node stop-drain refuse --timeout: --wait with a value the parser
-// reads as false (strconv.ParseBool, as for every bool flag). A bool flag
-// takes a value only joined with "=". Words after "--" are arguments, not
-// flags.
+// timeoutRefused reports whether the words typed so far make a delete, a
+// cluster command, node drain or node stop-drain refuse --timeout: --wait with
+// a value the parser reads as false (strconv.ParseBool, as for every bool
+// flag). A bool flag takes a value only joined with "=". Words after "--" are
+// arguments, not flags.
 func timeoutRefused(d runtime.Descriptor, tail []string) bool {
-	if !strings.HasPrefix(d.Name, "delete ") && !nodeDrainCommand(d.Name) {
+	if !strings.HasPrefix(d.Name, "delete ") && !strings.HasPrefix(d.Name, "cluster ") && !nodeDrainCommand(d.Name) {
 		return false
 	}
 	for _, word := range tail {

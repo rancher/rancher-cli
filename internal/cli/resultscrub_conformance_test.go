@@ -1099,6 +1099,12 @@ func handWrittenScrubRows() []scrubRow {
 					_ = unstructured.SetNestedField(obj.Object, "true", "metadata", "annotations", "provisioning.cattle.io/cluster-autoscaler-paused")
 				}
 			}},
+		{command: "cluster upgrade", variant: "provisioned", kind: "provisioningcluster", class: classNames, reason: upgradeResultReason,
+			input: upgradeScrubInput("node-1"), deps: upgradeScrubDeps(false),
+			setup: func(f *scrubFake, _ *plantSet) { f.decorate = upgradeProvisionedScrubObject }},
+		{command: "cluster upgrade", variant: "imported", kind: "managementcluster", class: classNames, reason: upgradeResultReason,
+			input: upgradeScrubInput("node-1"), deps: upgradeScrubDeps(true),
+			setup: func(f *scrubFake, _ *plantSet) { f.decorate = upgradeImportedScrubObject }},
 		{command: "app install", kind: "operation", class: classNames, reason: appResultReason,
 			input: in([]string{appRelease}, map[string]string{"cluster": "prod", "namespace": appNS, "repo": appRepo, "chart": appChart}),
 			deps: appScrubDeps(func(s *appServer) {
@@ -1376,4 +1382,91 @@ func TestApplyResultHidesWhatThePreviewHides(t *testing.T) {
 			}
 		}
 	}
+}
+
+// upgradeResultReason says why the cluster upgrade rows show no value of the
+// object: the result has the cluster name, namespace and id, and the two
+// versions.
+const upgradeResultReason = "the result of cluster upgrade is the cluster name, its namespace and id, and the two versions; it has no value of the object"
+
+// upgradeScrubInput is the input of a cluster upgrade row: the cluster, the
+// target version and --wait=false: the row ends when the server accepts the
+// update.
+func upgradeScrubInput(cluster string) func(*plantSet) fieldCoverageInput {
+	return func(*plantSet) fieldCoverageInput {
+		return fieldCoverageInput{args: []string{cluster}, values: map[string]string{"k8s-version": "v1.31.5+rke2r1"}, bools: map[string]bool{"wait": false}}
+	}
+}
+
+// upgradeProvisionedScrubObject makes the row's provisioning Cluster a
+// provisioned cluster at v1.31.4.
+func upgradeProvisionedScrubObject(obj *unstructured.Unstructured) {
+	_ = unstructured.SetNestedField(obj.Object, "v1.31.4+rke2r1", "spec", "kubernetesVersion")
+	if _, found, _ := unstructured.NestedMap(obj.Object, "spec", "rkeConfig"); !found {
+		_ = unstructured.SetNestedField(obj.Object, map[string]any{}, "spec", "rkeConfig")
+	}
+}
+
+// upgradeImportedScrubObject makes the row's management Cluster an imported
+// RKE2 cluster at v1.31.4 with version management on.
+func upgradeImportedScrubObject(obj *unstructured.Unstructured) {
+	_ = unstructured.SetNestedField(obj.Object, "rke2", "status", "driver")
+	_ = unstructured.SetNestedField(obj.Object, map[string]any{"gitVersion": "v1.31.4+rke2r1"}, "status", "version")
+	_ = unstructured.SetNestedField(obj.Object, map[string]any{"kubernetesVersion": "v1.31.4+rke2r1"}, "spec", "rke2Config")
+	_ = unstructured.SetNestedField(obj.Object, "true", "metadata", "annotations", "rancher.io/imported-cluster-version-management")
+}
+
+// upgradeScrubDeps returns the deps of a cluster upgrade row: the fake, with a
+// root that serves the release lists, and for an imported row a
+// provisioning Cluster that links to the row's management Cluster.
+func upgradeScrubDeps(imported bool) func(t *testing.T, f *scrubFake, ps *plantSet) runDeps {
+	return func(t *testing.T, f *scrubFake, _ *plantSet) runDeps {
+		t.Helper()
+		var clients engine.ClusterClientFactory = f
+		if imported {
+			clients = linkedScrubClients{f}
+		}
+		return runDeps{clients: clients, roots: upgradeScrubRoots{}, serverBase: scrubBase{}}
+	}
+}
+
+// linkedScrubClients hands a client whose provisioning Cluster has no
+// rkeConfig and a status.clusterName: the link to an imported cluster.
+type linkedScrubClients struct{ *scrubFake }
+
+func (l linkedScrubClients) Cluster(context.Context, string) (engine.ClusterClient, error) {
+	return linkedScrubClient(l), nil
+}
+
+type linkedScrubClient struct{ *scrubFake }
+
+func (c linkedScrubClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	if gvr.Group == "provisioning.cattle.io" && gvr.Resource == "clusters" {
+		obj := c.base(gvr, ns, name)
+		_ = unstructured.SetNestedField(obj.Object, "c-m-scrub", "status", "clusterName")
+		return obj, nil
+	}
+	return c.scrubFake.Get(ctx, gvr, ns, name)
+}
+
+// upgradeScrubRoots serves the two release lists, every row with serverArgs.
+type upgradeScrubRoots struct{}
+
+func (upgradeScrubRoots) Root() (engine.RootClient, error) { return upgradeScrubRoot{}, nil }
+
+type upgradeScrubRoot struct{}
+
+func (upgradeScrubRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
+	switch path {
+	case "/v1-rke2-release/release":
+		return []byte(`{"data":[{"version":"v1.31.4+rke2r1","serverArgs":{}},{"version":"v1.31.5+rke2r1","serverArgs":{}}]}`), nil
+	case "/v1-k3s-release/release":
+		return []byte(`{"data":[{"version":"v1.31.4+k3s1","serverArgs":{}}]}`), nil
+	case "/v1/management.cattle.io.clusters/c-m-scrub":
+		return []byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","id":"c-m-scrub","type":"management.cattle.io.cluster",` +
+			`"metadata":{"name":"c-m-scrub","resourceVersion":"5","annotations":{"rancher.io/imported-cluster-version-management":"true"}},` +
+			`"spec":{"rke2Config":{"kubernetesVersion":"v1.31.4+rke2r1"}},` +
+			`"status":{"driver":"rke2","version":{"gitVersion":"v1.31.4+rke2r1"}}}`), nil
+	}
+	return nil, clierr.New(clierr.CodeNotFound, path+" not found")
 }

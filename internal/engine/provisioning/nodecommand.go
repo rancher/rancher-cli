@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/provisioning/clusterops"
 	"k8s.io/apimachinery/pkg/api/validate/content"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
@@ -466,10 +467,10 @@ func CheckWindowsCommand(f WindowsClusterFacts) error {
 		return clierr.Retryable(clierr.CodeGeneric, fmt.Sprintf(
 			"--%s: the Windows node command is available once the cluster reports its Kubernetes version; try again then", NodeOptionWindows))
 	}
-	if _, _, _, _, parsed := parseVersionKey(version); !parsed {
+	if _, _, _, _, parsed := clusterops.ParseVersionKey(version); !parsed {
 		return windowsRefusal(fmt.Sprintf("the cluster's Kubernetes version %q is not MAJOR.MINOR.PATCH (a pre-release included), which this CLI cannot compare with %s, the oldest version the Rancher UI shows the Windows node command for", version, windowsMinKubernetes))
 	}
-	if compareVersionStrings(version, windowsMinKubernetes) < 0 {
+	if clusterops.CompareVersions(version, windowsMinKubernetes) < 0 {
 		return windowsRefusal(fmt.Sprintf("the cluster's Kubernetes version %q is older than %s, the oldest version the Rancher UI shows the Windows node command for", version, windowsMinKubernetes))
 	}
 	switch {
@@ -477,7 +478,7 @@ func CheckWindowsCommand(f WindowsClusterFacts) error {
 		return nil
 	case f.serverBelow(windowsFlannelServerFloor):
 		return windowsRefusal(fmt.Sprintf("the cluster's CNI is %q; on Rancher before v%s the Rancher UI shows the Windows node command only for calico", f.CNI, windowsFlannelServerFloor))
-	case f.CNI == "flannel" && compareVersionStrings(version, windowsFlannelMinKubernetes) >= 0:
+	case f.CNI == "flannel" && clusterops.CompareVersions(version, windowsFlannelMinKubernetes) >= 0:
 		return nil
 	}
 	return windowsRefusal(fmt.Sprintf("the cluster's CNI is %q; the Rancher UI shows the Windows node command only for calico, and for flannel from Kubernetes %s", f.CNI, windowsFlannelMinKubernetes))

@@ -23,3 +23,8 @@ func (setAutoscalingCmd) LiveSource() completion.Source { return complete.PoolSo
 
 // LiveSource hands the surface the pool source.
 func (clearAutoscalingCmd) LiveSource() completion.Source { return complete.PoolSource() }
+
+// LiveSource hands the surface cluster upgrade's own source: the <cluster>
+// positional and --k8s-version after it, each completing only values the
+// command accepts; every other site is declined.
+func (upgradeCmd) LiveSource() completion.Source { return complete.UpgradeSource() }

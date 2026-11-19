@@ -12,7 +12,7 @@ without reading docs, and non-interactive output is a stable, versioned JSON env
 `/k8s/clusters/local` for management-plane kinds, `/k8s/clusters/<id>` for downstream
 clusters. There is no Norman/`v3` code on the resource path.
 
-**Three documented exceptions: interactive auth-provider login, root reads, and `get` of the kinds that set `SteveReadOnForbidden` through the Steve API when the Kubernetes API responds with 403.** `auth
+**Four documented exceptions: interactive auth-provider login, root reads, `get` of the kinds that set `SteveReadOnForbidden` and the etcd snapshot list of `cluster upgrade`, both through the Steve API when the Kubernetes API responds with 403, and the read of a management Cluster by `cluster upgrade`, which goes to the Steve API first.** `auth
 get-token` (the kubectl exec-credential plugin) authenticates against Rancher's legacy
 public endpoints - `/v1-public/authproviders` - because no Kubernetes-native login
 equivalent exists yet; migrating it is the intended first job of the reserved
@@ -26,7 +26,14 @@ or object from the Steve API as the caller (`SteveReadOnForbidden` in the kind t
 because Rancher gives a member or owner permission to get some objects by name but not
 to list them in the Kubernetes API, and the Steve API lists what the caller has
 permission to get. Name completion of those kinds lists the objects through the Steve
-API. Writes remain CRD-through-proxy, with one
+API. `cluster upgrade` lists the etcd snapshots for its preview the same way
+(`resources.EtcdSnapshotsAfterForbidden`): it lists them through the Kubernetes API and,
+only when that responds with 403, through the Steve API. The fourth exception is a read
+that goes to the Steve API first, with no Kubernetes read before it:
+`resources.ManagementClusterThroughSteve`, called only by `cluster upgrade` for an
+imported cluster, because a Cluster Owner can read the management Cluster by name only
+through Steve; it returns the object in the Kubernetes shape, with its `resourceVersion`,
+for the update. Writes remain CRD-through-proxy, with one
 exception: `engine.ActionClient`, the one port that POSTs a Steve action (a Rancher API
 action on a Rancher resource, such as `rancher app install` on a ClusterRepo), once and
 never retried.
@@ -82,6 +89,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/steve` | Rancher's steve API read as the caller (the package sends no write; its request type also builds the path of a steve action, which `engine.ActionClient` sends): one request type and getter, the collection page protocol (`ReadCollection`), the project and cluster collections, the cluster lookup every `--cluster` uses (`MatchCluster`, `ResolveCluster`: id or display name, then one GET by id) and the one-cluster read (`GetCluster`), and the `--project` lookup (`ResolveProjectFlag`: the per-cluster project collection matched by id or display name, then one GET by id; without `--cluster`, the refusal naming the clusters the project is on), the readers of the cluster and project collections and of one cluster or one project by id, which return each object as Steve returns it (the `get` of those kinds uses them when the Kubernetes API responds with 403), the readers of a collection of one Steve type and of one object of it (`TypeObjects`, `GetTypeObject`, which the `get` of the provisioning-cluster and etcd-snapshot kinds uses in the same case), and the UserAttribute reader every command that needs a user's cached groups shares (`UserAttributes`: Rancher's local-cluster proxy refuses userattributes to a caller without access to cluster local, so they are read through steve, which applies the caller's roles; a by-id 404 is read with steve's schema as no object or refused, and a collection read is complete only when a SelfSubjectAccessReview says the caller may list). |
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing - reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the server replaces the `{token}` placeholder in the command and manifest fields with the token) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
 | `internal/engine/provisioning/complete` | The provisioning commands' live completion sources: `CreateClusterSource` (create cluster's `--machine-config` live half, the typed kind's configs answered behind its `<kind>/` prefix, and `--cloud-credential`, the cattle-global-data credential Secrets by id and unique display name) and `PoolSource` (the cluster-family verbs' `--pool`, the machine pools of the cluster typed as the first positional). A restricted `complete` package under the import and declaration fences. |
+| `internal/engine/provisioning/clusterops` | Pure checks of operations on a Rancher cluster that a command and its completion can both call: which operation Rancher is running on a provisioned cluster, which clusters are imported RKE2 or K3s clusters, the Kubernetes version rules of `cluster upgrade`, the releases the server lists and their version order, and which etcd snapshots belong to a cluster. It makes no request; it imports only `internal/clierr` and standard library packages that open no socket, read no file and run no process, which a test in `test/conformance` asserts. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
 | `internal/engine/nodes` | `node drain` and `node stop-drain`: the management node of a node found by its label and by `status.nodeName`, its state read through Steve and checked with the rules of `internal/engine/kinds` (`NodeDrainRule`), the pods kubectl drain would evict or refuse listed as the caller through the optional `engine.FieldSelectorLister`, the planned update of the management node's `spec.desiredNodeUnschedulable` and `spec.nodeDrainInput` through `engine.PlanUpdateObserved`, and the wait on `engine.WaitObject` that ends with how Rancher's drain ended. |
 | `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (create the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
@@ -153,6 +161,7 @@ graph TD
     steve["internal/engine/steve"]
     provisioning["internal/engine/provisioning"]
     provisioningcomplete["internal/engine/provisioning/complete"]
+    provisioningclusterops["internal/engine/provisioning/clusterops"]
     nodes["internal/engine/nodes"]
     extres["internal/engine/extres"]
     oidcclient["internal/engine/oidcclient"]
@@ -342,10 +351,12 @@ graph TD
     provisioning --> clierr
     provisioning --> config
     provisioning --> provisioningcomplete
+    provisioning --> provisioningclusterops
     provisioning --> completion
 
     provisioningcomplete --> kinds
     provisioningcomplete --> completion
+    provisioningcomplete --> provisioningclusterops
 
     nodes --> engine
     nodes --> kinds
@@ -356,6 +367,8 @@ graph TD
     nodes --> safety
     nodes --> clierr
     nodes --> completion
+
+    provisioningclusterops --> clierr
 
     extres --> engine
     extres --> kinds
@@ -1271,7 +1284,7 @@ rejected at `BuildRoot`.
 
 Verb reservation. get/create/patch/delete are reserved for kind-table resources - a GVR, a name, stored server state, and the full contract those verbs imply (list/named duality, --wait on get and delete, -o name, generated siblings, schema kind vocabulary). Computed or derived views get dedicated verbs (inspect, top, usage, images). This mirrors kubectl's own get vs top/describe split and is deliberate: a hypothetical get usage could not be named, waited on, or deleted without breaking get's own contract. New surface work follows this rule.
 
-**`get` of the kinds that set `SteveReadOnForbidden` reads through the Steve API when the Kubernetes API responds with 403, and shows what it reads in the Kubernetes shape.** Rancher gives a member or owner permission to get some objects by name but not to list them (a cluster, a project, a provisioning cluster and the objects that belong to it, such as its etcd snapshots), and the Steve API lists what the caller has permission to get. When such a caller lists them, the Kubernetes API responds with 403. The generated `get` of the `cluster`, `project`, `provisioning-cluster` and `etcd-snapshot` kinds reads the Kubernetes API first and, only when it responds with 403, reads the same list or object through the Steve API as the caller; Steve returns what the caller has permission to get. Any other error is returned unchanged. When Steve responds with 403 or 404, the command returns the Kubernetes API's error; the one exception is `--wait`, where a Steve 404 means the object is gone and ends the wait. The fields Steve adds to an object are removed, so `-o json` and `-o yaml` show a member the same shape an administrator sees. Name completion of the `provisioning-cluster` and `etcd-snapshot` kinds lists the objects through the Steve API for every caller, in one request. Only the kind-table rows that set `SteveReadOnForbidden` read this way, and a test asserts which rows set it.
+**`get` of the kinds that set `SteveReadOnForbidden` reads through the Steve API when the Kubernetes API responds with 403, and shows what it reads in the Kubernetes shape.** Rancher gives a member or owner permission to get some objects by name but not to list them (a cluster, a project, a provisioning cluster and the objects that belong to it, such as its etcd snapshots), and the Steve API lists what the caller has permission to get. When such a caller lists them, the Kubernetes API responds with 403. The generated `get` of the `cluster`, `project`, `provisioning-cluster` and `etcd-snapshot` kinds reads the Kubernetes API first and, only when it responds with 403, reads the same list or object through the Steve API as the caller; Steve returns what the caller has permission to get. Any other error is returned unchanged. When Steve responds with 403 or 404, the command returns the Kubernetes API's error; the one exception is `--wait`, where a Steve 404 means the object is gone and ends the wait. The fields Steve adds to an object are removed, so `-o json` and `-o yaml` show a member the same shape an administrator sees. Name completion of the `provisioning-cluster` and `etcd-snapshot` kinds lists the objects through the Steve API for every caller, in one request. Only the kind-table rows that set `SteveReadOnForbidden` read this way, and a test asserts which rows set it. `cluster upgrade` lists the etcd snapshots for its preview with the same fallback (`resources.EtcdSnapshotsAfterForbidden`): the Kubernetes API first, the Steve API only when it responds with 403, any other error unchanged. `cluster upgrade` of an imported cluster is the one command that reads through Steve with no Kubernetes read first (`resources.ManagementClusterThroughSteve`): it reads the management Cluster through Steve because a Cluster Owner can read it by name only there, converts it to the Kubernetes shape and sends that object, with its `resourceVersion`, as the update; a test asserts that no other file calls the function.
 
 **Rancher's Helm catalog is read with `get`, and changed only through Rancher's install, upgrade and uninstall actions.** The clusterrepo, app and operation rows (`catalog.cattle.io`) are read with `get` on every cluster through `--cluster`, the local cluster included, and use the Kubernetes names. Patch, delete and create from a manifest are refused, and each refusal and its reason sit in the kind table (`NoPatchReason`, `NoDeleteReason`, `NoCreateViaManifest`) next to the row, not in bespoke code. Rancher creates and updates app and operation objects itself, and deleting an app object leaves the release installed. A Helm release is installed with `rancher app install`, changed with `rancher app upgrade` and removed with `rancher app uninstall`, which POST the install and upgrade actions of a ClusterRepo and the uninstall action of an App through `engine.ActionClient`; Rancher fetches the chart, runs Helm in its own pod and records the release as an App. The CLI renders no chart, stores no release and runs no `helm`. App values, chart default values and install notes are hidden from every output by default (`RedactPaths`), and the operation row hides `status.token`. The columns follow the table the Rancher server returns. Charts are not a stored object and have their own read command, `rancher charts`, not a row.
 
@@ -1651,6 +1664,8 @@ Rancher has accepted the request, an error from the wait (a timeout, a cancel,
 the node removed, or a drain Rancher reports as failed) is not retryable: the
 request is already in place. The error says what was requested and gives the
 command that reads the management node, as `delete --wait` does.
+
+**`cluster upgrade` applies the Rancher UI's version rules, and on a provisioned cluster refuses while Rancher runs another operation.** No Rancher server component refuses a lower Kubernetes version or a change of distribution; the Rancher UI offers only releases of the cluster's own distribution that are not lower than the current one. The command applies the same rules before its server-side dry-run. For an imported cluster it also applies the rule that Rancher's Norman API enforces on an update and the Kubernetes API does not: until the cluster has reported its version, the command refuses with a retryable error. The rules are pure functions in `internal/engine/provisioning/clusterops`, which the command and its completion both call, and completion offers only versions the command accepts. The same package works out, from the cluster's objects, whether Rancher is running an etcd snapshot, an etcd snapshot restore, a certificate rotation or an encryption key rotation on a provisioned cluster, with Rancher's own rules for when each starts and ends; while one runs, the command refuses with a retryable error. The upgrade's Effect is not reversible: to return to an earlier version, restore an etcd snapshot of type Kubernetes version and etcd, which sets the Kubernetes version recorded in the snapshot and restores etcd to its state when the snapshot was taken (for an imported cluster, on Rancher v2.16 and later). The preview names the newest successful etcd snapshot; the command lists the snapshots through the Kubernetes API and, only when that responds with 403, through the Steve API.
 
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or

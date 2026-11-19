@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
+	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/testtransport"
 )
@@ -17,8 +19,11 @@ import (
 // operator's real one. A test that leaves a new file in the package
 // directory fails the package, and so does one that sends a request through
 // http.DefaultTransport: closing any httptest server closes that transport's
-// idle connections, so a test uses its server's own client.
+// idle connections; a test uses its server's own client instead. It also
+// shortens the interval of the cluster commands' waits once, before any test
+// runs; the wait tests then run in parallel.
 func TestMain(m *testing.M) {
+	provisioning.SetClusterWaitIntervalForTest(time.Millisecond)
 	cmdtest.UnsetResolutionEnv()
 	cleanup := cmdtest.IsolateConfigDir()
 	since := cmdtest.NewFiles()

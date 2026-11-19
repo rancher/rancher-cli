@@ -174,7 +174,7 @@ func TestFetchVersionsDefaultMarking(t *testing.T) {
 			if tc.setting != "" {
 				objs[rke2DefaultVersionSetting] = settingObj(rke2DefaultVersionSetting, tc.setting)
 			}
-			rows, _, warnings, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), fakeFactory{c: settingsClient(objs)})
+			rows, _, warnings, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), fakeFactory{c: settingsClient(objs)})
 			require.NoError(t, err)
 
 			var gotDefaults []string
@@ -320,7 +320,7 @@ func TestFetchVersionsDegradesEachDistroIndependently(t *testing.T) {
 			defer srv.Close()
 
 			factory := fakeFactory{c: settingsClient(nil)}
-			rows, _, warnings, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
+			rows, _, warnings, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 			require.NoError(t, err, "a 404 on either (or both) distro's route must never surface as an error")
 
 			var gotDistros []string
@@ -381,7 +381,7 @@ func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministica
 	client := settingsClient(nil)
 	factory := fakeFactory{c: client}
 
-	_, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
+	_, _, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "context canceled", "a sibling's hard failure must never cancel this distro's in-flight request")
 
@@ -413,7 +413,7 @@ func TestFetchVersionsDetailedClientResolutionErrorPrecedesReleaseFetchFailure(t
 	clusterErr := clierr.New(clierr.CodeGeneric, "cluster resolution failed")
 	factory := fakeFactory{clusterErr: clusterErr}
 
-	_, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
+	_, _, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.ErrorIs(t, err, clusterErr, "a clients.Cluster() failure must precede a simultaneous release-fetch failure")
 }
 
@@ -494,7 +494,7 @@ func TestFetchVersionsNewestMarkedWhenSettingsPresent(t *testing.T) {
 	})
 	factory := fakeFactory{c: client}
 
-	rows, _, warnings, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
+	rows, _, warnings, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 4)
 
@@ -531,7 +531,7 @@ func TestFetchVersionsNewestMarkedWhenSettingsAbsent(t *testing.T) {
 
 	factory := fakeFactory{c: settingsClient(nil)}
 
-	rows, _, warnings, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
+	rows, _, warnings, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 4)
 
@@ -576,7 +576,7 @@ func TestFetchVersionsNewestPicksSemverMaxNotLexicographic(t *testing.T) {
 
 	factory := fakeFactory{c: settingsClient(nil)}
 
-	rows, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
+	rows, _, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 
@@ -602,7 +602,7 @@ func TestFetchVersionsNewestReleaseNumberTieBreaker(t *testing.T) {
 
 	factory := fakeFactory{c: settingsClient(nil)}
 
-	rows, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
+	rows, _, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 
@@ -628,7 +628,7 @@ func TestFetchVersionsNewestNotMarkedWhenAllVersionsUnparseable(t *testing.T) {
 
 	factory := fakeFactory{c: settingsClient(nil)}
 
-	rows, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
+	rows, _, _, _, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), factory)
 	require.NoError(t, err)
 	require.Len(t, rows, 2, "rows still returned even when versions are unparseable")
 

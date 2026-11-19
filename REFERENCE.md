@@ -12,6 +12,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Project scope (--project)](#project-scope---project)
 - [Kinds & verbs](#kinds--verbs)
 - [Cluster provisioning](#cluster-provisioning)
+- [Upgrading a cluster's Kubernetes version](#upgrading-a-clusters-kubernetes-version)
 - [Installing, upgrading and uninstalling apps](#installing-upgrading-and-uninstalling-apps)
 - [Draining a node](#draining-a-node)
 - [Composite commands](#composite-commands)
@@ -1474,6 +1475,125 @@ Rancher creates the management cluster, its default and system projects, and the
 registration token `default-token` with its node and import commands. For a
 cluster created without the `field.cattle.io/no-creator-rbac` annotation it
 also creates the creator's owner binding on the cluster.
+
+## Upgrading a cluster's Kubernetes version
+
+`rancher cluster upgrade <cluster> --k8s-version <version>` sets the Kubernetes
+version of an RKE2 or K3s cluster that Rancher provisions (the version of its
+provisioning cluster, `spec.kubernetesVersion`) or that is imported into
+Rancher (`spec.rke2Config` or `spec.k3sConfig` of its management cluster), and
+waits until Rancher reports the upgrade done. Rancher runs the upgrade with its
+own controllers; the command sends one update. It previews with a server-side
+dry-run, and `--apply --yes` writes it. The local cluster, hosted clusters (EKS,
+AKS, GKE and Alibaba) and clusters that are not RKE2 or K3s are refused.
+
+### Version rules
+
+No Rancher server component refuses a lower version or another distribution.
+The Rancher UI offers only some versions, and the command applies the same
+rules before its dry-run. The differences from the UI are listed.
+
+- The version is a release of the cluster's own distribution that the server
+  offers for an upgrade: it is listed (`rancher get kubernetes-versions`) and
+  has `serverArgs`, a field that command does not show. A server that has no
+  release list for the distribution gives `CAPABILITY_UNSUPPORTED`: the command
+  cannot check the version.
+- A version of the other distribution is refused: Rancher does not change the
+  distribution of a cluster.
+- A version lower than the current one is refused. The UI lists older versions
+  disabled. The release number compares as a number (`rke2r10` is above
+  `rke2r9`); the UI compares it as text.
+- An imported cluster is also refused a version that Rancher would not upgrade
+  to because it compares the versions as text, where, for example, `rke2r10`
+  is lower than `rke2r9`.
+- When the version you give equals the current version, the command is refused
+  if the upgrade is finished, and waits for the upgrade if it is not (see Waits).
+- A version that is not MAJOR.MINOR.PATCH (a pre-release included) is refused,
+  and so is a cluster whose current version is not: this CLI cannot compare such
+  a version.
+- A provisioned cluster that uses the in-tree azure cloud provider is refused
+  Kubernetes 1.30 and newer, as the UI refuses it.
+- A version that skips a minor, one that is not the newest patch of its minor
+  and one newer than the default version are accepted with a warning.
+- The current version of an imported cluster is the version it runs
+  (`status.version.gitVersion`), else the version of its config. A cluster whose
+  config version is lower than the version it runs is shown by the UI as
+  manually upgraded; the command compares with the running version and warns.
+
+### Imported clusters and version management
+
+Rancher manages the version of an imported RKE2 or K3s cluster only while
+version management is on: the annotation
+`rancher.io/imported-cluster-version-management` of its management cluster is
+`true`, or it is `system-default`, empty or absent and the setting
+`imported-cluster-version-management` is `true`. The command refuses a cluster
+with version management off, with another annotation value, with an unreadable
+setting, or that Rancher paused for an etcd snapshot restore. When the
+annotation is absent or empty, the update also sets it to `system-default`,
+because Rancher's admission webhook denies an update without it. For a cluster
+that has not reported its version or its distribution yet, the command fails
+with a retryable error: try again later.
+
+### Preview
+
+The preview says how Rancher runs the upgrade (the order of the nodes and how
+many at a time), whether drain is on, how many nodes run the current version,
+and how to return to an earlier version. The upgrade cannot be reversed with
+this command. To return to an earlier version, restore an etcd snapshot of type
+Kubernetes version and etcd: it sets the Kubernetes version recorded in the
+snapshot and restores etcd to its state when the snapshot was taken; changes
+made after the snapshot are lost. On an imported cluster this works on Rancher
+v2.16 and later. The preview names the newest successful etcd snapshot of the
+cluster, or says that none is recorded or that the list could not be read. The
+dry-run preview marks the upgrade as not reversible (`data.reversible` is false).
+
+### Refusals while another operation runs
+
+On a provisioned cluster, while an etcd snapshot, an etcd snapshot restore, a
+certificate rotation or an encryption key rotation is in progress, the command
+refuses with a retryable `GENERIC` error that names the operation and, when
+Rancher reports one, its state; try again after the operation ends. While an
+upgrade is in progress the command does not refuse: the preview warns that the
+new version replaces the version it upgrades to. If the RKEControlPlane cannot
+be read, the command warns and does not refuse.
+
+### Waits
+
+`rancher get provisioning-cluster --wait` returns when the cluster's `Ready`
+condition is `True`, which can be before or during an upgrade; `rancher cluster
+upgrade` waits until Rancher reports the upgrade done, and running it again with
+the same version waits again. A provisioned cluster is done when Rancher has
+seen the update (`status.observedGeneration`), its `Updated` condition is `True`
+and every node reports the version the command set; an imported cluster when
+its `Upgraded` condition is `True` and it runs that version or newer.
+`--timeout` defaults to 30m; `--wait=false` returns once the server accepts the
+update, and the two together are refused.
+
+- Output: `cluster/<name> upgraded to <version>` with `data.waited` true, and
+  for a provisioned cluster `data.nodes`; with `--wait=false` `cluster/<name>
+  upgrade requested` and `data.waited` false.
+- A timeout, a cancel and a cluster deleted during the wait end with a
+  `GENERIC` error that is not retryable and carries `committed` details: the
+  upgrade was requested and goes on. The timeout error names the last state.
+  To wait again, run the same command again with the same version: it changes
+  nothing and waits.
+- If your access to the cluster ends after the update, the command exits 0
+  with a warning, `data.waited` false.
+- If the nodes of a provisioned cluster cannot be listed, the preview warns and
+  the wait ends when `Updated` is `True` and Rancher has seen the update,
+  without checking the nodes.
+
+### Access and completion
+
+The Cluster Owner role grants `update` on the cluster. Completion offers the
+clusters the command accepts and, after the cluster, the versions it accepts
+except the version the cluster runs. It offers nothing to a Cluster Owner with
+no other role, who types the name. An imported cluster that is not on the first
+page of the list the Steve API returns is not offered; type its name.
+
+For an imported cluster with an upgrade pending, the command accepts the version
+the cluster runs: it sets the version in the cluster's config back to that
+version, and the pending upgrade does not run.
 
 ## Installing, upgrading and uninstalling apps
 

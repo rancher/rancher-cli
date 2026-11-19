@@ -83,6 +83,10 @@ const (
 	// AllowanceThree is three requests: three plain reads, collections
 	// listed or objects read.
 	AllowanceThree
+	// AllowanceFour is four requests: four plain reads, collections listed or
+	// objects read. Only the sources of an allowlist in internal/cli may claim
+	// it.
+	AllowanceFour
 )
 
 // DiscoveryGroupLimit bounds the group documents a source reads on a

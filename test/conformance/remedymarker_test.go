@@ -1111,6 +1111,7 @@ var remedyExceptions = []remedyException{
 	{"internal/engine/provisioning/autoscaling.go", remedyCheckWord, "cluster set-autoscaling", false, "the name of the running autoscaling command, passed as the verb parameter of planClusterFamilyMutation", "cluster set-autoscaling"},
 	{"internal/engine/provisioning/autoscaling.go", remedyCheckWord, "cluster clear-autoscaling", false, "the name of the running autoscaling command, passed as the verb parameter of planClusterFamilyMutation", "cluster clear-autoscaling"},
 	{"internal/engine/extres/kubeconfigrefusal.go", remedyCheckWord, "create kubeconfig", false, "the Feature of the capability details: the command the server cannot serve, named as data; nothing to run", "create kubeconfig"},
+	{"internal/engine/provisioning/upgrade.go", remedyCheckWord, "cluster upgrade", false, "the Feature of the capability details: a command name used as the feature name of a CAPABILITY_UNSUPPORTED detail, not a remedy; nothing to run", "cluster upgrade"},
 	{"internal/token/regenerate.go", remedyCheckWord, "config use-server", false, "the words of a command, passed to the constructor the caller names, which opens the command with the word rancher", "config use-server"},
 }
 

@@ -152,6 +152,18 @@ func ClusterRepoIndexPath(clusterID, repo string) (Path, error) {
 	return p.WithQuery("link", "index"), nil
 }
 
+// ReleaseListPath is the list of the releases of one distribution that the
+// channel server of the Rancher server returns: /v1-rke2-release/release or
+// /v1-k3s-release/release. The route needs no credential; a source that reads
+// it declares the credential its other reads need. Any other distribution is
+// ErrInvalidSegment.
+func ReleaseListPath(distro string) (Path, error) {
+	if distro != "rke2" && distro != "k3s" {
+		return Path{}, ErrInvalidSegment
+	}
+	return build([]string{"v1-" + distro + "-release", "release"})
+}
+
 // WithQuery returns p with key=value appended to its query, both
 // URL-encoded, so a value can never reach the path. A zero Path stays
 // zero.

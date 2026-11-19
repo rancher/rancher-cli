@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 250,
+  "commandCount": 251,
   "effectSchema": {
     "actions": [
       "create",
@@ -336,9 +336,13 @@
           "name": "cluster resume-autoscaling",
           "prime": true,
           "usage": "Resume the cluster autoscaler cluster-wide"
+        },
+        {
+          "name": "cluster upgrade",
+          "usage": "Upgrade the Kubernetes version of an RKE2 or K3s cluster"
         }
       ],
-      "desc": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
+      "desc": "Scale a machine pool, manage cluster-autoscaler settings or upgrade the Kubernetes version of a cluster; to create or delete one use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
       "name": "cluster"
     },
     {

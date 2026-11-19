@@ -16,6 +16,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/provisioning/clusterops"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -73,6 +74,9 @@ type Version struct {
 	// nil = range setting absent or
 	// unparseable - unknown, not false.
 	Supported *bool `json:"supported,omitempty"`
+	// HasServerArgs is true when the release row carries serverArgs, the rows
+	// the Rancher UI offers; it is not part of the output.
+	HasServerArgs bool `json:"-"`
 }
 
 // normalizeVersion strips the leading "v" and everything from "+" off a raw
@@ -85,67 +89,6 @@ func normalizeVersion(raw string) string {
 		v = v[:i]
 	}
 	return v
-}
-
-// parseVersionKey extracts the comparable parts of a raw channel-server
-// version string (e.g. "v1.34.1+rke2r1" or "v1.30.5+k3s1") into
-// (major, minor, patch, releaseNum). ok is false when the semver core cannot
-// be parsed as MAJOR.MINOR.PATCH. The release number is the trailing decimal
-// integer in the build-metadata suffix ("rke2r1" → 1, "k3s1" → 1,
-// "rke2r2" → 2); it is 0 when no such suffix exists.
-func parseVersionKey(raw string) (major, minor, patch, releaseNum int, ok bool) {
-	v := strings.TrimPrefix(raw, "v")
-	semCore := v
-	rel := 0
-	if before, after, ok := strings.Cut(v, "+"); ok {
-		semCore = before
-		suffix := after
-		j := len(suffix)
-		for j > 0 && suffix[j-1] >= '0' && suffix[j-1] <= '9' {
-			j--
-		}
-		if j < len(suffix) {
-			rel, _ = strconv.Atoi(suffix[j:])
-		}
-	}
-	parts := strings.SplitN(semCore, ".", 3)
-	if len(parts) != 3 {
-		return 0, 0, 0, 0, false
-	}
-	maj, errMaj := strconv.Atoi(parts[0])
-	mnr, errMin := strconv.Atoi(parts[1])
-	pat, errPat := strconv.Atoi(parts[2])
-	if errMaj != nil || errMin != nil || errPat != nil {
-		return 0, 0, 0, 0, false
-	}
-	return maj, mnr, pat, rel, true
-}
-
-// compareVersionStrings returns -1, 0, or 1 comparing two raw version strings
-// by semver core (MAJOR.MINOR.PATCH) then by release number (the trailing rN
-// integer in the build-metadata suffix). An unparseable string sorts below any
-// parseable one.
-func compareVersionStrings(a, b string) int {
-	aMaj, aMin, aPat, aRel, aOk := parseVersionKey(a)
-	bMaj, bMin, bPat, bRel, bOk := parseVersionKey(b)
-	switch {
-	case !aOk && !bOk:
-		return 0
-	case !aOk:
-		return -1
-	case !bOk:
-		return 1
-	}
-	if c := compareTriple(aMaj, aMin, aPat, bMaj, bMin, bPat, false); c != 0 {
-		return c
-	}
-	if aRel < bRel {
-		return -1
-	}
-	if aRel > bRel {
-		return 1
-	}
-	return 0
 }
 
 // rangeClause is one comparator+operand pair from a parsed
@@ -194,36 +137,8 @@ func parseSupportedRange(raw string) (clauses []rangeClause, ok bool) {
 	return clauses, true
 }
 
-// compareTriple compares (aMajor,aMinor,aPatch) to (bMajor,bMinor,bPatch),
-// returning -1/0/1. When wildcard is set the patch position is dropped from
-// the comparison entirely - that is what a ".x" operand means.
-func compareTriple(aMajor, aMinor, aPatch, bMajor, bMinor, bPatch int, wildcard bool) int {
-	if aMajor != bMajor {
-		if aMajor < bMajor {
-			return -1
-		}
-		return 1
-	}
-	if aMinor != bMinor {
-		if aMinor < bMinor {
-			return -1
-		}
-		return 1
-	}
-	if wildcard {
-		return 0
-	}
-	if aPatch != bPatch {
-		if aPatch < bPatch {
-			return -1
-		}
-		return 1
-	}
-	return 0
-}
-
 func clauseHolds(c rangeClause, major, minor, patch int) bool {
-	cmp := compareTriple(major, minor, patch, c.major, c.minor, c.patch, c.wildcard)
+	cmp := clusterops.CompareTriple(major, minor, patch, c.major, c.minor, c.patch, c.wildcard)
 	switch c.op {
 	case ">=":
 		return cmp >= 0
@@ -274,32 +189,26 @@ func versionSupported(rangeRaw, rawVersion string) *bool {
 }
 
 // fetchReleaseVersions GETs path against root and decodes its channel-server
-// release envelope ({"data":[{"version": "..."}, ...]}, channelserver
-// model/config.go:22-30 - the collection key is "data", matched against the
-// fixture testrancher serves; a test against a real server would correct
-// this if the shape differs). A malformed body is a typed CodeGeneric
+// release envelope ({"data":[{"version": "...", "serverArgs": {...}}, ...]},
+// channelserver model/config.go:22-30 - the collection key is "data", matched
+// against the fixture testrancher serves; a test against a real server would
+// correct this if the shape differs). A malformed body is a typed CodeGeneric
 // error saying it cannot read the response from path, mirroring
 // decodeCRTCollection's contract exactly - never a panic, never an empty
 // slice standing in for the failure silently. Any error root.GetJSON itself
 // returns (including a 404) is returned as-is, already clierr-mapped.
-func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path string) ([]string, error) {
+func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path string) ([]clusterops.Release, error) {
 	body, err := root.GetJSON(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 	var env struct {
-		Data []struct {
-			Version string `json:"version"`
-		} `json:"data"`
+		Data []clusterops.Release `json:"data"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("cannot read the response from %s: %v", path, err))
 	}
-	versions := make([]string, 0, len(env.Data))
-	for _, d := range env.Data {
-		versions = append(versions, d.Version)
-	}
-	return versions, nil
+	return env.Data, nil
 }
 
 // getSettingValue reads the named management.cattle.io/v3 Setting and
@@ -324,7 +233,8 @@ func getSettingValue(ctx context.Context, client engine.ClusterClient, name stri
 // each distro's outcome lives in one place instead of being reconstructed by
 // tracking a positional index across separate slices.
 type distroResult struct {
-	versions       []string
+	releases       []clusterops.Release
+	notFound       bool
 	warning        string
 	err            error
 	defaultVersion string
@@ -339,11 +249,11 @@ func newestVersionIndex(vs []string) int {
 	}
 	best := 0
 	for i := 1; i < len(vs); i++ {
-		if compareVersionStrings(vs[i], vs[best]) > 0 {
+		if clusterops.CompareVersions(vs[i], vs[best]) > 0 {
 			best = i
 		}
 	}
-	if _, _, _, _, ok := parseVersionKey(vs[best]); !ok {
+	if _, _, _, _, ok := clusterops.ParseVersionKey(vs[best]); !ok {
 		return -1
 	}
 	return best
@@ -355,17 +265,17 @@ func newestVersionIndex(vs []string) int {
 // discards the latter two so its signature stays exactly what its
 // callers consume; NewGetKubernetesVersions's Execute uses this directly to
 // surface both on the command Result.
-func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, clients engine.ClusterClientFactory) ([]Version, string, []string, error) {
+func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, clients engine.ClusterClientFactory) ([]Version, string, []string, []string, error) {
 	root, err := roots.Root()
 	if err != nil {
-		return nil, "", nil, err
+		return nil, "", nil, nil, err
 	}
 	// Resolved before the fan-out below, deliberately: a client-resolution
 	// failure is shown over a simultaneous release-fetch failure because it
 	// is the more fundamental root cause.
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
-		return nil, "", nil, err
+		return nil, "", nil, nil, err
 	}
 
 	// Each distro's release list request and default-version setting read, plus
@@ -394,13 +304,14 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 			vs, err := fetchReleaseVersions(ctx, root, d.releasePath)
 			if err != nil {
 				if clierr.IsNotFound(err) {
+					results[i].notFound = true
 					results[i].warning = d.releasePath + " was not found on the server (it may be an older Rancher version); " + d.distro + " versions are left out"
 					return nil
 				}
 				results[i].err = err
 				return nil
 			}
-			results[i].versions = vs
+			results[i].releases = vs
 			return nil
 		})
 		g.Go(func() error {
@@ -430,33 +341,41 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 				err = fmt.Errorf("%w (fetching the %s releases also failed: %v)", err, distroSpecs[j].distro, results[j].err)
 			}
 		}
-		return nil, "", nil, err
+		return nil, "", nil, nil, err
 	}
 
-	var warnings []string
-	for _, r := range results {
+	var warnings, notFound []string
+	for i, r := range results {
 		if r.warning != "" {
 			warnings = append(warnings, r.warning)
+		}
+		if r.notFound {
+			notFound = append(notFound, distroSpecs[i].distro)
 		}
 	}
 
 	total := 0
 	for _, r := range results {
-		total += len(r.versions)
+		total += len(r.releases)
 	}
 	rows := make([]Version, 0, total)
 	for i, d := range distroSpecs {
-		vs := results[i].versions
+		releases := results[i].releases
+		vs := make([]string, 0, len(releases))
+		for _, r := range releases {
+			vs = append(vs, r.Version)
+		}
 		if len(vs) > 0 && results[i].defaultVersion == "" {
 			warnings = append(warnings, fmt.Sprintf("the %s setting is empty or missing on the server, or could not be read; no version is marked as the default", d.defaultSetting))
 		}
 		start := len(rows)
 		defaultVersion := results[i].defaultVersion
 		defaultMarked := false
-		for _, v := range vs {
+		for _, r := range releases {
+			v := r.Version
 			isDefault := defaultVersion != "" && sameRelease(v, defaultVersion)
 			defaultMarked = defaultMarked || isDefault
-			rows = append(rows, Version{Distro: d.distro, Version: v, Default: isDefault, Supported: versionSupported(rangeRaw, v)})
+			rows = append(rows, Version{Distro: d.distro, Version: v, Default: isDefault, Supported: versionSupported(rangeRaw, v), HasServerArgs: r.HasServerArgs()})
 		}
 		if len(vs) > 0 && defaultVersion != "" && !defaultMarked {
 			warnings = append(warnings, fmt.Sprintf("%s is %q on the server, which is not one of the releases the server lists; no version is marked as the default", d.defaultSetting, defaultVersion))
@@ -465,7 +384,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 			rows[start+idx].Newest = true
 		}
 	}
-	return rows, rangeRaw, warnings, nil
+	return rows, rangeRaw, warnings, notFound, nil
 }
 
 // sameRelease reports whether a and b name the same release: equal once a
@@ -487,7 +406,7 @@ func sameRelease(a, b string) bool {
 // signature carries no warnings channel (callers consume exactly this
 // shape).
 func FetchVersions(ctx context.Context, roots engine.RootClientFactory, clients engine.ClusterClientFactory) ([]Version, error) {
-	rows, _, _, err := fetchVersionsDetailed(ctx, roots, clients)
+	rows, _, _, _, err := fetchVersionsDetailed(ctx, roots, clients)
 	return rows, err
 }
 
@@ -557,7 +476,7 @@ func (c *getKubernetesVersionsCmd) Describe() runtime.Descriptor {
 }
 
 func (c *getKubernetesVersionsCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	rows, rangeRaw, warnings, err := fetchVersionsDetailed(ctx, c.roots, c.clients)
+	rows, rangeRaw, warnings, _, err := fetchVersionsDetailed(ctx, c.roots, c.clients)
 	if err != nil {
 		return runtime.Result{}, err
 	}

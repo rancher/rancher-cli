@@ -36,6 +36,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"cluster resume-autoscaling":        runtime.ShapeText,
 	"cluster scale":                     runtime.ShapeText,
 	"cluster set-autoscaling":           runtime.ShapeText,
+	"cluster upgrade":                   runtime.ShapeText,
 	"completion":                        runtime.ShapeBytes,
 	"config add-server":                 runtime.ShapeText,
 	"config delete-server":              runtime.ShapeText,

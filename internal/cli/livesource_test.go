@@ -39,7 +39,10 @@ func TestAllowanceLimit(t *testing.T) {
 	n, ok = allowanceLimit(completion.AllowanceThree)
 	require.True(t, ok)
 	assert.Equal(t, 3, n)
-	for _, a := range []completion.Allowance{0, -1, completion.AllowanceThree + 1, 100} {
+	n, ok = allowanceLimit(completion.AllowanceFour)
+	require.True(t, ok)
+	assert.Equal(t, 4, n)
+	for _, a := range []completion.Allowance{0, -1, completion.AllowanceFour + 1, 100} {
 		_, ok := allowanceLimit(a)
 		assert.False(t, ok, "allowance %d", a)
 	}
@@ -180,7 +183,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{
 		"access projects", "grant", "revoke", "charts", "app install", "app upgrade",
-		"create cluster", "create user", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
+		"create cluster", "create user", "cluster scale", "cluster upgrade", "cluster set-autoscaling", "cluster clear-autoscaling",
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",
 		"logs", "inspect project", "inspect cluster",

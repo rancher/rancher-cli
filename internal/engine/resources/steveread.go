@@ -9,6 +9,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -199,4 +200,55 @@ func (w *steveWatchWaitClient) ListObject(ctx context.Context, gvr schema.GroupV
 
 func (w *steveWatchWaitClient) WatchObject(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, timeout time.Duration) (<-chan engine.ObjectEvent, error) {
 	return w.watcher.WatchObject(ctx, gvr, ns, name, resourceVersion, timeout)
+}
+
+// ManagementClusterThroughSteve reads the management Cluster id through Steve
+// and returns it in the shape the Kubernetes API returns it, ready to be
+// updated: a caller whose role lets it read the cluster only through Steve
+// (Cluster Owner) gets the same object a Kubernetes read gives other callers.
+// The errors are those of steve.GetClusterObject.
+func ManagementClusterThroughSteve(ctx context.Context, roots engine.RootClientFactory, id string) (*unstructured.Unstructured, error) {
+	obj, err := steve.GetClusterObject(ctx, steve.RootFactoryGetter(roots), id)
+	if err != nil {
+		return nil, err
+	}
+	return &unstructured.Unstructured{Object: steve.KubernetesObject(obj.Object)}, nil
+}
+
+// EtcdSnapshotsAfterForbidden lists the etcd snapshots in namespace ns through
+// Steve, as the caller, after the Kubernetes List of them failed with k8sErr,
+// and returns them in the shape the Kubernetes API returns them: a caller whose
+// role lets it read an etcd snapshot only by name (Cluster Owner) lists the ones
+// it may read. It reads only when k8sErr is a 403 from the Kubernetes API. In
+// every other case, and when Steve responds with 403 or 404, the result is
+// k8sErr; any other error is that of steve.TypeObjects. Like steveList, it
+// reads only while the etcdsnapshot row sets SteveReadOnForbidden.
+func EtcdSnapshotsAfterForbidden(ctx context.Context, roots engine.RootClientFactory, ns string, k8sErr error) ([]unstructured.Unstructured, error) {
+	k, ok := kinds.ByKey("etcdsnapshot")
+	if !ok {
+		return nil, clierr.New(clierr.CodeGeneric, "internal error: the etcd-snapshot kind is missing; report this as a defect in rancher-cli")
+	}
+	return steveEtcdSnapshots(ctx, k, roots, ns, k8sErr)
+}
+
+// steveEtcdSnapshots is EtcdSnapshotsAfterForbidden for the row k.
+func steveEtcdSnapshots(ctx context.Context, k kinds.Kind, roots engine.RootClientFactory, ns string, k8sErr error) ([]unstructured.Unstructured, error) {
+	if !k.SteveReadOnForbidden {
+		return nil, k8sErr
+	}
+	if st, ok := clierr.HTTPStatus(k8sErr); !ok || st != http.StatusForbidden {
+		return nil, k8sErr
+	}
+	items, err := steve.TypeObjects(ctx, steve.RootFactoryGetter(roots), k.SteveType(), ns)
+	if err != nil {
+		if steveRefused(err) {
+			return nil, k8sErr
+		}
+		return nil, err
+	}
+	out := make([]unstructured.Unstructured, 0, len(items))
+	for _, item := range items {
+		out = append(out, unstructured.Unstructured{Object: steve.KubernetesObject(item.Object)})
+	}
+	return out, nil
 }

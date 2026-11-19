@@ -97,6 +97,7 @@ See also `create oidc-client` in [Create](#create), which creates the client its
 | `cluster clear-autoscaling <cluster> --pool <name>` | Turn off autoscaling for a machine pool; succeeds and changes nothing when the machine pool has no autoscaling - destructive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
 | `cluster pause-autoscaling <cluster>` | Pause the cluster autoscaler cluster-wide - destructive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
 | `cluster resume-autoscaling <cluster>` | Resume the cluster autoscaler cluster-wide - destructive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |
+| `cluster upgrade <cluster> --k8s-version <version>` | Upgrade the Kubernetes version of a provisioned or imported RKE2 or K3s cluster with the version checks of the Rancher UI, and wait until Rancher reports the upgrade done; the preview names the newest etcd snapshot, because the upgrade cannot be reversed with this command - destructive; dry-run/apply --yes |
 
 See also `create cluster` in [Create](#create) and `delete provisioning-cluster`
 for lifecycle; `get provisioning-cluster` for reads.
@@ -203,6 +204,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 68-kind table: `get <kind>` (68), `patch <kind>`
 (68), `delete <kind>` (39 - 38 deletable kinds, including the Rancher role binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-175 generated commands, 250 total together with the fixed commands above. The authoritative, always-current list is
+175 generated commands, 251 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

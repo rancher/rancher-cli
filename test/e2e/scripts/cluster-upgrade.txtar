@@ -1,0 +1,51 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed a provisioned cluster: spec.kubernetesVersion v1.30.5 and an empty
+# rkeConfig, as a custom cluster has. The harness runs no controllers: the
+# cluster has no status.clusterName, no RKEControlPlane and no downstream:
+# every preview warns that it cannot list the nodes and the etcd snapshots.
+# provisioningcluster is Sensitive: every write below needs --yes.
+exec rancher create resource -f upgrade-cluster.yaml --apply --yes
+
+# the preview: a server-side dry-run, not reversible, with the warning for the
+# nodes the harness cannot list.
+exec rancher cluster upgrade e2e-upgrade --k8s-version v1.30.6+rke2r1 --dry-run -o json
+jsonquery stdout data.reversible false
+jsonquery stdout data.previewSource serverDryRun
+jsonquery stdout 'warnings.#(%"cannot list the nodes of cluster e2e-upgrade *")#|#' 1
+
+# an apply without --yes is refused.
+! exec rancher cluster upgrade e2e-upgrade --k8s-version v1.30.6+rke2r1 --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+
+# the write returns once the server accepts it with --wait=false.
+exec rancher cluster upgrade e2e-upgrade --k8s-version v1.30.6+rke2r1 --apply --yes --wait=false
+stdout 'cluster/e2e-upgrade upgrade requested'
+exec rancher get provisioning-cluster e2e-upgrade -o json
+jsonquery stdout data.spec.kubernetesVersion v1.30.6+rke2r1
+
+# a lower version, another distribution, a version the server does not list and
+# --wait=false with --timeout are refused.
+! exec rancher cluster upgrade e2e-upgrade --k8s-version v1.30.5+rke2r1
+stderr 'error \(VALIDATION\):'
+stderr 'is lower than the current version'
+! exec rancher cluster upgrade e2e-upgrade --k8s-version v1.30.6+k3s1
+stderr 'error \(VALIDATION\):'
+stderr 'does not change the distribution'
+! exec rancher cluster upgrade e2e-upgrade --k8s-version v1.31.0+rke2r1
+stderr 'error \(VALIDATION\):'
+stderr 'is not an RKE2 release this server offers for an upgrade'
+! exec rancher cluster upgrade e2e-upgrade --k8s-version v1.30.6+rke2r1 --wait=false --timeout 5m
+stderr 'error \(VALIDATION\):'
+stderr 'conflicts with --timeout'
+
+-- upgrade-cluster.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-upgrade
+  namespace: fleet-default
+spec:
+  kubernetesVersion: v1.30.5+rke2r1
+  rkeConfig: {}
