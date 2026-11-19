@@ -681,8 +681,8 @@ func TestAppInstall500MessageShapes(t *testing.T) {
 // shows the status table's wording for its answer with the server's text,
 // and no part of a value of the request even when it crosses the 200-byte
 // cut of server text: a 403, a 409, a 503 (whose message names the status),
-// a 401 (AUTH, with the credential hint), and a Kubernetes Status whose
-// message over 200 bytes stays whole.
+// a 401 (AUTH, with the login command of the stored entry as the hint), and a
+// Kubernetes Status whose message over 200 bytes stays whole.
 func TestAppInstallRefusalHidesValuesBeforeTheCut(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	message := "refused " + strings.Repeat("a", 185) + appCanary + " tail"
@@ -698,7 +698,7 @@ func TestAppInstallRefusalHidesValuesBeforeTheCut(t *testing.T) {
 		"403": {status: http.StatusForbidden, code: "RBAC", contains: "refused " + strings.Repeat("a", 185) + "<hidden"},
 		"409": {status: http.StatusConflict, code: "CONFLICT", contains: "the server reported a conflict"},
 		"503": {status: http.StatusServiceUnavailable, code: "GENERIC", retryable: true, contains: "503"},
-		"401": {status: http.StatusUnauthorized, code: "AUTH", hint: clierr.AuthStatusRemedy},
+		"401": {status: http.StatusUnauthorized, code: "AUTH", hint: clierr.Rancher + " auth login 'acme' --token-stdin"},
 		"422 Kubernetes Status": {status: http.StatusUnprocessableEntity, code: "VALIDATION", kubeStatus: true,
 			contains: "admission webhook denied the request: " + strings.Repeat("b", 180) + " value <hidden> " + strings.Repeat("c", 60)},
 	}

@@ -208,6 +208,11 @@ type Effective struct {
 	// the wording of a command that takes --url and --cacert.
 	TLSRemedy tlstrust.Remedy
 	Token     string
+	// LoginRemedy is the command that gets a new token for the stored login
+	// Token was read from, which a refusal of Token names; the zero value when
+	// Token did not come from a stored entry (RANCHER_CLI_TOKEN, or no stored
+	// token), or when the entry has no such command.
+	LoginRemedy clierr.Command
 	// URLErr is the refusal of URL (credhelper.CheckServerURL), naming the
 	// variable or the server entry it came from; nil for a usable URL. The
 	// connection is resolved as usual beside it; Effective returns it as its
@@ -390,6 +395,9 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		switch {
 		case terr == nil:
 			eff.Token = tok
+			if login, ok := RefusedLoginHint(name, s); ok {
+				eff.LoginRemedy = login
+			}
 		case errors.Is(terr, ErrNoToken):
 			// No stored token: leave it empty; RESTConfig reports it with a
 			// login hint, and names an unfinished store change beside it.

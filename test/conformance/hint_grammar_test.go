@@ -747,24 +747,90 @@ var Table = map[string]string{"a": "b"}`, 0)
 	assert.NotContains(t, vars["github.com/rancher/rancher-cli/internal/config"], "Table", "a variable whose value is a composite literal is not read")
 }
 
-// TestHintFlattenerReadsTheRealAuthStatusRemedy asserts the production
-// tree's AuthStatusRemedy, which package clierr declares from its own
-// unqualified Rancher, flattens to exactly the command it prints, both
-// inside the package and from another one.
-func TestHintFlattenerReadsTheRealAuthStatusRemedy(t *testing.T) {
+// TestHintFlattenerReadsTheRealRefusedLoginHint asserts the production
+// tree's RefusedLoginHint, whose returns add a flag to the command
+// LoginHintFor opens, flattens to the command it prints in every form: the
+// pasted token's and the login through an auth config's, each one command
+// that passes the hint grammar. The base chains are read from every return of
+// LoginHintFor with ok true, and a return of RefusedLoginHint that is not
+// false and that the test did not flatten fails it.
+func TestHintFlattenerReadsTheRealRefusedLoginHint(t *testing.T) {
 	t.Parallel()
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
-	funcs := map[string][]*ast.FuncDecl{}
-	fl := &flattener{funcsByName: funcs, consts: packageConsts(tree.files, tree.paths)}
+	var refused, opener *ast.FuncDecl
+	var scope fileScope
+	for i, f := range tree.files {
+		if !strings.HasSuffix(filepath.ToSlash(tree.paths[i]), "internal/config/config.go") {
+			continue
+		}
+		for _, decl := range f.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Recv != nil {
+				continue
+			}
+			switch fd.Name.Name {
+			case "RefusedLoginHint":
+				refused, scope = fd, scopeOf(f, tree.paths[i])
+			case "LoginHintFor":
+				opener = fd
+			}
+		}
+	}
+	require.NotNil(t, refused, "internal/config declares RefusedLoginHint")
+	require.NotNil(t, opener, "internal/config declares LoginHintFor")
 
-	fl.scope = fileScope{pkg: clierrPath}
-	inside, err := parser.ParseExpr(`AuthStatusRemedy`)
-	require.NoError(t, err)
-	require.Equal(t, []string{"rancher auth status"}, fl.flatten(inside, nil, 0))
+	// A base is a command LoginHintFor returns with ok true.
+	var bases []ast.Expr
+	ast.Inspect(opener.Body, func(n ast.Node) bool {
+		ret, ok := n.(*ast.ReturnStmt)
+		if !ok || len(ret.Results) != 2 {
+			return true
+		}
+		if id, ok := ret.Results[1].(*ast.Ident); ok && id.Name == "true" {
+			bases = append(bases, ret.Results[0])
+		}
+		return true
+	})
+	require.NotEmpty(t, bases, "LoginHintFor returns a command with ok true")
 
-	fl.scope = fileScope{pkg: modulePrefix + "internal/token", imports: map[string]string{"clierr": clierrPath}}
-	outside, err := parser.ParseExpr(`clierr.AuthStatusRemedy`)
-	require.NoError(t, err)
-	require.Equal(t, []string{"rancher auth status"}, fl.flatten(outside, nil, 0))
+	fl := &flattener{funcsByName: map[string][]*ast.FuncDecl{}, consts: packageConsts(tree.files, tree.paths), scope: scope}
+	got := map[int][]string{}
+	ast.Inspect(refused.Body, func(n ast.Node) bool {
+		ret, ok := n.(*ast.ReturnStmt)
+		if !ok || len(ret.Results) != 2 {
+			return true
+		}
+		if id, ok := ret.Results[1].(*ast.Ident); ok && id.Name == "false" {
+			return true
+		}
+		call, ok := ret.Results[0].(*ast.CallExpr)
+		var sel *ast.SelectorExpr
+		if ok {
+			sel, ok = call.Fun.(*ast.SelectorExpr)
+		}
+		if ok {
+			id, isIdent := sel.X.(*ast.Ident)
+			ok = isIdent && id.Name == "login"
+		}
+		if !ok {
+			t.Errorf("%s: a return of RefusedLoginHint that is not false and not a call on login; the test does not read it", tree.fset.Position(ret.Pos()))
+			return true
+		}
+		for i, base := range bases {
+			chain := &ast.CallExpr{Fun: &ast.SelectorExpr{X: base, Sel: sel.Sel}, Args: call.Args}
+			got[i] = append(got[i], fl.flatten(chain, nil, 0)...)
+		}
+		return true
+	})
+	for i := range bases {
+		slices.Sort(got[i])
+		require.Equal(t, []string{
+			"rancher auth login " + unresolved + " --auth-provider " + unresolved,
+			"rancher auth login " + unresolved + " --token-stdin",
+		}, got[i], "base %d", i)
+		for _, text := range got[i] {
+			assert.Empty(t, hintGrammarViolation(text), text)
+		}
+	}
 }

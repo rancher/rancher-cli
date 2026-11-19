@@ -633,7 +633,7 @@ func bodylessServer(t *testing.T, status int) *httptest.Server {
 // dynamic client, the texts and hints of a bodyless 403 and 401: a get,
 // list or update of a management kind is named with the local proxy's
 // reason and the caller-scoped command kinds.ForbiddenCommand names, and a
-// 401 names the call with `rancher auth status`.
+// 401 names the call with the login command the client was built with.
 func TestDynamicClientBodylessRefusalsNameTheRequest(t *testing.T) {
 	t.Parallel()
 	clusters := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
@@ -669,12 +669,13 @@ func TestDynamicClientBodylessRefusalsNameTheRequest(t *testing.T) {
 	assert.Equal(t, clierr.Rancher+" access projects --cluster 'c-abc'", ce.Hint)
 
 	unauthorized := bodylessServer(t, http.StatusUnauthorized)
-	u, err := NewClusterClient(&rest.Config{Host: unauthorized.URL, BearerToken: "t", Transport: unauthorized.Client().Transport}, "local")
+	login := clierr.NewCommand("auth login").Arg("prod").Flag("--token-stdin")
+	u, err := NewClusterClient(&rest.Config{Host: unauthorized.URL, BearerToken: "t", Transport: unauthorized.Client().Transport}, "local", WithLogin(login))
 	require.NoError(t, err)
 	_, err = u.List(t.Context(), clusters, "", "")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
 	assert.Equal(t, "the server rejected the credential (401) for list clusters.management.cattle.io", ce.Message)
-	assert.Equal(t, clierr.AuthStatusRemedy, ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth login 'prod' --token-stdin", ce.Hint)
 }

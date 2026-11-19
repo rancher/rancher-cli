@@ -963,10 +963,11 @@ func TestRefusedActionHidesValuesBeforeTheCut(t *testing.T) {
 
 // TestRefusedActionKeepsTheTableWording asserts a refused action keeps the
 // status table's code, retry advice, hint and wording: a 401 is AUTH with
-// the credential hint, unchanged when values hold words of the hint, and a
-// 503 names its status.
+// the request's login command as the hint, unchanged when values hold words
+// of the hint, and a 503 names its status.
 func TestRefusedActionKeepsTheTableWording(t *testing.T) {
 	t.Parallel()
+	login := clierr.NewCommand("auth login").Arg("prod").Flag("--token-stdin")
 	for _, tc := range []struct {
 		status   int
 		code     string
@@ -974,13 +975,13 @@ func TestRefusedActionKeepsTheTableWording(t *testing.T) {
 		contains string
 		values   string
 	}{
-		{http.StatusUnauthorized, clierr.CodeAuth, clierr.AuthStatusRemedy, "", "password: " + canary + "\n"},
-		{http.StatusUnauthorized, clierr.CodeAuth, clierr.AuthStatusRemedy, "", "password: " + canary + "\na: rancher\nb: status\n"},
+		{http.StatusUnauthorized, clierr.CodeAuth, login.Field(), "", "password: " + canary + "\n"},
+		{http.StatusUnauthorized, clierr.CodeAuth, login.Field(), "", "password: " + canary + "\na: rancher\nb: login\nc: token-stdin\n"},
 		{http.StatusServiceUnavailable, clierr.CodeGeneric, "", "503", "password: " + canary + "\n"},
 	} {
 		body := `{"type":"error","message":"no ` + canary + `"}`
 		f := newAppFake(t)
-		request := &clierr.Request{Server: "rancher.test"}
+		request := &clierr.Request{Server: "rancher.test", Login: login}
 		f.postAnswer = func(string) ([]byte, error) {
 			return nil, &engine.ActionRefused{
 				Err:     clierr.FromResponse("POST /x on the Rancher server", http.MethodPost, tc.status, []byte(body), request),

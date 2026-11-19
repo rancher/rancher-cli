@@ -216,7 +216,17 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	texts["token reuse off"] = clierr.NewCommand(config.TokenReuseOffWords).String()
 	texts["the status report"] = clierr.NewCommand(config.StatusWords).String()
 	texts["a timed-out read"] = clierr.NewCommand("inspect cluster").Arg("c-1").String()
-	texts["a refused request"] = clierr.AuthStatusRemedy
+	for name, entry := range map[string]config.Server{
+		"a pasted token":                          {Provenance: clierr.ProvenanceUserSupplied},
+		"a login through an auth config":          {Provenance: clierr.ProvenanceDerived, TokenAuthConfig: "corp-ldap"},
+		"a login with no auth config":             {Provenance: clierr.ProvenanceDerived},
+		"an entry with no provenance":             {},
+		"a legacy session through an auth config": {Provenance: clierr.ProvenanceLegacySession, TokenAuthConfig: "corp-ldap"},
+	} {
+		login, ok := config.RefusedLoginHint("prod", entry)
+		require.True(t, ok, name)
+		texts["a refused request, "+name] = login.Field()
+	}
 	texts["a missing --cluster"] = engine.ClusterRequiredHint.String()
 	for _, kind := range []string{"cluster", "pod"} {
 		k, ok := kinds.Lookup(kind)

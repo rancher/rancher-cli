@@ -132,7 +132,7 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 		retryable   bool
 	}{
 		{"401 Rancher body", http.StatusUnauthorized, object, `{"type":"error","code":"Unauthorized","message":"must authenticate","status":401}`,
-			clierr.CodeAuth, "GET /x on the Rancher server: the server rejected the credential (401)", clierr.AuthStatusRemedy, false},
+			clierr.CodeAuth, "GET /x on the Rancher server: the server rejected the credential (401)", clierr.Rancher + " auth login 'acme' --token-stdin", false},
 		{"403 steve object", http.StatusForbidden, object, `{"type":"error","links":{},"code":"PermissionDenied","message":"can not get management.cattle.io.clusterregistrationtokens","status":403}`,
 			clierr.CodeRBAC, "GET /x on the Rancher server: can not get management.cattle.io.clusterregistrationtokens", "", false},
 		{"403 no body", http.StatusForbidden, "", "",

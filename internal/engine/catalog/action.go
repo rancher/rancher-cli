@@ -181,8 +181,8 @@ func postAction(ctx context.Context, actions engine.ActionClientFactory, path st
 // text added where the table's message does not hold it. The table's code,
 // retry advice, hint and wording stay; the filter runs on the whole text
 // before the table cuts it, so no part of a value is left, and a
-// Kubernetes Status keeps its whole message. The hint is a constant of the
-// table and is never filtered.
+// Kubernetes Status keeps its whole message. The hint comes from the request
+// and is never filtered.
 func refused(path string, r *engine.ActionRefused, values Values) error {
 	body := filteredBody(r.Body, values.filterFunc())
 	said := serverText(body)

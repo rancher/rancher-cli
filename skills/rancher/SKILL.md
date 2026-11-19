@@ -23,25 +23,36 @@ Reports server, server version, `rancherVersion`/`supported`
 or `token` field plus a `warnings` entry is a normal degradation (e.g.
 `identity` is a create-verb probe - expect it null under a read-only-RBAC
 token), not an error condition; don't treat it as one. If it fails with
-`AUTH` or `NOT_LOGGED_IN`, establish a session. Two more codes mean the
+`AUTH` or `NOT_LOGGED_IN`, establish a session. When the server refuses
+the token of a stored login with a 401 and gives no reason, the `AUTH`
+error's hint is the `rancher auth login` command for that login:
+`--auth-provider '<auth config>'` for a login made through an auth
+config whose name the CLI saved, and `--token-stdin` for every other
+stored login. With `--token-stdin` you pipe an API token to the command;
+this works for every entry `rancher auth login` accepts and needs no
+terminal. In a terminal, `rancher auth login <name>` with no flags asks
+whether to paste an API token or sign in via an identity provider. The
+error has no such hint when the token comes from `RANCHER_CLI_TOKEN` or
+belongs to a login entry of the exec plugin. Two more codes mean the
 stored credential itself cannot be used: `LOGIN_INCOMPLETE` (exit `3`,
 retryable) means a login for that entry is running or ended early - run
-the command again, and log in again if it persists; `CREDENTIAL_REPLACED`
-(exit `3`, not retryable) means another config directory sharing this
-one's identity stored a different credential for the entry - log in again
-for that entry. `CREDENTIAL_TRANSITION_INCOMPLETE` (exit `3`, retryable)
-means a change of the directory's credential store has work left; the
-message names the step, the entry and the backend error that stopped it -
-fix that, then run the command again. A step no retry can finish is
-reported as `VALIDATION` instead, and the message carries the cause.
-`rancher config status` shows the change as `credentialStoreChange`. A
-change record that cannot be read refuses logins, logouts and server
-changes with `VALIDATION` naming the file: restore it or move it aside.
-None of the three is a reason to try a different server entry. A
-`VALIDATION` error saying the directory has credentials in both the
-keychain and the plaintext file means nothing records which is current:
-log out the entries it lists in the store to drop (the file ones keep
-the keychain), with the keychain reachable, then run the command again.
+the command again, and log in again if it persists;
+`CREDENTIAL_REPLACED` (exit `3`, not retryable) means another config
+directory sharing this one's identity stored a different credential for
+the entry - log in again for that entry.
+`CREDENTIAL_TRANSITION_INCOMPLETE` (exit `3`, retryable) means a change
+of the directory's credential store has work left; the message names the
+step, the entry and the backend error that stopped it - fix that, then
+run the command again. A step no retry can finish is reported as
+`VALIDATION` instead, and the message carries the cause. `rancher config
+status` shows the change as `credentialStoreChange`. A change record
+that cannot be read refuses logins, logouts and server changes with
+`VALIDATION` naming the file: restore it or move it aside. None of the
+three is a reason to try a different server entry. A `VALIDATION` error
+saying the directory has credentials in both the keychain and the
+plaintext file means nothing records which is current: log out the
+entries it lists in the store to drop (the file ones keep the keychain),
+with the keychain reachable, then run the command again.
 
 - Interactive: `rancher auth login <name> --url <url>` - adds the server
   entry and logs in, no UI trip needed (or add and log in as two steps:
@@ -647,6 +658,7 @@ outright.
 - `rancher inspect user <id|username|displayName|principal>` - id and names, groups, and role bindings at global, cluster and project level; bindings that exist only, never permissions
 - `rancher usage` - capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`; a `--namespace` or `--node` that matches no pods is read; a missing one is NOT_FOUND (a warning when you cannot read it, an RBAC error when you cannot list pods there)
 - `rancher images [--by image|workload] [--match substr]` - active-pod image inventory; repeatable `--match` substring-filters (OR), `--by workload` maps each image to its owning workload (CVE blast radius: `--match <affected-repo>: --by workload --all-clusters`)
+- `rancher get projects` - without `--cluster`, lists the projects you can read on every cluster; `rancher get project <id>` needs `--cluster`. Only `rancher images` takes `--all-clusters`.
 
 ### 8. kubectl interop
 

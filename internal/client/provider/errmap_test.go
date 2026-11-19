@@ -41,7 +41,8 @@ const localManagementRefusal = "; through the local cluster's proxy, Rancher ans
 // TestMapRequestErrNamesTheRefusedRequest asserts a refusal that gave no
 // reason names the call: the verb, resource.group (the core group left
 // out) and the name; a management.cattle.io request through the local
-// cluster's proxy adds why Rancher refuses it; a 401 names the call.
+// cluster's proxy adds why Rancher refuses it; a 401 names the call and the
+// request's login command, and no command when the request has none.
 func TestMapRequestErrNamesTheRefusedRequest(t *testing.T) {
 	t.Parallel()
 	forbidden := &apierrors.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Reason: metav1.StatusReasonForbidden, Code: 403}}
@@ -65,11 +66,17 @@ func TestMapRequestErrNamesTheRefusedRequest(t *testing.T) {
 		assert.Empty(t, ce.Hint)
 	}
 	unauthorized := &apierrors.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Reason: metav1.StatusReasonUnauthorized, Code: 401}}
+	login := clierr.NewCommand("auth login").Arg("prod").Flag("--token-stdin")
 	ce, ok := errors.AsType[*clierr.Error](mapRequestErr(t.Context(), http.MethodGet, unauthorized,
+		&clierr.Request{Verb: "list", Group: "management.cattle.io", Resource: "clusters", Cluster: "local", Login: login}))
+	require.True(t, ok)
+	assert.Equal(t, "the server rejected the credential (401) for list clusters.management.cattle.io", ce.Message)
+	assert.Equal(t, clierr.Rancher+" auth login 'prod' --token-stdin", ce.Hint)
+	ce, ok = errors.AsType[*clierr.Error](mapRequestErr(t.Context(), http.MethodGet, unauthorized,
 		&clierr.Request{Verb: "list", Group: "management.cattle.io", Resource: "clusters", Cluster: "local"}))
 	require.True(t, ok)
 	assert.Equal(t, "the server rejected the credential (401) for list clusters.management.cattle.io", ce.Message)
-	assert.Equal(t, clierr.Rancher+" auth status", ce.Hint)
+	assert.Empty(t, ce.Hint)
 }
 
 // TestMapRequestErrDeadlineExceeded asserts a request that ran out of time
@@ -167,11 +174,12 @@ func TestRestoreStatusRebuildsFromTheAnswersBody(t *testing.T) {
 // TestLogsWordsAnEmptyRefusalByItsRequest asserts a 401 or 403 with no
 // body on a pod log read, the one typed request, reads as any answer with
 // no reason does: the 403 names the request and says the server gave no
-// reason, the 401 names the request and the credential with the
-// rancher auth status hint, and neither keeps the request client-go adds
+// reason, the 401 names the request and the credential with the client's
+// login command as the hint, and neither keeps the request client-go adds
 // to its own text.
 func TestLogsWordsAnEmptyRefusalByItsRequest(t *testing.T) {
 	t.Parallel()
+	logsLogin := clierr.NewCommand("auth login").Arg("prod").Flag("--token-stdin")
 	for _, tc := range []struct {
 		name        string
 		status      int
@@ -182,13 +190,13 @@ func TestLogsWordsAnEmptyRefusalByItsRequest(t *testing.T) {
 	}{
 		{"403", http.StatusForbidden, "", clierr.CodeRBAC, "the server refused get pods/log 'x' (403) and gave no reason", ""},
 		{"403 application/json", http.StatusForbidden, "application/json", clierr.CodeRBAC, "the server refused get pods/log 'x' (403) and gave no reason", ""},
-		{"401", http.StatusUnauthorized, "", clierr.CodeAuth, "the server rejected the credential (401) for get pods/log", clierr.AuthStatusRemedy},
-		{"401 application/json", http.StatusUnauthorized, "application/json", clierr.CodeAuth, "the server rejected the credential (401) for get pods/log", clierr.AuthStatusRemedy},
+		{"401", http.StatusUnauthorized, "", clierr.CodeAuth, "the server rejected the credential (401) for get pods/log", logsLogin.Field()},
+		{"401 application/json", http.StatusUnauthorized, "application/json", clierr.CodeAuth, "the server rejected the credential (401) for get pods/log", logsLogin.Field()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			srv := refusingServer(t, refusal{status: tc.status, contentType: tc.contentType})
-			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local")
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local", WithLogin(logsLogin))
 			require.NoError(t, err)
 			_, err = c.Logs(t.Context(), "default", "x", engine.LogOptions{})
 			ce, ok := errors.AsType[*clierr.Error](err)

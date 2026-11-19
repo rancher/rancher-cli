@@ -83,7 +83,7 @@ func discoveryConfig(rc *rest.Config) *rest.Config {
 // redirect refusal) is returned as is; no answer at all is a retryable
 // connectivity failure. method is the HTTP method of the call.
 func mapPreflightErr(ctx context.Context, method string, eff config.Effective, err error) error {
-	q := &clierr.Request{Endpoint: true, Server: config.DisplayServerURL(eff.URL)}
+	q := &clierr.Request{Endpoint: true, Server: config.DisplayServerURL(eff.URL), Login: eff.LoginRemedy}
 	if ce := clierr.FromStatus(err, q); ce != nil {
 		return ce
 	}

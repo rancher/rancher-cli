@@ -30,6 +30,28 @@ func LoginHintFor(name string) (cmd clierr.Command, ok bool) {
 	return clierr.NewCommand(LoginWords).Arg(name), true
 }
 
+// RefusedLoginHint returns the command that gets a new token for entry name,
+// whose stored token the server refused. A login made through an auth config
+// whose name the CLI recorded gets `--auth-provider` with that name. Every
+// other stored login gets `--token-stdin`, which reads a pasted API token and
+// needs no terminal. A login entry of the exec plugin, or an entry the exec
+// plugin created, gets no command (ok is false): auth login refuses it. When
+// the name or the auth config name cannot be printed in a command, the command
+// is left out.
+func RefusedLoginHint(name string, s Server) (cmd clierr.Command, ok bool) {
+	login, ok := LoginHintFor(name)
+	if !ok || s.Provenance == clierr.ProvenanceExecLogin {
+		return clierr.Command{}, false
+	}
+	switch s.Provenance {
+	case clierr.ProvenanceDerived, clierr.ProvenanceLegacySession:
+		if s.TokenAuthConfig != "" {
+			return login.FlagValue("--auth-provider", s.TokenAuthConfig), true
+		}
+	}
+	return login.Flag("--token-stdin"), true
+}
+
 // withLoginHint sets the login command for name as the hint of e; a name that
 // gets no login hint leaves e without one.
 func withLoginHint(e *clierr.Error, name string) *clierr.Error {

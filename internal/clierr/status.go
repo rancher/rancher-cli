@@ -15,12 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// AuthStatusCommand is the command a refused credential names.
-var AuthStatusCommand = NewCommand("auth status")
-
-// AuthStatusRemedy is AuthStatusCommand as the text of a hint.
-var AuthStatusRemedy = AuthStatusCommand.Field()
-
 // Request names the call a server status answers. A nil *Request means
 // nothing is known about the call: the texts for a refusal with no reason
 // name no request, and no remedy is attached.
@@ -58,6 +52,11 @@ type Request struct {
 	// it (config.DisplayServerURL: scheme and host, no userinfo or path).
 	// The caller sets it: this package cannot import config.
 	Server string
+	// Login is the command a 401 gives as its hint: it gets a new token for the
+	// stored login whose token the call sent. The zero value names none: the
+	// credential did not come from a stored login, or the login has no such
+	// command. The caller sets it: this package cannot import config.
+	Login Command
 }
 
 // what is "<verb> <resource>.<group>", the group left out for the core
@@ -416,8 +415,8 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 	case apierrors.IsUnauthorized(se):
 		if noReason || (wrapped && (reason == unauthorizedDefault || strings.EqualFold(reason, http.StatusText(http.StatusUnauthorized)))) {
 			ce := New(CodeAuth, prefix+unauthorizedText(req))
-			if req != nil && !req.NoCredential {
-				ce = ce.WithHintCommand(AuthStatusCommand)
+			if req != nil && !req.NoCredential && !req.Login.isZero() {
+				ce = ce.WithHintCommand(req.Login)
 			}
 			return ce
 		}

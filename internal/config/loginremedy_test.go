@@ -87,6 +87,15 @@ func TestNoLoginRemedyNamesAPluginLoginEntry(t *testing.T) {
 			}
 			return nil
 		},
+		"RefusedLoginHint": func(*testing.T) []string {
+			var out []string
+			for _, p := range []clierr.Provenance{"", clierr.ProvenanceUserSupplied, clierr.ProvenanceDerived, clierr.ProvenanceLegacySession} {
+				if login, ok := RefusedLoginHint(name, Server{Provenance: p, TokenAuthConfig: "corp"}); ok {
+					out = append(out, login.String())
+				}
+			}
+			return out
+		},
 		"withLoginHint": func(*testing.T) []string {
 			return textOf(withLoginHint(clierr.New(clierr.CodeGeneric, "failed"), name))
 		},

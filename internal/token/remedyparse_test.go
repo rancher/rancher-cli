@@ -93,7 +93,7 @@ func TestExecPluginRemediesParseAndPassTheGates(t *testing.T) {
 			seen[assertCommandReachesItsCommand(t, manifest, dir, line)] = true
 		})
 	}
-	for _, want := range []string{"auth login", "auth logout", "auth status", "config use-server", "config delete-server", "config status",
+	for _, want := range []string{"auth login", "auth logout", "config use-server", "config delete-server", "config status",
 		"config set-token-reuse", "kubeconfig", "create kubeconfig", "inspect cluster", "get cluster", "get pod"} {
 		assert.True(t, seen[want], "no remedy runs %s", want)
 	}

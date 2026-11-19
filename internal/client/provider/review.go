@@ -67,7 +67,7 @@ func (r *dynamicClient) PostReview(ctx context.Context, req engine.ReviewRequest
 	}
 	out := engine.ReviewResponse{Status: resp.StatusCode, Body: body}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		out.Mapped = clierr.FromResponse("", http.MethodPost, resp.StatusCode, body, &clierr.Request{Cluster: r.clusterID, Server: r.server()})
+		out.Mapped = clierr.FromResponse("", http.MethodPost, resp.StatusCode, body, &clierr.Request{Cluster: r.clusterID, Server: r.server(), Login: r.login})
 		return out, nil
 	}
 	obj := &unstructured.Unstructured{}
@@ -222,7 +222,7 @@ func (r *dynamicClient) ServerResources(ctx context.Context) ([]engine.APIResour
 // deadline error names no time.
 func (r *dynamicClient) discoveryErr(ctx context.Context) func(error) error {
 	return func(err error) error {
-		return mapRequestErrWithin(ctx, http.MethodGet, 0, err, &clierr.Request{Cluster: r.clusterID, Endpoint: true, Server: r.server()})
+		return mapRequestErrWithin(ctx, http.MethodGet, 0, err, &clierr.Request{Cluster: r.clusterID, Endpoint: true, Server: r.server(), Login: r.login})
 	}
 }
 

@@ -127,7 +127,7 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 	if err != nil {
 		return nil, err
 	}
-	c, err := provider.NewClusterClient(rc, clusterID)
+	c, err := provider.NewClusterClient(rc, clusterID, provider.WithLogin(eff.LoginRemedy))
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func (f *clientFactory) ImpersonatedCluster(_ context.Context, clusterID string,
 	if err != nil {
 		return nil, err
 	}
-	c, err := provider.NewClusterClient(rc, clusterID)
+	c, err := provider.NewClusterClient(rc, clusterID, provider.WithLogin(eff.LoginRemedy))
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (f *clientFactory) Root() (engine.RootClient, error) {
 			return
 		}
 		base := kube.BaseURL(eff.URL)
-		f.root = &rootClient{base: base, token: eff.Token, hc: hc}
+		f.root = &rootClient{base: base, token: eff.Token, login: eff.LoginRemedy, hc: hc}
 		httpx.RegisterInstallIDFetcher(base, provider.InstallIDFetch(hc, base, eff.Token), false)
 	})
 	return f.root, f.rootErr
@@ -209,6 +209,9 @@ func (f *clientFactory) Root() (engine.RootClient, error) {
 type rootClient struct {
 	base  string
 	token string
+	// login is the command a refused token names as the hint of its AUTH
+	// error; the zero value names none.
+	login clierr.Command
 	hc    *http.Client
 }
 
@@ -231,7 +234,7 @@ func (r *rootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return body, nil
 	}
-	return nil, clierr.FromResponse("GET "+path+" on the Rancher server", http.MethodGet, resp.StatusCode, body, &clierr.Request{Server: config.DisplayServerURL(r.base)})
+	return nil, clierr.FromResponse("GET "+path+" on the Rancher server", http.MethodGet, resp.StatusCode, body, &clierr.Request{Server: config.DisplayServerURL(r.base), Login: r.login})
 }
 
 // Action resolves the memoized engine.ActionClient for this invocation: the
@@ -251,7 +254,7 @@ func (f *clientFactory) Action() (engine.ActionClient, error) {
 		}
 		hc := *rc.hc
 		hc.Timeout = actionTimeout
-		f.action = &actionClient{base: rc.base, token: rc.token, hc: &hc}
+		f.action = &actionClient{base: rc.base, token: rc.token, login: rc.login, hc: &hc}
 	})
 	return f.action, f.actionErr
 }
@@ -261,6 +264,9 @@ func (f *clientFactory) Action() (engine.ActionClient, error) {
 type actionClient struct {
 	base  string
 	token string
+	// login is the command a refused token names as the hint of its AUTH
+	// error; the zero value names none.
+	login clierr.Command
 	hc    *http.Client
 }
 
@@ -297,7 +303,7 @@ func (a *actionClient) PostAction(ctx context.Context, path string, body []byte)
 	case resp.StatusCode == http.StatusInternalServerError || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout:
 		return nil, &engine.ActionOutcomeUnknown{Err: clierr.ResponseError(http.MethodPost, resp.StatusCode, respBody), Body: respBody}
 	}
-	request := &clierr.Request{Server: config.DisplayServerURL(a.base)}
+	request := &clierr.Request{Server: config.DisplayServerURL(a.base), Login: a.login}
 	return nil, &engine.ActionRefused{
 		Err:     clierr.FromResponse("POST "+path+" on the Rancher server", http.MethodPost, resp.StatusCode, respBody, request),
 		Body:    respBody,

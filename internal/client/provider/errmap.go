@@ -18,7 +18,7 @@ import (
 // call, which holds what the server answered; method is the call's HTTP
 // method; eff names the server. Returns nil for nil.
 func mapErr(ctx context.Context, method string, eff config.Effective, err error) error {
-	return mapRequestErr(ctx, method, err, &clierr.Request{Cluster: engine.LocalCluster, Server: config.DisplayServerURL(eff.URL)})
+	return mapRequestErr(ctx, method, err, &clierr.Request{Cluster: engine.LocalCluster, Server: config.DisplayServerURL(eff.URL), Login: eff.LoginRemedy})
 }
 
 // mapRequestErr is mapErr for the call q describes; q is nil when there is

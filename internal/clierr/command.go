@@ -153,6 +153,9 @@ func (c Command) On(server string) Command {
 	return c
 }
 
+// isZero reports whether c is the zero Command, which names no command.
+func (c Command) isZero() bool { return c.start == "" }
+
 // OK reports whether the command can be printed.
 func (c Command) OK() bool { return !c.leftOut }
 

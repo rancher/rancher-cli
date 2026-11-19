@@ -90,6 +90,10 @@ type dynamicClient struct {
 	// a complete list command - it plays no role in request routing itself.
 	clusterID string
 
+	// login is the command a refused credential names as the hint of its
+	// AUTH error; the zero value names none.
+	login clierr.Command
+
 	mu       sync.Mutex
 	versions map[string]string // group → resolved preferred version
 }
@@ -99,7 +103,7 @@ type dynamicClient struct {
 // from. The discovery client is built from the bounded config copy
 // (discoveryConfig) so an empty-version resolution has the same request
 // timeout as every other call, on top of the caller's context.
-func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, error) {
+func NewClusterClient(rc *rest.Config, clusterID string, opts ...ClientOption) (engine.ClusterClient, error) {
 	dyn, err := kube.Dynamic(rc)
 	if err != nil {
 		return nil, err
@@ -127,7 +131,20 @@ func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, 
 		},
 		clusterID: clusterID, versions: map[string]string{},
 	}
+	for _, o := range opts {
+		o(dc)
+	}
 	return dc, nil
+}
+
+// ClientOption sets an option of a client NewClusterClient builds.
+type ClientOption func(*dynamicClient)
+
+// WithLogin sets the command that gets a new credential for the stored login
+// the client sends; a 401 from the client names it as the hint. The zero
+// Command names none.
+func WithLogin(login clierr.Command) ClientOption {
+	return func(r *dynamicClient) { r.login = login }
 }
 
 func (r *dynamicClient) ri(gvr schema.GroupVersionResource, ns string) dynamic.ResourceInterface {
@@ -163,7 +180,7 @@ func (r *dynamicClient) resolveVersion(ctx context.Context, gvr schema.GroupVers
 	if err != nil {
 		return gvr, clierr.WrapUnlessCanceled(err, func(err error) error {
 			return mapRequestErr(ctx, http.MethodGet, fmt.Errorf("discovering version for group %q: %w", gvr.Group, err),
-				&clierr.Request{Cluster: r.clusterID, Endpoint: true, Server: r.server()})
+				&clierr.Request{Cluster: r.clusterID, Endpoint: true, Server: r.server(), Login: r.login})
 		})
 	}
 	for _, g := range groups.Groups {
@@ -219,7 +236,7 @@ func (r *dynamicClient) server() string { return config.DisplayServerURL(r.host)
 
 // request describes one call of this client for the error mapping.
 func (r *dynamicClient) request(verb string, gvr schema.GroupVersionResource, ns, name string) *clierr.Request {
-	return &clierr.Request{Verb: verb, Group: gvr.Group, Resource: gvr.Resource, Name: name, Cluster: r.clusterID, Server: r.server()}
+	return &clierr.Request{Verb: verb, Group: gvr.Group, Resource: gvr.Resource, Name: name, Cluster: r.clusterID, Server: r.server(), Login: r.login}
 }
 
 // forbiddenHint adds the caller-scoped command kinds.ForbiddenCommand names
@@ -292,7 +309,7 @@ func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.Lo
 	b, err := req.DoRaw(ctx)
 	if err != nil {
 		return "", mapRequestErr(ctx, http.MethodGet, restoreStatus(err, b),
-			&clierr.Request{Verb: "get", Resource: "pods/log", Name: pod, Cluster: r.clusterID, Server: r.server()})
+			&clierr.Request{Verb: "get", Resource: "pods/log", Name: pod, Cluster: r.clusterID, Server: r.server(), Login: r.login})
 	}
 	return string(b), nil
 }

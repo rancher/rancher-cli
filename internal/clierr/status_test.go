@@ -162,6 +162,9 @@ func TestClassifyStatusWordingRules(t *testing.T) {
 	provisioning := schema.GroupResource{Group: "provisioning.cattle.io", Resource: "clusters"}
 	local := &Request{Cluster: "local"}
 	withPrecondition := &Request{Cluster: "local", Precondition: true}
+	login := NewCommand("auth login").Arg("corp").Flag("--token-stdin")
+	localLogin := &Request{Cluster: "local", Login: login}
+	namedLogin := &Request{Login: login}
 	staleConflict := apierrors.NewConflict(provisioning, "c-x", errors.New("the object has been modified; please apply your changes to the latest version and try again"))
 	const webhookDenied = `admission webhook "x.example.io" denied the request: duplicate not allowed`
 	webhook409 := func(reason metav1.StatusReason) error {
@@ -235,16 +238,22 @@ func TestClassifyStatusWordingRules(t *testing.T) {
 			CodeValidation, "bad", "", false},
 		{"401 with no request names no remedy", ResponseError(http.MethodGet, http.StatusUnauthorized, nil), nil,
 			CodeAuth, "the server rejected the credential (401)", "", false},
-		{"401 for a named call keeps the text in front", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusUnauthorized, nil)), &Request{},
-			CodeAuth, "GET /x: the server rejected the credential (401)", AuthStatusRemedy, false},
-		{"401 with apimachinery's default message is no reason", defaultUnauthorized, local,
-			CodeAuth, "the server rejected the credential (401)", AuthStatusRemedy, false},
-		{"401 with an empty message is no reason", emptyUnauthorized, local,
-			CodeAuth, "the server rejected the credential (401)", AuthStatusRemedy, false},
-		{"401 with Rancher's Status body is no reason", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusUnauthorized, rancher401)), &Request{},
-			CodeAuth, "GET /x: the server rejected the credential (401)", AuthStatusRemedy, false},
-		{"401 whose message is Unauthorized in any case is no reason", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusUnauthorized, []byte("UNAUTHORIZED"))), &Request{},
-			CodeAuth, "GET /x: the server rejected the credential (401)", AuthStatusRemedy, false},
+		{"401 for a named call keeps the text in front and names the request's login command", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusUnauthorized, nil)), namedLogin,
+			CodeAuth, "GET /x: the server rejected the credential (401)", login.Field(), false},
+		{"401 for a named call with no login command names no remedy", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusUnauthorized, nil)), &Request{},
+			CodeAuth, "GET /x: the server rejected the credential (401)", "", false},
+		{"401 with apimachinery's default message is no reason", defaultUnauthorized, localLogin,
+			CodeAuth, "the server rejected the credential (401)", login.Field(), false},
+		{"401 with an empty message is no reason", emptyUnauthorized, localLogin,
+			CodeAuth, "the server rejected the credential (401)", login.Field(), false},
+		{"401 with Rancher's Status body is no reason", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusUnauthorized, rancher401)), namedLogin,
+			CodeAuth, "GET /x: the server rejected the credential (401)", login.Field(), false},
+		{"401 whose message is Unauthorized in any case is no reason", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusUnauthorized, []byte("UNAUTHORIZED"))), namedLogin,
+			CodeAuth, "GET /x: the server rejected the credential (401)", login.Field(), false},
+		{"401 with a reason keeps the reason and names no remedy", wrapped("GET /x", ResponseError(http.MethodGet, http.StatusUnauthorized, []byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"token expired","reason":"Unauthorized","code":401}`))), namedLogin,
+			CodeAuth, "GET /x: token expired", "", false},
+		{"401 that sent no credential names no remedy even with a login command", wrapped("listing providers", ResponseError(http.MethodGet, http.StatusUnauthorized, nil)), &Request{Endpoint: true, NoCredential: true, Login: login},
+			CodeAuth, "listing providers: the server answered 401; the request carried no credential", "", false},
 		{"401 that sent no credential says so, with no remedy", wrapped("listing providers", ResponseError(http.MethodGet, http.StatusUnauthorized, nil)), &Request{Endpoint: true, NoCredential: true},
 			CodeAuth, "listing providers: the server answered 401; the request carried no credential", "", false},
 		{"401 with Rancher's Status body that sent no credential says so", wrapped("listing providers", ResponseError(http.MethodGet, http.StatusUnauthorized, rancher401)), &Request{NoCredential: true},
@@ -739,4 +748,17 @@ func TestAnsweredLeadNamesTheServerOrSaysTheServer(t *testing.T) {
 	} {
 		assert.Equal(t, tc.want, AnsweredLead(tc.req, tc.status))
 	}
+}
+
+// TestFromStatusLeavesOutAnUnprintableLoginCommand asserts that a 401 whose
+// login command cannot be printed names no remedy and says so.
+func TestFromStatusLeavesOutAnUnprintableLoginCommand(t *testing.T) {
+	t.Parallel()
+	login := NewCommand("auth login").Arg("bad\x00name").Flag("--token-stdin")
+	require.False(t, login.OK())
+	ce := FromStatus(ResponseError(http.MethodGet, http.StatusUnauthorized, nil), &Request{Login: login})
+	require.NotNil(t, ce)
+	assert.Equal(t, CodeAuth, ce.Code)
+	assert.Empty(t, ce.Hint)
+	assert.Equal(t, WithLeftOutNote("the server rejected the credential (401)"), ce.Message)
 }
