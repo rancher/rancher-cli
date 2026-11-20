@@ -105,7 +105,7 @@ func TestCloudCredentialCompletion(t *testing.T) {
 			want: []string{"accessToken"}, requests: 1},
 		{name: "a multi-line field of a secret kind", req: completion.Request{Flag: "from-file", Positionals: []string{"harvester"}},
 			want: []string{"kubeconfigContent"}, requests: 1},
-		{name: "an inactive driver offers no field", req: completion.Request{Flag: "set", Positionals: []string{"linode"}}, requests: 1},
+		{name: "an inactive driver offers no field", req: completion.Request{Flag: "from-file", Positionals: []string{"linode"}}, requests: 1},
 		{name: "a driver with no credential field offers none", req: completion.Request{Flag: "set", Positionals: []string{"nofields"}}, requests: 1},
 		{name: "an unknown driver offers none", req: completion.Request{Flag: "set", Positionals: []string{"nonesuch"}}, requests: 1},
 		{name: "s3 set offers its public fields with no request", req: completion.Request{Flag: "set", Positionals: []string{"s3"}},
