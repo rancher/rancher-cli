@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 255,
+  "commandCount": 256,
   "effectSchema": {
     "actions": [
       "create",
@@ -460,9 +460,13 @@
         {
           "name": "extension add-repository",
           "usage": "Add a Rancher extension repository"
+        },
+        {
+          "name": "extension list",
+          "usage": "List the Rancher UI extensions the repositories offer and the installed ones"
         }
       ],
-      "desc": "Add the Rancher extension repositories: the two ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
+      "desc": "Add the Rancher extension repositories and list the extensions they offer. The repositories are the two ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
       "name": "extension"
     },
     {

@@ -119,7 +119,7 @@ func (*chartsCmd) Describe() runtime.Descriptor {
 			"Charts the Rancher UI does not list (the annotation catalog.cattle.io/hidden is present and not empty) " +
 			"are listed, with hidden true in JSON; the table has no column for it. " +
 			"Charts that are Rancher UI extensions (any version has the annotation catalog.cattle.io/ui-component set to plugins) " +
-			"are left out, as the Rancher UI's Charts page leaves them out; " +
+			"are left out, as the Rancher UI's Charts page leaves them out, and `rancher extension list` lists them; " +
 			"--repo of a repository that holds only extension charts prints an empty table. " +
 			"-o name prints the NAME column; a chart name repeats across repositories and, with --all-versions, across versions.",
 		CommandType: runtime.ReadOnly,
@@ -199,15 +199,21 @@ func (c *chartsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 func withoutExtensionCharts(idx Index) Index {
 	entries := make(map[string][]ChartVersion, len(idx.Entries))
 	for name, versions := range idx.Entries {
-		annotations := make([]map[string]string, 0, len(versions))
-		for _, v := range versions {
-			annotations = append(annotations, v.Annotations)
-		}
-		if !extension.IsExtensionChart(annotations) {
+		if !isExtensionChart(versions) {
 			entries[name] = versions
 		}
 	}
 	return Index{Entries: entries}
+}
+
+// isExtensionChart reports whether any version of the chart is a Rancher UI
+// extension.
+func isExtensionChart(versions []ChartVersion) bool {
+	annotations := make([]map[string]string, 0, len(versions))
+	for _, v := range versions {
+		annotations = append(annotations, v.Annotations)
+	}
+	return extension.IsExtensionChart(annotations)
 }
 
 // payload is the list with a DEPRECATED column when deprecated versions are

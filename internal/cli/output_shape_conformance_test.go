@@ -67,6 +67,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"create token":                      runtime.ShapeText,
 	"create user":                       runtime.ShapeText,
 	"extension add-repository":          runtime.ShapeText,
+	"extension list":                    runtime.ShapeTabular,
 	"delete amazonec2config":            runtime.ShapeText,
 	"delete azureconfig":                runtime.ShapeText,
 	"delete clusterroletemplatebinding": runtime.ShapeText,

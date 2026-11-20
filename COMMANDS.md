@@ -143,6 +143,7 @@ Read nodes with `get node --cluster <cluster>` and the drain state with
 | Command | Purpose |
 |---|---|
 | `extension add-repository <name>` | Add one of the two Rancher extension repositories as a ClusterRepo on the local cluster: `partner-extensions` on every server, `rancher-ui-plugins` on Rancher Prime. It sends the name, git URL and branch the Rancher UI's Extensions page sends, and nothing else; a repository the server already reads by URL is refused with `CONFLICT`. Rancher downloads the repository from github.com after the command; dry-run/apply. Details in [REFERENCE.md](REFERENCE.md#extensions) |
+| `extension list` | List the extensions the Rancher UI's Extensions page shows: what the Rancher extension repositories offer and what is installed, with the version each can be upgraded to and why a version does not fit the server (`--show all\|installed\|available`). Read-only. Details in [REFERENCE.md](REFERENCE.md#listing-extensions) |
 
 ## Access
 
@@ -212,6 +213,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 69-kind table: `get <kind>` (69), `patch <kind>`
 (69), `delete <kind>` (39 - 38 deletable kinds, including the Rancher role binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-177 generated commands, 255 total together with the fixed commands above. The authoritative, always-current list is
+177 generated commands, 256 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

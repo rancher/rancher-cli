@@ -26,6 +26,7 @@ var capabilityCoverageExtraOps = map[string][]string{
 	"inspect project":       {"project"},
 	"inspect user":          {"user"},
 	"charts":                {"clusterrepo"},
+	"extension list":        {"clusterrepo", "uiplugin", "app"},
 	// create user touches the user kind row directly (the composite's User
 	// half) alongside its own ext.cattle.io-discovery Capability
 	// requirement - mapped here so a future Capability gate on the user

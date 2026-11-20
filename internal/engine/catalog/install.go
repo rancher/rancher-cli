@@ -13,6 +13,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/catalog/extension"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -369,6 +370,13 @@ func (p installPlan) resolveVersion(ctx context.Context, want string) (ChartVers
 		return ChartVersion{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
 			"chart %s is not in the index ClusterRepo %s serves for this cluster", clierr.ShellQuote(p.chart), clierr.ShellQuote(p.repo))).
 			WithHintCommand(p.chartsHint())
+	}
+	if isExtensionChart(versions) {
+		return ChartVersion{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
+			"chart %s in ClusterRepo %s is a Rancher UI extension, which belongs in the namespace %s; "+
+				"this CLI does not install extensions yet",
+			clierr.ShellQuote(p.chart), clierr.ShellQuote(p.repo), extension.Namespace)).
+			WithHintCommand(clierr.NewCommand("extension list"))
 	}
 	if want != "" {
 		for _, v := range versions {
