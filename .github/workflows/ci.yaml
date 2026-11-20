@@ -24,7 +24,94 @@ concurrency:
 # check names this workflow reports. A run of it never replaces a full run
 # of this workflow: a merge requires the full run.
 # A change to a Windows job here is made in the copy in the same commit.
+# The copies carry no needs and no if: that workflow has no reuse job.
 jobs:
+  # A push run of a commit that already has a successful manual run
+  # (workflow_dispatch) of this workflow, started within the last 24 hours,
+  # skips every other job and ends green. Otherwise every job runs. Every job
+  # also runs when any lookup here fails. The two runs test the same thing: a
+  # manual run uses the workflow file of its own commit and a push run the
+  # file of the pushed commit; for the same commit that is the same workflow
+  # file, the same scripts and the same tree. Only the concurrency group and
+  # the cache saves differ by event. Pull request runs test a merge ref and
+  # are never reused. The first push run of each UTC day, when main has no
+  # cache entry of the day yet, runs in full and saves the caches that only a
+  # main push saves. The check for a cache entry of the day looks at the
+  # go-cache entries only: a push run that skips its jobs and changes an
+  # input of any cache key (go.sum, the Go version, scripts/e2e for the
+  # envtest key, go.mod for the setup-go key) leaves main without that entry
+  # until the first push run of the next UTC day. Runs in between restore an
+  # older entry, which is slower and still correct.
+  reuse:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # lists the workflow runs and caches of this repository
+    outputs:
+      reuse: ${{ steps.find.outputs.reuse }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The go-cache names of the jobs that save a cache.
+          SAVING_JOBS: lint test-1 conformance e2e install-windows-config install-windows-cli e2e-windows
+        run: |
+          set -u
+          finish() {
+            printf 'reuse=%s\n' "$1" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          sha="${GITHUB_SHA:-}"
+          repo="${GITHUB_REPOSITORY:-}"
+          [ "${GITHUB_EVENT_NAME:-}" = push ] || finish false
+          [ -n "$sha" ] && [ -n "$repo" ] && [ -n "${SAVING_JOBS:-}" ] || finish false
+          now="$(date -u +%s)"
+          today="$(date -u +%Y-%m-%d)"
+
+          runs="$(timeout 60 gh api "repos/$repo/actions/workflows/ci.yaml/runs?event=workflow_dispatch&head_sha=$sha&status=success&per_page=100")" || {
+            echo "::warning::could not list the manual runs of ci.yaml; every job runs"
+            finish false
+          }
+          found="$(printf '%s' "$runs" | jq -r --arg sha "$sha" --argjson now "$now" '
+            [.workflow_runs[]
+              | select((.path == ".github/workflows/ci.yaml" or ((.path // "") | startswith(".github/workflows/ci.yaml@")))
+                and .event == "workflow_dispatch"
+                and .head_sha == $sha
+                and .status == "completed"
+                and .conclusion == "success"
+                and ((.created_at | type) == "string")
+                and ((.created_at | fromdateiso8601) > ($now - 86400)))]
+            | sort_by(.created_at) | reverse | .[0] // empty
+            | "\(.id) \(.html_url)"')" || {
+            echo "::warning::could not parse the list of manual runs of ci.yaml; every job runs"
+            finish false
+          }
+          [ -n "$found" ] || finish false
+
+          caches="$(timeout 60 gh api "repos/$repo/actions/caches?ref=refs/heads/main&sort=created_at&direction=desc&per_page=100")" || {
+            echo "::warning::could not list the caches saved on the main branch; every job runs"
+            finish false
+          }
+          printf '%s' "$caches" | jq -e '.actions_caches | type == "array"' > /dev/null || {
+            echo "::warning::could not parse the list of caches saved on the main branch; every job runs"
+            finish false
+          }
+          for name in $SAVING_JOBS; do
+            re="^go-${name}-(Linux|Windows|macOS)-.*-${today}\$"
+            printf '%s' "$caches" | jq -e --arg re "$re" '
+              [.actions_caches[]
+                | select(.ref == "refs/heads/main" and (.key | test($re)))]
+              | length > 0' > /dev/null || {
+              echo "::notice::no cache entry saved on main today ($today, UTC) for the $name job; every job runs and saves the caches"
+              finish false
+            }
+          done
+
+          echo "::notice::this commit already passed in manual run ${found% *} of ci.yaml; every other job is skipped"
+          printf 'Every other job was skipped: this commit passed in manual run %s of ci.yaml: %s\n' "${found% *}" "${found#* }" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          finish true
+
   # Six parts of scripts/validate run as parallel jobs: static, the race
   # detector tests in three shards (test-1, test-2, test-3), the source
   # scans with the build contract (conformance) and the cache model
@@ -36,6 +123,8 @@ jobs:
   # except the packages whose tests start shells (shellpkgs in
   # scripts/test), which no shard runs.
   lint:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -61,6 +150,8 @@ jobs:
           key: ${{ steps.go-cache.outputs.key }}
 
   test-1:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -94,6 +185,8 @@ jobs:
           key: ${{ steps.go-cache.outputs.key }}
 
   test-2:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -123,6 +216,8 @@ jobs:
       - run: ./scripts/validate tests-race-2
 
   test-3:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -179,6 +274,8 @@ jobs:
       - run: ./scripts/validate tests-race-3
 
   conformance:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -213,6 +310,8 @@ jobs:
           key: ${{ steps.go-cache.outputs.key }}
 
   cachemodel:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -245,6 +344,8 @@ jobs:
   # platforms build in parallel; each job restores the entry of the e2e job
   # through go-cache and saves none.
   cross-compile:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     name: cross-compile (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -286,6 +387,8 @@ jobs:
         run: go build ./...
 
   e2e:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -347,6 +450,8 @@ jobs:
   # installs signal handling of its own. A change to the tests a Windows job
   # runs is made here in the same commit.
   fault-check:
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -405,6 +510,8 @@ jobs:
     # checksums, the atomic junction switch) only execute on Windows -
     # everywhere else they skip, so without this job they would never
     # run in CI.
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -435,6 +542,8 @@ jobs:
   install-windows-config:
     # The two ./internal/config/ steps share this job: the second reuses
     # the build of the first.
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -504,6 +613,8 @@ jobs:
   install-windows-cli:
     # The two ./internal/cli/ steps share this job: they reuse one Go
     # build cache.
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -568,6 +679,8 @@ jobs:
     # rancher.exe, pathmatch compares native separators, and scenario
     # skips gate what cannot occur here. Without this leg the suite's
     # Windows support can only regress silently between Windows runs.
+    needs: reuse
+    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}
     runs-on: windows-latest
     timeout-minutes: 30
     steps:

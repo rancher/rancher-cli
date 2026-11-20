@@ -240,13 +240,23 @@ func readRawJobs(t *testing.T, path string) map[string]map[string]any {
 }
 
 // partJobKeyProblems returns what is wrong with the keys of a part job: it
-// has exactly runs-on, timeout-minutes and steps, and runs on ubuntu-latest.
-// Any other key (container, services, env, defaults, strategy, a runner
-// list) can change the environment the steps run in.
+// has exactly runs-on, timeout-minutes and steps, plus the needs and the if of
+// the reuse job with exactly their expected values, and runs on
+// ubuntu-latest. Any other key (container, services, env, defaults, strategy,
+// a runner list) can change the environment the steps run in.
 func partJobKeyProblems(jobID string, job map[string]any) []string {
 	var out []string
-	if keys := slices.Sorted(maps.Keys(job)); !slices.Equal(keys, []string{"runs-on", "steps", "timeout-minutes"}) {
-		out = append(out, fmt.Sprintf("job %s has the keys %v and must have exactly runs-on, timeout-minutes and steps", jobID, keys))
+	switch keys := slices.Sorted(maps.Keys(job)); {
+	case slices.Equal(keys, []string{"runs-on", "steps", "timeout-minutes"}):
+	case slices.Equal(keys, []string{"if", "needs", "runs-on", "steps", "timeout-minutes"}):
+		if job["needs"] != reuseNeeds {
+			out = append(out, fmt.Sprintf("job %s has needs %v and must have exactly the string %s", jobID, job["needs"], reuseNeeds))
+		}
+		if job["if"] != reuseIf {
+			out = append(out, fmt.Sprintf("job %s has the if %v and must have exactly %s", jobID, job["if"], reuseIf))
+		}
+	default:
+		out = append(out, fmt.Sprintf("job %s has the keys %v and must have exactly runs-on, timeout-minutes and steps, plus needs and if of the reuse job", jobID, keys))
 	}
 	if runsOn := job["runs-on"]; runsOn != "ubuntu-latest" {
 		out = append(out, fmt.Sprintf("job %s runs on %v and must run on ubuntu-latest", jobID, runsOn))
@@ -337,7 +347,11 @@ func partStepProblems(jobID, part string, steps []map[string]any) []string {
 // needs; that no other run body mentions validate or scripts/ci or runs make
 // with a target but e2e (TestCIRunBodyRules); that no job or step can be
 // turned off, except that a cache save step may carry an if
-// (TestOnlyMainPushesSaveCaches checks its expression); that the workflow,
+// (TestOnlyMainPushesSaveCaches checks its expression) and that every job
+// carries the one if of the reuse job, which skips it only on a push of a
+// commit whose manual run of ci.yaml passed within the last 24 hours
+// (TestEveryCIJobWaitsForTheReuseJob and
+// TestPushRunReusesOnlyAGreenManualRunOfTheSameCommit check it); that the workflow,
 // the six part jobs and the part steps set no env, which could select no
 // test (GOFLAGS=-run=^$) and still pass; that the workflow and the six part
 // jobs set no defaults, which could change the shell that runs a part; that
@@ -415,7 +429,7 @@ func TestCIRunsEveryValidatePartOnce(t *testing.T) {
 	} {
 		name := jobOf[c.part]
 		job := wf.Jobs[name]
-		assert.Empty(t, job.If, "job %s must not be conditional", name)
+		assert.Equal(t, reuseIf, job.If, "job %s must carry the if of the reuse job and no other", name)
 		assert.Zero(t, job.Env.Kind, "job %s must set no env: an env can change what the part runs", name)
 		assert.Zero(t, job.Defaults.Kind, "job %s must set no defaults: a shell can turn the part into a no-op", name)
 		assert.Zero(t, job.ContinueOnError.Kind, "job %s must not set continue-on-error", name)
@@ -1122,6 +1136,22 @@ func TestPartJobStepRules(t *testing.T) {
 	}
 	okJob := map[string]any{"runs-on": "ubuntu-latest", "timeout-minutes": 30, "steps": []any{}}
 	assert.Empty(t, partJobKeyProblems(job, okJob), "a job with the three keys")
+	gated := maps.Clone(okJob)
+	gated["needs"], gated["if"] = reuseNeeds, reuseIf
+	assert.Empty(t, partJobKeyProblems(job, gated), "a job with the three keys and the needs and if of the reuse job")
+	for name, edit := range map[string]func(map[string]any){
+		"a wrong if with the right needs": func(j map[string]any) { j["if"] = "always()" },
+		"the if of success()":             func(j map[string]any) { j["if"] = "${{ success() && needs.reuse.outputs.reuse != 'true' }}" },
+		"an if that runs on false":        func(j map[string]any) { j["if"] = "${{ !cancelled() && needs.reuse.outputs.reuse == 'false' }}" },
+		"needs on another job":            func(j map[string]any) { j["needs"] = "lint" },
+		"needs as a list":                 func(j map[string]any) { j["needs"] = []any{reuseNeeds} },
+		"the if with no needs":            func(j map[string]any) { delete(j, "needs") },
+		"the needs with no if":            func(j map[string]any) { delete(j, "if") },
+	} {
+		j := maps.Clone(gated)
+		edit(j)
+		assert.NotEmpty(t, partJobKeyProblems(job, j), "must refuse: %s", name)
+	}
 	for name, edit := range map[string]func(map[string]any){
 		"a container with an env": func(j map[string]any) {
 			j["container"] = map[string]any{"image": "ubuntu:24.04", "env": map[string]any{"GOFLAGS": "-run=^$"}}

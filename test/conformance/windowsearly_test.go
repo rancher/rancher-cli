@@ -177,8 +177,12 @@ func windowsEarlyProblems(ci, early map[string]any) []string {
 				add("d", "the key %s of %s differs from %s in ci.yaml; a change to a Windows job is made in both ci.yaml and ci-windows.yaml", key, id, original)
 			}
 		}
-		if got := sortedKeys(ciJob); !slices.Equal(got, []string{"runs-on", "steps", "timeout-minutes"}) {
-			add("d", "%s in ci.yaml has the keys %v and must have exactly runs-on, timeout-minutes and steps; any other key changes the job in a way its copy does not carry (to add one, add it to the copy in ci-windows.yaml and to the key set this check expects)", original, got)
+		switch got := sortedKeys(ciJob); {
+		case slices.Equal(got, []string{"runs-on", "steps", "timeout-minutes"}):
+		case slices.Equal(got, []string{"if", "needs", "runs-on", "steps", "timeout-minutes"}) && ciJob["needs"] == reuseNeeds && ciJob["if"] == reuseIf:
+			// The copy in ci-windows.yaml has no reuse job to wait for.
+		default:
+			add("d", "%s in ci.yaml has the keys %v and must have exactly runs-on, timeout-minutes and steps, plus needs: %s and the if of the reuse job; any other key changes the job in a way its copy does not carry (to add one, add it to the copy in ci-windows.yaml and to the key set this check expects)", original, got, reuseNeeds)
 		}
 	}
 	for _, key := range []string{"env", "defaults"} {
@@ -250,10 +254,17 @@ func stringOf(v any) string {
 // changes every step.
 func testfsStepProblems(id string, job map[string]any) []string {
 	var problems []string
-	for _, key := range []string{"env", "defaults", "continue-on-error", "if"} {
+	for _, key := range []string{"env", "defaults", "continue-on-error"} {
 		if _, has := job[key]; has {
 			problems = append(problems, id+" has the job key "+key+", which can change what its steps run")
 		}
+	}
+	// Only the needs and if of the reuse job may be there, and only together: the
+	// job in ci.yaml has it and its copy in ci-windows.yaml does not.
+	needs, hasNeeds := job["needs"]
+	cond, hasIf := job["if"]
+	if hasNeeds != hasIf || (hasNeeds && (needs != reuseNeeds || cond != reuseIf)) {
+		problems = append(problems, id+" has a needs or an if that is not exactly the needs and if of the reuse job, which can skip its steps")
 	}
 	steps, _ := job["steps"].([]any)
 	found := false
@@ -498,6 +509,27 @@ func TestWindowsEarlyProblemsTable(t *testing.T) {
 		{name: "a job continue-on-error on a ci Windows job only", edit: func(ci, _ map[string]any) {
 			mapOf(mapOf(ci["jobs"])["e2e-windows"])["continue-on-error"] = true
 		}, want: []string{"d"}},
+		{name: "the needs and if of the reuse job on every ci Windows job", edit: func(ci, _ map[string]any) {
+			for id := range earlyJobs {
+				job := mapOf(mapOf(ci["jobs"])[earlyJobs[id]])
+				job["needs"], job["if"] = reuseNeeds, reuseIf
+			}
+		}},
+		{name: "another if on a ci Windows job", edit: func(ci, _ map[string]any) {
+			job := mapOf(mapOf(ci["jobs"])["e2e-windows"])
+			job["needs"], job["if"] = reuseNeeds, "always()"
+		}, want: []string{"d"}},
+		{name: "needs on another job on a ci Windows job", edit: func(ci, _ map[string]any) {
+			job := mapOf(mapOf(ci["jobs"])["e2e-windows"])
+			job["needs"], job["if"] = "lint", reuseIf
+		}, want: []string{"d"}},
+		{name: "an if with no needs on a ci Windows job", edit: func(ci, _ map[string]any) {
+			mapOf(mapOf(ci["jobs"])["e2e-windows"])["if"] = reuseIf
+		}, want: []string{"d"}},
+		{name: "needs as a list on a ci Windows job", edit: func(ci, _ map[string]any) {
+			job := mapOf(mapOf(ci["jobs"])["e2e-windows"])
+			job["needs"], job["if"] = []any{reuseNeeds}, reuseIf
+		}, want: []string{"d"}},
 		{name: "a needs on a job", edit: func(_, early map[string]any) {
 			earlyJob(early, "e2e-windows-early")["needs"] = "lint"
 		}, want: []string{"e"}},
@@ -601,6 +633,10 @@ func TestHelperTestStepTable(t *testing.T) {
 		maps.Copy(mapOf(job["steps"].([]any)[0]), extra)
 		return job
 	}
+	withJobKeys := func(job, keys map[string]any) map[string]any {
+		maps.Copy(job, keys)
+		return job
+	}
 	rows := []struct {
 		name  string
 		job   map[string]any
@@ -627,6 +663,11 @@ func TestHelperTestStepTable(t *testing.T) {
 			return job
 		}()},
 		{name: "no step", job: map[string]any{"steps": []any{}}},
+		{name: "the needs and if of the reuse job on the job", job: withJobKeys(step(testfsStepCommand, nil), map[string]any{"needs": reuseNeeds, "if": reuseIf}), valid: true},
+		{name: "another if on the job", job: withJobKeys(step(testfsStepCommand, nil), map[string]any{"needs": reuseNeeds, "if": "always()"})},
+		{name: "an if on the job with no needs", job: withJobKeys(step(testfsStepCommand, nil), map[string]any{"if": reuseIf})},
+		{name: "needs on another job", job: withJobKeys(step(testfsStepCommand, nil), map[string]any{"needs": "lint", "if": reuseIf})},
+		{name: "needs as a list", job: withJobKeys(step(testfsStepCommand, nil), map[string]any{"needs": []any{reuseNeeds}, "if": reuseIf})},
 	}
 	for _, c := range rows {
 		t.Run(c.name, func(t *testing.T) {

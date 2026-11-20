@@ -152,8 +152,47 @@ var setupGoCacheExceptions = map[string]string{
 var setupGoCacheExceptionEvents = []string{"schedule", "workflow_dispatch"}
 
 // cacheServiceWords are the spellings of a direct call to the cache service
-// that no run body may hold.
+// that no run body may hold, except as mayListCaches allows.
 var cacheServiceWords = []string{"gh cache", "/actions/caches", "ACTIONS_CACHE_URL", "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_TOKEN"}
+
+// ghChangingFlagRE matches an option that sets a request method, a field or a
+// body, in a separate or an attached form (-X DELETE, -XDELETE, -fkey=x,
+// --method=DELETE, --request): any of them can turn a read of the cache list
+// into a change. The short flags may sit in a group of flags (-iXDELETE).
+var ghChangingFlagRE = regexp.MustCompile(`(^|\s)(-[A-Za-z]*[XfF]\S*|--(method|field|raw-field|input|request|data)(\s|=|$))`)
+
+var (
+	networkToolRE = regexp.MustCompile(`(^|[^A-Za-z0-9_.-])(curl|wget)([^A-Za-z0-9_-]|$)`)
+	ghCommandRE   = regexp.MustCompile(`(^|[^A-Za-z0-9_.-])gh\s+(\S+)`)
+)
+
+// onlyGetCalls reports whether the only network calls a run body makes are gh
+// api reads: no curl or wget, no gh command but api, and no api option that
+// changes a request.
+func onlyGetCalls(body string) bool {
+	if networkToolRE.MatchString(body) || ghChangingFlagRE.MatchString(body) {
+		return false
+	}
+	for _, m := range ghCommandRE.FindAllStringSubmatch(body, -1) {
+		if m[2] != "api" {
+			return false
+		}
+	}
+	return true
+}
+
+// mayListCaches reports whether a step may hold the spelling /actions/caches:
+// only the step find of the job reuse in ci.yaml, only while the job's
+// permissions are exactly actions: read, and only when the body's network
+// calls are gh api reads. A copy of that body in any other step, job or file
+// is refused.
+func mayListCaches(f cacheFile, label string, s workflowStep, word string) bool {
+	jobID := strings.TrimPrefix(label, f.path+" job ")
+	return word == "/actions/caches" && f.path == ciWorkflowPath &&
+		jobID == reuseJobID && s.ID == "find" &&
+		reflect.DeepEqual(f.rawJobs[jobID]["permissions"], map[string]any{"actions": "read"}) &&
+		onlyGetCalls(s.Run)
+}
 
 // runsGoRE matches a run body that names go or make as a word, or a path
 // that starts with scripts/.
@@ -410,7 +449,7 @@ func onlyMainPushesSaveProblems(files []cacheFile) []string {
 					checkUse(f, u, where, s.Uses, s.With)
 				}
 				for _, word := range cacheServiceWords {
-					if strings.Contains(s.Run, word) {
+					if strings.Contains(s.Run, word) && !mayListCaches(f, u.label, s, word) {
 						add("%s %s: a run body must not hold %q", u.label, where, word)
 					}
 				}
@@ -1340,6 +1379,15 @@ func TestCacheStepRules(t *testing.T) {
 	ciOnly := func(jobs ...string) map[string]string {
 		return map[string]string{ciWorkflowPath: fxWorkflow("", jobs...)}
 	}
+	const (
+		listCaches       = "      - id: find\n        run: gh api repos/x/actions/caches?ref=refs/heads/main\n"
+		readOnlyJob      = "    permissions:\n      actions: read\n"
+		listCachesWith   = "      - id: find\n        run: gh api repos/x/actions/caches?ref=refs/heads/main "
+		cachesNotAllowed = `a run body must not hold "/actions/caches"`
+	)
+	reuseWith := func(permissions, step string) map[string]string {
+		return ciOnly(fxJobWith(reuseJobID, permissions, step))
+	}
 	installWindows := fxStandardJob("install-windows", "install-windows")
 	copyOf := func(name string, extraSteps ...string) string {
 		steps := []string{fxCheckout, fxSetupGo, fxGoCache(name, "")}
@@ -1405,6 +1453,7 @@ func TestCacheStepRules(t *testing.T) {
 		{name: "a fuzz workflow on a schedule", files: map[string]string{
 			fuzzWF: fxWorkflow("  schedule:\n    - cron: \"23 6 * * 1\"\n", fxJob("fuzz", fxCheckout, fxPlainSetupGo, fxRun("go test ./..."))),
 		}},
+		{name: "the step that lists the caches in the reuse job", files: reuseWith(readOnlyJob, listCaches)},
 	}
 
 	refuse := []row{
@@ -1447,6 +1496,38 @@ func TestCacheStepRules(t *testing.T) {
 			fxSaveIf("Actions/Cache/Save", "", "${{ steps.go-cache.outputs.key }}", ""))),
 			wants: []string{"the save if must equal an allowed expression"}},
 		{name: "a run body that calls gh cache", files: ciOnly(fxStandardJob("lint", "lint", fxRun("gh cache delete --all"))),
+			wants: []string{`a run body must not hold "gh cache"`}},
+		{name: "the cache listing in another step of the reuse job", files: reuseWith(readOnlyJob, "      - id: other\n        run: gh api repos/x/actions/caches\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing in a step with the id find in another job", files: ciOnly(fxJobWith("lint", readOnlyJob, listCaches)),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing in the reuse job of another workflow", files: map[string]string{tempWF: fxWorkflow("", fxJobWith(reuseJobID, readOnlyJob, listCaches))},
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing in a reuse job with no permissions", files: ciOnly(fxJob(reuseJobID, listCaches)),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing in a reuse job that can also read contents", files: reuseWith(readOnlyJob+"      contents: read\n", listCaches),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing in a reuse job that can write actions", files: reuseWith("    permissions:\n      actions: write\n", listCaches),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing with a request method", files: reuseWith(readOnlyJob, "      - id: find\n        run: gh api -X DELETE repos/x/actions/caches/1\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing with an attached request method", files: reuseWith(readOnlyJob, "      - id: find\n        run: gh api -XDELETE repos/x/actions/caches/1\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing with a request field", files: reuseWith(readOnlyJob, listCachesWith+"-f key=x\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing with an attached request field", files: reuseWith(readOnlyJob, listCachesWith+"-fkey=x\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing with a long method option", files: reuseWith(readOnlyJob, listCachesWith+"--method=DELETE\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing with a request body", files: reuseWith(readOnlyJob, listCachesWith+"--input body.json\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing through curl", files: reuseWith(readOnlyJob, "      - id: find\n        run: curl -s https://api.github.com/repos/x/actions/caches\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing through curl with a request method", files: reuseWith(readOnlyJob, "      - id: find\n        run: curl --request DELETE https://api.github.com/repos/x/actions/caches/1\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the cache listing next to another gh command", files: reuseWith(readOnlyJob, "      - id: find\n        run: |\n          gh api repos/x/actions/caches\n          gh run delete 1\n"),
+			wants: []string{cachesNotAllowed}},
+		{name: "the step find of the reuse job calling gh cache", files: reuseWith(readOnlyJob, "      - id: find\n        run: gh cache delete --all\n"),
 			wants: []string{`a run body must not hold "gh cache"`}},
 		{name: "go-cache after the tools install", files: ciOnly(fxJob("lint", fxCheckout, fxSetupGo, fxSetupTools, fxGoCache("lint", ""), fxRun("go vet ./..."), fxSave("lint", false))),
 			wants: []string{"go-cache must come before any step that runs go"}},

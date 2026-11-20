@@ -192,7 +192,7 @@ func windowsTracedCommands(jobs map[string]faultJob) (commands, problems []strin
 
 var (
 	faultSHAPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	faultJobKeySet  = []string{"env", "runs-on", "steps", "timeout-minutes"}
+	faultJobKeySet  = []string{"env", "if", "needs", "runs-on", "steps", "timeout-minutes"}
 	faultStepKeySet = []string{"name", "run", "timeout-minutes"}
 )
 
@@ -210,6 +210,12 @@ func faultCheckJobProblems(jobs map[string]faultJob) []string {
 
 	if got := job.keyNames(); !slices.Equal(got, faultJobKeySet) {
 		add("the job keys must be exactly", list(faultJobKeySet), "got", list(got))
+	}
+	if job.text("needs") != reuseNeeds {
+		add("needs must be the string", reuseNeeds, "got", job.text("needs"))
+	}
+	if job.text("if") != reuseIf {
+		add("if must be exactly", reuseIf, "got", job.text("if"))
 	}
 	if job.text("runs-on") != "ubuntu-latest" {
 		add("runs-on must be ubuntu-latest, got", job.text("runs-on"))
@@ -386,6 +392,7 @@ func TestFaultCheckJobRules(t *testing.T) {
 		checkoutUses = "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 		cacheSHA     = "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
 	)
+	const faultJobHead = "    needs: reuse\n    if: ${{ !cancelled() && needs.reuse.outputs.reuse != 'true' }}\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    env:\n"
 	const checkBlock = "      - name: Fault check\n        if: ${{ !cancelled() }}\n        run: ./scripts/fault-check\n"
 	saveStep := "      - uses: actions/cache/save@" + cacheSHA + " # v6.1.0\n        if: ${{ github.event_name == 'push' }}\n        with:\n          path: ~/go/pkg/mod\n          key: fault-check\n"
 	goCacheStep := "      - uses: " + goCacheAction + "\n        with:\n          name: fault-check\n"
@@ -403,6 +410,9 @@ func TestFaultCheckJobRules(t *testing.T) {
 		{"a run pattern differs in one copy", edit("TestRenameOverAnOpenTarget|", "TestRenameOverAnOpenTargets|"), "missing the traced command"},
 		{"the job has no GOFLAGS", edit("      GOFLAGS: -exec=${{ github.workspace }}/scripts/fault-trace\n", ""), "env must be exactly"},
 		{"the job continues on error", edit("    timeout-minutes: 20\n    env:\n      GOFLAGS", "    timeout-minutes: 20\n    continue-on-error: true\n    env:\n      GOFLAGS"), "the job keys must be exactly"},
+		{"the job without the needs and if of the reuse job", edit(faultJobHead, "    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    env:\n"), "the job keys must be exactly"},
+		{"the job with another if", edit(faultJobHead, strings.Replace(faultJobHead, "!= 'true'", "== 'false'", 1)), "if must be exactly"},
+		{"the job with needs on another job", edit(faultJobHead, strings.Replace(faultJobHead, "needs: reuse", "needs: lint", 1)), "needs must be the string reuse"},
 		{"a step continues on error", edit(configStep, configStep+"        continue-on-error: true\n"), "must not carry the key continue-on-error"},
 		{"the check step has no if", edit("        if: ${{ !cancelled() }}\n", ""), "must have exactly the keys"},
 		{"the check step comes before the e2e step", moveCheckStep(edit(e2eStep, checkBlock+e2eStep), checkBlock), "must come after every traced command"},
@@ -726,7 +736,8 @@ func indentLines(text, indent string) string {
 // linuxCPUAllowlist names the jobs of ci.yaml on a Linux runner that do not
 // start by printing the CPU model, each with the reason.
 var linuxCPUAllowlist = map[string]string{
-	"lint": "runs scripts/validate static (gofmt, vet, go test -list and the lint tools) and no test",
+	"lint":  "runs scripts/validate static (gofmt, vet, go test -list and the lint tools) and no test",
+	"reuse": "runs no test; reads the API only",
 }
 
 // linuxCPUStepProblems returns what is wrong with the jobs of one workflow
