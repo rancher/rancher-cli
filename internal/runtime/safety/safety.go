@@ -69,6 +69,26 @@ func (s PreviewSource) Valid() bool {
 	return s == PreviewServerDryRun || s == PreviewServerReads
 }
 
+// WriteVia says which API a command's write goes through, for a command that
+// has more than one path. The empty value means the command has one path,
+// which PreviewSource describes.
+type WriteVia string
+
+const (
+	// WriteViaKubernetesAPI is a write through the Kubernetes API of
+	// Rancher's local cluster, with a server-side dry-run and a
+	// resourceVersion precondition.
+	WriteViaKubernetesAPI WriteVia = "kubernetesAPI"
+	// WriteViaRancherAction is a write through a Rancher action, which has no
+	// dry-run and no precondition.
+	WriteViaRancherAction WriteVia = "rancherAction"
+)
+
+// Valid reports whether w is one of the two paths.
+func (w WriteVia) Valid() bool {
+	return w == WriteViaKubernetesAPI || w == WriteViaRancherAction
+}
+
 // DiffEntry is a single field change in an Effect.
 type DiffEntry struct {
 	Path string `json:"path"`
@@ -145,6 +165,10 @@ type Effect struct {
 	// reports, each with its outcome. Empty for a command that touches one
 	// object, which leaves its output unchanged.
 	Objects []Object `json:"objects,omitempty"`
+	// WriteVia names the API the write goes through, for a command with more
+	// than one path; every other command leaves it empty. checkPlan refuses
+	// any other value than the two paths.
+	WriteVia WriteVia `json:"writeVia,omitempty"`
 	// Warnings are advisory preview notes rendered with the Effect BEFORE
 	// confirmation (version-not-in-discovery, etcd-quorum impact, deletion
 	// cascade). They never gate - gating is Action/Destructive/Stability's

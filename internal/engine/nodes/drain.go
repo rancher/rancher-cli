@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -21,9 +22,10 @@ type drainCmd struct {
 
 // NewDrain builds `node drain <node> --cluster <cluster>` (mutating): it
 // writes the drain request and its options on the node's management node,
-// and Rancher runs the drain.
-func NewDrain(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
-	return &drainCmd{planner{clients: clients, roots: roots}}
+// and Rancher runs the drain. A caller with no access to Rancher's local
+// cluster asks Rancher through its node action instead.
+func NewDrain(clients engine.ClusterClientFactory, roots engine.RootClientFactory, nodeActions engine.NodeActionClientFactory) runtime.Command {
+	return &drainCmd{planner{clients: clients, roots: roots, nodeActions: nodeActions}}
 }
 
 func (drainCmd) Describe() runtime.Descriptor {
@@ -36,7 +38,8 @@ func (drainCmd) Describe() runtime.Descriptor {
 			"the drain does to each (text output names up to five pods per outcome; -o json lists every pod). Rancher offers drain only " +
 			"for worker nodes that are active or cordoned (it shows a node whose drain failed on a kubectl flag or a timeout as cordoned); " +
 			"the command refuses the others with Rancher's state. By default it waits until Rancher reports the drain done or failed " +
-			"(--wait=false returns once the server accepts the request). Requires --yes with --apply. It needs access to Rancher's local cluster.",
+			"(--wait=false returns once the server accepts the request). Requires --yes with --apply. " +
+			"Without access to Rancher's local cluster it sends the request through the action the Rancher UI uses; the preview is built from reads with no dry-run, and Rancher accepts the request for a node in any state.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "node", Type: "string", Required: true, Desc: "node `name`, the NAME column of `rancher get node --cluster <cluster>`"}},
 		Flags: []runtime.ArgSpec{
@@ -84,14 +87,37 @@ func (c drainCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, put, err := fd.update(ctx, obj, true)
-	if err != nil {
-		return safety.Effect{}, nil, err
+	var eff safety.Effect
+	var put runtime.ExecuteFunc
+	if fd.norman != nil {
+		body, err := json.Marshal(drainInput(f))
+		if err != nil {
+			return safety.Effect{}, nil, internalError(err.Error())
+		}
+		eff, put = fd.normanUpdate(obj, kinds.NodeDrain, body)
+		eff.Warnings = append(fd.normanWarnings(), drainNotes(fd.t, f, plan, readErr, drainNoteNorman)...)
+	} else {
+		eff, put, err = fd.update(ctx, obj, true)
+		if err != nil {
+			return safety.Effect{}, nil, err
+		}
+		eff.Warnings = drainWarnings(fd.t, f, plan, readErr)
 	}
-	eff.Warnings = drainWarnings(fd.t, f, plan, readErr)
 	eff.Objects = plan.objects
 	run := drainRun{found: fd, flags: f, evictedNamespaces: plan.evictedNamespaces, planned: readDrained(fd.listed.Object)}
 	return eff, run.exec(put), nil
+}
+
+// drainInput is the five options of Rancher's drain, each with the default
+// Rancher gives it.
+func drainInput(f drainFlags) map[string]any {
+	return map[string]any{
+		"force":            f.force,
+		"ignoreDaemonSets": true,
+		"deleteLocalData":  f.deleteEmptyDir,
+		"gracePeriod":      f.gracePeriod,
+		"timeout":          int64(f.drainTimeout / time.Second),
+	}
 }
 
 // drainObject is the management node with the drain request and the five
@@ -99,14 +125,7 @@ func (c drainCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 // gives it.
 func drainObject(listed *unstructured.Unstructured, f drainFlags) (*unstructured.Unstructured, error) {
 	obj := listed.DeepCopy()
-	input := map[string]any{
-		"force":            f.force,
-		"ignoreDaemonSets": true,
-		"deleteLocalData":  f.deleteEmptyDir,
-		"gracePeriod":      f.gracePeriod,
-		"timeout":          int64(f.drainTimeout / time.Second),
-	}
-	if err := unstructured.SetNestedField(obj.Object, input, "spec", "nodeDrainInput"); err != nil {
+	if err := unstructured.SetNestedField(obj.Object, drainInput(f), "spec", "nodeDrainInput"); err != nil {
 		return nil, internalError(err.Error())
 	}
 	if err := unstructured.SetNestedField(obj.Object, "drain", "spec", "desiredNodeUnschedulable"); err != nil {
@@ -115,11 +134,23 @@ func drainObject(listed *unstructured.Unstructured, f drainFlags) (*unstructured
 	return obj, nil
 }
 
-// drainWarnings are the preview's notes, in order; the conditional ones only
-// when they apply.
+// The first note of the preview: on the path through the Kubernetes API a
+// server-side dry-run checks the request; on the Norman path none does.
+const (
+	drainNoteDryRun = "the server-side dry-run checks the request to Rancher; it does not run the drain. Rancher runs kubectl drain, which cordons the node and then evicts the pods listed here through the Eviction API, respecting PodDisruptionBudgets"
+	drainNoteNorman = "Rancher runs kubectl drain, which cordons the node and then evicts the pods listed here through the Eviction API, respecting PodDisruptionBudgets"
+)
+
+// drainWarnings are the preview's notes of the path through the Kubernetes
+// API, in order; the conditional ones only when they apply.
 func drainWarnings(t target, f drainFlags, plan podPlan, readErr error) []string {
+	return drainNotes(t, f, plan, readErr, drainNoteDryRun)
+}
+
+// drainNotes are the preview's notes, in order, starting with first.
+func drainNotes(t target, f drainFlags, plan podPlan, readErr error, first string) []string {
 	warnings := []string{
-		"the server-side dry-run checks the request to Rancher; it does not run the drain. Rancher runs kubectl drain, which cordons the node and then evicts the pods listed here through the Eviction API, respecting PodDisruptionBudgets",
+		first,
 		fmt.Sprintf("Rancher runs the drain as its system user for cluster %s, not with your permissions", t.id),
 		"stopping a drain leaves the node cordoned; evicted pods are not put back",
 	}
@@ -163,7 +194,7 @@ func (r drainRun) exec(put runtime.ExecuteFunc) runtime.ExecuteFunc {
 			return r.requested(), nil
 		}
 		w := &nodeWait{
-			action: kinds.NodeDrain, client: r.local, gvr: r.row.GVR, t: r.t,
+			action: kinds.NodeDrain, client: r.waitClient, gvr: r.row.GVR, t: r.t,
 			timeout: r.flags.timeout, timeoutText: r.flags.timeoutText,
 			planned: r.planned, flags: r.flags, evictedNamespaces: r.evictedNamespaces,
 		}

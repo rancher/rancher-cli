@@ -59,11 +59,19 @@
       {
         "name": "objects",
         "type": "array"
+      },
+      {
+        "name": "writeVia",
+        "type": "string"
       }
     ],
     "previewSources": [
       "serverDryRun",
       "serverReads"
+    ],
+    "writeVia": [
+      "kubernetesAPI",
+      "rancherAction"
     ]
   },
   "generatedCommandCount": 175,

@@ -14,11 +14,11 @@ import (
 )
 
 func newDrainCmd(f *fakeRancher, noLister bool) runtime.Command {
-	return NewDrain(testFactory{f: f, noLister: noLister}, testRoots{f: f})
+	return NewDrain(testFactory{f: f, noLister: noLister}, testRoots{f: f}, testNodeActions{f: f})
 }
 
 func newStopCmd(f *fakeRancher) runtime.Command {
-	return NewStopDrain(testFactory{f: f}, testRoots{f: f})
+	return NewStopDrain(testFactory{f: f}, testRoots{f: f}, testNodeActions{f: f})
 }
 
 func requireCLIError(t *testing.T, err error) *clierr.Error {
@@ -75,6 +75,23 @@ func TestDrainPlanDisplayIdentity(t *testing.T) {
 	assert.True(t, p.eff.Destructive)
 	assert.False(t, p.eff.Reversible)
 
+	res, err := p.exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "node/worker-1 drain requested", strings.Split(res.Text, "\n")[0])
+	assert.Equal(t, map[string]any{"node": "worker-1", "managementNode": "c-1/m-1", "waited": false}, res.Data)
+}
+
+// TestNormanPathDisplayIdentity asserts a committed result of node drain through
+// Rancher's node action names the node as the path through the Kubernetes API
+// does, and the Effect names it by its downstream name.
+func TestNormanPathDisplayIdentity(t *testing.T) {
+	t.Parallel()
+	f := ownerOf(t, commandsUnderTest[0])
+	p, err := plan(t, newDrainCmd(f, false), newInput("worker-1", "--wait=false"))
+	require.NoError(t, err)
+	assert.Equal(t, "node", p.eff.DisplayKind)
+	assert.Equal(t, "worker-1", p.eff.DisplayName)
+	assert.Equal(t, "nodes/m-1", p.eff.Target)
 	res, err := p.exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "node/worker-1 drain requested", strings.Split(res.Text, "\n")[0])
@@ -243,10 +260,11 @@ func TestDrainPlanLookup(t *testing.T) {
 		assert.Equal(t, "cluster c-1 has 2 management nodes for node worker-1", ce.Message)
 		assert.Equal(t, []clierr.Candidate{{ID: "m-1", Name: "worker-1"}, {ID: "m-2", Name: "worker-1"}}, ce.Candidates)
 	})
-	t.Run("the list is refused", func(t *testing.T) {
+	t.Run("the namespace list is refused after the label list answered", func(t *testing.T) {
 		t.Parallel()
 		f := idleNode(t)
-		f.listStatus = 403
+		f.labeled = nil
+		f.plainStatus = 403
 		_, err := plan(t, newDrainCmd(f, false), newInput("worker-1"))
 		ce := requireCLIError(t, err)
 		assert.Equal(t, clierr.CodeRBAC, ce.Code)
@@ -254,6 +272,7 @@ func TestDrainPlanLookup(t *testing.T) {
 		status, ok := clierr.HTTPStatus(err)
 		assert.True(t, ok)
 		assert.Equal(t, 403, status)
+		assert.Empty(t, f.normanSeen(), "a refusal after a successful list sends nothing to Norman")
 	})
 	t.Run("another list error keeps its text", func(t *testing.T) {
 		t.Parallel()

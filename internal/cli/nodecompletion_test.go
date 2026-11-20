@@ -2,8 +2,11 @@ package cli
 
 import (
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,7 +38,9 @@ func nodeCompletionServer(t *testing.T) *pathCountingServer {
 // the active node only and that of node stop-drain the draining node only, a
 // drained node, a node that is not ready and a node with no worker role to
 // neither, with one request, and that --cluster of both commands is still
-// offered by the shared cluster source. NOT parallel: the completion fixture
+// offered by the shared cluster source; and that the same nodes are offered,
+// with no request through the local cluster's route, when that route answers
+// every request with 403. NOT parallel: the completion fixture
 // mutates env globals and the stored config.
 func TestNodeCompletionOffersAllowedNodes(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -62,6 +67,36 @@ func TestNodeCompletionOffersAllowedNodes(t *testing.T) {
 			assert.NotEmpty(t, got, "--cluster offers clusters")
 			assert.NotContains(t, got, "active-node")
 			assert.NotContains(t, hits, nodeNodesPath, "--cluster is not claimed by the node source")
+		})
+	}
+
+	// A Cluster Owner or Manage Nodes user is refused on every request through
+	// the local cluster's route: the node source reads through the Steve API
+	// and offers the same nodes.
+	var local atomic.Int32
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/k8s/clusters/local/") {
+			local.Add(1)
+			http.Error(w, "", http.StatusForbidden)
+			return
+		}
+		s.srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(front.Close)
+	for _, tc := range []struct {
+		command string
+		want    []string
+	}{
+		{"drain", []string{"active-node"}},
+		{"stop-drain", []string{"draining-node"}},
+	} {
+		t.Run(tc.command+" for a caller the local cluster refuses", func(t *testing.T) {
+			completionFixture(t, front.URL, true)
+			s.reset()
+			got := runCompletion(t, []string{"node", tc.command, "--cluster", "c-aaa11"}, "")
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, map[string]int{nodeNodesPath: 1}, s.reset(), "one request")
+			assert.Zero(t, local.Load(), "nothing goes through the local cluster's route")
 		})
 	}
 }

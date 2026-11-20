@@ -323,7 +323,13 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   <c>` stops a running drain with `--apply` alone; the node stays cordoned. Read
   the state with `rancher get management-node --cluster <c>`. An error with
   `data.error.details.committed` true means the request was accepted: run
-  `data.error.details.recovery`, never the command again.
+  `data.error.details.recovery`, never the command again. `writeVia` in the
+  Effect says which path the write takes. `kubernetesAPI` (a caller with access
+  to Rancher's local cluster) has a server-side dry-run and a resourceVersion
+  precondition. `rancherAction` (a caller without that access, such as a Cluster
+  Owner or Manage Nodes user) has `previewSource: serverReads`: Rancher accepts
+  the request in any state and the request is not checked against the preview.
+  Relay its warnings before applying.
 - `project remove-namespace <ns>` also accepts a namespace with the project
   label and no project annotation, and makes sure its project label is
   removed.
@@ -367,7 +373,8 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
   write. An `RBAC` error on dry-run means the write would be denied too. The
   exception is a Rancher action the CLI previews from server reads (`app
-  install`, `app upgrade`, `app uninstall`): its Effect has `previewSource: serverReads`, built from server
+  install`, `app upgrade`, `app uninstall`, and `node drain` and `node stop-drain`
+  for a caller without access to Rancher's local cluster): its Effect has `previewSource: serverReads`, built from server
   reads, with no `resourceVersion` and `conflictDetection` false. A ResourceQuota,
   LimitRanger, PodSecurity or ValidatingAdmissionPolicy refusal on dry-run is
   `VALIDATION`: the server refused the object, not your access.

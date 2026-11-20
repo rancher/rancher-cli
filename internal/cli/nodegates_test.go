@@ -31,7 +31,8 @@ func runNodeCommand(t *testing.T, s *nodeServer, command string, in fieldCoverag
 // TestNodeGates asserts a command cannot weaken its gates: node drain with
 // --apply and no --yes is CONFIRMATION_REQUIRED and sends no write beyond the
 // dry run, node drain with --apply --yes writes, node stop-drain with --apply
-// alone writes, and a preview writes nothing but the dry run.
+// alone writes, and a preview writes nothing but the dry run. The same holds
+// for the requests through Rancher's node action.
 func TestNodeGates(t *testing.T) {
 	worker := map[string]any{"worker": true, "internalNodeSpec": map[string]any{}}
 	draining := map[string]any{"worker": true, "desiredNodeUnschedulable": "drain", "internalNodeSpec": map[string]any{"unschedulable": true}}
@@ -57,6 +58,39 @@ func TestNodeGates(t *testing.T) {
 		_, ce := runNodeCommand(t, s, "node stop-drain", noWait("worker-1"), true, false, false)
 		require.Nil(t, ce)
 		assert.Equal(t, []bool{true, false}, s.writes())
+	})
+	viaNorman := func(t *testing.T, state, action string, before, after map[string]any) *nodeServer {
+		t.Helper()
+		s := newNodeServer(t, state, before, after, noPlant)
+		s.norman = action
+		return s
+	}
+	t.Run("norman drain without yes", func(t *testing.T) {
+		s := viaNorman(t, "active", "drain", nodeObject(worker), nodeObject(worker))
+		_, ce := runNodeCommand(t, s, "node drain", noWait("worker-1"), true, false, false)
+		require.NotNil(t, ce)
+		assert.Equal(t, clierr.CodeConfirmationRequired, ce.Code)
+		assert.Empty(t, s.actions(), "no action is sent")
+		assert.Empty(t, s.writes())
+	})
+	t.Run("norman drain with yes", func(t *testing.T) {
+		s := viaNorman(t, "active", "drain", nodeObject(worker), nodeObject(worker))
+		_, ce := runNodeCommand(t, s, "node drain", noWait("worker-1"), true, true, false)
+		require.Nil(t, ce)
+		assert.Equal(t, []string{"/v3/nodes/" + scrubCluster + ":m-1?action=drain"}, s.actions())
+		assert.Empty(t, s.writes())
+	})
+	t.Run("norman stop-drain with apply alone", func(t *testing.T) {
+		s := viaNorman(t, "draining", "stopDrain", nodeObject(draining, map[string]any{"type": "Drained", "status": "Unknown", "lastUpdateTime": "t0"}), nodeObject(draining))
+		_, ce := runNodeCommand(t, s, "node stop-drain", noWait("worker-1"), true, false, false)
+		require.Nil(t, ce)
+		assert.Equal(t, []string{"/v3/nodes/" + scrubCluster + ":m-1?action=stopDrain"}, s.actions())
+	})
+	t.Run("a norman preview sends no action", func(t *testing.T) {
+		s := viaNorman(t, "active", "drain", nodeObject(worker), nodeObject(worker))
+		_, ce := runNodeCommand(t, s, "node drain", noWait("worker-1"), false, false, true)
+		require.Nil(t, ce)
+		assert.Empty(t, s.actions())
 	})
 	t.Run("a preview writes only the dry run", func(t *testing.T) {
 		s := newNodeServer(t, "active", nodeObject(worker), nodeObject(worker), noPlant)

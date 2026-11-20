@@ -38,10 +38,12 @@ before it:
 imported cluster and by `cluster save-etcd-snapshot` to refuse an imported cluster and to
 check that the cluster is ready, because a Cluster Owner can read the management Cluster by name only
 through Steve; it returns the object in the Kubernetes shape, with its `resourceVersion`,
-for the update of `cluster upgrade`. Writes remain CRD-through-proxy, with one
-exception: `engine.ActionClient`, the one port that POSTs a Steve action (a Rancher API
-action on a Rancher resource, such as `rancher app install` on a ClusterRepo), once and
-never retried.
+for the update of `cluster upgrade`. Writes remain CRD-through-proxy, with two
+exceptions: `engine.ActionClient`, the one port that POSTs a Steve action (a Rancher API
+action on a Rancher resource, such as `rancher app install` on a ClusterRepo), and
+`engine.NodeActionClient` (the node GET and the drain and stopDrain actions of
+`node drain` and `node stop-drain`, for a caller without access to Rancher's local
+cluster), each sending its request once and never retrying it.
 
 **Output envelope.** All commands emit the versioned `cli.rancher.io/v1` envelope on
 stdout and exit with a typed code (`AUTH`, `RBAC`, `VALIDATION`, `CONFLICT`,
@@ -96,7 +98,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/provisioning/complete` | The provisioning commands' live completion sources: `CreateClusterSource` (create cluster's `--machine-config` live half, the typed kind's configs answered behind its `<kind>/` prefix, and `--cloud-credential`, the cattle-global-data credential Secrets by id and unique display name) and `PoolSource` (the cluster-family verbs' `--pool`, the machine pools of the cluster typed as the first positional). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/provisioning/clusterops` | Pure checks of operations on a Rancher cluster that a command and its completion can both call: which operation Rancher is running on a provisioned cluster, which clusters are imported RKE2 or K3s clusters, the Kubernetes version rules of `cluster upgrade`, the releases the server lists and their version order, and which etcd snapshots belong to a cluster. It makes no request; it imports only `internal/clierr` and standard library packages that open no socket, read no file and run no process, which a test in `test/conformance` asserts. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
-| `internal/engine/nodes` | `node drain` and `node stop-drain`: the management node of a node found by its label and by `status.nodeName`, its state read through Steve and checked with the rules of `internal/engine/kinds` (`NodeDrainRule`), the pods kubectl drain would evict or refuse listed as the caller through the optional `engine.FieldSelectorLister`, the planned update of the management node's `spec.desiredNodeUnschedulable` and `spec.nodeDrainInput` through `engine.PlanUpdateObserved`, and the wait on `engine.WaitObject` that ends with how Rancher's drain ended. |
+| `internal/engine/nodes` | `node drain` and `node stop-drain`, which have two paths, named by `Effect.WriteVia`. The first list of the management nodes through the local cluster chooses the path. When it answers, the management node is found by its label and by `status.nodeName`, its state read through Steve and checked with the rules of `internal/engine/kinds` (`NodeDrainRule`), and the planned update of the management node's `spec.desiredNodeUnschedulable` and `spec.nodeDrainInput` goes through `engine.PlanUpdateObserved` (`kubernetesAPI`). When the local cluster refuses it with 403, the management nodes are listed through Steve, an access review asks the local cluster for `update`, and the node's `actions` map from Rancher's Norman API decides, through `engine.NodeActionClient` (`rancherAction`). Both list the pods kubectl drain would evict or refuse as the caller through the optional `engine.FieldSelectorLister`, and wait on `engine.WaitObject` for how Rancher's drain ended. |
 | `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (create the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
 | `internal/engine/oidcclient/complete` | The oidc-client secret verbs' live completion source: `SecretNameSource`, the secret name rotate-secret and remove-secret take as their second positional, read from the status of the client typed as the first. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write) plus one `GlobalRoleBinding` per global role (the roles the server marks `newUserDefault`, or the ones typed with `--global-role`; every write is previewed by a dry-run first, and a user with no global role cannot create a token), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) - the sanctioned two-resource public-API way to create a local user with a password, never Norman. |
@@ -598,7 +600,8 @@ with no capability checker set up fails loudly rather than silently skipping the
    *is* the closure Plan built (Approach B). Plan issues a **server-side dry-run** of the
    write to surface admission/RBAC/webhook denials before the user confirms. The
    exception: a Rancher action the CLI previews from server reads (`app install`,
-   `app upgrade`, `app uninstall`); Plan sets `Effect.PreviewSource` to `serverReads`, the
+   `app upgrade`, `app uninstall`, and `node drain` and `node stop-drain` for a caller
+   without access to Rancher's local cluster); Plan sets `Effect.PreviewSource` to `serverReads`, the
    Effect carries no `resourceVersion` and no conflict detection, and Execute reads the
    state again before it POSTs the action once (a check, not a precondition). Every other
    Plan sets `serverDryRun`; the pipeline refuses an Effect with neither.
@@ -606,6 +609,8 @@ with no capability checker set up fails loudly rather than silently skipping the
    - `Effect.Action` must be in the closed enum `{create, update, delete}`;
      unknown → structured error before any gate.
    - `Effect.PreviewSource` must be `serverDryRun` or `serverReads`; empty or any other
+     value → structured error before any gate.
+   - `Effect.WriteVia`, when set, must be `kubernetesAPI` or `rancherAction`; any other
      value → structured error before any gate.
    - `Action == delete` ⇒ `Destructive == true`.
    - `Effect.Action` is validated against the closed enum; the resolver `Binding` drives
@@ -1295,7 +1300,7 @@ Verb reservation. get/create/patch/delete are reserved for kind-table resources 
 
 **`rancher charts` shows the catalog the way Rancher serves it.** Rancher sorts each repository index newest first and filters it before serving it, and the command keeps that order: no version comparer reorders the list. The version shown for a chart is the first one served that is neither a prerelease (`[v]N.N.N-<prerelease>`) nor deprecated, the version the Rancher UI picks by default. Deprecated versions (`deprecated: true` in the index, or the annotation `catalog.cattle.io/deprecated: "true"`) are left out unless `--include-deprecated` is given, which lists them with a DEPRECATED column and the JSON field `deprecated`. `--all-versions` lists every version in the served order. Without `--repo` every enabled ClusterRepo is read, and one whose index cannot be read is a warning in the envelope and the command still exits 0 with the other repositories' charts; with `--repo` it is an error. The index is read through one link builder in `internal/engine/catalog` (the completion read of the same index is the second, allowlisted in `catalogLinkAllowlist`), and no request carries `skipFilter` or `k8sVersion`: the CLI never asks for versions the server would hide, except the info of the version an app already runs, which `app upgrade` reads when the filtered index of the repository the app came from no longer lists it. A conformance scan fails when another file builds that link request or a literal outside the tests holds either parameter.
 
-**`app install`, `app upgrade` and `app uninstall` are previewed from server reads and carry no precondition.** Their Effect says so with `previewSource: serverReads`; every other mutation is `serverDryRun`, and a conformance allowlist names the files whose preview comes from reads, so a new one fails until it is reviewed. The preview proves what reads can show: the repository and the chart version are in the filtered index (except the version an app already runs, which `app upgrade` accepts when the index of the repository the app came from no longer lists it, from the info of that version), the chart annotations Rancher does not enforce pass (fixed namespace and release name, required resources, permitted operating systems), the App is in the state the command needs, and no operation for the release is running. It cannot prove that Helm's own writes will be allowed, and its warnings say so. `--version` takes one exact version from the index, never a range, so the server cannot choose another one after the preview; the one exception is the version an app already runs, which `app upgrade` keeps when the index of the repository the app came from no longer lists it. A chart that names another chart to install first is refused, with the next step in the message. The values the Rancher UI adds to a chart (cluster values, and the registry for a chart that declares one) are added to its values from server reads in the same Plan.
+**`app install`, `app upgrade` and `app uninstall` are previewed from server reads and carry no precondition, and so are `node drain` and `node stop-drain` for a caller without access to Rancher's local cluster.** Their Effect says so with `previewSource: serverReads`; every other mutation, and those two commands for a caller with that access, is `serverDryRun`, and a conformance allowlist names the files whose preview comes from reads, so a new one fails until it is reviewed. The preview proves what reads can show: the repository and the chart version are in the filtered index (except the version an app already runs, which `app upgrade` accepts when the index of the repository the app came from no longer lists it, from the info of that version), the chart annotations Rancher does not enforce pass (fixed namespace and release name, required resources, permitted operating systems), the App is in the state the command needs, and no operation for the release is running. It cannot prove that Helm's own writes will be allowed, and its warnings say so. `--version` takes one exact version from the index, never a range, so the server cannot choose another one after the preview; the one exception is the version an app already runs, which `app upgrade` keeps when the index of the repository the app came from no longer lists it. A chart that names another chart to install first is refused, with the next step in the message. The values the Rancher UI adds to a chart (cluster values, and the registry for a chart that declares one) are added to its values from server reads in the same Plan.
 
 **A catalog action is sent once, and a doubtful answer is never retried.** `engine.ActionClient` POSTs the action with no retry. After a 500, 502 or 504, or a lost answer, nobody can tell from the answer whether Rancher ran it, so the error is GENERIC, not retryable, and names what to read first (the namespace's operations and the App, with the request id the CLI put on the release). Every other refusal keeps the status mapping every command uses and adds Rancher's own text. No value from the values files reaches the server's text as shown: before that text is shown, every occurrence of such a value, raw or JSON-escaped, is replaced by `<hidden>`, and overlapping occurrences are replaced as one. A value only the CLI adds is shown as is in that text. The preview shows the values the CLI adds and the registry host, for a chart that declares a registry path.
 
@@ -1666,16 +1671,25 @@ read.
 checking that Rancher offers the action.** Rancher drains a node when
 `spec.desiredNodeUnschedulable` of its management node is `drain`, with the
 options in `spec.nodeDrainInput`, and stops the drain when it is `stopDrain`.
-`node drain` writes both fields and `node stop-drain` writes the first. Both
-write through the local cluster's Kubernetes API, with a server-side dry-run
-and a `resourceVersion` precondition, like the CLI's other writes to
-Kubernetes objects. Rancher accepts a drain request for a node in any state.
-Before it writes, the CLI checks the rules by which the Rancher UI offers each
-action: the node is a worker or has no role, and its state allows the action.
-If the node changed after that check, the precondition refuses the write. A
-user with no access to the local cluster cannot read or update management
-nodes through its Kubernetes API. Both commands need that access, and their
-help says so. A Cluster Owner without it gets an RBAC error. The `node drain`
+`node drain` writes both fields and `node stop-drain` writes the first. A caller with
+access to the local cluster gets the write through its Kubernetes API, with a
+server-side dry-run and a `resourceVersion` precondition, like the CLI's other
+writes to Kubernetes objects; the Effect says `writeVia: kubernetesAPI`.
+Rancher accepts a drain request for a node in any state. Before it writes, the
+CLI checks the rules by which the Rancher UI offers each action: the node is a
+worker or has no role, and its state allows the action. If the node changed
+after that check, the precondition refuses the write. The local cluster's
+Kubernetes API refuses the management nodes to a user with no access to the
+local cluster, such as a Cluster Owner or a Manage Nodes user. When it refuses
+the first list of the management nodes with 403, the command asks Rancher
+through the node action the Rancher UI uses instead: it lists the management
+nodes through the Steve API, asks the local cluster whether the caller may
+update them, and reads the node from Rancher's Norman API, whose `actions` map
+decides whether Rancher offers the action. That path has no dry-run and no
+precondition: its Effect says `previewSource: serverReads` and `writeVia:
+rancherAction`, the request is sent once and never retried, and nothing binds
+it to the preview. A 403 on the dry-run or on the write of the Kubernetes API path stays
+an RBAC error and sends nothing through the node action. The `node drain`
 preview lists the node's pods in every namespace with one list filtered by the
 field selector `spec.nodeName`, a list method no other command uses. Once
 Rancher has accepted the request, an error from the wait (a timeout, a cancel,

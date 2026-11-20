@@ -33,7 +33,7 @@ func seedStoredLogin(t *testing.T, srv *httptest.Server, entryLines string) *cli
 
 // TestRefusedStoredTokenNamesTheLoginCommandOnEveryClient asserts a 401 to
 // the token of a stored entry names the login command for that entry as its
-// hint, through the root client, the action client and the cluster clients
+// hint, through the root client, the action client, the node action client and the cluster clients
 // (a read, a pod log read, and a read acting as another user): a pasted token
 // names --token-stdin, a login through an auth config names --auth-provider
 // with that auth config, and the exec plugin's own login entry names none.
@@ -78,6 +78,17 @@ func TestRefusedStoredTokenNamesTheLoginCommandOnEveryClient(t *testing.T) {
 			expect("action client", refused.Err)
 			require.NotNil(t, refused.Request)
 			assert.Equal(t, tc.want, refused.Request.Login.Field(), "the refused action's request carries the login command")
+
+			nodeActions, err := f.NodeActions()
+			require.NoError(t, err)
+			_, err = nodeActions.GetNode(t.Context(), "c-1", "m-1")
+			expect("node action client read", err)
+			err = nodeActions.PostNodeAction(t.Context(), "c-1", "m-1", engine.NodeActionDrain, []byte(`{}`))
+			var refusedNode *engine.ActionRefused
+			require.ErrorAs(t, err, &refusedNode)
+			expect("node action client write", refusedNode.Err)
+			require.NotNil(t, refusedNode.Request)
+			assert.Equal(t, tc.want, refusedNode.Request.Login.Field(), "the refused node action's request carries the login command")
 
 			cluster, err := f.Cluster(t.Context(), "local")
 			require.NoError(t, err)

@@ -22,7 +22,9 @@ func drainingNode(t *testing.T) *fakeRancher {
 		drainedCond("Unknown", "", "t0"))
 	f.labeled = []map[string]any{obj}
 	f.steve = steveView(obj, "draining", "")
+	f.steveItems = []map[string]any{f.steve}
 	f.reads = []map[string]any{obj}
+	f.norman = []map[string]any{normanNode("c-1:m-1", "draining", "stopDrain")}
 	return f
 }
 
@@ -44,6 +46,22 @@ func TestStopDrainPlanDisplayIdentity(t *testing.T) {
 	assert.False(t, p.eff.Reversible)
 
 	res, err := p.exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "node/worker-1 stop requested", strings.Split(res.Text, "\n")[0])
+	assert.Equal(t, map[string]any{"node": "worker-1", "managementNode": "c-1/m-1", "waited": false}, res.Data)
+}
+
+// TestNormanStopDrainPlanDisplayIdentity asserts the same for node stop-drain
+// through Rancher's node action.
+func TestNormanStopDrainPlanDisplayIdentity(t *testing.T) {
+	t.Parallel()
+	g := ownerOf(t, commandsUnderTest[1])
+	q, err := plan(t, newStopCmd(g), newInput("worker-1", "--wait=false"))
+	require.NoError(t, err)
+	assert.Equal(t, "node", q.eff.DisplayKind)
+	assert.Equal(t, "worker-1", q.eff.DisplayName)
+	assert.Equal(t, "nodes/m-1", q.eff.Target)
+	res, err := q.exec(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "node/worker-1 stop requested", strings.Split(res.Text, "\n")[0])
 	assert.Equal(t, map[string]any{"node": "worker-1", "managementNode": "c-1/m-1", "waited": false}, res.Data)

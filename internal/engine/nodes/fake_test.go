@@ -1,14 +1,18 @@
 package nodes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -82,8 +86,13 @@ type fakeRancher struct {
 	pods        []map[string]any
 	podStatus   int
 	listStatus  int
+	// plainStatus is the status of the plain list only, when set.
+	plainStatus int
 	putStatus   int
-	putMessage  string
+	// applyPutStatus is the status of a write that is not a dry-run, when
+	// set.
+	applyPutStatus int
+	putMessage     string
 	// reads are the responses of the management node GET after the write, in
 	// order; the last one repeats.
 	reads []map[string]any
@@ -92,6 +101,43 @@ type fakeRancher struct {
 	// requests are the method and path with query of every request.
 	requests []string
 	puts     []putRecord
+
+	// steveItems are the data of the Steve API's collection of the cluster's
+	// management nodes, steveListStatus its status when not 200, steveListBody
+	// the whole answer when set, and steveReads the answers of the single
+	// object in order, the last one repeating, when set in place of steve.
+	steveItems      []map[string]any
+	steveListStatus int
+	steveListBody   string
+	steveReads      []map[string]any
+
+	// norman are the answers of the Norman node GET in order, the last one
+	// repeating; normanStatus is the status of every GET when set and
+	// normanBody the whole answer when set. normanPostStatus is the status of
+	// the action POST, normanPostDrop closes the connection after the request
+	// is read, and posts are the action requests received.
+	norman           []map[string]any
+	normanStatus     int
+	normanBody       string
+	normanPostStatus int
+	normanPostDrop   bool
+	posts            []postRecord
+
+	// reviewStatus is the status of the access review when set,
+	// reviewDenied and reviewEvalError its answer, and reviews the bodies
+	// received.
+	reviewStatus    int
+	reviewDenied    bool
+	reviewEvalError string
+	reviews         []map[string]any
+}
+
+// postRecord is a Norman action request the server received.
+type postRecord struct {
+	path        string
+	query       string
+	contentType string
+	body        []byte
 }
 
 func newFakeRancher(t *testing.T) *fakeRancher {
@@ -119,9 +165,23 @@ func (f *fakeRancher) serve(w http.ResponseWriter, r *http.Request) {
 	f.requests = append(f.requests, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
 	path := r.URL.Path
 	switch {
+	case path == "/v1/management.cattle.io.nodes/c-1":
+		f.serveSteveList(w)
+	case strings.HasPrefix(path, "/v3/nodes/"):
+		f.serveNorman(w, r)
+	case strings.HasSuffix(path, "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews") && r.Method == http.MethodPost:
+		f.serveReview(w, r)
 	case strings.HasPrefix(path, "/v1/management.cattle.io.nodes/"):
 		if f.steveStatus != 0 {
 			writeJSON(w, f.steveStatus, statusBody(f.steveStatus, "the Steve API refused the read"))
+			return
+		}
+		if len(f.steveReads) > 0 {
+			answer := f.steveReads[0]
+			if len(f.steveReads) > 1 {
+				f.steveReads = f.steveReads[1:]
+			}
+			writeJSON(w, 200, answer)
 			return
 		}
 		if f.steve == nil {
@@ -137,6 +197,9 @@ func (f *fakeRancher) serve(w http.ResponseWriter, r *http.Request) {
 		items := f.plain
 		if r.URL.Query().Get("labelSelector") != "" {
 			items = f.labeled
+		} else if f.plainStatus != 0 {
+			writeJSON(w, f.plainStatus, statusBody(f.plainStatus, "nodes.management.cattle.io is forbidden: User \"u\" cannot list resource \"nodes\""))
+			return
 		}
 		list := make([]any, len(items))
 		for i, item := range items {
@@ -149,6 +212,10 @@ func (f *fakeRancher) serve(w http.ResponseWriter, r *http.Request) {
 		f.puts = append(f.puts, putRecord{dryRun: r.URL.Query().Get("dryRun") == "All", query: r.URL.RawQuery, body: body})
 		if f.putStatus != 0 {
 			writeJSON(w, f.putStatus, statusBody(f.putStatus, f.putMessage))
+			return
+		}
+		if f.applyPutStatus != 0 && r.URL.Query().Get("dryRun") != "All" {
+			writeJSON(w, f.applyPutStatus, statusBody(f.applyPutStatus, f.putMessage))
 			return
 		}
 		writeJSON(w, 200, body)
@@ -180,6 +247,98 @@ func (f *fakeRancher) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, statusBody(404, "no route "+path))
 	}
 }
+
+// serveSteveList serves the Steve API's collection of the management nodes of
+// the cluster as a page with data, count and revision.
+func (f *fakeRancher) serveSteveList(w http.ResponseWriter) {
+	if f.steveListStatus != 0 {
+		writeJSON(w, f.steveListStatus, statusBody(f.steveListStatus, "the Steve API refused the list"))
+		return
+	}
+	if f.steveListBody != "" {
+		_, _ = io.WriteString(w, f.steveListBody)
+		return
+	}
+	data := make([]any, len(f.steveItems))
+	for i, item := range f.steveItems {
+		data[i] = item
+	}
+	writeJSON(w, 200, map[string]any{"type": "collection", "data": data, "count": len(data), "revision": "1"})
+}
+
+// serveNorman serves the Norman node GET and the action POST.
+func (f *fakeRancher) serveNorman(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		body, _ := io.ReadAll(r.Body)
+		f.posts = append(f.posts, postRecord{path: r.URL.Path, query: r.URL.RawQuery, contentType: r.Header.Get("Content-Type"), body: body})
+		if f.normanPostDrop {
+			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+				_ = conn.Close()
+			}
+			return
+		}
+		if f.normanPostStatus != 0 {
+			writeJSON(w, f.normanPostStatus, map[string]any{"type": "error", "status": f.normanPostStatus, "message": "Rancher refused the action"})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"type": "node"})
+		return
+	}
+	if f.normanStatus != 0 {
+		writeJSON(w, f.normanStatus, map[string]any{"type": "error", "status": f.normanStatus, "message": "Rancher refused the read"})
+		return
+	}
+	if f.normanBody != "" {
+		_, _ = io.WriteString(w, f.normanBody)
+		return
+	}
+	if len(f.norman) == 0 {
+		writeJSON(w, 404, map[string]any{"type": "error", "status": 404, "message": "not found"})
+		return
+	}
+	answer := f.norman[0]
+	if len(f.norman) > 1 {
+		f.norman = f.norman[1:]
+	}
+	writeJSON(w, 200, answer)
+}
+
+// serveReview answers a SelfSubjectAccessReview.
+func (f *fakeRancher) serveReview(w http.ResponseWriter, r *http.Request) {
+	var body map[string]any
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	f.reviews = append(f.reviews, body)
+	if f.reviewStatus != 0 {
+		writeJSON(w, f.reviewStatus, statusBody(f.reviewStatus, "the review is refused"))
+		return
+	}
+	status := map[string]any{"allowed": !f.reviewDenied}
+	if f.reviewEvalError != "" {
+		status["evaluationError"] = f.reviewEvalError
+	}
+	writeJSON(w, 201, map[string]any{"apiVersion": "authorization.k8s.io/v1", "kind": "SelfSubjectAccessReview", "spec": body["spec"], "status": status})
+}
+
+// normanSeen are the requests of the Norman API, in order.
+func (f *fakeRancher) normanSeen() []string {
+	var out []string
+	for _, r := range f.seen() {
+		if strings.Contains(r, " /v3/nodes/") {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// postsSeen are the Norman action requests received.
+func (f *fakeRancher) postsSeen() []postRecord {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.posts)
+}
+
+// kubernetesWrites counts the PUTs received.
+func (f *fakeRancher) kubernetesWrites() int { return len(f.writes()) }
 
 func (f *fakeRancher) seen() []string {
 	f.mu.Lock()
@@ -283,7 +442,99 @@ func steveView(obj map[string]any, state, message string) map[string]any {
 	maps.Copy(meta, obj["metadata"].(map[string]any))
 	meta["state"] = map[string]any{"name": state, "message": message}
 	out["metadata"] = meta
+	out["id"] = "c-1/" + meta["name"].(string)
+	out["type"] = "management.cattle.io.node"
+	out["links"] = map[string]any{"self": "https://rancher.example/v1/management.cattle.io.nodes/c-1/" + meta["name"].(string)}
 	return out
+}
+
+// normanNode is the Norman API's node: its state and a map with a link for
+// each action.
+func normanNode(id, state string, actions ...string) map[string]any {
+	out := map[string]any{"id": id, "type": "node", "state": state}
+	if actions != nil {
+		links := map[string]any{}
+		for _, a := range actions {
+			links[a] = "https://rancher.example/v3/nodes/" + id + "?action=" + a
+		}
+		out["actions"] = links
+	}
+	return out
+}
+
+// testNodeActions is the node action port over the fake server.
+type testNodeActions struct{ f *fakeRancher }
+
+func (a testNodeActions) NodeActions() (engine.NodeActionClient, error) {
+	return normanTestClient(a), nil
+}
+
+type normanTestClient struct{ f *fakeRancher }
+
+func (c normanTestClient) path(cluster, node string) string {
+	return c.f.srv.URL + "/v3/nodes/" + cluster + ":" + node
+}
+
+func (c normanTestClient) GetNode(ctx context.Context, cluster, node string) (engine.NormanNode, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.path(cluster, node), nil)
+	if err != nil {
+		return engine.NormanNode{}, err
+	}
+	resp, err := c.f.srv.Client().Do(req)
+	if err != nil {
+		return engine.NormanNode{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return engine.NormanNode{}, clierr.FromResponse("GET on the Rancher server", http.MethodGet, resp.StatusCode, body, nil)
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(body, &obj); err != nil || obj == nil {
+		return engine.NormanNode{}, clierr.New(clierr.CodeGeneric, "could not read management node "+node+" of cluster "+cluster+": not a JSON object").WithRetryable(false)
+	}
+	var out engine.NormanNode
+	out.State, _ = obj["state"].(string)
+	if actions, ok := obj["actions"].(map[string]any); ok {
+		for name := range actions {
+			out.Actions = append(out.Actions, name)
+		}
+		slices.Sort(out.Actions)
+		out.HasActions = len(out.Actions) > 0
+	}
+	return out, nil
+}
+
+func (c normanTestClient) PostNodeAction(ctx context.Context, cluster, node string, action engine.NodeAction, body []byte) error {
+	var written atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteRequest: func(httptrace.WroteRequestInfo) { written.Store(true) }})
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.path(cluster, node)+"?action="+string(action), reader)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.f.srv.Client().Do(req)
+	if err != nil {
+		if written.Load() {
+			return &engine.ActionOutcomeUnknown{Err: err}
+		}
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	answer, _ := io.ReadAll(resp.Body)
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return nil
+	case resp.StatusCode == 500 || resp.StatusCode == 502 || resp.StatusCode == 504:
+		return &engine.ActionOutcomeUnknown{Err: clierr.ResponseError(http.MethodPost, resp.StatusCode, answer), Body: answer}
+	}
+	return &engine.ActionRefused{Err: clierr.FromResponse("POST on the Rancher server", http.MethodPost, resp.StatusCode, answer, nil), Body: answer}
 }
 
 // workerSpec is the spec of a worker node that is schedulable.
@@ -302,7 +553,9 @@ func idleNode(t *testing.T) *fakeRancher {
 	obj := managementNode("m-1", "worker-1", "7", workerSpec())
 	f.labeled = []map[string]any{obj}
 	f.steve = steveView(obj, "active", "")
+	f.steveItems = []map[string]any{f.steve}
 	f.reads = []map[string]any{obj}
+	f.norman = []map[string]any{normanNode("c-1:m-1", "active", "drain")}
 	return f
 }
 

@@ -19,9 +19,11 @@ type stopDrainCmd struct {
 
 // NewStopDrain builds `node stop-drain <node> --cluster <cluster>`
 // (mutating): it writes the stop request on the node's management node, and
-// Rancher stops the running drain. The node stays cordoned.
-func NewStopDrain(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
-	return &stopDrainCmd{planner{clients: clients, roots: roots}}
+// Rancher stops the running drain. The node stays cordoned. A caller with no
+// access to Rancher's local cluster asks Rancher through its node action
+// instead.
+func NewStopDrain(clients engine.ClusterClientFactory, roots engine.RootClientFactory, nodeActions engine.NodeActionClientFactory) runtime.Command {
+	return &stopDrainCmd{planner{clients: clients, roots: roots, nodeActions: nodeActions}}
 }
 
 func (stopDrainCmd) Describe() runtime.Descriptor {
@@ -30,7 +32,8 @@ func (stopDrainCmd) Describe() runtime.Descriptor {
 		Usage: "Stop a running drain of a node; the node stays cordoned",
 		Desc: "Asks Rancher to stop the running drain of the node <node> of the cluster given with --cluster. Pods already evicted are not put back and the node " +
 			"stays cordoned; uncordon it by setting spec.unschedulable to false on the node. By default it waits until Rancher " +
-			"reports the drain stopped (--wait=false returns once the server accepts the request). It needs access to Rancher's local cluster.",
+			"reports the drain stopped (--wait=false returns once the server accepts the request). " +
+			"Without access to Rancher's local cluster it sends the request through the action the Rancher UI uses; the preview is built from reads with no dry-run, and Rancher accepts the request for a node in any state.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "node", Type: "string", Required: true, Desc: "node `name`, the NAME column of `rancher get node --cluster <cluster>`"}},
 		Flags: []runtime.ArgSpec{
@@ -69,11 +72,19 @@ func (c stopDrainCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect
 	if err := unstructured.SetNestedField(obj.Object, "stopDrain", "spec", "desiredNodeUnschedulable"); err != nil {
 		return safety.Effect{}, nil, internalError(err.Error())
 	}
-	eff, put, err := fd.update(ctx, obj, false)
-	if err != nil {
-		return safety.Effect{}, nil, err
+	stayCordoned := "the node stays cordoned; evicted pods are not put back; uncordon it by setting spec.unschedulable to false on the node"
+	var eff safety.Effect
+	var put runtime.ExecuteFunc
+	if fd.norman != nil {
+		eff, put = fd.normanUpdate(obj, kinds.NodeStopDrain, nil)
+		eff.Warnings = append(fd.normanWarnings(), stayCordoned)
+	} else {
+		eff, put, err = fd.update(ctx, obj, false)
+		if err != nil {
+			return safety.Effect{}, nil, err
+		}
+		eff.Warnings = []string{stayCordoned}
 	}
-	eff.Warnings = []string{"the node stays cordoned; evicted pods are not put back; uncordon it by setting spec.unschedulable to false on the node"}
 	return eff, stopDrainRun{found: fd, wait: w, planned: readDrained(fd.listed.Object)}.exec(put), nil
 }
 
@@ -96,7 +107,7 @@ func (r stopDrainRun) exec(put runtime.ExecuteFunc) runtime.ExecuteFunc {
 			return r.requested(), nil
 		}
 		w := &nodeWait{
-			action: kinds.NodeStopDrain, client: r.local, gvr: r.row.GVR, t: r.t,
+			action: kinds.NodeStopDrain, client: r.waitClient, gvr: r.row.GVR, t: r.t,
 			timeout: r.wait.timeout, timeoutText: r.wait.timeoutText,
 			planned: r.planned,
 		}

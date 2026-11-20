@@ -1702,7 +1702,8 @@ end of Helm's run (see "What follows the request").
 have no dry-run. The CLI never sends the uninstall action's `dryRun` option. `--dry-run`
 therefore builds the preview from what the server answers to reads, and the
 Effect says so: `previewSource` is `serverReads` (every other mutation says
-`serverDryRun`), `resourceVersion` is empty and `conflictDetection` is false.
+`serverDryRun`, except `node drain` and `node stop-drain` for a caller without
+access to Rancher's local cluster), `resourceVersion` is empty and `conflictDetection` is false.
 Every preview warns that it comes from server reads and names who Helm runs as.
 For an install that is the ClusterRepo's `spec.serviceAccount` in its
 `spec.serviceAccountNamespace` (both set, the namespace holding no `:`). For an
@@ -2143,20 +2144,65 @@ local cluster. `node drain` sets `spec.desiredNodeUnschedulable` to `drain` and
 `spec.nodeDrainInput` to the five options Rancher's own drain action writes
 (`force`, `ignoreDaemonSets`, `deleteLocalData`, `gracePeriod` and `timeout`);
 `node stop-drain` sets `spec.desiredNodeUnschedulable` to `stopDrain` and
-nothing else. The write is checked by a server-side dry-run and sent with the
-resourceVersion read from the management node as a precondition; it needs
-`--apply`, and for `node drain` also `--yes`. `previewSource` is `serverDryRun`. The CLI finds the
-management node by the label `management.cattle.io/nodename`, or among every
-management node of the cluster's namespace when the label finds none, and reads
-the state Rancher shows for it through the Steve API.
+nothing else. Both commands need `--apply`, and `node drain` also `--yes`.
+`previewSource`, how the write is checked and what the command needs depend on
+the path (see "Two paths"). The CLI finds the management node by the label
+`management.cattle.io/nodename`, or among every management node of the
+cluster's namespace when the label finds none, and reads the state Rancher shows
+for it through the Steve API.
+
+**Two paths.** The first request of both commands lists the management nodes
+through the local cluster's Kubernetes API. The response chooses the path, and
+`writeVia` in the Effect names it:
+
+| First list | Path | `writeVia` | `previewSource` | What guards the write |
+|---|---|---|---|---|
+| responds | the local cluster's Kubernetes API | `kubernetesAPI` | `serverDryRun` | a server-side dry-run, and the resourceVersion read from the management node as a precondition |
+| refused with 403 (a Cluster Owner or Manage Nodes user has no access to the local cluster) | Rancher's node action, the action the Rancher UI uses | `rancherAction` | `serverReads` | the request is not checked against the preview: Rancher has no dry-run for the action and accepts it in any state; the command reads Rancher's actions for the node again just before it sends the request |
+
+A 403 on the dry-run or on the write of the Kubernetes API path stays `RBAC` and sends
+nothing through the node action: the path never changes after the first list.
+Any other error of the first list is that error. A command that does not choose
+between paths has no `writeVia`; the field appears in the Effect of these two
+commands only.
+
+On the node action path the command lists the management nodes of the cluster through
+the Steve API (`GET /v1/management.cattle.io.nodes/<cluster id>`), asks the local
+cluster with a SelfSubjectAccessReview whether you may `update`
+`nodes.management.cattle.io` in the cluster's namespace, and reads the node
+from Rancher's Norman API (`GET /v3/nodes/<cluster id>:<management node name>`).
+The `actions` map of that response decides: when it lists `drain` (or `stopDrain`)
+the command goes on; when it has keys and lacks the action the command refuses;
+when the answer has no `actions` or an empty map, the command checks the state
+of the node with the rules below and warns that it did. The request is `POST
+/v3/nodes/<cluster id>:<management node name>?action=drain` with the five
+options as its body, or `?action=stopDrain` with no body, sent once and never
+retried.
+
+Rancher's API also sets `metadataUpdate`, `desiredNodeTaints` (its copy of the
+node's taints) and `updateTaintsFromAPI` on the management node, and then sets
+the node's taints to that copy. When a taint changed on the node and Rancher
+has not copied it yet, the drain puts the old taints back, as the Rancher UI's
+drain does. The Kubernetes API path sets none of the three.
+
+**Another way to get the Kubernetes API path.** An admin can give the user a GlobalRole
+rule with verb `get` on `clusters` in `management.cattle.io`, resource name
+`local`. The user then has the access the Kubernetes API path needs, and the command
+needs no node action. The grant also opens the local cluster's shell and
+`apply` routes, the `local` cluster object and every management kind the user's
+own RBAC on the local cluster allows.
 
 **Who runs the drain.** Rancher runs `kubectl drain` as its system user for the
 cluster, not with your permissions. It cordons the node and evicts the pods
 through the Eviction API, so a PodDisruptionBudget that allows no disruption
-blocks an eviction until the drain times out. The command needs access to the
+blocks an eviction until the drain times out. The Kubernetes API path needs access to the
 local cluster, where Rancher keeps the management nodes: `get` and `list` on the
 management nodes of the cluster and `update` on `nodes.management.cattle.io` in
-the cluster's namespace there.
+the cluster's namespace there. The node action path needs `list` and `get` on the
+management nodes through the Steve API and `update` on
+`nodes.management.cattle.io` in the cluster's namespace on the local cluster,
+which the cluster roles Cluster Owner and Manage Nodes grant, and no other access
+to the local cluster.
 
 **Options of `node drain`.** `ignoreDaemonSets` is always sent as true, as the
 Rancher UI sends it; without it kubectl refuses every node that runs a
@@ -2212,7 +2258,8 @@ refused with a retryable `CONFLICT`: Rancher removes the condition on its next
 sync of the node. `--dry-run` shows the same refusals.
 
 **The wait.** After the write the command reads the management node until
-Rancher reports how the request ended, within `--timeout`:
+Rancher reports how the request ended, within `--timeout`; on the node action path
+it reads through the Steve API:
 
 | `desiredNodeUnschedulable` | `Drained` | End of `node drain` |
 |---|---|---|
@@ -2252,10 +2299,26 @@ reason and message of the `Drained` condition.
 | a bad `--grace-period`, `--drain-timeout` or `--timeout`, or `--wait=false` with `--timeout` | `VALIDATION` |
 | no management node for the node | `NOT_FOUND`, with `rancher get node --cluster <cluster>` as the hint |
 | two management nodes for the node | `AMBIGUOUS_SELECTION`, with their ids |
-| the list or the Steve read refused with 403 | `RBAC`, naming the request; for the list, also that the command needs access to the local cluster |
+| the first list refused with 403 | not an error: the command takes the node action path |
+| a later list, the namespace list after the label list answered, refused with 403 | `RBAC`, naming the request and that the command needs access to the local cluster |
+| the Steve read refused with 403 | `RBAC`, naming the request |
 | the node changed between the list and the Steve read | `CONFLICT`, retryable |
 | the dry-run write refused with 403 | `RBAC`, with what the write needs on the local cluster added to the message; an admission refusal is `VALIDATION` |
 | the resourceVersion changed since the read | `CONFLICT`, retryable |
+
+**Errors of the node action path.**
+
+| Case | Code |
+|---|---|
+| the Steve list of the management nodes refused with 403 or 404 | `RBAC`, naming the request |
+| the access review does not allow `update` | `RBAC`, naming the management node and the roles that grant it; the review's own message is added when it reports an error; nothing is sent to the node action |
+| Rancher refuses to get the node | `RBAC` for 403, `NOT_FOUND` for 404, `VALIDATION` for 422 |
+| Rancher's `actions` lacks the action | `VALIDATION`, with the text of the rules above when they name the case, else "Rancher does not offer to drain node <node> while it is <state>" (for stop-drain, "Rancher does not offer to stop the drain of node <node> while it is <state>"; with no state, "...: Rancher gave no state for the node") |
+| Rancher refuses the action, 403, 404 or 422 | `RBAC`, `NOT_FOUND` or `VALIDATION`; nothing was written |
+| Rancher responded 409 | `CONFLICT`, retryable; the request may or may not have been written. Read the management node first |
+| the action answered 500, 502 or 504, or the connection failed after the request was sent | `GENERIC`, not retryable, with `committed: true` and `rancher get management-node <id> --cluster <cluster>` as the recovery: read the management node before you run the command again |
+
+The CLI treats an HTTP 409 from the action as CONFLICT; this has not been confirmed against a running Rancher.
 
 **Cordon and uncordon.** Set `spec.unschedulable` on the node with a merge patch
 through `rancher patch node <node> --cluster <cluster> --type merge --patch
@@ -2854,8 +2917,10 @@ the tokens the CLI created and recorded (see
 
 `--dry-run` of a mutating command still sends write-verb requests
 server-side (admission dry-run); a genuinely read-only RBAC token cannot
-dry-run at all. `app install` and `app uninstall` are the exception: their
-preview comes from server reads (`previewSource: serverReads`). Read-only mode doesn't special-case this - it refuses
+dry-run at all. `app install` and `app uninstall`, and `node drain` and
+`node stop-drain` for a caller without access to Rancher's local cluster, are
+the exception: their preview comes from server reads (`previewSource:
+serverReads`). Read-only mode doesn't special-case this - it refuses
 mutating commands outright, `--dry-run` included.
 
 ## Supported server version

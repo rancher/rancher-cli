@@ -273,7 +273,7 @@ var (
 		"Objects[].Kind", "Objects[].Name", "Objects[].Outcome", "Objects[].Message",
 	}
 	previewNotPrinted = []string{"Target", "ResourceVersion", "Objects[].Code", "Warnings[]"}
-	previewByHand     = []string{"Action", "PreviewSource"}
+	previewByHand     = []string{"Action", "PreviewSource", "WriteVia"}
 	// previewWithCommand are the printed paths that keep this process's
 	// marker, so a command of the CLI planted there expands.
 	previewWithCommand = []string{"DisplayKind", "DisplayName", "Server", "Cluster"}
@@ -296,6 +296,7 @@ func plantedEffect(t *testing.T) safety.Effect {
 	require.True(t, ok)
 	eff.Action = safety.ActionUpdate
 	eff.PreviewSource = safety.PreviewServerDryRun
+	eff.WriteVia = safety.WriteViaRancherAction
 	return eff
 }
 

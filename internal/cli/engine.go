@@ -76,6 +76,12 @@ type clientFactory struct {
 	action     engine.ActionClient
 	actionErr  error
 
+	// nodeActionOnce builds the node action client at most once per
+	// invocation, with its own http.Client for its own timeout.
+	nodeActionOnce sync.Once
+	nodeAction     engine.NodeActionClient
+	nodeActionErr  error
+
 	// serverInfoOnce memoizes the /rancherversion version+edition read
 	// exactly once per invocation (f is itself the per-invocation instance):
 	// the capability detector and any future consumer sharing this factory
@@ -557,13 +563,14 @@ func (s noticeSources) DrainNotices() []string {
 // constructor takes what it needs and ignores the rest, so a command is one
 // entry row - no per-shape adapter or wiring switch.
 type runDeps struct {
-	clients    engine.ClusterClientFactory
-	roots      engine.RootClientFactory
-	actions    engine.ActionClientFactory
-	serverBase engine.ServerBaseURLProvider
-	src        engine.FileSource
-	dir        string
-	store      config.CredStore
+	clients     engine.ClusterClientFactory
+	roots       engine.RootClientFactory
+	actions     engine.ActionClientFactory
+	nodeActions engine.NodeActionClientFactory
+	serverBase  engine.ServerBaseURLProvider
+	src         engine.FileSource
+	dir         string
+	store       config.CredStore
 	// anchor pairs the binding stamp read before this invocation's config
 	// load with that load's Config, for the commands that read the
 	// exec-credential cache.
@@ -668,7 +675,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				io.Capability = newCapabilityChecker(f)
 				io.Projects = projectResolver{f}
 				view := experimentView()
-				cmd = make(runDeps{clients: f, roots: f, actions: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
+				cmd = make(runDeps{clients: f, roots: f, actions: f, nodeActions: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
 			}
 			addExperimentNotices(&io, d.Name)
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)

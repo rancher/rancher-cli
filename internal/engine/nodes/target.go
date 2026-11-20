@@ -55,15 +55,22 @@ func findManagementNode(ctx context.Context, local engine.ClusterClient, row kin
 	if len(validation.IsValidLabelValue(t.node)) == 0 {
 		selector = nodeNameLabel + "=" + t.node
 	}
-	matches, err := listMatches(ctx, local, row, t, selector)
+	matches, err := listMatches(ctx, local, row, t, selector, true)
 	if err != nil {
 		return nil, err
 	}
 	if len(matches) == 0 && selector != "" {
-		if matches, err = listMatches(ctx, local, row, t, ""); err != nil {
+		if matches, err = listMatches(ctx, local, row, t, "", false); err != nil {
 			return nil, err
 		}
 	}
+	return selectManagementNode(t, matches)
+}
+
+// selectManagementNode returns the one management node of matches, which are
+// sorted by name: NOT_FOUND when there is none and AMBIGUOUS_SELECTION when
+// there are several.
+func selectManagementNode(t target, matches []unstructured.Unstructured) (*unstructured.Unstructured, error) {
 	switch len(matches) {
 	case 0:
 		return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("cluster %s has no node %s that Rancher manages", t.id, t.node)).
@@ -78,12 +85,25 @@ func findManagementNode(ctx context.Context, local engine.ClusterClient, row kin
 	return nil, clierr.New(clierr.CodeAmbiguousSelection, fmt.Sprintf("cluster %s has %d management nodes for node %s", t.id, len(matches), t.node)).WithCandidates(candidates)
 }
 
+// localRefused is the error of the first list of the management nodes when
+// the local cluster answers 403: the caller has no access to Rancher's local
+// cluster, and the command asks Rancher through its node action instead.
+type localRefused struct{ cause error }
+
+func (e *localRefused) Error() string { return e.cause.Error() }
+
+func (e *localRefused) Unwrap() error { return e.cause }
+
 // listMatches lists the management nodes of the cluster with selector and
-// keeps those whose status.nodeName is the node, sorted by name.
-func listMatches(ctx context.Context, local engine.ClusterClient, row kinds.Kind, t target, selector string) ([]unstructured.Unstructured, error) {
+// keeps those whose status.nodeName is the node, sorted by name. A 403 on the
+// first list is a *localRefused; on any later list it is an RBAC error.
+func listMatches(ctx context.Context, local engine.ClusterClient, row kinds.Kind, t target, selector string, first bool) ([]unstructured.Unstructured, error) {
 	list, err := local.List(ctx, row.GVR, t.id, selector)
 	if err != nil {
 		if resources.ReadRefused(err) {
+			if first {
+				return nil, &localRefused{cause: err}
+			}
 			return nil, clierr.New(clierr.CodeRBAC, fmt.Sprintf("you cannot list the management nodes of cluster %s (refused with HTTP 403); this command needs access to the local cluster", t.id)).WithCause(err)
 		}
 		return nil, err
@@ -99,7 +119,9 @@ func listMatches(ctx context.Context, local engine.ClusterClient, row kinds.Kind
 }
 
 // readSteveNode reads the management node through the Steve API, which
-// serves its state, and checks it is the version that was listed.
+// serves its state, and checks it is the version that was listed. With no
+// listed node it checks nothing and returns a missing node as the status
+// table's NOT_FOUND: the wait reads the node as it changes.
 func readSteveNode(ctx context.Context, get steve.Getter, t target, listed *unstructured.Unstructured) (map[string]any, error) {
 	req := steve.Request{Type: steveNodes, Namespace: t.id, Name: t.mid}
 	body, err := get(ctx, req)
@@ -107,7 +129,7 @@ func readSteveNode(ctx context.Context, get steve.Getter, t target, listed *unst
 		switch {
 		case resources.ReadRefused(err):
 			return nil, clierr.New(clierr.CodeRBAC, fmt.Sprintf("you cannot read management node %s of cluster %s (GET %s was refused with HTTP 403)", t.mid, t.id, req.Path())).WithCause(err)
-		case clierr.IsNotFound(err):
+		case clierr.IsNotFound(err) && listed != nil:
 			return nil, changedWhileRead(t.node)
 		}
 		return nil, err
@@ -116,7 +138,7 @@ func readSteveNode(ctx context.Context, get steve.Getter, t target, listed *unst
 	if err := json.Unmarshal(body, &obj); err != nil {
 		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("could not read management node %s of cluster %s: %v", t.mid, t.id, err)).WithRetryable(false)
 	}
-	if rv, _, _ := unstructured.NestedString(obj, "metadata", "resourceVersion"); rv != listed.GetResourceVersion() {
+	if rv, _, _ := unstructured.NestedString(obj, "metadata", "resourceVersion"); listed != nil && rv != listed.GetResourceVersion() {
 		return nil, changedWhileRead(t.node)
 	}
 	return obj, nil

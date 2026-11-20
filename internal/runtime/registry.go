@@ -255,10 +255,11 @@ type EffectField struct {
 
 // EffectSchema describes the --dry-run Effect payload so agents can parse it
 // from the manifest alone: the closed Action enum, the closed previewSource
-// enum and the Effect field set.
+// enum, the closed writeVia enum and the Effect field set.
 type EffectSchema struct {
 	Actions        []string      `json:"actions"`
 	PreviewSources []string      `json:"previewSources"`
+	WriteVia       []string      `json:"writeVia"`
 	Fields         []EffectField `json:"fields"`
 }
 
@@ -273,6 +274,7 @@ func effectSchema() EffectSchema {
 	return EffectSchema{
 		Actions:        strs,
 		PreviewSources: []string{string(safety.PreviewServerDryRun), string(safety.PreviewServerReads)},
+		WriteVia:       []string{string(safety.WriteViaKubernetesAPI), string(safety.WriteViaRancherAction)},
 		Fields: []EffectField{
 			{Name: "action", Type: "string"},
 			{Name: "target", Type: "string"},
@@ -287,6 +289,7 @@ func effectSchema() EffectSchema {
 			{Name: "reversible", Type: "bool"},
 			{Name: "destructive", Type: "bool"},
 			{Name: "objects", Type: "array"},
+			{Name: "writeVia", Type: "string"},
 		},
 	}
 }

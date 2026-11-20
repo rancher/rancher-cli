@@ -74,6 +74,12 @@ type callerError struct {
 
 const localRefusal = " (403) and gave no reason; through the local cluster's proxy, Rancher answers some management.cattle.io resources, clusters among them, only for users with access to the local cluster"
 
+// nodeSteveRefusal is the error of node drain and node stop-drain for this
+// caller: the local proxy refuses the first list of the management nodes, the
+// command asks Rancher through its node action, and the test server answers
+// the Steve list of the management nodes with 404.
+var nodeSteveRefusal = callerError{"RBAC", "you cannot read the management nodes of cluster <id> through Rancher's Steve API (GET /v1/management.cattle.io.nodes/<id> was refused with HTTP 404)", ""}
+
 // callerBespokeRows are the hand-written commands that take --cluster or
 // --clusters, with the declared positionals and required flags they need,
 // plus the generated cluster verbs and inspect cluster, which name the
@@ -104,8 +110,8 @@ var callerBespokeRows = map[string]callerRow{
 	"inspect project":          {args: "inspect project web --cluster prod -o json", target: targetManagement},
 	"kubeconfig":               {args: "kubeconfig --cluster prod", target: targetClusterObject},
 	"logs":                     {args: "logs kube-api-auth --cluster prod -o json", target: targetDownstream},
-	"node drain":               {args: "node drain worker-1 --cluster prod --dry-run -o json", target: targetManagement},
-	"node stop-drain":          {args: "node stop-drain worker-1 --cluster prod --dry-run -o json", target: targetManagement},
+	"node drain":               {args: "node drain worker-1 --cluster prod --dry-run -o json", target: targetManagement, kindErr: &nodeSteveRefusal},
+	"node stop-drain":          {args: "node stop-drain worker-1 --cluster prod --dry-run -o json", target: targetManagement, kindErr: &nodeSteveRefusal},
 	"project add-namespace":    {args: "project add-namespace default --project web --cluster prod --dry-run -o json", target: targetDownstream},
 	"project remove-namespace": {args: "project remove-namespace default --cluster prod --dry-run -o json", target: targetDownstream},
 	"support-bundle":           {args: "support-bundle --clusters prod -o json", target: targetDownstream},

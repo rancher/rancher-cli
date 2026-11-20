@@ -8675,7 +8675,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Asks Rancher to drain the node <node> of the cluster given with --cluster: the command writes the drain request and its options on the node's management node, and Rancher runs kubectl drain as its system user for the cluster, which cordons the node and evicts its pods through the Eviction API, respecting PodDisruptionBudgets. The preview lists the pods on the node and what the drain does to each (text output names up to five pods per outcome; -o json lists every pod). Rancher offers drain only for worker nodes that are active or cordoned (it shows a node whose drain failed on a kubectl flag or a timeout as cordoned); the command refuses the others with Rancher's state. By default it waits until Rancher reports the drain done or failed (--wait=false returns once the server accepts the request). Requires --yes with --apply. It needs access to Rancher's local cluster.",
+      "desc": "Asks Rancher to drain the node <node> of the cluster given with --cluster: the command writes the drain request and its options on the node's management node, and Rancher runs kubectl drain as its system user for the cluster, which cordons the node and evicts its pods through the Eviction API, respecting PodDisruptionBudgets. The preview lists the pods on the node and what the drain does to each (text output names up to five pods per outcome; -o json lists every pod). Rancher offers drain only for worker nodes that are active or cordoned (it shows a node whose drain failed on a kubectl flag or a timeout as cordoned); the command refuses the others with Rancher's state. By default it waits until Rancher reports the drain done or failed (--wait=false returns once the server accepts the request). Requires --yes with --apply. Without access to Rancher's local cluster it sends the request through the action the Rancher UI uses; the preview is built from reads with no dry-run, and Rancher accepts the request for a node in any state.",
       "destructive": "true",
       "examples": [
         "rancher node drain worker-1 --cluster prod --dry-run",
@@ -8743,7 +8743,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Asks Rancher to stop the running drain of the node <node> of the cluster given with --cluster. Pods already evicted are not put back and the node stays cordoned; uncordon it by setting spec.unschedulable to false on the node. By default it waits until Rancher reports the drain stopped (--wait=false returns once the server accepts the request). It needs access to Rancher's local cluster.",
+      "desc": "Asks Rancher to stop the running drain of the node <node> of the cluster given with --cluster. Pods already evicted are not put back and the node stays cordoned; uncordon it by setting spec.unschedulable to false on the node. By default it waits until Rancher reports the drain stopped (--wait=false returns once the server accepts the request). Without access to Rancher's local cluster it sends the request through the action the Rancher UI uses; the preview is built from reads with no dry-run, and Rancher accepts the request for a node in any state.",
       "destructive": "false",
       "examples": [
         "rancher node stop-drain worker-1 --cluster prod --dry-run",
@@ -13774,11 +13774,19 @@
       {
         "name": "objects",
         "type": "array"
+      },
+      {
+        "name": "writeVia",
+        "type": "string"
       }
     ],
     "previewSources": [
       "serverDryRun",
       "serverReads"
+    ],
+    "writeVia": [
+      "kubernetesAPI",
+      "rancherAction"
     ]
   },
   "envVars": [

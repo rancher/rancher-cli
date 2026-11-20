@@ -293,7 +293,8 @@ func prependOnceOnlyNotice(res Result) Result {
 }
 
 // checkPlan enforces the invariants of a Plan result, each an internal error
-// when broken: a non-nil executor, a valid action, and destructive-delete. It
+// when broken: a non-nil executor, a valid action, a valid preview source, a
+// valid write path when one is set, and destructive-delete. It
 // never renders; the caller wraps the returned error.
 func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 	if exec == nil {
@@ -310,6 +311,10 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 	if !eff.PreviewSource.Valid() {
 		return clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("internal error: invalid preview source %q in the dry-run preview", eff.PreviewSource))
+	}
+	if eff.WriteVia != "" && !eff.WriteVia.Valid() {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("internal error: invalid write path %q in the dry-run preview", eff.WriteVia))
 	}
 	if eff.Action == safety.ActionDelete && !eff.Destructive {
 		return clierr.New(clierr.CodeGeneric, "internal error: a delete in the dry-run preview must be destructive")

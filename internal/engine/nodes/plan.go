@@ -17,17 +17,25 @@ import (
 // planner is what node drain and node stop-drain share: the reads that find
 // the management node and the state Rancher shows for it.
 type planner struct {
-	clients engine.ClusterClientFactory
-	roots   engine.RootClientFactory
+	clients     engine.ClusterClientFactory
+	roots       engine.RootClientFactory
+	nodeActions engine.NodeActionClientFactory
 }
 
 // found is the management node of a node, with the state Rancher shows for
 // it.
 type found struct {
-	t      target
-	local  engine.ClusterClient
-	row    kinds.Kind
+	t     target
+	local engine.ClusterClient
+	row   kinds.Kind
+	// listed is the management node: as the Kubernetes API of the local
+	// cluster serves it, or, on the Norman path, as the Steve API serves it.
 	listed *unstructured.Unstructured
+	// norman is set when the local cluster refused the first list, and the
+	// command asks Rancher through its node action.
+	norman *normanPath
+	// waitClient reads the management node for the wait.
+	waitClient engine.ClusterClient
 }
 
 // find resolves --cluster, finds the management node of the node, reads its
@@ -52,6 +60,9 @@ func (p planner) find(ctx context.Context, in runtime.Input, action kinds.NodeDr
 		return found{}, err
 	}
 	listed, err := findManagementNode(ctx, local, row, t)
+	if _, ok := errors.AsType[*localRefused](err); ok {
+		return p.findNorman(ctx, t, row, local, action)
+	}
 	if err != nil {
 		return found{}, err
 	}
@@ -64,7 +75,7 @@ func (p planner) find(ctx context.Context, in runtime.Input, action kinds.NodeDr
 	if ce := refusal(kinds.NodeDrainRule(state, action), state, action, t); ce != nil {
 		return found{}, ce
 	}
-	return found{t: t, local: local, row: row, listed: listed}, nil
+	return found{t: t, local: local, row: row, listed: listed, waitClient: local}, nil
 }
 
 // update is the planned write of obj on the management node of f: its
@@ -77,6 +88,7 @@ func (f found) update(ctx context.Context, obj *unstructured.Unstructured, destr
 	}
 	eff.DisplayName = f.t.node
 	eff.Reversible = false
+	eff.WriteVia = safety.WriteViaKubernetesAPI
 	return eff, exec, nil
 }
 

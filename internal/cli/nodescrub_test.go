@@ -36,6 +36,14 @@ type nodeServer struct {
 	plant         func(obj map[string]any)
 	// puts records every write of the management node: true for a dry run.
 	puts []bool
+	// norman, when set to a node action, makes the server answer as it does
+	// to a caller without access to the local cluster: the lists through the
+	// local cluster are a 403, the Steve API serves the management nodes of
+	// the cluster as a collection and the single node as it is after the
+	// write, and the Norman node offers that action.
+	norman string
+	// posts records every Norman action request: its path and query.
+	posts []string
 }
 
 func nodeObject(spec map[string]any, conditions ...any) map[string]any {
@@ -72,11 +80,34 @@ func (s *nodeServer) serve(w http.ResponseWriter, r *http.Request) {
 		return map[string]any{"apiVersion": "management.cattle.io/v3", "kind": "NodeList", "metadata": map[string]any{"resourceVersion": "7"}, "items": out}
 	}
 	path := r.URL.Path
+	steveItem := func(source map[string]any) map[string]any {
+		obj := s.answer(source)
+		meta := obj["metadata"].(map[string]any)
+		meta["state"] = map[string]any{"name": s.state}
+		obj["id"] = scrubCluster + "/m-1"
+		return obj
+	}
 	switch {
+	case path == "/v1/management.cattle.io.nodes/"+scrubCluster:
+		reply(200, map[string]any{"data": []any{steveItem(s.before)}, "count": 1, "revision": "1"})
 	case strings.HasPrefix(path, "/v1/management.cattle.io.nodes/"):
-		obj := s.answer(s.before)
-		obj["metadata"].(map[string]any)["state"] = map[string]any{"name": s.state}
-		reply(200, obj)
+		if s.norman != "" {
+			reply(200, steveItem(s.after))
+			return
+		}
+		reply(200, steveItem(s.before))
+	case strings.HasPrefix(path, "/v3/nodes/"):
+		if r.Method == http.MethodPost {
+			s.posts = append(s.posts, path+"?"+r.URL.RawQuery)
+			reply(200, map[string]any{"type": "node"})
+			return
+		}
+		reply(200, map[string]any{"id": scrubCluster + ":m-1", "type": "node", "state": s.state,
+			"actions": map[string]any{s.norman: "https://rancher.example/v3/nodes/" + scrubCluster + ":m-1?action=" + s.norman}})
+	case strings.HasSuffix(path, "/selfsubjectaccessreviews") && r.Method == http.MethodPost:
+		reply(201, map[string]any{"apiVersion": "authorization.k8s.io/v1", "kind": "SelfSubjectAccessReview", "status": map[string]any{"allowed": true}})
+	case s.norman != "" && strings.Contains(path, "/namespaces/"+scrubCluster+"/nodes"):
+		reply(403, map[string]any{"kind": "Status", "apiVersion": "v1", "status": "Failure", "message": "nodes.management.cattle.io is forbidden", "reason": "Forbidden", "code": 403})
 	case strings.HasSuffix(path, "/namespaces/"+scrubCluster+"/nodes") && r.Method == http.MethodGet:
 		if strings.Contains(r.URL.Query().Get("fieldSelector"), "metadata.name") {
 			reply(200, list(s.after))
@@ -143,7 +174,21 @@ func newNodeServer(t *testing.T, state string, before, after map[string]any, pla
 }
 
 func (s *nodeServer) deps() runDeps {
-	return runDeps{clients: nodeFactory{s.srv}, roots: nodeRoots{s.srv}}
+	return runDeps{clients: nodeFactory{s.srv}, roots: nodeRoots{s.srv}, nodeActions: nodeActionFactory{s.srv}}
+}
+
+// nodeActionFactory is the node action client over the node server: the
+// client the command line builds, with the server's own http client.
+type nodeActionFactory struct{ srv *httptest.Server }
+
+func (f nodeActionFactory) NodeActions() (engine.NodeActionClient, error) {
+	return &nodeActionClient{base: f.srv.URL, token: "t", hc: f.srv.Client()}, nil
+}
+
+func (s *nodeServer) actions() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.posts...)
 }
 
 func (s *nodeServer) writes() []bool {
@@ -158,13 +203,22 @@ func (s *nodeServer) writes() []bool {
 // every response for the management node, and the fake counts the responses
 // that carry a value the row must not show.
 func nodeScrubDeps(state string, before, after map[string]any) func(t *testing.T, f *scrubFake, ps *plantSet) runDeps {
+	return nodeScrubDepsVia("", state, before, after)
+}
+
+// nodeScrubDepsVia is nodeScrubDeps for a server that answers as it does to a
+// caller without access to the local cluster when norman names a node action
+// ("drain" or "stopDrain"), the action the Norman node offers.
+func nodeScrubDepsVia(norman, state string, before, after map[string]any) func(t *testing.T, f *scrubFake, ps *plantSet) runDeps {
 	return func(t *testing.T, f *scrubFake, ps *plantSet) runDeps {
 		t.Helper()
 		require.NotNil(t, f.kind)
-		return newNodeServer(t, state, before, after, func(obj map[string]any) {
+		s := newNodeServer(t, state, before, after, func(obj map[string]any) {
 			mergeMissing(obj, ps.fragment)
 			f.scan(&unstructured.Unstructured{Object: obj})
-		}).deps()
+		})
+		s.norman = norman
+		return s.deps()
 	}
 }
 
@@ -188,5 +242,11 @@ func nodeScrubRows() []scrubRow {
 			input: waited, deps: nodeScrubDeps("active", nodeObject(worker), nodeObject(worker, drainedAt))},
 		{command: "node stop-drain", kind: "managementnode", class: classNames, reason: nodeResultReason,
 			input: noWait, deps: nodeScrubDeps("draining", nodeObject(draining, map[string]any{"type": "Drained", "status": "Unknown", "lastUpdateTime": "t0"}), nodeObject(draining))},
+		{command: "node drain", variant: "no wait, through Rancher's node action", kind: "managementnode", class: classNames, reason: nodeResultReason,
+			input: noWait, deps: nodeScrubDepsVia("drain", "active", nodeObject(worker), nodeObject(worker))},
+		{command: "node drain", variant: "waited, through Rancher's node action", kind: "managementnode", class: classNames, reason: nodeResultReason,
+			input: waited, deps: nodeScrubDepsVia("drain", "active", nodeObject(worker), nodeObject(worker, drainedAt))},
+		{command: "node stop-drain", variant: "through Rancher's node action", kind: "managementnode", class: classNames, reason: nodeResultReason,
+			input: noWait, deps: nodeScrubDepsVia("stopDrain", "draining", nodeObject(draining, map[string]any{"type": "Drained", "status": "Unknown", "lastUpdateTime": "t0"}), nodeObject(draining))},
 	}
 }

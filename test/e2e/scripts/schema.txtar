@@ -13,6 +13,7 @@ jsonquery toc.json 'data.generatedCommandCount' 175
 # Effect contract - an agent parses --dry-run output without --all
 jsonquery toc.json 'data.effectSchema.actions.#' 3
 jsonquery toc.json 'data.effectSchema.fields.#(name="resourceVersion").type' string
+jsonquery toc.json 'data.effectSchema.fields.#(name="writeVia").type' string
 
 # the full manifest is explicit: --all
 exec rancher schema --all -o json

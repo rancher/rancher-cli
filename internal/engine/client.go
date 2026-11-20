@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -214,7 +215,66 @@ type ActionClientFactory interface {
 	Action() (ActionClient, error)
 }
 
-// ActionOutcomeUnknown is the error of a steve action whose request was
+// NodeAction is a Rancher action on a node that the node action client sends.
+type NodeAction string
+
+const (
+	// NodeActionDrain is the drain action, which takes the five drain options
+	// as its body.
+	NodeActionDrain NodeAction = "drain"
+	// NodeActionStopDrain is the stop drain action, which takes no body.
+	NodeActionStopDrain NodeAction = "stopDrain"
+)
+
+// Valid reports whether a is one of the two node actions.
+func (a NodeAction) Valid() bool {
+	return a == NodeActionDrain || a == NodeActionStopDrain
+}
+
+// NormanNode is what the node action client reads of a node from Rancher's
+// Norman API: the node's state and the names of the actions Rancher offers on
+// it.
+type NormanNode struct {
+	// State is the node's state as the response gives it.
+	State string
+	// Actions are the sorted names of the response's actions map.
+	Actions []string
+	// HasActions is false when the response has no actions key or its map is
+	// empty.
+	HasActions bool
+}
+
+// Offers reports whether the node's actions map has the action.
+func (n NormanNode) Offers(a NodeAction) bool {
+	return slices.Contains(n.Actions, string(a))
+}
+
+// NodeActionClient is the port that reads a node from Rancher's Norman API
+// and sends a node action to it, for a caller with no access to Rancher's
+// local cluster. Nothing else here sends a Norman request. The reads and the
+// writes go through the caller's credential.
+type NodeActionClient interface {
+	// GetNode reads node nodeID of cluster clusterID. A non-2xx response is
+	// classified by clierr's status table, and clierr.HTTPStatus reads its
+	// status. A 2xx response that is not a JSON object, or whose actions is
+	// present and not a map, is an error.
+	GetNode(ctx context.Context, clusterID, nodeID string) (NormanNode, error)
+	// PostNodeAction sends action once, with body, a JSON document, or with
+	// no body and no Content-Type header when body is nil. It never retries,
+	// whatever the response or the transport error. A 500, a 502 and a 504 are
+	// an *ActionOutcomeUnknown, as is any error once the request was written.
+	// Every other non-2xx response is an *ActionRefused. An error before the
+	// request was written sent nothing, and so does an action that is not
+	// one of the two NodeAction values.
+	PostNodeAction(ctx context.Context, clusterID, nodeID string, action NodeAction, body []byte) error
+}
+
+// NodeActionClientFactory hands out the node action client at call time.
+type NodeActionClientFactory interface {
+	NodeActions() (NodeActionClient, error)
+}
+
+// ActionOutcomeUnknown is the error of a Rancher action whose request was
 // sent but whose answer did not tell whether the server ran it: the
 // connection failed or timed out after the request was written, or the
 // server answered 500, 502 or 504. Err is the transport error, or the
@@ -231,12 +291,12 @@ func (e *ActionOutcomeUnknown) Error() string { return e.Err.Error() }
 
 func (e *ActionOutcomeUnknown) Unwrap() error { return e.Err }
 
-// ActionRefused is a non-2xx answer to a steve action that says the server
-// did not run it. Err is the answer as clierr's status table classifies it
+// ActionRefused is a non-2xx response to a Rancher action that says the server
+// did not run it. Err is the response as clierr's status table classifies it
 // (its code, retry advice and hint, and its status, which clierr.HTTPStatus
 // reads); its message holds the server's text as sent. Body is the
-// answer's body, read up to a bound, and Request names the server, for a
-// caller that classifies the answer again after hiding what the request
+// response's body, read up to a bound, and Request names the server, for a
+// caller that classifies the response again after hiding what the request
 // carried.
 type ActionRefused struct {
 	Err     *clierr.Error
