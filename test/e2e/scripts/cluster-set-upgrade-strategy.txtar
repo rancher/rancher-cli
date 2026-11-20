@@ -39,6 +39,19 @@ stderr 'conflicts with --worker-drain=false'
 stderr 'error \(VALIDATION\):'
 stderr 'must be a whole number of seconds'
 
+# A cluster Rancher has written stores 0 and false for the drain options it was
+# not given. Turning drain on keeps them and the preview warns, naming the flags
+# that change them.
+exec rancher create resource -f strategy-zeros-cluster.yaml --apply --yes
+exec rancher cluster set-upgrade-strategy e2e-strategy-zeros --worker-drain --dry-run -o json
+jsonquery stdout 'warnings.#(%"the stored grace period of the worker nodes of cluster e2e-strategy-zeros is 0*--worker-grace-period changes it)")#|#' 1
+jsonquery stdout 'warnings.#(%"the stored deleteEmptyDirData of the worker nodes of cluster e2e-strategy-zeros is false*--worker-delete-emptydir changes it)")#|#' 1
+exec rancher cluster set-upgrade-strategy e2e-strategy-zeros --worker-drain --apply --yes
+exec rancher get provisioning-cluster e2e-strategy-zeros -o json
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.enabled true
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.gracePeriod 0
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.deleteEmptyDirData false
+
 -- strategy-cluster.yaml --
 apiVersion: provisioning.cattle.io/v1
 kind: Cluster
@@ -48,3 +61,21 @@ metadata:
 spec:
   kubernetesVersion: v1.30.5+rke2r1
   rkeConfig: {}
+-- strategy-zeros-cluster.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-strategy-zeros
+  namespace: fleet-default
+spec:
+  kubernetesVersion: v1.30.5+rke2r1
+  rkeConfig:
+    upgradeStrategy:
+      workerDrainOptions:
+        enabled: false
+        force: false
+        deleteEmptyDirData: false
+        disableEviction: false
+        gracePeriod: 0
+        timeout: 0
+        skipWaitForDeleteTimeoutSeconds: 0

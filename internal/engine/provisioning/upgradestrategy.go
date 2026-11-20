@@ -129,8 +129,10 @@ func (upgradeStrategyCmd) Describe() runtime.Descriptor {
 			"and --control-plane-drain and --worker-drain: the upgrade plan of Rancher's system-upgrade-controller has no other drain option. " +
 			"When the command turns drain on for a provisioned cluster, it also writes the Rancher UI's value for each drain option " +
 			"the cluster does not store yet (delete emptyDir data true, disable eviction false, force false, grace period -1, " +
-			"ignore DaemonSets true, skip wait for delete timeout 0, timeout 120 seconds). The command waits for nothing: the strategy " +
-			"applies to the next upgrade and to machine rollouts, and to an upgrade that is running. A provisioned cluster needs " +
+			"ignore DaemonSets true, skip wait for delete timeout 0, timeout 120 seconds). A drain option the cluster stores keeps its value, " +
+			"as in the Rancher UI; the preview warns when it turns drain on and the stored grace period is 0 or delete emptyDir data is false. " +
+			"The command waits for nothing: the strategy applies to the next upgrade, for a provisioned cluster also to machine rollouts, " +
+			"and to an upgrade that is running. A provisioned cluster needs " +
 			"--yes with --apply; an imported cluster needs --apply only. The local cluster and hosted clusters are refused.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
@@ -389,7 +391,9 @@ func buildImportedStrategy(obj *unstructured.Unstructured, facts clusterops.Stra
 				}
 			}
 		}
-		if f.drainSet {
+		// Rancher reads an absent drain field as false: turning drain off when
+		// the field is absent writes nothing.
+		if _, hasDrain := stored[f.group.impDrain]; f.drainSet && (f.drain || hasDrain) {
 			if err := set(f.drain, f.group.impDrain); err != nil {
 				return err
 			}
@@ -435,7 +439,11 @@ func strategyWarnings(before, after *unstructured.Unstructured, facts clusterops
 		stored, _, _ := unstructured.NestedMap(before.Object, "spec", "rkeConfig", "upgradeStrategy")
 		for _, f := range all {
 			storedDrain, _ := stored[f.group.provDrain].(map[string]any)
-			if enabled, _ := storedDrain["enabled"].(bool); f.drainSet || enabled {
+			enabled, _ := storedDrain["enabled"].(bool)
+			if f.drainSet && f.drain && !enabled {
+				out = append(out, storedDrainWarnings(f, storedDrain, name)...)
+			}
+			if f.drainSet || enabled {
 				continue
 			}
 			for _, d := range f.details {
@@ -447,6 +455,25 @@ func strategyWarnings(before, after *unstructured.Unstructured, facts clusterops
 	}
 	if unchanged {
 		out = append(out, fmt.Sprintf("the typed values are already set on cluster %s: nothing changes", name))
+	}
+	return out
+}
+
+// storedDrainWarnings are the warnings for a group whose drain the command turns
+// on while the cluster stores a grace period of 0 or delete emptyDir data
+// false. The command keeps a stored value, as the Rancher UI does, unless a flag
+// types it.
+func storedDrainWarnings(f groupFlags, storedDrain map[string]any, name string) []string {
+	var out []string
+	if _, typed := f.detail("gracePeriod"); !typed {
+		if n, isNumber := drainNumber(storedDrain["gracePeriod"]); isNumber && n == 0 {
+			out = append(out, fmt.Sprintf("the stored grace period of the %s nodes of cluster %s is 0; a pod gets no time to stop when drain is on (--%s changes it)", f.group.label, name, f.group.flag(strategyGrace)))
+		}
+	}
+	if _, typed := f.detail("deleteEmptyDirData"); !typed {
+		if deleteData, isBool := storedDrain["deleteEmptyDirData"].(bool); isBool && !deleteData {
+			out = append(out, fmt.Sprintf("the stored deleteEmptyDirData of the %s nodes of cluster %s is false; a pod that uses an emptyDir volume blocks the drain (--%s changes it)", f.group.label, name, f.group.flag(strategyEmptyDir)))
+		}
 	}
 	return out
 }

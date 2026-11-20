@@ -99,8 +99,12 @@ func completeStrategyValues(ctx context.Context, conn *completion.Connection, re
 	if err := conn.GetJSON(ctx, provPath, "", &prov); err != nil {
 		return completion.Result{}
 	}
-	// With no management Cluster, CheckStrategyCluster refuses every imported
-	// cluster and the cluster Rancher runs in: only a provisioned cluster passes.
+	// The flags belong to a provisioned cluster, which has spec.rkeConfig. With
+	// no management Cluster, CheckStrategyCluster also refuses an imported
+	// cluster and the cluster Rancher runs in; each check states the rule alone.
+	if !clusterops.HasRKEConfig(prov) {
+		return completion.Result{}
+	}
 	if _, refused := clusterops.CheckStrategyCluster(prov, nil); refused != nil {
 		return completion.Result{}
 	}

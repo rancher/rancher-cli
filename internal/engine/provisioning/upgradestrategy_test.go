@@ -489,6 +489,75 @@ func TestUpgradeStrategyDrainDefaults(t *testing.T) {
 	}
 }
 
+// TestUpgradeStrategyStoredDrainWarnings asserts that turning drain on keeps a
+// stored grace period of 0 and a stored delete emptyDir data false, and warns,
+// naming the stored value and the flag that changes it; and that the warning
+// does not appear where the stored value is not the one that applies.
+func TestUpgradeStrategyStoredDrainWarnings(t *testing.T) {
+	t.Parallel()
+	const (
+		graceText = "the stored grace period of the %s nodes of cluster prod is 0; a pod gets no time to stop when drain is on (--%s-grace-period changes it)"
+		emptyText = "the stored deleteEmptyDirData of the %s nodes of cluster prod is false; a pod that uses an emptyDir volume blocks the drain (--%s-delete-emptydir changes it)"
+	)
+	zeros := func(enabled bool) map[string]any {
+		return map[string]any{
+			"enabled": enabled, "force": false, "deleteEmptyDirData": false, "disableEviction": false,
+			"gracePeriod": int64(0), "timeout": int64(0), "skipWaitForDeleteTimeoutSeconds": int64(0),
+		}
+	}
+	for _, g := range []struct{ flag, label, field string }{{"control-plane", "control plane", "controlPlaneDrainOptions"}, {"worker", "worker", "workerDrainOptions"}} {
+		grace, empty := fmt.Sprintf(graceText, g.label, g.flag), fmt.Sprintf(emptyText, g.label, g.flag)
+		rows := []struct {
+			name      string
+			stored    map[string]any
+			pairs     []string
+			wantGrace bool
+			wantEmpty bool
+			wantKept  map[string]any
+		}{
+			{"every option stored as zero", zeros(false), []string{g.flag + "-drain", "true"}, true, true, map[string]any{"gracePeriod": int64(0), "deleteEmptyDirData": false, "timeout": int64(0)}},
+			{"only the grace period is 0", map[string]any{"enabled": false, "gracePeriod": int64(0), "deleteEmptyDirData": true}, []string{g.flag + "-drain", "true"}, true, false, map[string]any{"gracePeriod": int64(0), "deleteEmptyDirData": true}},
+			{"only delete emptyDir data is false", map[string]any{"enabled": false, "gracePeriod": int64(30), "deleteEmptyDirData": false}, []string{g.flag + "-drain", "true"}, false, true, map[string]any{"gracePeriod": int64(30), "deleteEmptyDirData": false}},
+			{"a float64 zero from the server", map[string]any{"enabled": false, "gracePeriod": float64(0)}, []string{g.flag + "-drain", "true"}, true, false, nil},
+			{"the fields are absent", map[string]any{"enabled": false}, []string{g.flag + "-drain", "true"}, false, false, map[string]any{"gracePeriod": int64(-1), "deleteEmptyDirData": true}},
+			{"a typed grace period replaces the stored 0", zeros(false), []string{g.flag + "-drain", "true", g.flag + "-grace-period", "60"}, false, true, map[string]any{"gracePeriod": int64(60), "deleteEmptyDirData": false}},
+			{"a typed delete emptyDir replaces the stored false", zeros(false), []string{g.flag + "-drain", "true", g.flag + "-delete-emptydir", "true"}, true, false, map[string]any{"gracePeriod": int64(0), "deleteEmptyDirData": true}},
+			{"drain already enabled", zeros(true), []string{g.flag + "-drain", "true", g.flag + "-drain-force", "true"}, false, false, map[string]any{"gracePeriod": int64(0), "deleteEmptyDirData": false}},
+			{"drain turned off", zeros(true), []string{g.flag + "-drain", "false"}, false, false, nil},
+			{"drain not typed", zeros(false), []string{g.flag + "-concurrency", "2"}, false, false, map[string]any{"gracePeriod": int64(0), "deleteEmptyDirData": false}},
+		}
+		for _, tc := range rows {
+			t.Run(g.flag+" "+tc.name, func(t *testing.T) {
+				t.Parallel()
+				f := newUpgradeFixture(t)
+				f.putProvisioned(provisionedWith(map[string]any{g.field: tc.stored}))
+				eff, _, err := f.planStrategy(t, strategyInput("prod", tc.pairs...))
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantGrace, slices.Contains(eff.Warnings, grace), "%q", eff.Warnings)
+				assert.Equal(t, tc.wantEmpty, slices.Contains(eff.Warnings, empty), "%q", eff.Warnings)
+				got, _, _ := unstructured.NestedMap(f.lastPreview(t).Object, "spec", "rkeConfig", "upgradeStrategy", g.field)
+				for field, want := range tc.wantKept {
+					assert.Equal(t, want, got[field], field)
+				}
+			})
+		}
+		t.Run(g.flag+" the other group's stored zeros give no warning", func(t *testing.T) {
+			t.Parallel()
+			other := "workerDrainOptions"
+			if g.field == other {
+				other = "controlPlaneDrainOptions"
+			}
+			f := newUpgradeFixture(t)
+			f.putProvisioned(provisionedWith(map[string]any{g.field: map[string]any{"enabled": false}, other: zeros(false)}))
+			eff, _, err := f.planStrategy(t, strategyInput("prod", g.flag+"-drain", "true"))
+			require.NoError(t, err)
+			for _, w := range eff.Warnings {
+				assert.NotContains(t, w, "the stored ")
+			}
+		})
+	}
+}
+
 // TestUpgradeStrategyImportedFlags asserts an imported cluster refuses each of
 // the eight drain options and every concurrency that is not a whole number of 1
 // or more, after the cluster is known and before the dry-run, and takes the two
@@ -612,7 +681,6 @@ func TestUpgradeStrategyRestoreRefusal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			f := newUpgradeFixture(t)
-			f.putProvisioned(provisionedWith(nil))
 			prov := provisionedWith(nil)
 			require.NoError(t, unstructured.SetNestedField(prov.Object, tc.request, "spec", "rkeConfig", "etcdSnapshotRestore"))
 			f.putProvisioned(prov)
@@ -954,6 +1022,29 @@ func TestUpgradeStrategyWarnings(t *testing.T) {
 				assert.Equal(t, tc.kept, slices.Contains(eff.Warnings, kept), "%q", eff.Warnings)
 			})
 		}
+		for _, flag := range []string{"worker-drain", "control-plane-drain"} {
+			t.Run("turn off, drain field absent writes nothing "+flag, func(t *testing.T) {
+				t.Parallel()
+				f := newUpgradeFixture(t)
+				f.importedWith("rke2", new("true"), map[string]any{"workerConcurrency": int64(2)})
+				eff, _, err := f.planStrategy(t, strategyInput("edge", flag, "false"))
+				require.NoError(t, err)
+				assert.Empty(t, eff.Diff)
+				assert.Contains(t, eff.Warnings, fmt.Sprintf(same, "edge"))
+				got, _, _ := unstructured.NestedMap(f.lastPreview(t).Object, "spec", "rke2Config", "rke2upgradeStrategy")
+				assert.NotContains(t, got, "drainWorkerNodes")
+				assert.NotContains(t, got, "drainServerNodes")
+			})
+		}
+		t.Run("turn off one group, the other drain on is untouched", func(t *testing.T) {
+			t.Parallel()
+			f := newUpgradeFixture(t)
+			f.importedWith("rke2", new("true"), map[string]any{"drainServerNodes": true})
+			eff, _, err := f.planStrategy(t, strategyInput("edge", "worker-drain", "false"))
+			require.NoError(t, err)
+			assert.Empty(t, eff.Diff)
+			assert.Contains(t, eff.Warnings, fmt.Sprintf(same, "edge"))
+		})
 		t.Run("nothing changes", func(t *testing.T) {
 			t.Parallel()
 			f := newUpgradeFixture(t)
