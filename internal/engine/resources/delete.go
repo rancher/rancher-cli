@@ -124,8 +124,25 @@ func (c deleteCmd) planWith(ctx context.Context, in runtime.Input, w DeleteWait)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	return PlanFromFetched(ctx, client, c.k, ns, name, obj, effectCluster, w)
+	var checkWarnings []string
+	if oc := c.k.ObjectChecks; oc != nil && oc.Delete != nil {
+		verdict := oc.Delete(obj)
+		if verdict.Refusal != "" {
+			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, verdict.Refusal)
+		}
+		checkWarnings = verdict.Warnings
+	}
+	eff, exec, err := PlanFromFetched(ctx, client, c.k, ns, name, obj, effectCluster, w)
+	if err != nil {
+		return eff, exec, err
+	}
+	eff.Warnings = append(eff.Warnings, checkWarnings...)
+	return eff, exec, nil
 }
+
+// RunsObjectChecks marks the command as one that runs the row's ObjectChecks
+// (ObjectChecked).
+func (deleteCmd) RunsObjectChecks() {}
 
 // fetch routes the command, reads the object to delete and returns it with
 // the client that read it, the namespace it lives in and the cluster the

@@ -35,10 +35,14 @@ const (
 	// surfaces a detector-side error - the target request executes and its
 	// own result/error is handled as if no detector existed.
 	CapabilityUnknown
-	// CapabilityUnsupported is CapabilityExtDiscovery's negative outcome: a
-	// readable discovery document that affirmatively lacks the named
-	// resource - the server is a version that never carries this workflow,
-	// not a feature flag that could be turned on. Returns the
+	// CapabilityUnsupported is the negative outcome of CapabilityExtDiscovery
+	// and CapabilityDiscovery: a readable discovery document that
+	// affirmatively lacks the named resource, or a readable group list that
+	// lacks the group - the server is a version that never carries this
+	// workflow, not a feature flag that could be turned on. The two tiers
+	// differ in where they read: CapabilityDiscovery names a group on the
+	// local cluster's /k8s/clusters/local/apis, CapabilityExtDiscovery a
+	// resource of ext.cattle.io at the server root. Returns the
 	// CAPABILITY_UNSUPPORTED error. A discovery document that could not be
 	// read at all is CapabilityUnknown, never this outcome - the
 	// unknown-never-blocks rule holds identically across tiers.

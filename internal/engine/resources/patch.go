@@ -42,6 +42,10 @@ func NewPatch(k kinds.Kind, clients engine.ClusterClientFactory, src engine.File
 	return &patchCmd{k: k, clients: clients, src: src, enrich: enrich}
 }
 
+// RunsObjectChecks marks the command as one that runs the row's ObjectChecks
+// (ObjectChecked).
+func (patchCmd) RunsObjectChecks() {}
+
 func (c patchCmd) Describe() runtime.Descriptor {
 	destructive := "false"
 	if c.k.Sensitive {
@@ -143,6 +147,15 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// appears as a field change.
 	diff := engine.DiffObjects(orig.Object, patched.Object)
 
+	var checkWarnings []string
+	if oc := c.k.ObjectChecks; oc != nil && oc.Patch != nil {
+		verdict := oc.Patch(orig, patched)
+		if verdict.Refusal != "" {
+			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, verdict.Refusal)
+		}
+		checkWarnings = verdict.Warnings
+	}
+
 	patched.SetResourceVersion(rv)
 	// PlanUpdate dry-runs the update for an admission preview and returns the
 	// executor; the Effect carries the field diff, the RV precondition, and the
@@ -157,6 +170,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// them), so this costs no request.
 	managedFields, _, _ := unstructured.NestedSlice(orig.Object, "metadata", "managedFields")
 	eff.Warnings = append(eff.Warnings, ownershipWarnings(managedFields, diff)...)
+	eff.Warnings = append(eff.Warnings, checkWarnings...)
 	if patch.isMerge() {
 		// The dry-run answer carries the server's defaults on every list
 		// entry, as the fetched object does; the locally merged object does

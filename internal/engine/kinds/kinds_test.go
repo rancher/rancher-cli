@@ -47,6 +47,11 @@ var cliOnlyKinds = map[string]bool{
 	"clusterrole":             true, // no rancher-ai-mcp tool counterpart
 	"clusterrolebinding":      true, // no rancher-ai-mcp tool counterpart
 	"managementnode":          true, // no rancher-ai-mcp tool counterpart
+
+	"etcdsnapshotsave":      true, // no rancher-ai-mcp tool counterpart
+	"etcdsnapshotrestore":   true, // no rancher-ai-mcp tool counterpart
+	"encryptionkeyrotation": true, // no rancher-ai-mcp tool counterpart
+	"certificaterotation":   true, // no rancher-ai-mcp tool counterpart
 }
 
 func TestConformsToMCPVocabulary(t *testing.T) {

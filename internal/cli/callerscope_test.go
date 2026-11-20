@@ -255,8 +255,16 @@ func callerFallthrough(w http.ResponseWriter, r *http.Request) {
 		write(http.StatusOK, map[string]any{"Version": "v2.13.0", "GitCommit": "x", "RancherPrime": "false"})
 	case r.Method == http.MethodGet && strings.HasSuffix(p, "/apis"):
 		gv := map[string]any{"groupVersion": "ext.cattle.io/v1", "version": "v1"}
+		opGV := map[string]any{"groupVersion": "operation.cattle.io/v1alpha1", "version": "v1alpha1"}
 		write(http.StatusOK, map[string]any{"kind": "APIGroupList", "apiVersion": "v1", "groups": []any{
-			map[string]any{"name": "ext.cattle.io", "versions": []any{gv}, "preferredVersion": gv}}})
+			map[string]any{"name": "ext.cattle.io", "versions": []any{gv}, "preferredVersion": gv},
+			map[string]any{"name": "operation.cattle.io", "versions": []any{opGV}, "preferredVersion": opGV}}})
+	case r.Method == http.MethodGet && strings.HasSuffix(p, "/apis/operation.cattle.io/v1alpha1"):
+		resources := []any{}
+		for _, name := range []string{"etcdsnapshotsaves", "etcdsnapshotrestores", "encryptionkeyrotations", "certificaterotations"} {
+			resources = append(resources, map[string]any{"name": name})
+		}
+		write(http.StatusOK, map[string]any{"kind": "APIResourceList", "groupVersion": "operation.cattle.io/v1alpha1", "resources": resources})
 	case r.Method == http.MethodGet && strings.HasSuffix(p, "/api/v1"):
 		write(http.StatusOK, map[string]any{"kind": "APIResourceList", "groupVersion": "v1", "resources": []any{
 			map[string]any{"name": "pods", "singularName": "pod", "namespaced": true, "kind": "Pod", "verbs": []any{"get", "list"}}}})
@@ -443,6 +451,7 @@ func (r callerRun) reached(target callerTarget, id string) bool {
 			}
 		case targetManagement:
 			if strings.HasPrefix(q.path, "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/"+id+"/") ||
+				strings.HasPrefix(q.path, "/k8s/clusters/local/apis/operation.cattle.io/v1alpha1/namespaces/"+id+"/") ||
 				q.path == testrancher.ProjectsCollectionPath+"/"+id {
 				return true
 			}
@@ -499,7 +508,7 @@ func callerRows(t *testing.T) map[string]callerRow {
 			rows[d.Name] = row
 		}
 	}
-	assert.Equal(t, 125, taking, "the commands that take a cluster or clusters flag")
+	assert.Equal(t, 137, taking, "the commands that take a cluster or clusters flag")
 	for name, row := range callerBespokeRows {
 		if _, ok := rows[name]; !ok {
 			rows[name] = row

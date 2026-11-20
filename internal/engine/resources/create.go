@@ -30,6 +30,8 @@ type createCmd struct {
 	// against a synthetic Capability-bearing row without a way to register
 	// one in the closed-world kinds table.
 	lookupGVK func(apiVersion, kind string) (kinds.Kind, bool)
+	// checks are the per-kind create checks, by the key of the kind row.
+	checks map[string]CreateCheck
 
 	// parseOnce memoizes the manifest parse to exactly one read per
 	// invocation: ResolveCapability and Plan both need the unmarshaled
@@ -51,9 +53,18 @@ type createCmd struct {
 // the create through the shared PlanCreate. It also implements
 // runtime.CapabilityResolver: the resolved kind row's requirement is what
 // gates create-via-manifest, since the command's own Descriptor is
-// kind-independent.
-func NewCreate(clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
-	return &createCmd{clients: clients, src: src, lookupGVK: kinds.LookupGVK}
+// kind-independent. Each check is the per-kind create check of one row; a row
+// with none runs as it does without them. A key given twice is a defect of
+// the caller and stops the build of the command tree.
+func NewCreate(clients engine.ClusterClientFactory, src engine.FileSource, checks ...CreateCheck) runtime.Command {
+	byKey := make(map[string]CreateCheck, len(checks))
+	for _, check := range checks {
+		if _, dup := byKey[check.Key]; dup {
+			panic("internal error: NewCreate was given two checks for the kind row " + check.Key)
+		}
+		byKey[check.Key] = check
+	}
+	return &createCmd{clients: clients, src: src, lookupGVK: kinds.LookupGVK, checks: byKey}
 }
 
 func (*createCmd) Describe() runtime.Descriptor {
@@ -174,7 +185,24 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 			return safety.Effect{}, nil, err
 		}
 	}
-	eff, exec, err := engine.PlanCreate(ctx, client, k.GVR, ns, obj, k.Redaction(), effectCluster, k.Name, k.K8sKind, k.Sensitive)
+	var checkWarnings []string
+	if oc := k.ObjectChecks; oc != nil && oc.Create != nil {
+		verdict := oc.Create(obj)
+		if verdict.Refusal != "" {
+			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, verdict.Refusal)
+		}
+		checkWarnings = append(checkWarnings, verdict.Warnings...)
+	}
+	check, hasCheck := c.checks[k.Key]
+	checkIn := CreateCheckInput{Local: client, Roots: check.Roots, Server: check.Server, Obj: obj}
+	if hasCheck && check.Before != nil {
+		warnings, err := check.Before(ctx, checkIn)
+		if err != nil {
+			return safety.Effect{}, nil, err
+		}
+		checkWarnings = append(checkWarnings, warnings...)
+	}
+	eff, observed, exec, err := engine.PlanCreateObserved(ctx, client, k.GVR, ns, obj, k.Redaction(), effectCluster, k.Name, k.K8sKind, k.Sensitive)
 	if err != nil {
 		// A server refusal of the dry-run can follow from the missing
 		// annotation (a manifest with creator-principal-name needs creatorId),
@@ -184,9 +212,25 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 		}
 		return safety.Effect{}, nil, err
 	}
+	if hasCheck && check.After != nil {
+		if err := check.After(ctx, checkIn, observed); err != nil {
+			return safety.Effect{}, nil, err
+		}
+	}
+	if k.CreateNotReversible {
+		eff.Reversible = false
+	}
+	// Without a name the dry-run answer carries a name the server made up for
+	// the dry-run only; the real create gets another one. The preview shows
+	// the prefix, and the result of the real create names the created object.
+	if prefix := obj.GetGenerateName(); prefix != "" && obj.GetName() == "" {
+		eff.Target = k.GVR.Resource + "/" + prefix + "*"
+		eff.DisplayName = prefix + "*"
+	}
 	if creatorWarning != "" {
 		eff.Warnings = append(eff.Warnings, creatorWarning)
 	}
+	eff.Warnings = append(eff.Warnings, checkWarnings...)
 	if k.CreateWarning != "" {
 		eff.Warnings = append(eff.Warnings, k.CreateWarning)
 	}

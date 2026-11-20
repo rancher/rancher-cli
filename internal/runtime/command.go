@@ -50,6 +50,13 @@ const (
 	// ext.cattle.io/v1 API discovery document for the named resource (see
 	// CapabilityUnsupported).
 	CapabilityExtDiscovery CapabilityTier = "extDiscovery"
+	// CapabilityDiscovery: the command requires an API group and resource that
+	// older servers do not serve on the local cluster's Kubernetes API. Its
+	// detector reads the group list of /k8s/clusters/local/apis and, for a
+	// listed group, the version's resource list (see CapabilityUnsupported). It
+	// differs from CapabilityExtDiscovery: it names a group on
+	// /k8s/clusters/local/apis, not a resource of ext.cattle.io.
+	CapabilityDiscovery CapabilityTier = "discovery"
 )
 
 // CapabilityRequirement is the single structured value a gated kind row or a
@@ -62,15 +69,23 @@ type CapabilityRequirement struct {
 	// Feature is the detector key. For CapabilityPrime it is the v3 Feature
 	// resource name the runtime checker GETs. For CapabilityExtDiscovery it
 	// is the ext.cattle.io API resource plural name (e.g.
-	// "passwordchangerequests") the checker looks up in discovery. Required
-	// whenever Tier is set.
+	// "passwordchangerequests") the checker looks up in discovery. For
+	// CapabilityDiscovery it is the resource plural name in Group and Version.
+	// Required whenever Tier is set.
 	Feature string
 	// Unsupported is the plain-language capability description used in the
 	// CAPABILITY_UNSUPPORTED refusal message, e.g. "the user-password
-	// workflow". Required when Tier is CapabilityExtDiscovery; unused (and
+	// workflow". Required when Tier is CapabilityExtDiscovery or
+	// CapabilityDiscovery; unused (and
 	// rejected as malformed) for CapabilityPrime, whose refusal wording is
 	// generic across every Prime-gated command.
 	Unsupported string
+	// Group and Version are the API group and version CapabilityDiscovery
+	// looks for on the local cluster; Feature is then the resource plural
+	// name in that group version's resource list. Required for
+	// CapabilityDiscovery, rejected as malformed for every other tier.
+	Group   string
+	Version string
 }
 
 // IsSet reports whether a capability requirement is declared at all.

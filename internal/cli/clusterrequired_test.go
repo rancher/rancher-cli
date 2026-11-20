@@ -66,6 +66,22 @@ var clusterOptionalRows = map[string]clusterOptionalRow{
 		args:    []string{"get", "clusterroletemplatebinding", "x"},
 		message: "--cluster is required when you give the name of one clusterroletemplatebinding",
 	},
+	"get encryption-key-rotation": {
+		args:    []string{"get", "encryption-key-rotation", "x"},
+		message: "--cluster is required when you give the name of one encryption-key-rotation",
+	},
+	"get etcd-snapshot-restore": {
+		args:    []string{"get", "etcd-snapshot-restore", "x"},
+		message: "--cluster is required when you give the name of one etcd-snapshot-restore",
+	},
+	"get etcd-snapshot-save": {
+		args:    []string{"get", "etcd-snapshot-save", "x"},
+		message: "--cluster is required when you give the name of one etcd-snapshot-save",
+	},
+	"get certificate-rotation": {
+		args:    []string{"get", "certificate-rotation", "x"},
+		message: "--cluster is required when you give the name of one certificate-rotation",
+	},
 	"get project": {
 		args:    []string{"get", "project", "x"},
 		message: "--cluster is required when you give the id of one project",

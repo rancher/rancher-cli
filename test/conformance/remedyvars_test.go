@@ -279,6 +279,7 @@ func varsBuiltOnRancher(pkgs []*packages.Package) (members, carriers map[string]
 var builtOnRancherCarriers = map[string]string{
 	"internal/cli.openDirectory":          "a function value (resolveDeps behind a package variable, so a test can replace it); it is called to open a directory and holds no text",
 	"internal/cli.serverRows":             "a map of functions that read each command's own server from its input; the functions it names lead to a remedy command in an error, and the map holds no text",
+	"internal/cli.kindOverrideTable":      "a map of the per-kind overrides; the create checks of the day-2 operation rows lead to refusals that carry a hint command, and the map holds no text",
 	"internal/cli.notFoundHints":          "a table of the details and hints of an unknown command; the marked text in it is a detail rendered before the config directory is resolved, which is not a hint",
 	"internal/engine.ClusterRequiredHint": "a Command value; a hint takes it through WithHintCommand, and the hint flattener reads its builder chain",
 	"internal/engine/kinds.table":         "a slice of resource kinds, a composite literal the flattener does not read; the marked text in it is the refusal of create from a manifest, which is not a hint",

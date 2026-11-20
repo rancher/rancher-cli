@@ -13,7 +13,10 @@ import (
 )
 
 // createWarningManifest returns a minimal manifest of row k and the input
-// whose routing the row's namespace policy and scope need.
+// whose routing the row's namespace policy and scope need. A day-2 operation
+// row gets the manifest its object checks accept: the namespace is the id of
+// the cluster that spec.clusterRef names, spec.ttl is 60, and a restore names an
+// etcd snapshot. The checks that read the server do not run here.
 func createWarningManifest(k kinds.Kind) ([]byte, input) {
 	apiVersion := k.GVR.Version
 	if k.GVR.Group != "" {
@@ -22,12 +25,22 @@ func createWarningManifest(k kinds.Kind) ([]byte, input) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "apiVersion: %s\nkind: %s\nmetadata:\n  name: x\n", apiVersion, k.K8sKind)
 	in := input{s: map[string]string{"filename": "m.yaml"}}
+	dayTwo := k.GVR.Group == "operation.cattle.io"
 	if k.Policy != kinds.NSNone {
 		ns := "ns1"
 		if k.DefaultNamespace != "" {
 			ns = k.DefaultNamespace
 		}
+		if dayTwo {
+			ns = "c-abc"
+		}
 		fmt.Fprintf(&b, "  namespace: %s\n", ns)
+	}
+	if dayTwo {
+		b.WriteString("spec:\n  ttl: 60\n  clusterRef:\n    apiVersion: management.cattle.io/v3\n    kind: Cluster\n    name: c-abc\n")
+		if k.Key == "etcdsnapshotrestore" {
+			b.WriteString("  args:\n    name: c-abc-local-etcd-snapshot\n")
+		}
 	}
 	if k.Scope == kinds.Downstream {
 		in.s["cluster"] = "prod"

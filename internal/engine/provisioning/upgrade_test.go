@@ -209,7 +209,20 @@ func releaseServer(t *testing.T, rke2, k3s []string, store *steveStore) *httptes
 				store.serveSnapshots(w, ns)
 				return
 			}
+			if status, body, ok := store.groupVersionAnswer(r.URL.Path); ok {
+				if status != http.StatusOK {
+					w.WriteHeader(status)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(body))
+				return
+			}
 			if id, ok := strings.CutPrefix(r.URL.Path, "/v1/management.cattle.io.clusters/"); ok {
+				if status := store.clusterFailure(id); status != 0 {
+					w.WriteHeader(status)
+					return
+				}
 				if obj, found := store.get(id); found {
 					w.Header().Set("Content-Type", "application/json")
 					_ = json.NewEncoder(w).Encode(obj.Object)
@@ -240,6 +253,49 @@ type steveStore struct {
 	snapshots      map[string][]unstructured.Unstructured
 	snapshotStatus map[string]int
 	snapshotCalls  int
+	// clusterStatus makes the read of a management Cluster respond with the HTTP
+	// status, by cluster id.
+	clusterStatus map[string]int
+	// docPath, docStatus and docBody are the answer to a read of that path, a
+	// group version document of the local cluster's Kubernetes API.
+	docPath   string
+	docStatus int
+	docBody   string
+}
+
+// failCluster makes the Steve read of the management Cluster id respond with
+// the HTTP status.
+func (s *steveStore) failCluster(id string, status int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.clusterStatus == nil {
+		s.clusterStatus = map[string]int{}
+	}
+	s.clusterStatus[id] = status
+}
+
+func (s *steveStore) clusterFailure(id string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.clusterStatus[id]
+}
+
+// setGroupVersion makes a read of path respond with the status and, for a 200,
+// the body.
+func (s *steveStore) setGroupVersion(path string, status int, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.docPath, s.docStatus, s.docBody = path, status, body
+}
+
+// groupVersionAnswer is the answer set for path, and whether one is set for it.
+func (s *steveStore) groupVersionAnswer(path string) (status int, body string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.docPath == "" || s.docPath != path {
+		return 0, "", false
+	}
+	return s.docStatus, s.docBody, true
 }
 
 // setSnapshots stores the etcd snapshots Steve lists in namespace ns, each with

@@ -330,6 +330,25 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   Owner or Manage Nodes user) has `previewSource: serverReads`: Rancher accepts
   the request in any state and the request is not checked against the preview.
   Relay its warnings before applying.
+- An etcd snapshot, an etcd snapshot restore, an encryption key rotation and a
+  certificate rotation of an imported RKE2 or K3s cluster are manifests of the
+  kinds `etcd-snapshot-save`, `etcd-snapshot-restore`, `encryption-key-rotation`
+  and `certificate-rotation`, created with `create resource -f <file>`: the
+  object the Rancher UI creates, in the namespace named by the cluster's id with
+  `spec.clusterRef` and `spec.ttl: 60` (REFERENCE.md, "Day-2 operations on
+  imported clusters", has the manifest). Run `--dry-run` first and relay its
+  warnings: the command checks the cluster before the preview, and a refusal
+  names what is wrong (the cluster is not ready, day-2 operations are off, the
+  snapshot is not one the Rancher UI restores). A snapshot needs `--apply`; a
+  restore and the two rotations need `--apply --yes`, and the preview says
+  `reversible` is false for all four. A restore stops Kubernetes on every node
+  and loses every change made after the snapshot: confirm the snapshot with the
+  user. Take a snapshot before an encryption key rotation; the command refuses a
+  rotation of a cluster with no etcd snapshot. Wait with `get <kind> <name>
+  --cluster <id> --wait`, which ends with an error when Rancher reports the
+  operation Failed or Canceled. `patch` changes `spec.paused` and `spec.ttl`
+  only. A server older than Rancher v2.15 (v2.16 for `certificate-rotation`)
+  answers `CAPABILITY_UNSUPPORTED`.
 - `project remove-namespace <ns>` also accepts a namespace with the project
   label and no project annotation, and makes sure its project label is
   removed.
@@ -971,7 +990,8 @@ Never present a role list as permissions.
   the snapshots of one cluster. For a provisioning cluster, `<name>` is the
   cluster's name. For an imported cluster, or a cluster imported through Rancher
   Turtles, `<name>` is the cluster's id (`c-...`). It is read-only: `patch`,
-  `create resource` and `delete` fail with `VALIDATION`.
+  `create resource` and `delete` fail with `VALIDATION`. To take a snapshot of an
+  imported cluster, create an `etcd-snapshot-save`.
 - `rancher cluster save-etcd-snapshot <cluster>` takes an etcd snapshot of a
   cluster that Rancher provisions with RKE2 or K3s. Preview it with `--dry-run`,
   then run it with `--apply --yes`; the command waits until Rancher reports the
@@ -980,7 +1000,9 @@ Never present a role list as permissions.
   operation is in progress on the cluster (the error is retryable: try again
   after the operation ends) and while the cluster is not ready. If you run it
   again while its own snapshot is in progress, it changes nothing and waits for
-  that snapshot. `--wait=false` returns once the server accepts the request.
+  that snapshot. `--wait=false` returns once the server accepts the request. It
+  refuses an imported cluster: an etcd snapshot of one is a manifest of the kind
+  `etcd-snapshot-save`, created with `create resource -f`.
 - `rancher get authconfigs` lists the auth configs of the Rancher server (TYPE
   says which auth provider; NAME is the auth config's id), and `rancher get
   authconfig <id> -o json` shows one. Before Rancher v2.16 the list holds one

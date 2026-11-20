@@ -705,7 +705,9 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 // ValidCapabilityShape reports the malformation in req as a message that
 // starts with the name of the owning command or kind, or "" when req is
 // valid: the complete zero value, or a known Tier with a non-empty Feature
-// (and, for CapabilityExtDiscovery, a non-empty Unsupported). The message
+// (and, for CapabilityExtDiscovery and CapabilityDiscovery, a non-empty
+// Unsupported; for CapabilityDiscovery also a non-empty Group and Version,
+// which no other tier takes). The message
 // has no "internal error: " lead: Run adds it for its own messages, and
 // the build of the command tree adds it once for the registry and the kind
 // table (buildWiredRegistry and validateWiring in internal/cli/root.go). It
@@ -718,18 +720,24 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 // command or kind in the message.
 func ValidCapabilityShape(req CapabilityRequirement, name string) string {
 	switch {
-	case req.Tier == "" && req.Feature == "" && req.Unsupported == "":
+	case req.Tier == "" && req.Feature == "" && req.Unsupported == "" && req.Group == "" && req.Version == "":
 		return ""
-	case req.Tier == "":
+	case req.Tier == "" && (req.Feature != "" || req.Unsupported != ""):
 		return fmt.Sprintf("%s: capability requirement has Feature/Unsupported set with no Tier", name)
-	case req.Tier != CapabilityPrime && req.Tier != CapabilityExtDiscovery:
+	case req.Tier == "":
+		return fmt.Sprintf("%s: capability requirement has Group/Version set with no Tier", name)
+	case req.Tier != CapabilityPrime && req.Tier != CapabilityExtDiscovery && req.Tier != CapabilityDiscovery:
 		return fmt.Sprintf("%s: unknown capability tier %q", name, req.Tier)
 	case req.Feature == "":
 		return fmt.Sprintf("%s: capability tier %q requires a Feature name", name, req.Tier)
 	case req.Tier == CapabilityPrime && req.Unsupported != "":
 		return fmt.Sprintf("%s: capability tier %q does not use Unsupported", name, req.Tier)
-	case req.Tier == CapabilityExtDiscovery && req.Unsupported == "":
+	case (req.Tier == CapabilityExtDiscovery || req.Tier == CapabilityDiscovery) && req.Unsupported == "":
 		return fmt.Sprintf("%s: capability tier %q requires Unsupported", name, req.Tier)
+	case req.Tier != CapabilityDiscovery && (req.Group != "" || req.Version != ""):
+		return fmt.Sprintf("%s: capability tier %q does not use Group or Version", name, req.Tier)
+	case req.Tier == CapabilityDiscovery && (req.Group == "" || req.Version == ""):
+		return fmt.Sprintf("%s: capability tier %q requires Group and Version", name, req.Tier)
 	default:
 		return ""
 	}

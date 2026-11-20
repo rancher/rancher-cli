@@ -2276,6 +2276,21 @@ func TestValidCapabilityShapeReturnsTheBareMessage(t *testing.T) {
 			`get widget: capability tier "prime" does not use Unsupported`},
 		{"a discovery tier with no Unsupported", CapabilityRequirement{Tier: CapabilityExtDiscovery, Feature: "f"},
 			`get widget: capability tier "extDiscovery" requires Unsupported`},
+		{"a group and version requirement", CapabilityRequirement{Tier: CapabilityDiscovery, Group: "g.io", Version: "v1", Feature: "widgets", Unsupported: "u"}, ""},
+		{"a group and version requirement with no Unsupported", CapabilityRequirement{Tier: CapabilityDiscovery, Group: "g.io", Version: "v1", Feature: "widgets"},
+			`get widget: capability tier "discovery" requires Unsupported`},
+		{"a group and version requirement with no group", CapabilityRequirement{Tier: CapabilityDiscovery, Version: "v1", Feature: "widgets", Unsupported: "u"},
+			`get widget: capability tier "discovery" requires Group and Version`},
+		{"a group and version requirement with no version", CapabilityRequirement{Tier: CapabilityDiscovery, Group: "g.io", Feature: "widgets", Unsupported: "u"},
+			`get widget: capability tier "discovery" requires Group and Version`},
+		{"a group and version requirement with no resource", CapabilityRequirement{Tier: CapabilityDiscovery, Group: "g.io", Version: "v1", Unsupported: "u"},
+			`get widget: capability tier "discovery" requires a Feature name`},
+		{"a group on the prime tier", CapabilityRequirement{Tier: CapabilityPrime, Group: "g.io", Feature: "f"},
+			`get widget: capability tier "prime" does not use Group or Version`},
+		{"a version on the ext discovery tier", CapabilityRequirement{Tier: CapabilityExtDiscovery, Version: "v1", Feature: "f", Unsupported: "u"},
+			`get widget: capability tier "extDiscovery" does not use Group or Version`},
+		{"a group with no tier", CapabilityRequirement{Group: "g.io"},
+			"get widget: capability requirement has Group/Version set with no Tier"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -66,14 +66,16 @@ func invalidForErr(forExpr string) *clierr.Error {
 			"JSONPath is not supported - for that, use kubectl wait with a kubeconfig from this command, where <cluster> is the cluster: ", forExpr)+clierr.Rancher+" kubeconfig --cluster <cluster>")
 }
 
-// stalledRule is a kind row's Stalled settings for one wait: whether
+// stalledRule is a kind row's failure settings for one wait: whether
 // Stalled=True fails the wait (kinds.Kind.WaitFailsOnStalled), the command the
-// failure offers (kinds.Kind.StalledRemedy), and the cluster as the user typed
-// --cluster, which the command repeats.
+// failure offers (kinds.Kind.StalledRemedy), the cluster as the user typed
+// --cluster, which the command repeats, and the condition types that fail the
+// wait when they are True (kinds.Kind.WaitFailsOn).
 type stalledRule struct {
 	fail    bool
 	remedy  func(obj *unstructured.Unstructured, cluster string) (clierr.Command, bool)
 	cluster string
+	failsOn []string
 }
 
 // remedyFor is the command the rule's remedy gives for the observed object,
@@ -160,6 +162,31 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 					}
 					return engine.WaitContinue, stalledErr
 				}
+			}
+			// A condition the row lists, True, is an end state the awaited
+			// condition will never follow (a failed or canceled day-2
+			// operation): the wait fails now instead of at its timeout. The
+			// caller waiting for that condition itself is the exception.
+			// A watch event is handled as for Stalled above.
+			for _, failType := range stalled.failsOn {
+				if cond.kind == "condition" && cond.name == failType {
+					continue
+				}
+				status, reason, msg, ok := conditionDetail(obj.Object, failType)
+				if !ok || status != "True" {
+					continue
+				}
+				if source == engine.SourceEvent {
+					return engine.WaitClose, nil
+				}
+				text := name + " failed"
+				if reason != "" {
+					text += ": " + output.Printable(reason)
+				}
+				if msg != "" {
+					text += ": " + output.Printable(msg)
+				}
+				return engine.WaitContinue, clierr.New(clierr.CodeGeneric, text)
 			}
 			if waitSatisfied(obj, cond) {
 				result = obj
@@ -269,6 +296,19 @@ func conditionStatus(obj map[string]any, name string) (status, message string, o
 		return false
 	})
 	return status, message, ok
+}
+
+// conditionDetail returns the status, reason and message of the first
+// status.conditions[] entry whose type matches name, and whether one was found.
+func conditionDetail(obj map[string]any, name string) (status, reason, message string, ok bool) {
+	engine.EachCondition(obj, func(typ, s, r, msg string) bool {
+		if typ != name {
+			return true
+		}
+		status, reason, message, ok = s, r, msg, true
+		return false
+	})
+	return status, reason, message, ok
 }
 
 // summarizeState renders the last-observed signal for the timeout error,

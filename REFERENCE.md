@@ -13,6 +13,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Kinds & verbs](#kinds--verbs)
 - [Cluster provisioning](#cluster-provisioning)
 - [Upgrading a cluster's Kubernetes version](#upgrading-a-clusters-kubernetes-version)
+- [Day-2 operations on imported clusters](#day-2-operations-on-imported-clusters)
 - [Installing, upgrading and uninstalling apps](#installing-upgrading-and-uninstalling-apps)
 - [Draining a node](#draining-a-node)
 - [Composite commands](#composite-commands)
@@ -931,6 +932,21 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   columns follow the Rancher UI, since the server's Table has only the Name and
   Created At columns. `rancher cluster save-etcd-snapshot` takes a snapshot of a
   provisioned cluster ([Taking an etcd snapshot](#taking-an-etcd-snapshot-of-a-provisioned-cluster)).
+  To take a snapshot of an imported cluster, create an `etcd-snapshot-save`
+  ([Day-2 operations on imported clusters](#day-2-operations-on-imported-clusters)).
+- `etcd-snapshot-save`, `etcd-snapshot-restore`, `encryption-key-rotation` and
+  `certificate-rotation` (`operation.cattle.io`) are the objects through which
+  Rancher takes an etcd snapshot of an imported RKE2 or K3s cluster, restores
+  one, rotates the cluster's secrets encryption key and rotates its
+  certificates. Each takes `--cluster` and lives in the namespace named by the
+  cluster's id. `create resource -f` creates them after checking the cluster,
+  and `patch` and `delete` check the object ([Day-2 operations on imported
+  clusters](#day-2-operations-on-imported-clusters)). Rancher v2.15 and later
+  serve the first three; `certificate-rotation` needs Rancher v2.16 or later,
+  and a server without a kind answers `CAPABILITY_UNSUPPORTED`. The columns are
+  CLUSTER, PAUSED, PHASE and STEP; the restore adds SNAPSHOT and MODE, and the
+  certificate rotation adds SERVICES. The default wait is
+  `condition=Succeeded`.
 - `managedchart` (`management.cattle.io`) is a chart Rancher installs through
   Fleet on the target clusters: the clusters that `spec.targets` matches, except
   a cluster whose first matching target has `doNotDeploy: true`. Rancher serves
@@ -1590,7 +1606,9 @@ operation in progress and does not wait.
 The cluster must be one Rancher provisions. An imported cluster
 (`spec.rkeConfig` absent or null), a hosted cluster and the local cluster are
 refused with `VALIDATION`; Rancher takes the snapshots of an imported RKE2 or
-K3s cluster through objects the command does not create yet.
+K3s cluster through `etcd-snapshot-save` objects, which `rancher create resource
+-f` creates ([Day-2 operations on imported
+clusters](#day-2-operations-on-imported-clusters)).
 
 The Cluster Owner role grants `update` on the provisioning cluster, which the
 command needs. Tab completion offers the provisioning clusters of the namespace
@@ -1720,6 +1738,168 @@ page of the list the Steve API returns is not offered; type its name.
 For an imported cluster with an upgrade pending, the command accepts the version
 the cluster runs: it sets the version in the cluster's config back to that
 version, and the pending upgrade does not run.
+
+## Day-2 operations on imported clusters
+
+Rancher takes etcd snapshots of an imported RKE2 or K3s cluster, restores them,
+rotates the cluster's secrets encryption key and rotates its certificates
+through four kinds of objects on the local cluster: `etcd-snapshot-save`,
+`etcd-snapshot-restore`, `encryption-key-rotation` and `certificate-rotation`.
+`rancher create resource -f` creates them, after it checks the cluster. A
+provisioned cluster has its own commands (see "Taking an etcd snapshot of a
+provisioned cluster"); the checks refuse an object for one.
+
+The manifest is the object the Rancher UI creates. Its namespace is the cluster's
+id, it sets `metadata.generateName`, `spec.ttl: 60` and `spec.clusterRef`:
+
+    cat > save.yaml <<'EOF'
+    apiVersion: operation.cattle.io/v1alpha1
+    kind: ETCDSnapshotSave
+    metadata:
+      namespace: c-m-abcde
+      generateName: c-m-abcde-
+    spec:
+      ttl: 60
+      clusterRef:
+        apiVersion: management.cattle.io/v3
+        kind: Cluster
+        name: c-m-abcde
+    EOF
+    rancher create resource -f save.yaml --dry-run
+    rancher create resource -f save.yaml --apply
+    rancher get etcd-snapshot-save <name> --cluster c-m-abcde --wait
+
+The preview of a manifest with `metadata.generateName` and no name shows the
+prefix, such as `etcdsnapshotsaves/c-m-abcde-*`; the result of `--apply` names
+the object Rancher created. A snapshot needs `--apply`. A restore, an encryption
+key rotation and a certificate rotation need `--apply --yes`, because each
+changes the cluster in a way the CLI cannot undo. Every preview says the create
+is not reversible: deleting the object does not undo what Rancher did.
+
+What Rancher does, as the preview warns:
+
+- A snapshot: Rancher takes an etcd snapshot on every etcd node, then restarts the
+  Kubernetes server on each etcd node, one node at a time. Each snapshot appears
+  as an `etcd-snapshot` object in the cluster's namespace once Rancher reads it
+  from the cluster; list them with `rancher get etcd-snapshot --namespace
+  <cluster id>`. Rancher deletes the object `spec.ttl` seconds after it ends.
+- A restore: Rancher stops Kubernetes on every node: the cluster's API server
+  is down until the restore ends. It removes the server certificate and
+  credential directories (`server/tls`, `server/cred`) on the etcd and control
+  plane nodes, replaces the cluster's etcd data with the snapshot named in
+  `spec.args.name`, and starts the nodes again one at a time. Every Kubernetes
+  object created or changed after the snapshot was taken is lost, objects
+  deleted since then come back, and Rancher deletes the Node objects of nodes
+  that are no longer part of the cluster. A restore that fails can leave the
+  cluster stopped.
+- An encryption key rotation: Rancher creates a new secrets encryption key,
+  re-encrypts every Secret with it, then restarts the Kubernetes server on each
+  etcd and control plane node, one node at a time. Rancher asks for an etcd
+  restore when a rotation fails, and changes made after the newest etcd snapshot
+  cannot be restored then.
+- A certificate rotation: Rancher issues new certificates for the services in
+  `spec.args.services`, every service when it is empty, and restarts those
+  services one node at a time.
+
+What Rancher does on each of these is read from Rancher's source and not checked
+against a running server.
+
+### The checks of a create
+
+A manifest is checked before the dry-run. A refusal is `VALIDATION` and sends no
+request that changes anything. First the manifest alone:
+
+- `spec.clusterRef` names a management cluster: apiVersion
+  `management.cattle.io/v3`, kind `Cluster`, no namespace, a name.
+- The object's namespace is the cluster's id from `spec.clusterRef.name`.
+- A restore sets `spec.args.name`, the name of an `etcd-snapshot` object in the
+  same namespace.
+- `spec.paused` is not `true`: Rancher does not start a paused object, and the
+  CLI does not un-pause one that has not started.
+- `spec.ttl` of 0 or none is a warning: Rancher deletes the object a few seconds
+  after the operation ends, and a wait can then answer `NOT_FOUND`.
+
+Then the server, read with the user's own credentials. The management cluster is read through the Steve
+API, because a Cluster Owner can read it by name only there:
+
+- A cluster that does not exist is `NOT_FOUND`.
+- The cluster is ready: its `Connected` condition is `True`, or, with no such
+  condition, its `Ready` condition, as the Rancher UI offers day-2 operations only
+  on a ready cluster.
+- The cluster is not the local cluster, not a cluster Rancher provisions
+  (annotation `provisioning.cattle.io/administrated` is `true`), not a Rancher
+  Turtles cluster (a label `cluster-api.cattle.io/capi-cluster-owner` or
+  `cluster-api.cattle.io/capi-cluster-owner-ns`), not a Harvester cluster, and an
+  RKE2 or K3s cluster by its driver or its label `provider.cattle.io`.
+- Day-2 operations are on for the cluster: the annotation
+  `rancher.io/operations-enabled` is `true`, or it is absent, `system-default` or
+  any other value and the setting `imported-cluster-day2-ops-enabled` is `true`.
+- The features `imported-day-2-ops` and `provisioningv2` are on. Rancher does not
+  create a `provisioningv2` Feature object; without one the feature is on, and the
+  check passes.
+- A restore: the `etcd-snapshot` exists, belongs to the cluster, is successful and
+  was taken after the cluster was imported into Rancher. `spec.args.restoreMode`
+  is one of the modes the Rancher UI offers for the cluster and the snapshot:
+  `none`; `kubernetesVersion` and `all` only while version management is on for
+  the cluster; of those, the ones the snapshot's annotation
+  `etcdsnapshot.rke.io/restore-mode-options` lists. With no `restoreMode`, a
+  warning says which mode the UI would preselect. The closing warning says to
+  which snapshot time the cluster goes back and that every later change is lost.
+- An encryption key rotation: the cluster has an etcd snapshot of any status, as
+  the Rancher UI requires. A warning gives the age of the newest when it is a day
+  old or more.
+- A certificate rotation: every service in `spec.args.services` is one the
+  cluster's distribution has, and the error lists them. Rancher runs the commands
+  of RKE2 when `status.provider` is `rke2` and of K3s otherwise.
+
+A read that fails (for example a 403 on a Setting, or on the management cluster
+for a standard user, also when the id names no cluster) is a warning, and the
+checks that needed it are left out; only the two cases of a missing cluster and a
+missing snapshot are errors. The dry-run then decides. After the dry-run, every
+field under `spec` that the manifest sets and the server's answer lacks is
+refused: the server removed it because its version of the kind has no such
+field. `spec.args.restoreMode` of a restore and `spec.cancel` of any kind are
+`CAPABILITY_UNSUPPORTED` and name Rancher v2.16, which added them. A field with a
+null value is not compared, and a list passes when the response keeps its
+field; its entries are not compared.
+
+The restore mode checks run only while the server serves `certificate-rotation`,
+which Rancher v2.16 added together with `spec.args.restoreMode`. That the two
+arrive together is read from Rancher's source and not checked against a running
+server.
+
+### Waits, patch and delete
+
+`rancher get <kind> <name> --cluster <id> --wait` waits for the condition
+`Succeeded`. It ends at once with an error, `<name> failed: <reason>: <message>`,
+when the `Failed` or the `Canceled` condition is `True`. Phase `Pending` is not an
+error: Rancher runs one operation at a time on a cluster and keeps the others
+pending. With a `spec.ttl` of 0 the object can be deleted before the wait sees
+it.
+
+`patch` changes `spec.paused` and `spec.ttl` only; a change to another field of
+`spec` is refused with the path, and the error says to create a new object.
+Un-pausing an object that has not started is refused, because a patch does not
+check the cluster: delete it and create it again from a manifest, which does. Un-pausing one
+that is part way through carries the same warning as the create. `delete` before
+the operation ends warns that Rancher's work stops part way, which can leave the
+cluster in an unstable state; `delete <kind> <name> --cluster <id>` waits until the
+object is gone.
+
+### Versions and access
+
+The kinds need Rancher v2.15, and `certificate-rotation` and the fields
+`spec.args.restoreMode` and `spec.cancel` need v2.16. The CLI reads the group list
+and the resource list of `operation.cattle.io` on the local cluster
+(`/k8s/clusters/local/apis`), not a version number; a server that lacks the group
+or the resource answers `CAPABILITY_UNSUPPORTED` with the Rancher version that
+added it. When the features `provisioningv2` and `imported-day-2-ops` are both
+off, a v2.15 server lacks the group as well, and that error says to upgrade the
+server, which does not help: turn the feature `imported-day-2-ops` on.
+
+The Cluster Owner role grants every verb on these kinds in the cluster's
+namespace. A standard user's read of the features and Settings may be refused;
+the check then warns and goes on.
 
 ## Installing, upgrading and uninstalling apps
 

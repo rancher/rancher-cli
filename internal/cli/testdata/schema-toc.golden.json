@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 252,
+  "commandCount": 264,
   "effectSchema": {
     "actions": [
       "create",
@@ -74,7 +74,7 @@
       "rancherAction"
     ]
   },
-  "generatedCommandCount": 175,
+  "generatedCommandCount": 187,
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
@@ -440,7 +440,7 @@
       ],
       "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "generated": {
-        "count": 68,
+        "count": 72,
         "pattern": "get <kind>"
       },
       "name": "get"
@@ -506,7 +506,7 @@
     {
       "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
       "generated": {
-        "count": 68,
+        "count": 72,
         "pattern": "patch <kind>"
       },
       "name": "patch"
@@ -514,13 +514,13 @@
     {
       "desc": "Delete a resource by name. Generated for kinds that support deletion; some kinds add extra checks or cascade warnings.",
       "generated": {
-        "count": 39,
+        "count": 43,
         "pattern": "delete <kind>"
       },
       "name": "delete"
     }
   ],
-  "kindCount": 68,
+  "kindCount": 72,
   "kinds": [
     "cluster",
     "project",
@@ -576,6 +576,10 @@
     "machineset",
     "machinedeployment",
     "etcd-snapshot",
+    "etcd-snapshot-save",
+    "etcd-snapshot-restore",
+    "encryption-key-rotation",
+    "certificate-rotation",
     "k3k-cluster",
     "clusterrepo",
     "app",

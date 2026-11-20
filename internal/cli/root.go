@@ -91,7 +91,7 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateSecret(d.clients) }},
-		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src) }},
+		{group: "create", make: func(d runDeps) runtime.Command { return resources.NewCreate(d.clients, d.src, createChecks(d)...) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateToken(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreateKubeconfig(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return extres.NewCreatePasswordChangeRequest(d.clients, d.src) }},
@@ -190,6 +190,39 @@ type kindOverride struct {
 	// verb's state in the schema manifest. A verb listed here must
 	// also have its constructor set above.
 	refusals map[string]string
+	// create builds the per-kind create check `create resource` runs for a
+	// manifest of the row: reads of the server before the dry-run and a
+	// comparison after it. The key of the check is the row's key.
+	create func(k kinds.Kind, d runDeps) resources.CreateCheck
+}
+
+// createChecks returns the create check of every row whose override sets one,
+// for resources.NewCreate.
+func createChecks(d runDeps) []resources.CreateCheck {
+	var checks []resources.CreateCheck
+	ov := kindOverrides()
+	for _, k := range kinds.All() {
+		if o := ov[k.Key]; o.create != nil {
+			checks = append(checks, o.create(k, d))
+		}
+	}
+	return checks
+}
+
+// importedDay2Create is the create check of a day-2 operation row: Rancher's
+// preconditions for an imported cluster, read before the dry-run.
+func importedDay2Create(k kinds.Kind, d runDeps) resources.CreateCheck {
+	server := func() string {
+		if d.serverBase == nil {
+			return ""
+		}
+		base, err := d.serverBase.ServerBaseURL()
+		if err != nil {
+			return ""
+		}
+		return base
+	}
+	return provisioning.ImportedDay2Check(k.Key, d.roots, server)
 }
 
 // delOverrideOnNonDeletable reports whether ov installs a del override for a
@@ -253,6 +286,12 @@ func primeFeatureCommunityWarning(clients engine.ClusterClientFactory) resources
 }
 
 var kindOverrideTable = map[string]kindOverride{
+	// The day-2 operation rows of an imported cluster: create resource checks
+	// the cluster before the dry-run.
+	"etcdsnapshotsave":      {create: importedDay2Create},
+	"etcdsnapshotrestore":   {create: importedDay2Create},
+	"encryptionkeyrotation": {create: importedDay2Create},
+	"certificaterotation":   {create: importedDay2Create},
 	"clusterregistrationtoken": {
 		get:      func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewGetCRT(k, d.roots) },
 		patch:    func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewRefuseCRTPatch(k) },
@@ -855,6 +894,46 @@ func checkPatchRefusals(rows []kinds.Kind, overrides map[string]kindOverride) er
 	return nil
 }
 
+// checkObjectChecked rejects a row with ObjectChecks whose patch or delete
+// command does not run them: an override that is not built with
+// resources.NewPatch or resources.NewDelete, or a refused patch.
+func checkObjectChecked(rows []kinds.Kind, overrides map[string]kindOverride) error {
+	type verb struct {
+		name string
+		cmd  runtime.Command
+	}
+	for _, k := range rows {
+		if k.ObjectChecks == nil {
+			continue
+		}
+		ov := overrides[k.Key]
+		var verbs []verb
+		if k.ObjectChecks.Patch != nil {
+			switch {
+			case ov.patch != nil:
+				verbs = append(verbs, verb{"patch", ov.patch(k, runDeps{})})
+			case k.NoPatchReason != "":
+				verbs = append(verbs, verb{"patch", resources.NewRefusePatch(k)})
+			default:
+				verbs = append(verbs, verb{"patch", resources.NewPatch(k, nil, nil)})
+			}
+		}
+		if k.ObjectChecks.Delete != nil {
+			if ov.del != nil {
+				verbs = append(verbs, verb{"delete", ov.del(k, runDeps{})})
+			} else {
+				verbs = append(verbs, verb{"delete", resources.NewDelete(k, nil)})
+			}
+		}
+		for _, v := range verbs {
+			if _, ok := v.cmd.(resources.ObjectChecked); !ok {
+				return fmt.Errorf("internal error: kind definitions: kind %q has ObjectChecks for %s but its %s command does not run them; build it with resources.NewPatch or resources.NewDelete", k.Key, v.name, v.name)
+			}
+		}
+	}
+	return nil
+}
+
 // buildWiredRegistry constructs and validates the command registry for the
 // full surface. It handles kind validation, resolver composition, entry wiring,
 // and the fixed schema/completion registrations.
@@ -866,6 +945,9 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		return wiredRegistry{}, err
 	}
 	if err := checkPatchRefusals(kinds.All(), kindOverrides()); err != nil {
+		return wiredRegistry{}, err
+	}
+	if err := checkObjectChecked(kinds.All(), kindOverrides()); err != nil {
 		return wiredRegistry{}, err
 	}
 	resolver, err := composeBindings()

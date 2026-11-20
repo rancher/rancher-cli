@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"slices"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -41,8 +42,12 @@ func (c *capabilityChecker) Check(ctx context.Context, req runtime.CapabilityReq
 	}
 	dec := runtime.CapabilityDecision{Outcome: runtime.CapabilityUnknown, Server: server}
 
-	if req.Tier == runtime.CapabilityExtDiscovery {
+	switch req.Tier {
+	case runtime.CapabilityExtDiscovery:
 		dec.Outcome = c.checkExtDiscovery(ctx, req.Feature)
+		return dec
+	case runtime.CapabilityDiscovery:
+		dec.Outcome = c.checkDiscovery(ctx, req.Group, req.Version, req.Feature)
 		return dec
 	}
 
@@ -131,6 +136,45 @@ func (c *capabilityChecker) checkExtDiscovery(ctx context.Context, resource stri
 		if r.Name == resource {
 			return runtime.CapabilityProceed
 		}
+	}
+	return runtime.CapabilityUnsupported
+}
+
+// checkDiscovery reads the group list of the local cluster's Kubernetes API
+// (/k8s/clusters/local/apis) and, for a listed group, the resource list of the
+// requested version (/k8s/clusters/local/apis/<group>/<version>). Only a
+// readable group list without the group, or a readable resource list without
+// resource, is CapabilityUnsupported. A list counts as readable when it
+// decodes as an APIGroupList, a resource list when it decodes as an
+// APIResourceList of exactly <group>/<version>. Any failed read, any other
+// body and any decode error is CapabilityUnknown, as for checkExtDiscovery.
+func (c *capabilityChecker) checkDiscovery(ctx context.Context, group, version, resource string) runtime.CapabilityOutcome {
+	root, err := c.f.Root()
+	if err != nil {
+		return runtime.CapabilityUnknown
+	}
+	proxy := "/k8s/clusters/" + engine.LocalCluster
+	listBody, err := root.GetJSON(ctx, proxy+"/apis")
+	if err != nil {
+		return runtime.CapabilityUnknown
+	}
+	listed, readable := engine.GroupListed(listBody, group)
+	if !readable {
+		return runtime.CapabilityUnknown
+	}
+	if !listed {
+		return runtime.CapabilityUnsupported
+	}
+	docBody, err := root.GetJSON(ctx, proxy+"/apis/"+group+"/"+version)
+	if err != nil {
+		return runtime.CapabilityUnknown
+	}
+	names, readable := engine.ResourceNames(docBody, group+"/"+version)
+	if !readable {
+		return runtime.CapabilityUnknown
+	}
+	if slices.Contains(names, resource) {
+		return runtime.CapabilityProceed
 	}
 	return runtime.CapabilityUnsupported
 }

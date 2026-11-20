@@ -1,0 +1,59 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# The test server serves the operation.cattle.io group with the three resources
+# of Rancher v2.15. A list of a day-2 operation kind that the server serves is
+# empty and exits 0.
+exec rancher get etcd-snapshot-saves --cluster testcluster
+exec rancher get etcd-snapshot-restores --cluster testcluster
+exec rancher get encryption-key-rotations --cluster testcluster
+
+# CertificateRotation is served from Rancher v2.16: the group is listed and its
+# resource list lacks the resource, so every verb of the kind is refused as
+# unsupported by the connected server.
+! exec rancher get certificate-rotations --cluster testcluster -o json
+jsonquery stderr data.error.code CAPABILITY_UNSUPPORTED
+jsonquery stderr data.error.details.feature certificaterotations
+
+# A manifest whose clusterRef is not a management cluster is refused before any
+# request that changes the object.
+! exec rancher create resource -f badref.yaml --dry-run -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message 'spec.clusterRef must name a management cluster: apiVersion management.cattle.io/v3, kind Cluster, as the Rancher UI sets it'
+
+# The object the Rancher UI creates for the cluster is refused: the test cluster
+# has no Connected or Ready condition, so the check of the cluster stops the
+# create before the dry-run.
+! exec rancher create resource -f save.yaml --dry-run -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message 'cluster c-test is not ready (it reports no Connected or Ready condition); the Rancher UI offers day-2 operations only on a ready cluster'
+
+# The create of a restore is available and the schema says so.
+exec rancher schema etcd-snapshot-restore -o json
+jsonquery stdout data.verbs.create.state available
+
+-- badref.yaml --
+apiVersion: operation.cattle.io/v1alpha1
+kind: ETCDSnapshotSave
+metadata:
+  namespace: c-test
+  generateName: c-test-
+spec:
+  ttl: 60
+  clusterRef:
+    apiVersion: v1
+    kind: Secret
+    name: c-test
+
+-- save.yaml --
+apiVersion: operation.cattle.io/v1alpha1
+kind: ETCDSnapshotSave
+metadata:
+  namespace: c-test
+  generateName: c-test-
+spec:
+  ttl: 60
+  clusterRef:
+    apiVersion: management.cattle.io/v3
+    kind: Cluster
+    name: c-test

@@ -164,6 +164,12 @@ type Kind struct {
 	// semantics and no birth-window race has been observed on them. A future
 	// kind wanting only one of the gated behaviours would need a new axis.
 	WaitFailsOnStalled bool
+	// WaitFailsOn lists condition types that end a wait with a failure when the
+	// object reports one with status True: the object reached an end state
+	// that the awaited condition will never follow. It is independent of
+	// WaitFailsOnStalled. A type the caller waits for with --for is not a
+	// failure. No entry is empty.
+	WaitFailsOn []string
 	// StalledRemedy, when set on a row with WaitFailsOnStalled, writes the
 	// command that shows why a wait stopped on Stalled=True; the error of that
 	// wait carries it as its hint. It is for a kind whose Stalled message does
@@ -185,6 +191,18 @@ type Kind struct {
 	// controller does once the object exists, which the dry-run cannot show.
 	// Advisory only, never a gate.
 	CreateWarning string
+	// CreateNotReversible, when true, makes `create resource` report the
+	// create as not reversible: deleting the object it creates does not undo
+	// what its controller does once the object exists. A row with
+	// NoCreateViaManifest cannot set it, because it has no create.
+	CreateNotReversible bool
+	// ObjectChecks, when set, holds the checks a row's create, patch and
+	// delete run on the object before any request that changes it. The
+	// generated patch and delete run them; an override of either verb for the
+	// row must build its command with resources.NewPatch or resources.NewDelete
+	// so it still does (the build of the command tree refuses a row whose
+	// override does not).
+	ObjectChecks *ObjectChecks
 	// Completable marks this kind as eligible for live name completion.
 	// Deny-by-default: a new row gets no completion until this is explicitly set.
 	// Secrets and cloud-credentials are never set.
@@ -292,6 +310,30 @@ type Kind struct {
 	// Management row with a Steve reader may set it; a test in this package
 	// lists both kinds of row and asserts which of them set it.
 	SteveReadOnForbidden bool
+}
+
+// ObjectChecks are the checks a row runs on an object before its create,
+// patch or delete reaches the server. Each field is optional. A check reads
+// only the object it is given and makes no request; a check that needs a read
+// belongs to the command that wires it (see resources.CreateCheck).
+type ObjectChecks struct {
+	// Create checks the object a manifest creates, after the manifest's
+	// namespace has been routed and before the server dry-run.
+	Create func(obj *unstructured.Unstructured) Verdict
+	// Patch checks a patch: orig is the object as fetched and patched the
+	// object with the patch applied, before the server dry-run.
+	Patch func(orig, patched *unstructured.Unstructured) Verdict
+	// Delete checks the object as fetched before the delete. A row that sets
+	// it must be Deletable.
+	Delete func(obj *unstructured.Unstructured) Verdict
+}
+
+// Verdict is the result of one object check. A non-empty Refusal stops the
+// command with a VALIDATION error carrying it, and no request that changes
+// the object follows. Warnings are shown in the preview.
+type Verdict struct {
+	Refusal  string
+	Warnings []string
 }
 
 // Handle names the positional argument of a kind whose users do not type the
@@ -1185,7 +1227,7 @@ var table = []Kind{
 		NamespaceDesc:       "`namespace` of the cluster's snapshots: for a cluster Rancher provisions, the namespace of its provisioning cluster (default: fleet-default); otherwise the cluster's id (c-...)",
 		NoDeleteReason:      "an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place",
 		NoPatchReason:       "Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them",
-		NoCreateViaManifest: "Rancher creates an etcd snapshot object for each snapshot file; to take a snapshot of a cluster Rancher provisions (<cluster> is its name), preview it with `" + clierr.Rancher + " cluster save-etcd-snapshot <cluster> --dry-run` and add --apply --yes after reading the preview",
+		NoCreateViaManifest: "Rancher creates an etcd snapshot object for each snapshot file; to take a snapshot of a cluster Rancher provisions (<cluster> is its name), preview it with `" + clierr.Rancher + " cluster save-etcd-snapshot <cluster> --dry-run` and add --apply --yes after reading the preview; to take a snapshot of an imported cluster, create an etcd-snapshot-save object from a manifest",
 		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			{Header: "STATUS", Path: []string{"snapshotFile", "status"}},
@@ -1199,6 +1241,77 @@ var table = []Kind{
 			{Header: "MESSAGE", Path: []string{"snapshotFile", "message"}, Wide: true},
 		},
 		GetDesc: "CREATED-AT is when the snapshot was taken; AGE counts from when Rancher created the object. SIZE-BYTES is in bytes.",
+	},
+	{
+		Key: "etcdsnapshotsave", Name: "etcd-snapshot-save", Aliases: []string{"etcdsnapshotsaves", "etcd-snapshot-saves"},
+		GVR:    schema.GroupVersionResource{Group: "operation.cattle.io", Version: "v1alpha1", Resource: "etcdsnapshotsaves"},
+		Policy: NSCluster, K8sKind: "ETCDSnapshotSave", Scope: Management, Deletable: true, Completable: false,
+		WaitDefault: "condition=Succeeded", WaitFailsOn: []string{"Failed", "Canceled"}, CreateNotReversible: true,
+		Binding:       safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Capability:    runtime.CapabilityRequirement{Tier: runtime.CapabilityDiscovery, Group: "operation.cattle.io", Version: "v1alpha1", Feature: "etcdsnapshotsaves", Unsupported: "the ETCDSnapshotSave operation, which Rancher v2.15 added"},
+		ObjectChecks:  importedDay2Checks("etcd-snapshot-save", etcdSnapshotSaveWarning, false),
+		CreateWarning: etcdSnapshotSaveWarning,
+		GetDesc:       "Rancher takes etcd snapshots of imported RKE2 and K3s clusters from these objects, in the namespace named by the cluster's id (--cluster). Rancher deletes an object spec.ttl seconds after it ends; list the snapshots with `" + clierr.Rancher + " get etcd-snapshot --namespace <cluster>` (<cluster> is the cluster's id).",
+		Columns: []Column{
+			{Header: "CLUSTER", Path: []string{"spec", "clusterRef", "name"}},
+			{Header: "PAUSED", Path: []string{"spec", "paused"}, Bool: true},
+			{Header: "PHASE", Path: []string{"status", "phase"}},
+			{Header: "STEP", Path: []string{"status", "step"}},
+		},
+	},
+	{
+		Key: "etcdsnapshotrestore", Name: "etcd-snapshot-restore", Aliases: []string{"etcdsnapshotrestores", "etcd-snapshot-restores"},
+		GVR:    schema.GroupVersionResource{Group: "operation.cattle.io", Version: "v1alpha1", Resource: "etcdsnapshotrestores"},
+		Policy: NSCluster, K8sKind: "ETCDSnapshotRestore", Scope: Management, Deletable: true, Completable: false, Sensitive: true,
+		WaitDefault: "condition=Succeeded", WaitFailsOn: []string{"Failed", "Canceled"}, CreateNotReversible: true,
+		Binding:       safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Capability:    runtime.CapabilityRequirement{Tier: runtime.CapabilityDiscovery, Group: "operation.cattle.io", Version: "v1alpha1", Feature: "etcdsnapshotrestores", Unsupported: "the ETCDSnapshotRestore operation, which Rancher v2.15 added"},
+		ObjectChecks:  importedDay2Checks("etcd-snapshot-restore", etcdSnapshotRestoreWarning, true),
+		CreateWarning: etcdSnapshotRestoreWarning,
+		GetDesc:       "Rancher restores an imported RKE2 or K3s cluster's etcd from these objects, in the namespace named by the cluster's id (--cluster). spec.args.name is the name of an etcd-snapshot object in the same namespace.",
+		Columns: []Column{
+			{Header: "CLUSTER", Path: []string{"spec", "clusterRef", "name"}},
+			{Header: "SNAPSHOT", Path: []string{"spec", "args", "name"}},
+			{Header: "MODE", Path: []string{"spec", "args", "restoreMode"}},
+			{Header: "PAUSED", Path: []string{"spec", "paused"}, Bool: true},
+			{Header: "PHASE", Path: []string{"status", "phase"}},
+			{Header: "STEP", Path: []string{"status", "step"}},
+		},
+	},
+	{
+		Key: "encryptionkeyrotation", Name: "encryption-key-rotation", Aliases: []string{"encryptionkeyrotations", "encryption-key-rotations"},
+		GVR:    schema.GroupVersionResource{Group: "operation.cattle.io", Version: "v1alpha1", Resource: "encryptionkeyrotations"},
+		Policy: NSCluster, K8sKind: "EncryptionKeyRotation", Scope: Management, Deletable: true, Completable: false, Sensitive: true,
+		WaitDefault: "condition=Succeeded", WaitFailsOn: []string{"Failed", "Canceled"}, CreateNotReversible: true,
+		Binding:       safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Capability:    runtime.CapabilityRequirement{Tier: runtime.CapabilityDiscovery, Group: "operation.cattle.io", Version: "v1alpha1", Feature: "encryptionkeyrotations", Unsupported: "the EncryptionKeyRotation operation, which Rancher v2.15 added"},
+		ObjectChecks:  importedDay2Checks("encryption-key-rotation", encryptionKeyRotationWarning, false),
+		CreateWarning: encryptionKeyRotationWarning,
+		GetDesc:       "Rancher rotates the secrets encryption key of an imported RKE2 or K3s cluster from these objects, in the namespace named by the cluster's id (--cluster).",
+		Columns: []Column{
+			{Header: "CLUSTER", Path: []string{"spec", "clusterRef", "name"}},
+			{Header: "PAUSED", Path: []string{"spec", "paused"}, Bool: true},
+			{Header: "PHASE", Path: []string{"status", "phase"}},
+			{Header: "STEP", Path: []string{"status", "step"}},
+		},
+	},
+	{
+		Key: "certificaterotation", Name: "certificate-rotation", Aliases: []string{"certificaterotations", "certificate-rotations"},
+		GVR:    schema.GroupVersionResource{Group: "operation.cattle.io", Version: "v1alpha1", Resource: "certificaterotations"},
+		Policy: NSCluster, K8sKind: "CertificateRotation", Scope: Management, Deletable: true, Completable: false, Sensitive: true,
+		WaitDefault: "condition=Succeeded", WaitFailsOn: []string{"Failed", "Canceled"}, CreateNotReversible: true,
+		Binding:       safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Capability:    runtime.CapabilityRequirement{Tier: runtime.CapabilityDiscovery, Group: "operation.cattle.io", Version: "v1alpha1", Feature: "certificaterotations", Unsupported: "the CertificateRotation operation, which Rancher v2.16 added"},
+		ObjectChecks:  importedDay2Checks("certificate-rotation", certificateRotationWarning, false),
+		CreateWarning: certificateRotationWarning,
+		GetDesc:       "Rancher v2.16 and later rotate the certificates of an imported RKE2 or K3s cluster from these objects, in the namespace named by the cluster's id (--cluster). An empty spec.args.services rotates every service.",
+		Columns: []Column{
+			{Header: "CLUSTER", Path: []string{"spec", "clusterRef", "name"}},
+			{Header: "SERVICES", Path: []string{"spec", "args", "services"}, Join: true},
+			{Header: "PAUSED", Path: []string{"spec", "paused"}, Bool: true},
+			{Header: "PHASE", Path: []string{"status", "phase"}},
+			{Header: "STEP", Path: []string{"status", "step"}},
+		},
 	},
 	{
 		Key: "k3kcluster", Name: "k3k-cluster", Aliases: []string{"k3kclusters", "k3k-clusters"},
@@ -1551,6 +1664,20 @@ func validateKinds(ts []Kind) error {
 	for _, k := range ts {
 		if problem := runtime.ValidCapabilityShape(k.Capability, k.Name); problem != "" {
 			return fmt.Errorf("%s", problem)
+		}
+		if c := k.Capability; c.Tier == runtime.CapabilityDiscovery &&
+			(c.Group != k.GVR.Group || c.Version != k.GVR.Version || c.Feature != k.GVR.Resource) {
+			return fmt.Errorf("kind %q has a discovery capability for %s/%s %s, which differs from its resource %s/%s %s",
+				k.Key, c.Group, c.Version, c.Feature, k.GVR.Group, k.GVR.Version, k.GVR.Resource)
+		}
+		if k.ObjectChecks != nil && k.ObjectChecks.Delete != nil && !k.Deletable {
+			return fmt.Errorf("kind %q sets ObjectChecks.Delete but has no generated delete (Deletable is false)", k.Key)
+		}
+		if k.NoCreateViaManifest != "" && (k.CreateNotReversible || (k.ObjectChecks != nil && k.ObjectChecks.Create != nil)) {
+			return fmt.Errorf("kind %q sets CreateNotReversible or ObjectChecks.Create together with NoCreateViaManifest (a refused create has neither)", k.Key)
+		}
+		if slices.Contains(k.WaitFailsOn, "") {
+			return fmt.Errorf("kind %q has an empty entry in WaitFailsOn", k.Key)
 		}
 		for _, id := range append([]string{k.Name, k.Key}, k.Aliases...) {
 			if prev, dup := seen[id]; dup && prev != k.Key {
