@@ -28,7 +28,7 @@ func ReadPasswordStdin(src FileSource, in runtime.Input, newlineRemedy string) (
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric, fmt.Sprintf("reading --password-stdin: %v", err))
 	}
-	password := trimFinalNewline(dropLeadingByteOrderMarks(string(raw)))
+	password := trimFinalNewline(DropLeadingByteOrderMarks(string(raw)))
 	if password == "" {
 		return "", clierr.New(clierr.CodeValidation, "the password read from stdin is empty; pipe a non-empty password on stdin")
 	}
@@ -61,7 +61,7 @@ func ReadCurrentAndNewPasswordStdin(src FileSource, in runtime.Input) (current, 
 	if err != nil {
 		return "", "", clierr.New(clierr.CodeGeneric, fmt.Sprintf("reading --password-stdin: %v", err))
 	}
-	text := dropLeadingByteOrderMarks(string(raw))
+	text := DropLeadingByteOrderMarks(string(raw))
 	if text == "" {
 		return "", "", clierr.New(clierr.CodeValidation,
 			"stdin is empty; with --current-password-stdin, pipe the current password and the new password, one per line")
@@ -82,13 +82,13 @@ func ReadCurrentAndNewPasswordStdin(src FileSource, in runtime.Input) (current, 
 	return current, newPassword, nil
 }
 
-// dropLeadingByteOrderMarks returns s without the byte order marks (U+FEFF, the
-// bytes EF BB BF) at the start of stdin. Windows PowerShell 5.1 sends one before
-// piped text, and two when its $OutputEncoding is
-// `[System.Text.Encoding]::UTF8`. A value piped from it would otherwise reach
-// Rancher with those bytes at its start. A mark anywhere else is part of the
-// value.
-func dropLeadingByteOrderMarks(s string) string {
+// DropLeadingByteOrderMarks returns s without the byte order marks (U+FEFF, the
+// bytes EF BB BF) at the start of stdin or of a file. Windows PowerShell 5.1
+// sends one before piped text, and two when its $OutputEncoding is
+// `[System.Text.Encoding]::UTF8`; an editor on Windows may save a file with
+// one. A value read from either would otherwise reach Rancher with those bytes
+// at its start. A mark anywhere else is part of the value.
+func DropLeadingByteOrderMarks(s string) string {
 	return strings.TrimLeft(s, "\ufeff")
 }
 
