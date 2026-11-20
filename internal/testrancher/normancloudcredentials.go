@@ -51,10 +51,6 @@ func isNormanCloudCredentialRoute(path string) bool {
 // handleNormanCloudCredentials serves create (POST on the collection), update
 // (PUT) and delete (DELETE) of a cloud credential.
 func (f *Facade) handleNormanCloudCredentials(w http.ResponseWriter, r *http.Request) {
-	if !f.opts.NormanCloudCredentials {
-		http.NotFound(w, r)
-		return
-	}
 	if !f.authorizedBearer(r) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return

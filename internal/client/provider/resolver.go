@@ -35,6 +35,9 @@ func NewResolver() map[string]safety.Binding {
 		// five machine-config kinds - no single row for either.
 		"create resource":       {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"create machine-config": {Contract: safety.ContractInternal, Stability: safety.Beta},
+		// create cloud-credential writes through Rancher's Norman API, which
+		// has no Public API listing.
+		"create cloud-credential": {Contract: safety.ContractInternal, Stability: safety.Beta},
 		// create user and create password-change-request front Rancher's
 		// documented user-management workflow: the two-resource User +
 		// password-Secret create, and the ext.cattle.io

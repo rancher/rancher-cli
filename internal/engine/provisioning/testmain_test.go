@@ -17,6 +17,7 @@ import (
 // any test runs. The wait tests can then run in parallel.
 func TestMain(m *testing.M) {
 	clusterWaitInterval = time.Millisecond
+	SetCloudCredentialWaitForTest(time.Millisecond, 100*time.Millisecond)
 	restore := testtransport.GuardDefaultTransport()
 	code := m.Run()
 	if err := restore(); err != nil {

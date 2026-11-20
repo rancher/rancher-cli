@@ -110,7 +110,8 @@ func wantGetWaitCommands() []string {
 // TestOnlyGetDeleteAppAndNodeActionsDeclareTheWaitFlags asserts that the
 // commands declaring --wait are exactly the generic gets, every delete,
 // app install, app uninstall and app upgrade, and node drain and node
-// stop-drain; that patch and the
+// stop-drain; and create cloud-credential, which declares --wait and no
+// --timeout; that patch and the
 // clusterregistrationtoken get do not offer a flag they ignore or refuse;
 // that every delete declares --wait and --timeout and no --for, since a
 // delete waits for the object to be gone and for nothing else; that no patch
@@ -119,7 +120,8 @@ func wantGetWaitCommands() []string {
 // limit, not a wait, and those commands declare no --wait. App install, app
 // uninstall and app upgrade declare --wait and --timeout for their wait of
 // Helm's run. Node drain and node stop-drain declare them for their wait of
-// Rancher's drain.
+// Rancher's drain. Create cloud-credential declares --wait for its wait until the
+// new credential is readable, with a fixed limit.
 func TestOnlyGetDeleteAppAndNodeActionsDeclareTheWaitFlags(t *testing.T) {
 	t.Parallel()
 	wr, err := buildWiredRegistry("v-test", nil)
@@ -146,7 +148,7 @@ func TestOnlyGetDeleteAppAndNodeActionsDeclareTheWaitFlags(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, deletes)
-	want := slices.Concat(wantGetWaitCommands(), deletes, []string{"app install", "app uninstall", "app upgrade", "cluster upgrade", "cluster save-etcd-snapshot", "node drain", "node stop-drain"})
+	want := slices.Concat(wantGetWaitCommands(), deletes, []string{"app install", "app uninstall", "app upgrade", "cluster upgrade", "cluster save-etcd-snapshot", "node drain", "node stop-drain", "create cloud-credential"})
 	assert.ElementsMatch(t, want, got)
 	assert.Empty(t, commandsDeclaringForWithoutWait(cmds))
 }

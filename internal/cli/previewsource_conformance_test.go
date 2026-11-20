@@ -12,10 +12,11 @@ import (
 )
 
 // serverReadsCommands are the commands whose preview comes from server
-// reads: the Rancher catalog install, upgrade and uninstall actions. Every other
-// mutating command previews through a server-side dry-run. A command added
-// here is a reviewed exception to the safety pipeline.
-var serverReadsCommands = []string{"app install", "app upgrade", "app uninstall"}
+// reads: the Rancher catalog install, upgrade and uninstall actions and the
+// cloud credential writes through Norman. Every other mutating command
+// previews through a server-side dry-run. A command added here is a reviewed
+// exception to the safety pipeline.
+var serverReadsCommands = []string{"app install", "app upgrade", "app uninstall", "create cloud-credential"}
 
 // TestEveryMutatingCommandNamesItsPreviewSource runs every result-scrub row
 // (one or more per mutating command) with --dry-run, decodes its Effect and

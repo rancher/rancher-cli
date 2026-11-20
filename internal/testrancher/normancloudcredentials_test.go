@@ -64,7 +64,7 @@ func normanRequest(t *testing.T, srv *httptest.Server, method, path, bearer stri
 func TestFacadeNormanCloudCredentialCreate(t *testing.T) {
 	t.Parallel()
 	store := &secretStore{}
-	f := New(Options{SeedToken: cloudCredentialToken, NormanCloudCredentials: true, Fallthrough: store})
+	f := New(Options{SeedToken: cloudCredentialToken, Fallthrough: store})
 	srv := httptest.NewServer(f)
 	defer srv.Close()
 	body := map[string]any{
@@ -98,10 +98,12 @@ func TestFacadeNormanCloudCredentialCreate(t *testing.T) {
 	assert.Equal(t, "fake-secret-value-1", secret["stringData"].(map[string]any)["amazonec2credentialConfig-secretKey"])
 	assert.Contains(t, store.rawPath[0], "fieldManager=cli.rancher.io")
 
-	off := httptest.NewServer(New(Options{SeedToken: cloudCredentialToken}))
-	defer off.Close()
-	status, _ = normanRequest(t, off, http.MethodPost, "/v3/cloudcredentials", cloudCredentialToken, body)
-	assert.Equal(t, http.StatusNotFound, status)
+	// With no fallthrough the Secret is not stored and the create is still
+	// answered.
+	bare := httptest.NewServer(New(Options{SeedToken: cloudCredentialToken}))
+	defer bare.Close()
+	status, _ = normanRequest(t, bare, http.MethodPost, "/v3/cloudcredentials", cloudCredentialToken, body)
+	assert.Equal(t, http.StatusCreated, status)
 }
 
 // TestFacadeNormanCloudCredentialRefusals asserts a body with no config object
@@ -111,7 +113,7 @@ func TestFacadeNormanCloudCredentialCreate(t *testing.T) {
 func TestFacadeNormanCloudCredentialRefusals(t *testing.T) {
 	t.Parallel()
 	store := &secretStore{}
-	f := New(Options{SeedToken: cloudCredentialToken, NormanCloudCredentials: true, Fallthrough: store, NormanCloudCredentialsInUse: []string{"cattle-global-data:cc-used"}})
+	f := New(Options{SeedToken: cloudCredentialToken, Fallthrough: store, NormanCloudCredentialsInUse: []string{"cattle-global-data:cc-used"}})
 	srv := httptest.NewServer(f)
 	defer srv.Close()
 

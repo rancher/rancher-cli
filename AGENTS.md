@@ -140,10 +140,11 @@ Gotchas:
 - **One safety pipeline for every mutation.** Server-side dry-run → an `Effect` →
   explicit gates (`--apply`, `--yes` for destructive, `--allow-deprecated`) →
   execute, bound to the preview by a resourceVersion precondition. A command
-  cannot weaken its own gates. The one exception: a Rancher action the CLI
-  previews from server reads (`app install`, `app upgrade`, `app uninstall`)
-  carries no precondition and says so in the Effect (`previewSource: serverReads`); every
-  other mutation sets `previewSource: serverDryRun`.
+  cannot weaken its own gates. The exceptions: a Rancher action the CLI
+  previews from server reads (`app install`, `app upgrade`, `app uninstall`), and the
+  cloud credential writes through Norman (`create cloud-credential`, `patch cloud-credential`,
+  `delete cloud-credential`), carry no precondition and say so in the Effect
+  (`previewSource: serverReads`); every other mutation sets `previewSource: serverDryRun`.
 - **A Local command writes to the server only objects the CLI created for its
   own use and can prove it created.** Anything else is a resource mutation and
   goes through the gated pipeline (`rancher delete token <name> --apply --yes`).

@@ -155,7 +155,7 @@ or point the instructions file of any other coding-agent harness at it.
 |---|---|
 | [Authentication](COMMANDS.md#authentication) | login, logout, status, and the exec plugin (`auth get-token`) |
 | [Servers & configuration](COMMANDS.md#servers--configuration) | servers, config file, completion settings |
-| [Create](COMMANDS.md#create) | project, namespace, secret, resource -f, token, kubeconfig, cluster, machine-config |
+| [Create](COMMANDS.md#create) | project, namespace, secret, resource -f, token, kubeconfig, cluster, machine-config, cloud-credential |
 | [Projects & access](COMMANDS.md#projects--access) | project namespace membership, grant, revoke |
 | [Cluster scaling & autoscaling](COMMANDS.md#cluster-scaling--autoscaling) | machine-pool scale, cluster-autoscaler set/clear/pause/resume, Kubernetes version upgrade, etcd snapshot (`cluster save-etcd-snapshot`) |
 | [Nodes](COMMANDS.md#nodes) | drain a node (`node drain`) or stop a drain (`node stop-drain`); Rancher runs the drain, and `get management-node` shows its state |

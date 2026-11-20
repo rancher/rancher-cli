@@ -267,9 +267,12 @@ const (
 	// passwordApplyLine applies the change and sends the real create request.
 	passwordApplyLine = "create password-change-request u-abc --apply --yes"
 	machineConfig     = "create machine-config amazonec2config w --dry-run"
-	patchLine         = "patch configmap app --cluster c-x --namespace default --dry-run"
-	createFileLine    = "create resource --cluster c-x --namespace n2 --dry-run"
-	loginLine         = "auth login x --url {url} --cacert {pem}"
+	// createCloudCredentialLine is a create that the checks of the command line
+	// refuse before any request.
+	createCloudCredentialLine = "create cloud-credential s3 x --dry-run"
+	patchLine                 = "patch configmap app --cluster c-x --namespace default --dry-run"
+	createFileLine            = "create resource --cluster c-x --namespace n2 --dry-run"
+	loginLine                 = "auth login x --url {url} --cacert {pem}"
 )
 
 // secretRows is the table: one or more rows for every secret-bearing flag
@@ -288,6 +291,9 @@ func secretRows() []secretRow {
 		secretRow{flag: "from-literal", name: "the second half of a value with a comma", argv: line(createSecretLine, "--from-literal", "pw=ab,"+c), code: validation, message: "malformed --from-literal value"},
 		secretRow{flag: "from-literal", name: "a flag given twice", argv: line(createSecretLine, "--from-literal", "a=b", "--from-literal", "k="+c), code: validation, message: "invalid value for flag -from-literal: can't duplicate this flag"},
 		secretRow{flag: "from-literal", name: "an extra argument", argv: line(createSecretLine, "--from-literal", "a=b", c), code: validation, message: "unexpected argument at position 2"},
+		secretRow{flag: "from-file", name: "no equals", argv: line(createCloudCredentialLine, "--from-file", c), code: validation, message: "--from-file argument #1 must be <field>=<value>"},
+		secretRow{flag: "from-file", name: "empty field", argv: line(createCloudCredentialLine, "--from-file", "="+c), code: validation, message: "--from-file argument #1 has an empty field name"},
+		secretRow{flag: "from-file", name: "an extra argument", argv: line(createCloudCredentialLine, "--from-file", "secretKey=f", c), code: validation, message: "unexpected argument at position 3"},
 	)
 
 	bad := map[string]string{
@@ -563,6 +569,7 @@ var secretArgExempt = map[string]string{
 // kubectl uses, public data (a path, a name, an id), or a value the command
 // refuses without printing it.
 var secretValueFlags = map[string]string{
+	"from-file":        "a field=path pair; the path is read as a file or as stdin and the secret never appears on the command line; a malformed word is refused without echoing it",
 	"from-literal":     "key=value pairs of Secret data in the form kubectl create secret --from-literal uses; a malformed value is refused without echoing it; to keep the data off the command line, use create resource -f - and send the Secret on stdin",
 	"patch":            "a JSON patch given inline, as kubectl does; to keep it off the command line, use --patch-file - and send the patch on stdin",
 	"set":              "a field=value pair; a credential field is refused",
@@ -845,7 +852,7 @@ func TestSecretFlagScanFailsOnAFlagWithNoRow(t *testing.T) {
 	delete(missing, "set")
 	problems = secretFlagGaps(m, missing, secretExempt)
 	require.Len(t, problems, 1)
-	assert.Equal(t, "flag --set of create machine-config has no row and no exempt entry", problems[0])
+	assert.Equal(t, "flag --set of create cloud-credential has no row and no exempt entry", problems[0])
 }
 
 // manifestWithFlag returns a copy of m whose first command has the flag f in

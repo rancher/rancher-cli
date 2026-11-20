@@ -82,6 +82,7 @@ var dryRunBespokeEffectCommands = map[string]string{
 	"app upgrade":                    "internal/engine/catalog/upgrade_test.go: TestUpgradePlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
 	"app uninstall":                  "internal/engine/catalog/uninstall_test.go: TestUninstallPlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
 	"node drain":                     "internal/engine/nodes/drain_test.go: TestDrainPlanDisplayIdentity asserts DisplayKind/DisplayName (the node name) and that the committed result names the node",
+	"create cloud-credential":        "internal/engine/provisioning/cloudcredwrite_test.go: TestCloudCredentialPlanDisplayIdentity asserts DisplayKind/DisplayName (the display name typed) and TestCloudCredentialResultRow asserts the committed result names the credential",
 	"node stop-drain":                "internal/engine/nodes/stopdrain_test.go: TestStopDrainPlanDisplayIdentity asserts DisplayKind/DisplayName (the node name) and that the committed result names the node",
 }
 

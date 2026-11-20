@@ -96,6 +96,7 @@ var createCallRows = []createCallRow{
 	{"internal/client/provider/owner.go", "Owner", 1, "a SelfSubjectAccessReview"},
 	{"internal/engine/effect.go", "PlanCreateObserved", 2, "the shared create and dry-run"},
 	{"internal/engine/extres/create.go", "createTokenCmd.Plan", 1, "an ext.cattle.io token"},
+	{"internal/engine/provisioning/cloudcredwrite.go", "createCloudCredentialCmd.execute", 1, "a cloud credential, which is not a Project, through the Norman client"},
 	{"internal/engine/extres/createpasswordchangerequest.go", "createPasswordChangeRequestCmd.Plan", 2, "a password change request"},
 	{"internal/engine/extres/kubeconfig.go", "createKubeconfigCmd.Plan", 1, "a kubeconfig"},
 	{"internal/engine/oidcclient/create.go", "createCmd.execute", 1, "an OIDCClient"},

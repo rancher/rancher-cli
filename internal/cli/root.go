@@ -99,6 +99,9 @@ func buildEntries() []entry {
 		{group: "create", make: func(d runDeps) runtime.Command { return oidcclient.NewCreate(d.clients, d.roots, d.serverBase) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateCluster(d.clients, d.roots) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return provisioning.NewCreateMachineConfig(d.clients) }},
+		{group: "create", make: func(d runDeps) runtime.Command {
+			return provisioning.NewCreateCloudCredential(d.clients, d.cloudCreds, d.src)
+		}},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewAddNamespace(d.clients) }},
 		{group: "project", make: func(d runDeps) runtime.Command { return projects.NewRemoveNamespace(d.clients) }},
 		{group: "oidc-client", make: func(d runDeps) runtime.Command { return oidcclient.NewAddSecret(d.clients) }},

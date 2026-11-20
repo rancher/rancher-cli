@@ -366,16 +366,17 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
 - `--allow-deprecated` is required to write through a deprecated-stability API.
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
   write. An `RBAC` error on dry-run means the write would be denied too. The
-  exception is a Rancher action the CLI previews from server reads (`app
-  install`, `app upgrade`, `app uninstall`): its Effect has `previewSource: serverReads`, built from server
+  exceptions are a Rancher action the CLI previews from server reads (`app
+  install`, `app upgrade`, `app uninstall`), and the cloud credential writes through Norman
+  (`create cloud-credential`): its Effect has `previewSource: serverReads`, built from server
   reads, with no `resourceVersion` and `conflictDetection` false. A ResourceQuota,
   LimitRanger, PodSecurity or ValidatingAdmissionPolicy refusal on dry-run is
   `VALIDATION`: the server refused the object, not your access.
 - The dry-run's `resourceVersion`/`conflictDetection` fields describe THAT
   invocation only. An Effect with `previewSource: serverReads` carries no
-  resourceVersion and no conflict detection at all; `--apply` reads the state
-  again and refuses with `CONFLICT` when it changed, and without `--wait`
-  nothing checks after the request. `--apply` re-plans from scratch - fresh read, fresh
+  resourceVersion and no conflict detection at all; for an action `--apply` reads the state
+  again and refuses with `CONFLICT` when it changed (`create cloud-credential` does not
+  read again), and without `--wait` nothing checks after the request. `--apply` re-plans from scratch - fresh read, fresh
   resourceVersion - and its conflict check spans its own plan-to-execute
   window, not the gap since your dry-run. If the object may have changed
   since the preview, re-run `--dry-run` and re-read the diff before applying.
@@ -402,8 +403,10 @@ registries, agent environment variables, agent scheduling customization or data
 directories. Set them with `create resource -f` and a full manifest, which is
 also the only way to get several machine pools. The CLI adds no cluster
 members; add them with `rancher grant` afterwards. A cloud credential must
-already exist: the CLI has no command or flag to create one, and
-`rancher get cloud-credentials` lists the ones that exist. The CLI has
+already exist: `rancher create cloud-credential <driver> <display-name>` creates one
+(run it with `--dry-run` first; give a secret field only with
+`--from-file <field>=<path>` or `<field>=-` for stdin, never as a `--set` value),
+and `rancher get cloud-credentials` lists the ones that exist. The CLI has
 no command or flag for hosted clusters (EKS, AKS, GKE). Rancher creates the
 management cluster, its default and system projects and the registration token
 `default-token`; for a cluster created without the

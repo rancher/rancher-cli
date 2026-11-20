@@ -497,7 +497,8 @@ type pipeSpan struct {
 // fails the guard. The entry texts are built from the constants the
 // PowerShell tests run.
 var markdownPipeAllowed = map[pipeSpan]string{
-	{file: "skills/rancher/SKILL.md", text: powerShellExample}:                                                                          "PowerShell text; TestStdinPipePwsh runs its pipeline half and TestPowerShellExampleIsInTheSkill reads the whole example, both from the same constants",
+	{file: "REFERENCE.md", text: harvesterRecipe}:              "the piped kubeconfig is read by `--from-file kubeconfigContent=-`, whose byte order mark drop TestEveryFromFileFieldDropsLeadingByteOrderMarks asserts",
+	{file: "skills/rancher/SKILL.md", text: powerShellExample}: "PowerShell text; TestStdinPipePwsh runs its pipeline half and TestPowerShellExampleIsInTheSkill reads the whole example, both from the same constants",
 	{file: "COMMANDS.md", text: strings.TrimSuffix(strings.ReplaceAll(powerShellPipelineHalf, "u-abc123", "<user>"), " --apply --yes")}: "PowerShell text, built from the pipeline TestStdinPipePwsh runs",
 }
 

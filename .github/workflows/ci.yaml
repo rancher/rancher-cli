@@ -393,6 +393,10 @@ jobs:
       - run: go test -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
       - run: go test -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
       - run: go test -count=1 -run '^Test(WatchObject|ListObject|WaitObject)' ./internal/client/provider/
+      - run: go test -count=1 -run 'TestCloudCredentialClient|TestCloudCredentialFromFile|TestCloudCredentialCommandsNeverShowASecretValue|TestEveryFromFileFieldDropsLeadingByteOrderMarks' ./internal/cli/
+      - run: go test -count=1 -run 'TestCloudCredentialBodyPrintsHiddenInEveryFormat|TestTextFilter|TestDropLeadingByteOrderMarks' ./internal/engine/
+      - run: go test -count=1 ./internal/engine/provisioning/cloudcredfields/
+      - run: go test -count=1 -run 'TestCloudCredentialValueWhiteSpace|TestCloudCredentialPostBody|TestCloudCredentialDriverAnnotation' ./internal/engine/provisioning/
       - run: go test -count=1 -v -run 'Test(ExactValuePaste|StdinPipe)(Pwsh|PowerShell51)$' ./test/conformance/
       - run: bash scripts/e2e
       - run: go test -count=1 -v -run TestPwsh ./internal/cli/completions/
@@ -552,6 +556,10 @@ jobs:
       # --exec-command, and the remedies naming a quoted Windows path.
       - run: go test -race -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
       - run: go test -race -count=1 -run '^Test(WatchObject|ListObject|WaitObject)' ./internal/client/provider/
+      - run: go test -race -count=1 -run 'TestCloudCredentialClient|TestCloudCredentialFromFile|TestCloudCredentialCommandsNeverShowASecretValue|TestEveryFromFileFieldDropsLeadingByteOrderMarks' ./internal/cli/
+      - run: go test -race -count=1 -run 'TestCloudCredentialBodyPrintsHiddenInEveryFormat|TestTextFilter|TestDropLeadingByteOrderMarks' ./internal/engine/
+      - run: go test -race -count=1 ./internal/engine/provisioning/cloudcredfields/
+      - run: go test -race -count=1 -run 'TestCloudCredentialValueWhiteSpace|TestCloudCredentialPostBody|TestCloudCredentialDriverAnnotation' ./internal/engine/provisioning/
       # The printed commands, pasted into pwsh and Windows PowerShell 5.1
       # from a .ps1 file, and the bytes those shells send on stdin through a
       # pipe.

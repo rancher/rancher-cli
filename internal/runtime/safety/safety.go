@@ -58,9 +58,10 @@ const (
 	// same write the command then sends.
 	PreviewServerDryRun PreviewSource = "serverDryRun"
 	// PreviewServerReads is a preview built from server reads, for a
-	// Rancher action the CLI does not preview with a server dry-run. Such an
-	// Effect carries no resourceVersion precondition and no conflict
-	// detection.
+	// Rancher action or a Norman write the CLI does not preview with a server
+	// dry-run. Such an Effect carries no resourceVersion precondition and no
+	// conflict detection; a command may add its own check that reads the
+	// object again before it writes.
 	PreviewServerReads PreviewSource = "serverReads"
 )
 

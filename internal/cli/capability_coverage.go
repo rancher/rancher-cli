@@ -17,15 +17,16 @@ import (
 // the gate deliberately. Adding a family here is a reviewed
 // edit, same as kindOverrideTable or derivedOpKinds.
 var capabilityCoverageExtraOps = map[string][]string{
-	"create machine-config": {"amazonec2config", "azureconfig", "digitaloceanconfig", "harvesterconfig", "vmwarevsphereconfig"},
-	"grant":                 {"clusterroletemplatebinding", "projectroletemplatebinding"},
-	"revoke":                {"clusterroletemplatebinding", "projectroletemplatebinding"},
-	"inspect cluster":       {"managementcluster"},
-	"inspect pod":           {"pod"},
-	"inspect deployment":    {"deployment"},
-	"inspect project":       {"project"},
-	"inspect user":          {"user"},
-	"charts":                {"clusterrepo"},
+	"create cloud-credential": {"nodedriver"},
+	"create machine-config":   {"amazonec2config", "azureconfig", "digitaloceanconfig", "harvesterconfig", "vmwarevsphereconfig"},
+	"grant":                   {"clusterroletemplatebinding", "projectroletemplatebinding"},
+	"revoke":                  {"clusterroletemplatebinding", "projectroletemplatebinding"},
+	"inspect cluster":         {"managementcluster"},
+	"inspect pod":             {"pod"},
+	"inspect deployment":      {"deployment"},
+	"inspect project":         {"project"},
+	"inspect user":            {"user"},
+	"charts":                  {"clusterrepo"},
 	// create user touches the user kind row directly (the composite's User
 	// half) alongside its own ext.cattle.io-discovery Capability
 	// requirement - mapped here so a future Capability gate on the user

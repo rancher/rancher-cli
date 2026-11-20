@@ -82,13 +82,14 @@ var evOriginParams = map[string]string{
 // evOriginSites are single calls guard 3a accepts between a value and the
 // builder, each with its reason.
 var evOriginSites = map[evOriginSite]string{
-	{"internal/token.legacyTokenCmd.Execute", "strings.TrimSpace"}:               "the CLI acts on the trimmed --cluster value, so the command names what it acted on",
-	{"internal/cli.boolValueRefusal", "strings.TrimSpace"}:                       "the CLI acts on the trimmed joined bool value, so the hint names what it read",
-	{"internal/cli.typedWord", "strings.Cut"}:                                    "splits a typed --flag=value word into the flag and the value the parser read",
-	{"internal/config.ErrNotLoggedInFor", "strings.TrimLeft"}:                    "the entry name a login of the host gets: auth login creates it under the name without a leading dash, which would read as a flag",
-	{"internal/engine/provisioning.resolveCredentialObj", "strings.TrimPrefix"}:  "the namespaced id form names the same Secret; the command names the Secret by the name the lookup used",
-	{"internal/engine/kubeconfig.kubeconfigCmd.Execute", "canonicalDir"}:         "config.CanonicalDir held in a variable: the absolute config directory the exec entry names, so kubectl's working directory never chooses another one",
-	{"internal/engine/provisioning.createMachineConfigCmd.build", "strings.Cut"}: "the --set key as the parser splits key=value; the refusal names that key",
+	{"internal/token.legacyTokenCmd.Execute", "strings.TrimSpace"}:                          "the CLI acts on the trimmed --cluster value, so the command names what it acted on",
+	{"internal/cli.boolValueRefusal", "strings.TrimSpace"}:                                  "the CLI acts on the trimmed joined bool value, so the hint names what it read",
+	{"internal/cli.typedWord", "strings.Cut"}:                                               "splits a typed --flag=value word into the flag and the value the parser read",
+	{"internal/config.ErrNotLoggedInFor", "strings.TrimLeft"}:                               "the entry name a login of the host gets: auth login creates it under the name without a leading dash, which would read as a flag",
+	{"internal/engine/provisioning.resolveCredentialObj", "strings.TrimPrefix"}:             "the namespaced id form names the same Secret; the command names the Secret by the name the lookup used",
+	{"internal/engine/provisioning.createCloudCredentialCmd.execute", "strings.TrimPrefix"}: "the namespaced id Rancher answers names the Secret; the command reads and names the Secret by the name without the namespace",
+	{"internal/engine/kubeconfig.kubeconfigCmd.Execute", "canonicalDir"}:                    "config.CanonicalDir held in a variable: the absolute config directory the exec entry names, so kubectl's working directory never chooses another one",
+	{"internal/engine/provisioning.createMachineConfigCmd.build", "strings.Cut"}:            "the --set key as the parser splits key=value; the refusal names that key",
 }
 
 // Keys of the whole-text filters, for the rows below.
