@@ -4357,6 +4357,35 @@
       "usage": "Delete the vmwarevsphereconfig"
     },
     {
+      "args": [
+        {
+          "desc": "the repository to add: `partner-extensions`, or `rancher-ui-plugins` on Rancher Prime",
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Adds one of the two repositories of Rancher UI extensions, as the Rancher UI's Extensions page does: partner-extensions (the Rancher UI's \"Add Partners Extensions Repository\"), offered on every Rancher server, and rancher-ui-plugins (the UI's \"Add Rancher Prime Extensions Repository\"), offered only on Rancher Prime. It creates a ClusterRepo on the local cluster with the repository's name, git URL and branch main, and nothing else. A ClusterRepo that already reads the same URL (its status.url, spec.gitRepo or spec.url, the first that is set) is refused with CONFLICT. Rancher downloads the repository from github.com after the command; a server with no access to github.com cannot use it. The command reads the server's edition for rancher-ui-plugins; on a server that is not Rancher Prime, or whose edition cannot be read, that repository is refused with VALIDATION.",
+      "destructive": "false",
+      "examples": [
+        "rancher extension add-repository partner-extensions --dry-run",
+        "rancher extension add-repository partner-extensions --apply"
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "extension",
+      "name": "extension add-repository",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Add a Rancher extension repository"
+    },
+    {
       "aliases": [
         "amazonec2configs"
       ],
@@ -8136,6 +8165,60 @@
       "stability": "stable",
       "toolset": "core",
       "usage": "List tokens or show one"
+    },
+    {
+      "aliases": [
+        "uiplugins"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "internal",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` of the UIPlugin (default: cattle-ui-plugin-system, where Rancher's extension chart installs it)",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "l"
+          ],
+          "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
+          "name": "selector",
+          "type": "string"
+        },
+        {
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
+          "name": "for",
+          "type": "string"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "group": "get",
+      "name": "get uiplugin",
+      "serverAccess": "read",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "List uiplugins or show one"
     },
     {
       "aliases": [
@@ -13006,6 +13089,65 @@
     },
     {
       "aliases": [
+        "uiplugins"
+      ],
+      "args": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Always refused before any request: Rancher's extension chart creates the UIPlugin and the ui-plugin controller sets its status; this CLI does not change it.",
+      "destructive": "false",
+      "flags": [
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "`namespace` of the UIPlugin (default: cattle-ui-plugin-system, where Rancher's extension chart installs it)",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "p"
+          ],
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
+          "name": "patch",
+          "type": "string"
+        },
+        {
+          "desc": "patch `file`, or - for stdin",
+          "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "patch",
+      "name": "patch uiplugin",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Refused: uiplugin cannot be patched"
+    },
+    {
+      "aliases": [
         "users"
       ],
       "args": [
@@ -13291,6 +13433,7 @@
             "config",
             "create",
             "delete",
+            "extension",
             "get",
             "grant",
             "images",
@@ -14287,6 +14430,7 @@
         "get clusterrepo",
         "get app",
         "get operation",
+        "get uiplugin",
         "get token",
         "get management-token",
         "get kubeconfig",
@@ -14309,6 +14453,13 @@
       ],
       "desc": "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
       "name": "app"
+    },
+    {
+      "commands": [
+        "extension add-repository"
+      ],
+      "desc": "Add the Rancher extension repositories: the two ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
+      "name": "extension"
     },
     {
       "commands": [
@@ -14384,6 +14535,7 @@
         "patch clusterrepo",
         "patch app",
         "patch operation",
+        "patch uiplugin",
         "patch token",
         "patch management-token",
         "patch kubeconfig",
@@ -16169,7 +16321,7 @@
       "verbs": {
         "create": {
           "contract": "internal",
-          "note": "this CLI does not add repositories",
+          "note": "this CLI adds only the Rancher extension repositories; to add one (<name> is partner-extensions, or rancher-ui-plugins on Rancher Prime), run `rancher extension add-repository <name> --dry-run` and add --apply after reading the preview",
           "stability": "beta",
           "state": "refused"
         },
@@ -16263,6 +16415,42 @@
       },
       "version": "v1",
       "waitDefault": "condition=Reconciling=False"
+    },
+    {
+      "aliases": [
+        "uiplugins"
+      ],
+      "defaultNamespace": "cattle-ui-plugin-system",
+      "group": "catalog.cattle.io",
+      "key": "uiplugin",
+      "name": "uiplugin",
+      "namespacePolicy": "workspace",
+      "resource": "uiplugins",
+      "scope": "management",
+      "verbs": {
+        "create": {
+          "contract": "internal",
+          "note": "this CLI does not load an extension from a URL",
+          "stability": "beta",
+          "state": "refused"
+        },
+        "delete": {
+          "note": "Helm removes the UIPlugin of an extension chart when the extension is uninstalled, and an extension loaded from a URL is removed in the Rancher UI; this CLI does not uninstall extensions yet",
+          "state": "absent"
+        },
+        "get": {
+          "contract": "internal",
+          "stability": "beta",
+          "state": "available"
+        },
+        "patch": {
+          "contract": "internal",
+          "note": "Rancher's extension chart creates the UIPlugin and the ui-plugin controller sets its status; this CLI does not change it",
+          "stability": "beta",
+          "state": "refused"
+        }
+      },
+      "version": "v1"
     },
     {
       "aliases": [

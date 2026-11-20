@@ -122,6 +122,7 @@ var missingKinds = []missingKind{
 	{"managedchart", false, "apis/management.cattle.io/v3", "managedcharts", "gpd", reasonManagement},
 	{"provisioning-cluster", false, "apis/provisioning.cattle.io/v1", "clusters", "gpd", reasonManagement},
 	{"etcd-snapshot", false, "apis/rke.cattle.io/v1", "etcdsnapshots", "g", reasonETCDSnap},
+	{"uiplugin", false, "apis/catalog.cattle.io/v1", "uiplugins", "g", reasonCatalog},
 	{"capi-cluster", false, "apis/cluster.x-k8s.io/v1", "clusters", "gp", reasonCAPI},
 	{"machine", false, "apis/cluster.x-k8s.io/v1", "machines", "gp", reasonCAPI},
 	{"machineset", false, "apis/cluster.x-k8s.io/v1", "machinesets", "gp", reasonCAPI},
@@ -205,6 +206,9 @@ func missingRows() []missingRow {
 			code: clierr.CodeValidation},
 		missingRow{name: "patch etcd-snapshot", class: classRefused,
 			argv: []string{"patch", "etcd-snapshot", "x", "--patch", missingPatchBody, "--dry-run", "--namespace", missingNamespace, "-o", "json"},
+			code: clierr.CodeValidation},
+		missingRow{name: "patch uiplugin", class: classRefused,
+			argv: []string{"patch", "uiplugin", "x", "--patch", missingPatchBody, "--dry-run", "--namespace", missingNamespace, "-o", "json"},
 			code: clierr.CodeValidation},
 		missingRow{name: "patch clusterregistrationtoken", class: classRefused,
 			argv: []string{"patch", "clusterregistrationtoken", "x", "--patch", missingPatchBody, "--dry-run", "--namespace", missingNamespace, "-o", "json"},
@@ -464,8 +468,8 @@ func TestEveryNamespaceCommandHasAMissingNamespaceRow(t *testing.T) {
 			"add its row to "+table+" in this file, saying what it does with a namespace that does not exist")
 	}
 	commands, rowCount := len(declaring), len(rows)
-	assert.Equal(t, 136, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
-	assert.Equal(t, 180, rowCount, "the rows; uncovered commands: %v", uncovered)
+	assert.Equal(t, 138, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
+	assert.Equal(t, 183, rowCount, "the rows; uncovered commands: %v", uncovered)
 
 	h := newMissingHarness(t)
 	for _, row := range rows {

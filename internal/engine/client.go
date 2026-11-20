@@ -268,6 +268,25 @@ type ServerVersionProvider interface {
 	ServerVersion(ctx context.Context) (string, error)
 }
 
+// Edition is what the server says about itself on its version endpoint:
+// Rancher Prime, a community build, or nothing a reader can tell. Unknown is
+// not community: a caller must not treat it as false.
+type Edition int
+
+const (
+	EditionUnknown Edition = iota
+	EditionCommunity
+	EditionPrime
+)
+
+// ServerEditionProvider is implemented by a ClusterClientFactory that can
+// report the connected server's edition from the same memoized read of the
+// version endpoint as ServerVersionProvider. A factory that does not implement
+// it gives the commands that ask EditionUnknown.
+type ServerEditionProvider interface {
+	ServerEdition(ctx context.Context) (Edition, error)
+}
+
 // StoredLoginNamer is implemented by a ClusterClientFactory that knows which
 // stored login its requests use: the name of the server entry whose stored
 // token is the bearer. The name is empty when the bearer comes from

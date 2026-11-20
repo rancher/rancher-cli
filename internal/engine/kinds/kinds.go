@@ -94,11 +94,12 @@ const (
 	// NSWorkspace: management-plane namespace with a default (fleet,
 	// provisioning, CAPI kinds - all default fleet-default) - --namespace
 	// flag with DefaultNamespace fallback, NO --cluster; client is management.
-	// The value is a Fleet workspace; a row whose objects can be elsewhere
-	// says so in NamespaceDesc (bundledeployment: the cluster namespace of a
-	// Fleet cluster; for a cluster Rancher does not provision, etcd-snapshot:
-	// the cluster's id, and the CAPI kinds: the namespace the CAPI cluster was
-	// created in).
+	// The value is a Fleet workspace unless the row says otherwise in
+	// NamespaceDesc (bundledeployment: the cluster namespace of a Fleet
+	// cluster; for a cluster Rancher does not provision, etcd-snapshot: the
+	// cluster's id, the CAPI kinds: the namespace the CAPI cluster was created
+	// in, and uiplugin: the namespace Rancher's extension chart installs
+	// into).
 	NSWorkspace NamespacePolicy = "workspace"
 	// NSPlain: ordinary namespace - --namespace flag, required for named
 	// ops; --cluster routes when Scope is Downstream. A Management NSPlain
@@ -1216,7 +1217,7 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "ClusterRepo", Scope: Downstream, Deletable: false, Completable: true,
 		NoDeleteReason:      "this CLI does not delete repositories",
 		NoPatchReason:       "this CLI does not change repositories",
-		NoCreateViaManifest: "this CLI does not add repositories",
+		NoCreateViaManifest: "this CLI adds only the Rancher extension repositories; to add one (<name> is partner-extensions, or rancher-ui-plugins on Rancher Prime), run `" + clierr.Rancher + " extension add-repository <name> --dry-run` and add --apply after reading the preview",
 		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			{Header: "HTTP-URL", Path: []string{"spec", "url"}},
@@ -1259,6 +1260,24 @@ var table = []Kind{
 		},
 		GetDesc:     "The columns follow the table the Rancher server returns. COMMAND shows the command's arguments joined with commas, and TARGET-NAMESPACE is the namespace of the pod that ran the command, where the Rancher UI's \"Tgt Namespace\" is the release's namespace.",
 		RedactPaths: [][]string{{"status", "token"}},
+	},
+	{
+		// Rancher's extension chart creates the UIPlugin and Rancher's
+		// ui-plugin controller sets its status. A UIPlugin lives in the
+		// namespace of the chart's Helm release, which Rancher fixes.
+		Key: "uiplugin", Name: "uiplugin", Aliases: []string{"uiplugins"},
+		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "uiplugins"},
+		Policy: NSWorkspace, DefaultNamespace: "cattle-ui-plugin-system", K8sKind: "UIPlugin", Scope: Management, Deletable: false,
+		NamespaceDesc:       "`namespace` of the UIPlugin (default: cattle-ui-plugin-system, where Rancher's extension chart installs it)",
+		NoDeleteReason:      "Helm removes the UIPlugin of an extension chart when the extension is uninstalled, and an extension loaded from a URL is removed in the Rancher UI; this CLI does not uninstall extensions yet",
+		NoPatchReason:       "Rancher's extension chart creates the UIPlugin and the ui-plugin controller sets its status; this CLI does not change it",
+		NoCreateViaManifest: "this CLI does not load an extension from a URL",
+		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Columns: []Column{
+			{Header: "PLUGIN-NAME", Path: []string{"spec", "plugin", "name"}},
+			{Header: "VERSION", Path: []string{"spec", "plugin", "version"}},
+			{Header: "STATE", Path: []string{"status", "cacheState"}},
+		},
 	},
 	{
 		// Empty GVR version: ext.cattle.io is resolved via discovery at call

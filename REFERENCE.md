@@ -14,6 +14,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Cluster provisioning](#cluster-provisioning)
 - [Upgrading a cluster's Kubernetes version](#upgrading-a-clusters-kubernetes-version)
 - [Installing, upgrading and uninstalling apps](#installing-upgrading-and-uninstalling-apps)
+- [Extensions](#extensions)
 - [Draining a node](#draining-a-node)
 - [Composite commands](#composite-commands)
 - [Access management](#access-management)
@@ -2132,6 +2133,53 @@ waiting for release <release>; last state: ...`; an operation whose
 `status.observedGeneration` is behind `metadata.generation` shows as `behind`
 there. The `INTERRUPTED` error of Ctrl-C carries the same details and, for an
 install, the request id.
+
+## Extensions
+
+The Rancher UI's Extensions page lists extensions: add-ons to the Rancher UI
+that a Helm chart delivers. `rancher extension add-repository <name>` adds one
+of the two repositories that page adds, and no other repository.
+
+| Name | Label in the Rancher UI | Git repository | Offered on |
+|---|---|---|---|
+| `partner-extensions` | Add Partners Extensions Repository | `https://github.com/rancher/partner-extensions` | every server |
+| `rancher-ui-plugins` | Add Rancher Prime Extensions Repository | `https://github.com/rancher/ui-plugin-charts` | Rancher Prime |
+
+- The command creates a ClusterRepo on the local cluster with the repository's
+  name, `spec.gitRepo` and `spec.gitBranch` (`main`), and nothing else: the
+  three fields the Rancher UI sends. It previews through a server-side
+  dry-run and needs `--apply`; it is not destructive and has no `--wait`. It
+  lists the ClusterRepos first, so it needs `list` and `create` on
+  `clusterrepos`. The Rancher UI shows the Extensions page to administrators
+  by default.
+- `rancher-ui-plugins` is offered on Rancher Prime only. The command reads the
+  edition from `/rancherversion` (the field `RancherPrime`) and refuses the
+  repository with `VALIDATION` on a server that is not Rancher Prime or whose
+  edition cannot be read. Neither case asks for the edition when the name is
+  `partner-extensions`. Any other name is refused with `VALIDATION` before a
+  request.
+- A repository is already added when a ClusterRepo's `status.url`, else its
+  `spec.gitRepo`, else its `spec.url`, equals the repository's address, character
+  for character: a trailing slash or a `.git` suffix makes another address. The
+  command then refuses with `CONFLICT` and names the ClusterRepo. A
+  ClusterRepo of the same name with another address is `CONFLICT` too, from the
+  server's dry-run.
+- Rancher downloads the repository from github.com after the command. A
+  server with no access to github.com (an air-gapped server) cannot use it. The
+  result's warning says so and names the command that shows the
+  ClusterRepo's state.
+- The CLI does not change the setting `display-add-extension-repos-banner`,
+  which the Rancher UI sets when it opens its dialog.
+- Shell completion offers the names the command accepts: `partner-extensions`,
+  and `rancher-ui-plugins` on Rancher Prime, and neither once added.
+- `rancher get uiplugin` reads the UIPlugin objects, whose plugin name, version
+  and state it shows. Without `--namespace` it reads the namespace
+  `cattle-ui-plugin-system`, where Rancher's extension chart installs them;
+  `--namespace <namespace>` reads another one. There is no `-A` flag: the CLI
+  has no all-namespaces flag. `patch` and `delete` of a UIPlugin and `create
+  resource` of one are refused with `VALIDATION`.
+- `create resource` of a ClusterRepo is refused with `VALIDATION`, and the text
+  names `rancher extension add-repository`.
 
 ## Draining a node
 

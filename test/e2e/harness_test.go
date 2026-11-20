@@ -106,6 +106,8 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	// The index and info links of a ClusterRepo, the install and uninstall
 	// actions and the Settings app install reads, none of which the envtest
 	// apiserver serves; every action body is kept for the script's check.
+	// The version document, answering that the server is not Rancher Prime.
+	"extension-add-repository": func(o *testrancher.Options) { o.Fallthrough = rancherVersionRoute(o.Fallthrough, "false") },
 	"app-install": func(o *testrancher.Options) {
 		appActions = &appActionLog{}
 		o.Fallthrough = appActionRoutes(appActions, chartIndexRoute(appSettingRoutes(o.Fallthrough)))
@@ -164,6 +166,19 @@ var chartIndexes = map[string]string{
 	"app-wait-repo": `{"apiVersion":"v1","generated":"2026-01-02T03:04:05Z","entries":{
 	  "app-install-chart":[
 	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"the chart","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}]}}`,
+}
+
+// rancherVersionRoute answers GET /rancherversion with the given RancherPrime
+// text and passes every other request on.
+func rancherVersionRoute(next http.Handler, prime string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rancherversion" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Version":"v2.15.3","GitCommit":"abc","RancherPrime":"` + prime + `"}`))
+	})
 }
 
 // chartIndexRoute answers GET

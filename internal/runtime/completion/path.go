@@ -134,6 +134,12 @@ func AuthProvidersPath() (Path, error) {
 	return build([]string{"v1-public", "authproviders"})
 }
 
+// RancherVersionPath is the server's version document: /rancherversion. The
+// route answers a request that carries a token as it answers one that does not.
+func RancherVersionPath() (Path, error) {
+	return build([]string{"rancherversion"})
+}
+
 // ClusterRepoIndexPath is the read of a ClusterRepo's Helm repository index
 // through steve at the server root, scoped to a cluster the way the
 // command's own read is: /v1/catalog.cattle.io.clusterrepos/<repo>?link=index

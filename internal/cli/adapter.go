@@ -516,14 +516,14 @@ var notFoundHints = []hintEntry[notFoundInput]{
 }
 
 // refusedDeleteRow returns the clusterrepo, app, operation, etcdsnapshot,
-// authconfig, role, rolebinding, clusterrole, clusterrolebinding or
-// managementnode row that the name typed after `delete` resolves to.
+// authconfig, role, rolebinding, clusterrole, clusterrolebinding,
+// managementnode or uiplugin row that the name typed after `delete` resolves to.
 func refusedDeleteRow(in notFoundInput) (kinds.Kind, bool) {
 	if in.c.Name != "delete" {
 		return kinds.Kind{}, false
 	}
 	k, ok := kinds.Lookup(in.name)
-	if !ok || !slices.Contains([]string{"clusterrepo", "app", "operation", "etcdsnapshot", "authconfig", "role", "rolebinding", "clusterrole", "clusterrolebinding", "managementnode"}, k.Key) {
+	if !ok || !slices.Contains([]string{"clusterrepo", "app", "operation", "etcdsnapshot", "authconfig", "role", "rolebinding", "clusterrole", "clusterrolebinding", "managementnode", "uiplugin"}, k.Key) {
 		return kinds.Kind{}, false
 	}
 	return k, true

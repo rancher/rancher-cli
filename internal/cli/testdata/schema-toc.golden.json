@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 252,
+  "commandCount": 255,
   "effectSchema": {
     "actions": [
       "create",
@@ -66,7 +66,7 @@
       "serverReads"
     ]
   },
-  "generatedCommandCount": 175,
+  "generatedCommandCount": 177,
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
@@ -432,7 +432,7 @@
       ],
       "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "generated": {
-        "count": 68,
+        "count": 69,
         "pattern": "get <kind>"
       },
       "name": "get"
@@ -454,6 +454,16 @@
       ],
       "desc": "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
       "name": "app"
+    },
+    {
+      "commands": [
+        {
+          "name": "extension add-repository",
+          "usage": "Add a Rancher extension repository"
+        }
+      ],
+      "desc": "Add the Rancher extension repositories: the two ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
+      "name": "extension"
     },
     {
       "commands": [
@@ -498,7 +508,7 @@
     {
       "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
       "generated": {
-        "count": 68,
+        "count": 69,
         "pattern": "patch <kind>"
       },
       "name": "patch"
@@ -512,7 +522,7 @@
       "name": "delete"
     }
   ],
-  "kindCount": 68,
+  "kindCount": 69,
   "kinds": [
     "cluster",
     "project",
@@ -572,6 +582,7 @@
     "clusterrepo",
     "app",
     "operation",
+    "uiplugin",
     "token",
     "management-token",
     "kubeconfig",

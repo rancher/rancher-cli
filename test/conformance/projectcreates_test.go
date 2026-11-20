@@ -35,6 +35,7 @@ const (
 // plannerProjectReview has one entry per line of the create planner caller
 // file: what the command creates.
 var plannerProjectReview = map[string]string{
+	"internal/engine/catalog.addRepositoryCmd.Plan":              createsNoProject + "a ClusterRepo",
 	"internal/engine/extres.createKubeconfigCmd.Plan":            createsNoProject + "a kubeconfig",
 	"internal/engine/extres.createPasswordChangeRequestCmd.Plan": createsNoProject + "a password change request",
 	"internal/engine/extres.createTokenCmd.Plan":                 createsNoProject + "an ext.cattle.io token",
