@@ -519,7 +519,6 @@ type Facade struct {
 	dropped           bool
 
 	cloudCredentialRequests []NormanCloudCredentialRecord
-	cloudCredentialCounter  int
 }
 
 // LoginRecord is what a login request named: its provider type, and the

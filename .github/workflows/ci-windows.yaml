@@ -109,6 +109,7 @@ jobs:
       - run: go test -race -count=1 -run 'TestCloudCredentialBodyPrintsHiddenInEveryFormat|TestTextFilter|TestDropLeadingByteOrderMarks' ./internal/engine/
       - run: go test -race -count=1 ./internal/engine/provisioning/cloudcredfields/
       - run: go test -race -count=1 -run 'TestCloudCredentialValueWhiteSpace|TestCloudCredentialPostBody|TestCloudCredentialDriverAnnotation' ./internal/engine/provisioning/
+      - run: go test -race -count=1 -run 'TestCloudCredentialSourceClaims|TestCloudCredentialCompletion|TestGetCloudCredentialSource' ./internal/engine/provisioning/complete/
       # The printed commands, pasted into pwsh and Windows PowerShell 5.1
       # from a .ps1 file, and the bytes those shells send on stdin through a
       # pipe.

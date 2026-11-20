@@ -32,8 +32,21 @@ func newCommandSitesServer(t *testing.T) *pathCountingServer {
 		oidcClientPath:     `{"metadata":{"name":"my-client"},"status":{"clientSecrets":{"secret-2":{},"secret-1":{}}}}`,
 		localRepos:         reposBody,
 		downRepos:          reposBody,
+		nodeDriversPath:    credentialDriversBody,
+		kev2OperatorsPath:  `{"value":"[{\"name\":\"alibaba\",\"active\":false}]"}`,
 	}), steveClustersPages)
 }
+
+const (
+	kev2OperatorsPath = "/k8s/clusters/local/apis/management.cattle.io/v3/settings/kev2-operators"
+
+	// credentialDriversBody holds an active node driver with public and secret
+	// credential fields, one that is inactive, and one with no credential field.
+	credentialDriversBody = `{"items":[
+		{"metadata":{"name":"amazonec2","annotations":{"publicCredentialFields":"accessKey,defaultRegion","privateCredentialFields":"secretKey","optionalCredentialFields":"defaultRegion"}},"spec":{"displayName":"amazonec2","active":true}},
+		{"metadata":{"name":"linode","annotations":{"privateCredentialFields":"token"}},"spec":{"displayName":"linode","active":false}},
+		{"metadata":{"name":"nofields"},"spec":{"displayName":"nofields","active":true}}]}`
+)
 
 // machineConfigPrefixes returns the `<kind>/` tokens of every
 // machine-config kind, sorted, behind spelling ("" for the space form).
@@ -102,6 +115,22 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "--cloud-credential", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, want: credentials, hits: map[string]int{cloudCredsPath: 1}},
 		{name: "--cloud-credential= equals form", words: []string{"create", "cluster", "node-1"}, cur: "--cloud-credential=", want: []string{"--cloud-credential=aws-prod", "--cloud-credential=cc-abc12", "--cloud-credential=cc-collide", "--cloud-credential=cc-dup1", "--cloud-credential=cc-dup2", "--cloud-credential=cc-hostile", "--cloud-credential=cc-noannotation", "--cloud-credential=marker-only"}, hits: map[string]int{cloudCredsPath: 1}},
 		{name: "--cloud-credential with the network off", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, noNet: true, hits: map[string]int{}},
+		// create cloud-credential and get cloud-credential
+		{name: "create cloud-credential <driver>", words: []string{"create", "cloud-credential"}, want: []string{"amazonec2", "s3"}, hits: map[string]int{nodeDriversPath: 1, kev2OperatorsPath: 1}},
+		{name: "create cloud-credential <driver> with the network off", words: []string{"create", "cloud-credential"}, noNet: true, hits: map[string]int{}},
+		{name: "create cloud-credential --set", words: []string{"create", "cloud-credential", "amazonec2", "--set"}, want: []string{"accessKey=", "defaultRegion="}, hits: map[string]int{nodeDriversPath: 1}},
+		{name: "create cloud-credential --set= equals form", words: []string{"create", "cloud-credential", "amazonec2"}, cur: "--set=", want: []string{"--set=accessKey=", "--set=defaultRegion="}, hits: map[string]int{nodeDriversPath: 1}},
+		{name: "create cloud-credential --set after a typed field", words: []string{"create", "cloud-credential", "amazonec2", "--set", "accessKey=AKIAEXAMPLE", "--set"}, want: []string{"defaultRegion="}, hits: map[string]int{nodeDriversPath: 1}},
+		{name: "create cloud-credential --set offers nothing for a value", words: []string{"create", "cloud-credential", "amazonec2", "--set"}, cur: "accessKey=", hits: map[string]int{}},
+		{name: "create cloud-credential --from-file", words: []string{"create", "cloud-credential", "amazonec2", "--from-file"}, want: []string{"secretKey="}, hits: map[string]int{nodeDriversPath: 1}},
+		{name: "create cloud-credential --from-file offers nothing for a value", words: []string{"create", "cloud-credential", "amazonec2", "--from-file"}, cur: "secretKey=", hits: map[string]int{}},
+		{name: "create cloud-credential --from-file of s3 makes no request", words: []string{"create", "cloud-credential", "s3", "--from-file"}, want: []string{"defaultEndpointCA=", "secretKey="}, hits: map[string]int{}},
+		{name: "create cloud-credential --set of an inactive driver", words: []string{"create", "cloud-credential", "linode", "--set"}, hits: map[string]int{nodeDriversPath: 1}},
+		{name: "create cloud-credential --set before a driver", words: []string{"create", "cloud-credential", "--set"}, hits: map[string]int{}},
+		{name: "create cloud-credential --set with the network off", words: []string{"create", "cloud-credential", "amazonec2", "--set"}, noNet: true, hits: map[string]int{}},
+		{name: "create cloud-credential offers nothing for the display name", words: []string{"create", "cloud-credential", "amazonec2"}, hits: map[string]int{}},
+		{name: "get cloud-credential <credential>", words: []string{"get", "cloud-credential"}, want: credentials, hits: map[string]int{cloudCredsPath: 1}},
+		{name: "get cloud-credential <credential> with the network off", words: []string{"get", "cloud-credential"}, noNet: true, hits: map[string]int{}},
 		// the access questions' resource positional
 		{name: "access can resource with a cluster id", words: []string{"access", "can", "get", "--cluster", "c-aaa11"}, want: resources, hits: discovery},
 		{name: "access can resource with a cluster display name resolves it first", words: []string{"access", "can", "get", "--cluster", "prod"}, want: resources, hits: map[string]int{steveClustersPath: 2, discoveryCorePath: 1, discoveryGroupPath: 1}},
@@ -327,6 +356,9 @@ func TestCommandSitesUnderAnExecCredentialOnlyToken(t *testing.T) {
 		{name: "logs --pod of a downstream-only target with a display name is refused", words: []string{"logs", "agent", "--cluster", "prod", "--pod"}, hits: map[string]int{}},
 		{name: "--machine-config kind prefix is refused", words: []string{"create", "cluster", "node-1", "--machine-config"}, cur: "amazonec2config/", hits: map[string]int{}},
 		{name: "--cloud-credential is refused", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, hits: map[string]int{}},
+		{name: "create cloud-credential <driver> is refused", words: []string{"create", "cloud-credential"}, hits: map[string]int{}},
+		{name: "create cloud-credential --set is refused", words: []string{"create", "cloud-credential", "amazonec2", "--set"}, hits: map[string]int{}},
+		{name: "get cloud-credential <credential> is refused", words: []string{"get", "cloud-credential"}, hits: map[string]int{}},
 		{name: "access can resource is refused", words: []string{"access", "can", "get", "--cluster", "c-aaa11"}, hits: map[string]int{}},
 		{name: "access can --group is refused", words: []string{"access", "can", "get", "pods", "--cluster", "c-aaa11", "--group"}, hits: map[string]int{}},
 		{name: "access can --as is refused", words: []string{"access", "can", "get", "pods", "--as"}, hits: map[string]int{}},

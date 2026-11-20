@@ -25,12 +25,12 @@ var harvesterPlaceholders = strings.NewReplacer("<cluster-id>", "c-test", "<disp
 // scenarioRecipe returns the recipe the scenario runs: the exec lines of the
 // two commands of the recipe, in order, joined with a pipe. The scenario has
 // no shell pipe, so its cp stdout and stdin steps stand for the pipe and are
-// left out, as are the exec lines that check the result.
+// left out, as are the previews and the exec lines that check the result.
 func scenarioRecipe(script string) string {
 	var commands []string
 	for line := range strings.SplitSeq(script, "\n") {
 		command, ok := strings.CutPrefix(line, "exec ")
-		if !ok {
+		if !ok || strings.HasSuffix(command, " --dry-run") {
 			continue
 		}
 		if strings.HasPrefix(command, "rancher create kubeconfig ") || strings.HasPrefix(command, "rancher create cloud-credential ") {

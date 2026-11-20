@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 )
 
 // The Norman cloud credential routes. Create stores the credential as a
@@ -25,6 +26,11 @@ const (
 	cloudCredentialIDPrefix        = "cattle-global-data:"
 	cloudCredentialConfigKeySuffix = "credentialConfig"
 )
+
+// cloudCredentialSequence numbers the credentials every facade of the process
+// creates, so concurrent facades that store their Secrets in one cluster never
+// generate the same name.
+var cloudCredentialSequence atomic.Int64
 
 // NormanCloudCredentialRecord is one Norman cloud credential request the
 // facade answered: its method, its path, the bearer that sent it and its
@@ -171,11 +177,8 @@ func (f *Facade) createCloudCredential(w http.ResponseWriter, r *http.Request, b
 			return
 		}
 	}
-	f.mu.Lock()
-	f.cloudCredentialCounter++
-	name := fmt.Sprintf("cc-%c%c%c%c%c", 'a'+rune(f.cloudCredentialCounter/26/26/26/26%26), 'a'+rune(f.cloudCredentialCounter/26/26/26%26),
-		'a'+rune(f.cloudCredentialCounter/26/26%26), 'a'+rune(f.cloudCredentialCounter/26%26), 'a'+rune(f.cloudCredentialCounter%26))
-	f.mu.Unlock()
+	n := cloudCredentialSequence.Add(1)
+	name := fmt.Sprintf("cc-%c%c%c%c%c", 'a'+rune(n/26/26/26/26%26), 'a'+rune(n/26/26/26%26), 'a'+rune(n/26/26%26), 'a'+rune(n/26%26), 'a'+rune(n%26))
 
 	annotations := map[string]any{"field.cattle.io/creatorId": "u-facade"}
 	if display, _ := body["name"].(string); display != "" {

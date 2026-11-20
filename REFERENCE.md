@@ -607,6 +607,15 @@ NOT_FOUND candidates leave out the same global roles.
 - Windows PowerShell 5.1 decodes the CLI's output with the console encoding,
   so a description with non-ASCII characters may show garbled there.
 
+`create cloud-credential` completes `<driver>` with the drivers the command
+accepts on the server: each node driver that is active or has
+`addCloudCredential` and names credential fields, `s3`, and `alibaba` while its
+operator is active. After a driver, `--set` completes the names of its public
+fields and `--from-file` the names of its secret and multi-line fields, each
+followed by `=`; a field you already typed is left out, and nothing is offered
+after the `=`. `get cloud-credential` completes `<credential>` with the ids and
+the display names that name one credential.
+
 `--auth-provider` on `auth login`, `auth get-token` and `token` completes the
 names of the auth configs this CLI can sign in with, from the list of auth
 configs the server publishes, which needs no credential: the request carries

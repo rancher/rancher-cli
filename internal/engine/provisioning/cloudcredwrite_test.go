@@ -16,7 +16,10 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/provisioning/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
+	"github.com/rancher/rancher-cli/internal/runtime/completion/completiontest"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -679,3 +682,53 @@ func TestCloudCredentialAlibabaNeedsItsOperator(t *testing.T) {
 }
 
 var _ = time.Second
+
+// TestCloudCredentialCompletionOffersOnlyWhatPlanAccepts asserts every driver
+// and every field name the completion source offers for the node drivers of the
+// fixture passes the command's own checks: Plan never refuses an offered driver
+// as unknown or inactive, nor an offered field as unknown, secret in --set or
+// public in --from-file; the only refusal left is a missing required field.
+func TestCloudCredentialCompletionOffersOnlyWhatPlanAccepts(t *testing.T) {
+	t.Parallel()
+	items := make([]string, 0, len(defaultDrivers()))
+	for _, d := range defaultDrivers() {
+		raw, err := json.Marshal(d.Object)
+		require.NoError(t, err)
+		items = append(items, string(raw))
+	}
+	server := completiontest.New(t, map[string]string{
+		"/k8s/clusters/local/apis/management.cattle.io/v3/nodedrivers":             `{"items":[` + strings.Join(items, ",") + `]}`,
+		"/k8s/clusters/local/apis/management.cattle.io/v3/settings/kev2-operators": `{"value":"[{\"name\":\"alibaba\",\"active\":false}]"}`,
+	})
+	src := complete.CreateCloudCredentialSource()
+	refusedWords := []string{"unknown cloud credential driver", "is not active", "names no credential fields", "is not a field of", "cannot be given with --set", "is a public field of"}
+	check := func(t *testing.T, in ccwInput) {
+		t.Helper()
+		r := newCCWRig(ccwFilesFor(ccwSecret))
+		_, _, err := r.plan(t, in)
+		if err == nil {
+			return
+		}
+		for _, word := range refusedWords {
+			assert.NotContains(t, err.Error(), word)
+		}
+	}
+
+	drivers := src.Complete(t.Context(), server.Conn(2), completion.Request{Index: 0})
+	require.NotEmpty(t, drivers.Names)
+	for _, driver := range drivers.Names {
+		check(t, ccwInput{args: []string{driver, "prod"}})
+		for _, flag := range []string{"set", "from-file"} {
+			fields := src.Complete(t.Context(), server.Conn(1), completion.Request{Flag: flag, Positionals: []string{driver}})
+			for _, field := range fields.Names {
+				in := ccwInput{args: []string{driver, "prod"}}
+				if flag == "set" {
+					in.set = []string{field + "=value"}
+				} else {
+					in.fromFile = []string{field + "=secret.txt"}
+				}
+				check(t, in)
+			}
+		}
+	}
+}
