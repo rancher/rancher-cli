@@ -2922,14 +2922,12 @@ under `table`/default format instead, with warnings on stderr as
 `# warning: <w>` lines; `-o json`/`yaml`/`template=`/`name` still see the
 normal envelope over `data`.
 Every text format - the text of composites and
-`access`, the dry-run preview, and the `# warning:` lines of a command that
-succeeds - removes control characters (including the escape character
+`access` and the dry-run preview - removes control characters (including the escape character
 that starts an ANSI sequence, carriage return and tab) and Unicode format
 characters from server-sourced text before it reaches the terminal, so server
 text cannot drive the terminal. Progress messages on stderr get the same
-treatment under every `-o` format. The `# warning:`
-lines of a command that succeeds, the summary line and the dry-run preview also
-remove newlines, so a value cannot add a line there. In the text of
+treatment under every `-o` format. The dry-run preview also removes newlines, so
+a value cannot add a line there. In the text of
 `inspect cluster`, `inspect deployment`, `inspect project`, `inspect user`,
 `config status`, `config set-token-reuse`, `create token`,
 `project remove-namespace`, the OIDC client commands and `auth status`, in the
@@ -2958,7 +2956,10 @@ string with escapes; any other piece prints as written. A remedy command in the
 line names its `--config` directory outside the quotes. The words after a
 command, up to the next `; ` or ` (`, are in the same piece; when that piece has
 such a character they are inside the quotes too. The message and hint of a
-`TLS_TRUST` error still have such characters removed.
+`TLS_TRUST` error still have such characters removed. The `# warning:` lines of
+a command that succeeds or of a dry-run preview, the summary line and each
+prompt label are cut and written the same way; a newline in a piece is the text
+`\n`, so a value cannot add a line.
 Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
 `template=` (the bytes are
 the data), `logs` (container output whose newlines are its structure), and the

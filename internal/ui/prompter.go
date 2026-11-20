@@ -1,7 +1,8 @@
 // Package ui provides the single injected prompter/notifier for interactive
-// commands. Prompts and notices go to Err, each through
-// output.PrintableLines, so a control or format character in a message or a
-// label never reaches the terminal, under every output format. Stdout is
+// commands. Prompts and notices go to Err; a control or format character in
+// a message or a label never reaches the terminal, under every output format:
+// a notice passes output.PrintableLines, and a prompt label is written as
+// clierr.LineText writes it and then passes output.PrintableLines. Stdout is
 // owned by the pipeline for machine output (e.g. the exec-credential JSON).
 // Prompting is refused unless attached to a TTY and not running under
 // --no-input.
@@ -19,6 +20,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output"
 )
 
@@ -83,23 +85,24 @@ func (p *Prompter) Notice(msg string) {
 	_, _ = fmt.Fprintln(p.err, msg)
 }
 
-// Prompt writes label to Err, filtered as a notice is, and reads one line
-// from In, honoring ctx.
+// Prompt writes label to Err, written as clierr.LineText writes it and then
+// filtered as a notice is, and reads one line from In, honoring ctx.
 func (p *Prompter) Prompt(ctx context.Context, label string) (string, error) {
 	if !p.CanPrompt() {
 		return "", ErrNoInput
 	}
-	p.writeErr(label)
+	p.writeLabel(label)
 	return p.readLine(ctx)
 }
 
 // PromptSecret reads without echo when In is a terminal fd; otherwise reads a
-// line (test buffers). Refuses when prompting is disallowed.
+// line (test buffers). Refuses when prompting is disallowed. Its label is
+// written as Prompt's is.
 func (p *Prompter) PromptSecret(ctx context.Context, label string) (string, error) {
 	if !p.CanPrompt() {
 		return "", ErrNoInput
 	}
-	p.writeErr(label)
+	p.writeLabel(label)
 	if f, ok := p.in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
 		return p.readPasswordTTY(ctx, int(f.Fd()))
 	}
@@ -155,10 +158,19 @@ func selectCancelable[T any](ctx context.Context, read func() (T, error), onCanc
 	}
 }
 
+// writeLabel writes a prompt label to err as clierr.LineText writes it: a
+// clause that holds a hidden character or an invalid byte is a double-quoted
+// string with escapes, and the label cannot add a line.
+func (p *Prompter) writeLabel(label string) {
+	p.writeErr(clierr.LineText(label))
+}
+
 // writeErr writes s to err, through output.PrintableLines, under mu - held
 // only for the write itself, never across a blocking read, so a concurrent
 // Notice (e.g. from a background callback handler) is never blocked behind a
-// pending prompt.
+// pending prompt. It keeps the newlines it is given: a label comes through
+// writeLabel, which writes it as clierr.LineText writes it, and the line end
+// after a hidden read is written as it is.
 func (p *Prompter) writeErr(s string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

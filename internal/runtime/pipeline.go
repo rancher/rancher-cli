@@ -868,17 +868,21 @@ func envelopeCarriesWarnings(format string) bool {
 // once-only advisory) is not reliably first. Decremented per skip so a
 // repeated value mirrors past its silenced count. silent may be nil (no
 // suppression). s styles the "# warning:" prefix only, never the
-// message. The one
+// message. warnings are the entries as the command wrote them, with their
+// remedy commands unexpanded: each is written as clierr.LineText writes it,
+// then expanded by expand, then passed through Printable: a clause that
+// holds a hidden character prints as an escape and a value cannot add a
+// line. The one
 // implementation behind every stderr warning mirror in the pipeline:
 // renderResult's Text, RawBytes, Raw, and envelope branches, and
 // renderEffect's text and envelope branches.
-func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s style.Style) {
+func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s style.Style, expand func(string) string) {
 	for _, warn := range warnings {
 		if silent[warn] > 0 {
 			silent[warn]--
 			continue
 		}
-		_, _ = fmt.Fprintf(w, "%s %s\n", s.Yellow("# warning:"), output.Printable(warn))
+		_, _ = fmt.Fprintf(w, "%s %s\n", s.Yellow("# warning:"), output.Printable(expand(clierr.LineText(warn))))
 	}
 }
 
@@ -921,8 +925,10 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	outStyle, errStyle := stylesFor(streams)
 	rawNotices := drainNotices(streams)
 	notices := streams.expandAll(rawNotices)
+	rawWarnings := append(append([]string{}, rawNotices...), res.Warnings...)
 	res.Warnings = append(append([]string{}, notices...), streams.expandAll(res.Warnings)...)
-	res.OnceOnlyNotice = streams.ExpandText(res.OnceOnlyNotice)
+
+	expandWarning := streams.ExpandText
 
 	if ce := checkResultShape(d, res, streams.Format); ce != nil {
 		return rawNotices, ce
@@ -990,7 +996,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		if res.OnceOnlyNotice != "" {
 			silent[res.OnceOnlyNotice]++
 		}
-		mirrorWarnings(streams.Err, res.Warnings, silent, errStyle)
+		mirrorWarnings(streams.Err, rawWarnings, silent, errStyle, expandWarning)
 		return nil, nil
 	}
 	if res.RawBytes != nil {
@@ -1001,7 +1007,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		// completion): stderr is the only delivery path Warnings has, so it
 		// mirrors unconditionally rather than only for the non-json/yaml
 		// formats the envelope branch below gates on.
-		mirrorWarnings(streams.Err, res.Warnings, nil, errStyle)
+		mirrorWarnings(streams.Err, rawWarnings, nil, errStyle, expandWarning)
 		return nil, nil
 	}
 	// Raw results (exec-credential) bypass the envelope: kubectl parses a single
@@ -1013,7 +1019,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		}
 		// Same rationale as RawBytes above: kubectl surfaces exec-credential
 		// stderr, and no envelope exists here under any format.
-		mirrorWarnings(streams.Err, res.Warnings, nil, errStyle)
+		mirrorWarnings(streams.Err, rawWarnings, nil, errStyle, expandWarning)
 		return nil, nil
 	}
 	env := output.NewEnvelope(res.Kind, res.Data)
@@ -1023,7 +1029,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// "table" and "wide" - `get --wait`'s wide output is table-family too,
 	// not a separate body, so the wait line belongs on it as well.
 	if textRenderFormat(streams.Format) && res.Summary != "" {
-		if _, err := fmt.Fprintln(streams.Out, streams.ExpandLines(PrintableRemedies(res.Summary))); err != nil {
+		if _, err := fmt.Fprintln(streams.Out, streams.ExpandLines(PrintableRemedies(clierr.LineText(res.Summary)))); err != nil {
 			return rawNotices, clierr.From(err)
 		}
 	}
@@ -1039,7 +1045,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// expansion - no envelope). json/yaml carry warnings inside the envelope;
 	// mirroring there would double-print.
 	if !envelopeCarriesWarnings(streams.Format) {
-		mirrorWarnings(streams.Err, res.Warnings, nil, errStyle)
+		mirrorWarnings(streams.Err, rawWarnings, nil, errStyle, expandWarning)
 		return nil, nil
 	}
 	// json/yaml: the notices are embedded only in the envelope bytes just
@@ -1056,11 +1062,13 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 // envelope's target field.
 func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	_, errStyle := stylesFor(streams)
+	expandWarning := streams.ExpandText
 	// A dry-run Plan can still touch a lazily-resolving credential store
 	// (reading the current server's CA, say); drain ahead of eff.Warnings
 	// so that notice is not silently stranded in the source until whatever
 	// later invocation happens to drain it.
-	eff.Warnings = streams.expandAll(append(drainNotices(streams), eff.Warnings...))
+	rawWarnings := append(drainNotices(streams), eff.Warnings...)
+	eff.Warnings = streams.expandAll(rawWarnings)
 	if textRenderFormat(streams.Format) {
 		if _, err := streams.Out.Write([]byte(streams.ExpandLines(output.PrintableLines(dryRunText(eff))))); err != nil {
 			return clierr.From(err)
@@ -1069,7 +1077,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 		// mirror them to stderr here so they are not silently dropped,
 		// the same contract renderResult's Text branch applies to
 		// Result.Warnings.
-		mirrorWarnings(streams.Err, eff.Warnings, nil, errStyle)
+		mirrorWarnings(streams.Err, rawWarnings, nil, errStyle, expandWarning)
 		return nil
 	}
 	env := output.NewEnvelope("Effect", eff)
@@ -1083,7 +1091,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	// convention renderResult uses for those formats; json/yaml carry warnings
 	// inside the envelope and must not double-print.
 	if !envelopeCarriesWarnings(streams.Format) {
-		mirrorWarnings(streams.Err, env.Warnings, nil, errStyle)
+		mirrorWarnings(streams.Err, rawWarnings, nil, errStyle, expandWarning)
 	}
 	return nil
 }

@@ -1497,7 +1497,7 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 		assert.Equal(t, "cluster agent is not connected: Cluster agent is not connected", res.Warnings[0])
 	})
 
-	t.Run("warning strips escape sequences from the condition message", func(t *testing.T) {
+	t.Run("warning carries the condition message as the server sent it", func(t *testing.T) {
 		t.Parallel()
 		client, root := withMgmtConditions(t, []any{
 			map[string]any{"type": "Connected", "status": "False", "reason": "Disconnected", "message": "Cluster agent \x1b[31mis not\x1b[0m connected"},
@@ -1507,8 +1507,21 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NotEmpty(t, res.Warnings)
-		assert.NotContains(t, res.Warnings[0], "\x1b", "ANSI escape sequences must be stripped from warning")
-		assert.Contains(t, res.Warnings[0], "is not", "text around escape sequences is preserved")
+		assert.Equal(t, "cluster agent is not connected: Cluster agent \x1b[31mis not\x1b[0m connected", res.Warnings[0])
+	})
+
+	t.Run("a not-ready verdict carries the condition message as the server sent it", func(t *testing.T) {
+		t.Parallel()
+		client, root := withMgmtConditions(t, []any{
+			map[string]any{"type": "Connected", "status": "True"},
+			map[string]any{"type": "Ready", "status": "False", "reason": "Waiting", "message": "Cluster \x1b[31mis not\x1b[0m ready\u200b"},
+		})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+		require.NoError(t, err)
+
+		require.NotEmpty(t, res.Warnings)
+		assert.Equal(t, "cluster is not ready: Cluster \x1b[31mis not\x1b[0m ready\u200b", res.Warnings[0])
 	})
 
 	t.Run("connected agent renders healthy with no warning", func(t *testing.T) {

@@ -190,8 +190,9 @@ func TestRenderResultOrdinaryTextNeverBoldedByShownOnceSuffixCoincidence(t *test
 func TestMirrorWarningsYellowPrefixStripInvariant(t *testing.T) {
 	t.Parallel()
 	var plainBuf, styledBuf bytes.Buffer
-	mirrorWarnings(&plainBuf, []string{"cert expires soon"}, nil, style.Style{})
-	mirrorWarnings(&styledBuf, []string{"cert expires soon"}, nil, style.Style{Enabled: true})
+	same := func(s string) string { return s }
+	mirrorWarnings(&plainBuf, []string{"cert expires soon"}, nil, style.Style{}, same)
+	mirrorWarnings(&styledBuf, []string{"cert expires soon"}, nil, style.Style{Enabled: true}, same)
 
 	assert.Equal(t, "# warning: cert expires soon\n", plainBuf.String())
 	assert.Equal(t, plainBuf.String(), style.Strip(styledBuf.String()))

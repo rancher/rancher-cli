@@ -141,7 +141,6 @@ var evFilterRows = []evFilterRow{
 	{"internal/engine/catalog.uninstallCmd.Plan", evValuesFilterFunc, true, "", "the values filter handed to the uninstall wait"},
 	{"internal/engine/catalog.upgradeCmd.execute", evValuesFilterFunc, true, "", "the values filter handed to the upgrade wait"},
 	{"internal/engine/extres.createTokenCmd.Plan", evPrintable, false, "", "the expiry and the name of the created token, named in prose"},
-	{"internal/engine/inspect.clusterCmd.Execute", evPrintable, false, "", "names, states and messages the server sent, named in prose; no command is built from them here"},
 	{"internal/engine/inspect.renderAgentLine", evPrintable, false, "", "names, states and messages the server sent, named in prose; no command is built from them here"},
 	{"internal/engine/inspect.renderClusterText", evPrintable, false, "", "names, states and messages the server sent, named in prose; no command is built from them here"},
 	{"internal/engine/inspect.renderConditionsSection", evPrintable, false, "", "names, states and messages the server sent, named in prose; no command is built from them here"},
