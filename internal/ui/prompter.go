@@ -85,8 +85,8 @@ func (p *Prompter) Notice(msg string) {
 	_, _ = fmt.Fprintln(p.err, msg)
 }
 
-// Prompt writes label to Err, written as clierr.LineText writes it and then
-// filtered as a notice is, and reads one line from In, honoring ctx.
+// Prompt writes label to Err the way clierr.LineText writes it, then filters it
+// as a notice is, and reads one line from In, honoring ctx.
 func (p *Prompter) Prompt(ctx context.Context, label string) (string, error) {
 	if !p.CanPrompt() {
 		return "", ErrNoInput
@@ -168,9 +168,9 @@ func (p *Prompter) writeLabel(label string) {
 // writeErr writes s to err, through output.PrintableLines, under mu - held
 // only for the write itself, never across a blocking read, so a concurrent
 // Notice (e.g. from a background callback handler) is never blocked behind a
-// pending prompt. It keeps the newlines it is given: a label comes through
-// writeLabel, which writes it as clierr.LineText writes it, and the line end
-// after a hidden read is written as it is.
+// pending prompt. It keeps the newlines it is given. A label comes through
+// writeLabel, which writes it as clierr.LineText writes it; the line end the
+// prompter writes after a read without echo is written as it is.
 func (p *Prompter) writeErr(s string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

@@ -27,9 +27,9 @@ func mirrored(warnings []string, silent map[string]int) string {
 }
 
 // TestMirrorWarningsWritesHiddenCharactersAsEscapes asserts a warning clause
-// that holds a hidden character or an invalid byte is written whole in
-// double quotes with escapes, so it cannot drive the terminal or forge a
-// second line; every other clause and every remedy command stays as written.
+// that has a hidden character or an invalid byte is written whole in
+// double quotes with escapes; it cannot drive the terminal or forge a
+// second line, and every other clause and every remedy command stays as written.
 func TestMirrorWarningsWritesHiddenCharactersAsEscapes(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -79,14 +79,14 @@ func TestMirrorWarningsWritesHiddenCharactersAsEscapes(t *testing.T) {
 		})
 	}
 
-	t.Run("a marker that opens no command is an escape", func(t *testing.T) {
+	t.Run("a remedy marker with no command after it is written as escapes", func(t *testing.T) {
 		t.Parallel()
 		got := mirrored([]string{"a" + clierr.RemedyMarker + "x"}, nil)
 		assert.Equal(t, "# warning: "+strconv.Quote("a"+clierr.RemedyMarker+"x")+"\n", got)
 		assert.NotRegexp(t, "[\u2060-\u2064]", got)
 	})
 
-	t.Run("another process's marker before rancher is an escape", func(t *testing.T) {
+	t.Run("another process's remedy marker before rancher is written as escapes", func(t *testing.T) {
 		t.Parallel()
 		got := mirrored([]string{"a" + "\u2063" + strings.Repeat("\u2060\u2061\u2062\u2064", 8) + "rancher x"}, nil)
 		foreign := `\u2063` + strings.Repeat(`\u2060\u2061\u2062\u2064`, 8)
@@ -95,10 +95,10 @@ func TestMirrorWarningsWritesHiddenCharactersAsEscapes(t *testing.T) {
 	})
 }
 
-// TestMirrorWarningsSilentSkipsTheRawEntry asserts silent is read against the
+// TestMirrorWarningsSilentSkipsTheEntryAsTheCommandWroteIt asserts silent is read against the
 // warnings as the command wrote them: one entry that holds a remedy command
 // is skipped and its second copy is written, expanded.
-func TestMirrorWarningsSilentSkipsTheRawEntry(t *testing.T) {
+func TestMirrorWarningsSilentSkipsTheEntryAsTheCommandWroteIt(t *testing.T) {
 	t.Parallel()
 	raw := "run " + clierr.Rancher + " auth status"
 	got := mirrored([]string{raw, raw}, map[string]int{raw: 1})

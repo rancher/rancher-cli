@@ -13,9 +13,9 @@ import (
 
 // TestTrustPromptLabelPrintsUnchangedBesideAHiddenCertificateCharacter
 // asserts the trust prompt's label is written byte for byte as the code spells
-// it when the certificate's subject holds a hidden character: the label is in
-// no double quotes, and neither the character nor its escape is on the
-// output, the card removes it.
+// it when the certificate's subject has a hidden character. The label is not in
+// double quotes, and the output has neither the character nor its escape,
+// because the card removes it.
 func TestTrustPromptLabelPrintsUnchangedBesideAHiddenCertificateCharacter(t *testing.T) {
 	t.Parallel()
 	d := tlstrust.Details{

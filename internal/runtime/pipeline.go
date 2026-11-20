@@ -868,11 +868,11 @@ func envelopeCarriesWarnings(format string) bool {
 // once-only advisory) is not reliably first. Decremented per skip so a
 // repeated value mirrors past its silenced count. silent may be nil (no
 // suppression). s styles the "# warning:" prefix only, never the
-// message. warnings are the entries as the command wrote them, with their
-// remedy commands unexpanded: each is written as clierr.LineText writes it,
-// then expanded by expand, then passed through Printable: a clause that
-// holds a hidden character prints as an escape and a value cannot add a
-// line. The one
+// message. The warnings are the entries as the command wrote them, with their
+// remedy commands not yet expanded. Each is written as clierr.LineText writes
+// it, then expanded by expand, then passed through Printable. A piece that has
+// a hidden character is a double-quoted string with escapes, and a value cannot
+// add a line. The one
 // implementation behind every stderr warning mirror in the pipeline:
 // renderResult's Text, RawBytes, Raw, and envelope branches, and
 // renderEffect's text and envelope branches.

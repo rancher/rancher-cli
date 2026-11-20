@@ -187,8 +187,9 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	// Advisory warnings: agent verdicts, member display-name enrichment, and
 	// registration placeholder drops describe a section that is present and
 	// usable, so they never become degraded entries. The agent's message stays
-	// as the server wrote it: json and yaml carry it, and a text format writes
-	// each clause of the warning that holds a hidden character as an escape.
+	// as the server sent it: json and yaml carry it, and a text format writes
+	// each piece of the warning that has a hidden character as a double-quoted
+	// string with escapes.
 	var warnings []string
 	switch res.Agent.verdict() {
 	case agentDisconnected:

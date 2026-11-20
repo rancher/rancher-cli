@@ -65,6 +65,7 @@ func singleQuoteIsInADoubleQuotedPiece(line string) bool {
 // double quotes, and that a shell that runs the printed line creates no file.
 func TestAWarningNeverPutsACommandArgumentInDoubleQuotes(t *testing.T) {
 	t.Parallel()
+	testfs.SkipOnWindows(t, "the printed line is run by a POSIX shell")
 	e := newTerminalEnv(t)
 	pwned := filepath.Join(e.dir, "pwned")
 	warning := "a\u200bb; run " + clierr.Rancher + " get z\u200bz 'x$(: > " + pwned + ")'"
@@ -81,7 +82,6 @@ func TestAWarningNeverPutsACommandArgumentInDoubleQuotes(t *testing.T) {
 	}
 	assert.True(t, found, "the argument is in the line: %q", line)
 
-	testfs.SkipOnWindows(t, "the printed line is run by a POSIX shell")
 	look, lookErr := exec.LookPath("sh")
 	program := pasteShellOrSkip(t, "sh", look, lookErr)
 	cmd := exec.CommandContext(t.Context(), program, "-c", line)
@@ -91,12 +91,12 @@ func TestAWarningNeverPutsACommandArgumentInDoubleQuotes(t *testing.T) {
 	assert.NoFileExists(t, pwned, "the shell ran the substitution")
 }
 
-// TestAProseValueThatReadsAsASubstitutionIsQuotedAndRunsNothing asserts the
+// TestAProseValueThatReadsAsASubstitutionIsPrintedInDoubleQuotes asserts the
 // printed form of a warning whose value holds a substitution outside single
 // quotes, followed by a hidden character: the whole clause is one
 // double-quoted string with escapes. Pasted into a shell, that line would run
-// the substitution; this test runs nothing and records the printed form.
-func TestAProseValueThatReadsAsASubstitutionIsQuotedAndRunsNothing(t *testing.T) {
+// the substitution. This test does not run it; it records the printed form.
+func TestAProseValueThatReadsAsASubstitutionIsPrintedInDoubleQuotes(t *testing.T) {
 	t.Parallel()
 	e := newTerminalEnv(t)
 	warning := "\\$(: > " + e.dir + "/pwned)\u200b"
@@ -140,11 +140,11 @@ func TestWarningsInJSONAndYAMLCarryTheValueAsItIs(t *testing.T) {
 	}
 }
 
-// TestACommandPrintsTheSameBesideAHiddenCharacter asserts a remedy command
-// prints as it does in a warning with nothing to quote when a clause with a
-// hidden character is next to it, for a config directory with a Windows-style
-// path, and that a directory whose path cannot be printed leaves the command
-// out beside a hidden character as it does without one.
+// TestACommandPrintsTheSameBesideAHiddenCharacter asserts two things. A remedy
+// command prints as it does in a warning with nothing to quote when a clause
+// with a hidden character is next to it, for a config directory with a
+// Windows-style path. A directory whose path cannot be printed leaves the
+// command out beside a hidden character, as it does without one.
 func TestACommandPrintsTheSameBesideAHiddenCharacter(t *testing.T) {
 	t.Parallel()
 	after := "value a\u200bb; run " + clierr.Rancher + " auth status"

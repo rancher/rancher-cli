@@ -265,8 +265,8 @@ func TestPrompterWritesHiddenCharactersOfALabelAsEscapes(t *testing.T) {
 }
 
 // TestPrompterWritesALabelWithNothingToQuoteAsItIs asserts a label with no
-// hidden character, the token prompt and the trust prompt among them, and the
-// line end written after a hidden read keep their bytes.
+// hidden character (the token prompt and the trust prompt are two) and the
+// line end written after a read without echo are written byte for byte.
 func TestPrompterWritesALabelWithNothingToQuoteAsItIs(t *testing.T) {
 	t.Parallel()
 	for _, label := range []string{
@@ -284,7 +284,6 @@ func TestPrompterWritesALabelWithNothingToQuoteAsItIs(t *testing.T) {
 	var errw bytes.Buffer
 	New(&errw, strings.NewReader(""), false, true).writeErr("\n")
 	assert.Equal(t, "\n", errw.String())
-
 }
 
 // TestPrompterKeepsLabelsThatDifferByAHiddenCharacterApart asserts labels that
@@ -301,11 +300,13 @@ func TestPrompterKeepsLabelsThatDifferByAHiddenCharacterApart(t *testing.T) {
 	assert.Len(t, lines, 3)
 }
 
-// TestOnlyWriteLabelAndTheLineEndCallWriteErr asserts every use of writeErr in
-// the package's non-test source files is either the call writeLabel makes with exactly
-// clierr.LineText(label), or a call with the string literal "\n": a new way to
-// write a label that skips clierr.LineText fails here, and so does a method
-// value of writeErr.
+// TestOnlyWriteLabelAndTheLineEndCallWriteErr asserts that every use of writeErr
+// in the package's non-test source files is one of two calls: the call in
+// writeLabel with exactly clierr.LineText(label), or a call with the string
+// literal "\n". A new way to write a label that skips clierr.LineText fails
+// here, and so does a method value of writeErr. The scan covers whole files,
+// package-level variables included, and also fails a write to the error writer
+// outside Notice, writeErr and readLine.
 func TestOnlyWriteLabelAndTheLineEndCallWriteErr(t *testing.T) {
 	t.Parallel()
 	fset := token.NewFileSet()
@@ -328,15 +329,16 @@ func TestOnlyWriteLabelAndTheLineEndCallWriteErr(t *testing.T) {
 		require.NoError(t, format.Node(&b, fset, n))
 		return b.String()
 	}
+	writers := map[string]bool{"Notice": true, "writeErr": true, "readLine": true}
 	seen := 0
 	for _, f := range files {
 		for _, decl := range f.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok {
-				continue
+			fn := ""
+			if d, ok := decl.(*ast.FuncDecl); ok {
+				fn = d.Name.Name
 			}
 			called := map[*ast.SelectorExpr]*ast.CallExpr{}
-			ast.Inspect(fn, func(n ast.Node) bool {
+			ast.Inspect(decl, func(n ast.Node) bool {
 				if call, ok := n.(*ast.CallExpr); ok {
 					if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "writeErr" {
 						called[sel] = call
@@ -344,20 +346,26 @@ func TestOnlyWriteLabelAndTheLineEndCallWriteErr(t *testing.T) {
 				}
 				return true
 			})
-			ast.Inspect(fn, func(n ast.Node) bool {
+			ast.Inspect(decl, func(n ast.Node) bool {
 				sel, ok := n.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "writeErr" {
+				if !ok {
+					return true
+				}
+				where := fset.Position(sel.Pos()).String()
+				if recv, ok := sel.X.(*ast.Ident); ok && recv.Name == "p" && sel.Sel.Name == "err" && !writers[fn] {
+					t.Errorf("%s: the error writer is used outside Notice, writeErr and readLine; write through writeLabel", where)
+				}
+				if sel.Sel.Name != "writeErr" {
 					return true
 				}
 				seen++
-				where := fset.Position(sel.Pos()).String()
 				call, isCall := called[sel]
 				if !isCall || len(call.Args) != 1 {
-					t.Errorf("%s: writeErr is used other than as a call with one argument", where)
+					t.Errorf("%s: writeErr may only be called as p.writeErr(clierr.LineText(label)) in writeLabel or as p.writeErr(\"\\n\"); write a label through writeLabel", where)
 					return true
 				}
 				arg := render(call.Args[0])
-				if fn.Name.Name == "writeLabel" {
+				if fn == "writeLabel" {
 					assert.Equal(t, "clierr.LineText(label)", arg, where)
 					return true
 				}

@@ -377,8 +377,8 @@ func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
 }
 
 // TestOnceOnlyNoticeThatHoldsACommandIsNotMirroredToStderr asserts the notice
-// a result carries is matched against the warnings as the command wrote them,
-// so a notice with a remedy command is skipped on stderr with the config
+// a result carries is matched against the warnings as the command wrote them:
+// a notice with a remedy command is skipped on stderr with the config
 // directory set and unset, and an unrelated warning still prints.
 func TestOnceOnlyNoticeThatHoldsACommandIsNotMirroredToStderr(t *testing.T) {
 	t.Parallel()
