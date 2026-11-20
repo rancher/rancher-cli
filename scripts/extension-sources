@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Checks the two things the Rancher extension commands copy from the Rancher UI:
+#
+#  1. The table from each Rancher release to the extensions API version of the
+#     Rancher UI it ships,
+#     internal/engine/catalog/extension/extensions-api-versions.json. It has one
+#     row per release tag vX.Y.Z of every minor from MinRancherVersion
+#     (internal/config/version.go) up to the newest minor that has one, read
+#     from the tags of github.com/rancher/rancher. A row is the tag, the
+#     dashboard version CATTLE_DASHBOARD_UI_VERSION that package/Dockerfile names
+#     at the tag, and the "version" of shell/package.json of the dashboard at
+#     that version, which is the extensions API version the UI compiles in. The
+#     check fails for a release that has no row, a row for a release that is no
+#     longer asked for, and a row that differs from those two files.
+#  2. The two repositories the Rancher UI adds, in
+#     internal/engine/catalog/extension/testdata/extension-repositories.golden.json:
+#     the names, URLs and branches in shell/config/uiplugins.js of the dashboard
+#     version of each oracle image pinned in scripts/e2e-fidelity, whose Rancher
+#     commit internal/cli/testdata/rancher-api-fields.golden.json records. An
+#     image whose dashboard version is not a release tag (a head build names a
+#     branch) is skipped and the report names it.
+#
+# EXTENSION_SOURCES_UPDATE=1 (make extension-sources-update) writes the table
+# instead of comparing it; review its diff like the schema golden. The
+# repositories are never written by this script.
+#
+# Needs network access to github.com and raw.githubusercontent.com, curl, jq and
+# git. It needs no credential, no Docker and no Go module download.
+#
+# EXTENSION_SOURCES_TAGS_FILE names a file that stands in for the output of
+# git ls-remote --tags, for tests; it is refused together with
+# EXTENSION_SOURCES_UPDATE.
+
+cd "$(dirname "$0")/.."
+
+table=internal/engine/catalog/extension/extensions-api-versions.json
+repositories=internal/engine/catalog/extension/testdata/extension-repositories.golden.json
+fields_golden=internal/cli/testdata/rancher-api-fields.golden.json
+raw=https://raw.githubusercontent.com
+
+update=${EXTENSION_SOURCES_UPDATE:-}
+if [ -n "$update" ] && [ -n "${EXTENSION_SOURCES_TAGS_FILE:-}" ]; then
+  echo "error: EXTENSION_SOURCES_TAGS_FILE is set; the table is written only from the tags of github.com" >&2
+  exit 1
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+failed=0
+report() {
+  echo "$1"
+  failed=1
+}
+
+# fetch writes the file at a URL to the path given as the second argument, three
+# tries 5 seconds apart, and stops the script when it cannot.
+fetch() {
+  if ! curl -fsS --retry 3 --retry-delay 5 -o "$2" "$1" 2>"$work/curl.err"; then
+    echo "error: cannot read $1: $(cat "$work/curl.err")" >&2
+    exit 1
+  fi
+}
+
+# dashboard_version_at sets the variable named by the second argument to the
+# CATTLE_DASHBOARD_UI_VERSION that package/Dockerfile of the Rancher revision
+# (a tag or a commit) in the first argument names, empty when it names none.
+dashboard_version_at() {
+  local line
+  fetch "$raw/rancher/rancher/$1/package/Dockerfile" "$work/Dockerfile"
+  if line=$(grep -m1 -E '^ENV CATTLE_DASHBOARD_UI_VERSION=' "$work/Dockerfile"); then
+    printf -v "$2" '%s' "${line#*=}"
+  else
+    printf -v "$2" '%s' ""
+  fi
+}
+
+# The first supported minor, from MinRancherVersion.
+if ! line=$(grep -m1 -E '^const MinRancherVersion = "[0-9]+\.[0-9]+"$' internal/config/version.go); then
+  echo "error: internal/config/version.go has no MinRancherVersion line" >&2
+  exit 1
+fi
+floor=${line#*\"}
+floor=${floor%\"}
+floor_major=${floor%%.*}
+floor_minor=${floor#*.}
+
+# The release tags: vX.Y.Z only, so a release candidate, a head tag and the
+# peeled line of an annotated tag never become a row.
+if [ -n "${EXTENSION_SOURCES_TAGS_FILE:-}" ]; then
+  echo "note: the tags come from EXTENSION_SOURCES_TAGS_FILE=$EXTENSION_SOURCES_TAGS_FILE, not from github.com" >&2
+  cp "$EXTENSION_SOURCES_TAGS_FILE" "$work/ls-remote.txt"
+elif ! git ls-remote --tags https://github.com/rancher/rancher >"$work/ls-remote.txt" 2>"$work/ls-remote.err"; then
+  echo "error: cannot list the tags of github.com/rancher/rancher: $(cat "$work/ls-remote.err")" >&2
+  exit 1
+fi
+: >"$work/tags.txt"
+while IFS=$'\t' read -r _ ref; do
+  case $ref in
+    refs/tags/v[0-9]*.[0-9]*.[0-9]*) ;;
+    *) continue ;;
+  esac
+  tag=${ref#refs/tags/}
+  if [[ ! $tag =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    continue
+  fi
+  major=${BASH_REMATCH[1]}
+  minor=${BASH_REMATCH[2]}
+  if [ "$major" -lt "$floor_major" ] || { [ "$major" -eq "$floor_major" ] && [ "$minor" -lt "$floor_minor" ]; }; then
+    continue
+  fi
+  echo "$tag" >>"$work/tags.txt"
+done <"$work/ls-remote.txt"
+sort -V -u "$work/tags.txt" >"$work/release-tags.txt"
+if [ ! -s "$work/release-tags.txt" ]; then
+  echo "error: no release tag of Rancher $floor or later was found" >&2
+  exit 1
+fi
+
+# The rows the table must hold, tab separated.
+: >"$work/expected.tsv"
+while read -r tag; do
+  dashboard_version_at "$tag" dashboard
+  if [[ ! $dashboard =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    report "Rancher $tag names the dashboard version \"$dashboard\", which is not a release tag; its row cannot be written"
+    continue
+  fi
+  fetch "$raw/rancher/dashboard/$dashboard/shell/package.json" "$work/package.json"
+  api=$(jq -r '.version // empty' "$work/package.json")
+  if [ -z "$api" ]; then
+    report "shell/package.json of dashboard $dashboard has no version"
+    continue
+  fi
+  printf '%s\t%s\t%s\n' "$tag" "$dashboard" "$api" >>"$work/expected.tsv"
+done <"$work/release-tags.txt"
+
+if [ -n "$update" ]; then
+  if [ "$failed" -ne 0 ]; then
+    echo "error: the table is not written" >&2
+    exit 1
+  fi
+  rows=()
+  while IFS=$'\t' read -r tag dashboard api; do
+    rows+=("$(jq -nc --arg r "$tag" --arg d "$dashboard" --arg e "$api" '{rancher: $r, dashboard: $d, extensionsApi: $e}')")
+  done <"$work/expected.tsv"
+  {
+    echo "["
+    last=$((${#rows[@]} - 1))
+    for i in "${!rows[@]}"; do
+      if [ "$i" -lt "$last" ]; then
+        echo "  ${rows[$i]},"
+      else
+        echo "  ${rows[$i]}"
+      fi
+    done
+    echo "]"
+  } >"$table"
+  echo "wrote ${#rows[@]} rows to $table: $(head -1 "$work/expected.tsv" | cut -f1) to $(tail -1 "$work/expected.tsv" | cut -f1)"
+  exit 0
+fi
+
+jq -r '.[] | [.rancher, .dashboard, .extensionsApi] | @tsv' "$table" >"$work/have.tsv"
+while IFS=$'\t' read -r tag dashboard api; do
+  if grep -q -F -x "$(printf '%s\t%s\t%s' "$tag" "$dashboard" "$api")" "$work/have.tsv"; then
+    continue
+  fi
+  if have=$(grep -m1 -F "$(printf '%s\t' "$tag")" "$work/have.tsv"); then
+    report "the row of Rancher $tag is \"${have//$'\t'/ }\"; the dashboard says \"$dashboard $api\""
+  else
+    report "Rancher $tag has no row in $table (dashboard $dashboard, extensions API $api)"
+  fi
+done <"$work/expected.tsv"
+while IFS=$'\t' read -r tag _ _; do
+  if ! grep -q -F -x -e "$tag" "$work/release-tags.txt"; then
+    report "the row of Rancher $tag is no longer asked for: it is not a release of Rancher $floor or later"
+  fi
+done <"$work/have.tsv"
+
+# The repository constants, at the dashboard version of each pinned oracle image.
+checked=""
+for edition in $(jq -r '.oracles | keys[]' "$fields_golden"); do
+  commit=$(jq -r --arg e "$edition" '.oracles[$e].commit // empty' "$fields_golden")
+  if [ -z "$commit" ]; then
+    report "$fields_golden records no commit for the $edition image"
+    continue
+  fi
+  dashboard_version_at "$commit" dashboard
+  if [[ ! $dashboard =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "skipped the $edition image: its dashboard version \"$dashboard\" is not a release tag"
+    continue
+  fi
+  case " $checked " in
+    *" $dashboard "*) echo "the $edition image names dashboard $dashboard, already checked"; continue ;;
+  esac
+  checked="$checked $dashboard"
+  fetch "$raw/rancher/dashboard/$dashboard/shell/config/uiplugins.js" "$work/uiplugins.js"
+  awk '
+    /^[[:space:]]+(OFFICIAL|PARTNERS|COMMUNITY):[[:space:]]*\{/ { block = $1; sub(/:$/, "", block); next }
+    block != "" && match($0, /^[[:space:]]+(NAME|URL|BRANCH):[[:space:]]*'"'"'[^'"'"']*'"'"'/) {
+      line = substr($0, RSTART, RLENGTH)
+      key = line; sub(/^[[:space:]]+/, "", key); sub(/:.*$/, "", key)
+      val = line; sub(/^[^'"'"']*'"'"'/, "", val); sub(/'"'"'$/, "", val)
+      print block "\t" key "\t" val
+    }
+    /^[[:space:]]*\},?[[:space:]]*$/ { block = "" }
+  ' "$work/uiplugins.js" >"$work/constants.tsv"
+  for block in OFFICIAL PARTNERS; do
+    name=$(awk -F'\t' -v b="$block" '$1 == b && $2 == "NAME" { print $3 }' "$work/constants.tsv")
+    url=$(awk -F'\t' -v b="$block" '$1 == b && $2 == "URL" { print $3 }' "$work/constants.tsv")
+    branch=$(awk -F'\t' -v b="$block" '$1 == b && $2 == "BRANCH" { print $3 }' "$work/constants.tsv")
+    want=$(jq -r --arg n "$name" '.[] | select(.name == $n) | [.url, .branch] | @tsv' "$repositories")
+    if [ "$want" != "$(printf '%s\t%s' "$url" "$branch")" ]; then
+      report "dashboard $dashboard ($edition image) has $block as \"$name $url $branch\"; $repositories has \"${want//$'\t'/ }\""
+    fi
+  done
+done
+
+if [ "$failed" -ne 0 ]; then
+  exit 1
+fi
+echo "ok: $(wc -l <"$work/release-tags.txt" | tr -d ' ') release tags and the repositories of dashboard$checked match"

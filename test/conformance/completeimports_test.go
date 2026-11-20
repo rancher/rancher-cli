@@ -51,6 +51,7 @@ var completeImportAllowlist = map[string]bool{
 	modulePrefix + "internal/engine/kinds":                   true,
 	modulePrefix + "internal/clierr":                         true,
 	modulePrefix + "internal/engine/provisioning/clusterops": true,
+	modulePrefix + "internal/engine/catalog/extension":       true,
 }
 
 // scanCompleteImports parses the production Go files of the package

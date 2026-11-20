@@ -60,6 +60,19 @@ jobs:
           go-version-file: go.mod
       - run: make rancher-api-fields
 
+  # Compares the table from each Rancher release to the extensions API version
+  # of its UI, and the two Rancher extension repositories, with the Rancher and
+  # dashboard sources on GitHub. It needs only network access, so it runs here
+  # rather than on every pull request.
+  extension-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make extension-sources
+
   # Checks that the words of every admission text in
   # internal/clierr/admission.go are written in the Kubernetes modules
   # (k8s.io/apiserver, k8s.io/kubernetes, k8s.io/pod-security-admission) at

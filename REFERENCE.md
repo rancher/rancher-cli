@@ -843,7 +843,10 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   and the CLI sends no parameter that changes the filter. A chart with the
   `catalog.cattle.io/hidden` annotation (present and not empty, whatever the
   value) is not listed by the Rancher UI; `charts` lists it, with `hidden: true`
-  in JSON. A version is deprecated when its index entry has `deprecated: true`
+  in JSON. A chart that is a Rancher UI extension (any of its versions has the
+  annotation `catalog.cattle.io/ui-component` set to `plugins`) is left out, as the
+  Rancher UI's Charts page leaves it out, whatever its other annotations say; `--repo` of a
+  repository that holds only extension charts prints an empty table. A version is deprecated when its index entry has `deprecated: true`
   or the annotation `catalog.cattle.io/deprecated` is `"true"`. The CLI decides
   per version; the Rancher UI decides per chart from its first served version.
   Deprecated versions are left out, before the version to show is picked, and so

@@ -1,0 +1,16 @@
+[
+  {
+    "name": "rancher-ui-plugins",
+    "url": "https://github.com/rancher/ui-plugin-charts",
+    "branch": "main",
+    "label": "Add Rancher Prime Extensions Repository",
+    "primeOnly": true
+  },
+  {
+    "name": "partner-extensions",
+    "url": "https://github.com/rancher/partner-extensions",
+    "branch": "main",
+    "label": "Add Partners Extensions Repository",
+    "primeOnly": false
+  }
+]

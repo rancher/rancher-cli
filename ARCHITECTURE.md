@@ -89,6 +89,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (`Route`, given the operation: cluster/namespace, plus the `--project` refusal for a kind or operation it does not apply to and membership validation against the project the pipeline resolved) and table projection: a kind's own columns, or, for a `ServerTable` kind rendered as a text table, the table the API server answered with. The `get` of a row that sets `SteveReadOnForbidden` (the cluster, project, provisioning-cluster, etcd-snapshot and management-node kinds) reads the same list or object through the Steve API when the Kubernetes API responds with 403. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
 | `internal/engine/catalog` | The charts and versions Rancher's catalog offers and the install, upgrade and uninstall of a chart: the Helm repository index of a ClusterRepo through the one steve link read (`ReadIndex`, with `ReadInfo` for one version's default values and annotations: the only place the commands build a link request, apart from the completion read of the same index; neither sends a parameter that changes which versions the server lists), the version shown for a chart (the first version Rancher serves that is not a prerelease; Rancher serves them newest first and no comparer reorders them) and the deprecated versions left out, the `charts` command with its `--repo` completion, and the `app install`, `app upgrade` and `app uninstall` commands. All three mutating commands are previewed from server reads (`previewSource: serverReads`), carry no resourceVersion precondition, and read the App, the operations and (install, upgrade) the index entry again in Execute before the one POST through `engine.ActionClient`. The values of an install or an upgrade live in one type (`Values`) that prints as `<hidden>` everywhere; only the request body builder writes them, and the error answer of the action passes through its filter. |
+| `internal/engine/catalog/extension` | The rules for Rancher UI extensions that need no request, which the catalog commands and the completion sources both call: the two repositories the Rancher UI's Extensions page adds (names, URLs, branch and the labels of its checkboxes, with the rule for when a ClusterRepo is already one of them), the rule that a chart is an extension (any version has `catalog.cattle.io/ui-component: plugins`) and that the UI hides it, the checks that decide whether a version of an extension fits a server (`kube-version`, `rancher-version`, `ui-version`, `ui-extensions-version`, `ui-extensions-host` and `prime-only`, in the Rancher UI's order, each with its reason), the embedded table from a Rancher release to the extensions API version of the UI it ships (written by `scripts/extension-sources`), and how a UIPlugin pairs with its App and chart. It makes no request and reads no file; it imports only the standard library, `internal/nodesemver` and `internal/clierr`, which a test in `test/conformance` asserts. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), the project membership commands, plus the membership helpers (`ProjectOf`, `IsMember` and `MemberSelector`: the one place that knows how a namespace names its project), the backing-namespace lookup and the creator annotation that `create project` and `create resource` set. |
 | `internal/engine/projects/complete` | The projects' live completion sources over the completion connection's project lister: `ProjectSource` (the shared `--project` value: every id plus each unique display name), `ProjectIDSource` (the project kind's name for the generated verbs: ids only) and `ProjectPositionalSource` (`inspect project`'s positional). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/steve` | Rancher's steve API read as the caller (the package sends no write; its request type also builds the path of a steve action, which `engine.ActionClient` sends): one request type and getter, the collection page protocol (`ReadCollection`), the project and cluster collections, the cluster lookup every `--cluster` uses (`MatchCluster`, `ResolveCluster`: id or display name, then one GET by id) and the one-cluster read (`GetCluster`), and the `--project` lookup (`ResolveProjectFlag`: the per-cluster project collection matched by id or display name, then one GET by id; without `--cluster`, the refusal naming the clusters the project is on), the readers of the cluster and project collections and of one cluster or one project by id, which return each object as Steve returns it (the `get` of those kinds uses them when the Kubernetes API responds with 403), the readers of a collection of one Steve type and of one object of it (`TypeObjects`, `GetTypeObject`, which the `get` of the provisioning-cluster, etcd-snapshot and management-node kinds uses in the same case), and the UserAttribute reader every command that needs a user's cached groups shares (`UserAttributes`: Rancher's local-cluster proxy refuses userattributes to a caller without access to cluster local, so they are read through steve, which applies the caller's roles; a by-id 404 is read with steve's schema as no object or refused, and a collection read is complete only when a SelfSubjectAccessReview says the caller may list). |
@@ -162,6 +163,7 @@ graph TD
     resources["internal/engine/resources"]
     inspect["internal/engine/inspect"]
     catalog["internal/engine/catalog"]
+    catalogextension["internal/engine/catalog/extension"]
     projects["internal/engine/projects"]
     projectscomplete["internal/engine/projects/complete"]
     steve["internal/engine/steve"]
@@ -300,6 +302,7 @@ graph TD
 
     kindscomplete --> kinds
     kindscomplete --> completion
+    kindscomplete --> catalogextension
 
     resources --> engine
     resources --> kinds
@@ -320,6 +323,8 @@ graph TD
     catalog --> safety
     catalog --> completion
     catalog --> output
+    catalog --> catalogextension
+    catalogextension --> nodesemver
     inspect --> engine
     inspect --> kinds
     inspect --> output
