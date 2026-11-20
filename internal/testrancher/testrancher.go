@@ -249,6 +249,16 @@ type Options struct {
 	// V3TokenCreate serves POST /v3/tokens, the Norman cluster-token
 	// create.
 	V3TokenCreate bool
+	// NormanCloudCredentials serves the Norman cloud credential routes:
+	// create (POST /v3/cloudcredentials), which stores the credential as a
+	// Secret through the fallthrough, update (PUT) and delete (DELETE) of
+	// /v3/cloudCredentials/<id>. A body with no config object is refused as
+	// Rancher's store refuses it, and a Harvester kubeconfig is checked as
+	// Rancher's store checks it.
+	NormanCloudCredentials bool
+	// NormanCloudCredentialsInUse lists the ids whose delete is refused as a
+	// credential a provisioning cluster uses.
+	NormanCloudCredentialsInUse []string
 	// V3CreateStatus forces a status on the Norman v3 token create.
 	V3CreateStatus int
 	// V3CreateOmitOwner leaves userId out of the Norman v3 create response:
@@ -508,6 +518,9 @@ type Facade struct {
 	idpRequests       []IdPRequest
 	derivedCreates    int
 	dropped           bool
+
+	cloudCredentialRequests []NormanCloudCredentialRecord
+	cloudCredentialCounter  int
 }
 
 // LoginRecord is what a login request named: its provider type, and the
@@ -779,6 +792,8 @@ func (f *Facade) dispatch(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	case r.Method == http.MethodPost && r.URL.Path == normanTokensPath:
 		f.handleNormanTokensPOST(w, r)
+	case isNormanCloudCredentialRoute(r.URL.Path):
+		f.handleNormanCloudCredentials(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == authProvidersPath:
 		f.handleAuthProviders(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == loginPath:

@@ -1,0 +1,217 @@
+package cli
+
+import (
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+const portSecret = "fake-port-secret-value-0001"
+
+// sentRequest is what the test server saw of one request.
+type sentRequest struct {
+	method  string
+	path    string
+	header  http.Header
+	body    []byte
+	hasBody bool
+}
+
+// norman is a TLS test server that records each request and answers with
+// status and answer, or drops the connection when lose is set.
+type norman struct {
+	mu       sync.Mutex
+	requests []sentRequest
+	status   int
+	answer   string
+	lose     bool
+	srv      *httptest.Server
+}
+
+func newNorman(t *testing.T) *norman {
+	t.Helper()
+	n := &norman{status: http.StatusCreated, answer: `{"id":"cattle-global-data:cc-abcde"}`}
+	n.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		n.mu.Lock()
+		n.requests = append(n.requests, sentRequest{method: r.Method, path: r.URL.EscapedPath(), header: r.Header.Clone(), body: body, hasBody: len(body) > 0})
+		status, answer, lose := n.status, n.answer, n.lose
+		n.mu.Unlock()
+		if lose {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, answer)
+	}))
+	t.Cleanup(n.srv.Close)
+	return n
+}
+
+func (n *norman) seen() []sentRequest {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return append([]sentRequest(nil), n.requests...)
+}
+
+// portClient is the cloud credential client of a factory that holds a stored
+// login for the server.
+func portClient(t *testing.T, n *norman) engine.CloudCredentialClient {
+	t.Helper()
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv(config.EnvToken, "")
+	t.Setenv(config.EnvURL, "")
+	c, err := seedStoredLogin(t, n.srv, "    provenance: userSupplied\n").CloudCredentials()
+	require.NoError(t, err)
+	return c
+}
+
+func portBody() engine.CloudCredentialBody {
+	return engine.NewCloudCredentialBody(map[string]any{
+		"type":                      "cloudCredential",
+		"name":                      "prod",
+		"amazonec2credentialConfig": map[string]any{"accessKey": "AKIAFAKE", "secretKey": portSecret},
+	})
+}
+
+// TestCloudCredentialClientSendsOneRequestPerCall asserts each method sends
+// one request with the caller's bearer, the JSON headers and the User-Agent,
+// to the collection path (create) or the item path with the id escaped as one
+// segment (update and delete), a body for create and update only, and returns
+// the id of Rancher's answer.
+func TestCloudCredentialClientSendsOneRequestPerCall(t *testing.T) {
+	n := newNorman(t)
+	n.status = http.StatusOK
+	client := portClient(t, n)
+
+	n.status = http.StatusCreated
+	id, err := client.Create(t.Context(), portBody())
+	require.NoError(t, err)
+	assert.Equal(t, "cattle-global-data:cc-abcde", id)
+	n.status, n.answer = http.StatusOK, `{}`
+	require.NoError(t, client.Update(t.Context(), "cattle-global-data:cc-abcde", portBody()))
+	require.NoError(t, client.Delete(t.Context(), "a/b c"))
+
+	got := n.seen()
+	require.Len(t, got, 3)
+	for _, r := range got {
+		assert.Equal(t, "Bearer token-abc:secret", r.header.Get("Authorization"))
+		assert.Equal(t, "application/json", r.header.Get("Accept"))
+		assert.NotEmpty(t, r.header.Get("User-Agent"))
+		assert.NotContains(t, r.path, "fieldManager")
+	}
+	assert.Equal(t, http.MethodPost, got[0].method)
+	assert.Equal(t, "/v3/cloudcredentials", got[0].path)
+	assert.Equal(t, http.MethodPut, got[1].method)
+	assert.Equal(t, "/v3/cloudCredentials/cattle-global-data:cc-abcde", got[1].path)
+	assert.Equal(t, http.MethodDelete, got[2].method)
+	assert.Equal(t, "/v3/cloudCredentials/a%2Fb%20c", got[2].path)
+
+	for _, r := range got[:2] {
+		assert.Equal(t, "application/json", r.header.Get("Content-Type"))
+		var sent map[string]any
+		require.NoError(t, json.Unmarshal(r.body, &sent))
+		assert.Equal(t, "cloudCredential", sent["type"])
+		assert.Equal(t, portSecret, sent["amazonec2credentialConfig"].(map[string]any)["secretKey"])
+	}
+	assert.False(t, got[2].hasBody)
+	assert.Empty(t, got[2].header.Get("Content-Type"))
+}
+
+// TestCloudCredentialClientAnswerClasses asserts a 500, 502 and 504 are an
+// ActionOutcomeUnknown, every other non-2xx answer an ActionRefused, each with
+// an Err that holds the status and a fixed text and none of the answer's
+// text, the answer only in Body, and that one request is sent whatever the
+// answer.
+func TestCloudCredentialClientAnswerClasses(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		unknown bool
+	}{
+		{http.StatusBadRequest, false}, {http.StatusUnauthorized, false}, {http.StatusForbidden, false},
+		{http.StatusNotFound, false}, {http.StatusConflict, false}, {http.StatusUnprocessableEntity, false},
+		{http.StatusInternalServerError, true}, {http.StatusBadGateway, true}, {http.StatusGatewayTimeout, true},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			n := newNorman(t)
+			n.status = tc.status
+			n.answer = `{"type":"error","message":"echo ` + portSecret + `"}`
+			client := portClient(t, n)
+			for name, call := range map[string]func() error{
+				"create": func() error { _, err := client.Create(t.Context(), portBody()); return err },
+				"update": func() error { return client.Update(t.Context(), "cc-x", portBody()) },
+				"delete": func() error { return client.Delete(t.Context(), "cc-x") },
+			} {
+				before := len(n.seen())
+				err := call()
+				require.Error(t, err, name)
+				assert.Len(t, n.seen(), before+1, name+": one request, never retried")
+				assert.NotContains(t, err.Error(), portSecret, name)
+				if tc.unknown {
+					u, ok := errors.AsType[*engine.ActionOutcomeUnknown](err)
+					require.True(t, ok, "%s: %T", name, err)
+					assert.Contains(t, string(u.Body), portSecret, name)
+					status, ok := clierr.HTTPStatus(u.Err)
+					require.True(t, ok, name)
+					assert.Equal(t, tc.status, status, name)
+					continue
+				}
+				r, ok := errors.AsType[*engine.ActionRefused](err)
+				require.True(t, ok, "%s: %T", name, err)
+				assert.Contains(t, string(r.Body), portSecret, name)
+				status, ok := clierr.HTTPStatus(r.Err)
+				require.True(t, ok, name)
+				assert.Equal(t, tc.status, status, name)
+				assert.NotNil(t, r.Request, name)
+			}
+		})
+	}
+}
+
+// TestCloudCredentialClientLostAnswerIsUnknown asserts a connection that
+// drops after the request was written is an ActionOutcomeUnknown with a fixed
+// text and no body, and a request that cannot be sent at all is not.
+func TestCloudCredentialClientLostAnswerIsUnknown(t *testing.T) {
+	n := newNorman(t)
+	n.lose = true
+	client := portClient(t, n)
+	_, err := client.Create(t.Context(), portBody())
+	u, ok := errors.AsType[*engine.ActionOutcomeUnknown](err)
+	require.True(t, ok, "%T", err)
+	assert.Nil(t, u.Body)
+	assert.NotContains(t, err.Error(), portSecret)
+	assert.Len(t, n.seen(), 1, "never retried")
+
+	n.srv.Close()
+	_, err = client.Create(t.Context(), portBody())
+	require.Error(t, err)
+	_, unknown := errors.AsType[*engine.ActionOutcomeUnknown](err)
+	assert.False(t, unknown, "a request that never reached the server sent nothing")
+	assert.NotContains(t, err.Error(), portSecret)
+}
+
+// TestCloudCredentialClientCreateNeedsAnID asserts a 2xx answer with no id
+// is an ActionOutcomeUnknown: the credential may exist.
+func TestCloudCredentialClientCreateNeedsAnID(t *testing.T) {
+	for _, answer := range []string{`{}`, `not json`, `{"id":""}`} {
+		n := newNorman(t)
+		n.answer = answer
+		_, err := portClient(t, n).Create(t.Context(), portBody())
+		_, ok := errors.AsType[*engine.ActionOutcomeUnknown](err)
+		assert.True(t, ok, answer)
+		assert.NotContains(t, err.Error(), portSecret, answer)
+	}
+}

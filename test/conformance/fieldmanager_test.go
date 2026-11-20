@@ -96,13 +96,14 @@ type requestAllowance struct {
 // fieldManagerRequestAllowlist maps "<file>:<func>" to the matches of the
 // request rule it covers. A different number of matches fails the test.
 var fieldManagerRequestAllowlist = map[string]requestAllowance{
-	"internal/token/token.go:basicAuth":                    {1, "Rancher's /v1-public/login, not a Kubernetes API"},
-	"internal/token/oauth.go:rancherLogin":                 {1, "Rancher's /v1-public/login with an identity provider token, not the identity provider"},
-	"internal/token/revoke.go:postLogout":                  {1, "Rancher's /v1/logout, not a Kubernetes API"},
-	"internal/token/clustertoken.go:createV3ClusterToken":  {1, "a reference: the Norman /v3/tokens create, where Rancher creates the Token object itself"},
-	"cmd/rancher-credential-vault/vault.go:do":             {1, "a variable method on HashiCorp Vault's API, not a Kubernetes API"},
-	"internal/client/kube/fieldmanager.go:NewWriteRequest": {1, "the one place a Kubernetes write request is built"},
-	"internal/telemetrysend/request.go:newRequest":         {1, "the telemetry upload endpoint, not a Kubernetes API"},
+	"internal/token/token.go:basicAuth":                         {1, "Rancher's /v1-public/login, not a Kubernetes API"},
+	"internal/token/oauth.go:rancherLogin":                      {1, "Rancher's /v1-public/login with an identity provider token, not the identity provider"},
+	"internal/token/revoke.go:postLogout":                       {1, "Rancher's /v1/logout, not a Kubernetes API"},
+	"internal/token/clustertoken.go:createV3ClusterToken":       {1, "a reference: the Norman /v3/tokens create, where Rancher creates the Token object itself"},
+	"internal/cli/cloudcredclient.go:newCloudCredentialRequest": {1, "Rancher's Norman /v3/cloudcredentials, not a Kubernetes API; Norman takes no field manager"},
+	"cmd/rancher-credential-vault/vault.go:do":                  {1, "a variable method on HashiCorp Vault's API, not a Kubernetes API"},
+	"internal/client/kube/fieldmanager.go:NewWriteRequest":      {1, "the one place a Kubernetes write request is built"},
+	"internal/telemetrysend/request.go:newRequest":              {1, "the telemetry upload endpoint, not a Kubernetes API"},
 }
 
 // requestMatch is one place the request rule matched.

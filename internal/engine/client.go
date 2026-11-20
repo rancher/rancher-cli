@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"strconv"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -214,12 +216,15 @@ type ActionClientFactory interface {
 	Action() (ActionClient, error)
 }
 
-// ActionOutcomeUnknown is the error of a steve action whose request was
-// sent but whose answer did not tell whether the server ran it: the
-// connection failed or timed out after the request was written, or the
-// server answered 500, 502 or 504. Err is the transport error, or the
-// server's answer as clierr.ResponseError builds it, whose status
-// clierr.HTTPStatus reads.
+// ActionOutcomeUnknown is the error of a Rancher write sent once, a steve
+// action or a Norman request, whose request was sent but whose answer did not
+// tell whether the server ran it: the connection failed or timed out after the
+// request was written, or the server answered 500, 502 or 504. Err is the
+// transport error, or the server's answer as clierr.ResponseError builds it,
+// whose status clierr.HTTPStatus reads; the Norman client builds Err from the
+// status and a fixed text only, so it holds no server text. Body is the
+// server's answer, read up to a bound, and a classifier hides the values the
+// request carried from it before it shows any of it.
 type ActionOutcomeUnknown struct {
 	Err error
 	// Body is the body of the server's answer, read up to a bound; nil
@@ -231,13 +236,14 @@ func (e *ActionOutcomeUnknown) Error() string { return e.Err.Error() }
 
 func (e *ActionOutcomeUnknown) Unwrap() error { return e.Err }
 
-// ActionRefused is a non-2xx answer to a steve action that says the server
-// did not run it. Err is the answer as clierr's status table classifies it
-// (its code, retry advice and hint, and its status, which clierr.HTTPStatus
-// reads); its message holds the server's text as sent. Body is the
-// answer's body, read up to a bound, and Request names the server, for a
-// caller that classifies the answer again after hiding what the request
-// carried.
+// ActionRefused is a non-2xx answer to a Rancher write sent once, a steve
+// action or a Norman request, that says the server did not run it. Err is the
+// answer as clierr's status table classifies it (its code, retry advice and
+// hint, and its status, which clierr.HTTPStatus reads); for a steve action its
+// message holds the server's text as sent, and for the Norman client it holds
+// the status and a fixed text only. Body is the answer's body, read up to a
+// bound, and Request names the server, for a caller that classifies the answer
+// again after hiding what the request carried.
 type ActionRefused struct {
 	Err     *clierr.Error
 	Body    []byte
@@ -247,6 +253,67 @@ type ActionRefused struct {
 func (e *ActionRefused) Error() string { return e.Err.Error() }
 
 func (e *ActionRefused) Unwrap() error { return e.Err }
+
+// CloudCredentialClient is the one port that sends Rancher's Norman cloud
+// credential requests: Rancher serves no other API that runs its credential
+// checks. Each method sends one request and never retries, whatever the
+// answer or the transport error. An answer that says the server did not run
+// the request is an *ActionRefused, any other non-2xx answer, a 500, a 502 or
+// a 504, and an error once the request was written, is an
+// *ActionOutcomeUnknown. Both carry an Err built from the HTTP status and a
+// fixed text only: never the answer's text, which the caller reads from Body
+// and filters. An error before the request was written sent nothing.
+type CloudCredentialClient interface {
+	// Create sends a create and returns the id Rancher answered. It decodes
+	// the id from the answer and nothing else: the answer may hold decoded
+	// config values.
+	Create(ctx context.Context, body CloudCredentialBody) (id string, err error)
+	// Update sends an update of the credential id.
+	Update(ctx context.Context, id string, body CloudCredentialBody) error
+	// Delete sends a delete of the credential id.
+	Delete(ctx context.Context, id string) error
+}
+
+// CloudCredentialClientFactory hands out the cloud credential client at call
+// time.
+type CloudCredentialClientFactory interface {
+	CloudCredentials() (CloudCredentialClient, error)
+}
+
+// CloudCredentialBody is the request body of a cloud credential create or
+// update. It holds the secret values the request sends and prints as <hidden>
+// in every format; only RequestJSON writes them, and only the client that
+// sends the request calls it. The methods have value receivers, so a body
+// inside another value prints <hidden> too.
+type CloudCredentialBody struct {
+	doc map[string]any
+}
+
+// NewCloudCredentialBody holds doc, the JSON object the request sends.
+func NewCloudCredentialBody(doc map[string]any) CloudCredentialBody {
+	return CloudCredentialBody{doc: doc}
+}
+
+func (CloudCredentialBody) String() string             { return HiddenText }
+func (CloudCredentialBody) GoString() string           { return HiddenText }
+func (CloudCredentialBody) Format(f fmt.State, _ rune) { writeHiddenText(f) }
+func (CloudCredentialBody) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(HiddenText)), nil
+}
+func (CloudCredentialBody) MarshalYAML() (any, error)    { return HiddenText, nil }
+func (CloudCredentialBody) MarshalText() ([]byte, error) { return []byte(HiddenText), nil }
+
+// writeHiddenText writes <hidden> for a Format method. fmt.Formatter returns no
+// error: a failed write is the caller's writer failing, which fmt reports to
+// its own caller through the writer, and nothing is left to do here.
+func writeHiddenText(f fmt.State) {
+	if _, err := io.WriteString(f, HiddenText); err != nil {
+		return
+	}
+}
+
+// RequestJSON is the one encoding that writes the values: the request body.
+func (b CloudCredentialBody) RequestJSON() ([]byte, error) { return json.Marshal(b.doc) }
 
 // ServerBaseURLProvider exposes the canonical, resolved server base URL
 // (scheme preserved, no trailing slash) - the SAME value RootClient's

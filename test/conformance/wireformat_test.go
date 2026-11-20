@@ -51,6 +51,7 @@ type wireFormatAllowance struct {
 
 var wireFormatAllowlist = []wireFormatAllowance{
 	{"internal/cli/engine.go", wireFormatContentType, 3, "the Accept header of requests to Rancher, and the Accept and Content-Type of the steve action POST; not telemetry"},
+	{"internal/cli/cloudcredclient.go", wireFormatContentType, 2, "the Accept and Content-Type of the Norman cloud credential requests; not telemetry"},
 }
 
 // wireFormatConfig is what the search needs, so the fixtures can use their
