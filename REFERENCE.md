@@ -1747,6 +1747,15 @@ machine rollouts, and to an upgrade that is running.
   that plan, and when version management is off or cannot be read. A run whose values are
   already set succeeds and warns that nothing changes.
 - The Cluster Owner role grants `update` on the cluster.
+- Completion offers the clusters the command accepts (one list of the
+  provisioning clusters and one page of the management clusters in the Steve
+  API; a Cluster Owner with no other role types the name, and a cluster beyond
+  the first page is not offered). It follows cluster state only: it cannot see
+  an etcd snapshot restore in progress. The two concurrency flags offer `1`,
+  `2` and `3`. With the completion network opt-in on, the grace period and
+  drain timeout flags offer values for a provisioned cluster typed before them,
+  and none for an imported cluster or after `--<group>-drain=false` of the
+  same group.
 - Output: `cluster/<name> upgrade strategy set`; `data` is the written cluster.
 
 ## Installing, upgrading and uninstalling apps

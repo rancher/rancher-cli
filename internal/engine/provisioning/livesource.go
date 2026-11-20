@@ -29,6 +29,12 @@ func (clearAutoscalingCmd) LiveSource() completion.Source { return complete.Pool
 // command accepts; every other site is declined.
 func (upgradeCmd) LiveSource() completion.Source { return complete.UpgradeSource() }
 
+// LiveSource hands the surface cluster set-upgrade-strategy's own source: the
+// <cluster> positional and the grace period and drain timeout flags after it,
+// each completing only values the command accepts; every other site is
+// declined.
+func (upgradeStrategyCmd) LiveSource() completion.Source { return complete.UpgradeStrategySource() }
+
 // LiveSource returns the source that completes the <cluster> argument of the
 // command; every other site is declined.
 func (saveEtcdSnapshotCmd) LiveSource() completion.Source { return complete.SaveEtcdSnapshotSource() }

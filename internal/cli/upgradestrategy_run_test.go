@@ -164,3 +164,19 @@ func TestUpgradeStrategyEmptyValueIsRefusedByThePipeline(t *testing.T) {
 	assert.Equal(t, "--worker-concurrency is empty; pass a value or omit --worker-concurrency", refusal.Message)
 	assert.Empty(t, s.take())
 }
+
+// TestUpgradeStrategyConcurrencySuggestionsAreAccepted asserts every value the
+// concurrency flags offer is accepted by the command for a provisioned and for
+// an imported cluster.
+func TestUpgradeStrategyConcurrencySuggestionsAreAccepted(t *testing.T) {
+	for _, value := range strategyConcurrencySuggestions {
+		for _, flag := range []string{"--control-plane-concurrency", "--worker-concurrency"} {
+			saveEnv(t)
+			_, stderr, code := runBounded(t, newRoot(t), []string{"cluster", "set-upgrade-strategy", "prod", flag, value, "--dry-run", "-o", "json"})
+			assert.Zero(t, code, "provisioned %s %s: %s", flag, value, stderr)
+			strategyImportedEnv(t)
+			_, stderr, code = runBounded(t, newRoot(t), []string{"cluster", "set-upgrade-strategy", "edge", flag, value, "--dry-run", "-o", "json"})
+			assert.Zero(t, code, "imported %s %s: %s", flag, value, stderr)
+		}
+	}
+}
