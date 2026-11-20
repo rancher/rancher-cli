@@ -34,11 +34,11 @@ through the Kubernetes API and, only when that responds with 403, through the St
 `cluster save-etcd-snapshot` lists the etcd snapshots for its result the same way.
 The fourth exception is a read that goes to the Steve API first, with no Kubernetes read
 before it:
-`resources.ManagementClusterThroughSteve`, called only by `cluster upgrade` for an
-imported cluster and by `cluster save-etcd-snapshot` to refuse an imported cluster and to
-check that the cluster is ready, because a Cluster Owner can read the management Cluster by name only
+`resources.ManagementClusterThroughSteve`, called only by `cluster upgrade` and
+`cluster set-upgrade-strategy` for an imported cluster and by `cluster save-etcd-snapshot`
+to refuse an imported cluster and to check that the cluster is ready, because a Cluster Owner can read the management Cluster by name only
 through Steve; it returns the object in the Kubernetes shape, with its `resourceVersion`,
-for the update of `cluster upgrade`. Writes remain CRD-through-proxy, with one
+for the update of `cluster upgrade` and `cluster set-upgrade-strategy`. Writes remain CRD-through-proxy, with one
 exception: `engine.ActionClient`, the one port that POSTs a Steve action (a Rancher API
 action on a Rancher resource, such as `rancher app install` on a ClusterRepo), once and
 never retried.

@@ -125,8 +125,8 @@ func hostedCluster(managementCluster map[string]any) (driver, config string, ok 
 func CheckUpgradeCluster(cluster, managementCluster map[string]any, setting SettingRead) (UpgradeCluster, *clierr.Error) {
 	name := nestedString(cluster, "metadata", "name")
 	id := nestedString(cluster, "status", "clusterName")
-	if id == localCluster {
-		return UpgradeCluster{}, clierr.New(clierr.CodeValidation, "this CLI does not upgrade the local cluster")
+	if err := refuseLocal(id); err != nil {
+		return UpgradeCluster{}, err
 	}
 
 	if HasRKEConfig(cluster) {
@@ -138,23 +138,9 @@ func CheckUpgradeCluster(cluster, managementCluster map[string]any, setting Sett
 		return c, nil
 	}
 
-	if id == "" {
-		return UpgradeCluster{}, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("Rancher has not linked cluster %s to its management cluster yet; try again later", name)).WithRetryable(true)
-	}
-	if driver, config, hosted := hostedCluster(managementCluster); hosted {
-		return UpgradeCluster{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("cluster %s is a hosted %s cluster; its Kubernetes version is set in spec.%s, which this command does not change yet", name, driver, config)).
-			WithHintCommand(clierr.NewCommand("get cluster").Arg(id))
-	}
-	driver := nestedString(managementCluster, "status", "driver")
-	if driver == "" {
-		return UpgradeCluster{}, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("Rancher has not detected the distribution of cluster %s yet; try again later", name)).WithRetryable(true)
-	}
-	if driver != distroRKE2 && driver != distroK3s {
-		return UpgradeCluster{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("Rancher manages the Kubernetes version only of RKE2 and K3s clusters; cluster %s has driver %s", name, driver))
+	driver, err := checkImportedDriver(name, id, managementCluster)
+	if err != nil {
+		return UpgradeCluster{}, err
 	}
 
 	hint := versionManagementHint(id)
@@ -167,9 +153,8 @@ func CheckUpgradeCluster(cluster, managementCluster map[string]any, setting Sett
 	case value == "false":
 		return UpgradeCluster{}, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("version management is off for cluster %s: annotation %s is false", name, versionManagementAnnotation)).WithHintCommand(hint)
-	case value != "" && value != "true" && value != "system-default":
-		return UpgradeCluster{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("the annotation %s of cluster %s is %s; Rancher accepts only true, false or system-default", versionManagementAnnotation, name, value)).WithHintCommand(hint)
+	case unknownAnnotationValue(value):
+		return UpgradeCluster{}, unknownAnnotationError(name, value, hint)
 	case value == "" || value == "system-default":
 		if !setting.Read {
 			return UpgradeCluster{}, clierr.New(clierr.CodeValidation,
@@ -192,13 +177,9 @@ func CheckUpgradeCluster(cluster, managementCluster map[string]any, setting Sett
 		}
 	}
 
-	configKey := driver + "Config"
-	config := nestedMap(managementCluster, "spec", configKey)
-	configVersion := nestedString(config, "kubernetesVersion")
-	running, _ := nested(managementCluster, "status", "version")
-	if config == nil || configVersion == "" || running == nil {
-		return UpgradeCluster{}, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("cluster %s has not reported its version yet; try again later", name)).WithRetryable(true)
+	configVersion, err := checkImportedReported(name, driver, managementCluster)
+	if err != nil {
+		return UpgradeCluster{}, err
 	}
 
 	current := nestedString(managementCluster, "status", "version", "gitVersion")
@@ -214,6 +195,67 @@ func CheckUpgradeCluster(cluster, managementCluster map[string]any, setting Sett
 		return UpgradeCluster{}, err
 	}
 	return c, nil
+}
+
+// refuseLocal refuses the cluster Rancher runs in, by the id of its management
+// Cluster.
+func refuseLocal(id string) *clierr.Error {
+	if id == localCluster {
+		return clierr.New(clierr.CodeValidation, "this CLI does not upgrade the local cluster")
+	}
+	return nil
+}
+
+// checkImportedDriver is the part of the checks of an imported cluster that
+// reads its link and its driver, in this order: the link to the management
+// Cluster, a hosted cluster, an empty driver and a driver other than rke2 and
+// k3s. It returns the driver.
+func checkImportedDriver(name, id string, managementCluster map[string]any) (string, *clierr.Error) {
+	if id == "" {
+		return "", clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("Rancher has not linked cluster %s to its management cluster yet; try again later", name)).WithRetryable(true)
+	}
+	if driver, config, hosted := hostedCluster(managementCluster); hosted {
+		return "", clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("cluster %s is a hosted %s cluster; its Kubernetes version is set in spec.%s, which this command does not change yet", name, driver, config)).
+			WithHintCommand(clierr.NewCommand("get cluster").Arg(id))
+	}
+	driver := nestedString(managementCluster, "status", "driver")
+	if driver == "" {
+		return "", clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("Rancher has not detected the distribution of cluster %s yet; try again later", name)).WithRetryable(true)
+	}
+	if driver != distroRKE2 && driver != distroK3s {
+		return "", clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("Rancher manages the Kubernetes version only of RKE2 and K3s clusters; cluster %s has driver %s", name, driver))
+	}
+	return driver, nil
+}
+
+// unknownAnnotationValue reports whether a value of the version management
+// annotation is one Rancher refuses: anything but true, false, system-default
+// and empty.
+func unknownAnnotationValue(value string) bool {
+	return value != "" && value != "true" && value != "false" && value != "system-default"
+}
+
+func unknownAnnotationError(name, value string, hint clierr.Command) *clierr.Error {
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("the annotation %s of cluster %s is %s; Rancher accepts only true, false or system-default", versionManagementAnnotation, name, value)).WithHintCommand(hint)
+}
+
+// checkImportedReported refuses an imported cluster that has not reported its
+// version: no config of its distribution, an empty version in it, or no
+// status.version. It returns the version of the config.
+func checkImportedReported(name, driver string, managementCluster map[string]any) (string, *clierr.Error) {
+	config := nestedMap(managementCluster, "spec", driver+"Config")
+	configVersion := nestedString(config, "kubernetesVersion")
+	running, _ := nested(managementCluster, "status", "version")
+	if config == nil || configVersion == "" || running == nil {
+		return "", clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("cluster %s has not reported its version yet; try again later", name)).WithRetryable(true)
+	}
+	return configVersion, nil
 }
 
 // provisionedDistro is the distribution of a provisioned cluster: k3s when its

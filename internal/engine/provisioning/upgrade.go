@@ -112,7 +112,7 @@ func (c *upgradeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	client, prov, ns, name, err := fetchClusterFamilyTarget(ctx, c.clients, in)
 	if err != nil {
 		if clierr.IsNotFound(err) {
-			return safety.Effect{}, nil, noProvisioningClusterError(in.Args()[0], resolveClusterNamespace(in)).WithCause(err)
+			return safety.Effect{}, nil, noProvisioningClusterError(in.Args()[0], resolveClusterNamespace(in), "its version is set in spec.rke2Config or spec.k3sConfig of its management cluster").WithCause(err)
 		}
 		return safety.Effect{}, nil, err
 	}
@@ -232,10 +232,11 @@ func buildUpgradeUpdate(r upgradeRead, target string, again bool) (after *unstru
 
 // noProvisioningClusterError is the refusal for a cluster with no provisioning
 // Cluster in the namespace: an imported cluster whose management Cluster
-// names no Fleet workspace has none.
-func noProvisioningClusterError(name, ns string) *clierr.Error {
+// names no Fleet workspace has none. setIn says where the command's setting is
+// made on such a cluster instead.
+func noProvisioningClusterError(name, ns, setIn string) *clierr.Error {
 	return clierr.New(clierr.CodeNotFound,
-		fmt.Sprintf("cluster %s has no provisioning cluster in namespace %s; an imported cluster whose management cluster names no Fleet workspace has none, and its version is set in spec.rke2Config or spec.k3sConfig of its management cluster", name, ns)).
+		fmt.Sprintf("cluster %s has no provisioning cluster in namespace %s; an imported cluster whose management cluster names no Fleet workspace has none, and %s", name, ns, setIn)).
 		WithHintCommand(clierr.NewCommand("get provisioning-clusters").FlagValue("--namespace", ns))
 }
 

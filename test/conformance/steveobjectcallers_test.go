@@ -50,7 +50,7 @@ var steveFirstReaders = map[string]steveFirstReader{
 			"internal/engine/provisioning/upgrade.go",
 			"internal/engine/provisioning/day2ops.go",
 		},
-		reason: "cluster upgrade of an imported cluster, and cluster save-etcd-snapshot to refuse an imported cluster and to check that the cluster is ready: a Cluster Owner can read the management Cluster by name only through Steve, and the update of cluster upgrade sends the Kubernetes shape of it",
+		reason: "cluster upgrade and cluster set-upgrade-strategy of an imported cluster, and cluster save-etcd-snapshot to refuse an imported cluster and to check that the cluster is ready: a Cluster Owner can read the management Cluster by name only through Steve, and the update of cluster upgrade and of cluster set-upgrade-strategy sends the Kubernetes shape of it",
 	},
 }
 

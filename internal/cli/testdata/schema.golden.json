@@ -1319,6 +1319,105 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
+      "desc": "Sets the upgrade strategy of a provisioned cluster (spec.rkeConfig.upgradeStrategy of its provisioning cluster) or of an imported RKE2 or K3s cluster (the rke2upgradeStrategy or k3supgradeStrategy field of spec.rke2Config or spec.k3sConfig of its management cluster): how many control plane and worker nodes Rancher upgrades at a time and whether it drains them first. A provisioned cluster takes every flag. An imported cluster takes the two concurrency flags, whole numbers of 1 or more, and --control-plane-drain and --worker-drain: the upgrade plan of Rancher's system-upgrade-controller has no other drain option. When the command turns drain on for a provisioned cluster, it also writes the Rancher UI's value for each drain option the cluster does not store yet (delete emptyDir data true, disable eviction false, force false, grace period -1, ignore DaemonSets true, skip wait for delete timeout 0, timeout 120 seconds). The command waits for nothing: the strategy applies to the next upgrade and to machine rollouts, and to an upgrade that is running. A provisioned cluster needs --yes with --apply; an imported cluster needs --apply only. The local cluster and hosted clusters are refused.",
+      "destructive": "dependsOnInput",
+      "examples": [
+        "rancher cluster set-upgrade-strategy my-cluster --control-plane-concurrency 1 --worker-concurrency 10% --dry-run",
+        "rancher cluster set-upgrade-strategy my-cluster --worker-drain --worker-grace-period 60 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "`count` of control plane nodes upgraded at a time: a number or a percentage such as 10% for a provisioned cluster, a whole number of 1 or more for an imported cluster",
+          "name": "control-plane-concurrency",
+          "type": "string"
+        },
+        {
+          "desc": "drain control plane nodes before they are upgraded (--control-plane-drain=false turns it off)",
+          "name": "control-plane-drain",
+          "type": "bool"
+        },
+        {
+          "desc": "drain control plane nodes with force (provisioned cluster only)",
+          "name": "control-plane-drain-force",
+          "type": "bool"
+        },
+        {
+          "desc": "delete the data of pods that use an emptyDir volume when draining control plane nodes: kubectl --delete-emptydir-data, Rancher field deleteEmptyDirData (provisioned cluster only)",
+          "name": "control-plane-delete-emptydir",
+          "type": "bool"
+        },
+        {
+          "desc": "`seconds` each pod gets to stop when draining control plane nodes: 1 or more, or -1 for the pod's own (provisioned cluster only)",
+          "name": "control-plane-grace-period",
+          "type": "string"
+        },
+        {
+          "desc": "longest `duration` of a drain of control plane nodes, whole seconds of 1s or more, e.g. 5m (provisioned cluster only)",
+          "name": "control-plane-drain-timeout",
+          "type": "string"
+        },
+        {
+          "desc": "`count` of worker nodes upgraded at a time: a number or a percentage such as 10% for a provisioned cluster, a whole number of 1 or more for an imported cluster",
+          "name": "worker-concurrency",
+          "type": "string"
+        },
+        {
+          "desc": "drain worker nodes before they are upgraded (--worker-drain=false turns it off)",
+          "name": "worker-drain",
+          "type": "bool"
+        },
+        {
+          "desc": "drain worker nodes with force (provisioned cluster only)",
+          "name": "worker-drain-force",
+          "type": "bool"
+        },
+        {
+          "desc": "delete the data of pods that use an emptyDir volume when draining worker nodes: kubectl --delete-emptydir-data, Rancher field deleteEmptyDirData (provisioned cluster only)",
+          "name": "worker-delete-emptydir",
+          "type": "bool"
+        },
+        {
+          "desc": "`seconds` each pod gets to stop when draining worker nodes: 1 or more, or -1 for the pod's own (provisioned cluster only)",
+          "name": "worker-grace-period",
+          "type": "string"
+        },
+        {
+          "desc": "longest `duration` of a drain of worker nodes, whole seconds of 1s or more, e.g. 5m (provisioned cluster only)",
+          "name": "worker-drain-timeout",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
+          "name": "namespace",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "cluster",
+      "name": "cluster set-upgrade-strategy",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Set how Rancher upgrades the nodes of an RKE2 or K3s cluster"
+    },
+    {
+      "args": [
+        {
+          "desc": "provisioning cluster `name`",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
       "desc": "Sets the Kubernetes version of a provisioned cluster (spec.kubernetesVersion of its provisioning cluster) or of an imported RKE2 or K3s cluster (spec.rke2Config or spec.k3sConfig of its management cluster), then waits until Rancher reports the upgrade done. It accepts the versions the Rancher UI offers: a release of the cluster's own distribution that the server lists and that is not lower than the current version. The preview names the newest successful etcd snapshot, because the upgrade cannot be reversed with this command: to return to an earlier version, restore an etcd snapshot of type Kubernetes version and etcd. Rancher runs the upgrade with its own controllers. Running the command again with the same version while the upgrade is not finished changes nothing and waits. --wait=false returns once the server accepts the request. The local cluster, hosted clusters and imported clusters with version management off are refused.",
       "destructive": "true",
       "examples": [
@@ -14189,9 +14288,10 @@
         "cluster pause-autoscaling",
         "cluster resume-autoscaling",
         "cluster upgrade",
-        "cluster save-etcd-snapshot"
+        "cluster save-etcd-snapshot",
+        "cluster set-upgrade-strategy"
       ],
-      "desc": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster or take an etcd snapshot; to create or delete a provisioning cluster use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
+      "desc": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy or take an etcd snapshot; to create or delete a provisioning cluster use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
       "name": "cluster"
     },
     {
