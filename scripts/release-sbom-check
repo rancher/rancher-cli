@@ -1,0 +1,93 @@
+#!/bin/bash
+# usage: release-sbom-check <dist dir> <sbom dir>
+#
+# Check that the SBOMs in <sbom dir> describe the binaries in <dist dir>: for
+# each binary (a rancher-* file that is not a .json file) the SBOM
+# <binary>.spdx.json must record the same SHA-256 that SHA256SUMS in <dist dir>
+# lists for the binary. The SBOMs come from another job than the binaries
+# (scripts/release-build copies them in after this check). This check shows
+# that each SBOM describes the bytes that are attested and released. It computes
+# no digest of its own; the digests in SHA256SUMS come from the build.
+#
+# Each problem is one line on stderr; any problem makes the exit status 1.
+# Needs jq and awk, and runs with bash 3.2 and BSD tools.
+set -uo pipefail
+
+[ "$#" -eq 2 ] || { echo "usage: release-sbom-check <dist dir> <sbom dir>" >&2; exit 2; }
+dist="$1"
+sbom="$2"
+
+# Where Syft records the SHA-256 of the binary it scanned: the root package,
+# named like the file, and the entry for the file. release-sbom and
+# release-assets-check read the same values with the same filter.
+# shellcheck disable=SC2016 # $b is a jq variable, not a shell expansion
+sha256_filter='(.packages[]? | select(.name == $b) | .checksums[]? | select(.algorithm == "SHA256") | .checksumValue // ""), (.files[]? | select(.fileName == $b) | .checksums[]? | select(.algorithm == "SHA256") | .checksumValue // "")'
+
+command -v jq >/dev/null 2>&1 || { echo "error: jq is not installed; release-sbom-check needs it" >&2; exit 1; }
+[ -d "$dist" ] || { echo "error: '$dist' is not a directory" >&2; exit 1; }
+[ -d "$sbom" ] || { echo "error: '$sbom' is not a directory" >&2; exit 1; }
+[ -f "$dist/SHA256SUMS" ] || { echo "error: '$dist' has no SHA256SUMS" >&2; exit 1; }
+
+status=0
+problem() {
+  echo "error: $*" >&2
+  status=1
+}
+
+is_binary() {
+  case "$1" in
+    *.json) return 1 ;;
+    rancher-*) return 0 ;;
+  esac
+  return 1
+}
+
+binaries=0
+for f in "$dist"/rancher-*; do
+  [ -f "$f" ] || continue
+  b="${f##*/}"
+  is_binary "$b" || continue
+  binaries=$((binaries + 1))
+  doc="$sbom/$b.spdx.json"
+  if [ ! -f "$doc" ]; then
+    problem "no SBOM $b.spdx.json for the binary $b"
+    continue
+  fi
+  recorded="$(jq -c --arg b "$b" "[$sha256_filter]" "$doc" 2>/dev/null)" || {
+    problem "$b.spdx.json is not a JSON document"
+    continue
+  }
+  if [ "$(jq 'length' <<<"$recorded")" -eq 0 ]; then
+    problem "$b.spdx.json records no SHA-256 for $b"
+    continue
+  fi
+  if ! jq -e 'all(.[]; . != "")' <<<"$recorded" >/dev/null; then
+    problem "$b.spdx.json records an empty SHA-256 for $b"
+    continue
+  fi
+  lines="$(awk -v name="$b" '$2 == name { n++ } END { print n + 0 }' "$dist/SHA256SUMS" 2>/dev/null)"
+  if [ "${lines:-0}" -eq 0 ]; then
+    problem "SHA256SUMS has no line for the binary $b"
+    continue
+  fi
+  if [ "$lines" -gt 1 ]; then
+    problem "SHA256SUMS has $lines lines for the binary $b"
+    continue
+  fi
+  want="$(awk -v name="$b" '$2 == name { print $1 }' "$dist/SHA256SUMS")"
+  if ! jq -e --arg d "$want" 'all(.[]; . == $d)' <<<"$recorded" >/dev/null; then
+    problem "$b.spdx.json records the SHA-256 $recorded for $b; SHA256SUMS lists $want"
+  fi
+done
+[ "$binaries" -gt 0 ] || problem "'$dist' holds no binary (rancher-* other than .json files)"
+
+for f in "$sbom"/* "$sbom"/.[!.]*; do
+  [ -e "$f" ] || [ -L "$f" ] || continue
+  n="${f##*/}"
+  stem="${n%.spdx.json}"
+  if [ "$stem" = "$n" ] || [ ! -f "$dist/$stem" ] || ! is_binary "$stem"; then
+    problem "'$n' in the SBOM directory does not match any binary in '$dist'"
+  fi
+done
+
+exit "$status"

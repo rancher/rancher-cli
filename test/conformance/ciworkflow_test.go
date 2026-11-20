@@ -583,6 +583,7 @@ func makeRunsRacePass(body string) bool {
 // pass.
 var variableCommandAllowlist = map[string]string{
 	`"$(go env GOPATH)/bin/golangci-lint" version`: "runs the linter binary the action installed",
+	`"$RUNNER_TEMP/syft/syft" version`:             "runs the Syft executable the release workflow's sbom job extracted from its checked archive; that job runs no test",
 }
 
 // commandWrappers are the words that run the next word as a command.

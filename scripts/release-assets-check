@@ -1,0 +1,219 @@
+#!/bin/bash
+# usage: release-assets-check <dir> <tag>
+#
+# Check the release assets of <tag> in <dir>, from files only (no network):
+#   - the files are exactly the binaries, an SBOM and the Sigstore bundle of
+#     its attestation for each binary, rancher-schema.json, install.sh,
+#     install.ps1, SHA256SUMS and provenance.sigstore.json;
+#   - SHA256SUMS lists every file except itself, the SBOMs and the Sigstore
+#     bundles, each once, with the right digest;
+#   - each SBOM is SPDX 2.3, has the document namespace of the tag and the
+#     asset, and records the SHA-256 of its binary;
+#   - the build provenance bundle holds one in-toto statement of predicate type
+#     https://slsa.dev/provenance/v1 whose subjects are the binaries, the SBOMs,
+#     rancher-schema.json and the installers, with their digests;
+#   - the bundle of each SBOM attestation holds one in-toto statement of
+#     predicate type https://spdx.dev/Document/v2.3 with one subject, the
+#     binary and its digest, and the SBOM as its predicate.
+# It does not verify signatures or certificates: gh attestation verify and
+# cosign do that. It takes the binaries from the files in <dir>. A binary that
+# is missing from the whole directory is not noticed.
+#
+# Each problem is one line on stderr, any problem makes the exit status 1, and
+# success prints one line. Needs jq. Runs with bash 3.2 and BSD tools, and
+# uses shasum when sha256sum is absent.
+set -uo pipefail
+export LC_ALL=C
+
+[ "$#" -eq 2 ] || { echo "usage: release-assets-check <dir> <tag>" >&2; exit 2; }
+dir="$1"
+tag="$2"
+
+# Where Syft records the SHA-256 of the binary it scanned: the root package,
+# named like the file, and the entry for the file. release-sbom and
+# release-sbom-check read the same values with the same filter.
+# shellcheck disable=SC2016 # $b is a jq variable, not a shell expansion
+sha256_filter='(.packages[]? | select(.name == $b) | .checksums[]? | select(.algorithm == "SHA256") | .checksumValue // ""), (.files[]? | select(.fileName == $b) | .checksums[]? | select(.algorithm == "SHA256") | .checksumValue // "")'
+
+command -v jq >/dev/null 2>&1 || { echo "error: jq is not installed; release-assets-check needs it (brew install jq)" >&2; exit 1; }
+[ -n "$tag" ] || { echo "error: the tag is empty" >&2; exit 2; }
+[ -d "$dir" ] || { echo "error: '$dir' is not a directory" >&2; exit 1; }
+
+# The SPDX version Syft is asked to write; it is the version in the predicate
+# type of the SBOM attestations.
+spdx_version=2.3
+
+status=0
+problem() {
+  echo "error: $*" >&2
+  status=1
+}
+
+digest_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -- "$1" | awk '{ print $1 }'
+  else
+    shasum -a 256 -- "$1" | awk '{ print $1 }'
+  fi
+}
+
+is_binary() {
+  case "$1" in
+    *.json) return 1 ;;
+    rancher-*) return 0 ;;
+  esac
+  return 1
+}
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+find "$dir" -mindepth 1 -maxdepth 1 -print | awk -F/ '{ print $NF }' | sort > "$work/files"
+: > "$work/binaries"
+while IFS= read -r n; do
+  if [ -f "$dir/$n" ] && is_binary "$n"; then
+    echo "$n" >> "$work/binaries"
+  fi
+done < "$work/files"
+nbin="$(wc -l < "$work/binaries" | tr -d ' ')"
+[ "$nbin" -gt 0 ] || problem "'$dir' holds no binary (rancher-* other than .json files)"
+
+{
+  echo SHA256SUMS
+  echo install.sh
+  echo install.ps1
+  echo rancher-schema.json
+  echo provenance.sigstore.json
+  while IFS= read -r b; do
+    echo "$b"
+    echo "$b.spdx.json"
+    echo "$b.sbom.sigstore.json"
+  done < "$work/binaries"
+} | sort > "$work/expected"
+
+while IFS= read -r n; do
+  problem "unexpected file '$n' in '$dir'"
+done < <(comm -23 "$work/files" "$work/expected")
+while IFS= read -r n; do
+  case "$n" in
+    *.spdx.json) problem "missing SBOM $n" ;;
+    *.sbom.sigstore.json) problem "missing Sigstore bundle $n of an SBOM attestation" ;;
+    provenance.sigstore.json) problem "missing Sigstore bundle $n of the build provenance" ;;
+    *) problem "missing file $n" ;;
+  esac
+done < <(comm -13 "$work/files" "$work/expected")
+
+# SHA256SUMS: every file except itself, the SBOMs and the Sigstore bundles.
+if [ -f "$dir/SHA256SUMS" ]; then
+  : > "$work/sumsexpected"
+  while IFS= read -r n; do
+    case "$n" in
+      SHA256SUMS | *.spdx.json | *.sigstore.json) ;;
+      *) echo "$n" >> "$work/sumsexpected" ;;
+    esac
+  done < "$work/files"
+  sort -o "$work/sumsexpected" "$work/sumsexpected"
+  : > "$work/listed"
+  line=0
+  while read -r h n extra; do
+    line=$((line + 1))
+    if [ -z "$h" ] || [ -z "$n" ] || [ -n "$extra" ]; then
+      problem "SHA256SUMS line $line is not '<sha256>  <name>'"
+      continue
+    fi
+    echo "$n" >> "$work/listed"
+    case "$n" in
+      *.spdx.json) problem "SHA256SUMS lists the SBOM $n; SBOMs are not listed" ;;
+      *.sigstore.json) problem "SHA256SUMS lists the Sigstore bundle $n; Sigstore bundles are not listed" ;;
+      *)
+        if ! grep -Fxq -- "$n" "$work/sumsexpected"; then
+          problem "SHA256SUMS lists $n, which is not a release asset"
+        elif [ -f "$dir/$n" ] && [ "$(digest_of "$dir/$n")" != "$h" ]; then
+          problem "SHA256SUMS has the wrong SHA-256 for $n"
+        fi
+        ;;
+    esac
+  done < "$dir/SHA256SUMS"
+  sort -o "$work/listed" "$work/listed"
+  while IFS= read -r n; do
+    problem "SHA256SUMS lists $n more than once"
+  done < <(uniq -d "$work/listed")
+  while IFS= read -r n; do
+    problem "SHA256SUMS does not list $n"
+  done < <(comm -13 "$work/listed" "$work/sumsexpected")
+fi
+
+# statement_of <bundle file> <output file> writes the in-toto statement of the
+# DSSE envelope of a Sigstore bundle, and reports why it cannot.
+statement_of() {
+  local name="${1##*/}" values
+  values="$(jq -s 'length' "$1" 2>/dev/null)" || { problem "$name is not JSON"; return 1; }
+  [ "$values" -eq 1 ] || { problem "$name holds $values JSON values; it must hold one Sigstore bundle"; return 1; }
+  jq -c '.dsseEnvelope.payload | @base64d | fromjson' "$1" > "$2" 2>/dev/null ||
+    { problem "$name is not a Sigstore bundle with an in-toto statement in its DSSE envelope"; return 1; }
+}
+
+while IFS= read -r b; do
+  doc="$dir/$b.spdx.json"
+  if [ -f "$doc" ]; then
+    if ! jq -e . "$doc" >/dev/null 2>&1; then
+      problem "$b.spdx.json is not a JSON document"
+    else
+      version="$(jq -r '.spdxVersion // ""' "$doc")"
+      [ "$version" = "SPDX-$spdx_version" ] || problem "$b.spdx.json has spdxVersion '$version'; it must be SPDX-$spdx_version"
+      namespace="$(jq -r '.documentNamespace // ""' "$doc")"
+      wantns="https://github.com/rancher/rancher-cli/releases/download/$tag/$b.spdx.json"
+      [ "$namespace" = "$wantns" ] || problem "$b.spdx.json has documentNamespace '$namespace'; it must be '$wantns'"
+      recorded="$(jq -c --arg b "$b" "[$sha256_filter]" "$doc")"
+      want="$(digest_of "$dir/$b")"
+      if [ "$(jq 'length' <<<"$recorded")" -eq 0 ]; then
+        problem "$b.spdx.json records no SHA-256 for $b"
+      elif ! jq -e --arg d "$want" 'all(.[]; . == $d)' <<<"$recorded" >/dev/null; then
+        problem "$b.spdx.json records the SHA-256 $recorded for $b; the binary has $want"
+      fi
+    fi
+  fi
+
+  bundle="$dir/$b.sbom.sigstore.json"
+  if [ -f "$bundle" ] && statement_of "$bundle" "$work/stmt.json"; then
+    ptype="$(jq -r '.predicateType // ""' "$work/stmt.json")"
+    [ "$ptype" = "https://spdx.dev/Document/v$spdx_version" ] || problem "$b.sbom.sigstore.json has predicate type '$ptype'; it must be https://spdx.dev/Document/v$spdx_version"
+    want="$(digest_of "$dir/$b")"
+    subjects="$(jq -r '[.subject[]? | "\(.name) \(.digest.sha256 // "")"] | join(",")' "$work/stmt.json")"
+    [ "$subjects" = "$b $want" ] || problem "$b.sbom.sigstore.json has the subjects '$subjects'; it must be exactly '$b $want'"
+    if [ -f "$doc" ] && jq -e . "$doc" >/dev/null 2>&1; then
+      jq -S '.predicate' "$work/stmt.json" > "$work/predicate.json"
+      jq -S . "$doc" > "$work/sbom.json"
+      cmp -s "$work/predicate.json" "$work/sbom.json" || problem "the predicate of $b.sbom.sigstore.json differs from $b.spdx.json"
+    fi
+  fi
+done < "$work/binaries"
+
+# The subjects of the build provenance are what the glob of its attestation
+# step matched: every rancher-* file except the Sigstore bundles (written
+# after the attestation), install.sh and install.ps1.
+bundle="$dir/provenance.sigstore.json"
+if [ -f "$bundle" ] && statement_of "$bundle" "$work/stmt.json"; then
+  ptype="$(jq -r '.predicateType // ""' "$work/stmt.json")"
+  [ "$ptype" = "https://slsa.dev/provenance/v1" ] || problem "provenance.sigstore.json has predicate type '$ptype'; it must be https://slsa.dev/provenance/v1"
+  jq -r '.subject[]? | "\(.name) \(.digest.sha256 // "")"' "$work/stmt.json" | sort > "$work/got"
+  : > "$work/want"
+  while IFS= read -r n; do
+    case "$n" in
+      *.sigstore.json) continue ;;
+      rancher-* | install.sh | install.ps1) [ -f "$dir/$n" ] && echo "$n $(digest_of "$dir/$n")" >> "$work/want" ;;
+    esac
+  done < "$work/files"
+  sort -o "$work/want" "$work/want"
+  while IFS= read -r s; do
+    problem "provenance.sigstore.json has no subject '$s'"
+  done < <(comm -13 "$work/got" "$work/want")
+  while IFS= read -r s; do
+    problem "provenance.sigstore.json has the subject '$s', which matches no release asset by name and digest"
+  done < <(comm -23 "$work/got" "$work/want")
+fi
+
+if [ "$status" -eq 0 ]; then
+  echo "release-assets-check: $dir holds the assets of $tag ($nbin binaries, each with an SBOM and its Sigstore bundle)"
+fi
+exit "$status"

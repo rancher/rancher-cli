@@ -1,0 +1,77 @@
+#!/bin/bash
+# Write an SPDX 2.3 SBOM for each binary of the release <tag> into sbom/, from
+# the binaries scripts/release-build left in dist/. Syft (the SYFT variable
+# names its executable, as an absolute path) reads the Go module data in each
+# binary.
+#
+# release.yaml runs this in a job that has no write permissions, because Syft is a
+# third-party download. The release builds are made in other jobs, which
+# take the SBOMs from this job's artifact and check each one against the
+# binary they built (scripts/release-sbom-check).
+#
+# Syft writes the time of the run and a random document namespace into every
+# SBOM. Both are replaced, so that the same commit gives the same bytes:
+#   - creationInfo.created is the time of the commit.
+#   - documentNamespace is the download URL of the SBOM in the release, which
+#     is unique per tag and per asset, as SPDX requires.
+# Syft runs in dist/ with the file's relative name, so that no path of the
+# runner is recorded as the name of the file.
+#
+# Needs jq, git and a Syft that can write SPDX 2.3 JSON.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export LC_ALL=C
+
+# Where Syft records the SHA-256 of the binary it scanned: the root package,
+# named like the file, and the entry for the file. release-sbom-check and
+# release-assets-check read the same values with the same filter.
+# shellcheck disable=SC2016 # $b is a jq variable, not a shell expansion
+sha256_filter='(.packages[]? | select(.name == $b) | .checksums[]? | select(.algorithm == "SHA256") | .checksumValue // ""), (.files[]? | select(.fileName == $b) | .checksums[]? | select(.algorithm == "SHA256") | .checksumValue // "")'
+
+[ "$#" -eq 1 ] || { echo "usage: release-sbom <tag>" >&2; exit 2; }
+TAG="$1"
+./scripts/check-release-tag "$TAG"
+
+command -v jq >/dev/null 2>&1 || { echo "error: jq is not installed; release-sbom needs it" >&2; exit 1; }
+case "${SYFT:-}" in
+  /*) ;;
+  *) echo "error: SYFT must be the absolute path of the syft executable, got '${SYFT:-}'" >&2; exit 1 ;;
+esac
+[ -x "$SYFT" ] || { echo "error: SYFT '$SYFT' is not an executable file" >&2; exit 1; }
+[ -d dist ] || { echo "error: dist/ does not exist; run scripts/release-build first" >&2; exit 1; }
+
+digest_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -- "$1" | awk '{ print $1 }'
+  else
+    shasum -a 256 -- "$1" | awk '{ print $1 }'
+  fi
+}
+
+commit_time="$(git log -1 --format=%ct)"
+created="$(jq -rn --argjson t "$commit_time" '$t | todate')"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+rm -rf sbom
+mkdir sbom
+count=0
+for f in dist/rancher-*; do
+  case "$f" in
+    *.json) continue ;;
+  esac
+  [ -f "$f" ] || continue
+  b="${f#dist/}"
+  raw="$work/$b.raw.json"
+  (cd dist && SYFT_CHECK_FOR_APP_UPDATE=false SOURCE_DATE_EPOCH="$commit_time" "$SYFT" scan "file:$b" -o "spdx-json@2.3=$raw" --source-name "$b" --source-version "$TAG" -q)
+  jq -e '(.creationInfo.created | type == "string") and (.documentNamespace | type == "string")' "$raw" >/dev/null ||
+    { echo "error: the SBOM of $b has no creationInfo.created or no documentNamespace" >&2; exit 1; }
+  recorded="$(jq -c --arg b "$b" "[$sha256_filter]" "$raw")"
+  want="$(digest_of "$f")"
+  jq -e --arg d "$want" 'length > 0 and all(.[]; . == $d)' <<<"$recorded" >/dev/null ||
+    { echo "error: the SBOM of $b does not record the SHA-256 $want of the binary; it records $recorded" >&2; exit 1; }
+  jq -c --arg created "$created" --arg ns "https://github.com/rancher/rancher-cli/releases/download/$TAG/$b.spdx.json" \
+    '.creationInfo.created = $created | .documentNamespace = $ns' "$raw" > "sbom/$b.spdx.json"
+  count=$((count + 1))
+done
+[ "$count" -gt 0 ] || { echo "error: dist/ holds no binary (rancher-* other than .json files)" >&2; exit 1; }

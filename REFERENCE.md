@@ -482,9 +482,43 @@ from the environment when one is set.
 
    Use the tag you downloaded (for example `v0.1.0-beta.1`).
 
-   The attestations cover the binaries, `rancher-schema.json`, `install.sh` and
-   `install.ps1`; `SHA256SUMS` has none; it protects against a damaged
-   download only.
+   The attestations cover the binaries, their software bill of materials
+   (SBOM) files, `rancher-schema.json`, `install.sh` and `install.ps1`.
+   `SHA256SUMS` has no attestation and does not list the SBOMs or the Sigstore
+   bundles. It protects only against a damaged download.
+
+   Each binary also has an SPDX 2.3 SBOM, `<binary>.spdx.json` (for example
+   `rancher-linux-amd64.spdx.json`), which Syft writes from the Go modules
+   built into the binary. Its digest is in the build provenance and in its own
+   attestation. To verify that the release workflow (`release.yaml`) attested
+   an SBOM for a binary:
+
+   ```
+   gh attestation verify rancher-linux-amd64 --repo rancher/rancher-cli \
+     --cert-identity https://github.com/rancher/rancher-cli/.github/workflows/release.yaml@refs/tags/<tag> \
+     --source-ref refs/tags/<tag> \
+     --predicate-type https://spdx.dev/Document/v2.3
+   ```
+
+   To verify without a GitHub login, also download the Sigstore bundle files.
+   Each holds one attestation and its signature: `provenance.sigstore.json` for
+   the build provenance and `<binary>.sbom.sigstore.json` for the SBOM of each
+   binary. With `cosign` (flags as of cosign v3.1.4):
+
+   ```
+   cosign verify-blob-attestation \
+     --bundle rancher-linux-amd64.sbom.sigstore.json \
+     --type https://spdx.dev/Document/v2.3 \
+     --certificate-identity https://github.com/rancher/rancher-cli/.github/workflows/release.yaml@refs/tags/<tag> \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+     rancher-linux-amd64
+   ```
+
+   For the build provenance use `--bundle provenance.sigstore.json` and
+   `--type https://slsa.dev/provenance/v1`. That bundle names every file the
+   provenance covers; the last argument can be any of them. Give the whole URL
+   as the type. The short names `spdx` and `spdxjson` stand for a type without a
+   version, and the type of these SBOM attestations has one (`v2.3`).
 4. Rename the two downloads to `rancher` and `rancher-credential-vault`
    (`rancher.exe` and `rancher-credential-vault.exe` on Windows), make both
    binaries runnable (`chmod +x` on Linux and macOS) and put them in one
@@ -537,7 +571,9 @@ If the installer cannot be used, install by hand:
 4. Optionally verify build provenance for both:
    `gh attestation verify rancher.exe --repo rancher/rancher-cli --cert-identity https://github.com/rancher/rancher-cli/.github/workflows/release.yaml@refs/tags/<tag> --source-ref refs/tags/<tag>`
    with the tag you downloaded (for example `v0.1.0-beta.1`), then the same
-   command with `rancher-credential-vault.exe`.
+   command with `rancher-credential-vault.exe`. The SBOMs and the Sigstore
+   bundles, and the commands that verify them, are in
+   [Manual download & verification](#manual-download--verification).
 5. Only after both binaries verify, place them in a directory on `PATH`.
 
 ##### Notepad on Windows 11

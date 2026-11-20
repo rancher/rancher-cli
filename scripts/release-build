@@ -14,14 +14,23 @@
 #     shell that expands the glob.
 #   - rm -rf dist: a leftover file would get into SHA256SUMS.
 #
+# With a second argument, the directory of the SBOMs that scripts/release-sbom
+# wrote for these binaries, the script checks them against the build and
+# copies them into dist/. SHA256SUMS does not list them: each SBOM is attested,
+# and a line for it would make the comparison with the rehearsal depend on the
+# output of Syft. The SBOMs are made in another job (it has no write
+# permissions, and Syft is a third-party download), so this check compares each
+# SBOM with the SHA-256 of the binary built here before any attestation is made.
+#
 # Needs a Linux host to run the schema step, and sha256sum.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export LC_ALL=C
 export GOFLAGS=-buildvcs=false
 
-[ "$#" -eq 1 ] || { echo "usage: release-build <tag>" >&2; exit 2; }
+[ "$#" -ge 1 ] && [ "$#" -le 2 ] || { echo "usage: release-build <tag> [<sbom dir>]" >&2; exit 2; }
 TAG="$1"
+sbom_dir="${2:-}"
 ./scripts/check-release-tag "$TAG"
 
 rm -rf dist
@@ -48,3 +57,13 @@ cp install.sh install.ps1 dist/
 RANCHER_CLI_CONFIG_DIR="$(mktemp -d)" RANCHER_CLI_CREDENTIAL_STORE=file \
   dist/rancher-linux-amd64 schema --all -o json > dist/rancher-schema.json
 (cd dist && sha256sum -- * > SHA256SUMS)
+if [ -n "$sbom_dir" ]; then
+  ./scripts/release-sbom-check dist "$sbom_dir"
+  for f in dist/rancher-*; do
+    case "$f" in
+      *.json) continue ;;
+    esac
+    b="${f#dist/}"
+    cp -- "$sbom_dir/$b.spdx.json" dist/
+  done
+fi

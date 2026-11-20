@@ -97,6 +97,8 @@ var cacheUsesAllowlist = map[string]string{
 	"actions/cache":                   "only on an envtest directory: envtest assets are not a Go build cache",
 	"actions/upload-artifact":         "uploads files; holds no cache",
 	"actions/attest-build-provenance": "builds an attestation; holds no cache step",
+	"actions/attest":                  "builds an attestation; holds no cache step",
+	"actions/download-artifact":       "downloads files; holds no cache",
 	"zizmorcore/zizmor-action":        "runs zizmor; holds no cache step",
 	"rancher/renovate-config/.github/workflows/renovate-vault.yml": "a reusable workflow outside this repository that restores and saves its own renovate-cache entries, on schedule and dispatch",
 	"$/.github/actions/setup-tools":                                "installs tools; holds no cache step",
@@ -116,6 +118,8 @@ var cacheUsesPins = map[string]string{
 	"actions/cache/save":              "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
 	"actions/upload-artifact":         "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
 	"actions/attest-build-provenance": "4d101475d8b20a2381f78447822ac1eab6504dd8",
+	"actions/attest":                  "1e69f48acb82d1966a394da916b4c1698aa569d6",
+	"actions/download-artifact":       "9000827ccba6bdab643e8b6fd33ac0654aef8333",
 	"zizmorcore/zizmor-action":        "45d7276c9ca790aabd705e31ca99c6185c3e76dd",
 	"rancher/renovate-config/.github/workflows/renovate-vault.yml": "ef4064a46018501f0695353e698d049c6d6f4277",
 }

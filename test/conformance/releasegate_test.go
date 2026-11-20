@@ -42,6 +42,7 @@ type gateJob struct {
 }
 
 type gateStep struct {
+	ID              string    `yaml:"id"`
 	Name            string    `yaml:"name"`
 	Uses            string    `yaml:"uses"`
 	Run             string    `yaml:"run"`
@@ -96,15 +97,15 @@ var releaseJobConditions = map[string]string{
 }
 
 // releaseJobNames are the jobs of the release workflow and no others.
-var releaseJobNames = []string{"publish", "rehearse", "validate", "zizmor"}
+var releaseJobNames = []string{"publish", "rehearse", "sbom", "validate", "zizmor"}
 
 // releaseGateProblems returns what is wrong with the job graph of the
-// release workflow: the jobs are exactly zizmor, validate, rehearse and
+// release workflow: the jobs are exactly zizmor, validate, sbom, rehearse and
 // publish; the zizmor job calls the zizmor workflow of this repository with
 // nothing around the call, every other job waits for it directly or through
-// another job, validate waits for it, rehearse and publish wait for
-// validate, and only rehearse (a manual run) and publish (a tag push) have a
-// condition, each exactly its own.
+// another job, validate waits for it, sbom waits for validate, rehearse and
+// publish wait for validate and sbom, and only rehearse (a manual run) and
+// publish (a tag push) have a condition, each exactly its own.
 func releaseGateProblems(wf gateWorkflow) []string {
 	var out []string
 	zizmor, ok := wf.Jobs["zizmor"]
@@ -150,9 +151,14 @@ func releaseGateProblems(wf gateWorkflow) []string {
 	if !slices.Contains(wf.Jobs["validate"].needsNames(), "zizmor") {
 		out = append(out, "job validate does not name zizmor in needs")
 	}
+	if !slices.Contains(wf.Jobs["sbom"].needsNames(), "validate") {
+		out = append(out, "job sbom does not name validate in needs")
+	}
 	for _, name := range []string{"rehearse", "publish"} {
-		if !slices.Contains(wf.Jobs[name].needsNames(), "validate") {
-			out = append(out, "job "+name+" does not name validate in needs")
+		for _, dep := range []string{"validate", "sbom"} {
+			if !slices.Contains(wf.Jobs[name].needsNames(), dep) {
+				out = append(out, "job "+name+" does not name "+dep+" in needs")
+			}
 		}
 	}
 	slices.Sort(out)
@@ -218,12 +224,14 @@ jobs:
     needs: zizmor
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+  sbom:
+    needs: validate
   rehearse:
     if: github.event_name == 'workflow_dispatch'
-    needs: validate
+    needs: [validate, sbom]
   publish:
     if: github.event_name == 'push'
-    needs: validate
+    needs: [validate, sbom]
 `
 
 func parseGateWorkflow(t *testing.T, text string) gateWorkflow {
@@ -262,12 +270,17 @@ func TestReleaseGateProblemsRules(t *testing.T) {
 		{"another expression on rehearse", edit("    if: github.event_name == 'workflow_dispatch'\n", "    if: github.event_name != 'push'\n"), "job rehearse if is"},
 		{"true or on rehearse", edit("    if: github.event_name == 'workflow_dispatch'\n", "    if: true || github.event_name == 'workflow_dispatch'\n"), "job rehearse if is"},
 		{"rehearse on push", edit("    if: github.event_name == 'workflow_dispatch'\n", "    if: github.event_name == 'push'\n"), "job rehearse if is"},
-		{"rehearse without needs validate", edit("    needs: validate\n  publish:\n", "    needs: zizmor\n  publish:\n"), "job rehearse does not name validate in needs"},
-		{"no rehearse job", edit("  rehearse:\n    if: github.event_name == 'workflow_dispatch'\n    needs: validate\n", ""), "no job named rehearse"},
+		{"rehearse without needs validate", edit("    needs: [validate, sbom]\n  publish:\n", "    needs: [sbom]\n  publish:\n"), "job rehearse does not name validate in needs"},
+		{"rehearse without needs sbom", edit("    needs: [validate, sbom]\n  publish:\n", "    needs: [validate]\n  publish:\n"), "job rehearse does not name sbom in needs"},
+		{"publish without needs sbom", edit("    if: github.event_name == 'push'\n    needs: [validate, sbom]\n", "    if: github.event_name == 'push'\n    needs: validate\n"), "job publish does not name sbom in needs"},
+		{"sbom without needs validate", edit("  sbom:\n    needs: validate\n", "  sbom:\n    needs: zizmor\n"), "job sbom does not name validate in needs"},
+		{"if on sbom", edit("  sbom:\n    needs: validate\n", "  sbom:\n    if: github.event_name == 'push'\n    needs: validate\n"), "job sbom is conditional"},
+		{"no rehearse job", edit("  rehearse:\n    if: github.event_name == 'workflow_dispatch'\n    needs: [validate, sbom]\n", ""), "no job named rehearse"},
+		{"no sbom job", edit("  sbom:\n    needs: validate\n", ""), "no job named sbom"},
 		{"an unknown job", gateWorkflowOK + "  extra:\n    needs: zizmor\n", "job extra is not one of"},
 		{"continue-on-error", edit("    uses: $/.github/workflows/zizmor.yaml\n", "    continue-on-error: true\n    uses: $/.github/workflows/zizmor.yaml\n"), "job zizmor sets continue-on-error"},
 		{"validate without needs", edit("    needs: zizmor\n", ""), "job validate does not name zizmor in needs"},
-		{"publish waits for zizmor only", edit("    if: github.event_name == 'push'\n    needs: validate\n", "    if: github.event_name == 'push'\n    needs: zizmor\n"), "job publish does not name validate in needs"},
+		{"publish waits for zizmor only", edit("    if: github.event_name == 'push'\n    needs: [validate, sbom]\n", "    if: github.event_name == 'push'\n    needs: zizmor\n"), "job publish does not name validate in needs"},
 		{"a job with no needs", gateWorkflowOK + "  extra:\n    runs-on: ubuntu-latest\n", "job extra does not wait for zizmor"},
 		{"zizmor waits for another job", edit("  zizmor:\n", "  zizmor:\n    needs: publish\n"), "job zizmor must not wait for another job"},
 	} {
@@ -532,8 +545,8 @@ jobs:
 // the release workflow can be skipped or can fail without stopping the run,
 // that validate runs make validate and make e2e as steps of their own, and
 // that nothing in the workflow or in the scripts it runs with write access
-// (release-build, release-rehearsal-check, release-upsert) writes a
-// reference.
+// (release-build, release-rehearsal-check, release-upsert and the four SBOM
+// and bundle scripts) writes a reference.
 func TestReleaseStepsCannotBeSkippedOrWriteRefs(t *testing.T) {
 	t.Parallel()
 	release := readGateWorkflow(t, releaseWorkflowPath)
@@ -543,7 +556,7 @@ func TestReleaseStepsCannotBeSkippedOrWriteRefs(t *testing.T) {
 			assert.Empty(t, refWriteProblems(step.Run), "job %s step %d", name, i+1)
 		}
 	}
-	for _, path := range []string{upsertScript, releaseBuildScript, rehearsalCheckScript} {
+	for _, path := range append([]string{upsertScript, releaseBuildScript, rehearsalCheckScript}, releaseSbomScripts...) {
 		assert.Empty(t, refWriteProblems(readText(t, path)), path)
 	}
 }
@@ -695,6 +708,9 @@ jobs:
   validate:
     permissions:
       contents: read
+  sbom:
+    permissions:
+      contents: read
   rehearse:
     permissions:
       contents: read
@@ -712,6 +728,10 @@ jobs:
 		{"workflow write-all", "permissions:\n  contents: read\njobs:", "permissions: write-all\njobs:"},
 		{"workflow contents write", "permissions:\n  contents: read\njobs:", "permissions:\n  contents: write\njobs:"},
 		{"validate id-token", "  validate:\n    permissions:\n      contents: read\n", "  validate:\n    permissions:\n      contents: read\n      id-token: write\n"},
+		{"sbom id-token", "  sbom:\n    permissions:\n      contents: read\n", "  sbom:\n    permissions:\n      contents: read\n      id-token: write\n"},
+		{"sbom attestations", "  sbom:\n    permissions:\n      contents: read\n", "  sbom:\n    permissions:\n      contents: read\n      attestations: write\n"},
+		{"sbom contents write", "  sbom:\n    permissions:\n      contents: read\n", "  sbom:\n    permissions:\n      contents: write\n"},
+		{"sbom without permissions", "  sbom:\n    permissions:\n      contents: read\n", "  sbom:\n"},
 		{"zizmor without permissions", "  zizmor:\n    permissions:\n      contents: read\n", "  zizmor:\n"},
 		{"publish without attestations", "      attestations: write\n      actions: read\n", "      actions: read\n"},
 		{"publish with a scope more", "      attestations: write\n      actions: read\n", "      attestations: write\n      actions: read\n      packages: write\n"},

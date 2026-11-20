@@ -73,8 +73,9 @@ func releaseTriggerProblems(wf gateWorkflow) []string {
 
 // stepSpec is one step a job of the release workflow has and no other: an
 // action by name and the at sign that starts its commit, or a run text; the
-// exact env and with maps (an absent map means none).
+// exact id (empty means none), env and with maps (an absent map means none).
 type stepSpec struct {
+	id   string
 	uses string
 	run  string
 	env  map[string]string
@@ -103,6 +104,9 @@ func stepListProblems(job string, steps []gateStep, want []stepSpec) []string {
 		}
 		step := steps[i]
 		where := fmt.Sprintf("job %s step %d", job, i+1)
+		if step.ID != spec.id {
+			out = append(out, fmt.Sprintf("%s has id %q, want %q", where, step.ID, spec.id))
+		}
 		switch {
 		case spec.uses != "":
 			if !strings.HasPrefix(step.Uses, spec.uses) || step.Run != "" {
@@ -136,13 +140,23 @@ func stepListProblems(job string, steps []gateStep, want []stepSpec) []string {
 }
 
 const (
-	checkoutUses       = "actions/checkout@"
-	setupGoUses        = "actions/setup-go@"
-	attestUses         = "actions/attest-build-provenance@"
-	uploadArtifactUses = "actions/upload-artifact@"
-	releaseBuildRun    = `scripts/release-build "$TAG"`
-	rehearsalCheckRun  = `scripts/release-rehearsal-check "$TAG" "$GITHUB_SHA"`
-	releaseUpsertRun   = "scripts/release-upsert dist/*"
+	checkoutUses         = "actions/checkout@"
+	setupGoUses          = "actions/setup-go@"
+	attestUses           = "actions/attest-build-provenance@"
+	attestSbomUses       = "actions/attest@"
+	downloadArtifactUses = "actions/download-artifact@"
+	uploadArtifactUses   = "actions/upload-artifact@"
+	releaseBuildRun      = `scripts/release-build "$TAG"`
+	releaseBuildSbomRun  = `scripts/release-build "$TAG" sbom`
+	releaseSbomRun       = `scripts/release-sbom "$TAG"`
+	releaseBundlesRun    = "scripts/release-bundles"
+	assetsCheckRun       = `scripts/release-assets-check dist "$TAG"`
+	rehearsalCheckRun    = `scripts/release-rehearsal-check "$TAG" "$GITHUB_SHA"`
+	releaseUpsertRun     = "scripts/release-upsert dist/*"
+
+	// sbomTagExpr is the tag of a run of the sbom job: the input of a manual
+	// run or the pushed tag.
+	sbomTagExpr = "${{ inputs.tag || github.ref_name }}"
 )
 
 var (
@@ -161,37 +175,77 @@ func uploadWith(name, path string) map[string]string {
 	}
 }
 
-// releaseStepListProblems returns what is wrong with the steps of the two
-// jobs that build: each has exactly its allowed steps in order, so that no
-// other command can run in them and the comparison with the rehearsal sits
-// after the build and before the attestation and the draft release.
+// releaseStepListProblems returns what is wrong with the steps of the three
+// jobs that write the SBOMs or build: each has exactly its allowed steps in
+// order, so that no other command can run in them and the comparison with
+// the rehearsal sits after the build and before the attestation and the
+// draft release.
 //
-// rehearse refuses a ref other than main, checks out, sets up Go, builds,
-// attests and keeps two artifacts; its steps hold no token and no secret, so
-// it cannot create a release or a ref. publish checks out, sets up Go,
-// builds, compares with the rehearsal, attests and creates the draft.
-// Both attest the same files.
+// sbom checks out, sets up Go, builds, installs Syft, writes the SBOMs and
+// keeps them as an artifact; it has no write permissions. rehearse refuses a ref
+// other than main, checks out, sets up Go, takes the SBOMs, builds (the build
+// checks them against the binaries), attests the build provenance and each
+// SBOM, writes the Sigstore bundles, checks the assets and keeps two
+// artifacts; its steps hold no token and no secret, and it cannot create a
+// release or a ref. publish does the same up to the attestations, compares
+// with the rehearsal before the first attestation, and ends with the draft
+// release. The attestation steps come from the platforms release-build
+// builds. A platform added there fails here until its steps exist.
 func releaseStepListProblems(wf gateWorkflow) []string {
+	binaries, err := releaseBinaries()
+	if err != nil {
+		return []string{err.Error()}
+	}
+	sbom := []stepSpec{
+		{uses: checkoutUses, with: checkoutWith},
+		{uses: setupGoUses, with: setupGoWith},
+		{run: releaseBuildRun, env: map[string]string{"TAG": sbomTagExpr}},
+		{run: anyRunText},
+		{run: releaseSbomRun, env: map[string]string{"TAG": sbomTagExpr, "SYFT": "${{ runner.temp }}/syft/syft"}},
+		{uses: uploadArtifactUses, with: uploadWith("release-sboms-"+sbomTagExpr, "sbom/")},
+	}
+	attestations := func() []stepSpec {
+		out := []stepSpec{{id: "provenance", uses: attestUses, with: attestWith}}
+		for _, b := range binaries {
+			out = append(out, stepSpec{id: sbomStepID(b), uses: attestSbomUses, with: map[string]string{
+				"subject-path": "dist/" + b,
+				"sbom-path":    "dist/" + b + ".spdx.json",
+			}})
+		}
+		return append(out, stepSpec{run: releaseBundlesRun, env: map[string]string{"BUNDLES": releaseBundlesEnv(binaries)}})
+	}
+	downloadWith := func(tag string) map[string]string {
+		return map[string]string{"name": "release-sboms-" + tag, "path": "sbom/"}
+	}
 	rehearse := []stepSpec{
 		{run: anyRunText},
 		{uses: checkoutUses, with: checkoutWith},
 		{uses: setupGoUses, with: setupGoWith},
-		{run: releaseBuildRun, env: map[string]string{"TAG": "${{ inputs.tag }}"}},
-		{uses: attestUses, with: attestWith},
-		{uses: uploadArtifactUses, with: uploadWith("release-rehearsal-${{ inputs.tag }}", "dist/")},
-		{uses: uploadArtifactUses, with: uploadWith("release-rehearsal-sums-${{ inputs.tag }}", "dist/SHA256SUMS")},
+		{uses: downloadArtifactUses, with: downloadWith("${{ inputs.tag }}")},
+		{run: releaseBuildSbomRun, env: map[string]string{"TAG": "${{ inputs.tag }}"}},
 	}
+	rehearse = append(rehearse, attestations()...)
+	rehearse = append(rehearse,
+		stepSpec{run: assetsCheckRun, env: map[string]string{"TAG": "${{ inputs.tag }}"}},
+		stepSpec{uses: uploadArtifactUses, with: uploadWith("release-rehearsal-${{ inputs.tag }}", "dist/")},
+		stepSpec{uses: uploadArtifactUses, with: uploadWith("release-rehearsal-sums-${{ inputs.tag }}", "dist/SHA256SUMS")},
+	)
 	tagEnv := map[string]string{"TAG": "${{ github.ref_name }}"}
 	tokenEnv := map[string]string{"GH_TOKEN": "${{ github.token }}", "TAG": "${{ github.ref_name }}"}
 	publish := []stepSpec{
 		{uses: checkoutUses, with: checkoutWith},
 		{uses: setupGoUses, with: setupGoWith},
-		{run: releaseBuildRun, env: tagEnv},
+		{uses: downloadArtifactUses, with: downloadWith("${{ github.ref_name }}")},
+		{run: releaseBuildSbomRun, env: tagEnv},
 		{run: rehearsalCheckRun, env: tokenEnv},
-		{uses: attestUses, with: attestWith},
-		{run: releaseUpsertRun, env: tokenEnv},
 	}
-	out := stepListProblems("rehearse", wf.Jobs["rehearse"].Steps, rehearse)
+	publish = append(publish, attestations()...)
+	publish = append(publish,
+		stepSpec{run: assetsCheckRun, env: tagEnv},
+		stepSpec{run: releaseUpsertRun, env: tokenEnv},
+	)
+	out := stepListProblems("sbom", wf.Jobs["sbom"].Steps, sbom)
+	out = append(out, stepListProblems("rehearse", wf.Jobs["rehearse"].Steps, rehearse)...)
 	out = append(out, stepListProblems("publish", wf.Jobs["publish"].Steps, publish)...)
 
 	return out
@@ -243,17 +297,18 @@ var (
 	// releaseStepKeys are the only keys a step of rehearse or publish may
 	// have. Others change how the step runs (shell, working-directory) or
 	// whether a failure stops the run.
-	releaseStepKeys = []string{"name", "uses", "run", "env", "with"}
+	releaseStepKeys = []string{"id", "name", "uses", "run", "env", "with"}
 	// releaseJobKeys are the only keys rehearse and publish may have: no env
 	// and no defaults, which would reach every step.
 	releaseJobKeys = []string{"if", "needs", "runs-on", "timeout-minutes", "permissions", "steps"}
-	// validateJobKeys are the only keys validate may have; it has no
-	// condition, so a run of the gate cannot be skipped.
+	// validateJobKeys are the only keys validate and sbom may have. They
+	// have no condition, which stops a run of the gate from being skipped.
 	validateJobKeys = []string{"needs", "runs-on", "timeout-minutes", "permissions", "steps"}
 	// releaseKeyedJobs are the jobs whose keys and step keys are checked,
 	// with the job keys each may have.
 	releaseKeyedJobs = map[string][]string{
 		"validate": validateJobKeys,
+		"sbom":     validateJobKeys,
 		"rehearse": releaseJobKeys,
 		"publish":  releaseJobKeys,
 	}
@@ -262,8 +317,8 @@ var (
 // releaseKeyProblems returns what the keys of the release workflow let
 // through that the step checks do not see: defaults at the workflow level or
 // on any job, env at the workflow level, a job key of rehearse or publish
-// beyond its allowed keys (validate, rehearse and publish), a step key beyond
-// releaseStepKeys on those jobs, and another concurrency group or
+// beyond its allowed keys (validate, sbom, rehearse and publish), a step key
+// beyond releaseStepKeys on those jobs, and another concurrency group or
 // cancel-in-progress.
 func releaseKeyProblems(text string) []string {
 	var wf struct {
@@ -334,6 +389,7 @@ func TestReleaseWorkflowShape(t *testing.T) {
 	assert.Empty(t, releasePermissionProblems(wf))
 	assert.Empty(t, releaseStepProblems(wf))
 	assert.Equal(t, 20, parseTimeout(t, "rehearse"), "rehearse has timeout-minutes 20")
+	assert.Empty(t, releaseBundleProblems(wf))
 }
 
 func parseTimeout(t *testing.T, job string) int {
@@ -390,13 +446,32 @@ func envNode(t *testing.T, text string) yaml.Node {
 	return *n.Content[0]
 }
 
-// TestReleaseStepListRules asserts each change of the steps of rehearse and
-// publish that the check refuses: a step removed, moved, added or changed;
-// another command in a step; a token in a job that must not hold one.
+// TestReleaseStepListRules asserts each change of the steps of sbom, rehearse
+// and publish that the check refuses: a step removed, moved, added or changed;
+// another command in a step; a token in a job that must not hold one; an
+// attestation step missing, for another SBOM or without its id.
 func TestReleaseStepListRules(t *testing.T) {
 	t.Parallel()
 	wf := readGateWorkflow(t, releaseWorkflowPath)
 	require.Empty(t, releaseStepListProblems(wf))
+	binaries, err := releaseBinaries()
+	require.NoError(t, err)
+	n := len(binaries)
+
+	// The positions of the steps of rehearse and publish.
+	const (
+		rhDownload, rhBuild, rhProvenance, rhFirstSbom = 3, 4, 5, 6
+		pubDownload, pubBuild, pubCompare              = 2, 3, 4
+		pubProvenance, pubFirstSbom                    = 5, 6
+	)
+	rhBundles, rhCheck, rhUploadAll, rhUploadSums := rhFirstSbom+n, rhFirstSbom+n+1, rhFirstSbom+n+2, rhFirstSbom+n+3
+	pubBundles, pubCheck, pubUpsert := pubFirstSbom+n, pubFirstSbom+n+1, pubFirstSbom+n+2
+	require.Len(t, wf.Jobs["rehearse"].Steps, rhUploadSums+1)
+	require.Len(t, wf.Jobs["publish"].Steps, pubUpsert+1)
+	require.Equal(t, "provenance", wf.Jobs["rehearse"].Steps[rhProvenance].ID)
+	require.Equal(t, "provenance", wf.Jobs["publish"].Steps[pubProvenance].ID)
+	arm64 := slices.Index(binaries, "rancher-linux-arm64")
+	require.GreaterOrEqual(t, arm64, 0)
 
 	remove := func(i int) func([]gateStep) []gateStep {
 		return func(s []gateStep) []gateStep { return slices.Delete(s, i, i+1) }
@@ -416,37 +491,83 @@ func TestReleaseStepListRules(t *testing.T) {
 	setEnv := func(i int, env yaml.Node) func([]gateStep) []gateStep {
 		return func(s []gateStep) []gateStep { s[i].Env = env; return s }
 	}
+	setWith := func(i int, with yaml.Node) func([]gateStep) []gateStep {
+		return func(s []gateStep) []gateStep { s[i].With = with; return s }
+	}
+	setID := func(i int, id string) func([]gateStep) []gateStep {
+		return func(s []gateStep) []gateStep { s[i].ID = id; return s }
+	}
 	token := envNode(t, "GH_TOKEN: ${{ github.token }}\nTAG: ${{ inputs.tag }}\n")
+	bundles := releaseBundlesEnv(binaries)
+	lessBundles := strings.TrimSuffix(bundles, "\n")
+	lessBundles = lessBundles[:strings.LastIndex(lessBundles, "\n")+1]
+	bundlesNode := func(value string) yaml.Node {
+		out, err := yaml.Marshal(map[string]string{"BUNDLES": value})
+		require.NoError(t, err)
+		return envNode(t, string(out))
+	}
 
 	for _, c := range []struct {
 		name   string
 		job    string
 		change func([]gateStep) []gateStep
 	}{
-		{"the comparison removed from publish", "publish", remove(3)},
-		{"the comparison after the attestation", "publish", swap(3, 4)},
-		{"the comparison before the build", "publish", swap(2, 3)},
-		{"the comparison ignores its result", "publish", setRun(3, rehearsalCheckRun+" || true")},
-		{"the comparison with another commit", "publish", setRun(3, `scripts/release-rehearsal-check "$TAG" "${{ github.event.head_commit.id }}"`)},
-		{"the comparison with no commit", "publish", setRun(3, `scripts/release-rehearsal-check "$TAG"`)},
-		{"the comparison then true", "publish", setRun(3, rehearsalCheckRun+"; true")},
-		{"publish builds in a loop", "publish", setRun(2, "for p in linux/amd64; do GOOS=linux VERSION=\"$TAG\" ./scripts/build; done")},
-		{"publish builds with go", "publish", setRun(2, "go build -o dist/rancher ./cmd/rancher")},
+		{"the comparison removed from publish", "publish", remove(pubCompare)},
+		{"the comparison after the attestation", "publish", swap(pubCompare, pubProvenance)},
+		{"the comparison before the build", "publish", swap(pubBuild, pubCompare)},
+		{"the comparison ignores its result", "publish", setRun(pubCompare, rehearsalCheckRun+" || true")},
+		{"the comparison with another commit", "publish", setRun(pubCompare, `scripts/release-rehearsal-check "$TAG" "${{ github.event.head_commit.id }}"`)},
+		{"the comparison with no commit", "publish", setRun(pubCompare, `scripts/release-rehearsal-check "$TAG"`)},
+		{"the comparison then true", "publish", setRun(pubCompare, rehearsalCheckRun+"; true")},
+		{"publish builds in a loop", "publish", setRun(pubBuild, "for p in linux/amd64; do GOOS=linux VERSION=\"$TAG\" ./scripts/build; done")},
+		{"publish builds with go", "publish", setRun(pubBuild, "go build -o dist/rancher ./cmd/rancher")},
+		{"publish builds without the SBOM directory", "publish", setRun(pubBuild, releaseBuildRun)},
 		{"publish uploads with gh", "publish", appendStep("gh release upload \"$TAG\" dist/*")},
-		{"the upsert dropped from publish", "publish", remove(5)},
-		{"publish with the upsert changed", "publish", setRun(5, "scripts/release-upsert dist/* || true")},
+		{"the upsert dropped from publish", "publish", remove(pubUpsert)},
+		{"publish with the upsert changed", "publish", setRun(pubUpsert, "scripts/release-upsert dist/* || true")},
+		{"the SBOMs not taken in publish", "publish", remove(pubDownload)},
+		{"the SBOMs taken after the build in publish", "publish", swap(pubDownload, pubBuild)},
+		{"the check dropped from publish", "publish", remove(pubCheck)},
+		{"the check before the bundles in publish", "publish", swap(pubBundles, pubCheck)},
+		{"the check ignores its result in publish", "publish", setRun(pubCheck, assetsCheckRun+" || true")},
+		{"the bundles dropped from publish", "publish", remove(pubBundles)},
+		{"the bundles before the attestations in publish", "publish", swap(pubBundles, pubProvenance)},
+		{"a line of BUNDLES dropped in publish", "publish", setEnv(pubBundles, bundlesNode(lessBundles))},
+		{"the provenance step without its id in publish", "publish", setID(pubProvenance, "")},
+		{"the SBOM attestation of the last binary dropped from publish", "publish", remove(pubBundles - 1)},
+		{"the SBOM attestation of another binary in publish", "publish", setWith(pubFirstSbom+arm64, envNode(t, "subject-path: dist/rancher-linux-arm64\nsbom-path: dist/rancher-linux-amd64.spdx.json\n"))},
+		{"an SBOM attestation with a glob of subjects in publish", "publish", setWith(pubFirstSbom+arm64, envNode(t, "subject-path: dist/rancher-*\nsbom-path: dist/rancher-linux-arm64.spdx.json\n"))},
+		{"an SBOM attestation with the deprecated action in publish", "publish", setUses(pubFirstSbom, "actions/attest-sbom@"+strings.Repeat("0", 40))},
+		{"an SBOM attestation with another id in publish", "publish", setID(pubFirstSbom, "other")},
 		{"the upsert in rehearse", "rehearse", appendStep(releaseUpsertRun)},
 		{"gh release create in rehearse", "rehearse", appendStep("gh release create \"$TAG\" --draft dist/*")},
 		{"a release created through the API in rehearse", "rehearse", appendStep("gh api -X POST repos/$GITHUB_REPOSITORY/releases -f tag_name=\"$TAG\"")},
 		{"curl in rehearse", "rehearse", appendStep("curl -X POST https://api.github.com/repos/o/r/releases")},
 		{"rehearse without the ref refusal", "rehearse", remove(0)},
 		{"rehearse with the refusal after the checkout", "rehearse", swap(0, 1)},
-		{"rehearse builds in a loop", "rehearse", setRun(3, "for p in linux/amd64; do GOOS=linux VERSION=\"$TAG\" ./scripts/build; done")},
-		{"rehearse without the full artifact", "rehearse", remove(5)},
-		{"rehearse without the sums artifact", "rehearse", remove(6)},
-		{"rehearse with an unpinned-name action", "rehearse", setUses(5, "actions/download-artifact@v4")},
-		{"a token in the build step of rehearse", "rehearse", setEnv(3, token)},
-		{"a token in an artifact step of rehearse", "rehearse", setEnv(5, token)},
+		{"rehearse builds in a loop", "rehearse", setRun(rhBuild, "for p in linux/amd64; do GOOS=linux VERSION=\"$TAG\" ./scripts/build; done")},
+		{"rehearse builds without the SBOM directory", "rehearse", setRun(rhBuild, releaseBuildRun)},
+		{"rehearse without the full artifact", "rehearse", remove(rhUploadAll)},
+		{"rehearse without the sums artifact", "rehearse", remove(rhUploadSums)},
+		{"rehearse with an unlisted action", "rehearse", setUses(rhProvenance, "actions/cache@v4")},
+		{"the SBOMs not taken in rehearse", "rehearse", remove(rhDownload)},
+		{"the SBOMs taken with another action in rehearse", "rehearse", setUses(rhDownload, "actions/cache@v4")},
+		{"the check dropped from rehearse", "rehearse", remove(rhCheck)},
+		{"the bundles dropped from rehearse", "rehearse", remove(rhBundles)},
+		{"the SBOM attestation of the last binary dropped from rehearse", "rehearse", remove(rhBundles - 1)},
+		{"a token in the build step of rehearse", "rehearse", setEnv(rhBuild, token)},
+		{"a token in an artifact step of rehearse", "rehearse", setEnv(rhUploadAll, token)},
+		{"a token in the bundles step of rehearse", "rehearse", setEnv(rhBundles, token)},
+		{"a token in an SBOM attestation of rehearse", "rehearse", setEnv(rhFirstSbom, token)},
+		{"the Syft install dropped from sbom", "sbom", remove(3)},
+		{"the SBOMs not written in sbom", "sbom", remove(4)},
+		{"the SBOMs not kept in sbom", "sbom", remove(5)},
+		{"a step added to sbom", "sbom", appendStep("echo hi")},
+		{"sbom uploads with gh", "sbom", appendStep("gh release upload \"$TAG\" sbom/*")},
+		{"the install after the write in sbom", "sbom", swap(3, 4)},
+		{"the install as an action in sbom", "sbom", setUses(3, "anchore/sbom-action/download-syft@"+strings.Repeat("0", 40))},
+		{"a token in the install of sbom", "sbom", setEnv(3, token)},
+		{"a token in the SBOM step of sbom", "sbom", setEnv(4, token)},
 	} {
 		changed := mutateSteps(wf, c.job, c.change)
 		assert.NotEmpty(t, releaseStepListProblems(changed), c.name)
@@ -597,7 +718,9 @@ func TestRehearseRefusesEveryRefButMain(t *testing.T) {
 // repository root, checks the tag, exports LC_ALL=C and GOFLAGS=-buildvcs=false
 // before it builds or writes the sums, and removes dist before it builds,
 // so that a build on a tag and a build on main give the same files in the
-// same order.
+// same order. With the SBOM directory it checks the SBOMs against the build
+// and then copies them, both after the sums are written, so that SHA256SUMS
+// does not list them.
 func releaseBuildScriptProblems(text string) []string {
 	code := shellCodeOf(text)
 	index := func(re string) int {
@@ -615,6 +738,24 @@ func releaseBuildScriptProblems(text string) []string {
 		"loop":    index(`^for platform in .*; do$`),
 		"build":   slices.IndexFunc(code, buildCallRE.MatchString),
 		"sums":    slices.IndexFunc(code, func(l string) bool { return strings.Contains(l, "sha256sum") }),
+	}
+	// The line that checks the SBOMs and the line that copies them are each
+	// present once.
+	sbomLines := map[string]*regexp.Regexp{
+		"sbomcheck": regexp.MustCompile(`^\./scripts/release-sbom-check dist "\$sbom_dir"$`),
+		"sbomcopy":  regexp.MustCompile(`^cp -- "\$sbom_dir/\$b\.spdx\.json" dist/$`),
+	}
+	for name, re := range sbomLines {
+		count := 0
+		for i, l := range code {
+			if re.MatchString(strings.TrimSpace(l)) {
+				count++
+				pos[name] = i
+			}
+		}
+		if count != 1 {
+			out = append(out, fmt.Sprintf("scripts/release-build has %d %s lines, want 1", count, name))
+		}
 	}
 	for _, name := range []string{"set", "cd", "check", "lcall", "goflags", "clean", "loop", "build", "sums"} {
 		if pos[name] < 0 {
@@ -637,8 +778,15 @@ func releaseBuildScriptProblems(text string) []string {
 	before("clean", "loop")
 	before("loop", "build")
 	before("build", "sums")
+	before("sums", "sbomcheck")
+	before("sbomcheck", "sbomcopy")
 	return out
 }
+
+const (
+	sbomCheckLine = "  ./scripts/release-sbom-check dist \"$sbom_dir\"\n"
+	sbomCopyLine  = "    cp -- \"$sbom_dir/$b.spdx.json\" dist/\n"
+)
 
 // TestReleaseBuildScriptGivesTheSameBytes asserts scripts/release-build keeps
 // the settings that make the build of a tag and the build of main equal, and
@@ -657,6 +805,14 @@ func TestReleaseBuildScriptGivesTheSameBytes(t *testing.T) {
 		{"no set -e", "set -euo pipefail\n", ""},
 		{"no tag check", "./scripts/check-release-tag \"$TAG\"\n", ""},
 		{"the clean after the loop", "rm -rf dist\nmkdir -p dist\n", "mkdir -p dist\n"},
+		{"no SBOM check", sbomCheckLine, ""},
+		{"no SBOM copy", sbomCopyLine, ""},
+		{"the SBOM copy before the sums", sbomCopyLine, ""},
+		{"the SBOM check before the sums", sbomCheckLine, ""},
+		{"the SBOM copy before the check", sbomCheckLine, ""},
+		{"two SBOM checks", sbomCheckLine, sbomCheckLine + sbomCheckLine},
+		{"two SBOM copies", sbomCopyLine, sbomCopyLine + sbomCopyLine},
+		{"an SBOM check of another directory", sbomCheckLine, "  ./scripts/release-sbom-check dist sbom\n"},
 	} {
 		require.Equal(t, 1, strings.Count(text, c.old), c.name)
 		changed := strings.Replace(text, c.old, c.repl, 1)
@@ -667,6 +823,12 @@ func TestReleaseBuildScriptGivesTheSameBytes(t *testing.T) {
 			changed = strings.Replace(changed, "(cd dist && sha256sum", "(cd dist && LC_ALL=C sha256sum", 1)
 		case "the clean after the loop":
 			changed = strings.Replace(changed, "(cd dist && sha256sum", "rm -rf dist\n(cd dist && sha256sum", 1)
+		case "the SBOM copy before the sums":
+			changed = strings.Replace(changed, "(cd dist && sha256sum", strings.TrimSpace(sbomCopyLine)+"\n(cd dist && sha256sum", 1)
+		case "the SBOM check before the sums":
+			changed = strings.Replace(changed, "(cd dist && sha256sum", strings.TrimSpace(sbomCheckLine)+"\n(cd dist && sha256sum", 1)
+		case "the SBOM copy before the check":
+			changed = strings.Replace(changed, sbomCopyLine, sbomCopyLine+sbomCheckLine, 1)
 		}
 		assert.NotEmpty(t, releaseBuildScriptProblems(changed), c.name)
 	}
