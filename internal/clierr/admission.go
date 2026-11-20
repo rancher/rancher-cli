@@ -1,6 +1,7 @@
 package clierr
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -39,9 +40,14 @@ import (
 // one or more characters with no space, ending at the first place where the
 // next fixed words of the admission text follow. The other words must match
 // exactly. Each matcher from serviceAccountNotFound on names its own
-// placeholders in its comment. The one exception is
-// runtimeclass-node-selector-conflict, where one of the two values after `] = `
-// may be empty.
+// placeholders in its comment. Two exceptions: in
+// runtimeclass-node-selector-conflict one of the two values after `] = ` may be
+// empty, and serviceaccount-lookup-error has no fixed words after `: `, because
+// the text there is the error of a lookup: the matcher reads it for the texts
+// of serviceAccountTemporaryTexts anywhere in it. The texts after the colon of
+// serviceaccount-invalid-name and serviceaccount-lookup-error are written by
+// client-go, apimachinery and the Go standard library, not by a module the
+// weekly check reads; tests in this package build them from those libraries.
 
 // admissionText is one entry of the admissionTexts list.
 type admissionText struct {
@@ -89,8 +95,15 @@ var admissionTexts = []admissionText{
 	{id: "validatingadmissionpolicy", match: validatingAdmissionPolicy},
 	// ServiceAccount: k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:164, :228 and :389; the
 	// text after the colon is written at :314 of the same file and by
-	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:155. Any other lookup error is not matched.
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:155. A namespace or name that client-go refuses is the entry
+	// below, a temporary error is serviceaccount-lookup-error in the group of temporary 403s, and any other lookup
+	// error is not matched.
 	{id: "serviceaccount-not-found", match: serviceAccountNotFound},
+	// The same lookup with a namespace or a name that k8s.io/client-go@v0.37.1 refuses before it sends a request, one that
+	// has `/` or `%` or is `.` or `..`: rest/request.go:362 for the namespace and :345 for the name, called in this
+	// order by gentype/type.go:159-163, and returned at :310 of the admission.go above. A retry gets the same response:
+	// the 403 is not temporary.
+	{id: "serviceaccount-invalid-name", match: serviceAccountInvalidName},
 	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:223 and :384; a defensive check, because
 	// Admit sets `default` for a pod with no ServiceAccount name first.
 	{id: "serviceaccount-none-specified", match: serviceAccountNoneSpecified},
@@ -134,6 +147,10 @@ var admissionTexts = []admissionText{
 	{id: "quota-status-unknown", retryable: true, match: prefixThenText("status unknown for quota: ")},
 	// k8s.io/apiserver@v0.37.1/pkg/admission/plugin/resourcequota/controller.go:518.
 	{id: "quota-previous-usage", retryable: true, match: exactText("unable to get previous usage since prior version of object was not found")},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:164, :228 and :389; the lookup failed with
+	// one of the temporary errors of serviceAccountTemporaryTexts, which :290-292 and :309-311 return unchanged. Any
+	// other lookup error is not matched.
+	{id: "serviceaccount-lookup-error", retryable: true, match: serviceAccountLookupError},
 }
 
 // matchAdmissionText returns the list entry that matches the 403 message, and
@@ -387,6 +404,83 @@ func serviceAccountNotFound(text string) bool {
 	}
 	quoted, _, ok := quotedName(rest)
 	return ok && rest[len(quoted):] == " not found"
+}
+
+// serviceAccountInvalidName matches `error looking up service account
+// <ns>/<name>: invalid resource name "<value>": ` and `error looking up service
+// account <ns>/<name>: invalid namespace "<value>": `, each followed by more
+// text, with a non-empty <value> in Go double quotes. <ns>/<name> is one or more
+// characters with no space.
+func serviceAccountInvalidName(text string) bool {
+	rest, ok := cutWords(text, "error looking up service account ", ": invalid ")
+	if !ok {
+		return false
+	}
+	for _, kind := range []string{"resource name ", "namespace "} {
+		if value, found := strings.CutPrefix(rest, kind); found {
+			quoted, _, ok := quotedName(value)
+			return ok && nonEmptyAfter(value[len(quoted):], ": ")
+		}
+	}
+	return false
+}
+
+// serviceAccountTemporaryTexts are the texts that mark a failed ServiceAccount
+// lookup as temporary. serviceAccountLookupError reads them anywhere after
+// `error looking up service account <ns>/<name>: `, because client-go writes the
+// cause after the request (`Get "<url>": <cause>`) and writes its own text of a 503,
+// 504 or 429 before ` (get serviceaccounts <name>)`. A lookup error with none of
+// them is not matched. Each text has a row in the admission test.
+var serviceAccountTemporaryTexts = []string{
+	// context.DeadlineExceeded: context/context.go:176 of the Go standard library. The message of
+	// k8s.io/apiserver@v0.37.1/pkg/endpoints/handlers/finisher/finisher.go:146 ends with it, from ctx.Err().
+	"context deadline exceeded",
+	// os.ErrDeadlineExceeded: internal/poll/fd.go:60 of the Go standard library, the end of a failed dial or read.
+	"i/o timeout",
+	// net/http/client.go:749 of the Go standard library.
+	"Client.Timeout exceeded",
+	// net/http/transport.go:3421 of the Go standard library.
+	"TLS handshake timeout",
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:484, the text apimachinery writes for a 504.
+	"the server was unable to return a response in the time allotted",
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:401-406, which formats the message that
+	// k8s.io/apiserver@v0.37.1/pkg/admission/plugin/webhook/validating/dispatcher.go:122 passes to it.
+	"request did not complete within requested timeout",
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:401-406, which formats the message that
+	// k8s.io/apiserver@v0.37.1/pkg/server/filters/timeout.go:59, the timeout filter of the API server, passes to it.
+	"Timeout: request did not complete within the allotted timeout",
+	// go.etcd.io/etcd/api/v3@v3.7.0/v3rpc/rpctypes/error.go:82, whose longer forms at :83-85 begin with it;
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:395 writes it after `Internal error occurred: `.
+	"etcdserver: request timed out",
+	// ECONNREFUSED and ECONNRESET: syscall/zerrors_linux_amd64.go:1466 and :1459 of the Go standard library.
+	"connection refused",
+	"connection reset by peer",
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:481, the text apimachinery writes for a 503.
+	"the server is currently unable to handle the request",
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:421.
+	"Too many requests",
+	// k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:487, the text apimachinery writes for a 429.
+	"the server has received too many requests and has asked us to try again later",
+}
+
+// serviceAccountLookupError matches `error looking up service account
+// <ns>/<name>: ` followed by a text that has one of serviceAccountTemporaryTexts
+// anywhere in it: the lookup failed with a temporary error. <ns>/<name> is one
+// or more characters with no space. Any other lookup error, for example an
+// Unauthorized response or a Forbidden response to the lookup, is not matched.
+// The plugin runs before validation, and the pod's ServiceAccount name can have
+// `: ` in it. <ns>/<name> then ends at that `: ` and the rest of the name is
+// read as part of the error text. A name that has `: ` followed by one of
+// serviceAccountTemporaryTexts makes any lookup error read as temporary.
+// The matcher is case-sensitive.
+func serviceAccountLookupError(text string) bool {
+	rest, ok := cutWords(text, "error looking up service account ", ": ")
+	if !ok {
+		return false
+	}
+	return slices.ContainsFunc(serviceAccountTemporaryTexts, func(temporary string) bool {
+		return strings.Contains(rest, temporary)
+	})
 }
 
 // serviceAccountNoneSpecified matches exactly `no service account specified

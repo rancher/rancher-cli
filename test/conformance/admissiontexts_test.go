@@ -310,6 +310,14 @@ var admissionUnlistedTokens = []struct{ id, token, reason string }{
 	{"runtimeclass-not-found", `"gvisor"`, "the matcher reads the quoted name; the quotes belong to the text it matches"},
 	{"runtimeclass-node-selector-conflict", "disktype", "the matcher needs the same key on both sides"},
 	{"csr-system-masters", "kubernetes.io/kube-apiserver-client", "a constant of another module gives the signer name, which is not in a checked module"},
+	{"serviceaccount-invalid-name", "invalid", "k8s.io/client-go writes these words, which are not in a checked module"},
+	{"serviceaccount-invalid-name", "resource", "k8s.io/client-go writes these words, which are not in a checked module"},
+	{"serviceaccount-invalid-name", "name", "k8s.io/client-go writes these words, which are not in a checked module"},
+	{"serviceaccount-invalid-name", "namespace", "k8s.io/client-go writes this word, which is not in a checked module"},
+	{"serviceaccount-invalid-name", "\"a/b\":", "k8s.io/client-go writes the quoted value, which is not in a checked module"},
+	{"serviceaccount-lookup-error", "context", "the Go standard library writes these words, which are not in a checked module"},
+	{"serviceaccount-lookup-error", "deadline", "the Go standard library writes these words, which are not in a checked module"},
+	{"serviceaccount-lookup-error", "exceeded", "the Go standard library writes these words, which are not in a checked module"},
 }
 
 // TestAdmissionTextNoOtherWordIsNeeded asserts that changing the first byte of

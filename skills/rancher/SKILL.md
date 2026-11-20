@@ -572,10 +572,16 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   carries its own `retryable`.
 - A temporary 403 from Kubernetes admission (the server could not check the
   request yet) is `GENERIC` and retryable. The message is the Status message,
-  followed by " - retry later". The four are: the server is not ready to handle
+  followed by " - retry later". The five are: the server is not ready to handle
   the request, LimitRanger failed to enforce limit ranges, the ResourceQuota
-  status is unknown, and ResourceQuota cannot get the previous usage because
-  the previous version of the object was not found.
+  status is unknown, ResourceQuota cannot get the previous usage because the
+  previous version of the object was not found, and the ServiceAccount
+  admission plugin could not look up the pod's ServiceAccount because of a
+  timeout, a refused or reset connection, or an API server that was unavailable
+  or overloaded. A ServiceAccount lookup that client-go refuses because the
+  namespace or name has a slash or a percent sign, or is `.` or `..`, is
+  `VALIDATION`, as is a ServiceAccount that does not exist; a lookup that fails
+  for any other reason is `RBAC`.
 - `TLS_TRUST` (exit `10`) means the server's certificate failed
   verification: act on the remedy the message names (a different CA, the
   server URL, or the server's administrator), or tell the user; never retry the

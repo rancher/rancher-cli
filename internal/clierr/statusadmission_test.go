@@ -1,10 +1,13 @@
 package clierr
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/rest"
 )
 
 // admissionRow is one 403 and the error the CLI reports for it. id names the
@@ -67,9 +71,9 @@ var admissionStarts = []admissionStart{
 	{"with the bare beginning", "", ""},
 }
 
-// retryableAdmissionIDs are the four admission texts of a temporary 403. The
+// retryableAdmissionIDs are the five admission texts of a temporary 403. The
 // list under test must hold exactly these as retryable.
-var retryableAdmissionIDs = []string{"limitrange-error", "not-ready", "quota-previous-usage", "quota-status-unknown"}
+var retryableAdmissionIDs = []string{"limitrange-error", "not-ready", "quota-previous-usage", "quota-status-unknown", "serviceaccount-lookup-error"}
 
 // admissionSample is a text after `forbidden: ` that must match the
 // list entry id, with the class that match gets.
@@ -152,6 +156,14 @@ var admissionSamples = []admissionSample{
 	// text after the colon from k8s.io/apimachinery@v0.37.1/pkg/api/errors/errors.go:155
 	{"serviceaccount-not-found", "", `error looking up service account ns1/sa1: serviceaccount "sa1" not found`, true, false},
 	{"serviceaccount-not-found", "the default account", `error looking up service account ns1/default: serviceaccount "default" not found`, false, false},
+	// k8s.io/client-go@v0.37.1/rest/request.go:345 and :362, returned at :310 of the admission.go above; a namespace or a
+	// name with a slash or a percent sign, or `.` or `..`, is refused before a request is sent
+	{"serviceaccount-invalid-name", "", `error looking up service account ns1/a/b: invalid resource name "a/b": [may not contain '/']`, true, false},
+	{"serviceaccount-invalid-name", "a name with a percent sign", `error looking up service account ns1/a%b: invalid resource name "a%b": [may not contain '%']`, false, false},
+	{"serviceaccount-invalid-name", "the name of one dot", `error looking up service account ns1/.: invalid resource name ".": [may not be '.']`, false, false},
+	{"serviceaccount-invalid-name", "the name of two dots", `error looking up service account ns1/..: invalid resource name "..": [may not be '..']`, false, false},
+	{"serviceaccount-invalid-name", "a namespace with a slash", `error looking up service account a/b/sa1: invalid namespace "a/b": [may not contain '/']`, false, false},
+	{"serviceaccount-invalid-name", "a namespace with a percent sign", `error looking up service account a%b/sa1: invalid namespace "a%b": [may not contain '%']`, false, false},
 	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:223 and :384
 	{"serviceaccount-none-specified", "", `no service account specified for pod ns1/web-1`, true, false},
 	{"serviceaccount-none-specified", "a pod with no name yet", `no service account specified for pod ns1/`, false, false},
@@ -195,6 +207,21 @@ var admissionSamples = []admissionSample{
 	{"quota-status-unknown", "", `status unknown for quota: q1`, true, true},
 	// k8s.io/apiserver@v0.37.1/pkg/admission/plugin/resourcequota/controller.go:518
 	{"quota-previous-usage", "", `unable to get previous usage since prior version of object was not found`, true, true},
+	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:164, :228 and :389, with the error of
+	// the lookup returned at :290-292 or :309-311; one sample for each text of serviceAccountTemporaryTexts
+	{"serviceaccount-lookup-error", "", `error looking up service account ns1/sa1: context deadline exceeded`, true, true},
+	{"serviceaccount-lookup-error", "an I/O timeout", `error looking up service account ns1/sa1: Get "https://10.43.0.1:443/api/v1/namespaces/ns1/serviceaccounts/sa1": dial tcp 10.43.0.1:443: i/o timeout`, false, true},
+	{"serviceaccount-lookup-error", "a client timeout", `error looking up service account ns1/sa1: Get "https://10.43.0.1:443/api/v1/namespaces/ns1/serviceaccounts/sa1": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`, false, true},
+	{"serviceaccount-lookup-error", "a TLS handshake timeout", `error looking up service account ns1/sa1: Get "https://10.43.0.1:443/api/v1/namespaces/ns1/serviceaccounts/sa1": net/http: TLS handshake timeout`, false, true},
+	{"serviceaccount-lookup-error", "a 504 from the server", `error looking up service account ns1/sa1: the server was unable to return a response in the time allotted, but may still be processing the request (get serviceaccounts sa1)`, false, true},
+	{"serviceaccount-lookup-error", "a request timeout status", `error looking up service account ns1/sa1: Timeout: request did not complete within requested timeout`, false, true},
+	{"serviceaccount-lookup-error", "a timeout filter status", `error looking up service account ns1/sa1: Timeout: request did not complete within the allotted timeout`, false, true},
+	{"serviceaccount-lookup-error", "an etcd timeout", `error looking up service account ns1/sa1: Internal error occurred: etcdserver: request timed out`, false, true},
+	{"serviceaccount-lookup-error", "a refused connection", `error looking up service account ns1/sa1: Get "https://10.43.0.1:443/api/v1/namespaces/ns1/serviceaccounts/sa1": dial tcp 10.43.0.1:443: connect: connection refused`, false, true},
+	{"serviceaccount-lookup-error", "a reset connection", `error looking up service account ns1/sa1: Get "https://10.43.0.1:443/api/v1/namespaces/ns1/serviceaccounts/sa1": read tcp 10.42.0.5:51234->10.43.0.1:443: read: connection reset by peer`, false, true},
+	{"serviceaccount-lookup-error", "a 503 from the server", `error looking up service account ns1/sa1: the server is currently unable to handle the request (get serviceaccounts sa1)`, false, true},
+	{"serviceaccount-lookup-error", "a too many requests status", `error looking up service account ns1/sa1: Too many requests: please try again later`, false, true},
+	{"serviceaccount-lookup-error", "a 429 from the server", `error looking up service account ns1/sa1: the server has received too many requests and has asked us to try again later (get serviceaccounts sa1)`, false, true},
 }
 
 // admissionRows are every row of the test.
@@ -397,10 +424,23 @@ func admissionRows() []admissionRow {
 	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with a space in the key", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[a b] = a; pod.spec.nodeSelector[a b] = b`))
 	rbacFor("runtimeclass-node-selector-conflict", "runtimeclass-node-selector-conflict with a space in the RuntimeClass nodeSelector value", kubernetesForbidden("pods", "p", `conflict: runtimeClass.scheduling.nodeSelector[k] = a b; pod.spec.nodeSelector[k] = c`))
 
-	// A ServiceAccount lookup error other than NotFound, and texts of the
-	// ServiceAccount admission plugin that match no admission text in the list.
-	rbac("ServiceAccount lookup error when the server did not respond in time", kubernetesForbidden("pods", "p", `error looking up service account ns/sa: the server was unable to return a response in the time allotted, but may still be processing the request (get serviceaccounts sa)`))
-	rbac("ServiceAccount lookup error with a deadline exceeded", kubernetesForbidden("pods", "p", `error looking up service account ns/sa: context deadline exceeded`))
+	// Texts of the ServiceAccount admission plugin that nearly match one of the two
+	// lookup error entries, lookup errors that are not in the list of temporary
+	// texts, and texts that match no admission text in the list.
+	rbacFor("serviceaccount-lookup-error", "serviceaccount-lookup-error with an empty namespace and name", kubernetesForbidden("pods", "p", `error looking up service account : context deadline exceeded`))
+	rbacFor("serviceaccount-lookup-error", "serviceaccount-lookup-error with a space in the namespace and name", kubernetesForbidden("pods", "p", `error looking up service account ns/a b: context deadline exceeded`))
+	rbacFor("serviceaccount-lookup-error", "serviceaccount-lookup-error with no colon after the namespace and name", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1 context deadline exceeded`))
+	rbacFor("serviceaccount-lookup-error", "serviceaccount-lookup-error with a temporary text that starts with a capital letter", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1: Context deadline exceeded`))
+	rbacForNoJSON("serviceaccount-lookup-error", "serviceaccount-lookup-error with nothing after the colon", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1: `))
+	rbacFor("serviceaccount-lookup-error", "serviceaccount-lookup-error with an Unauthorized response", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1: Unauthorized`))
+	rbacFor("serviceaccount-lookup-error", "serviceaccount-lookup-error with a Forbidden response to the lookup", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1: serviceaccounts "sa1" is forbidden: User "system:anonymous" cannot get resource "serviceaccounts" in API group "" in the namespace "ns1"`))
+	rbacFor("serviceaccount-lookup-error", "serviceaccount-lookup-error with an error that is not in the list of temporary texts", kubernetesForbidden("pods", "p", `error looking up service account ns1/sa1: an error on the server ("unknown") has prevented the request from succeeding (get serviceaccounts sa1)`))
+	rbacFor("serviceaccount-invalid-name", "serviceaccount-invalid-name with an unquoted name", kubernetesForbidden("pods", "p", `error looking up service account ns1/a/b: invalid resource name a/b: [may not contain '/']`))
+	rbacFor("serviceaccount-invalid-name", "serviceaccount-invalid-name with an empty quoted name", kubernetesForbidden("pods", "p", `error looking up service account ns1/a/b: invalid resource name "": [may not contain '/']`))
+	rbacFor("serviceaccount-invalid-name", "serviceaccount-invalid-name with an unquoted namespace", kubernetesForbidden("pods", "p", `error looking up service account a/b/sa1: invalid namespace a/b: [may not contain '/']`))
+	rbacFor("serviceaccount-invalid-name", "serviceaccount-invalid-name with nothing after the name", kubernetesForbidden("pods", "p", `error looking up service account ns1/a/b: invalid resource name "a/b"`))
+	rbacFor("serviceaccount-invalid-name", "serviceaccount-invalid-name with another noun", kubernetesForbidden("pods", "p", `error looking up service account ns1/a/b: invalid name "a/b": [may not contain '/']`))
+	rbacFor("serviceaccount-invalid-name", "serviceaccount-invalid-name with an empty namespace and name", kubernetesForbidden("pods", "p", `error looking up service account : invalid resource name "a/b": [may not contain '/']`))
 	rbacFor("serviceaccount-secret-reference", "serviceaccount-secret-reference with the start of one text and the end of another", kubernetesForbidden("pods", "p", `volume with secret.secretName="s" is not allowed because service account sa does not reference that imagePullSecret`))
 	// k8s.io/kubernetes@v1.37.1/plugin/pkg/admission/serviceaccount/admission.go:403; the server returns this text in a 500, not a 403
 	rbac("an ephemeral container secret text", kubernetesForbidden("pods", "p", `ephemeral container c with envVar e referencing secret.secretName="s" is not allowed because service account sa does not reference that secret`))
@@ -471,6 +511,10 @@ func admissionRows() []admissionRow {
 	rows = append(rows, admissionRow{
 		name: "limitrange-error longer than 200 bytes", id: "limitrange-error", retryable: true,
 		se: kubernetesForbidden("pods", "p", "unable to create "+strings.Repeat("x", 200)+" at this time because there was an error enforcing limit ranges"),
+	})
+	rows = append(rows, admissionRow{
+		name: "serviceaccount-lookup-error longer than 200 bytes", id: "serviceaccount-lookup-error", retryable: true,
+		se: kubernetesForbidden("pods", "p", "error looking up service account ns1/sa1: Get \""+strings.Repeat("x", 200)+"\": context deadline exceeded"),
 	})
 	rbac("a webhook denial with 403 longer than 200 bytes", handBuiltForbidden(`admission webhook "x.example.io" denied the request: `+strings.Repeat("x", 200)+" "+quota))
 	rows = append(rows, admissionRow{name: "an empty 403", se: handBuiltForbidden(""), noJSON: true})
@@ -543,7 +587,8 @@ var admissionPaths = []struct {
 // CertificateSubjectRestriction) is VALIDATION at exit 2; a temporary 403 (the
 // server is not ready, LimitRanger failed to enforce limit ranges, the
 // ResourceQuota status is unknown, the previous version of the object was not
-// found) is a retryable GENERIC with the Status message and " - retry later",
+// found, a ServiceAccount lookup failed with a temporary error) is a
+// retryable GENERIC with the Status message and " - retry later",
 // also when the request names a server; both have no hint. A message that
 // does not begin as
 // Kubernetes writes it, an admission text anywhere but at the beginning of the
@@ -554,7 +599,7 @@ var admissionPaths = []struct {
 // an unresolved cluster, and no request at all. The test fails for an entry
 // with no row, an entry with no row for a text that nearly matches it and stays
 // RBAC, a row for an id that is not in the list, a repeated id or row name, and
-// a set of retryable entries other than the four.
+// a set of retryable entries other than the five.
 //
 // The test does not detect a Kubernetes release that changes the wording of an
 // admission text, or a new 403 from a server other than Kubernetes admission
@@ -577,7 +622,7 @@ func TestAdmissionTextsGetTheirCodeAndEveryOther403StaysRBAC(t *testing.T) {
 		}
 	}
 	slices.Sort(listRetryable)
-	assert.Equal(t, retryableAdmissionIDs, listRetryable, "the list holds exactly these four texts as retryable")
+	assert.Equal(t, retryableAdmissionIDs, listRetryable, "the list holds exactly these five texts as retryable")
 	covered := map[string]bool{}
 	names := map[string]bool{}
 	for _, r := range rows {
@@ -647,7 +692,7 @@ func TestAdmissionTextsGetTheirCodeAndEveryOther403StaysRBAC(t *testing.T) {
 
 // TestAdmissionTextOnAnUnresolvedClusterKeepsTheServersText asserts a 403
 // that is an admission text on a request to a cluster Rancher could not
-// resolve is VALIDATION, or a retryable GENERIC for the four texts of a
+// resolve is VALIDATION, or a retryable GENERIC for the texts of a
 // temporary 403, with the server's text and no sentence about the
 // cluster, because the cluster's API server responded; a 403 that is not an
 // admission text on the same request keeps the sentence.
@@ -803,5 +848,103 @@ func TestResponseErrorRecordsTheFullMessageOnlyForAForbiddenCutTo200Bytes(t *tes
 			assert.Equal(t, want, types)
 			assert.Equal(t, tc.whole, whole)
 		})
+	}
+}
+
+// serviceAccountLookupText is the 403 text of a ServiceAccount lookup that
+// failed with err, as the ServiceAccount admission plugin writes it.
+func serviceAccountLookupText(namespace, name string, err error) string {
+	return fmt.Sprintf("error looking up service account %s/%s: %v", namespace, name, err)
+}
+
+// TestServiceAccountInvalidNameTextComesFromClientGo asserts that the 403 for a
+// ServiceAccount lookup that k8s.io/client-go refuses before it sends a request
+// is VALIDATION and not retryable. The test builds the error text with
+// client-go, in the order the lookup builds its request (the namespace, then the
+// name). A client-go release that changes the wording of the refusal fails this
+// test.
+func TestServiceAccountInvalidNameTextComesFromClientGo(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, namespace, serviceAccount, want string }{
+		{"a slash in the name", "ns1", "a/b", "invalid resource name"},
+		{"a percent sign in the name", "ns1", "a%b", "invalid resource name"},
+		{"one dot as the name", "ns1", ".", "invalid resource name"},
+		{"two dots as the name", "ns1", "..", "invalid resource name"},
+		{"a slash in the namespace", "a/b", "sa1", "invalid namespace"},
+		{"a percent sign in the namespace", "a%b", "sa1", "invalid namespace"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			lookup := rest.NewRequestWithClient(&url.URL{Scheme: "https", Host: "x.invalid"}, "", rest.ClientContentConfig{}, http.DefaultClient).
+				NamespaceIfScoped(tc.namespace, tc.namespace != "").Resource("serviceaccounts").Name(tc.serviceAccount).Do(t.Context()).Error()
+			require.ErrorContains(t, lookup, tc.want)
+			se := kubernetesForbidden("pods", "p", serviceAccountLookupText(tc.namespace, tc.serviceAccount, lookup))
+			entry, matched := matchAdmissionText(se.ErrStatus.Message)
+			require.True(t, matched)
+			assert.Equal(t, "serviceaccount-invalid-name", entry.id)
+			ce := FromStatus(se, &Request{Verb: "create", Resource: "pods"})
+			require.NotNil(t, ce)
+			assert.Equal(t, CodeValidation, ce.Code)
+			assert.False(t, ce.Retryable)
+			assert.Equal(t, se.ErrStatus.Message, ce.Message)
+		})
+	}
+}
+
+// TestServiceAccountLookupErrorTextsComeFromTheLibraries asserts that a
+// ServiceAccount lookup error is a retryable GENERIC when the Go standard
+// library or apimachinery writes one of the temporary texts. It stays RBAC for
+// the texts of a 401, a 500 and a Forbidden response. The test builds every text
+// with the library that writes it.
+func TestServiceAccountLookupErrorTextsComeFromTheLibraries(t *testing.T) {
+	t.Parallel()
+	serviceAccounts := schema.GroupResource{Resource: "serviceaccounts"}
+	response := func(code int, serverMessage string) error {
+		return apierrors.NewGenericServerResponse(code, http.MethodGet, serviceAccounts, "sa1", serverMessage, 0, false)
+	}
+	for _, tc := range []struct {
+		name      string
+		err       error
+		retryable bool
+	}{
+		{"a context deadline", context.DeadlineExceeded, true},
+		{"an I/O deadline", os.ErrDeadlineExceeded, true},
+		{"a 503 response", response(http.StatusServiceUnavailable, ""), true},
+		{"a 504 response", response(http.StatusGatewayTimeout, ""), true},
+		{"a 429 response", response(http.StatusTooManyRequests, ""), true},
+		{"a too many requests error", apierrors.NewTooManyRequestsError("please try again later"), true},
+		{"a timeout error", apierrors.NewTimeoutError("request did not complete within requested timeout", 0), true},
+		{"a timeout filter error", apierrors.NewTimeoutError("request did not complete within the allotted timeout", 0), true},
+		{"a 401 response", response(http.StatusUnauthorized, ""), false},
+		{"a 500 response", response(http.StatusInternalServerError, "boom"), false},
+		{"a Forbidden response", apierrors.NewForbidden(serviceAccounts, "sa1", errors.New(`User "system:anonymous" cannot get resource "serviceaccounts"`)), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			se := kubernetesForbidden("pods", "p", serviceAccountLookupText("ns1", "sa1", tc.err))
+			ce := FromStatus(se, &Request{Verb: "create", Resource: "pods"})
+			require.NotNil(t, ce)
+			if tc.retryable {
+				assert.Equal(t, CodeGeneric, ce.Code)
+				assert.True(t, ce.Retryable)
+				assert.Equal(t, se.ErrStatus.Message+" - retry later", ce.Message)
+				return
+			}
+			assert.Equal(t, CodeRBAC, ce.Code)
+			assert.False(t, ce.Retryable)
+		})
+	}
+}
+
+// TestEveryServiceAccountTemporaryTextHasAPositiveSample asserts each text of
+// serviceAccountTemporaryTexts occurs in a positive sample of
+// serviceaccount-lookup-error: a text added to the list with no sample fails.
+func TestEveryServiceAccountTemporaryTextHasAPositiveSample(t *testing.T) {
+	t.Parallel()
+	for _, temporary := range serviceAccountTemporaryTexts {
+		found := slices.ContainsFunc(admissionSamples, func(s admissionSample) bool {
+			return s.id == "serviceaccount-lookup-error" && strings.Contains(s.text, temporary)
+		})
+		assert.True(t, found, "the temporary text %q has no positive sample", temporary)
 	}
 }

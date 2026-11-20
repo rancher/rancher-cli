@@ -161,6 +161,22 @@
       ]
     },
     {
+      "id": "serviceaccount-invalid-name",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/serviceaccount",
+      "retryable": false,
+      "variants": [
+        {
+          "sample": "error looking up service account ns1/a/b: invalid resource name \"a/b\": [may not contain '/']",
+          "words": ["error looking up service account ", ": "]
+        },
+        {
+          "sample": "error looking up service account a/b/sa1: invalid namespace \"a/b\": [may not contain '/']",
+          "words": ["error looking up service account ", ": "]
+        }
+      ]
+    },
+    {
       "id": "serviceaccount-none-specified",
       "module": "k8s.io/kubernetes",
       "dir": "plugin/pkg/admission/serviceaccount",
@@ -392,6 +408,18 @@
         {
           "sample": "unable to get previous usage since prior version of object was not found",
           "words": ["unable to get previous usage since prior version of object was not found"]
+        }
+      ]
+    },
+    {
+      "id": "serviceaccount-lookup-error",
+      "module": "k8s.io/kubernetes",
+      "dir": "plugin/pkg/admission/serviceaccount",
+      "retryable": true,
+      "variants": [
+        {
+          "sample": "error looking up service account ns1/sa1: context deadline exceeded",
+          "words": ["error looking up service account ", ": "]
         }
       ]
     }

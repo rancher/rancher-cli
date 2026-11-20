@@ -1638,23 +1638,29 @@ admission refuses a write or when it could not check the write yet; the
 refusals by one of these admission plugins: ResourceQuota, LimitRanger,
 PodSecurity, namespace lifecycle (a namespace that is being deleted or may not
 be deleted), ValidatingAdmissionPolicy, ServiceAccount, Priority, RuntimeClass,
-PersistentVolumeClaimResize or CertificateSubjectRestriction. Four are a
+PersistentVolumeClaimResize or CertificateSubjectRestriction. Five are a
 temporary 403 from Kubernetes admission: the server is not ready to handle the
 request, LimitRanger failed to enforce limit ranges, the ResourceQuota status is
-unknown, or the previous version of the object was not found and ResourceQuota
-cannot compute its usage. A temporary 403 becomes a retryable GENERIC with the
-Status message and " - retry later". The CLI matches an admission text only at
-the beginning of the text right after Kubernetes' `is forbidden: `. The
-authorizer's 403 (`User "..." cannot ...`), an admission webhook's own 403, the
-other 403s from Kubernetes admission that are not in the list, a 403 whose
-message does not begin as Kubernetes writes it and every other 403 stay RBAC.
-The CLI reads the Status message on every request, whatever its verb. The
-Kubernetes wording is the same from 1.32 to 1.37; if a Kubernetes release
-changes the wording of an admission text in the list, the CLI reports that
-refusal as RBAC again. A 409 from an admission webhook on a write that sends a
-`resourceVersion` is a CONFLICT with the webhook's message and is not retryable:
-a retry gets the same denial. Any other 409 on such a write keeps the retryable
-message that the resource changed on the server since it was last read.
+unknown, the previous version of the object was not found and ResourceQuota
+cannot compute its usage, or the ServiceAccount admission plugin could not look
+up a pod's ServiceAccount because of a timeout, a refused or reset connection,
+or an API server that was unavailable or overloaded. A temporary 403 becomes a
+retryable GENERIC with the Status message and " - retry later". The CLI matches
+an admission text only at the beginning of the text right after Kubernetes'
+`is forbidden: `. The ServiceAccount lookup texts are an exception:
+`serviceaccount-lookup-error` reads a lookup error for a list of temporary texts
+written by client-go, apimachinery and the Go standard library, and tests build
+them from those libraries. The authorizer's 403 (`User "..." cannot ...`), an
+admission webhook's own 403, the other 403s from Kubernetes admission that are
+not in the list, a 403 whose message does not begin as Kubernetes writes it and
+every other 403 stay RBAC. The CLI reads the Status message on every request,
+whatever its verb. The Kubernetes wording is the same from 1.32 to 1.37; if a
+Kubernetes release changes the wording of an admission text in the list, the CLI
+reports that refusal as RBAC again. A 409 from an admission webhook on a write
+that sends a `resourceVersion` is a CONFLICT with the webhook's message and is
+not retryable: a retry gets the same denial. Any other 409 on such a write keeps
+the retryable message that the resource changed on the server since it was last
+read.
 
 **`node drain` and `node stop-drain` write Rancher's management node, after
 checking that Rancher offers the action.** Rancher drains a node when
