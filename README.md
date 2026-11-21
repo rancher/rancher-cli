@@ -222,6 +222,11 @@ A `delete` also waits until the object is gone, for up to 5 minutes by
 default (`--timeout`). `--wait=false` returns once the server accepts the
 request and prints `deletion started`.
 
+Every `delete` asks Kubernetes to delete the object's dependents in the
+background (`propagationPolicy: Background`, the default of `kubectl delete`),
+whatever the kind: `rancher delete job <name>` deletes the Job's pods too,
+shortly after the Job is gone.
+
 Rule of thumb: `--apply` means "yes, make the change"; `--yes` means "yes, I
 saw it is destructive".
 
