@@ -1258,9 +1258,9 @@ rancher oidc-client rotate-secret my-app --apply --yes
   server text, so it cannot drive the terminal (the message, hint and
   warnings of an error, its details lines, the name and id of each
   candidate, each table or wide cell, each name printed by `-o name`, each
-  `# warning:` line of a command that succeeds or of a dry-run preview,
-  the summary line and each prompt label show them as escapes; the message and hint of a `TLS_TRUST`
-  error have them removed);
+  `# warning:` line of a command that succeeds or of a dry-run preview, the
+  summary line and each prompt label show them as escapes; the message and
+  hint of a `TLS_TRUST` error have them removed);
   `inspect cluster`, `inspect
   deployment`, `inspect project`, `inspect user`, `auth status`, `config
   status` and the other commands REFERENCE.md lists also remove newlines from

@@ -27,9 +27,9 @@ func mirrored(warnings []string, silent map[string]int) string {
 }
 
 // TestMirrorWarningsWritesHiddenCharactersAsEscapes asserts a warning clause
-// that has a hidden character or an invalid byte is written whole in
-// double quotes with escapes; it cannot drive the terminal or forge a
-// second line, and every other clause and every remedy command stays as written.
+// that has a hidden character or an invalid byte is written whole in double
+// quotes with escapes; it cannot drive the terminal or forge a second line, and
+// every other clause and every remedy command stays as written.
 func TestMirrorWarningsWritesHiddenCharactersAsEscapes(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -95,9 +95,9 @@ func TestMirrorWarningsWritesHiddenCharactersAsEscapes(t *testing.T) {
 	})
 }
 
-// TestMirrorWarningsSilentSkipsTheEntryAsTheCommandWroteIt asserts silent is read against the
-// warnings as the command wrote them: one entry that holds a remedy command
-// is skipped and its second copy is written, expanded.
+// TestMirrorWarningsSilentSkipsTheEntryAsTheCommandWroteIt asserts silent is
+// read against the warnings as the command wrote them: one entry that has a
+// remedy command is skipped and its second copy is written, expanded.
 func TestMirrorWarningsSilentSkipsTheEntryAsTheCommandWroteIt(t *testing.T) {
 	t.Parallel()
 	raw := "run " + clierr.Rancher + " auth status"
@@ -141,7 +141,7 @@ func summaryLine(t *testing.T, summary, dir string) string {
 }
 
 // TestSummaryLineWritesHiddenCharactersAsEscapes asserts the summary line over
-// a table writes a clause that holds a hidden character in double quotes with
+// a table writes a clause that has a hidden character in double quotes with
 // escapes, expands a remedy command that follows it, writes an ordinary
 // summary as it is, and prints values that differ only by a hidden character
 // differently.

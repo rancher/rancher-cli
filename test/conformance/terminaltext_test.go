@@ -330,7 +330,7 @@ func (e terminalEnv) lineBeforeExpected(p string) string {
 	return strconv.Quote(terminalHostile(p)+" run ") + "rancher" + e.prefix() + " auth status"
 }
 
-// prefix is what a remedy command of this invocation holds after the word
+// prefix is what a remedy command of this invocation has after the word
 // rancher.
 func (e terminalEnv) prefix() string {
 	return strings.TrimSuffix(strings.TrimPrefix(e.expanded, "rancher"), " auth status")
@@ -648,7 +648,7 @@ var terminalRows = []terminalRow{
 // and keep the newline between lines. A table cell, a name, a candidate, a
 // details value, the warning lines of a command that succeeds or of a preview,
 // the summary line and a prompt label write them as escapes: a clause that
-// holds one is a double-quoted string, and a value cannot add a line. A
+// has one is a double-quoted string, and a value cannot add a line. A
 // command of this process planted in the same text still expands, and a label
 // keeps it as the prompter wrote it. Also asserted: a styled text is written
 // only when it adds nothing but the CLI's own codes; json, yaml, template,

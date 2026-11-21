@@ -60,7 +60,7 @@ func singleQuoteIsInADoubleQuotedPiece(line string) bool {
 }
 
 // TestAWarningNeverPutsACommandArgumentInDoubleQuotes asserts a warning whose
-// command argument holds a shell substitution, after a clause that holds a
+// command argument has a shell substitution, after a clause that has a
 // hidden character, prints the argument inside single quotes and never inside
 // double quotes, and that a shell that runs the printed line creates no file.
 func TestAWarningNeverPutsACommandArgumentInDoubleQuotes(t *testing.T) {
@@ -71,7 +71,7 @@ func TestAWarningNeverPutsACommandArgumentInDoubleQuotes(t *testing.T) {
 	warning := "a\u200bb; run " + clierr.Rancher + " get z\u200bz 'x$(: > " + pwned + ")'"
 	line := e.printedWarnings(warning)[0]
 
-	assert.False(t, singleQuoteIsInADoubleQuotedPiece(line), "no double-quoted piece holds a single quote: %q", line)
+	assert.False(t, singleQuoteIsInADoubleQuotedPiece(line), "no double-quoted piece has a single quote: %q", line)
 	found := false
 	for i := range len(line) {
 		if !strings.HasPrefix(line[i:], "$(") {
@@ -92,7 +92,7 @@ func TestAWarningNeverPutsACommandArgumentInDoubleQuotes(t *testing.T) {
 }
 
 // TestAProseValueThatReadsAsASubstitutionIsPrintedInDoubleQuotes asserts the
-// printed form of a warning whose value holds a substitution outside single
+// printed form of a warning whose value has a substitution outside single
 // quotes, followed by a hidden character: the whole clause is one
 // double-quoted string with escapes. Pasted into a shell, that line would run
 // the substitution. This test does not run it; it records the printed form.
@@ -104,7 +104,7 @@ func TestAProseValueThatReadsAsASubstitutionIsPrintedInDoubleQuotes(t *testing.T
 }
 
 // TestWarningsInJSONAndYAMLCarryTheValueAsItIs asserts json and yaml carry a
-// warning that holds hidden characters exactly as the command wrote it, for a
+// warning that has hidden characters exactly as the command wrote it, for a
 // result and for a preview.
 func TestWarningsInJSONAndYAMLCarryTheValueAsItIs(t *testing.T) {
 	t.Parallel()

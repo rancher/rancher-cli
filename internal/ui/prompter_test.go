@@ -300,13 +300,35 @@ func TestPrompterKeepsLabelsThatDifferByAHiddenCharacterApart(t *testing.T) {
 	assert.Len(t, lines, 3)
 }
 
-// TestOnlyWriteLabelAndTheLineEndCallWriteErr asserts that every use of writeErr
-// in the package's non-test source files is one of two calls: the call in
-// writeLabel with exactly clierr.LineText(label), or a call with the string
-// literal "\n". A new way to write a label that skips clierr.LineText fails
-// here, and so does a method value of writeErr. The scan covers whole files,
-// package-level variables included, and also fails a write to the error writer
-// outside Notice, writeErr and readLine.
+// prompterReceiverName returns the receiver name of d when d is a method on
+// Prompter or *Prompter with a named receiver, and "p" for any other
+// declaration.
+func prompterReceiverName(d *ast.FuncDecl) string {
+	if d.Recv == nil || len(d.Recv.List) != 1 || len(d.Recv.List[0].Names) != 1 {
+		return "p"
+	}
+	typ := d.Recv.List[0].Type
+	if star, ok := typ.(*ast.StarExpr); ok {
+		typ = star.X
+	}
+	if id, ok := typ.(*ast.Ident); !ok || id.Name != "Prompter" {
+		return "p"
+	}
+	if name := d.Recv.List[0].Names[0].Name; name != "_" {
+		return name
+	}
+	return "p"
+}
+
+// TestOnlyWriteLabelAndTheLineEndCallWriteErr asserts that every use of
+// writeErr in the package's non-test source files is one of two calls: the
+// call in writeLabel with exactly clierr.LineText(label), or a call with the
+// string literal "\n". A new way to write a label that skips clierr.LineText
+// fails here, and so does a method value of writeErr. The scan covers whole
+// files, package-level variables included, and also fails a write to the
+// error writer outside Notice, writeErr and readLine: a use of the err field
+// through the receiver of a Prompter method, whatever its name, or through p
+// anywhere else.
 func TestOnlyWriteLabelAndTheLineEndCallWriteErr(t *testing.T) {
 	t.Parallel()
 	fset := token.NewFileSet()
@@ -333,9 +355,9 @@ func TestOnlyWriteLabelAndTheLineEndCallWriteErr(t *testing.T) {
 	seen := 0
 	for _, f := range files {
 		for _, decl := range f.Decls {
-			fn := ""
+			fn, errRecv := "", "p"
 			if d, ok := decl.(*ast.FuncDecl); ok {
-				fn = d.Name.Name
+				fn, errRecv = d.Name.Name, prompterReceiverName(d)
 			}
 			called := map[*ast.SelectorExpr]*ast.CallExpr{}
 			ast.Inspect(decl, func(n ast.Node) bool {
@@ -352,7 +374,7 @@ func TestOnlyWriteLabelAndTheLineEndCallWriteErr(t *testing.T) {
 					return true
 				}
 				where := fset.Position(sel.Pos()).String()
-				if recv, ok := sel.X.(*ast.Ident); ok && recv.Name == "p" && sel.Sel.Name == "err" && !writers[fn] {
+				if recv, ok := sel.X.(*ast.Ident); ok && recv.Name == errRecv && sel.Sel.Name == "err" && !writers[fn] {
 					t.Errorf("%s: the error writer is used outside Notice, writeErr and readLine; write through writeLabel", where)
 				}
 				if sel.Sel.Name != "writeErr" {

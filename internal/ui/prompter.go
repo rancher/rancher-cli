@@ -159,7 +159,7 @@ func selectCancelable[T any](ctx context.Context, read func() (T, error), onCanc
 }
 
 // writeLabel writes a prompt label to err as clierr.LineText writes it: a
-// clause that holds a hidden character or an invalid byte is a double-quoted
+// clause that has a hidden character or an invalid byte is a double-quoted
 // string with escapes, and the label cannot add a line.
 func (p *Prompter) writeLabel(label string) {
 	p.writeErr(clierr.LineText(label))
