@@ -326,6 +326,11 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   `data.error.details.committed` true (a timeout, an interrupt, `AUTH`,
   `TLS_TRUST`), run `data.error.details.recovery`, a `rancher get` command;
   never run the delete again.
+- Every `delete` asks Kubernetes to delete the object's dependents in the
+  background (`propagationPolicy: Background`, as `kubectl delete` does): the
+  pods of a deleted Job are deleted shortly after the Job is gone. A
+  `data.waited` of `true` means the Job is gone, not its pods; read
+  `rancher get pod --cluster <c> --namespace <ns>` until they are gone.
 - `node drain <node> --cluster <c>` asks Rancher to drain a node: run it with
   `--dry-run` first, then `--apply --yes`. The dry-run preview lists the pods on
   the node in `data.objects` (`kind` pod, `outcome` `will be evicted`, `skipped` or

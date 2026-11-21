@@ -359,7 +359,13 @@ func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResou
 	}
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
-	opts := metav1.DeleteOptions{}
+	// Without a propagationPolicy the server applies the default for that
+	// kind: a Job keeps its pods and the server's response carries a warning
+	// for each request. Every delete, the dry-run preview included, sends
+	// Background: the object is deleted at once and the garbage collector
+	// deletes its dependents afterward.
+	background := metav1.DeletePropagationBackground
+	opts := metav1.DeleteOptions{PropagationPolicy: &background}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
