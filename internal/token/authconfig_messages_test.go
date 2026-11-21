@@ -136,7 +136,7 @@ func TestMessagesWithAnAuthConfigNameIt(t *testing.T) {
 		{"a created token through another auth config, from a user entry", "the token created from the stored login of server entry 'prod' was made through auth config 'openldap', not 'corp-ldap', which this exec entry names with --auth-provider; the token was revoked; sign in through auth config 'corp-ldap' with: rancher auth login 'prod' --auth-provider 'corp-ldap'; or pipe an API token of 'u-abc12' made through auth config 'corp-ldap' to: rancher auth login 'prod' --token-stdin", "rancher auth login 'prod' --auth-provider 'corp-ldap'"},
 		{"a created token through another auth config, from a plugin login entry", "the token created from the stored login of server entry 'exec-login-r.example.com' was made through auth config 'openldap', not 'corp-ldap', which this exec entry names with --auth-provider; the token was revoked; remove 'exec-login-r.example.com' with: rancher auth logout 'exec-login-r.example.com'; then rancher config delete-server 'exec-login-r.example.com'; <name> stands for a name of your choice; the next call signs in as 'u-abc12' through auth config 'corp-ldap' in a terminal; or it uses a login made through auth config 'corp-ldap' and piped to: rancher auth login <name> --url 'https://r.example.com' --cacert '/etc/rancher/ca.pem' --token-stdin", ""},
 		{"a created token that names no auth config", "the token create response for server entry 'prod' named no auth config; it cannot be checked against --auth-provider 'corp-ldap'; the token was revoked", ""},
-		{"the plugin's sign-in through another auth config", "the sign-in was made through auth config 'openldap', not 'corp-ldap', which this exec entry names with --auth-provider; nothing was stored; on the sign-in page, choose auth config 'corp-ldap'", ""},
+		{"the plugin's sign-in through another auth config", "the sign-in was made through auth config 'openldap', not 'corp-ldap', which this exec entry names with --auth-provider; nothing was stored; on the sign-in page, select auth config 'corp-ldap'", ""},
 		{"the plugin's sign-in tokens name no auth config", "the tokens the sign-in created named no auth config; they cannot be checked against --auth-provider 'corp-ldap'; nothing was stored", ""},
 		{"several plugin login entries for an identified entry", "more than one login entry the exec plugin created answers for https://r.example.com ('exec-login-r.example.com', 'exec-login-r.example.com-2'); to log in to 'prod', pipe an API token of 'u-abc12' made through auth config 'corp-ldap' to: rancher auth login 'prod' --token-stdin; or keep one: for each other entry run rancher auth logout <entry>; then rancher config delete-server <entry>", "rancher auth login 'prod' --token-stdin"},
 		{"several plugin login entries for no entry", "more than one login entry the exec plugin created answers for https://r.example.com ('exec-login-r.example.com', 'exec-login-r.example.com-2'); <name> stands for a name of your choice; to log in an entry for 'https://r.example.com', pipe an API token of 'u-abc12' made through auth config 'corp-ldap' to: rancher auth login <name> --url 'https://r.example.com' --cacert '/etc/rancher/ca.pem' --token-stdin; or keep one: for each other entry run rancher auth logout <entry>; then rancher config delete-server <entry>", ""},
@@ -144,4 +144,20 @@ func TestMessagesWithAnAuthConfigNameIt(t *testing.T) {
 		{"no terminal, no entry to log in to", "interactive login required for auth config local; this call has no terminal to answer it; <name> stands for a name of your choice; to log in without a terminal, pipe an API token of Rancher user 'u-abc12' made through auth config 'corp-ldap' to: rancher auth login <name> --url 'https://r.example.com' --token-stdin; or run kubectl once in a terminal and sign in as 'u-abc12' through auth config 'corp-ldap'", ""},
 	}
 	assert.Equal(t, want, authMessageRows(t, "corp-ldap"))
+}
+
+// TestThePluginSignInRefusalNamesTheProviderToSelect asserts the refusal of
+// the plugin's sign-in through another auth config, for a call whose auth
+// config is named okta, ends with the label the Rancher sign-in page shows
+// for it and its name.
+func TestThePluginSignInRefusalNamesTheProviderToSelect(t *testing.T) {
+	t.Parallel()
+	var got []messageRow
+	for _, r := range authMessageRows(t, "okta") {
+		if r.name == "the plugin's sign-in through another auth config" {
+			got = append(got, r)
+		}
+	}
+	require.Len(t, got, 1)
+	assert.Equal(t, "the sign-in was made through auth config 'openldap', not 'okta', which this exec entry names with --auth-provider; nothing was stored; on the sign-in page, select 'Okta' (auth config 'okta')", got[0].message)
 }

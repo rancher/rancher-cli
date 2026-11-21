@@ -100,9 +100,22 @@ func TestASignInThroughAnotherAuthConfigIsRefused(t *testing.T) {
 			ce, msg := refusal(t, err)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
 			assert.True(t, strings.HasPrefix(msg, "the sign-in was made through auth config 'openldap', not 'corp-ldap', which this exec entry names with --auth-provider; "+
-				"the token it created was revoked; on the sign-in page, choose auth config 'corp-ldap'"), msg)
+				"the token it created was revoked; on the sign-in page, select auth config 'corp-ldap'"), msg)
 			assert.GreaterOrEqual(t, x.revoked(), 1)
 			assert.False(t, x.cachedWith(cluster, "", "user-alice", "corp-ldap"))
+		})
+		t.Run("an auth config named like a SAML provider, "+name, func(t *testing.T) {
+			x := newOwnerFixture(t, false, testrancher.Options{AuthConfigs: []testrancher.AuthConfig{
+				{Name: "okta", Type: "openLdapProvider", Users: authConfigUsers("okta")},
+				{Name: "openldap", Type: "openLdapProvider", Users: authConfigUsers("openldap")},
+			}, PrincipalAuthConfig: "openldap"})
+			_, _, err := x.callWith(authCall{cluster: cluster, userID: "user-alice", authConfig: "okta", signIn: signInLines("okta", "alice")})
+			ce, msg := refusal(t, err)
+			assert.Equal(t, clierr.CodeAuth, ce.Code)
+			assert.True(t, strings.HasPrefix(msg, "the sign-in was made through auth config 'openldap', not 'okta', which this exec entry names with --auth-provider; "+
+				"the token it created was revoked; on the sign-in page, select 'Okta' (auth config 'okta')"), msg)
+			assert.GreaterOrEqual(t, x.revoked(), 1)
+			assert.False(t, x.cachedWith(cluster, "", "user-alice", "okta"))
 		})
 		t.Run("no auth config named, "+name, func(t *testing.T) {
 			x := newAuthConfigFixture(t, false, testrancher.Options{OmitPrincipalOnCreate: true})
@@ -229,7 +242,7 @@ func TestAPluginCreatedLoginThroughAnotherAuthConfigStoresNothing(t *testing.T) 
 		want string
 	}{
 		{"another auth config", testrancher.Options{PrincipalAuthConfig: "openldap"},
-			"the sign-in was made through auth config 'openldap', not 'corp-ldap', which this exec entry names with --auth-provider; nothing was stored; on the sign-in page, choose auth config 'corp-ldap'"},
+			"the sign-in was made through auth config 'openldap', not 'corp-ldap', which this exec entry names with --auth-provider; nothing was stored; on the sign-in page, select auth config 'corp-ldap'"},
 		{"no auth config", testrancher.Options{OmitPrincipalOnCreate: true},
 			"the tokens the sign-in created named no auth config; they cannot be checked against --auth-provider 'corp-ldap'; nothing was stored"},
 	} {
@@ -245,6 +258,20 @@ func TestAPluginCreatedLoginThroughAnotherAuthConfigStoresNothing(t *testing.T) 
 			assert.GreaterOrEqual(t, x.revoked(), 1)
 		})
 	}
+	t.Run("an auth config named like a SAML provider", func(t *testing.T) {
+		x := newOwnerFixture(t, true, testrancher.Options{AuthConfigs: []testrancher.AuthConfig{
+			{Name: "okta", Type: "openLdapProvider", Users: authConfigUsers("okta")},
+			{Name: "openldap", Type: "openLdapProvider", Users: authConfigUsers("openldap")},
+		}, PrincipalAuthConfig: "openldap"})
+		_, _, err := x.callWith(authCall{cluster: "c-test", userID: "user-alice", authConfig: "okta", signIn: signInLines("okta", "alice")})
+		ce, msg := refusal(t, err)
+		assert.Equal(t, clierr.CodeAuth, ce.Code)
+		assert.Contains(t, msg, "the sign-in was made through auth config 'openldap', not 'okta', which this exec entry names with --auth-provider; nothing was stored; on the sign-in page, select 'Okta' (auth config 'okta')")
+		cfg, lerr := config.Load(config.FilePath(x.dir))
+		require.NoError(t, lerr)
+		assert.Empty(t, cfg.Servers, "no entry was written")
+		assert.GreaterOrEqual(t, x.revoked(), 1)
+	})
 }
 
 // TestAPluginLoginEntryNameThatIsTooLongNamesTheAuthConfigAndASignIn asserts

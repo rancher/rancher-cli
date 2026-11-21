@@ -279,49 +279,55 @@ func configsServer(t *testing.T, entries ...[2]string) *httptest.Server {
 	return srv
 }
 
-// TestASAMLConfigOfSeveralSaysTheBrowserPageChoosesItself asserts that after
-// a SAML config is chosen from several SAML configs the sign-in says the
-// browser page offers its own choice, before the request id, and prints no
-// notice naming the config, since the CLI cannot pass it on.
-func TestASAMLConfigOfSeveralSaysTheBrowserPageChoosesItself(t *testing.T) {
+// TestASAMLConfigOfSeveralNamesTheProviderToSelect asserts that after a SAML
+// config is chosen from several SAML configs the sign-in names the provider
+// to select on the browser page, as the page shows it, before the request id:
+// the config's id for okta-eu, the vendor label for okta. One SAML config, and
+// a --no-input refusal, print no such notice.
+func TestASAMLConfigOfSeveralNamesTheProviderToSelect(t *testing.T) {
 	isolateSignIn(t)
 	restore := SetSAMLTimingForTest(50*time.Millisecond, 10*time.Millisecond)
 	t.Cleanup(restore)
-	const notice = "The Rancher sign-in page in your browser offers its own choice of auth config; the CLI cannot pass yours to it."
+	const idNotice = `Select "okta-eu" on the Rancher sign-in page in your browser; the CLI cannot select it for you. If the page opens on another provider, use "Choose a different provider".`
+	const labelNotice = `Select "Okta" (auth config okta) on the Rancher sign-in page in your browser; the CLI cannot select it for you. If the page opens on another provider, use "Choose a different provider".`
 
 	srv := configsServer(t, [2]string{"okta", "oktaProvider"}, [2]string{"okta-eu", "oktaProvider"}, [2]string{"local", "localProvider"})
 	p := newEventPrompter(noTerminal())
 	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "okta-eu", ResponseType: "json"}, 0, p)
 	require.ErrorContains(t, err, "timed out")
-	require.GreaterOrEqual(t, p.at(notice), 0, "events %q", p.events)
-	assert.Less(t, p.at(notice), p.at("Login Request Id"), "events %q", p.events)
+	require.GreaterOrEqual(t, p.at(idNotice), 0, "events %q", p.events)
+	assert.Less(t, p.at(idNotice), p.at("Login Request Id"), "events %q", p.events)
 	assert.Zero(t, p.count("Signing in through"), "events %q", p.events)
 
 	one := configsServer(t, [2]string{"okta", "oktaProvider"}, [2]string{"local", "localProvider"})
 	p = newEventPrompter(noTerminal())
 	_, err = AcquireLoginCredential(t.Context(), one.Client(), LoginRequest{CAFlag: "--cacert", Server: one.URL, AuthProvider: "okta", ResponseType: "json"}, 0, p)
 	require.ErrorContains(t, err, "timed out")
-	assert.Zero(t, p.count(notice), "one SAML config: nothing to say; events %q", p.events)
+	assert.Zero(t, p.count(labelNotice), "one SAML config: nothing to say; events %q", p.events)
 
 	under := newEventPrompter(ui.Discard())
 	_, err = AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: "okta-eu", ResponseType: "json"}, 0, under)
 	require.EqualError(t, err, "interactive login required for auth config okta-eu")
-	assert.Zero(t, under.count(notice), "no notice before a --no-input refusal; events %q", under.events)
+	assert.Zero(t, under.count(idNotice), "no notice before a --no-input refusal; events %q", under.events)
 }
 
-// TestAGenericSAMLConfigCountsAmongTheSAMLConfigsTheBrowserPageOffers asserts
-// that a SAML sign-in through an okta config says the browser page offers its
-// own choice when a Generic SAML config is also listed, and the same for a
-// sign-in through the Generic SAML config: the page offers every SAML config
-// of the server, whatever its type.
-func TestAGenericSAMLConfigCountsAmongTheSAMLConfigsTheBrowserPageOffers(t *testing.T) {
+// TestAGenericSAMLConfigAmongSeveralNamesTheProviderToSelect asserts that a
+// SAML sign-in through an okta config names the provider to select when a
+// Generic SAML config is also listed, and the same for a sign-in through the
+// Generic SAML config: the page offers every SAML config of the server,
+// whatever its type. okta is shown by its vendor label and corp-saml by its
+// id.
+func TestAGenericSAMLConfigAmongSeveralNamesTheProviderToSelect(t *testing.T) {
 	isolateSignIn(t)
 	restore := SetSAMLTimingForTest(50*time.Millisecond, 10*time.Millisecond)
 	t.Cleanup(restore)
-	const notice = "The Rancher sign-in page in your browser offers its own choice of auth config; the CLI cannot pass yours to it."
+	const tail = ` on the Rancher sign-in page in your browser; the CLI cannot select it for you. If the page opens on another provider, use "Choose a different provider".`
 
 	srv := configsServer(t, [2]string{"okta", "oktaProvider"}, [2]string{"corp-saml", "genericSAMLProvider"}, [2]string{"local", "localProvider"})
-	for _, chosen := range []string{"okta", "corp-saml"} {
+	for chosen, notice := range map[string]string{
+		"okta":      `Select "Okta" (auth config okta)` + tail,
+		"corp-saml": `Select "corp-saml"` + tail,
+	} {
 		p := newEventPrompter(noTerminal())
 		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{CAFlag: "--cacert", Server: srv.URL, AuthProvider: chosen, ResponseType: "json"}, 0, p)
 		require.ErrorContains(t, err, "timed out", chosen)
@@ -333,7 +339,7 @@ func TestAGenericSAMLConfigCountsAmongTheSAMLConfigsTheBrowserPageOffers(t *test
 	p := newEventPrompter(noTerminal())
 	_, err := AcquireLoginCredential(t.Context(), one.Client(), LoginRequest{CAFlag: "--cacert", Server: one.URL, AuthProvider: "corp-saml", ResponseType: "json"}, 0, p)
 	require.ErrorContains(t, err, "timed out")
-	assert.Zero(t, p.count(notice), "one SAML config: nothing to say; events %q", p.events)
+	assert.Zero(t, p.count(`Select "corp-saml"`+tail), "one SAML config: nothing to say; events %q", p.events)
 }
 
 // loginBodies is a Rancher whose provider list is configs and whose login

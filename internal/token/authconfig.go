@@ -1,6 +1,7 @@
 package token
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -62,11 +63,47 @@ func authConfigCandidates(entries []typedProvider) []clierr.Candidate {
 	return cs
 }
 
+// samlVendorLabels are the words the Rancher sign-in page shows in English
+// for a SAML provider, by provider name.
+// testdata/saml-vendor-labels.golden.json records them, and a test asserts
+// the two are equal.
+var samlVendorLabels = map[string]string{
+	"adfs":        "ADFS",
+	"genericsaml": "Generic SAML",
+	"keycloak":    "Keycloak",
+	"okta":        "Okta",
+	"ping":        "Ping Identity",
+	"shibboleth":  "Shibboleth",
+}
+
+// signInPageName is the name the Rancher sign-in page shows for an auth
+// config: its id, or the vendor label of its provider when the id in lower
+// case is the provider name. labelForm reports the second case. An entry with
+// no id takes the label, and a provider with no label takes its name.
+func signInPageName(id, provider string) (name string, labelForm bool) {
+	if id != "" && strings.ToLower(id) != provider {
+		return id, false
+	}
+	if label, ok := samlVendorLabels[provider]; ok {
+		return label, true
+	}
+	return provider, true
+}
+
+const (
+	// samlNoticeID is the notice for an auth config the page shows by its id.
+	samlNoticeID = `Select "%s" on the Rancher sign-in page in your browser; the CLI cannot select it for you. If the page opens on another provider, use "Choose a different provider".`
+	// samlNoticeLabel is the notice for one the page shows by its vendor
+	// label, with the name of the auth config.
+	samlNoticeLabel = `Select "%s" (auth config %s) on the Rancher sign-in page in your browser; the CLI cannot select it for you. If the page opens on another provider, use "Choose a different provider".`
+)
+
 // signInNotice is what a sign-in through chosen says before it asks
 // anyone to act, "" for none. A password or OAuth sign-in through a type
 // that has several auth configs on the server names the one it uses. A
-// SAML sign-in goes through the Rancher sign-in page, which makes its own
-// choice among the SAML auth configs when there are several.
+// SAML sign-in goes through the Rancher sign-in page, where the user selects
+// the provider; with several SAML auth configs the notice names the one to
+// select, as the page shows it.
 func signInNotice(entries []typedProvider, chosen typedProvider) string {
 	typ := chosen.GetType()
 	if samlProviders[typ] {
@@ -77,7 +114,11 @@ func signInNotice(entries []typedProvider, chosen typedProvider) string {
 			}
 		}
 		if saml > 1 {
-			return "The Rancher sign-in page in your browser offers its own choice of auth config; the CLI cannot pass yours to it."
+			name, labelForm := signInPageName(chosen.GetID(), providerName(typ))
+			if labelForm {
+				return fmt.Sprintf(samlNoticeLabel, name, output.Printable(authConfigName(chosen)))
+			}
+			return fmt.Sprintf(samlNoticeID, output.Printable(name))
 		}
 		return ""
 	}

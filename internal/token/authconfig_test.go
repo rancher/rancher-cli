@@ -286,3 +286,103 @@ func TestAnExactNameOnAServerWithOnlyUnsupportedConfigsIsRefused(t *testing.T) {
 	assert.True(t, strings.HasPrefix(ce.Message, "--auth-provider github names an auth config this CLI cannot sign in with: github (githubProvider); "), ce.Message)
 	assert.Empty(t, ce.Candidates)
 }
+
+// samlNoticeTail ends every notice that names the provider to select.
+const samlNoticeTail = ` on the Rancher sign-in page in your browser; the CLI cannot select it for you. If the page opens on another provider, use "Choose a different provider".`
+
+// TestSignInNoticeNamesTheProviderToSelect asserts the notice of a SAML
+// sign-in with several SAML auth configs, whole: the auth config's id when the
+// sign-in page shows the id, and the vendor label with the auth config's name
+// when the id in lower case is the provider name. One SAML auth config gets
+// no notice.
+func TestSignInNoticeNamesTheProviderToSelect(t *testing.T) {
+	t.Parallel()
+	local := &LocalProvider{AuthProvider{Type: "localProvider", ID: "local"}}
+	okta := &AuthProvider{Type: "oktaProvider", ID: "okta"}
+	oktaEU := &AuthProvider{Type: "oktaProvider", ID: "okta-eu"}
+	corpSAML := &AuthProvider{Type: "genericSAMLProvider", ID: "corp-saml"}
+	genericSAML := &AuthProvider{Type: "genericSAMLProvider", ID: "genericsaml"}
+	ping := &AuthProvider{Type: "pingProvider", ID: "ping"}
+	upperOkta := &AuthProvider{Type: "oktaProvider", ID: "OKTA"}
+	noID := &AuthProvider{Type: "oktaProvider"}
+	for _, tc := range []struct {
+		name    string
+		entries []typedProvider
+		chosen  typedProvider
+		want    string
+	}{
+		{"one SAML config", []typedProvider{okta, local}, okta, ""},
+		{"the id is shown", []typedProvider{oktaEU, okta}, oktaEU, `Select "okta-eu"` + samlNoticeTail},
+		{"the vendor label is shown", []typedProvider{okta, oktaEU}, okta, `Select "Okta" (auth config okta)` + samlNoticeTail},
+		{"a Generic SAML config with its own name", []typedProvider{corpSAML, okta}, corpSAML, `Select "corp-saml"` + samlNoticeTail},
+		{"a Generic SAML config named like its provider", []typedProvider{genericSAML, okta}, genericSAML, `Select "Generic SAML" (auth config genericsaml)` + samlNoticeTail},
+		{"ids equal to the provider names, the first", []typedProvider{ping, okta}, ping, `Select "Ping Identity" (auth config ping)` + samlNoticeTail},
+		{"ids equal to the provider names, the second", []typedProvider{ping, okta}, okta, `Select "Okta" (auth config okta)` + samlNoticeTail},
+		// The sign-in page compares the id in lower case with the provider
+		// name. It shows OKTA as Okta.
+		{"an id in capitals", []typedProvider{upperOkta, corpSAML}, upperOkta, `Select "Okta" (auth config OKTA)` + samlNoticeTail},
+		// Rancher always sends an id, and the sign-in page needs one; an
+		// entry without one, which no sign-in page shows, gets the provider
+		// name in the parenthesis.
+		{"an entry with no id", []typedProvider{noID, corpSAML}, noID, `Select "Okta" (auth config okta)` + samlNoticeTail},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, signInNotice(tc.entries, tc.chosen))
+		})
+	}
+
+	t.Run("a provider name with no label", func(t *testing.T) {
+		t.Parallel()
+		name, labelForm := signInPageName("foo", "foo")
+		assert.Equal(t, "foo", name)
+		assert.True(t, labelForm)
+	})
+}
+
+// TestSignInPageChoiceNamesTheProviderToSelect asserts the ending of a
+// refusal of a sign-in made through another auth config: an auth config
+// named like a SAML provider, in any case, is named by the vendor label and
+// its name, and another by its name.
+func TestSignInPageChoiceNamesTheProviderToSelect(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]string{
+		"okta":      "on the sign-in page, select 'Okta' (auth config 'okta')",
+		"OKTA":      "on the sign-in page, select 'Okta' (auth config 'OKTA')",
+		"okta-eu":   "on the sign-in page, select auth config 'okta-eu'",
+		"corp-ldap": "on the sign-in page, select auth config 'corp-ldap'",
+	} {
+		assert.Equal(t, want, userCheck{authConfig: name}.signInPageChoice(), name)
+	}
+}
+
+// TestEverySAMLTypeNamesTheProviderToSelect asserts that for every SAML type
+// the notice and the two refusal endings name the provider to select as the
+// recorded labels give it: the label and the name for an id equal to the
+// provider name, the id for another. It cannot assert the recorded words are
+// those a real sign-in page shows.
+func TestEverySAMLTypeNamesTheProviderToSelect(t *testing.T) {
+	t.Parallel()
+	golden := readSamlLabelsGolden(t)
+	for typ := range samlProviders {
+		t.Run(typ, func(t *testing.T) {
+			t.Parallel()
+			name := providerName(typ)
+			label, ok := golden.Labels[name]
+			require.True(t, ok, typ)
+			other := &AuthProvider{Type: "oktaProvider", ID: "other-saml"}
+
+			byLabel := &AuthProvider{Type: typ, ID: name}
+			got := signInNotice([]typedProvider{byLabel, other}, byLabel)
+			assert.Equal(t, `Select "`+label+`" (auth config `+name+`)`+samlNoticeTail, got)
+			assert.NotContains(t, got, "offers its own choice")
+			assert.Equal(t, "on the sign-in page, select '"+label+"' (auth config '"+name+"')", userCheck{authConfig: name}.signInPageChoice())
+
+			byID := &AuthProvider{Type: typ, ID: name + "-2"}
+			got = signInNotice([]typedProvider{byID, other}, byID)
+			assert.Equal(t, `Select "`+name+`-2"`+samlNoticeTail, got)
+			assert.NotContains(t, got, "offers its own choice")
+			assert.Equal(t, "on the sign-in page, select auth config '"+name+"-2'", userCheck{authConfig: name + "-2"}.signInPageChoice())
+		})
+	}
+}

@@ -1,0 +1,18 @@
+{
+  "source": {
+    "repository": "rancher/dashboard",
+    "ref": "release-2.16",
+    "commit": "300e0de01658583b29a4b6835b4808b4545e14f2",
+    "file": "shell/assets/translations/en-us.yaml",
+    "key": "model.authConfig.provider",
+    "sha256": "0ba3872e88344ee50656f02d912c93e55af2545bf7edc2aa13dfb34b88fc1c9b"
+  },
+  "labels": {
+    "adfs": "ADFS",
+    "genericsaml": "Generic SAML",
+    "keycloak": "Keycloak",
+    "okta": "Okta",
+    "ping": "Ping Identity",
+    "shibboleth": "Shibboleth"
+  }
+}

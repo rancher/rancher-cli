@@ -377,6 +377,19 @@ func TestSignInMessagesKeepServerValuesOnTheirLines(t *testing.T) {
 		assertNotice(t, msg, written.String(), "chosenAuthConfig")
 	})
 
+	t.Run("the auth config a SAML sign-in goes through", func(t *testing.T) {
+		var written bytes.Buffer
+		p := newEventPrompter(ui.New(&written, nil, false, true))
+		entries := []typedProvider{
+			&AuthProvider{Type: "oktaProvider", ID: hostileValue("chosenAuthConfig")},
+			&AuthProvider{Type: "oktaProvider", ID: "other"},
+		}
+		msg := signInNotice(entries, entries[0])
+		require.Contains(t, msg, "Select \"", "the notice names the provider to select")
+		p.Notice(msg)
+		assertNotice(t, msg, written.String(), "chosenAuthConfig")
+	})
+
 	t.Run("a device code", func(t *testing.T) {
 		idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {

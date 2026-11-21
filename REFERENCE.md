@@ -3521,7 +3521,8 @@ no `configName`.
 
 A SAML sign-in goes through the Rancher sign-in page in the browser, which
 makes its own choice among the SAML auth configs. The CLI cannot pass the
-chosen one to it, and says so when several SAML auth configs are enabled.
+chosen one to it; when several SAML auth configs are enabled, the CLI says
+which one to select, in the words the page shows.
 
 Without `--user-id` the flag chooses the auth config of a new sign-in only. A
 cached exec credential, a stored login and the plugin-created login (token

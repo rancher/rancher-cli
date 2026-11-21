@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
@@ -372,8 +373,20 @@ func (u userCheck) checkSignInAuthConfig(ctx context.Context, created CreateResu
 			clierr.ShellQuote(u.authConfig)+"; "+revoked).WithDetails(fateDetails(fresh, out))
 	}
 	return clierr.New(clierr.CodeAuth, "the sign-in was made through auth config "+clierr.ShellQuote(created.AuthConfig)+", not "+clierr.ShellQuote(u.authConfig)+
-		", which this exec entry names with --auth-provider; "+revoked+"; on the sign-in page, choose auth config "+clierr.ShellQuote(u.authConfig)).
+		", which this exec entry names with --auth-provider; "+revoked+"; "+u.signInPageChoice()).
 		WithDetails(fateDetails(fresh, out))
+}
+
+// signInPageChoice ends a refusal of a sign-in made through another auth
+// config: what to select on the sign-in page. An auth config whose name in
+// lower case is a SAML provider name is named by that provider's label: the
+// page shows the label for it when the auth config is of that provider's
+// type, and this message does not know the type.
+func (u userCheck) signInPageChoice() string {
+	if label, ok := samlVendorLabels[strings.ToLower(u.authConfig)]; ok {
+		return "on the sign-in page, select " + clierr.ShellQuote(label) + " (auth config " + clierr.ShellQuote(u.authConfig) + ")"
+	}
+	return "on the sign-in page, select auth config " + clierr.ShellQuote(u.authConfig)
 }
 
 // pluginSignInRefused is the refusal of a plugin-created login for a call
@@ -400,6 +413,5 @@ func (u userCheck) pluginAuthConfigRefused(named string) *clierr.Error {
 			clierr.ShellQuote(u.authConfig)+"; nothing was stored")
 	}
 	return clierr.New(clierr.CodeAuth, "the sign-in was made through auth config "+clierr.ShellQuote(named)+", not "+clierr.ShellQuote(u.authConfig)+
-		", which this exec entry names with --auth-provider; nothing was stored; on the sign-in page, choose auth config "+
-		clierr.ShellQuote(u.authConfig))
+		", which this exec entry names with --auth-provider; nothing was stored; "+u.signInPageChoice())
 }
