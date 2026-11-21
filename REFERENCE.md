@@ -1262,6 +1262,11 @@ RFC 6901 requires; the patch is refused before the object is read otherwise.
 The path of a move or copy cannot be empty; to replace the whole object, use
 replace with an empty path.
 
+`--patch-file -` reads the patch from stdin. It drops every byte order mark at
+the start of stdin (Windows PowerShell 5.1 sends one before piped text, and two
+when `$OutputEncoding` is `[System.Text.Encoding]::UTF8`), and at the start of a
+file given to `--patch-file`.
+
 An operation of a JSON Patch that does not apply to the object (no value at the
 path, a failed `test`, an index past the end of a list) is refused with
 `VALIDATION` after the object is read and before anything is sent. The message
@@ -1993,11 +1998,15 @@ annotations (`cli.rancher.io/request-id`) and prints it in this error.
 **Values come only from files.** `--values <file>` is repeatable; the files merge
 in the order given (maps merge key by key; any other value replaces the earlier
 one). `--values -` reads stdin, once, and is refused when stdin is a terminal.
+`--values -` also drops every byte order mark at the start of stdin (Windows
+PowerShell 5.1 sends one mark before piped text, and two when `$OutputEncoding`
+is `[System.Text.Encoding]::UTF8`), and so does a file given to `--values`.
 There is no flag that takes a value on the command line. The preview lists the
 path of every value from your files (`values.auth.password: <hidden>`), never
 the value, except the registry host, for a chart that declares a registry path
 (below), where it shows the value sent when it is a string. An error about a
-values file names the file and at most a line number, never text from the file.
+values file names the file and at most a line number, never text from the
+file.
 
 **Values added by the CLI.** As the Rancher UI does, `app install` adds these
 values to every chart, each unless your files set a value on that path (a value

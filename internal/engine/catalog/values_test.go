@@ -186,6 +186,46 @@ func TestReadValuesBOMAndCRLF(t *testing.T) {
 	require.ErrorContains(t, crlf, "line 3: not valid YAML")
 }
 
+// TestReadValuesDropsEveryLeadingByteOrderMark asserts a values document read
+// from stdin or a file has the same keys after no, one, two and three byte
+// order marks: a YAML decoder given more than one mark would drop the first
+// character of every key after the first. A mark inside a value stays, and a
+// document of only marks is the empty one.
+func TestReadValuesDropsEveryLeadingByteOrderMark(t *testing.T) {
+	t.Parallel()
+	const mark = "\ufeff"
+	const doc = "replicaCount: 2\r\nimage: nginx\r\nservice: web\r\n"
+	want := map[string]any{"replicaCount": float64(2), "image": "nginx", "service": "web"}
+	for _, src := range []struct{ name, path string }{{"stdin", "-"}, {"a file", "v.yaml"}} {
+		path := src.path
+		for marks := range 4 {
+			t.Run(fmt.Sprintf("%s with %d marks", src.name, marks), func(t *testing.T) {
+				t.Parallel()
+				v, err := ReadValues(files{path: strings.Repeat(mark, marks) + doc}, []string{path}, false)
+				require.NoError(t, err)
+				assert.Equal(t, want, v.tree)
+			})
+		}
+	}
+
+	for marks := range 3 {
+		t.Run(fmt.Sprintf("a mark inside a quoted value after %d marks stays", marks), func(t *testing.T) {
+			t.Parallel()
+			in := strings.Repeat(mark, marks) + "a: 1\r\nb: \"x" + mark + "y\"\r\nc: 3\r\n"
+			v, err := ReadValues(files{"-": in}, []string{"-"}, false)
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"a": float64(1), "b": "x" + mark + "y", "c": float64(3)}, v.tree)
+		})
+	}
+
+	t.Run("three marks and nothing else", func(t *testing.T) {
+		t.Parallel()
+		_, err := ReadValues(files{"-": strings.Repeat(mark, 3)}, []string{"-"}, false)
+		require.ErrorContains(t, err, "holds no YAML document")
+		assert.Equal(t, clierr.CodeValidation, clierr.From(err).Code)
+	})
+}
+
 // TestValuesPaths asserts the paths list every leaf in order, with a key
 // that holds a dot, a bracket or a quote in brackets.
 func TestValuesPaths(t *testing.T) {

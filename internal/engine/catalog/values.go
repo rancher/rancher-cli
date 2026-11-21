@@ -128,10 +128,10 @@ func fileName(p string) string {
 var yamlLine = regexp.MustCompile(`^yaml: line (\d+):`)
 
 // decodeValuesFile decodes one values file: one YAML document whose top
-// level is a mapping. A UTF-8 byte order mark at the start is dropped; CRLF
-// line endings count as one line break.
+// level is a mapping. Every UTF-8 byte order mark at the start is dropped;
+// CRLF line endings count as one line break.
 func decodeValuesFile(p string, b []byte) (map[string]any, error) {
-	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+	b = engine.DropLeadingByteOrderMarks(b)
 	refuse := func(what string, line int) error {
 		msg := "--values file " + fileName(p) + ": " + what
 		if line > 0 {

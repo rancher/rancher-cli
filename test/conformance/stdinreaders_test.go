@@ -24,7 +24,8 @@ import (
 //
 // A reader that reaches stdin through a variable (the document readers of
 // create resource -f -, patch --patch-file - and --values -, which pass a path
-// the user typed) is not matched.
+// the user typed) is not matched here. TestEveryDocumentReaderDropsLeadingByteOrderMarks
+// finds those readers by the shape of the method Read they call.
 
 const (
 	stdinOSPath       = "os"

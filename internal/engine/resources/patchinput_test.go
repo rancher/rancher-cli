@@ -228,6 +228,71 @@ func TestPatchInputTrimsByteOrderMark(t *testing.T) {
 	}
 }
 
+// planPatchFile plans `patch configmap app` with the patch read from the
+// source path "-" holding text, and returns the client so a test can read the
+// requests.
+func planPatchFile(t *testing.T, text, typ string) (safety.Effect, *patchClient, error) {
+	t.Helper()
+	client := &patchClient{obj: objFromJSON(t, configMapJSON)}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	s := map[string]string{"cluster": "prod", "namespace": "default", "patch-file": "-"}
+	if typ != "" {
+		s["type"] = typ
+	}
+	eff, _, err := planPatch(t, NewPatch(mustKind(t, "configmap"), fac, mapFileSource{"-": []byte(text)}), input{args: []string{"app"}, s: s})
+	return eff, client, err
+}
+
+// TestPatchFileDropsEveryLeadingByteOrderMark asserts a patch read from
+// --patch-file patches the same fields after no, one, two and three byte
+// order marks, a mark inside a string value stays, and a file of only marks
+// is the empty patch. The inline --patch text keeps its one-mark drop.
+func TestPatchFileDropsEveryLeadingByteOrderMark(t *testing.T) {
+	t.Parallel()
+	const mark = "\ufeff"
+	const ops = "[\r\n{\"op\":\"replace\",\"path\":\"/data/a\",\"value\":\"9\"},\r\n{\"op\":\"add\",\"path\":\"/data/c\",\"value\":\"3\"},\r\n{\"op\":\"remove\",\"path\":\"/data/b\"}\r\n]\r\n"
+	const merge = "{\r\n\"data\":{\"a\":\"9\",\"b\":null,\"c\":\"3\"},\r\n\"metadata\":{\"labels\":{\"app\":\"x\"}}\r\n}\r\n"
+	for _, tc := range []struct{ name, typ, doc string }{{"json patch", "", ops}, {"merge patch", "merge", merge}} {
+		for marks := range 4 {
+			t.Run(fmt.Sprintf("%s with %d marks", tc.name, marks), func(t *testing.T) {
+				t.Parallel()
+				eff, _, err := planPatchFile(t, strings.Repeat(mark, marks)+tc.doc, tc.typ)
+				require.NoError(t, err)
+				for path, to := range map[string]any{"/data/a": "9", "/data/b": nil, "/data/c": "3"} {
+					d, ok := diffAt(eff, path)
+					require.True(t, ok, "%s in %+v", path, eff.Diff)
+					assert.Equal(t, to, d.To, path)
+				}
+			})
+		}
+	}
+
+	for marks := range 3 {
+		t.Run(fmt.Sprintf("a mark inside a string value after %d marks stays", marks), func(t *testing.T) {
+			t.Parallel()
+			eff, _, err := planPatchFile(t, strings.Repeat(mark, marks)+`{"data":{"a":"x`+mark+`y"}}`, "merge")
+			require.NoError(t, err)
+			d, ok := diffAt(eff, "/data/a")
+			require.True(t, ok)
+			assert.Equal(t, "x"+mark+"y", d.To)
+		})
+	}
+
+	t.Run("three marks and nothing else", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := planPatchFile(t, strings.Repeat(mark, 3), "")
+		requireValidation(t, err)
+		require.ErrorContains(t, err, "invalid patch: the patch is empty")
+	})
+
+	t.Run("the inline patch keeps its one-mark drop", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := planTyped(t, "configmap", "app", configMapJSON, strings.Repeat(mark, 2)+`[{"op":"replace","path":"/data/a","value":"9"}]`, "")
+		requireValidation(t, err)
+		require.ErrorContains(t, err, "invalid patch: not valid JSON at byte 3")
+	})
+}
+
 // TestPatchMergeSendsTheFetchedServerFields asserts that a merge patch
 // sends the fetched resourceVersion and managed fields, as fetched, in the
 // update.

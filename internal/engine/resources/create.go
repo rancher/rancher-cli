@@ -282,6 +282,7 @@ func (c *createCmd) readAndResolve(path string) (*unstructured.Unstructured, kin
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("cannot read manifest %q: %v", path, err))
 	}
+	b = engine.DropLeadingByteOrderMarks(b)
 	n, derr := countDocs(b)
 	if derr != nil {
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, invalidManifestMessage(derr))

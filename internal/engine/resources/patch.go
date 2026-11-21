@@ -205,7 +205,7 @@ func (c patchCmd) decodePatch(in runtime.Input) (patchDoc, error) {
 		if err != nil {
 			return patchDoc{}, clierr.New(clierr.CodeValidation, fmt.Sprintf("cannot read patch %q: %v", file, err))
 		}
-		raw = b
+		raw = engine.DropLeadingByteOrderMarks(b)
 	default:
 		return patchDoc{}, clierr.New(clierr.CodeValidation, "a patch is required: pass --patch or --patch-file")
 	}

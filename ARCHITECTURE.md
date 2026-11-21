@@ -1639,12 +1639,16 @@ forgotten `--current-password-stdin`, would set a password nobody can type and
 exit 0. Rancher accepts such a password; the CLI refuses it on purpose,
 because a mistake should fail instead of succeeding silently.
 
-**Every secret read from stdin drops each byte order mark at the start of
-stdin.** Windows PowerShell 5.1 sends one mark before piped text, and two when
-`$OutputEncoding` is `[System.Text.Encoding]::UTF8`; without the drop the first
-password or token would carry three extra bytes for each mark. Only marks at
-the very start of stdin are dropped; a mark anywhere else is part of the
-value.
+**Every secret and every document read from stdin drops each byte order mark at
+the start of stdin.** The documents are `--values -`, `--patch-file -` and
+`create resource -f -`. Windows PowerShell 5.1 sends one mark before piped text,
+and two when `$OutputEncoding` is `[System.Text.Encoding]::UTF8`. Without the
+drop a secret carries three extra bytes for each mark, and a patch is refused
+as invalid JSON. A YAML document loses the first character of every top-level
+key after the first, and a manifest is then refused as an unsupported kind.
+Only marks at the very start of stdin are dropped; a mark anywhere else is part
+of the secret or the document. A file given to `--values`, `--patch-file` or
+`-f` has its marks dropped the same way.
 
 **Two Rancher responses to a password change get another code, chosen by their
 text.** A 500 with "error updating password: invalid current password" becomes

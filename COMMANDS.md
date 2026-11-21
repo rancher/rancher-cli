@@ -60,7 +60,7 @@ target for the legacy `server switch` command.
 | `create project [id]` | Create a project with an id you give, or with an id Rancher generates when you pass `--display-name` and no id; optionally with a resource quota and default container resource limits; Rancher gives the creator the project's creator default roles - dry-run/apply |
 | `create namespace <name>` | Create a namespace, optionally inside a project from birth - dry-run/apply |
 | `create secret <name>` | Create a secret: bare namespaced, or project-scoped into the project's backing namespace - dry-run/apply |
-| `create resource -f <file\|->` | Create/apply a resource from a YAML manifest (file or stdin); dry-run/apply |
+| `create resource -f <file\|->` | Create/apply a resource from a YAML manifest (file or stdin; every byte order mark at the start of the file or stdin is dropped); dry-run/apply |
 | `create token` | Create a server-side derived token (`ext.Token`), shown once - sensitive; dry-run/apply --yes |
 | `create kubeconfig` | Create a server-side, embedded, revocable kubeconfig (`ext.Kubeconfig`) to stdout, shown once - sensitive; dry-run/apply --yes |
 | `create oidc-client <name>` | Create an OIDC client for Rancher's embedded OIDC provider; waits for provisioning, prints the initial client secret once with live discovery endpoints - sensitive; dry-run/apply --yes. A Rancher Prime feature; the connected server decides whether it is available. |

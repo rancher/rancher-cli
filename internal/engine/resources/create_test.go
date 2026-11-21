@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/selfuser"
@@ -209,6 +210,48 @@ func TestCreateResourceStdin(t *testing.T) {
 	assert.Equal(t, "deployments/web", eff.Target)
 	require.Len(t, client.creates, 1)
 	assert.Equal(t, "ns1", client.creates[0].ns)
+}
+
+// TestCreateResourceDropsEveryLeadingByteOrderMark asserts a manifest read
+// from stdin or a file creates the same object after no, one, two and three
+// byte order marks: a YAML decoder given more than one mark would drop the
+// first character of every top-level key after the first. A mark inside a
+// value stays, and a manifest of only marks is the empty one.
+func TestCreateResourceDropsEveryLeadingByteOrderMark(t *testing.T) {
+	t.Parallel()
+	const mark = "\ufeff"
+	const manifest = "apiVersion: apps/v1\r\nkind: Deployment\r\nmetadata:\r\n  name: web\r\n  namespace: ns1\r\n  annotations:\r\n    note: \"a" + mark + "b\"\r\nspec:\r\n  replicas: 1\r\n"
+	for _, src := range []struct{ name, path string }{{"stdin", "-"}, {"a file", "m.yaml"}} {
+		path := src.path
+		for marks := range 4 {
+			t.Run(fmt.Sprintf("%s with %d marks", src.name, marks), func(t *testing.T) {
+				t.Parallel()
+				client := &createClient{}
+				fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+				cmd := NewCreate(fac, mapFileSource{path: []byte(strings.Repeat(mark, marks) + manifest)})
+
+				eff, _, err := planCreate(t, cmd, input{s: map[string]string{"filename": path, "cluster": "prod"}})
+				require.NoError(t, err)
+				assert.Equal(t, "deployments/web", eff.Target)
+				require.Len(t, client.creates, 1)
+				created := client.creates[0].obj
+				assert.Equal(t, "apps/v1", created.GetAPIVersion())
+				assert.Equal(t, "Deployment", created.GetKind())
+				assert.Equal(t, map[string]string{"note": "a" + mark + "b"}, created.GetAnnotations(), "a mark inside a value stays")
+				replicas, _, _ := unstructured.NestedFieldNoCopy(created.Object, "spec", "replicas")
+				assert.EqualValues(t, 1, replicas)
+			})
+		}
+	}
+
+	t.Run("three marks and nothing else", func(t *testing.T) {
+		t.Parallel()
+		fac := &recFactory{client: &createClient{}, resolve: map[string]string{"prod": "c-abc"}}
+		cmd := NewCreate(fac, mapFileSource{"-": []byte(strings.Repeat(mark, 3))})
+		_, _, err := planCreate(t, cmd, input{s: map[string]string{"filename": "-", "cluster": "prod"}})
+		requireValidation(t, err)
+		require.ErrorContains(t, err, "manifest must contain exactly one document, found 0")
+	})
 }
 
 func TestCreateResourceNSClusterManifestAsClusterID(t *testing.T) {
