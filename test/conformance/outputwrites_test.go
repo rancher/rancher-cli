@@ -627,7 +627,8 @@ func assertReferencesListed(t assert.TestingT, what string, list map[string][]st
 
 // Every reason of the lists below starts with its class, followed by a colon:
 //   - "filtered:" the text goes through a filter that removes control and
-//     format characters before the write; the reason ends with the rows of
+//     format characters, or writes each as an escape, before the write; the
+//     reason ends with the rows of
 //     TestServerTextCannotDriveTheTerminal that plant server text in the
 //     channel, as "(rows: <name>, <name>)";
 //   - "raw:" the bytes are the data, or the output of another program, and are
@@ -654,7 +655,7 @@ var ioOutReferences = map[string][]string{
 		"filtered: the text print, through output.PrintableLines and expanded for the invocation's directory; a PlainText command's text is raw: the output of a program in a container (rows: text, styled text, styled text with server text, styled text adds conceal, styled text adds clear screen, wide text, once-only line, logs text)",
 		"raw: the bytes of a file or script, written as they are (rows: raw bytes)",
 		"raw: the exec credential encoder, which writes the plugin's one JSON object",
-		"filtered: the summary line over a table, one line, expanded for the invocation's directory (rows: summary line)",
+		"filtered: the summary line over a table, one line, written with escapes for a hidden character and expanded for the invocation's directory (rows: summary line)",
 		"filtered: the envelope writer, which expands json and yaml data for the invocation and removes this process's marker from the other formats; the table, wide and name renderers filter each header and cell; raw: json, yaml and template, whose bytes are the data (rows: table, wide, name, json, yaml, template)",
 	},
 	"internal/runtime.renderEffect": {
@@ -675,17 +676,17 @@ var ioOutReferences = map[string][]string{
 // referenceCallee), one reason for each occurrence.
 var ioErrReferences = map[string][]string{
 	"internal/runtime.runRead -> internal/ui.New": {
-		"filtered: the prompter, which filters every notice and prompt label (rows: notice, prompt label, secret prompt label)",
+		"filtered: the prompter, which removes characters from every notice and writes every prompt label with escapes (rows: notice, prompt label, secret prompt label)",
 	},
 	"internal/runtime.renderResult -> internal/runtime.mirrorWarnings": {
-		"filtered: the warnings of a text result (rows: warnings text)",
-		"filtered: the warnings of a result that writes bytes (rows: warnings raw bytes)",
-		"filtered: the warnings of an exec credential result (rows: warnings exec credential)",
-		"filtered: the warnings of a result whose envelope is not json or yaml (rows: warnings envelope)",
+		"filtered: the warnings of a text result, written with escapes for a hidden character (rows: warnings text)",
+		"filtered: the warnings of a result that writes bytes, written with escapes for a hidden character (rows: warnings raw bytes)",
+		"filtered: the warnings of an exec credential result, written with escapes for a hidden character (rows: warnings exec credential)",
+		"filtered: the warnings of a result whose envelope is not json or yaml, written with escapes for a hidden character (rows: warnings envelope)",
 	},
 	"internal/runtime.renderEffect -> internal/runtime.mirrorWarnings": {
-		"filtered: the warnings of a dry-run preview text (rows: warnings preview text)",
-		"filtered: the warnings of a dry-run preview envelope that is not json or yaml (rows: warnings preview envelope)",
+		"filtered: the warnings of a dry-run preview text, written with escapes for a hidden character (rows: warnings preview text)",
+		"filtered: the warnings of a dry-run preview envelope that is not json or yaml, written with escapes for a hidden character (rows: warnings preview envelope)",
 	},
 	"internal/runtime.renderErrDrained -> internal/runtime.WriteError": {
 		"filtered: the error block and the warnings of a failed run (rows: warnings failed run, error block)",
@@ -761,7 +762,7 @@ var prompterErrReferences = map[string][]string{
 		"filtered: every notice, after the rewrite (rows: notice)",
 	},
 	"internal/ui.Prompter.writeErr": {
-		"filtered: every prompt label (rows: prompt label, secret prompt label)",
+		"filtered: every prompt label, written with escapes for a hidden character (rows: prompt label, secret prompt label)",
 	},
 	"internal/ui.Prompter.readLine": {
 		"no text: the line end after a cancelled read",

@@ -3,7 +3,12 @@ package ui
 import (
 	"bytes"
 	"context"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/token"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -222,20 +227,27 @@ func TestReadLineCancellationEndsPromptLine(t *testing.T) {
 	assert.Equal(t, "\n", errBuf.String(), "the open prompt line must be terminated")
 }
 
-// TestPrompterWritesNoticesAndLabelsWithoutControlCharacters asserts a
-// Prompter with no rewrite writes this process's marker as it is and no
-// escape character, carriage return or format character for a notice, a
-// prompt label and a secret prompt label; the newlines of a notice stay.
-func TestPrompterWritesNoticesAndLabelsWithoutControlCharacters(t *testing.T) {
+// TestPrompterRemovesControlCharactersFromANotice asserts a Prompter with no
+// rewrite writes this process's marker as it is and removes every escape
+// character, carriage return and format character from a notice; the newlines
+// of a notice stay.
+func TestPrompterRemovesControlCharactersFromANotice(t *testing.T) {
 	t.Parallel()
 	text := "a\x1b[2Jb\r\nrun " + clierr.Rancher + " auth status\u202e\u2063\nlast"
 	want := "a[2Jb\nrun " + clierr.Rancher + " auth status\nlast"
-	t.Run("notice", func(t *testing.T) {
-		t.Parallel()
-		var errw bytes.Buffer
-		New(&errw, strings.NewReader(""), false, true).Notice(text)
-		assert.Equal(t, want+"\n", errw.String())
-	})
+	var errw bytes.Buffer
+	New(&errw, strings.NewReader(""), false, true).Notice(text)
+	assert.Equal(t, want+"\n", errw.String())
+}
+
+// TestPrompterWritesHiddenCharactersOfALabelAsEscapes asserts a prompt label
+// and a secret prompt label are written clause by clause as clierr.LineText
+// writes them: a clause with a hidden character is a double-quoted string
+// with escapes, and this process's marker stays where it is.
+func TestPrompterWritesHiddenCharactersOfALabelAsEscapes(t *testing.T) {
+	t.Parallel()
+	text := "a\x1b[2Jb\r\nrun " + clierr.Rancher + " auth status\u202e\u2063\nlast"
+	want := `"a\x1b[2Jb\r\nrun "` + clierr.Rancher + `" auth status\u202e\u2063\nlast"`
 	t.Run("prompt label", func(t *testing.T) {
 		t.Parallel()
 		var errw bytes.Buffer
@@ -250,6 +262,141 @@ func TestPrompterWritesNoticesAndLabelsWithoutControlCharacters(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, want, errw.String())
 	})
+}
+
+// TestPrompterWritesALabelWithNothingToQuoteAsItIs asserts a label with no
+// hidden character (the token prompt and the trust prompt are two) and the
+// line end written after a read without echo are written byte for byte.
+func TestPrompterWritesALabelWithNothingToQuoteAsItIs(t *testing.T) {
+	t.Parallel()
+	for _, label := range []string{
+		"Enter token (id:secret): ",
+		"trust this certificate for this server entry? [y/N]: ",
+		"Enter username [admin]: ",
+		"name (o'brien): ",
+	} {
+		var errw bytes.Buffer
+		_, err := New(&errw, strings.NewReader("x\n"), false, true).Prompt(t.Context(), label)
+		require.NoError(t, err)
+		assert.Equal(t, label, errw.String())
+	}
+
+	var errw bytes.Buffer
+	New(&errw, strings.NewReader(""), false, true).writeErr("\n")
+	assert.Equal(t, "\n", errw.String())
+}
+
+// TestPrompterKeepsLabelsThatDifferByAHiddenCharacterApart asserts labels that
+// differ only by a hidden character print as three different lines.
+func TestPrompterKeepsLabelsThatDifferByAHiddenCharacterApart(t *testing.T) {
+	t.Parallel()
+	lines := map[string]bool{}
+	for _, label := range []string{"a\u200bb", "a\u200cb", "ab"} {
+		var errw bytes.Buffer
+		_, err := New(&errw, strings.NewReader("x\n"), false, true).Prompt(t.Context(), label)
+		require.NoError(t, err)
+		lines[errw.String()] = true
+	}
+	assert.Len(t, lines, 3)
+}
+
+// prompterReceiverName returns the receiver name of d when d is a method on
+// Prompter or *Prompter with a named receiver, and "p" for any other
+// declaration.
+func prompterReceiverName(d *ast.FuncDecl) string {
+	if d.Recv == nil || len(d.Recv.List) != 1 || len(d.Recv.List[0].Names) != 1 {
+		return "p"
+	}
+	typ := d.Recv.List[0].Type
+	if star, ok := typ.(*ast.StarExpr); ok {
+		typ = star.X
+	}
+	if id, ok := typ.(*ast.Ident); !ok || id.Name != "Prompter" {
+		return "p"
+	}
+	if name := d.Recv.List[0].Names[0].Name; name != "_" {
+		return name
+	}
+	return "p"
+}
+
+// TestOnlyWriteLabelAndTheLineEndCallWriteErr asserts that every use of
+// writeErr in the package's non-test source files is one of two calls: the
+// call in writeLabel with exactly clierr.LineText(label), or a call with the
+// string literal "\n". A new way to write a label that skips clierr.LineText
+// fails here, and so does a method value of writeErr. The scan covers whole
+// files, package-level variables included, and also fails a write to the
+// error writer outside Notice, writeErr and readLine: a use of the err field
+// through the receiver of a Prompter method, whatever its name, or through p
+// anywhere else.
+func TestOnlyWriteLabelAndTheLineEndCallWriteErr(t *testing.T) {
+	t.Parallel()
+	fset := token.NewFileSet()
+	entries, err := os.ReadDir(".")
+	require.NoError(t, err)
+	var files []*ast.File
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, name, nil, 0)
+		require.NoError(t, err)
+		files = append(files, f)
+	}
+	require.NotEmpty(t, files)
+
+	render := func(n ast.Node) string {
+		var b bytes.Buffer
+		require.NoError(t, format.Node(&b, fset, n))
+		return b.String()
+	}
+	writers := map[string]bool{"Notice": true, "writeErr": true, "readLine": true}
+	seen := 0
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			fn, errRecv := "", "p"
+			if d, ok := decl.(*ast.FuncDecl); ok {
+				fn, errRecv = d.Name.Name, prompterReceiverName(d)
+			}
+			called := map[*ast.SelectorExpr]*ast.CallExpr{}
+			ast.Inspect(decl, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok {
+					if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "writeErr" {
+						called[sel] = call
+					}
+				}
+				return true
+			})
+			ast.Inspect(decl, func(n ast.Node) bool {
+				sel, ok := n.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				where := fset.Position(sel.Pos()).String()
+				if recv, ok := sel.X.(*ast.Ident); ok && recv.Name == errRecv && sel.Sel.Name == "err" && !writers[fn] {
+					t.Errorf("%s: the error writer is used outside Notice, writeErr and readLine; write through writeLabel", where)
+				}
+				if sel.Sel.Name != "writeErr" {
+					return true
+				}
+				seen++
+				call, isCall := called[sel]
+				if !isCall || len(call.Args) != 1 {
+					t.Errorf("%s: writeErr may only be called as p.writeErr(clierr.LineText(label)) in writeLabel or as p.writeErr(\"\\n\"); write a label through writeLabel", where)
+					return true
+				}
+				arg := render(call.Args[0])
+				if fn == "writeLabel" {
+					assert.Equal(t, "clierr.LineText(label)", arg, where)
+					return true
+				}
+				assert.Equal(t, `"\n"`, arg, where)
+				return true
+			})
+		}
+	}
+	assert.Positive(t, seen, "the scan found no use of writeErr")
 }
 
 // TestPrompterRunsTheNoticeRewriteBeforeTheFilter asserts that a rewrite

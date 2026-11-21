@@ -288,6 +288,10 @@ func siteRows() []siteRow {
 			t.Helper()
 			return drivenResult(t, r, dryRun(safety.Effect{PreviewSource: safety.PreviewServerDryRun, Warnings: []string{r.text}}), func(io *runtime.IO) { io.DryRun = true })
 		}},
+		{site: "internal/runtime.renderEffect ExpandText", channel: "effect warning", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			return drivenResult(t, r, dryRun(safety.Effect{PreviewSource: safety.PreviewServerDryRun, Warnings: []string{r.text}}), func(io *runtime.IO) { io.DryRun = true })
+		}},
 		{site: "internal/runtime.RenderErrorStyled expandAll", channel: "drained notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			cmd := siteRead{err: clierr.New(clierr.CodeGeneric, "failed")}
@@ -399,6 +403,7 @@ var siteRowCounts = map[string]int{
 	"internal/runtime.renderResult ExpandLines":      4,
 	"internal/runtime.renderResult expandData":       1,
 	"internal/runtime.renderEffect expandAll":        2,
+	"internal/runtime.renderEffect ExpandText":       1,
 	"internal/runtime.renderEffect ExpandLines":      1,
 	"internal/runtime.renderEffect expandData":       1,
 	"internal/runtime.RenderErrorStyled ExpandError": 20,

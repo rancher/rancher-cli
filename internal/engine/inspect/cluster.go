@@ -186,19 +186,22 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	sec := newSections(ctx, sectionProvisioning, sectionMachines, sectionMembers, sectionRegistration)
 	// Advisory warnings: agent verdicts, member display-name enrichment, and
 	// registration placeholder drops describe a section that is present and
-	// usable, so they never become degraded entries.
+	// usable, so they never become degraded entries. The agent's message stays
+	// as the server sent it: json and yaml carry it, and a text format writes
+	// each piece of the warning that has a hidden character as a double-quoted
+	// string with escapes.
 	var warnings []string
 	switch res.Agent.verdict() {
 	case agentDisconnected:
 		w := "cluster agent is not connected"
 		if res.Agent.Message != "" {
-			w += ": " + output.Printable(res.Agent.Message)
+			w += ": " + res.Agent.Message
 		}
 		warnings = append(warnings, w)
 	case agentConnectedNotReady, agentNotReady:
 		w := "cluster is not ready"
 		if res.Agent.Message != "" {
-			w += ": " + output.Printable(res.Agent.Message)
+			w += ": " + res.Agent.Message
 		}
 		warnings = append(warnings, w)
 	}

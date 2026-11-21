@@ -375,3 +375,37 @@ func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
 		})
 	}
 }
+
+// TestOnceOnlyNoticeThatHoldsACommandIsNotMirroredToStderr asserts the notice
+// a result carries is matched against the warnings as the command wrote them:
+// a notice with a remedy command is skipped on stderr with the config
+// directory set and unset, and an unrelated warning still prints.
+func TestOnceOnlyNoticeThatHoldsACommandIsNotMirroredToStderr(t *testing.T) {
+	t.Parallel()
+	text := "token/t-abc created\n  bearer token: tok:xxxx   (shown once - store it now)\n"
+	for _, tc := range []struct{ name, dir string }{
+		{"config directory unset", ""},
+		{"config directory set", t.TempDir()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var out, errBuf bytes.Buffer
+			res := Result{
+				Kind:           "TokenCreated",
+				Data:           map[string]string{"name": "t-abc", "bearerToken": "tok:xxxx"},
+				Text:           text,
+				Warnings:       []string{"unrelated-warning"},
+				OnceOnlyNotice: "store it now: " + clierr.Rancher + " auth status",
+				CommittedContext: &CommittedContext{
+					ResourceKind: "Token", ResourceName: "t-abc", Recovery: "delete token t-abc, then create again",
+				},
+			}
+			cmd := fakeMutating{d: onceOnlyTextDesc(), eff: safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "token", DisplayName: "t-abc"}, exec: onceOnlyExec(res)}
+			status, ce := Run(t.Context(), cmd, mapInput{},
+				IO{Out: &out, Err: &errBuf, Format: "table", Apply: true, Yes: true, RemedyDir: tc.dir}, safety.Binding{})
+			require.Nil(t, ce)
+			assert.Zero(t, status)
+			assert.Equal(t, "# warning: unrelated-warning\n", errBuf.String())
+		})
+	}
+}

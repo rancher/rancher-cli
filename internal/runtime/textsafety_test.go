@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -9,15 +10,157 @@ import (
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestMirrorWarningsStripsControlCharacters asserts a warning carrying
-// server text cannot drive the terminal or forge a second warning line.
-func TestMirrorWarningsStripsControlCharacters(t *testing.T) {
-	t.Parallel()
+// warningExpand writes the remedy command of a warning the way an invocation
+// with a config directory does.
+func warningExpand(s string) string {
+	return strings.ReplaceAll(s, clierr.Rancher, "rancher --config 'd'")
+}
+
+// mirrored returns what mirrorWarnings writes for warnings.
+func mirrored(warnings []string, silent map[string]int) string {
 	var buf bytes.Buffer
-	mirrorWarnings(&buf, []string{"condition: a\x1b[2Jb\n# warning: forged"}, nil, style.Style{})
-	assert.Equal(t, "# warning: condition: a[2Jb# warning: forged\n", buf.String())
+	mirrorWarnings(&buf, warnings, silent, style.Style{}, warningExpand)
+	return buf.String()
+}
+
+// TestMirrorWarningsWritesHiddenCharactersAsEscapes asserts a warning clause
+// that has a hidden character or an invalid byte is written whole in double
+// quotes with escapes; it cannot drive the terminal or forge a second line, and
+// every other clause and every remedy command stays as written.
+func TestMirrorWarningsWritesHiddenCharactersAsEscapes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		warn string
+		want string
+	}{
+		{
+			name: "a warning with nothing to quote",
+			warn: "cert expires soon",
+			want: "# warning: cert expires soon\n",
+		},
+		{
+			name: "an escape sequence and a forged warning line",
+			warn: "condition: a\x1b[2Jb\n# warning: forged",
+			want: `# warning: "condition: a\x1b[2Jb\n# warning: forged"` + "\n",
+		},
+		{
+			name: "only the clause with the hidden character is quoted",
+			warn: "value a\u200bb; run later",
+			want: `# warning: "value a\u200bb"; run later` + "\n",
+		},
+		{
+			name: "a command after a quoted clause expands",
+			warn: "x\u200b; " + clierr.Rancher + " get pods",
+			want: `# warning: "x\u200b"; rancher --config 'd' get pods` + "\n",
+		},
+		{
+			name: "an invalid byte",
+			warn: "a\xffb",
+			want: `# warning: "a\xffb"` + "\n",
+		},
+		{
+			name: "a single quote and a hidden character quote only the piece",
+			warn: "o'b\u200b",
+			want: `# warning: o'"b\u200b"` + "\n",
+		},
+		{
+			name: "a hidden character before the command in the same clause",
+			warn: "x\u200b run " + clierr.Rancher + " auth status",
+			want: `# warning: "x\u200b run "rancher --config 'd' auth status` + "\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, mirrored([]string{tc.warn}, nil))
+		})
+	}
+
+	t.Run("a remedy marker with no command after it is written as escapes", func(t *testing.T) {
+		t.Parallel()
+		got := mirrored([]string{"a" + clierr.RemedyMarker + "x"}, nil)
+		assert.Equal(t, "# warning: "+strconv.Quote("a"+clierr.RemedyMarker+"x")+"\n", got)
+		assert.NotRegexp(t, "[\u2060-\u2064]", got)
+	})
+
+	t.Run("another process's remedy marker before rancher is written as escapes", func(t *testing.T) {
+		t.Parallel()
+		got := mirrored([]string{"a" + "\u2063" + strings.Repeat("\u2060\u2061\u2062\u2064", 8) + "rancher x"}, nil)
+		foreign := `\u2063` + strings.Repeat(`\u2060\u2061\u2062\u2064`, 8)
+		assert.Equal(t, `# warning: "a`+foreign+`rancher x"`+"\n", got)
+		assert.NotRegexp(t, "[\u2060-\u2064]", got)
+	})
+}
+
+// TestMirrorWarningsSilentSkipsTheEntryAsTheCommandWroteIt asserts silent is
+// read against the warnings as the command wrote them: one entry that has a
+// remedy command is skipped and its second copy is written, expanded.
+func TestMirrorWarningsSilentSkipsTheEntryAsTheCommandWroteIt(t *testing.T) {
+	t.Parallel()
+	raw := "run " + clierr.Rancher + " auth status"
+	got := mirrored([]string{raw, raw}, map[string]int{raw: 1})
+	assert.Equal(t, "# warning: run rancher --config 'd' auth status\n", got)
+}
+
+// TestMirrorWarningsKeepsDifferentValuesApart asserts values that differ only
+// by a hidden character or an invalid byte print as four different lines.
+func TestMirrorWarningsKeepsDifferentValuesApart(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ warn, want string }{
+		{"a\u200bb", `# warning: "a\u200bb"` + "\n"},
+		{"a\u200cb", `# warning: "a\u200cb"` + "\n"},
+		{"ab", "# warning: ab\n"},
+		{"a\xffb", `# warning: "a\xffb"` + "\n"},
+	} {
+		assert.Equal(t, tc.want, mirrored([]string{tc.warn}, nil))
+	}
+	lines := map[string]bool{}
+	for _, w := range []string{"a\u200bb", "a\u200cb", "ab", "a\xffb"} {
+		lines[mirrored([]string{w}, nil)] = true
+	}
+	assert.Len(t, lines, 4)
+}
+
+// summaryLine returns the first line a table result with the given summary
+// writes to stdout, with the remedy directory set to dir.
+func summaryLine(t *testing.T, summary, dir string) string {
+	t.Helper()
+	var out, errBuf bytes.Buffer
+	cmd := fakeRead{
+		d:   Descriptor{Name: "get cluster", CommandType: ReadOnly},
+		res: Result{Kind: "Cluster", Data: widgetTable{Name: "n"}, Summary: summary},
+	}
+	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "table", RemedyDir: dir}, safety.Binding{})
+	require.Nil(t, ce)
+	line, _, found := strings.Cut(out.String(), "\n")
+	require.True(t, found)
+	return line
+}
+
+// TestSummaryLineWritesHiddenCharactersAsEscapes asserts the summary line over
+// a table writes a clause that has a hidden character in double quotes with
+// escapes, expands a remedy command that follows it, writes an ordinary
+// summary as it is, and prints values that differ only by a hidden character
+// differently.
+func TestSummaryLineWritesHiddenCharactersAsEscapes(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	prefix, ok := RemedyPrefix(dir)
+	require.True(t, ok)
+
+	assert.Equal(t, `"wait: a\u200bb satisfied after 3s"`, summaryLine(t, "wait: a\u200bb satisfied after 3s", dir))
+	assert.Equal(t, `"x\u200b run "rancher`+prefix+` auth status`,
+		summaryLine(t, "x\u200b run "+clierr.Rancher+" auth status", dir))
+	assert.Equal(t, "wait: ab satisfied after 3s", summaryLine(t, "wait: ab satisfied after 3s", dir))
+
+	lines := map[string]bool{}
+	for _, v := range []string{"a\u200bb", "a\u200cb", "ab"} {
+		lines[summaryLine(t, v, dir)] = true
+	}
+	assert.Len(t, lines, 3)
 }
 
 // TestErrorTextQuotesControlCharacters asserts the default-format error

@@ -304,3 +304,24 @@ func TestInspectClusterJSONKeepsServerValuesAsTheyAre(t *testing.T) {
 	require.NotEmpty(t, doc.Status.Conditions)
 	assert.Equal(t, message, doc.Status.Conditions[0].Message, "json carries the condition message as it is")
 }
+
+func TestInspectClusterWarningsInJSONCarryTheAgentMessageAsItIs(t *testing.T) {
+	t.Parallel()
+	message := hostileValue("agent message")
+	mgmt := mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")
+	require.NoError(t, unstructured.SetNestedSlice(mgmt.Object, []any{
+		map[string]any{"type": "Connected", "status": "False", "reason": "Disconnected", "message": message},
+	}, "status", "conditions"))
+	client, root := inspectClusterFixture(t)
+	root.cluster = mgmt
+
+	res, err := execRead(t, NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root}), registrationInput("c-abc"))
+	require.NoError(t, err)
+
+	b, err := json.Marshal(res.Warnings)
+	require.NoError(t, err)
+	var warnings []string
+	require.NoError(t, json.Unmarshal(b, &warnings))
+	require.NotEmpty(t, warnings)
+	assert.Equal(t, "cluster agent is not connected: "+message, warnings[0], "json carries the agent message as it is")
+}

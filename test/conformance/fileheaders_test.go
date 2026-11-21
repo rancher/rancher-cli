@@ -380,11 +380,6 @@ var commentLineLiterals = []commentLineEntry{
 		reason: "terminal: the prefix of a warning line mirrored to stderr, with the warning text passed through output.Printable",
 	},
 	{
-		file: "internal/runtime/pipeline.go", class: classTerminal,
-		text:   "# warning:",
-		reason: "terminal: the prefix of a warning line in an error text, with the warning text passed through output.Printable",
-	},
-	{
 		file: "internal/telemetry/contract.go", class: classGenerated,
 		text:   "# Rancher usage events: what is recorded (contract %s)\n\n",
 		reason: "generated: the published contract document, built from package constants",

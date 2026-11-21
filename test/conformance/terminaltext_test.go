@@ -187,11 +187,6 @@ func (e terminalEnv) remedyExpected(p string) string {
 	return "run " + e.expanded + " " + terminalFilteredLines(p)
 }
 
-// remedyExpectedLine is remedyText(p) as a one-line channel writes it.
-func (e terminalEnv) remedyExpectedLine(p string) string {
-	return "run " + e.expanded + " " + terminalFilteredLine(p)
-}
-
 // remedyExpectedQuoted is remedyText(p) as the message, the hint or a warning
 // of an error writes it: the words before the command as written, then the
 // command with its directory, then the rest of the text up to its end as one
@@ -316,19 +311,48 @@ func previewDescriptor() runtime.Descriptor {
 	return runtime.Descriptor{Name: "clusters scale", CommandType: runtime.Mutating}
 }
 
+// lineExpected is remedyText(p) as a line written clause by clause: the
+// command expands and the words after it, which share one clause with the
+// planted value, are one double-quoted string with escapes.
+func (e terminalEnv) lineExpected(p string) string {
+	return "run rancher" + e.prefix() + strconv.Quote(" auth status "+terminalHostile(p))
+}
+
+// lineBeforeExpected is hiddenBeforeCommandText(p) as a line written clause by
+// clause: the planted value and the words before the command are one
+// double-quoted string with escapes, and the command expands after it.
+func (e terminalEnv) lineBeforeExpected(p string) string {
+	return strconv.Quote(terminalHostile(p)+" run ") + "rancher" + e.prefix() + " auth status"
+}
+
+// prefix is what a remedy command of this invocation has after the word
+// rancher.
+func (e terminalEnv) prefix() string {
+	return strings.TrimSuffix(strings.TrimPrefix(e.expanded, "rancher"), " auth status")
+}
+
 // assertWarning asserts neither stream holds a planted character and that
-// standard error is the one warning line of the row: filtered, as one line,
-// with the command of this process expanded.
+// standard error is the two warning lines of the row: each written clause by
+// clause with escapes, as one line, with the command of this process expanded.
 func (e terminalEnv) assertWarning(stdout, stderr, row string) {
 	e.t.Helper()
 	assertBothClean(e.t, stdout, stderr, terminalSequences)
 	assertNoForgedLine(e.t, "standard error", stderr)
-	assert.Equal(e.t, "# warning: "+e.remedyExpectedLine(row)+"\n", stderr)
+	assert.Equal(e.t, "# warning: "+e.lineExpected(row)+"\n# warning: "+e.lineBeforeExpected(row)+"\n", stderr)
+}
+
+// hiddenBeforeCommandText is a text with the hostile value for the place
+// named p ahead of a command of this process, in the same clause.
+func hiddenBeforeCommandText(p string) string {
+	return terminalHostile(p) + " run " + clierr.Rancher + " auth status"
 }
 
 // warningText is the warnings of a row: one text with a command of this
-// process and the hostile value for the row.
-func warningText(row string) []string { return []string{remedyText(row)} }
+// process and the hostile value for the row after it, and one with the value
+// before the command.
+func warningText(row string) []string {
+	return []string{remedyText(row), hiddenBeforeCommandText(row)}
+}
 
 var terminalRows = []terminalRow{
 	{"text", func(e terminalEnv) {
@@ -404,7 +428,7 @@ var terminalRows = []terminalRow{
 		out, errOut := e.run(terminalRead{d: terminalDescriptor(runtime.ShapeTabular), res: res}, nil)
 		assertBothClean(t, out, errOut, terminalSequences)
 		assertNoForgedLine(t, "standard output", out)
-		assert.True(t, strings.HasPrefix(out, e.remedyExpectedLine("summary line")+"\nNAME\n"), "the summary is one line over the table: %q", out)
+		assert.True(t, strings.HasPrefix(out, e.lineExpected("summary line")+"\nNAME\n"), "the summary is one line over the table, written with escapes: %q", out)
 	}},
 	{"preview", func(e terminalEnv) {
 		t := e.t
@@ -548,7 +572,7 @@ var terminalRows = []terminalRow{
 			}
 			_, errOut := e.run(cmd, func(io *runtime.IO) { io.Format = format; io.IsTTY = true; io.In = strings.NewReader("answer\n") })
 			assertClean(t, "standard error under "+strconv.Quote(format), errOut, terminalSequences)
-			assert.Equal(t, "run "+clierr.Rancher+" auth status "+terminalFilteredLines("prompt label"), errOut, "a label is written with this process's marker as it is, format %q", format)
+			assert.Equal(t, "run "+clierr.Rancher+strconv.Quote(" auth status "+terminalHostile("prompt label")), errOut, "a label is written clause by clause with escapes and this process's marker as it is, format %q", format)
 			assert.NotContains(t, errOut, "--config")
 		}
 	}},
@@ -565,7 +589,7 @@ var terminalRows = []terminalRow{
 			}
 			_, errOut := e.run(cmd, func(io *runtime.IO) { io.Format = format; io.IsTTY = true; io.In = strings.NewReader("answer\n") })
 			assertClean(t, "standard error under "+strconv.Quote(format), errOut, terminalSequences)
-			assert.Equal(t, "run "+clierr.Rancher+" auth status "+terminalFilteredLines("secret prompt label"), errOut, "a label is written with this process's marker as it is, format %q", format)
+			assert.Equal(t, "run "+clierr.Rancher+strconv.Quote(" auth status "+terminalHostile("secret prompt label")), errOut, "a label is written clause by clause with escapes and this process's marker as it is, format %q", format)
 			assert.NotContains(t, errOut, "--config")
 		}
 	}},
@@ -615,15 +639,18 @@ var terminalRows = []terminalRow{
 // TestServerTextCannotDriveTheTerminal asserts that a server value that holds
 // control, escape, format, separator and newline characters, planted in each
 // channel the pipeline and the prompter write to a terminal, reaches the
-// terminal with none of them (a text print and a notice keep the newline
-// between lines; every other channel is one line); that a command of this
-// process planted in the same text still expands, and a label keeps it as
-// the prompter wrote it; that a styled text is written only when it adds
-// nothing but the CLI's own codes; and that json, yaml, template, logs text
-// and bytes keep the planted text, with yaml writing DEL, U+0080 to U+009F,
-// U+FFFE and U+FFFF as escapes. Each row runs through the exported pipeline with its
-// own config directory. The package runs without the race detector, so a row
-// starts no goroutine of its own.
+// terminal with none of them. A text print and a notice remove the characters
+// and keep the newline between lines. A table cell, a name, a candidate, a
+// details value, the warning lines of a command that succeeds or of a preview,
+// the summary line and a prompt label write them as escapes: a clause that
+// has one is a double-quoted string, and a value cannot add a line. A
+// command of this process planted in the same text still expands, and a label
+// keeps it as the prompter wrote it. Also asserted: a styled text is written
+// only when it adds nothing but the CLI's own codes; json, yaml, template,
+// logs text and bytes keep the planted text, with yaml writing DEL, U+0080 to
+// U+009F, U+FFFE and U+FFFF as escapes. Each row runs through the exported
+// pipeline with its own config directory. The package runs without the race
+// detector, so a row starts no goroutine of its own.
 func TestServerTextCannotDriveTheTerminal(t *testing.T) {
 	t.Parallel()
 	for _, row := range terminalRows {

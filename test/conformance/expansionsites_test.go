@@ -162,6 +162,7 @@ var expansionSiteList = map[string]int{
 	"internal/runtime.renderResult ExpandLines":      2,
 	"internal/runtime.renderResult expandData":       1,
 	"internal/runtime.renderEffect expandAll":        1,
+	"internal/runtime.renderEffect ExpandText":       1,
 	"internal/runtime.renderEffect ExpandLines":      1,
 	"internal/runtime.renderEffect expandData":       1,
 	"internal/runtime.RenderErrorStyled ExpandError": 1,
