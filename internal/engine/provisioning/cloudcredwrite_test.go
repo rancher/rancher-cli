@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -91,6 +90,7 @@ type ccwClient struct {
 	review     func() (engine.ReviewResponse, error)
 	getsLeft   int // reads of the new Secret that answer not found first
 	gets       int
+	settings   int // reads of the kev2-operators setting
 }
 
 func (c *ccwClient) List(_ context.Context, gvr schema.GroupVersionResource, _ string, _ string) (*unstructured.UnstructuredList, error) {
@@ -112,6 +112,9 @@ func (c *ccwClient) List(_ context.Context, gvr schema.GroupVersionResource, _ s
 
 func (c *ccwClient) Get(_ context.Context, gvr schema.GroupVersionResource, _ string, name string) (*unstructured.Unstructured, error) {
 	if gvr.Resource == "settings" {
+		c.mu.Lock()
+		c.settings++
+		c.mu.Unlock()
 		if c.settingErr != nil {
 			return nil, c.settingErr
 		}
@@ -469,6 +472,14 @@ func TestCloudCredentialPlanRefusals(t *testing.T) {
 		{name: "secret field in --set in other case", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"SECRETKEY=" + secretWord}}, want: "is the secret field secretKey"},
 		{name: "a public field of a driver marked secret by passwordFields", in: ccwInput{args: []string{"pnap", "n"}, set: []string{"clientSecret=" + secretWord}}, want: "is a secret field"},
 		{name: "public field in --from-file", in: ccwInput{args: []string{"amazonec2", "n"}, fromFile: []string{"accessKey=secret.txt"}}, want: "\"accessKey\" is a public field of amazonec2"},
+		{name: "missing required field with stdin that fails", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"defaultRegion=us-east-1"}, fromFile: []string{"secretKey=-"}},
+			want: "amazonec2 needs these fields: accessKey (--set accessKey=<value>)"},
+		{name: "a pasted secret that holds equals signs as a --set word", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{secretWord + "=="}},
+			want: "the field of --set argument #1 is not a field of amazonec2"},
+		{name: "a pasted secret that holds equals signs as a --from-file word", in: ccwInput{args: []string{"amazonec2", "n"}, fromFile: []string{secretWord + "=="}},
+			want: "the field of --from-file argument #1 is not a field of amazonec2"},
+		{name: "a pasted secret that holds equals signs given twice", in: ccwInput{args: []string{"amazonec2", "n"}, fromFile: []string{secretWord + "==", secretWord + "=="}},
+			want: "the field of --from-file argument #2 is given more than once"},
 		{name: "missing required field", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"accessKey=a"}}, want: "amazonec2 needs these fields: secretKey (--from-file secretKey=<path>)", readsFile: false},
 		{name: "unreadable file", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"accessKey=a"}, fromFile: []string{"secretKey=missing.txt"}},
 			want: "cannot read the --from-file file missing.txt", readsFile: true},
@@ -554,6 +565,76 @@ func TestCloudCredentialValueWhiteSpace(t *testing.T) {
 			eff, _, err := newCCWRig(map[string]string{"secret.txt": tc.file}).plan(t, tc.in)
 			require.NoError(t, err)
 			assert.Equal(t, tc.warning, slices.ContainsFunc(eff.Warnings, func(w string) bool { return strings.Contains(w, "was trimmed") }))
+		})
+	}
+}
+
+// TestCloudCredentialSetValueWhiteSpace asserts a --set value with white space
+// at either end, of ASCII, U+00A0 or U+0085, or with a line break, is refused
+// before any request and never trimmed, because Rancher stores the value
+// trimmed and the preview would show something else.
+func TestCloudCredentialSetValueWhiteSpace(t *testing.T) {
+	t.Parallel()
+	edge := "Rancher removes leading and trailing white space from accessKey; remove it from the value"
+	lineBreak := "the value of accessKey holds a line break"
+	for _, tc := range []struct{ name, value, want string }{
+		{"a trailing space", "a ", edge},
+		{"a leading space", " a", edge},
+		{"a trailing tab", "a\t", edge},
+		{"a trailing no-break space", "a\u00a0", edge},
+		{"a leading no-break space", "\u00a0a", edge},
+		{"a trailing next line", "a\u0085", edge},
+		{"a leading next line", "\u0085a", edge},
+		{"a line break inside", "a\nb", lineBreak},
+		{"a carriage return inside", "a\rb", lineBreak},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newCCWRig(ccwFilesFor(ccwSecret))
+			_, _, err := r.plan(t, ccwInput{args: []string{"amazonec2", "n"}, set: []string{"accessKey=" + tc.value}, fromFile: []string{"secretKey=secret.txt"}})
+			ce := clierr.From(err)
+			assert.Equal(t, clierr.CodeValidation, ce.Code, ce.Message)
+			assert.Contains(t, ce.Message, tc.want)
+			assert.Zero(t, r.norman.creates)
+		})
+	}
+}
+
+// TestCloudCredentialReadsTheOperatorSettingOnlyWhenNeeded asserts the
+// kev2-operators setting is read for alibaba and for the list an unknown
+// driver names, and for no other driver. A failed read fails an alibaba create,
+// leaves alibaba out of an unknown driver's list, and fails no other create.
+func TestCloudCredentialReadsTheOperatorSettingOnlyWhenNeeded(t *testing.T) {
+	t.Parallel()
+	amazon := ccwInput{args: []string{"amazonec2", "n"}, set: []string{"accessKey=a"}, fromFile: []string{"secretKey=secret.txt"}}
+	for _, tc := range []struct {
+		name   string
+		in     ccwInput
+		reads  int
+		failed bool
+		want   string
+	}{
+		{"an ordinary driver", amazon, 0, true, ""},
+		{"s3", ccwInput{args: []string{"s3", "n"}, set: []string{"accessKey=a"}, fromFile: []string{"secretKey=secret.txt"}}, 0, true, ""},
+		{"alibaba", ccwInput{args: []string{"alibaba", "n"}, fromFile: []string{"accessKeySecret=secret.txt"}}, 1, false, ""},
+		{"alibaba and a failed read", ccwInput{args: []string{"alibaba", "n"}, fromFile: []string{"accessKeySecret=secret.txt"}}, 1, true, "the setting cannot be read"},
+		{"an unknown driver", ccwInput{args: []string{"nope", "n"}}, 1, false, "unknown cloud credential driver \"nope\"; drivers with a credential on this server: alibaba, amazonec2"},
+		{"an unknown driver and a failed read", ccwInput{args: []string{"nope", "n"}}, 1, true, "unknown cloud credential driver \"nope\"; drivers with a credential on this server: amazonec2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newCCWRig(ccwFilesFor(ccwSecret))
+			r.client.setting = `[{"name":"alibaba","active":true}]`
+			if tc.failed {
+				r.client.settingErr = clierr.New(clierr.CodeGeneric, "the setting cannot be read")
+			}
+			_, _, err := r.plan(t, tc.in)
+			assert.Equal(t, tc.reads, r.client.settings)
+			if tc.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.want)
 		})
 	}
 }
@@ -680,8 +761,6 @@ func TestCloudCredentialAlibabaNeedsItsOperator(t *testing.T) {
 	require.Nil(t, ce)
 	assert.Equal(t, map[string]any{"accessKeySecret": ccwSecret}, r.norman.body(t)["alibabacredentialConfig"])
 }
-
-var _ = time.Second
 
 // TestCloudCredentialCompletionOffersOnlyWhatPlanAccepts asserts every driver
 // and every field name the completion source offers for the node drivers of the

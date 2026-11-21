@@ -257,10 +257,9 @@ func (e *ActionRefused) Unwrap() error { return e.Err }
 // CloudCredentialClient is the one port that sends Rancher's Norman cloud
 // credential requests: Rancher serves no other API that runs its credential
 // checks. Each method sends one request and never retries, whatever the
-// answer or the transport error. An answer that says the server did not run
-// the request is an *ActionRefused, any other non-2xx answer, a 500, a 502 or
-// a 504, and an error once the request was written, is an
-// *ActionOutcomeUnknown. Both carry an Err built from the HTTP status and a
+// answer or the transport error. A 500, a 502 or a 504, and an error once the
+// request was written, are an *ActionOutcomeUnknown; any other non-2xx answer
+// is an *ActionRefused. Both carry an Err built from the HTTP status and a
 // fixed text only: never the answer's text, which the caller reads from Body
 // and filters. An error before the request was written sent nothing.
 type CloudCredentialClient interface {

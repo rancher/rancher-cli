@@ -202,15 +202,33 @@ func (f *Facade) createCloudCredential(w http.ResponseWriter, r *http.Request, b
 			"labels": map[string]any{"cattle.io/creator": "norman"}, "annotations": annotations},
 		"stringData": stringData,
 	})
-	if err == nil {
-		req, rerr := http.NewRequestWithContext(r.Context(), http.MethodPost, WithFieldManager(http.MethodPost, cloudCredentialSecretsPath), bytes.NewReader(secret))
-		if rerr == nil {
-			req.Header.Set("Content-Type", "application/json")
-			if auth := r.Header.Get("Authorization"); auth != "" {
-				req.Header.Set("Authorization", auth)
-			}
-			f.fallthroughTo(httptest.NewRecorder(), req)
-		}
+	if err == nil && f.opts.Fallthrough != nil {
+		err = f.storeCloudCredentialSecret(r, secret)
+	}
+	if err != nil {
+		refusal := &normanError{http.StatusInternalServerError, "ServerError", "the Secret of the cloud credential was not stored"}
+		writeJSON(w, refusal.status, refusal.body())
+		return
 	}
 	writeJSON(w, http.StatusCreated, normanAnswer(cloudCredentialIDPrefix+name, body))
+}
+
+// storeCloudCredentialSecret posts the Secret of a new cloud credential to the
+// store the facade falls through to and returns an error when the store does
+// not answer 2xx.
+func (f *Facade) storeCloudCredentialSecret(r *http.Request, secret []byte) error {
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, WithFieldManager(http.MethodPost, cloudCredentialSecretsPath), bytes.NewReader(secret))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	rec := httptest.NewRecorder()
+	f.fallthroughTo(rec, req)
+	if rec.Code < http.StatusOK || rec.Code > 299 {
+		return fmt.Errorf("the store answered %d", rec.Code)
+	}
+	return nil
 }

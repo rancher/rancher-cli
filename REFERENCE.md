@@ -1551,7 +1551,8 @@ The table lists the built-in drivers. For any driver, `create cloud-credential <
 - Secret fields (the fields Rancher marks as a password, and `pnap` `clientSecret`) go in
   `--from-file <field>=<path>`; `--from-file <field>=-` reads stdin, once. A secret in
   `--set` is refused. No value is ever shown: the preview shows `<redacted>`, and an error
-  from Rancher has every value removed from its text.
+  from Rancher has every value of 4 characters or more, and each line of a multi-line
+  value, replaced by `<hidden>`.
 - `kubeconfigContent`, `privateKeyContents`, `authEncodedJson`, `sshKeyContents` and `s3`
   `defaultEndpointCA` hold several lines and also take `--from-file`. The CLI keeps their line
   breaks and trims white space at both ends of the value.

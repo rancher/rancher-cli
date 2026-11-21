@@ -83,7 +83,9 @@ func ccPostedValue(t *testing.T, posts []string, driver, field string) string {
 // field of the driver table read from stdin and from a file, the value that
 // reaches the request: every leading UTF-8 byte order mark is dropped, a mark
 // after the first byte stays, and a value that starts with a UTF-16 mark or
-// holds a NUL byte is refused before any request is sent. Not parallel: it
+// holds a NUL byte is refused before any request is sent. The check reads the
+// bytes of the file as they are, before the marks are dropped: a UTF-16 mark
+// that follows a UTF-8 mark is part of the text. Not parallel: it
 // sets the environment.
 func TestEveryFromFileFieldDropsLeadingByteOrderMarks(t *testing.T) {
 	restoreRawArgv(t)
@@ -99,9 +101,13 @@ func TestEveryFromFileFieldDropsLeadingByteOrderMarks(t *testing.T) {
 				{"one mark", mark, "\r\n", want},
 				{"two marks", mark + mark, "\n", want},
 				{"a mark after the first byte", "x", "\n", "x" + want},
+				{"a UTF-16 mark after a UTF-8 mark", mark + "\xff\xfe", "\n", "\ufffd\ufffd" + want},
 			} {
 				t.Run(row.driver+" "+row.field+" "+source+" "+v.name, func(t *testing.T) {
 					content := v.prefix + want + v.suffix
+					if v.name == "a UTF-16 mark after a UTF-8 mark" && row.field == "kubeconfigContent" {
+						t.Skip("a value with a leading word is not a kubeconfig")
+					}
 					if v.name == "a mark after the first byte" {
 						content = "x" + mark + want + v.suffix
 						v.want = "x" + mark + want

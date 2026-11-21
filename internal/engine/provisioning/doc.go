@@ -6,5 +6,7 @@
 // metadata (name, the field.cattle.io/name annotation, creationTimestamp),
 // never a `data` VALUE; a `data` value must never flow into CloudCredRef, a
 // runtime.Result, or an error string. cloudcredwrite.go holds the secret
-// values a write sends, only in the hidden body type (engine.CloudCredentialBody).
+// values a write sends in the hidden body type (engine.CloudCredentialBody), in
+// the list the error filter builds and, while Plan reads them, in
+// credentialValue.
 package provisioning

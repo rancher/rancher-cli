@@ -7,8 +7,8 @@
 package cloudcredfields
 
 import (
+	"cmp"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -150,7 +150,7 @@ func FromAnnotations(prefix string, a Annotations) (Driver, bool) {
 	if len(d.Fields) == 0 {
 		return Driver{}, false
 	}
-	sort.Slice(d.Fields, func(i, j int) bool { return d.Fields[i].Name < d.Fields[j].Name })
+	slices.SortFunc(d.Fields, func(a, b Field) int { return cmp.Compare(a.Name, b.Name) })
 	return d, true
 }
 

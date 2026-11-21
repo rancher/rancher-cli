@@ -106,6 +106,21 @@ func TestFacadeNormanCloudCredentialCreate(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, status)
 }
 
+// TestFacadeNormanCloudCredentialStoreRefusal asserts a create whose Secret
+// the store refuses is answered 500, not 201.
+func TestFacadeNormanCloudCredentialStoreRefusal(t *testing.T) {
+	t.Parallel()
+	refusing := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) })
+	srv := httptest.NewServer(New(Options{SeedToken: cloudCredentialToken, Fallthrough: refusing}))
+	defer srv.Close()
+	body := map[string]any{
+		"type": "cloudCredential", "name": "prod",
+		"amazonec2credentialConfig": map[string]any{"accessKey": "AKIAFAKE", "secretKey": "fake-secret-value-1"},
+	}
+	status, _ := normanRequest(t, srv, http.MethodPost, "/v3/cloudcredentials", cloudCredentialToken, body)
+	assert.Equal(t, http.StatusInternalServerError, status)
+}
+
 // TestFacadeNormanCloudCredentialRefusals asserts a body with no config object
 // is refused with MissingRequired, a Harvester kubeconfig is checked as
 // Rancher's store checks it (a 500 with the store's prefix), a delete of an

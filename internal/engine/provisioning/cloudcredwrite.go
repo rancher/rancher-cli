@@ -2,8 +2,9 @@
 // <display-name>`: the one command that writes a cloud credential. Rancher
 // serves no API but Norman that runs its credential checks, so the write goes
 // through engine.CloudCredentialClient. SECRET HYGIENE: the secret values the
-// command sends live only in the hidden request body and in the list the error
-// filter builds; no preview, result, warning or error shows one.
+// command sends live only in the hidden request body, in the list the error
+// filter builds and, while Plan reads them, in credentialValue; no preview,
+// result, warning or error shows one.
 
 package provisioning
 
@@ -12,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -164,8 +166,23 @@ func (r createdCredentialRows) Rows() [][]string {
 
 // fieldWord is one --set or --from-file word split at its first "=".
 type fieldWord struct {
-	field, value string
-	position     int
+	flag, field, value string
+	position           int
+}
+
+// fieldNameShape is the shape of every credential field name: a lower-case
+// letter, then letters and digits.
+var fieldNameShape = regexp.MustCompile(`^[a-z][A-Za-z0-9]{0,23}$`)
+
+// typedField words the field of a word the user typed. A word that has the
+// shape of a field name is quoted; any other is named by its flag and
+// position, because a pasted secret that holds "=" splits into a field part
+// and a value part.
+func (w fieldWord) typedField() string {
+	if fieldNameShape.MatchString(w.field) {
+		return strconv.Quote(w.field)
+	}
+	return fmt.Sprintf("the field of --%s argument #%d", w.flag, w.position)
 }
 
 // splitFieldWords splits the occurrences of a flag into field and value. A
@@ -183,12 +200,13 @@ func splitFieldWords(flag string, words []string) ([]fieldWord, error) {
 		case value == "":
 			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("--%s argument #%d has an empty value", flag, i+1))
 		}
-		out = append(out, fieldWord{field: field, value: value, position: i + 1})
+		out = append(out, fieldWord{flag: flag, field: field, value: value, position: i + 1})
 	}
 	return out, nil
 }
 
-// quoteField words a field name the user typed.
+// quoteField words a field name the user typed that is already known to be a
+// field of the driver, or to equal one without regard to case.
 func quoteField(field string) string { return strconv.Quote(field) }
 
 func stdinIsTerminal(in runtime.Input) bool {
@@ -227,11 +245,12 @@ func (c *createCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (
 		return safety.Effect{}, nil, err
 	}
 
-	values, warnings, err := c.readValues(driver, sets, files)
-	if err != nil {
+	if err := checkRequired(driver, sets, files); err != nil {
 		return safety.Effect{}, nil, err
 	}
-	if err := checkRequired(driver, values); err != nil {
+
+	values, warnings, err := c.readValues(driver, sets, files)
+	if err != nil {
 		return safety.Effect{}, nil, err
 	}
 
@@ -313,7 +332,11 @@ func readFieldFlags(in runtime.Input) (sets, files []fieldWord, err error) {
 	seen := map[string]bool{}
 	for _, w := range slices.Concat(sets, files) {
 		if seen[w.field] {
-			return nil, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("the field %s is given more than once; give each field once", quoteField(w.field)))
+			subject := w.typedField()
+			if fieldNameShape.MatchString(w.field) {
+				subject = "the field " + subject
+			}
+			return nil, nil, clierr.New(clierr.CodeValidation, subject+" is given more than once; give each field once")
 		}
 		seen[w.field] = true
 	}
@@ -328,11 +351,11 @@ func resolveCredentialDriver(ctx context.Context, client engine.ClusterClient, d
 		d, _ := cloudcredfields.Static("s3")
 		return d, nil
 	}
-	alibabaActive, err := alibabaOperatorActive(ctx, client)
-	if err != nil {
-		return cloudcredfields.Driver{}, err
-	}
 	if driverName == "alibaba" {
+		alibabaActive, err := alibabaOperatorActive(ctx, client)
+		if err != nil {
+			return cloudcredfields.Driver{}, err
+		}
 		if !alibabaActive {
 			return cloudcredfields.Driver{}, clierr.New(clierr.CodeValidation,
 				"the alibaba operator is not active: the setting "+kev2OperatorsSetting+" marks it inactive; an administrator activates it first")
@@ -364,6 +387,10 @@ func resolveCredentialDriver(ctx context.Context, client engine.ClusterClient, d
 		}
 		return d, nil
 	}
+	alibabaActive, err := alibabaOperatorActive(ctx, client)
+	if err != nil {
+		alibabaActive = false
+	}
 	return cloudcredfields.Driver{}, clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("unknown cloud credential driver %s; drivers with a credential on this server: %s",
 			strconv.Quote(driverName), strings.Join(cloudcredfields.OfferedPrefixes(drivers, alibabaActive), ", ")))
@@ -392,7 +419,7 @@ func checkFieldFlags(d cloudcredfields.Driver, sets, files []fieldWord) error {
 			if secret, folded := d.SecretFolded(w.field); folded {
 				return secretInSetError(w.field, secret.Name)
 			}
-			return unknownFieldError(d, w.field, flagSet)
+			return unknownFieldError(d, w)
 		case f.Secret:
 			return secretInSetError(w.field, f.Name)
 		}
@@ -401,7 +428,7 @@ func checkFieldFlags(d cloudcredfields.Driver, sets, files []fieldWord) error {
 		f, ok := d.Field(w.field)
 		switch {
 		case !ok:
-			return unknownFieldError(d, w.field, flagFromFile)
+			return unknownFieldError(d, w)
 		case !f.Secret && !f.Multiline:
 			return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 				"%s is a public field of %s; give it with --set %s=<value>", quoteField(w.field), d.Prefix, w.field))
@@ -418,9 +445,13 @@ func secretInSetError(typed, canonical string) error {
 	return clierr.New(clierr.CodeValidation, msg)
 }
 
-func unknownFieldError(d cloudcredfields.Driver, typed, flag string) error {
-	return clierr.New(clierr.CodeValidation, fmt.Sprintf("%s after --%s is not a field of %s; its fields are %s",
-		quoteField(typed), flag, d.Prefix, strings.Join(d.Names(func(cloudcredfields.Field) bool { return true }), ", ")))
+func unknownFieldError(d cloudcredfields.Driver, w fieldWord) error {
+	subject := w.typedField()
+	if fieldNameShape.MatchString(w.field) {
+		subject += " after --" + w.flag
+	}
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf("%s is not a field of %s; its fields are %s",
+		subject, d.Prefix, strings.Join(d.Names(func(cloudcredfields.Field) bool { return true }), ", ")))
 }
 
 // readValues reads each --from-file value and checks every value against the
@@ -499,11 +530,12 @@ func decodesAsKubeconfig(text string) bool {
 	return len(doc.Clusters)+len(doc.Users)+len(doc.Contexts) > 0
 }
 
-// checkRequired refuses a missing required field.
-func checkRequired(d cloudcredfields.Driver, values []credentialValue) error {
+// checkRequired refuses a missing required field, from the names the command
+// line gives, before stdin or any file is read.
+func checkRequired(d cloudcredfields.Driver, sets, files []fieldWord) error {
 	var missing []string
 	for _, f := range d.Fields {
-		if f.Required && !slices.ContainsFunc(values, func(v credentialValue) bool { return v.field.Name == f.Name }) {
+		if f.Required && !slices.ContainsFunc(slices.Concat(sets, files), func(w fieldWord) bool { return w.field == f.Name }) {
 			flag := "--set " + f.Name + "=<value>"
 			if f.Secret {
 				flag = "--from-file " + f.Name + "=<path>"

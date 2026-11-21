@@ -20,12 +20,17 @@ const (
 
 // harvesterPlaceholders are the values the scenario uses for the recipe's
 // placeholders.
+// harvesterScenarioDescription marks the kubeconfig the scenario creates.
+const harvesterScenarioDescription = "e2e-harvester-recipe"
+
 var harvesterPlaceholders = strings.NewReplacer("<cluster-id>", "c-test", "<display-name>", "harvester-cc")
 
 // scenarioRecipe returns the recipe the scenario runs: the exec lines of the
 // two commands of the recipe, in order, joined with a pipe. The scenario has
 // no shell pipe, so its cp stdout and stdin steps stand for the pipe and are
-// left out, as are the previews and the exec lines that check the result.
+// left out, as are the previews and the exec lines that check the result. The
+// description the scenario gives its kubeconfig, to find it again, is left out
+// too.
 func scenarioRecipe(script string) string {
 	var commands []string
 	for line := range strings.SplitSeq(script, "\n") {
@@ -34,7 +39,7 @@ func scenarioRecipe(script string) string {
 			continue
 		}
 		if strings.HasPrefix(command, "rancher create kubeconfig ") || strings.HasPrefix(command, "rancher create cloud-credential ") {
-			commands = append(commands, command)
+			commands = append(commands, strings.Replace(command, " --description "+harvesterScenarioDescription, "", 1))
 		}
 	}
 	return strings.Join(commands, " | ")
@@ -58,6 +63,6 @@ func TestHarvesterRecipeMatchesItsScenario(t *testing.T) {
 // only the two commands of the recipe, in order.
 func TestScenarioRecipeSkipsTheOtherCommands(t *testing.T) {
 	t.Parallel()
-	script := "exec rancher create resource -f x.yaml --apply\nexec rancher create kubeconfig --a\ncp stdout kc.yaml\nstdin kc.yaml\nexec rancher create cloud-credential h --b\nexec rancher get kubeconfigs -o json\n"
+	script := "exec rancher create resource -f x.yaml --apply\nexec rancher create kubeconfig --a --description e2e-harvester-recipe\ncp stdout kc.yaml\nstdin kc.yaml\nexec rancher create cloud-credential h --b\nexec rancher get kubeconfigs -o json\n"
 	assert.Equal(t, "rancher create kubeconfig --a | rancher create cloud-credential h --b", scenarioRecipe(script))
 }
