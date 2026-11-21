@@ -861,21 +861,20 @@ func envelopeCarriesWarnings(format string) bool {
 	return format == "json" || format == "yaml"
 }
 
-// mirrorWarnings writes each entry of warnings to w as a "# warning: <w>"
-// line, skipping an entry already counted in silent - a value-matched
-// multiset, not positional: Plan-time Effect.Warnings are prepended to a
-// Result's Warnings before rendering, so a suppressed entry (the
-// once-only advisory) is not reliably first. Decremented per skip so a
-// repeated value mirrors past its silenced count. silent may be nil (no
-// suppression). s styles the "# warning:" prefix only, never the
-// message. The warnings are the entries as the command wrote them, with their
-// remedy commands not yet expanded. Each is written as clierr.LineText writes
-// it, then expanded by expand, then passed through Printable. A piece that has
-// a hidden character is a double-quoted string with escapes, and a value cannot
-// add a line. The one
-// implementation behind every stderr warning mirror in the pipeline:
-// renderResult's Text, RawBytes, Raw, and envelope branches, and
-// renderEffect's text and envelope branches.
+// mirrorWarnings writes each entry of warnings to w as a "# warning: <w>" line,
+// skipping an entry already counted in silent - a value-matched multiset, not
+// positional: Plan-time Effect.Warnings are prepended to a Result's Warnings
+// before rendering, so a suppressed entry (the once-only advisory) is not
+// reliably first. Decremented per skip so a repeated value mirrors past its
+// silenced count. silent may be nil (no suppression). s styles the "# warning:"
+// prefix only, never the message. The warnings are the entries as the command
+// wrote them, with their remedy commands not yet expanded. Each is written as
+// clierr.LineText writes it, then expanded by expand, then passed through
+// Printable. A piece that has a hidden character is a double-quoted string with
+// escapes, and a value cannot add a line. The one implementation behind every
+// stderr warning mirror in the pipeline: renderResult's Text, RawBytes, Raw,
+// and envelope branches, renderEffect's text and envelope branches, and the
+// warnings RenderErrorStyled writes with an error.
 func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s style.Style, expand func(string) string) {
 	for _, warn := range warnings {
 		if silent[warn] > 0 {
