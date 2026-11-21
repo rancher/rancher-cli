@@ -2922,14 +2922,14 @@ under `table`/default format instead, with warnings on stderr as
 `# warning: <w>` lines; `-o json`/`yaml`/`template=`/`name` still see the
 normal envelope over `data`.
 Every text format - the text of composites and
-`access`, the dry-run preview, and the `# warning:` lines and `error (...)`
-lines on stderr - removes control characters (including the escape character
+`access`, the dry-run preview, and the `# warning:` lines of a command that
+succeeds - removes control characters (including the escape character
 that starts an ANSI sequence, carriage return and tab) and Unicode format
 characters from server-sourced text before it reaches the terminal, so server
 text cannot drive the terminal. Progress messages on stderr get the same
 treatment under every `-o` format. The `# warning:`
-and `error (...)` lines, the summary line and the dry-run preview also remove
-newlines, so a value cannot add a line there. In the text of
+lines of a command that succeeds, the summary line and the dry-run preview also
+remove newlines, so a value cannot add a line there. In the text of
 `inspect cluster`, `inspect deployment`, `inspect project`, `inspect user`,
 `config status`, `config set-token-reuse`, `create token`,
 `project remove-namespace`, the OIDC client commands and `auth status`, in the
@@ -2950,7 +2950,15 @@ invalid UTF-8 byte is written as a double-quoted string with escapes, as a user
 id is, and nothing is removed. A value in any of these places that is already
 such a double-quoted string with escapes, as Go writes it, is written in double
 quotes again, with its quotes and backslashes escaped, unless it has a single
-quote.
+quote. The message and hint of an `error (...)` line and the `# warning:` lines
+written with an error are cut at `; `, at ` (` and at each remedy command. A
+piece that has a control character, an invisible format character, a line or
+paragraph separator or an invalid UTF-8 byte is written as a double-quoted
+string with escapes; any other piece prints as written. A remedy command in the
+line names its `--config` directory outside the quotes. The words after a
+command, up to the next `; ` or ` (`, are in the same piece; when that piece has
+such a character they are inside the quotes too. The message and hint of a
+`TLS_TRUST` error still have such characters removed.
 Verbatim by design, and untrusted content when echoed: `json`, `yaml` and
 `template=` (the bytes are
 the data), `logs` (container output whose newlines are its structure), and the

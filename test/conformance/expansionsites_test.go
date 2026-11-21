@@ -156,18 +156,19 @@ func expansionSites(pkgs []*packages.Package) (sites map[expansionSite]int, empt
 // drive them are in internal/runtime, with their own copy of these keys and
 // counts.
 var expansionSiteList = map[string]int{
-	"internal/runtime.runRead ExpandText":           1,
-	"internal/runtime.renderResult expandAll":       2,
-	"internal/runtime.renderResult ExpandText":      1,
-	"internal/runtime.renderResult ExpandLines":     2,
-	"internal/runtime.renderResult expandData":      1,
-	"internal/runtime.renderEffect expandAll":       1,
-	"internal/runtime.renderEffect ExpandLines":     1,
-	"internal/runtime.renderEffect expandData":      1,
-	"internal/runtime.renderErrDrained ExpandError": 1,
-	"internal/runtime.renderErrDrained expandAll":   1,
-	"internal/cli.renderDepsError ExpandError":      1,
-	"internal/cli.completionDebugf ExpandText":      1,
+	"internal/runtime.runRead ExpandText":            1,
+	"internal/runtime.renderResult expandAll":        2,
+	"internal/runtime.renderResult ExpandText":       1,
+	"internal/runtime.renderResult ExpandLines":      2,
+	"internal/runtime.renderResult expandData":       1,
+	"internal/runtime.renderEffect expandAll":        1,
+	"internal/runtime.renderEffect ExpandLines":      1,
+	"internal/runtime.renderEffect expandData":       1,
+	"internal/runtime.RenderErrorStyled ExpandError": 1,
+	"internal/runtime.RenderErrorStyled ExpandText":  2,
+	"internal/runtime.RenderErrorStyled expandAll":   1,
+	"internal/runtime.WriteError ExpandText":         1,
+	"internal/cli.completionDebugf ExpandText":       1,
 }
 
 // emptyPrefixAllowlist is every function that expands remedy commands with

@@ -485,7 +485,7 @@ func envelopeStrings(v any) []string {
 func assertNoObjectData(t *testing.T, ce *clierr.Error) {
 	t.Helper()
 	var buf bytes.Buffer
-	runtime.WriteError(&buf, "json", ce, style.Style{})
+	runtime.WriteError(&buf, "json", ce, style.Style{}, "")
 	var doc any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &doc))
 	strs := envelopeStrings(doc)

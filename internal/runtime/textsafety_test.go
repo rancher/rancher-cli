@@ -20,17 +20,18 @@ func TestMirrorWarningsStripsControlCharacters(t *testing.T) {
 	assert.Equal(t, "# warning: condition: a[2Jb# warning: forged\n", buf.String())
 }
 
-// TestErrorTextStripsControlCharacters asserts the default-format error
-// block strips control characters from the message and the hint, both of
-// which may carry server text.
-func TestErrorTextStripsControlCharacters(t *testing.T) {
+// TestErrorTextQuotesControlCharacters asserts the default-format error
+// block writes the message and the hint, both of which may carry server text,
+// as double-quoted strings with escapes where they have a control character.
+func TestErrorTextQuotesControlCharacters(t *testing.T) {
 	t.Parallel()
 	ce := clierr.New(clierr.CodeValidation, "denied: a\x1b[2Jb\nforged line").
 		WithHint("rancher get x\r")
-	out := errorText(ce, style.Style{})
+	out := errorText(ce, style.Style{}, plainRemedies)
 	assert.NotContains(t, out, "\x1b")
 	assert.NotContains(t, out, "\r")
-	assert.Contains(t, out, "denied: a[2Jbforged line")
+	assert.Contains(t, out, `"denied: a\x1b[2Jb\nforged line"`)
+	assert.Contains(t, out, `"rancher get x\r"`)
 }
 
 // TestDryRunTextStripsControlCharacters asserts a diff value from the
@@ -55,12 +56,12 @@ func candidatesLine(t *testing.T, candidates []clierr.Candidate, limit int) stri
 	} else {
 		ce = ce.WithCandidates(candidates)
 	}
-	for line := range strings.SplitSeq(errorText(ce, style.Style{}), "\n") {
+	for line := range strings.SplitSeq(errorText(ce, style.Style{}, plainRemedies), "\n") {
 		if strings.HasPrefix(line, "  candidates") {
 			return strings.TrimPrefix(line, "  ")
 		}
 	}
-	t.Fatalf("no candidates line in %q", errorText(ce, style.Style{}))
+	t.Fatalf("no candidates line in %q", errorText(ce, style.Style{}, plainRemedies))
 	return ""
 }
 

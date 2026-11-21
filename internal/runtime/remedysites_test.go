@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -67,6 +69,20 @@ func (c siteMutating) Plan(context.Context, runtime.Input) (safety.Effect, runti
 	return c.eff, func(context.Context) (runtime.Result, error) { return c.res, nil }, nil
 }
 
+// firstWriteFails fails its first Write and then writes to w.
+type firstWriteFails struct {
+	w      *bytes.Buffer
+	failed bool
+}
+
+func (f *firstWriteFails) Write(p []byte) (int, error) {
+	if !f.failed {
+		f.failed = true
+		return 0, errors.New("scripted write failure")
+	}
+	return f.w.Write(p)
+}
+
 // siteNotices is a notice source that holds the notices it was given.
 type siteNotices struct{ notices []string }
 
@@ -121,16 +137,21 @@ func reportResult() runtime.Result {
 	return runtime.Result{Kind: "Report", Data: map[string]string{"state": "ok"}, Text: "ok\n"}
 }
 
-// errorRows are the channels of an error that both ExpandError sites
-// expand: its message, hint and warning, and every remedy field of each
-// production details payload that has a MapText method. The payload of a
-// row is the type of the literal that is the first argument of withDetails.
-var errorRows = []struct {
+// errorRow is one channel of an error: its name, whether only the structured
+// output carries it (jsonOnly) or only the text output prints it (textOnly),
+// and the function that builds an error with text in that channel.
+type errorRow struct {
 	channel  string
 	jsonOnly bool
 	textOnly bool
 	build    func(text string) *clierr.Error
-}{
+}
+
+// errorRows are the channels of an error that RenderErrorStyled expands: its
+// message, hint and warning, and every remedy field of each production details
+// payload that has a MapText method. The payload of a row is the type of the
+// literal that is the first argument of withDetails.
+var errorRows = []errorRow{
 	{"message", false, false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed: "+s) }},
 	{"hint", false, false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed").WithHint(s) }},
 	{"warning", false, false, func(s string) *clierr.Error { return clierr.New(clierr.CodeGeneric, "failed").WithWarnings(s) }},
@@ -219,14 +240,14 @@ func withOtherCommand(ce *clierr.Error, channel, cli string) *clierr.Error {
 }
 
 // siteRows is the table, written as data: one row for each channel of each
-// place a text is expanded for the invocation. The two occurrences of
-// IO.ExpandError have one row for the message, the hint, the warning and each
-// remedy field of a details payload. The scans in test/conformance compare
-// the keys of the rows (the site, and the payload and field of an error row)
-// with the sites and payloads of the production tree; they cannot tell
-// whether a row's drive runs the site its key names, so the drive of each row
-// must run that site, and a row that stands in for a site of another package
-// says so.
+// place a text is expanded for the invocation. IO.ExpandError and
+// IO.ExpandText in RenderErrorStyled have one row for the message, the hint,
+// the warning and each remedy field of a details payload. The scans in
+// test/conformance compare the keys of the rows (the site, and the payload and
+// field of an error row) with the sites and payloads of the production tree;
+// they cannot tell whether a row's drive runs the site its key names, so the
+// drive of each row must run that site, and a row that stands in for a site of
+// another package says so.
 func siteRows() []siteRow {
 	rows := []siteRow{
 		{site: "internal/runtime.runRead ExpandText", channel: "prompter notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
@@ -267,7 +288,7 @@ func siteRows() []siteRow {
 			t.Helper()
 			return drivenResult(t, r, dryRun(safety.Effect{PreviewSource: safety.PreviewServerDryRun, Warnings: []string{r.text}}), func(io *runtime.IO) { io.DryRun = true })
 		}},
-		{site: "internal/runtime.renderErrDrained expandAll", channel: "drained notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
+		{site: "internal/runtime.RenderErrorStyled expandAll", channel: "drained notice", jsonOnly: false, drive: func(t *testing.T, r siteRun) (string, string) {
 			t.Helper()
 			cmd := siteRead{err: clierr.New(clierr.CodeGeneric, "failed")}
 			return drivenResult(t, r, cmd, func(io *runtime.IO) { io.Notices = &siteNotices{[]string{r.text}} })
@@ -286,21 +307,27 @@ func siteRows() []siteRow {
 	)
 	for _, row := range errorRows {
 		rows = append(rows,
-			siteRow{site: "internal/runtime.renderErrDrained ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, textOnly: row.textOnly, drive: func(t *testing.T, r siteRun) (string, string) {
+			siteRow{site: "internal/runtime.RenderErrorStyled ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, textOnly: row.textOnly, drive: func(t *testing.T, r siteRun) (string, string) {
 				t.Helper()
 				return drivenResult(t, r, siteRead{err: withOtherCommand(row.build(r.text), row.channel, r.cli)}, nil)
 			}},
-			// renderDepsError is in package cli, which this package cannot
-			// import: the row drives IO.ExpandError with RenderErrorStyled,
-			// the two calls that function makes.
-			siteRow{site: "internal/cli.renderDepsError ExpandError", channel: row.channel, jsonOnly: row.jsonOnly, textOnly: row.textOnly, drive: func(t *testing.T, r siteRun) (string, string) {
+			siteRow{site: "internal/runtime.RenderErrorStyled ExpandText", channel: row.channel, jsonOnly: row.jsonOnly, textOnly: row.textOnly, drive: func(t *testing.T, r siteRun) (string, string) {
 				t.Helper()
 				var out, errBuf bytes.Buffer
-				require.NoError(t, runtime.RenderErrorStyled(&errBuf, r.format, r.io(&out, &errBuf).ExpandError(withOtherCommand(row.build(r.text), row.channel, r.cli)), style.Style{}))
+				require.NoError(t, runtime.RenderErrorStyled(&errBuf, r.format, withOtherCommand(row.build(r.text), row.channel, r.cli), style.Style{}, r.dir))
 				return out.String(), errBuf.String()
 			}},
 		)
 	}
+	rows = append(rows, siteRow{
+		// The writer fails its first Write. The one line the fallback writes is
+		// then what reaches the buffer.
+		site: "internal/runtime.WriteError ExpandText", channel: "fallback message", textOnly: true, drive: func(t *testing.T, r siteRun) (string, string) {
+			t.Helper()
+			var errBuf bytes.Buffer
+			runtime.WriteError(&firstWriteFails{w: &errBuf}, r.format, clierr.New(clierr.CodeGeneric, "failed: "+r.text), style.Style{}, r.dir)
+			return "", errBuf.String()
+		}})
 	rows = append(rows, siteRow{
 		// completionDebugf is in package cli, which this package cannot import:
 		// the row drives IO.ExpandText and writes the line the way the
@@ -366,18 +393,19 @@ func textRows() []siteRow {
 // rows: a site with a row added or removed fails until this list matches.
 // The scan in test/conformance holds the sites themselves.
 var siteRowCounts = map[string]int{
-	"internal/runtime.runRead ExpandText":           1,
-	"internal/runtime.renderResult expandAll":       2,
-	"internal/runtime.renderResult ExpandText":      1,
-	"internal/runtime.renderResult ExpandLines":     4,
-	"internal/runtime.renderResult expandData":      1,
-	"internal/runtime.renderEffect expandAll":       2,
-	"internal/runtime.renderEffect ExpandLines":     1,
-	"internal/runtime.renderEffect expandData":      1,
-	"internal/runtime.renderErrDrained ExpandError": 20,
-	"internal/runtime.renderErrDrained expandAll":   1,
-	"internal/cli.renderDepsError ExpandError":      20,
-	"internal/cli.completionDebugf ExpandText":      1,
+	"internal/runtime.runRead ExpandText":            1,
+	"internal/runtime.renderResult expandAll":        2,
+	"internal/runtime.renderResult ExpandText":       1,
+	"internal/runtime.renderResult ExpandLines":      4,
+	"internal/runtime.renderResult expandData":       1,
+	"internal/runtime.renderEffect expandAll":        2,
+	"internal/runtime.renderEffect ExpandLines":      1,
+	"internal/runtime.renderEffect expandData":       1,
+	"internal/runtime.RenderErrorStyled ExpandError": 20,
+	"internal/runtime.RenderErrorStyled ExpandText":  20,
+	"internal/runtime.RenderErrorStyled expandAll":   1,
+	"internal/runtime.WriteError ExpandText":         1,
+	"internal/cli.completionDebugf ExpandText":       1,
 }
 
 // visibleText is every string a run wrote, as a reader sees it: a JSON
@@ -439,11 +467,6 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 	plantedExpanded := "rancher" + prefix + " delete x"
 	cliExpanded := "rancher" + prefix + " get pods"
 	both := "server said " + plantedRemedy + "; run " + cliCommand
-	// A details line shows a value that holds a hidden character as escapes,
-	// quoted only in the pieces between single quotes, so the expanded command
-	// of the CLI sits there with a double-quoted piece before its quoted
-	// directory.
-	bothInDetails := clierr.IDText("server said " + plantedRemedy + "; run " + cliExpanded)
 	for _, row := range siteRows() {
 		formats := []string{"", "json"}
 		if row.textOnly {
@@ -453,9 +476,6 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 			if format == "" && row.jsonOnly {
 				continue
 			}
-			// The default, table and wide text of a details payload shows each
-			// value through clierr.IDText; no other channel does.
-			detailsText := strings.Contains(row.site, "ExpandError") && strings.Contains(row.channel, ".") && format != "json"
 			t.Run(row.site+" "+row.channel+" "+format, func(t *testing.T) {
 				t.Parallel()
 				run := func(r siteRun) string {
@@ -479,12 +499,7 @@ func TestEverySiteThatExpandsRemediesIgnoresServerText(t *testing.T) {
 
 				shown = run(siteRun{text: both})
 				assert.Contains(t, shown, "rancher delete x", "the planted text reaches the output")
-				if detailsText {
-					assert.True(t, strings.Contains(shown, cliExpanded) || strings.Contains(shown, bothInDetails),
-						"the command of the CLI names the directory beside the planted text: %q", shown)
-				} else {
-					assert.Contains(t, shown, cliExpanded, "the command of the CLI names the directory beside the planted text")
-				}
+				assert.Contains(t, shown, cliExpanded, "the command of the CLI names the directory beside the planted text")
 
 				if strings.Contains(row.site, "ExpandError") {
 					shown = run(siteRun{text: plantedRemedy, cli: cliCommand})
@@ -510,4 +525,78 @@ func TestSiteRowsAreTheRowsOfTheListedSites(t *testing.T) {
 		seen[key] = true
 	}
 	assert.Equal(t, siteRowCounts, got)
+}
+
+// hiddenBeforeCommand is a text with a hidden character in the words before a
+// command of the CLI.
+const hiddenBeforeCommand = "hidden\u200b-before "
+
+// TestAnErrorTextWithAHiddenCharacterBeforeACommandKeepsTheCommandWhole
+// asserts, for every channel of an error and for a POSIX path and a
+// Windows-style path as the config directory, that the words before a command
+// are written as a double-quoted string with escapes when they have a hidden
+// character, and that the command that follows names the directory outside
+// every double-quoted string. A shell that reads the printed command then runs
+// it. The text formats show the escape and no raw character; json and yaml
+// carry the raw character and no escape.
+func TestAnErrorTextWithAHiddenCharacterBeforeACommandKeepsTheCommandWhole(t *testing.T) {
+	t.Parallel()
+	for name, dir := range map[string]string{"posix": t.TempDir() + "/o brien", "windows": `C:\Users\o brien\rancher`} {
+		prefix, printable := runtime.RemedyPrefix(dir)
+		require.True(t, printable, dir)
+		cliCommand := clierr.Rancher + " get pods"
+		cliExpanded := "rancher" + prefix + " get pods"
+		for _, row := range errorRows {
+			formats := []string{"", "table", "wide", "json", "yaml"}
+			switch {
+			case row.jsonOnly:
+				formats = []string{"json", "yaml"}
+			case row.textOnly:
+				formats = []string{"", "table", "wide"}
+			}
+			for _, format := range formats {
+				t.Run(name+" "+row.channel+" "+format, func(t *testing.T) {
+					t.Parallel()
+					_, errOut := drivenResult(t, siteRun{text: hiddenBeforeCommand + cliCommand, format: format, dir: dir},
+						siteRead{err: row.build(hiddenBeforeCommand + cliCommand)}, nil)
+					if format == "json" || format == "yaml" {
+						strs := envelopeStrings(t, format, []byte(errOut))
+						assert.True(t, slices.ContainsFunc(strs, func(s string) bool { return strings.Contains(s, cliExpanded) }), "no string holds the command: %q", strs)
+						assert.True(t, slices.ContainsFunc(strs, func(s string) bool { return strings.Contains(s, "\u200b") }), "no string carries the raw character: %q", strs)
+						assert.False(t, slices.ContainsFunc(strs, func(s string) bool { return strings.Contains(s, `\u200b`) }), "a string holds the escape: %q", strs)
+						return
+					}
+					assert.Contains(t, errOut, cliExpanded)
+					assert.Contains(t, errOut, `\u200b`)
+					assert.NotContains(t, errOut, "\u200b")
+				})
+			}
+		}
+	}
+}
+
+// TestAnErrorMessageWithAHiddenCharacterBeforeACommandPrintsTheClauseQuoted
+// asserts the exact text of a message, a hint and a warning with a hidden
+// character before a command: the clause is one double-quoted string, the
+// command follows it with its directory in single quotes.
+func TestAnErrorMessageWithAHiddenCharacterBeforeACommandPrintsTheClauseQuoted(t *testing.T) {
+	t.Parallel()
+	text := hiddenBeforeCommand + clierr.Rancher + " get pods"
+	const dir = "/h/o brien"
+	for _, tc := range []struct {
+		name string
+		ce   *clierr.Error
+		want string
+	}{
+		{"message", clierr.New(clierr.CodeGeneric, "failed: "+text), "error (GENERIC): \"failed: hidden\\u200b-before \"rancher --config '/h/o brien' get pods\n"},
+		{"hint", clierr.New(clierr.CodeGeneric, "failed").WithHint(text), "error (GENERIC): failed\n  hint: \"hidden\\u200b-before \"rancher --config '/h/o brien' get pods\n"},
+		{"warning", clierr.New(clierr.CodeGeneric, "failed").WithWarnings(text), "# warning: \"hidden\\u200b-before \"rancher --config '/h/o brien' get pods\nerror (GENERIC): failed\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var b bytes.Buffer
+			require.NoError(t, runtime.RenderErrorStyled(&b, "", tc.ce, style.Style{}, dir))
+			assert.Equal(t, tc.want, b.String())
+		})
+	}
 }

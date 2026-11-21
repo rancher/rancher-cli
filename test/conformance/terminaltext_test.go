@@ -160,9 +160,10 @@ func terminalDescriptor(shape runtime.OutputShape) runtime.Descriptor {
 // remedy command of the row names, and the text a remedy command of this
 // process expands to there.
 type terminalEnv struct {
-	t        *testing.T
-	dir      string
-	expanded string
+	t            *testing.T
+	dir          string
+	remedyPrefix string
+	expanded     string
 }
 
 func newTerminalEnv(t *testing.T) terminalEnv {
@@ -170,7 +171,7 @@ func newTerminalEnv(t *testing.T) terminalEnv {
 	dir := t.TempDir()
 	prefix, printable := runtime.RemedyPrefix(dir)
 	require.True(t, printable)
-	return terminalEnv{t: t, dir: dir, expanded: "rancher" + prefix + " auth status"}
+	return terminalEnv{t: t, dir: dir, remedyPrefix: prefix, expanded: "rancher" + prefix + " auth status"}
 }
 
 // remedyText is a text with a remedy command of this process and the hostile
@@ -189,6 +190,15 @@ func (e terminalEnv) remedyExpected(p string) string {
 // remedyExpectedLine is remedyText(p) as a one-line channel writes it.
 func (e terminalEnv) remedyExpectedLine(p string) string {
 	return "run " + e.expanded + " " + terminalFilteredLine(p)
+}
+
+// remedyExpectedQuoted is remedyText(p) as the message, the hint or a warning
+// of an error writes it: the words before the command as written, then the
+// command with its directory, then the rest of the text up to its end as one
+// double-quoted string with escapes, written right after the directory's
+// closing quote.
+func (e terminalEnv) remedyExpectedQuoted(p string) string {
+	return "run rancher" + e.remedyPrefix + strconv.Quote(" auth status "+terminalHostile(p))
 }
 
 // io is the invocation's IO: color never (so the environment cannot add the
@@ -487,7 +497,8 @@ var terminalRows = []terminalRow{
 		require.NotNil(t, ce)
 		assertBothClean(t, out, errOut, terminalSequences)
 		assertNoForgedLine(t, "standard error", errOut)
-		assert.True(t, strings.HasPrefix(errOut, "# warning: "+e.remedyExpectedLine("warnings failed run")+"\n"), "the warning line comes first, as one line: %q", errOut)
+		assert.True(t, strings.HasPrefix(errOut, "# warning: "+e.remedyExpectedQuoted("warnings failed run")+"\n"), "the warning line comes first, as one line: %q", errOut)
+		assert.NotContains(t, errOut, terminalFilteredLine("warnings failed run"), "the warning is not shown with its hidden characters removed")
 	}},
 	{"error block", func(e terminalEnv) {
 		t := e.t
@@ -499,9 +510,10 @@ var terminalRows = []terminalRow{
 		require.NotNil(t, ce)
 		assertBothClean(t, out, errOut, terminalSequences)
 		assertNoForgedLine(t, "standard error", errOut)
-		assert.Equal(t, 2, strings.Count(errOut, e.expanded), "the message and the hint expand their command: %q", errOut)
+		assert.Contains(t, errOut, "error (GENERIC): "+e.remedyExpectedQuoted("error message")+"\n", "the message writes the text after the command as a double-quoted string with escapes")
+		assert.Contains(t, errOut, "hint: "+e.remedyExpectedQuoted("error hint")+"\n", "the hint writes the text after the command as a double-quoted string with escapes")
 		for _, p := range []string{"error message", "error hint"} {
-			assert.Contains(t, errOut, terminalFilteredLine(p))
+			assert.NotContains(t, errOut, terminalFilteredLine(p), "the message and the hint are not shown with their hidden characters removed")
 		}
 		assert.Contains(t, errOut, "candidates: "+strconv.Quote(terminalHostile("candidate name"))+" ("+strconv.Quote(terminalHostile("candidate id"))+")",
 			"a candidate shows its hidden characters as escapes")

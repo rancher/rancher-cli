@@ -194,20 +194,19 @@ func (textCommand) Execute(context.Context, rt.Input, rt.Prompter) (rt.Result, e
 }
 
 // TestTextAndErrorsWrittenWithoutAnInvocationLeakNoMarker asserts the two
-// writes that expand no remedy for a directory - a result's text, and an
-// error rendered by a caller that has no invocation, as the CLI does before
-// it knows which directory a run uses - hold the marked command as the plain
-// command, with no character of the remedy marker (U+2060 to U+2064), in
-// every format. The exit table cannot reach either with a marked command, so
-// this row stands for them: dropping the plain rewrite in plainRemedies fails
-// it.
+// writes made with no config directory - a result's text, and an error
+// rendered by a caller that has no invocation, as the CLI does before it knows
+// which directory a run uses - write the marked command without --config and
+// with no character of the remedy marker (U+2060 to U+2064), in every format.
+// The exit table cannot reach either with a marked command; this row stands
+// for them: leaving the marker in, or adding a directory, fails it.
 func TestTextAndErrorsWrittenWithoutAnInvocationLeakNoMarker(t *testing.T) {
 	t.Parallel()
 	ce := clierr.New(clierr.CodeNotLoggedIn, "not logged in; run "+clierr.Rancher+" auth login 'prod'").
 		WithHint(clierr.Rancher + " auth login 'prod'").WithWarnings("see " + clierr.Rancher + " config status")
 	for _, format := range []string{"", "json", "yaml"} {
 		var b bytes.Buffer
-		require.NoError(t, rt.RenderErrorStyled(&b, format, ce, style.Style{}))
+		require.NoError(t, rt.RenderErrorStyled(&b, format, ce, style.Style{}, ""))
 		if format == "" {
 			assert.Contains(t, b.String(), "rancher auth login 'prod'", format)
 		} else {

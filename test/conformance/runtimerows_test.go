@@ -282,7 +282,7 @@ func productionRemedyFields(t *testing.T, payloads []string) map[string][]string
 // of the type. A site, a payload or a remedy field added to one side fails
 // until the other has it. The comparison cannot tell whether a row's drive
 // runs the site its key names: the row of a site that stands in for another
-// (the one of renderDepsError) says so, and review checks the rest.
+// (the one of completionDebugf) says so, and review checks the rest.
 func TestRuntimeRowsMatchTheScans(t *testing.T) {
 	t.Parallel()
 	rows := readRuntimeRows(t, runtimeRowsFile, nil)

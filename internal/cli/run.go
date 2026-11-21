@@ -87,7 +87,7 @@ func runArgv(ctx context.Context, root *ucli.Command, args []string) (k keptLine
 			if wholeLine || !p.readWholeLine() {
 				renderRawArgvError(root, ce)
 			} else {
-				runtime.WriteError(root.ErrWriter, p.valueOf("output"), ce, errStyle(root, p.valueOf("color")))
+				runtime.WriteError(root.ErrWriter, p.valueOf("output"), ce, errStyle(root, p.valueOf("color")), "")
 			}
 			return k, exit(ce)
 		}

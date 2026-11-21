@@ -87,16 +87,21 @@ func (streams IO) ExpandText(s string) string {
 
 // ExpandError is ce with every remedy command in its message, hint,
 // warnings and details written for this invocation. When the directory
-// cannot be printed no command is offered: the hint, which is a command,
-// is dropped whenever it holds one; a details payload's command fields are
-// emptied; every other text keeps its words up to the clause holding its
-// first command and says why; and the message says it when no message or
-// warning already does.
+// cannot be printed no command is offered (withoutErrorCommands).
 func (streams IO) ExpandError(ce *clierr.Error) *clierr.Error {
 	prefix, printable := streams.remedyPrefix()
 	if printable {
 		return ce.MapText(func(s string) string { return clierr.ExpandRemedies(s, prefix) })
 	}
+	return withoutErrorCommands(ce)
+}
+
+// withoutErrorCommands is ce for a directory no command can name: the hint,
+// which is a command, is dropped whenever it has one; a details payload's
+// command fields are emptied; every other text keeps its words up to the
+// piece that has its first command and says why; and the message says it when
+// no message or warning already does.
+func withoutErrorCommands(ce *clierr.Error) *clierr.Error {
 	out := ce.MapText(withoutCommands)
 	if out == ce {
 		return out
@@ -120,6 +125,21 @@ func (streams IO) ExpandError(ce *clierr.Error) *clierr.Error {
 		out.Message += "; " + UnprintableConfigDirNote
 	}
 	return out
+}
+
+// forErrorText is ce and notices ready for the text of an error, before the
+// text is escaped. For a directory no command can name, every command is left
+// out, as ExpandError leaves it out. For any other directory, ce and notices
+// are unchanged and their commands stay unexpanded.
+func (streams IO) forErrorText(ce *clierr.Error, notices []string) (*clierr.Error, []string) {
+	if _, printable := streams.remedyPrefix(); printable {
+		return ce, notices
+	}
+	kept := make([]string, len(notices))
+	for i, n := range notices {
+		kept[i] = withoutCommands(n)
+	}
+	return withoutErrorCommands(ce), kept
 }
 
 // resetCode is the escape sequence style.Style writes after the text of
@@ -247,8 +267,7 @@ func (streams IO) expandAll(warnings []string) []string {
 
 // plainRemedies is s with every remedy command written without a
 // directory: the form for the text of a command whose descriptor sets
-// PlainText (the output of another program) and for a renderer that has no
-// invocation to ask.
+// PlainText (the output of another program).
 func plainRemedies(s string) string { return clierr.ExpandRemedies(s, "") }
 
 // plainRemedyWriter removes this process's marker from every remedy command

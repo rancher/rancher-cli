@@ -64,9 +64,9 @@ func TestWriteErrorWritesTheErrorWhenTheWriterWorks(t *testing.T) {
 	t.Parallel()
 	for _, format := range writeErrorFormats {
 		var want bytes.Buffer
-		require.NoError(t, RenderErrorStyled(&want, format, validationError(), style.Style{}), format)
+		require.NoError(t, RenderErrorStyled(&want, format, validationError(), style.Style{}, ""), format)
 		var w scriptedWriter
-		WriteError(&w, format, validationError(), style.Style{})
+		WriteError(&w, format, validationError(), style.Style{}, "")
 		assert.Equal(t, want.String(), w.buf.String(), format)
 		assert.Equal(t, 1, w.calls, format)
 	}
@@ -82,13 +82,13 @@ func TestWriteErrorWritesOneLineWhenTheEnvelopeCannotBeEncoded(t *testing.T) {
 	}
 	for _, format := range writeErrorFormats {
 		var w scriptedWriter
-		WriteError(&w, format, ce(), style.Style{})
+		WriteError(&w, format, ce(), style.Style{}, "")
 		if format == "json" || format == "yaml" {
 			assert.Equal(t, "error (VALIDATION): message\n", w.buf.String(), format)
 			continue
 		}
 		var want bytes.Buffer
-		require.NoError(t, RenderErrorStyled(&want, format, ce(), style.Style{}), format)
+		require.NoError(t, RenderErrorStyled(&want, format, ce(), style.Style{}, ""), format)
 		assert.Equal(t, want.String(), w.buf.String(), format)
 		assert.Contains(t, w.buf.String(), "details line", format)
 	}
@@ -100,7 +100,7 @@ func TestWriteErrorReturnsWhenEveryWriteFails(t *testing.T) {
 	t.Parallel()
 	for _, format := range writeErrorFormats {
 		w := scriptedWriter{failFrom: 1}
-		WriteError(&w, format, validationError(), style.Style{})
+		WriteError(&w, format, validationError(), style.Style{}, "")
 		assert.Zero(t, w.buf.Len(), format)
 		assert.LessOrEqual(t, w.calls, 2, format)
 	}
@@ -114,10 +114,10 @@ func TestWriteErrorWritesNoLineAfterAPartialWrite(t *testing.T) {
 	const accepted = 5
 	for _, format := range writeErrorFormats {
 		var want bytes.Buffer
-		require.NoError(t, RenderErrorStyled(&want, format, validationError(), style.Style{}), format)
+		require.NoError(t, RenderErrorStyled(&want, format, validationError(), style.Style{}, ""), format)
 		require.Greater(t, want.Len(), accepted, format)
 		w := scriptedWriter{limit: accepted}
-		WriteError(&w, format, validationError(), style.Style{})
+		WriteError(&w, format, validationError(), style.Style{}, "")
 		assert.Equal(t, want.String()[:accepted], w.buf.String(), format)
 	}
 }
@@ -128,30 +128,31 @@ func TestWriteErrorWritesTheLineWhenTheFirstWriteFails(t *testing.T) {
 	t.Parallel()
 	for _, format := range writeErrorFormats {
 		w := scriptedWriter{failOnly: 1}
-		WriteError(&w, format, validationError(), style.Style{})
+		WriteError(&w, format, validationError(), style.Style{}, "")
 		assert.Equal(t, "error (VALIDATION): message\n", w.buf.String(), format)
 	}
 }
 
 // TestWriteErrorLineHoldsNoControlCharacterNewlineOrMarker asserts the line
 // is one line of plain text: a message with a terminal escape, a newline and
-// a remedy marker is written with the escape and the newline removed and
-// the command plain, and an empty message leaves the code and a space.
+// a remedy marker is written with the piece that has the escape and the
+// newline as a double-quoted string with escapes, and with the command
+// without --config. An empty message leaves the code and a space.
 func TestWriteErrorLineHoldsNoControlCharacterNewlineOrMarker(t *testing.T) {
 	t.Parallel()
 	for _, format := range writeErrorFormats {
 		ce := clierr.New(clierr.CodeGeneric, "bad \x1b[2J\nrun "+clierr.Rancher+" auth status")
 		w := scriptedWriter{failOnly: 1}
-		WriteError(&w, format, ce, style.Style{})
+		WriteError(&w, format, ce, style.Style{}, "")
 		got := w.buf.String()
-		assert.Equal(t, "error (GENERIC): bad [2Jrun rancher auth status\n", got, format)
+		assert.Equal(t, `error (GENERIC): "bad \x1b[2J\nrun "rancher auth status`+"\n", got, format)
 		assert.Equal(t, 1, strings.Count(got, "\n"), format)
 		assert.NotContains(t, got, "\x1b", format)
 		assert.NotContains(t, got, clierr.RemedyMarker, format)
 		assert.False(t, strings.ContainsFunc(got, func(r rune) bool { return r >= '\u2060' && r <= '\u2064' }), "a character of the remedy marker in %q (%s)", got, format)
 
 		empty := scriptedWriter{failOnly: 1}
-		WriteError(&empty, format, clierr.New(clierr.CodeGeneric, ""), style.Style{})
+		WriteError(&empty, format, clierr.New(clierr.CodeGeneric, ""), style.Style{}, "")
 		assert.Equal(t, "error (GENERIC): \n", empty.buf.String(), format)
 	}
 }

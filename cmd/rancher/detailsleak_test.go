@@ -94,7 +94,7 @@ func TestRecordOfRevokeReportsInStructuredOutput(t *testing.T) {
 				ce := clierr.New(clierr.CodeGeneric, "stopped before every token was revoked").WithDetails(details)
 				io := runtime.IO{RemedyDir: t.TempDir()}
 				var out bytes.Buffer
-				require.NoError(t, runtime.RenderErrorStyled(&out, format, io.ExpandError(ce), style.Style{}))
+				require.NoError(t, runtime.RenderErrorStyled(&out, format, ce, style.Style{}, io.RemedyDir))
 				decoded := decodedStrings(out.String())
 				assert.Contains(t, decoded, "rancher --config "+clierr.ShellQuote(io.RemedyDir)+" get tokens", "the recovery commands reach the output")
 				assert.False(t, holdsMarkerRuneDecoded(out.String()), "the output holds a character of the remedy marker: %q", out.String())

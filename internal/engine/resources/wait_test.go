@@ -1,7 +1,9 @@
 package resources
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"testing/synctest"
@@ -15,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/yaml"
 )
 
 // seqClient serves a fixed sequence of Get results (objects and/or errors), one
@@ -431,27 +434,76 @@ func TestWaitTimeoutConditionWithMessageParenthesized(t *testing.T) {
 	})
 }
 
-// TestWaitTimeoutConditionMessageSanitized asserts defense-in-depth: a condition
-// message bearing control characters (e.g. an ANSI escape or a Unicode bidi
-// override) is stripped before it enters the timeout error. The sink is the
-// JSON error envelope (which escapes control chars anyway), so this is
-// consistency with the text-rendering sanitizer, not an exploitable hole.
-func TestWaitTimeoutConditionMessageSanitized(t *testing.T) {
+// TestWaitErrorsCarryTheConditionMessageAsTheServerSent asserts a condition
+// message with a control character and a bidi override reaches the message of a
+// stalled, a failed and a timed-out wait as the server sent it: the error text
+// and the json and yaml envelopes have it unchanged, and the text format writes
+// the piece that has it as one double-quoted string with escapes.
+func TestWaitErrorsCarryTheConditionMessageAsTheServerSent(t *testing.T) {
 	withFastPoll(t)
-	synctest.Test(t, func(t *testing.T) {
-		// \x1b[2J is an ANSI clear-screen sequence: only the ESC byte (0x1b) is a
-		// C0 control character and is stripped; the printable "[2J" suffix remains.
-		// \u202e (U+202E) is a Unicode bidi override (Cf category) and is stripped.
-		client := &seqClient{objs: []*unstructured.Unstructured{
-			conditionObjMsg("Ready", "Unknown", "bad\x1b[2Jmsg with \u202ebidi"),
-		}}
-		cond := waitCond{kind: "condition", name: "Ready", status: "True"}
-		_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, 30*time.Millisecond, stalledRule{})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "bad[2Jmsg with bidi", "printable chars around the escape are preserved")
-		assert.NotContains(t, err.Error(), "\x1b", "ANSI escape byte must be stripped")
-		assert.NotContains(t, err.Error(), "\u202e", "bidi override must be stripped")
-	})
+	const message = "bad\x1b[2Jmsg with \u202ebidi"
+	for _, tc := range []struct {
+		name    string
+		obj     *unstructured.Unstructured
+		timeout time.Duration
+		stalled stalledRule
+		want    string
+	}{
+		{
+			name:    "timed out",
+			obj:     conditionObjMsg("Ready", "Unknown", message),
+			timeout: 30 * time.Millisecond,
+			want: `error (GENERIC, retryable): timed out waiting for x; last state: Ready=Unknown ("bad\x1b[2Jmsg with \u202ebidi)"; ` +
+				"retry with a longer --timeout or inspect the resource to see why the wait condition is not met\n",
+		},
+		{
+			name:    "stalled",
+			obj:     multiConditionObj([3]string{"Ready", "True", ""}, [3]string{"Stalled", "True", message}),
+			timeout: 5 * time.Second,
+			stalled: stalledRule{fail: true},
+			want:    `error (GENERIC): "x stalled: bad\x1b[2Jmsg with \u202ebidi"` + "\n",
+		},
+		{
+			name:    "failed",
+			obj:     withConditionReason(multiConditionObj([3]string{"Ready", "False", ""}, [3]string{"Failed", "True", message}), "Failed", "Bad\x1b[2JReason"),
+			timeout: 5 * time.Second,
+			stalled: stalledRule{failsOn: []string{"Failed"}},
+			want:    `error (GENERIC): "x failed: Bad\x1b[2JReason: bad\x1b[2Jmsg with \u202ebidi"` + "\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				client := &seqClient{objs: []*unstructured.Unstructured{tc.obj}}
+				cond := waitCond{kind: "condition", name: "Ready", status: "True"}
+				_, err := waitFor(t.Context(), client, schema.GroupVersionResource{}, "", "x", cond, tc.timeout, tc.stalled)
+				require.ErrorContains(t, err, message)
+				var ce *clierr.Error
+				require.ErrorAs(t, err, &ce)
+
+				var text bytes.Buffer
+				require.NoError(t, runtime.RenderError(&text, "", ce))
+				assert.Equal(t, tc.want, text.String())
+
+				for _, format := range []string{"json", "yaml"} {
+					var b bytes.Buffer
+					require.NoError(t, runtime.RenderError(&b, format, ce))
+					var env struct {
+						Data struct {
+							Error struct {
+								Message string `json:"message"`
+							} `json:"error"`
+						} `json:"data"`
+					}
+					if format == "json" {
+						require.NoError(t, json.Unmarshal(b.Bytes(), &env))
+					} else {
+						require.NoError(t, yaml.Unmarshal(b.Bytes(), &env))
+					}
+					assert.Contains(t, env.Data.Error.Message, message, format)
+				}
+			})
+		})
+	}
 }
 
 // TestWaitTimeoutConditionWithoutMessageUnchanged asserts that when the
@@ -486,6 +538,19 @@ func TestConditionStatusFirstMatchWins(t *testing.T) {
 
 // multiConditionObj builds an object carrying several status.conditions
 // entries, each given as [type, status, message].
+// withConditionReason sets the reason of the condition of type condType in
+// obj and returns obj.
+func withConditionReason(obj *unstructured.Unstructured, condType, reason string) *unstructured.Unstructured {
+	conds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
+	for _, c := range conds {
+		if m, ok := c.(map[string]any); ok && m["type"] == condType {
+			m["reason"] = reason
+		}
+	}
+	_ = unstructured.SetNestedSlice(obj.Object, conds, "status", "conditions")
+	return obj
+}
+
 func multiConditionObj(conds ...[3]string) *unstructured.Unstructured {
 	list := make([]any, 0, len(conds))
 	for _, c := range conds {

@@ -74,7 +74,7 @@ func TestRecordOfAPartialInstallReportInStructuredOutput(t *testing.T) {
 	io := runtime.IO{RemedyDir: t.TempDir()}
 	for _, format := range []string{"json", "yaml"} {
 		var out bytes.Buffer
-		require.NoError(t, runtime.RenderErrorStyled(&out, format, io.ExpandError(ce), style.Style{}))
+		require.NoError(t, runtime.RenderErrorStyled(&out, format, ce, style.Style{}, io.RemedyDir))
 		assert.Contains(t, decodedStrings(t, out.String()), "permission denied", format)
 		assert.False(t, leaksMarker(t, out.String()), "%s output holds a character of the remedy marker: %q", format, out.String())
 	}

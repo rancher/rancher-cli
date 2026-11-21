@@ -61,7 +61,7 @@ func TestACertificateFailureLeavesNoMarkerInStructuredOutput(t *testing.T) {
 	io := runtime.IO{RemedyDir: dir}
 	for _, format := range []string{"json", "yaml"} {
 		var out bytes.Buffer
-		require.NoError(t, runtime.RenderErrorStyled(&out, format, io.ExpandError(ce), style.Style{}))
+		require.NoError(t, runtime.RenderErrorStyled(&out, format, ce, style.Style{}, io.RemedyDir))
 		var doc map[string]any
 		require.NoError(t, yaml.Unmarshal(out.Bytes(), &doc))
 		data, _ := doc["data"].(map[string]any)

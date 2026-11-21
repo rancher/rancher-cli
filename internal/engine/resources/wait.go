@@ -8,7 +8,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/output"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -156,7 +155,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 					if msg == "" {
 						msg = "condition Stalled=True"
 					}
-					stalledErr := clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, output.Printable(msg)))
+					stalledErr := clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, msg))
 					if remedy, ok := stalled.remedyFor(obj); ok {
 						stalledErr = stalledErr.WithHintCommand(remedy)
 					}
@@ -181,10 +180,10 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 				}
 				text := name + " failed"
 				if reason != "" {
-					text += ": " + output.Printable(reason)
+					text += ": " + reason
 				}
 				if msg != "" {
-					text += ": " + output.Printable(msg)
+					text += ": " + msg
 				}
 				return engine.WaitContinue, clierr.New(clierr.CodeGeneric, text)
 			}
@@ -325,7 +324,7 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 	case "condition":
 		if status, message, ok := conditionStatus(obj.Object, cond.name); ok {
 			if message != "" {
-				return fmt.Sprintf("%s=%s (%s)", cond.name, status, output.Printable(message))
+				return fmt.Sprintf("%s=%s (%s)", cond.name, status, message)
 			}
 			return fmt.Sprintf("%s=%s", cond.name, status)
 		}

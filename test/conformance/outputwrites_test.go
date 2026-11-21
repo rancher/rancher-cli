@@ -1023,10 +1023,6 @@ func TestWriterReasonCheckFailsForABadReason(t *testing.T) {
 // plainRemedyUses is every reference to the package function plainRemedies
 // outside its definition, one reason for each occurrence.
 var plainRemedyUses = map[string][]string{
-	"internal/runtime.RenderErrorStyled": {
-		"the error of a caller with no invocation, which has no directory to name",
-		"the warnings of the error of a caller with no invocation",
-	},
 	"internal/runtime.renderResult": {
 		"the text of a command whose descriptor sets PlainText",
 	},
@@ -1070,7 +1066,7 @@ var renderStyledUses = map[string][]string{
 // internal/output outside its definition, one reason for each occurrence.
 var renderUses = map[string][]string{
 	"internal/runtime.RenderErrorStyled": {
-		"the error envelope, whose remedy commands ExpandError has written",
+		"the error envelope, whose remedy commands the function writes with ExpandError first",
 	},
 }
 

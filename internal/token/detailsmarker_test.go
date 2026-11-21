@@ -20,15 +20,16 @@ import (
 )
 
 // renderedAsTheErrorPath renders err as an invocation against a config
-// directory does after a command fails: expanded for the invocation, then
-// written in format. It returns what was written.
+// directory does after a command fails: RenderErrorStyled writes it in format
+// and expands its remedy commands for that directory. It returns what was
+// written.
 func renderedAsTheErrorPath(t *testing.T, err error, format string) string {
 	t.Helper()
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "%v", err)
 	io := runtime.IO{RemedyDir: t.TempDir()}
 	var out bytes.Buffer
-	require.NoError(t, runtime.RenderErrorStyled(&out, format, io.ExpandError(ce), style.Style{}))
+	require.NoError(t, runtime.RenderErrorStyled(&out, format, ce, style.Style{}, io.RemedyDir))
 	return out.String()
 }
 

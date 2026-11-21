@@ -904,8 +904,9 @@ func printableText(res Result, wide bool, s style.Style) string {
 // renderResult renders res per d's declared shape, having first drained
 // streams' NoticeSource and merged it ahead of res.Warnings (recorded
 // earliest, delivered first - the same merge order RenderError applies on
-// the error path). The returned notices are the drained entries NOT YET
-// irrevocably delivered by a write independent of streams.Out succeeding:
+// the error path). The returned notices are as recorded, with their remedy
+// commands not expanded. They are the drained entries NOT YET irrevocably
+// delivered by a write independent of streams.Out succeeding:
 // nil when the branch taken mirrors warnings straight to the real stderr
 // (Text, RawBytes, Raw, and every non-json/yaml envelope format) or when
 // nothing was recorded; the drained slice itself when nothing was written
@@ -918,12 +919,13 @@ func printableText(res Result, wide bool, s style.Style) string {
 // act on it.
 func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error) {
 	outStyle, errStyle := stylesFor(streams)
-	notices := streams.expandAll(drainNotices(streams))
+	rawNotices := drainNotices(streams)
+	notices := streams.expandAll(rawNotices)
 	res.Warnings = append(append([]string{}, notices...), streams.expandAll(res.Warnings)...)
 	res.OnceOnlyNotice = streams.ExpandText(res.OnceOnlyNotice)
 
 	if ce := checkResultShape(d, res, streams.Format); ce != nil {
-		return notices, ce
+		return rawNotices, ce
 	}
 	// Result's payload channels are mutually exclusive (payloadExclusivityRule);
 	// any combination is an internal error.
@@ -938,14 +940,14 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		claimed++
 	}
 	if claimed > 1 || (res.Summary != "" && claimed > 0) {
-		return notices, clierr.New(clierr.CodeGeneric, "internal error: "+payloadExclusivityRule)
+		return rawNotices, clierr.New(clierr.CodeGeneric, "internal error: "+payloadExclusivityRule)
 	}
 	// Summary rides only over a real table: the JSON-fallback-era use (a
 	// Summary line papering over non-Tabular Data) is gone along with the
 	// fallback itself.
 	if res.Summary != "" {
 		if _, ok := res.Data.(output.Tabular); !ok {
-			return notices, clierr.New(clierr.CodeGeneric, "internal error: Summary requires Tabular Data")
+			return rawNotices, clierr.New(clierr.CodeGeneric, "internal error: Summary requires Tabular Data")
 		}
 	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
@@ -976,7 +978,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 			text = boldShownOnceLine(text, outStyle)
 		}
 		if _, err := streams.Out.Write([]byte(expand(text))); err != nil {
-			return notices, clierr.From(err)
+			return rawNotices, clierr.From(err)
 		}
 		// Mirror every Warnings entry to stderr except OnceOnlyNotice
 		// (matched by value - see that field's doc for why position
@@ -993,7 +995,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	}
 	if res.RawBytes != nil {
 		if _, err := streams.Out.Write(res.RawBytes); err != nil {
-			return notices, clierr.From(err)
+			return rawNotices, clierr.From(err)
 		}
 		// RawBytes carries no envelope under any format (kubeconfig,
 		// completion): stderr is the only delivery path Warnings has, so it
@@ -1007,7 +1009,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	if res.Raw {
 		enc := json.NewEncoder(streams.Out)
 		if err := enc.Encode(res.Data); err != nil {
-			return notices, clierr.From(err)
+			return rawNotices, clierr.From(err)
 		}
 		// Same rationale as RawBytes above: kubectl surfaces exec-credential
 		// stderr, and no envelope exists here under any format.
@@ -1022,11 +1024,11 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// not a separate body, so the wait line belongs on it as well.
 	if textRenderFormat(streams.Format) && res.Summary != "" {
 		if _, err := fmt.Fprintln(streams.Out, streams.ExpandLines(PrintableRemedies(res.Summary))); err != nil {
-			return notices, clierr.From(err)
+			return rawNotices, clierr.From(err)
 		}
 	}
 	if err := output.RenderWith(plainRemedyWriter{streams.Out}, streams.Format, env, outStyle, streams.expandData); err != nil {
-		return notices, clierr.From(err)
+		return rawNotices, clierr.From(err)
 	}
 	// renderTable (output/render.go) only ever reads env.Data, so an
 	// envelope-level warning would otherwise reach the user only when the
@@ -1044,7 +1046,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// written to streams.Out, not mirrored anywhere else - report them back
 	// so a caller writing into a discardable buffer can recover them if the
 	// real write that follows fails.
-	return notices, nil
+	return rawNotices, nil
 }
 
 // renderEffect renders a --dry-run preview. table/default/wide (wide is
@@ -1146,14 +1148,15 @@ func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 
 // renderErrDrained is renderErr for a caller that has already drained the
 // invocation's NoticeSource and computed its stderr style: notices are the
-// caller's drained entries (recorded-earliest-first), passed through
-// unchanged; the source is never touched again, and the styles are not
+// caller's drained entries (recorded-earliest-first). ce and notices go to
+// WriteError as they are; it escapes their text and expands their remedy
+// commands. The source is never touched again, and the styles are not
 // recomputed. finishResult and finishOnceOnlyResult use it after
 // renderResult has already drained; every other error path goes through
 // renderErr. A failed write of the error is not reported to the caller: the
 // returned error, and so the exit code, is ce either way.
 func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notices []string) *clierr.Error {
-	WriteError(streams.Err, streams.Format, streams.ExpandError(ce), errStyle, streams.expandAll(notices)...)
+	WriteError(streams.Err, streams.Format, ce, errStyle, streams.RemedyDir, notices...)
 	return ce
 }
 
@@ -1174,7 +1177,7 @@ func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notice
 // otherwise. Never inside the error payload itself, so a warning cannot
 // print twice.
 func RenderError(w io.Writer, format string, ce *clierr.Error, notices ...string) error {
-	return RenderErrorStyled(w, format, ce, style.Style{}, notices...)
+	return RenderErrorStyled(w, format, ce, style.Style{}, "", notices...)
 }
 
 // RenderErrorStyled is RenderError with presentation control: s styles the
@@ -1183,27 +1186,32 @@ func RenderError(w io.Writer, format string, ce *clierr.Error, notices ...string
 // (table/default/wide) - json, yaml, name, and template render byte-identical
 // to RenderError regardless of s, the same eligibility rule RenderStyled
 // enforces for the table renderer.
-func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Style, notices ...string) error {
-	// A caller with an invocation expands its remedy commands first
-	// (IO.ExpandError); whatever is left is written as the plain command.
-	ce = ce.MapText(plainRemedies)
-	warnings := append(append([]string{}, notices...), ce.Warnings()...)
-	for i, warn := range warnings {
-		warnings[i] = plainRemedies(warn)
-	}
+//
+// remedyDir is the config directory the invocation's remedy commands name
+// (IO.RemedyDir); "" is a caller with no invocation, whose commands print
+// without --config. ce and notices come as the failing step recorded them,
+// with their remedy commands not yet expanded. json and yaml carry the text
+// with its commands expanded. Every other format writes the message, the hint
+// and each warning through clierr.LineText and each details value through
+// clierr.WholeValueText, and only then expands the commands. The directory an
+// expansion adds is never inside a double-quoted string.
+func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Style, remedyDir string, notices ...string) error {
+	streams := IO{RemedyDir: remedyDir}
 	if envelopeCarriesWarnings(format) {
+		ce = streams.ExpandError(ce)
 		env := output.ErrorEnvelope(ce)
-		env.Warnings = warnings
+		env.Warnings = append(append([]string{}, streams.expandAll(notices)...), ce.Warnings()...)
 		return output.Render(w, format, env)
 	}
 	if !textRenderFormat(format) {
 		s = style.Style{}
 	}
+	ce, notices = streams.forErrorText(ce, notices)
 	var b strings.Builder
-	for _, warn := range warnings {
-		fmt.Fprintf(&b, "%s %s\n", s.Yellow("# warning:"), output.Printable(warn))
+	for _, warn := range append(append([]string{}, notices...), ce.Warnings()...) {
+		fmt.Fprintf(&b, "%s %s\n", s.Yellow("# warning:"), output.Printable(streams.ExpandText(clierr.LineText(warn))))
 	}
-	b.WriteString(errorText(ce, s))
+	b.WriteString(errorText(ce, s, streams.ExpandText))
 	_, err := w.Write([]byte(b.String()))
 	return err
 }
@@ -1213,15 +1221,17 @@ func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Sty
 // caller has an error to drop. When the render fails (the format cannot
 // encode ce, or the write fails) and no byte of this error reached w, it
 // writes the one line "error (CODE): message" instead, the same for every
-// format, with the message free of control characters and remedy markers; a
-// partial write is never followed by that line, which would tear the
-// document. When that write fails too, it stops.
-func WriteError(w io.Writer, format string, ce *clierr.Error, s style.Style, notices ...string) {
+// format, with the message escaped and its commands expanded as the default
+// text format does; a partial write is never followed by that line, which
+// would tear the document. When that write fails too, it stops.
+func WriteError(w io.Writer, format string, ce *clierr.Error, s style.Style, remedyDir string, notices ...string) {
 	cw := &countingWriter{w: w}
-	if RenderErrorStyled(cw, format, ce, s, notices...) == nil || cw.n > 0 {
+	if RenderErrorStyled(cw, format, ce, s, remedyDir, notices...) == nil || cw.n > 0 {
 		return
 	}
-	line := "error (" + ce.Code + "): " + output.Printable(ce.Message) + "\n"
+	streams := IO{RemedyDir: remedyDir}
+	ce, _ = streams.forErrorText(ce, nil)
+	line := "error (" + ce.Code + "): " + errorLineText(ce, ce.Message, streams.ExpandText) + "\n"
 	_, _ = io.WriteString(w, line)
 }
 
@@ -1245,7 +1255,8 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 // lines (detailsTextLines) when one is attached, each value of which is shown
 // the same way. s styles the
 // "error (CODE):" and "hint:" prefixes only, never the message/hint body.
-func errorText(ce *clierr.Error, s style.Style) string {
+// expand writes the remedy commands of a text that is already escaped.
+func errorText(ce *clierr.Error, s style.Style, expand func(string) string) string {
 	retry := ""
 	if ce.Retryable {
 		retry = ", retryable"
@@ -1253,17 +1264,17 @@ func errorText(ce *clierr.Error, s style.Style) string {
 	prefix := fmt.Sprintf("error (%s%s):", ce.Code, retry)
 	// Message, hint, candidates, and details may all carry server text
 	// (an admission message, a display name), so each line passes the
-	// terminal-safety boundary before it reaches stderr. A candidate's name
-	// and id and each details value are written with their hidden
-	// characters as escapes (clierr.WholeValueText for a candidate,
-	// detailLineText for a details value); two values that differ only by a
-	// hidden character print differently. The message and the hint have
-	// those characters removed.
-	header := s.Red(prefix) + " " + output.Printable(ce.Message)
+	// terminal-safety boundary before it reaches stderr. The message and the
+	// hint are written by errorLineText, a candidate's name and id by
+	// clierr.WholeValueText, and each details value by detailLineText; two
+	// values that differ only by a hidden character print differently, except
+	// in the message and hint of a TLS_TRUST error. expand writes the remedy
+	// commands of each escaped text.
+	header := s.Red(prefix) + " " + errorLineText(ce, ce.Message, expand)
 
 	var lines []string
 	if ce.Hint != "" {
-		lines = append(lines, s.Cyan("hint:")+" "+output.Printable(ce.Hint))
+		lines = append(lines, s.Cyan("hint:")+" "+errorLineText(ce, ce.Hint, expand))
 	}
 	if len(ce.Candidates) > 0 {
 		names := make([]string, len(ce.Candidates))
@@ -1281,9 +1292,22 @@ func errorText(ce *clierr.Error, s style.Style) string {
 		lines = append(lines, label+": "+strings.Join(names, ", "))
 	}
 	for _, l := range detailsTextLines(ce.Details) {
-		lines = append(lines, detailLineText(l))
+		lines = append(lines, detailLineText(l, expand))
 	}
 	return TextLines(header, lines...).Text
+}
+
+// errorLineText returns text, the message or the hint of ce, as one line. Each
+// piece that has a hidden character is written with escapes (clierr.LineText),
+// then the remedy commands are expanded, and output.Printable finds nothing to
+// remove. The message and hint of a TLS_TRUST error can have the subject,
+// issuer and DNS names of a certificate; they are written with their hidden
+// characters removed.
+func errorLineText(ce *clierr.Error, text string, expand func(string) string) string {
+	if ce.Code == clierr.CodeTLSTrust {
+		return output.Printable(expand(text))
+	}
+	return output.Printable(expand(clierr.LineText(text)))
 }
 
 // detailsFallbackLine is the neutral line rendered when a details payload
@@ -1307,20 +1331,20 @@ func detailsTextLines(details any) []clierr.DetailLine {
 }
 
 // detailLineText is l as the default format prints it: the indent, then each
-// part's label as written and its value through clierr.IDText, so a value that
-// holds a control character, an invisible format character or a line or
-// paragraph separator shows as a double-quoted string with escapes, and two
-// values that differ by a hidden character print differently. The indent stays
-// outside the quotes.
+// part's label as written and its value through clierr.WholeValueText; expand
+// then writes the remedy commands in the value. A value that has a control
+// character, an invisible format character or a line or paragraph separator
+// shows as a double-quoted string with escapes, and two values that differ by a
+// hidden character print differently. The indent stays outside the quotes.
 // An invalid UTF-8 byte is already an escape when the text reaches
 // output.Printable, which removes and replaces nothing in it: the labels hold
 // no rune it removes.
-func detailLineText(l clierr.DetailLine) string {
+func detailLineText(l clierr.DetailLine, expand func(string) string) string {
 	var b strings.Builder
 	b.WriteString(l.Indent)
 	for _, p := range l.Parts {
 		b.WriteString(p.Label)
-		b.WriteString(clierr.IDText(p.Value))
+		b.WriteString(expand(clierr.WholeValueText(p.Value)))
 	}
 	return output.Printable(b.String())
 }

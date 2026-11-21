@@ -258,7 +258,7 @@ func TestRenderErrorStyledWritesCharactersTheYamlLibraryRefuses(t *testing.T) {
 	text := "text\x7f\u009b\u0085end"
 	ce := clierr.New(clierr.CodeNotLoggedIn, "message "+text).WithHint("hint " + text).WithWarnings("warning " + text)
 	var b bytes.Buffer
-	require.NoError(t, RenderErrorStyled(&b, "yaml", ce, style.Style{}))
+	require.NoError(t, RenderErrorStyled(&b, "yaml", ce, style.Style{}, ""))
 	var doc struct {
 		Data struct {
 			Error struct {
