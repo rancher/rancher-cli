@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -78,10 +80,10 @@ func ccsInputFor(driver string, public, secret []string) ccsRun {
 		run.in.set = append(run.in.set, name+"=fake-public-"+name)
 	}
 	for _, name := range secret {
-		value := "fake-" + driver + "-" + name + "-0001"
+		value := "fake-" + driver + "-" + name + "\u00a0\a-0001"
 		switch {
 		case driver == "harvester" && name == "kubeconfigContent":
-			value = ccsKubeconfig(value)
+			value = ccsKubeconfig("fake-" + driver + "-" + name + "-0001")
 		case name == "authEncodedJson" || name == "kubeconfigContent" || name == "privateKeyContents":
 			value = "fake-" + driver + "-" + name + "-line-one\n" + "fake-" + driver + "-" + name + "-line-two\n"
 		}
@@ -123,11 +125,34 @@ func ccsRuns() map[string]ccsRun {
 	return out
 }
 
-// ccsForms are the forms of a secret no output may hold: as typed, JSON-escaped
-// and standard base64.
+// ccsForms are the forms of a secret no output may hold: as typed, JSON-escaped,
+// standard base64 and, as an apiserver prints a string value, the text between
+// the quotes of each Go quoting function.
 func ccsForms(secret string) []string {
 	escaped, _ := json.Marshal(secret)
-	return []string{secret, strings.Trim(string(escaped), `"`), base64.StdEncoding.EncodeToString([]byte(secret))}
+	forms := []string{secret, strings.Trim(string(escaped), `"`), base64.StdEncoding.EncodeToString([]byte(secret))}
+	for _, quoted := range []string{strconv.Quote(secret), strconv.QuoteToASCII(secret), strconv.QuoteToGraphic(secret)} {
+		forms = append(forms, strings.Trim(quoted, `"`))
+	}
+	return forms
+}
+
+// ccsFieldError is the body of a 422 Status as the apiserver words an invalid
+// string value: the message and each cause quote the value with %q.
+func ccsFieldError(needles []string) string {
+	var causes []map[string]string
+	var parts []string
+	for i, n := range needles {
+		field := "data[field" + strconv.Itoa(i) + "]"
+		causes = append(causes, map[string]string{"reason": "FieldValueInvalid", "message": fmt.Sprintf("Invalid value: %q: must be valid", n), "field": field})
+		parts = append(parts, fmt.Sprintf("%s: Invalid value: %q: must be valid", field, n))
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "Invalid", "code": 422,
+		"message": `Secret "cc-abcde" is invalid: ` + strings.Join(parts, ", "),
+		"details": map[string]any{"name": "cc-abcde", "kind": "Secret", "causes": causes},
+	})
+	return string(raw)
 }
 
 func ccsRig(files map[string]string) *ccwRig {
@@ -156,7 +181,7 @@ func ccsExecute(t *testing.T, r *ccwRig, in ccwInput, format string, dryRun bool
 }
 
 // ccsAssertKind asserts what a successful run wrote: in JSON, an envelope of
-// this kind whose data holds a string equal to want; in text, the text want.
+// this kind whose data holds a string that contains want; in text, the text want.
 func ccsAssertKind(t *testing.T, format, stdout, kind, want string) {
 	t.Helper()
 	if format != "json" {
@@ -241,6 +266,7 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 			{"a 403", ccsRefused(http.StatusForbidden, echo), clierr.CodeRBAC, 1},
 			{"a 409", ccsRefused(http.StatusConflict, echo), clierr.CodeConflict, 1},
 			{"a 422", ccsRefused(http.StatusUnprocessableEntity, echo), clierr.CodeValidation, 1},
+			{"a 422 field error that quotes every secret", ccsRefused(http.StatusUnprocessableEntity, ccsFieldError(needles)), clierr.CodeValidation, 1},
 			{"a 500", ccsUnknown(http.StatusInternalServerError, echo), clierr.CodeGeneric, 1},
 			{"a 502", ccsUnknown(http.StatusBadGateway, echo), clierr.CodeGeneric, 1},
 			{"a 504", ccsUnknown(http.StatusGatewayTimeout, echo), clierr.CodeGeneric, 1},

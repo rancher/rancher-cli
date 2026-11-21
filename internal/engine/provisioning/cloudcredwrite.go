@@ -266,9 +266,8 @@ func (c *createCloudCredentialCmd) Plan(ctx context.Context, in runtime.Input) (
 
 	description := in.String(flagDescription)
 	doc, diff := requestDocument(driver, displayName, description, values)
-	secrets := secretTexts(values)
 	body := engine.NewCloudCredentialBody(doc)
-	filter := engine.NewTextFilter(secrets, true)
+	filter := answerFilter(values)
 	label := cloudcredfields.Label(driver.Prefix)
 
 	effectWarnings := []string{
@@ -450,14 +449,61 @@ func unknownFieldError(d cloudcredfields.Driver, w fieldWord) error {
 // readValues reads each --from-file value and checks every value against the
 // white space rules. warnings names a value the command trimmed. Every error
 // it returns has the values read so far hidden, the value of the word that
-// failed included, so a refusal added to readWords cannot show one.
+// failed included, in the forms the filter covers: the value as read, each of
+// its lines, its JSON-escaped form, its base64 form and its Go-quoted forms
+// (the text between the quotes of strconv.Quote, QuoteToASCII and
+// QuoteToGraphic). A form under 4 characters is not hidden, and a value shown
+// in any other form is not covered.
 func (c *createCloudCredentialCmd) readValues(d cloudcredfields.Driver, sets, files []fieldWord) ([]credentialValue, []string, error) {
-	var read []string
-	out, warnings, err := c.readWords(d, sets, files, func(texts ...string) { read = append(read, texts...) })
+	var read readTexts
+	out, warnings, err := c.readWords(d, sets, files, read.record)
 	if err != nil {
-		return nil, nil, engine.FilterError(err, engine.NewTextFilter(read, true))
+		return nil, nil, engine.FilterError(err, read.filter())
 	}
 	return out, warnings, nil
+}
+
+// readTexts holds every form of the values readWords has read, for the filter
+// that hides them in a refusal.
+type readTexts struct{ forms []string }
+
+// record adds the redaction forms of each text.
+func (r *readTexts) record(texts ...string) { r.forms = append(r.forms, redactionTexts(texts)...) }
+
+// filter returns the function that replaces every recorded form with <hidden>.
+func (r *readTexts) filter() func(string) string { return engine.NewTextFilter(r.forms, true) }
+
+// redactionTexts is redactionForms of every value.
+func redactionTexts(values []string) []string {
+	var out []string
+	for _, v := range values {
+		out = append(out, redactionForms(v)...)
+	}
+	return out
+}
+
+// redactionForms lists the texts a filter hides for one value: the value, each
+// of its lines (cut at a line feed or a carriage return, empty lines dropped)
+// and, for the value and for each line, the text between the quotes of
+// strconv.Quote, QuoteToASCII and QuoteToGraphic. Both filters of the command
+// take their forms from it: the one that hides a value in a refusal of the
+// command and the one that hides it in an answer of the server.
+func redactionForms(value string) []string {
+	forms := []string{value}
+	texts := []string{value}
+	for line := range strings.FieldsFuncSeq(value, func(r rune) bool { return r == '\n' || r == '\r' }) {
+		forms = append(forms, line)
+		texts = append(texts, line)
+	}
+	for _, text := range texts {
+		for _, quoted := range []string{strconv.Quote(text), strconv.QuoteToASCII(text), strconv.QuoteToGraphic(text)} {
+			inner := strings.TrimSuffix(strings.TrimPrefix(quoted, `"`), `"`)
+			if !slices.Contains(forms, inner) {
+				forms = append(forms, inner)
+			}
+		}
+	}
+	return forms
 }
 
 // readWords is readValues without the filter. It calls record with each form
@@ -488,15 +534,16 @@ func (c *createCloudCredentialCmd) readWords(d cloudcredfields.Driver, sets, fil
 	for _, w := range files {
 		f, _ := d.Field(w.field)
 		hidden := f.Secret || f.Multiline
-		raw, err := c.src.Read(w.value)
+		path := w.value
+		raw, err := c.src.Read(path)
 		if err != nil {
-			return nil, nil, clierr.New(clierr.CodeValidation, "cannot read the --from-file file "+w.value)
+			return nil, nil, clierr.New(clierr.CodeValidation, "cannot read the --from-file file "+path)
 		}
 		if hidden {
 			record(string(raw))
 		}
 		if cloudcredfields.RawEncodingProblem(raw) != cloudcredfields.ProblemNone {
-			return nil, nil, valueProblemError(cloudcredfields.ProblemEncoding, f, "--"+flagFromFile, w.value)
+			return nil, nil, valueProblemError(cloudcredfields.ProblemEncoding, f, "--"+flagFromFile, path)
 		}
 		text := engine.DropLeadingByteOrderMarks(string(raw))
 		if hidden {
@@ -506,14 +553,14 @@ func (c *createCloudCredentialCmd) readWords(d cloudcredfields.Driver, sets, fil
 		if hidden {
 			record(cleaned)
 		}
-		if err := valueProblemError(problem, f, "--"+flagFromFile, w.value); err != nil {
+		if err := valueProblemError(problem, f, "--"+flagFromFile, path); err != nil {
 			return nil, nil, err
 		}
 		if trimmed {
 			warnings = append(warnings, fmt.Sprintf("the value of %s was trimmed of white space at its ends, as Rancher trims it", f.Name))
 		}
 		if d.Prefix == "harvester" && f.Name == "kubeconfigContent" && !decodesAsKubeconfig(cleaned) {
-			return nil, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("the --from-file file %s for kubeconfigContent is not a kubeconfig", w.value))
+			return nil, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("the --from-file file %s for kubeconfigContent is not a kubeconfig", path))
 		}
 		out = append(out, credentialValue{field: f, value: cleaned, secret: f.Secret})
 	}
@@ -602,6 +649,12 @@ func requestDocument(d cloudcredfields.Driver, displayName, description string, 
 		doc["description"] = description
 	}
 	return doc, diff
+}
+
+// answerFilter returns the function that hides the secret values the request
+// carried in a text of the server.
+func answerFilter(values []credentialValue) func(string) string {
+	return engine.NewTextFilter(redactionTexts(secretTexts(values)), true)
 }
 
 // secretTexts lists the values the error filter hides: every secret field's.

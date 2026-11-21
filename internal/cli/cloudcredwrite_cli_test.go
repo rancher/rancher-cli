@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -164,12 +165,17 @@ func ccRun(t *testing.T, stub secretStub, argv []string, stdin string) (stdout, 
 	return stdout, stderr, code, b.String()
 }
 
-// ccForms are the forms of a secret no output may hold: as typed, JSON-escaped
-// and base64 in every alignment secretinput's canaryForms lists.
+// ccForms are the forms of a secret no output may hold: as typed, JSON-escaped,
+// base64 in every alignment secretinput's canaryForms lists and, as an
+// apiserver prints a string value, the text between the quotes of each Go
+// quoting function.
 func ccForms(secret string) []string {
 	forms := append([]string{secret}, canaryForms(secret)...)
 	escaped, _ := json.Marshal(secret)
 	forms = append(forms, strings.Trim(string(escaped), `"`), base64.StdEncoding.EncodeToString([]byte(secret)))
+	for _, quoted := range []string{strconv.Quote(secret), strconv.QuoteToASCII(secret), strconv.QuoteToGraphic(secret)} {
+		forms = append(forms, strings.Trim(quoted, `"`))
+	}
 	return forms
 }
 
@@ -322,6 +328,19 @@ func ccEcho(text string) string {
 	return string(raw)
 }
 
+// ccFieldError is the body of a 422 Status as the apiserver words an invalid
+// string value: the message and the cause quote the value with %q.
+func ccFieldError(secret string) string {
+	raw, _ := json.Marshal(map[string]any{
+		"kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "Invalid", "code": 422,
+		"message": fmt.Sprintf("Secret %q is invalid: data[secretKey]: Invalid value: %q: must be valid", "cc-abcde", secret),
+		"details": map[string]any{"name": "cc-abcde", "kind": "Secret", "causes": []map[string]string{
+			{"reason": "FieldValueInvalid", "message": fmt.Sprintf("Invalid value: %q: must be valid", secret), "field": "data[secretKey]"},
+		}},
+	})
+	return string(raw)
+}
+
 // ccDriverCase builds the command line of one row of the driver table: each
 // public field with --set, each secret field from its own file, and the answer
 // the case asks for.
@@ -432,6 +451,7 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 
 	const base = "fake-cc-canary-secret-0001"
 	const quoted = `fake-cc-"quoted"-0001`
+	const nbsp = "fake-cc-nbsp\u00a0\asecret-0001"
 	created := ccNorman{status: 201, body: `{"id":"cattle-global-data:cc-abcde","amazonec2credentialConfig":{"secretKey":"` + base + `"}}`}
 	key := map[string]string{"amazonec2credentialConfig.secretKey": base}
 	answer := func(status int, body string) ccNorman { return ccNorman{status: status, body: body} }
@@ -447,6 +467,7 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 		{"a 409 that echoes the value", ccCase{argv: ccAmazon("--apply"), stdin: base + "\n", norman: answer(409, ccEcho(base)), errCode: clierr.CodeConflict, posts: 1, secrets: []string{base}}},
 		{"a 422 that echoes the value", ccCase{argv: ccAmazon("--apply"), stdin: base + "\n", norman: answer(422, ccEcho(base)), errCode: clierr.CodeValidation, posts: 1, secrets: []string{base}}},
 		{"a 422 that quotes the base64 form", ccCase{argv: ccAmazon("--apply"), stdin: base + "\n", norman: answer(422, ccEcho(base64.StdEncoding.EncodeToString([]byte(base)))), errCode: clierr.CodeValidation, posts: 1, secrets: []string{base}}},
+		{"a 422 field error that quotes the value", ccCase{argv: ccAmazon("--apply"), stdin: nbsp + "\n", norman: answer(422, ccFieldError(nbsp)), errCode: clierr.CodeValidation, posts: 1, secrets: []string{nbsp}}},
 		{"a 422 that echoes the value JSON-escaped", ccCase{argv: ccAmazon("--apply"), stdin: quoted + "\n",
 			norman: answer(422, `{"type":"error","message":"bad value fake-cc-\\"quoted\\"-0001 here"}`), errCode: clierr.CodeValidation, posts: 1, secrets: []string{quoted}}},
 		{"a 500", ccCase{argv: ccAmazon("--apply"), stdin: base + "\n", norman: answer(500, ccEcho(base)), errCode: clierr.CodeGeneric, posts: 1, secrets: []string{base}}},
@@ -481,7 +502,7 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 		{"a secret as the field of a --set word", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", base + "=x", "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a secret given with --set in another case", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "SECRETKEY=" + base, "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a public field given with --from-file", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--from-file", "accessKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
-		{"a missing required field with stdin that fails", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "defaultRegion=us-east-1", "--from-file", "secretKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
+		{"a missing required field with stdin given", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "defaultRegion=us-east-1", "--from-file", "secretKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"an empty value", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "accessKey=", "--from-file", "secretKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"an access review that denies", ccCase{argv: ccAmazon("--dry-run"), stdin: base + "\n", opts: ccOptions{reviewDenied: true}, errCode: clierr.CodeRBAC, secrets: []string{base}}},
 		{"white space at the end of a value", ccCase{argv: ccAmazon("--dry-run"), stdin: base + " \n", errCode: clierr.CodeValidation, secrets: []string{base}}},
