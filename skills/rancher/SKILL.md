@@ -567,11 +567,11 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   message says how to apply it.
 - `retryable: true` (timeouts, a 429, a 502/503/504, another 5xx whose body is
   not a Kubernetes Status, a 409 on an update or delete that sent a
-  resourceVersion, the two CONFLICTs from a check in the CLI named below, a
-  temporary 403 from Kubernetes admission (see the next bullet), and a 500 the
-  API server returns for a failed admission webhook call
-  that did not reach the webhook or came back with a 503 that is not a
-  Kubernetes Status)
+  resourceVersion (except the two cases named below), the two CONFLICTs from a
+  check in the CLI named below, a temporary 403 from Kubernetes admission (see
+  the next bullet), and a 500 the API server returns for a failed admission
+  webhook call that did not reach the webhook or came back with a 503 that is
+  not a Kubernetes Status)
   → retry is reasonable; otherwise do not repeat the identical call. A failed
   admission webhook call did not reach the webhook when the connection was
   refused, there was no route to host, the host name did not resolve,
@@ -584,9 +584,16 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   `rancher patch`. An admission webhook's 409 on such a write (its message
   starts `admission webhook "<name>" denied the request:` or is `admission
   webhook "<name>" denied the request without explanation`) is `CONFLICT` with the
-  webhook's message and is not retryable: a retry gets the same denial. A 409
-  on any other request is
-  `CONFLICT` and is not retryable. Its message is the server's message. The one
+  webhook's message and is not retryable: running the command again gets the
+  same denial. A 409 on such a write whose message says the uid sent with the
+  request is different from the object's (the message has
+  `UID in precondition`, `the UID in the precondition` or `uid mismatch`) is
+  `CONFLICT` with the server's message and is not retryable: running the
+  command again fails the same way. For a `patch` that changes
+  `metadata.uid`, remove that change. If the object was deleted and created
+  again after the command read it, try again to read the new object. A 409 on
+  any other request is `CONFLICT` and is not retryable. Its message is the
+  server's message. The one
   exception is a create whose response body is not a Kubernetes Status: its
   message ends with "the server reported a conflict". Two CONFLICTs come from a
   check in the CLI, not from a 409, and are retryable: `app install` or

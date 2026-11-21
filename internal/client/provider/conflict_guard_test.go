@@ -21,23 +21,34 @@ import (
 const (
 	conflictWebhookMessage = `admission webhook "x.example.io" denied the request: duplicate not allowed`
 	conflictVersionMessage = `Operation cannot be fulfilled on namespaces "x": the object has been modified; please apply your changes to the latest version and try again`
-	conflictStaleText      = "the resource changed on the server since it was last read; retry the command"
+	// conflictStorageUIDMessage is the message of a PUT whose body names a
+	// different uid from the stored object's. The words that say the uid
+	// differs (", UID in object meta: ") lie past the first 200 bytes.
+	conflictStorageUIDMessage = `Operation cannot be fulfilled on namespaces "x": StorageError: invalid object, Code: 4, Key: /registry/namespaces/x, ResourceVersion: 0, AdditionalErrorMsg: Precondition failed: UID in precondition: 00000000-0000-0000-0000-000000000000, UID in object meta: 119d52bc-3f5e-4c1a-9a0e-7b6f1c2d3e4f`
+	// conflictDeleteUIDMessage is the message of a delete with a uid
+	// precondition that is different from the object's.
+	conflictDeleteUIDMessage = `Operation cannot be fulfilled on Namespace "x": the UID in the precondition (00000000-0000-0000-0000-000000000000) does not match the UID in record (119d52bc-3f5e-4c1a-9a0e-7b6f1c2d3e4f). The object might have been deleted and then recreated`
+	conflictStaleText        = "the resource changed on the server since it was last read; retry the command"
 )
 
 // conflictBody is a 409 Status body a server can respond with.
 type conflictBody struct {
 	name    string
 	message string
-	// webhook is true for an admission webhook's denial, which never gets the
-	// retryable message, whatever the call sent.
-	webhook bool
+	// race is true for a resourceVersion race. A 409 that is not one, an
+	// admission webhook's denial or a text that says the uid sent with the
+	// request is different from the object's, never gets the retryable
+	// message, whatever the call sent.
+	race bool
 }
 
-// conflictBodies are the two messages of a 409: an admission webhook's denial
-// and Kubernetes' resourceVersion conflict.
+// conflictBodies are the messages of a 409: an admission webhook's denial,
+// the two uid preconditions, and Kubernetes' resourceVersion conflict.
 var conflictBodies = []conflictBody{
-	{"webhook denial", conflictWebhookMessage, true},
-	{"resourceVersion conflict", conflictVersionMessage, false},
+	{"webhook denial", conflictWebhookMessage, false},
+	{"storage uid precondition", conflictStorageUIDMessage, false},
+	{"delete uid precondition", conflictDeleteUIDMessage, false},
+	{"resourceVersion conflict", conflictVersionMessage, true},
 }
 
 // conflictCall is one call of a client method and whether it sends a
@@ -80,9 +91,10 @@ var conflictCalls = []conflictCall{
 
 // TestEveryClusterClientWriteSendsAPreconditionOnlyWithAResourceVersion
 // asserts every ClusterClient call that gets a 409 returns a CONFLICT, under
-// each of two 409 messages. An admission webhook's denial gives every call a
-// CONFLICT that is not retryable and keeps the server's message, an update
-// whose object carries a resourceVersion and a delete given one included.
+// each of the 409 messages. An admission webhook's denial and a uid
+// precondition give every call a CONFLICT that is not retryable and keeps the
+// server's message, an update whose object carries a resourceVersion and a
+// delete given one included.
 // Kubernetes' resourceVersion conflict gives the retryable message that the
 // resource changed since it was last read only to an update whose object
 // carries a resourceVersion and a delete given one; every other call returns a
@@ -119,7 +131,7 @@ func TestEveryClusterClientWriteSendsAPreconditionOnlyWithAResourceVersion(t *te
 					ce, ok := errors.AsType[*clierr.Error](err)
 					require.True(t, ok, "got %v", err)
 					assert.Equal(t, clierr.CodeConflict, ce.Code)
-					if tc.precondition && !body.webhook {
+					if tc.precondition && body.race {
 						assert.True(t, ce.Retryable)
 						assert.Equal(t, conflictStaleText, ce.Message)
 						return

@@ -215,11 +215,14 @@ const causeServerMessageTaken metav1.CauseType = "ServerMessageTaken"
 // cut it to maxServerMessage bytes.
 const causeServerMessageFull metav1.CauseType = "ServerMessageFull"
 
-// fullForbiddenMessage returns the server's whole 403 message, uncut. It uses,
-// in this order: the message saved in the ServerMessageFull cause; the message
-// of the JSON error object inside the Status message, when the error ends with
-// that Status message; the `reason` argument, which is the Status message.
-func fullForbiddenMessage(se *apierrors.StatusError, reason string, wrapped bool) string {
+// fullStatusMessage returns the server's whole message, uncut, whatever the
+// status code. It uses, in this order: the message saved in the
+// ServerMessageFull cause, which ResponseError saves only for a 403; the
+// message of the JSON error object inside the Status message, when the error
+// ends with that Status message; the `reason` argument, which is the Status
+// message. A 409 whose body is not a Kubernetes Status has its message cut by
+// ResponseError and is read cut.
+func fullStatusMessage(se *apierrors.StatusError, reason string, wrapped bool) string {
 	if se.ErrStatus.Details != nil {
 		for _, c := range se.ErrStatus.Details.Causes {
 			if c.Type == causeServerMessageFull {
@@ -417,7 +420,7 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 		// permission. The admission text match reads the server's own text, not
 		// msg, which starts with the caller's prefix, and runs for every request:
 		// a write can reach admission with no verb or no request.
-		if ce, ok := AdmissionRefusal(fullForbiddenMessage(se, reason, wrapped), msg); ok {
+		if ce, ok := AdmissionRefusal(fullStatusMessage(se, reason, wrapped), msg); ok {
 			return ce
 		}
 		if noReason {
@@ -436,13 +439,17 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 			return ce
 		}
 		return New(CodeAuth, msg)
-	case apierrors.IsConflict(se) && req != nil && req.Precondition && !webhookDenial(serverDetail(se, reason, noReason)):
+	case apierrors.IsConflict(se) && req != nil && req.Precondition && isResourceVersionRace(serverDetail(se, reason, noReason), fullStatusMessage(se, reason, wrapped)):
 		// A resourceVersion precondition race: another writer updated the
 		// object between the read and this write; a fresh read-modify-write
 		// resolves it. A 409 on a write that sent a resourceVersion is read
 		// as that race, except when the server's text says an admission
-		// webhook denied the request: a retry gets the same denial, and the
-		// CONFLICT case below shows the webhook's message.
+		// webhook denied the request, or that the uid sent with the request
+		// is different from the object's (isResourceVersionRace): the
+		// CONFLICT case below shows the server's message. The uid words are
+		// read in the whole message of a Status, before any cut to 200 bytes:
+		// they lie past it. A body that is not a Status keeps its message cut,
+		// and a uid text in it is read only when its words lie within the cut.
 		return Retryable(CodeConflict, "the resource changed on the server since it was last read; retry the command")
 	case apierrors.IsConflict(se):
 		// A 409 can mean the resourceVersion is out of date only for a write

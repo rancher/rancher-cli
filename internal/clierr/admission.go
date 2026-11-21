@@ -290,6 +290,77 @@ func webhookDenial(text string) bool {
 	return strings.HasPrefix(rest, " denied the request: ") || rest == " denied the request without explanation"
 }
 
+// uidConflictWords are the fixed words of the 409 messages, other than an
+// admission webhook's denial, that say the uid sent with the request is
+// different from the object's. The API server writes each as `Operation cannot
+// be fulfilled on <resource> "<name>": <text>`; the words of an entry are found
+// in order anywhere in the message. A 409 on an update or a delete with any
+// other text, including every resourceVersion race, is not in the list.
+var uidConflictWords = [][]string{
+	// A PUT whose body has a different uid from the stored object's, and a
+	// delete with a uid precondition checked by the store. The storage error
+	// text wraps these words:
+	// k8s.io/apiserver@v0.37.1/pkg/storage/interfaces.go:157-163, wrapped by
+	// pkg/storage/errors.go:93-99 and :123-126 and turned into a 409 by
+	// pkg/storage/errors/storage.go:78-81 and :97-104. The delete of a
+	// namespace writes the same sentence itself:
+	// k8s.io/kubernetes@v1.37.1/pkg/registry/core/namespace/storage/storage.go:159,
+	// and so does the update of the scale of a ReplicationController, a
+	// ReplicaSet, a Deployment and a StatefulSet, in the same module:
+	// pkg/registry/core/replicationcontroller/storage/storage.go:326,
+	// pkg/registry/apps/replicaset/storage/storage.go:363,
+	// pkg/registry/apps/deployment/storage/storage.go:467 and
+	// pkg/registry/apps/statefulset/storage/storage.go:356.
+	// The delete of a CustomResourceDefinition writes it with a lower-case
+	// "precondition failed: ": k8s.io/apiextensions-apiserver@v0.37.1/pkg/registry/customresourcedefinition/etcd.go:105.
+	{"UID in precondition: ", ", UID in object meta: "},
+	// A delete with a uid precondition that is not the object's:
+	// k8s.io/apiserver@v0.37.1/pkg/registry/rest/delete.go:86. The eviction of
+	// a pod writes the same sentence:
+	// k8s.io/kubernetes@v1.37.1/pkg/registry/core/pod/storage/eviction.go:329.
+	// The kubeconfig store of Rancher's ext API writes the same words in
+	// pkg/ext/stores/kubeconfig/store.go:1668-1670 of rancher/rancher at
+	// commit c547d7bc22.
+	{"the UID in the precondition (", ") does not match the UID in record ("},
+	// A patch that names a uid when no object exists:
+	// k8s.io/apiserver@v0.37.1/pkg/endpoints/handlers/patch.go:617. Only a
+	// PATCH request gets this text and the CLI sends none; the entry matches it
+	// if a server sends it for an update.
+	{"uid mismatch: the provided object specified uid ", ", and no existing object was found"},
+}
+
+// isResourceVersionRace reports whether a 409 with this message, on an update
+// or a delete that sent a resourceVersion, is a resourceVersion race. It is
+// not one when it is an admission webhook's denial or has the words of an
+// entry of uidConflictWords. Running the command again gets the same answer
+// for a denial and for a patch that changes the uid. A uid conflict stops only
+// when the object was deleted and created again after the command read it: the
+// command then reads the new object. shown is the server's message as the CLI
+// shows it, cut to 200 bytes. A webhook's denial is read in it, and so are
+// the uid words: for a body that is not a Kubernetes Status, shown is the only
+// text the CLI keeps. full is the whole message of a Status; the uid words are
+// read in it too, because the storage error text puts them past the cut.
+func isResourceVersionRace(shown, full string) bool {
+	if webhookDenial(shown) {
+		return false
+	}
+	return !slices.ContainsFunc(uidConflictWords, func(words []string) bool {
+		return inOrder(shown, words) || inOrder(full, words)
+	})
+}
+
+// inOrder reports whether text has each of the words, one after the other.
+func inOrder(text string, words []string) bool {
+	for _, word := range words {
+		_, rest, ok := strings.Cut(text, word)
+		if !ok {
+			return false
+		}
+		text = rest
+	}
+	return true
+}
+
 // exactText matches a text that is exactly the given words.
 func exactText(words string) func(string) bool {
 	return func(text string) bool { return text == words }

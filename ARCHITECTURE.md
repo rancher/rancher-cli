@@ -1707,10 +1707,18 @@ whatever its verb. The Kubernetes wording is the same from 1.32 to 1.37; if a
 Kubernetes release changes the wording of an admission text in the list, the CLI
 reports that refusal as RBAC again. A 409 from an admission webhook on a write
 that sends a `resourceVersion` is a CONFLICT with the webhook's message and is
-not retryable: a retry gets the same denial. Any other 409 on such a write keeps
-the retryable message that the resource changed on the server since it was last
-read. Rancher answers a 500 for the refusal of the pod it runs Helm in.
-`internal/engine/catalog` passes that response to
+not retryable: running the command again gets the same denial. A 409 on such a
+write whose message says the uid sent with the request is different from the
+object's (the texts `UID in precondition`, `the UID in the precondition` and
+`uid mismatch`) is also a CONFLICT with the server's message and is not
+retryable. Running the command again fails the same way, unless the object was
+deleted and created again after the command read it. Any other 409 on such a
+write keeps the retryable message that the resource changed on the server since
+it was last read, including a 409 with an empty body or a body that is not a
+Kubernetes Status. The CLI reads the message of a body that is not a Status cut
+to 200 bytes: a uid text in such a body whose uid words lie past the cut keeps
+the retryable message. Rancher answers a 500 for the refusal of the pod it runs
+Helm in. `internal/engine/catalog` passes that response to
 `clierr.AdmissionRefusalOfBody`, which calls `clierr.AdmissionRefusal`; the code
 and the " - retry later" text are therefore the 403's (see the catalog action
 paragraph).
