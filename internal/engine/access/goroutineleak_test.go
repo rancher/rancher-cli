@@ -19,6 +19,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // The goroutineleak profile is process-global: it counts every goroutine
@@ -242,7 +243,7 @@ func TestGoroutineLeakScenario(t *testing.T) {
 func runLeakScenario(t *testing.T, name string) (string, error) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestGoroutineLeakScenario$", "-test.count=1", "-test.timeout=60s", "-test.v")
-	cmd.Env = append(os.Environ(), leakScenarioEnv+"="+name)
+	cmd.Env = append(testfs.EnvWithoutGit(), leakScenarioEnv+"="+name)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

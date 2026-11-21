@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +28,7 @@ func startConfigWrite(t *testing.T, dir, serverName string, nolock bool) (<-chan
 	args = append(args, dir, serverName)
 
 	cmd := exec.Command(fakeHelperBin(t), args...)
+	cmd.Env = testfs.EnvWithoutGit()
 	// Child stderr streams through the test binary's stderr: a child that
 	// exits on an error path explains itself in the test output instead of
 	// vanishing (each line is already prefixed "configwrite:").

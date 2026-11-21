@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,9 @@ import (
 // directory names to skip cannot keep up with what a machine accumulates.
 // A tracked file deleted from the working tree is dropped from the list.
 var repositoryFiles = sync.OnceValues(func() ([]string, error) {
-	out, err := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard").Output()
+	cmd := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	if err != nil {
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 			return nil, errors.New("git ls-files: " + strings.TrimSpace(string(exit.Stderr)) + " (the source scans need a git checkout)")

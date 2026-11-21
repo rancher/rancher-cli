@@ -20,6 +20,11 @@ const (
 	httpxPath     = "github.com/rancher/rancher-cli/internal/client/httpx"
 )
 
+// testfsEnvFile is the one file of the test-only package internal/testfs (no
+// production package imports it) that reads the whole environment;
+// testfs.EnvWithoutGit filters what it reads.
+const testfsEnvFile = "internal/testfs/envwithoutgit.go"
+
 // detectionAllow lists a use of a detection name outside internal/invocation
 // that is allowed, the number of uses, and why. Every entry must match
 // exactly that many uses.
@@ -42,7 +47,7 @@ var detectionAllowlist = []detectionAllow{
 // by concatenation is out of scope, which the environment-wide reads cover. allowed counts the uses an allowlist
 // entry covers, by "path name".
 func detectionFindings(fset *token.FileSet, path string, f *ast.File, names []string, allowed map[string]int) []string {
-	if strings.HasPrefix(path, invocationDir) {
+	if strings.HasPrefix(path, invocationDir) || path == testfsEnvFile {
 		return nil
 	}
 	imports := map[string]string{}
@@ -139,6 +144,8 @@ func TestDetectionScanFixtures(t *testing.T) {
 		{"mixed case name", "internal/x/x.go", `package p; const c = "Claudecode"`, true},
 		{"aliased os", "internal/x/x.go", `package p; import o "os"; var _ = o.Environ()`, true},
 		{"the package itself", "internal/invocation/invocation.go", `package p; import "os"; const c = "CI"; var _ = os.Environ()`, false},
+		{"the file of internal/testfs that reads the whole environment", "internal/testfs/envwithoutgit.go", `package p; import "os"; var environ = os.Environ`, false},
+		{"another file of internal/testfs", "internal/testfs/other.go", `package p; import "os"; var _ = os.Environ()`, true},
 		{"a message with the name as a word", "internal/x/x.go", `package p; const c = "set CI to a value"`, false},
 		{"a longer name", "internal/x/x.go", `package p; const c = "CI_COMMIT"`, false},
 		{"another variable", "internal/x/x.go", `package p; import "os"; var _ = os.Getenv("HOME")`, false},

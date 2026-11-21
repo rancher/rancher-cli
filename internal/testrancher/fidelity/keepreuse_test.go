@@ -204,7 +204,9 @@ func requireKeepSlotsMatchTheScript(t *testing.T) {
 // it, so the word is the one the script prints whatever characters s holds.
 func shellWord(t *testing.T, s string) string {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "bash", "-c", `printf %q "$1"`, "_", s).Output()
+	cmd := exec.CommandContext(t.Context(), "bash", "-c", `printf %q "$1"`, "_", s)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err)
 	return strings.TrimSuffix(string(out), "\n")
 }
@@ -749,7 +751,9 @@ func TestKeepRefusalCommandsRunVerbatim(t *testing.T) {
 				}
 				require.NotEmptyf(t, line, "no line starting with %q in: %s", prefix, res.stderr)
 				command := strings.TrimPrefix(line, "error:   ")
-				read, err := exec.CommandContext(t.Context(), "bash", "-c", `for w in `+command+`; do printf '%s\n' "$w"; done`).Output()
+				cmd := exec.CommandContext(t.Context(), "bash", "-c", `for w in `+command+`; do printf '%s\n' "$w"; done`)
+				cmd.Env = testfs.EnvWithoutGit()
+				read, err := cmd.Output()
 				require.NoError(t, err)
 				assert.Equal(t, words, strings.Split(strings.TrimSuffix(string(read), "\n"), "\n"), line)
 			}
@@ -2455,7 +2459,7 @@ func TestKeepRunawayCapIgnoresTheClock(t *testing.T) {
 	// The stub signals its parent, which must be this shell and never the test.
 	wrapper := func(command string, calls int) (*exec.Cmd, string, error) {
 		cmd := exec.CommandContext(t.Context(), "sh", "-c", `i=0; while [ "$i" -lt "$1" ]; do `+command+`; i=$((i + 1)); done`, "sh", strconv.Itoa(calls))
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = append(testfs.EnvWithoutGit(), env...)
 		out, err := cmd.Output()
 		return cmd, string(out), err
 	}

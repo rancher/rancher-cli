@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +51,7 @@ func buildTestProgram(pkg string) ([]byte, error) {
 	defer func() { _ = os.RemoveAll(dir) }()
 	out := filepath.Join(dir, pkg+".exe")
 	cmd := exec.Command("go", "build", "-o", out, "./testdata/"+pkg)
-	cmd.Env = append(os.Environ(), "GOOS=windows", "CGO_ENABLED=0")
+	cmd.Env = append(testfs.EnvWithoutGit(), "GOOS=windows", "CGO_ENABLED=0")
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("go build ./testdata/%s: %w\n%s", pkg, err, b)
 	}
@@ -154,7 +155,7 @@ func (h winHome) receiptPath() string {
 // cmdlet autoloading in the other, and each host computes its own default.
 func scrubbedEnviron() []string {
 	var out []string
-	for _, kv := range os.Environ() {
+	for _, kv := range testfs.EnvWithoutGit() {
 		key, _, _ := strings.Cut(kv, "=")
 		upper := strings.ToUpper(key)
 		if upper == "GH_TOKEN" || upper == "GITHUB_TOKEN" || upper == "PSMODULEPATH" ||
@@ -347,7 +348,9 @@ func stagingReachedIn(versions string) func() bool {
 // developer mode, unlike the directory symbolic link os.Symlink would make.
 func makeJunction(t *testing.T, link, target string) {
 	t.Helper()
-	out, err := exec.Command("cmd", "/c", "mklink", "/J", link, target).CombinedOutput()
+	cmd := exec.Command("cmd", "/c", "mklink", "/J", link, target)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err, "mklink /J %s %s: %s", link, target, out)
 }
 
@@ -393,7 +396,9 @@ func siblingsMatching(t *testing.T, binDir, prefix string) []string {
 // runExe runs an installed binary and returns its combined output.
 func runExe(t *testing.T, path string, args ...string) string {
 	t.Helper()
-	out, err := exec.Command(path, args...).CombinedOutput()
+	cmd := exec.Command(path, args...)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err, "%s must execute: %s", path, out)
 	return string(out)
 }

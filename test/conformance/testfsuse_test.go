@@ -713,9 +713,12 @@ type testfsImporterRow struct {
 	reason string
 }
 
-// testfsImporterAllowlist is empty. internal/testfs imports testing and no
-// production package may import it.
-var testfsImporterAllowlist []testfsImporterRow
+// testfsImporterAllowlist lists the test-support packages that import
+// internal/testfs. internal/testfs imports testing, and no production package
+// may import it.
+var testfsImporterAllowlist = []testfsImporterRow{
+	{"internal/commands/cmdtest", "a test-support package that starts processes for tests and sets their environment with testfs.EnvWithoutGit"},
+}
 
 // testfsImportProblems returns the packages that import internal/testfs
 // without a row, and the rows that have no reason or name a package with no

@@ -97,7 +97,7 @@ func runStdinPipe(t *testing.T, sh pasteShell, dir, script string, env []string)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, sh.program, sh.args(file)...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), stdinHelperEnv+"=1")
+	cmd.Env = append(testfs.EnvWithoutGit(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), stdinHelperEnv+"=1")
 	cmd.Env = append(cmd.Env, env...)
 	cmd.WaitDelay = 5 * time.Second
 	var stdout, stderr bytes.Buffer

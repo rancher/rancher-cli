@@ -33,7 +33,9 @@ func TestTheLoginCommandOfTheKubeconfigRefusalParses(t *testing.T) {
 			require.True(t, strings.HasPrefix(command, clierr.Rancher+" auth login "), command)
 
 			text := clierr.ExpandRemedies(command, " --config "+clierr.ShellQuote(dir))
-			out, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\n' `+text).Output()
+			cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\n' `+text)
+			cmd.Env = testfs.EnvWithoutGit()
+			out, err := cmd.Output()
 			require.NoError(t, err, text)
 			words := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 

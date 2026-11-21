@@ -212,7 +212,9 @@ func schemaCommands(t *testing.T, dir string) map[string]manifestCommand {
 // shellWords splits line the way a POSIX shell does.
 func shellWords(t *testing.T, line string) []string {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\n' `+line).Output()
+	cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\n' `+line)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err, line)
 	return strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 }

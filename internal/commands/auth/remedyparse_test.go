@@ -34,7 +34,9 @@ func parseRemedyCommand(t *testing.T, dir, command string) parsedCommand {
 	t.Helper()
 	text := clierr.ExpandRemedies(command, " --config "+clierr.ShellQuote(dir))
 	text = strings.NewReplacer("<file>", "/etc/ca.pem", "<name>", "x", "<url>", "https://r.example.com", "<cluster-id>", "c-1").Replace(text)
-	out, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\n' `+text).Output()
+	cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\n' `+text)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err, text)
 	words := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 

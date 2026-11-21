@@ -172,7 +172,12 @@ Gotchas:
   Error substrings: `require.ErrorContains(t, err, ...)`, never
   `assert.Contains(t, err.Error(), ...)` (a source-scan test enforces
   this); the negative form `NotContains(t, err.Error(), ...)` is the
-  sanctioned spelling - testify has no ErrorNotContains.
+  sanctioned spelling - testify has no ErrorNotContains. A test that
+  starts a process sets its Env from `testfs.EnvWithoutGit()` (or a list
+  written in the test), never from `os.Environ()`: git sets `GIT_*`
+  variables for a hook, and the guard in
+  `test/conformance/testenvironment_test.go` refuses a start that can
+  inherit them.
 - **Comments are self-contained.** A comment states a constraint the
   code can't show - never its provenance. No references to design
   docs, reviews, rounds or findings, handoffs, recordings, tasks, or

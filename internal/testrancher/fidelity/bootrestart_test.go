@@ -387,8 +387,12 @@ func TestRestartRemedyNamesTheContainerAsTheShellQuotesIt(t *testing.T) {
 			}
 			require.NotEmpty(t, command, "the report prints the command: %s", stderr)
 
-			require.NoError(t, exec.CommandContext(t.Context(), "bash", "-n", "-c", command).Run(), "the command is valid shell: %s", command)
-			words, err := exec.CommandContext(t.Context(), "bash", "-c", `docker() { printf '%s\n' "$@"; }; eval "$1"`, "_", command).Output()
+			syntax := exec.CommandContext(t.Context(), "bash", "-n", "-c", command)
+			syntax.Env = testfs.EnvWithoutGit()
+			require.NoError(t, syntax.Run(), "the command is valid shell: %s", command)
+			cmd := exec.CommandContext(t.Context(), "bash", "-c", `docker() { printf '%s\n' "$@"; }; eval "$1"`, "_", command)
+			cmd.Env = testfs.EnvWithoutGit()
+			words, err := cmd.Output()
 			require.NoError(t, err)
 			assert.Equal(t, "rm\n-f\n-v\n"+name+"\n", string(words), "the words of the command: %s", command)
 		})

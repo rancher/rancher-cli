@@ -17,6 +17,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/packages"
@@ -386,7 +387,7 @@ func otherGOOSPackages(goos string) ([]*packages.Package, error) {
 func loadPackages(pattern, goos string) ([]*packages.Package, error) {
 	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedFiles}
 	if goos != "" {
-		cfg.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=0")
+		cfg.Env = append(testfs.EnvWithoutGit(), "GOOS="+goos, "CGO_ENABLED=0")
 	}
 	pkgs, err := packages.Load(cfg, pattern)
 	if err != nil {

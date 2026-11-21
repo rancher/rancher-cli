@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,6 +16,7 @@ import (
 func TestRawStringCannotBeRequested(t *testing.T) {
 	t.Parallel()
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./testdata/rawpath")
+	cmd.Env = testfs.EnvWithoutGit()
 	out, err := cmd.CombinedOutput()
 	require.Error(t, err, "the raw-path program must not compile:\n%s", out)
 	assert.Contains(t, string(out), `cannot use "/k8s/clusters/local/api/v1/namespaces" (untyped string constant) as completion.Path value`)

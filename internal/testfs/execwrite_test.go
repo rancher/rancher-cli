@@ -147,7 +147,9 @@ func TestWriteExecutableFileNeverLeaksADescriptorToAFork(t *testing.T) {
 	for range 4 {
 		starters.Go(func() {
 			for ctx.Err() == nil {
-				_ = exec.Command(truePath).Run()
+				cmd := exec.Command(truePath)
+				cmd.Env = EnvWithoutGit()
+				_ = cmd.Run()
 			}
 		})
 	}
@@ -159,7 +161,9 @@ func TestWriteExecutableFileNeverLeaksADescriptorToAFork(t *testing.T) {
 					record(err)
 					continue
 				}
-				if err := exec.CommandContext(ctx, path).Run(); err != nil {
+				cmd := exec.CommandContext(ctx, path)
+				cmd.Env = EnvWithoutGit()
+				if err := cmd.Run(); err != nil {
 					record(err)
 				}
 			}

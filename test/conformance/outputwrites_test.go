@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/packages"
@@ -366,7 +367,7 @@ func loadSystemPackages(pattern string) (systemPackages, error) {
 	}
 	typed, err := packages.Load(&packages.Config{
 		Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedFiles,
-		Env:  append(os.Environ(), "CGO_ENABLED=0"),
+		Env:  append(testfs.EnvWithoutGit(), "CGO_ENABLED=0"),
 	}, pattern)
 	if err != nil {
 		return systemPackages{}, err
@@ -385,7 +386,7 @@ func loadSystemPackages(pattern string) (systemPackages, error) {
 		goos, goarch, _ := strings.Cut(platform, "/")
 		listed, err := packages.Load(&packages.Config{
 			Mode: packages.NeedName | packages.NeedFiles,
-			Env:  append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"),
+			Env:  append(testfs.EnvWithoutGit(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"),
 		}, pattern)
 		if err != nil {
 			return systemPackages{}, err

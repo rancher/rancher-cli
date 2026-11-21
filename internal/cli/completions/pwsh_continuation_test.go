@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // TestPwshKeyValueCandidatesCarryNoTrailingSpace asserts the PowerShell side
@@ -29,7 +31,7 @@ func TestPwshKeyValueCandidatesCarryNoTrailingSpace(t *testing.T) {
 		binName += ".exe"
 	}
 	build := exec.CommandContext(t.Context(), "go", "build", "-o", filepath.Join(binDir, binName), "github.com/rancher/rancher-cli/cmd/rancher")
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	build.Env = append(testfs.EnvWithoutGit(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building rancher: %s", out)
 	}
@@ -58,7 +60,9 @@ Write-Output ('EQUALS:' + (($re.CompletionMatches | ForEach-Object { '[' + $_.Co
 	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
 		t.Fatalf("writing driver.ps1: %v", err)
 	}
-	out, err := exec.CommandContext(t.Context(), shell, "-NoProfile", "-NonInteractive", "-File", driverPath).CombinedOutput()
+	cmd := exec.CommandContext(t.Context(), shell, "-NoProfile", "-NonInteractive", "-File", driverPath)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("running pwsh driver: %v\noutput:\n%s", err, out)
 	}

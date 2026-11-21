@@ -5,13 +5,13 @@ import (
 	"go/ast"
 	"go/types"
 	"maps"
-	"os"
 	"path"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/packages"
@@ -79,7 +79,7 @@ func loadDiscardPackages(pattern string) ([]*packages.Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	envs := [][]string{append(os.Environ(), "CGO_ENABLED=0")}
+	envs := [][]string{append(testfs.EnvWithoutGit(), "CGO_ENABLED=0")}
 	seen := map[string]bool{}
 	for _, platform := range platforms {
 		goos, goarch, _ := strings.Cut(platform, "/")
@@ -87,7 +87,7 @@ func loadDiscardPackages(pattern string) ([]*packages.Package, error) {
 			continue
 		}
 		seen[goos] = true
-		envs = append(envs, append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"))
+		envs = append(envs, append(testfs.EnvWithoutGit(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"))
 	}
 	var out []*packages.Package
 	for _, env := range envs {

@@ -60,7 +60,9 @@ func TestBuilderCommandsParseAsArguments(t *testing.T) {
 // splitWithSh splits line the way a POSIX shell does.
 func splitWithSh(t *testing.T, line string) []string {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\0' `+line).Output()
+	cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\0' `+line)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err, line)
 	return strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
 }

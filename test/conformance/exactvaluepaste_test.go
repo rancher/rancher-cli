@@ -98,7 +98,7 @@ func runPaste(t *testing.T, sh pasteShell, dir, line string) pasteRun {
 	require.NoError(t, os.WriteFile(script, []byte(sh.header+line+"\n"), 0o600))
 	cmd := exec.CommandContext(t.Context(), sh.program, sh.args(script)...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(testfs.EnvWithoutGit(),
 		"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		pasteHelperEnv+"=1")
 	out, err := cmd.Output()

@@ -3,12 +3,12 @@
 package e2e
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +24,7 @@ func TestFidelityDriftRefusesUpdate(t *testing.T) {
 	dir := t.TempDir()
 
 	var env []string
-	for _, kv := range os.Environ() {
+	for _, kv := range testfs.EnvWithoutGit() {
 		if !strings.HasPrefix(kv, "E2E_FIDELITY_") {
 			env = append(env, kv)
 		}

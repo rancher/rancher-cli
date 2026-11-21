@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	rt "github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,8 +51,10 @@ func buildTokenFakeHelper(t *testing.T) string {
 		if runtime.GOOS == "windows" {
 			bin += ".exe"
 		}
-		if out, err := exec.Command("go", "build", "-o", bin,
-			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper").CombinedOutput(); err != nil {
+		build := exec.Command("go", "build", "-o", bin,
+			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper")
+		build.Env = testfs.EnvWithoutGit()
+		if out, err := build.CombinedOutput(); err != nil {
 			fakeHelperErr = fmt.Errorf("building fake helper: %w: %s", err, out)
 			return
 		}
@@ -59,7 +62,9 @@ func buildTokenFakeHelper(t *testing.T) string {
 		// here, outside any helper time limit.
 		ctx, cancel := context.WithTimeout(t.Context(), firstRunLimit)
 		defer cancel()
-		if out, err := exec.CommandContext(ctx, bin, "noop").CombinedOutput(); err != nil {
+		first := exec.CommandContext(ctx, bin, "noop")
+		first.Env = testfs.EnvWithoutGit()
+		if out, err := first.CombinedOutput(); err != nil {
 			if ctx.Err() != nil {
 				err = errors.New("did not finish within " + firstRunLimit.String())
 			}

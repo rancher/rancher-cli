@@ -17,6 +17,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 var (
@@ -48,8 +49,10 @@ func BuildFakeHelper(t *testing.T) string {
 		if runtime.GOOS == "windows" {
 			bin += ".exe"
 		}
-		out, err := exec.Command("go", "build", "-o", bin,
-			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper").CombinedOutput()
+		build := exec.Command("go", "build", "-o", bin,
+			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper")
+		build.Env = testfs.EnvWithoutGit()
+		out, err := build.CombinedOutput()
 		if err != nil {
 			cmdFakeHelperErr = err
 			_ = out // surfaced via require below with the message
@@ -60,7 +63,9 @@ func BuildFakeHelper(t *testing.T) string {
 		// here, outside any helper time limit.
 		ctx, cancel := context.WithTimeout(t.Context(), firstRunLimit)
 		defer cancel()
-		if out, err := exec.CommandContext(ctx, bin, "noop").CombinedOutput(); err != nil {
+		first := exec.CommandContext(ctx, bin, "noop")
+		first.Env = testfs.EnvWithoutGit()
+		if out, err := first.CombinedOutput(); err != nil {
 			if ctx.Err() != nil {
 				err = errors.New("did not finish within " + firstRunLimit.String())
 			}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -617,7 +618,9 @@ func TestReleaseScriptsAreExecutable(t *testing.T) {
 	scripts := scriptsRunBy(t, workflowCommands(wf))
 	require.NotEmpty(t, scripts)
 	for _, name := range scripts {
-		out, err := exec.CommandContext(t.Context(), "git", "ls-files", "-s", "--", "scripts/"+name).Output()
+		cmd := exec.CommandContext(t.Context(), "git", "ls-files", "-s", "--", "scripts/"+name)
+		cmd.Env = testfs.EnvWithoutGit()
+		out, err := cmd.Output()
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(string(out), "100755 "), "scripts/%s must be tracked with mode 100755, git has %q", name, strings.TrimSpace(string(out)))
 	}

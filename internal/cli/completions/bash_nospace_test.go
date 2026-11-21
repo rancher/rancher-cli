@@ -115,6 +115,7 @@ printf 'DONE\n'
 `, prelude, binDir, scriptPath, wordsLiteral, compCword, opts.compType)
 
 	cmd := exec.Command(bashBin, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("running bash driver (%s): %v\noutput:\n%s", bashBin, err, out)
@@ -245,7 +246,9 @@ func TestBashCompletionRegistersNospace(t *testing.T) {
 // bashHasCompopt reports whether bashBin ships the compopt builtin (bash 4+).
 func bashHasCompopt(t *testing.T, bashBin string) bool {
 	t.Helper()
-	return exec.Command(bashBin, "-c", "type compopt >/dev/null 2>&1").Run() == nil
+	cmd := exec.Command(bashBin, "-c", "type compopt >/dev/null 2>&1")
+	cmd.Env = testfs.EnvWithoutGit()
+	return cmd.Run() == nil
 }
 
 // fallbackCorpus builds the controlled directory tree the filename-fallback

@@ -68,7 +68,9 @@ _rancher
 
 	// Standard output only: sourcing the script without the completion
 	// system prints a compdef warning on standard error.
-	out, err := exec.Command(zsh, "-c", driver).Output()
+	cmd := exec.Command(zsh, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("zsh driver: %v\n%s", err, out)
 	}

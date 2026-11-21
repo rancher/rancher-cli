@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/rancher/rancher-cli/internal/testtransport"
 )
 
@@ -38,7 +39,7 @@ func realRancher() (string, error) {
 			return
 		}
 		build := exec.Command("go", "build", "-o", filepath.Join(rancherBinDir, "rancher"), "github.com/rancher/rancher-cli/cmd/rancher")
-		build.Env = append(os.Environ(), "CGO_ENABLED=0")
+		build.Env = append(testfs.EnvWithoutGit(), "CGO_ENABLED=0")
 		if out, err := build.CombinedOutput(); err != nil {
 			rancherBinErr = fmt.Errorf("building rancher: %v\n%s", err, out)
 		}
@@ -81,7 +82,7 @@ func newTabSession(t *testing.T) *tabSession {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	t.Cleanup(srv.Close)
-	s.env = append(os.Environ(),
+	s.env = append(testfs.EnvWithoutGit(),
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+t.TempDir(),
 		"RANCHER_CLI_CONFIG_DIR="+s.cfgDir,

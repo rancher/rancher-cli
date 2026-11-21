@@ -12,6 +12,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -218,7 +219,7 @@ func TestRemedyMarkerDiffersBetweenProcesses(t *testing.T) {
 	}
 	run := func() string {
 		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestRemedyMarkerDiffersBetweenProcesses$", "-test.count=1")
-		cmd.Env = append(os.Environ(), markerChildEnv+"=1")
+		cmd.Env = append(testfs.EnvWithoutGit(), markerChildEnv+"=1")
 		out, err := cmd.Output()
 		require.NoError(t, err)
 		var found []string

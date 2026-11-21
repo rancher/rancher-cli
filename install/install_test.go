@@ -454,7 +454,9 @@ func TestMetadataRequestWithNoStatusFallsBackToBrowserPath(t *testing.T) {
 // python3 is not functional on the host (e.g. macOS CLT stub exits non-zero).
 func TestPython3BranchExtractsAssetIds(t *testing.T) {
 	t.Parallel()
-	if err := exec.Command("python3", "-c", "pass").Run(); err != nil {
+	cmd := exec.Command("python3", "-c", "pass")
+	cmd.Env = testfs.EnvWithoutGit()
+	if err := cmd.Run(); err != nil {
 		t.Skip("python3 not functional on this host:", err)
 	}
 	s := newStub(t)

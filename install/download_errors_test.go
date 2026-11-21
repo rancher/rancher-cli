@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -445,7 +446,9 @@ func TestDownloadRetryAppliesToPreAndLeavesDryRunAlone(t *testing.T) {
 	t.Run("Pre", func(t *testing.T) {
 		t.Parallel()
 		if _, err := exec.LookPath("jq"); err != nil {
-			if err := exec.Command("python3", "-c", "pass").Run(); err != nil {
+			cmd := exec.Command("python3", "-c", "pass")
+			cmd.Env = testfs.EnvWithoutGit()
+			if err := cmd.Run(); err != nil {
 				t.Skip("--pre needs jq or python3 on the host")
 			}
 		}

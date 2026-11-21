@@ -14,6 +14,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // SecurityExitError is the error go-keyring returns on macOS when
@@ -25,7 +26,9 @@ func SecurityExitError(t *testing.T, status int) error {
 	if goruntime.GOOS == "windows" {
 		t.Skip("needs a POSIX shell to produce an exit status")
 	}
-	err := exec.Command("/bin/sh", "-c", fmt.Sprintf("exit %d", status)).Run()
+	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("exit %d", status))
+	cmd.Env = testfs.EnvWithoutGit()
+	err := cmd.Run()
 	_, ok := errors.AsType[*exec.ExitError](err)
 	require.True(t, ok, "got %v", err)
 	return err

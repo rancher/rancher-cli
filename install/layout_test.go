@@ -220,7 +220,9 @@ func TestSigkillAfterSwitchServesNewPair(t *testing.T) {
 	// even though the epilogue, GC, and receipt never ran. BOTH links, not
 	// just the CLI - "pair" is the unit the switch is atomic over.
 	for _, name := range []string{"rancher", "rancher-credential-vault"} {
-		out, err := exec.Command(filepath.Join(home, ".local", "bin", name), "--version").Output()
+		run := exec.Command(filepath.Join(home, ".local", "bin", name), "--version")
+		run.Env = testfs.EnvWithoutGit()
+		out, err := run.Output()
 		require.NoErrorf(t, err, "%s must execute through its link", name)
 		assert.Containsf(t, string(out), name+" version v1.3.0",
 			"%s must resolve to the new version", name)

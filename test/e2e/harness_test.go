@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/envtestlog"
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/rogpeppe/go-internal/testscript"
@@ -1669,19 +1670,25 @@ func TestMain(m *testing.M) {
 		}
 	}
 	build := func() error {
-		if out, err := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher").CombinedOutput(); err != nil {
+		buildCLI := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher")
+		buildCLI.Env = testfs.EnvWithoutGit()
+		if out, err := buildCLI.CombinedOutput(); err != nil {
 			return fmt.Errorf("building rancher: %s", out)
 		}
 		fakeBin := filepath.Join(tmp, "rancher-credential-fake"+ext)
-		if out, err := exec.Command("go", "build", "-o", fakeBin,
-			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper").CombinedOutput(); err != nil {
+		buildHelper := exec.Command("go", "build", "-o", fakeBin,
+			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper")
+		buildHelper.Env = testfs.EnvWithoutGit()
+		if out, err := buildHelper.CombinedOutput(); err != nil {
 			return fmt.Errorf("building fake credential helper: %v\n%s", err, out)
 		}
 		// A new binary's first run can take many seconds under load; run it
 		// here, outside any helper time limit.
 		ctx, cancel := context.WithTimeout(context.Background(), firstRunLimit)
 		defer cancel()
-		if out, err := exec.CommandContext(ctx, fakeBin, "noop").CombinedOutput(); err != nil {
+		firstRun := exec.CommandContext(ctx, fakeBin, "noop")
+		firstRun.Env = testfs.EnvWithoutGit()
+		if out, err := firstRun.CombinedOutput(); err != nil {
 			if ctx.Err() != nil {
 				return errors.New("first run of the fake credential helper did not finish within " + firstRunLimit.String())
 			}

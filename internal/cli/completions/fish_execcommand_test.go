@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // TestFishOffersFilesOnlyForAnExecCommandPath asserts the fish script's
@@ -48,7 +50,9 @@ end
 source %q
 __rancher_exec_command_path
 `, tc.prev, "'"+strings.ReplaceAll(tc.cur, "'", `\'`)+"'", scriptPath)
-		err := exec.CommandContext(t.Context(), fish, "-c", driver).Run()
+		cmd := exec.CommandContext(t.Context(), fish, "-c", driver)
+		cmd.Env = testfs.EnvWithoutGit()
+		err := cmd.Run()
 		if got := err == nil; got != tc.want {
 			t.Errorf("after %s, %q: file rule %v, want %v (%v)", tc.prev, tc.cur, got, tc.want, err)
 		}

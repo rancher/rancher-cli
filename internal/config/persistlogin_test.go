@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -451,7 +452,9 @@ func TestPersistRecoveryCommandQuotesAHostileEntryName(t *testing.T) {
 	out, _ := PersistLoginCredential(t.Context(), dir, in)
 	require.NotNil(t, out.ConfigRecovery)
 	assert.Equal(t, clierr.Rancher+" config delete-server 'prod it; rm -rf /'", out.ConfigRecovery.Command)
-	words, err := exec.Command("/bin/sh", "-c", "printf '%s\\n' "+strings.TrimPrefix(clierr.ExpandRemedies(out.ConfigRecovery.Command, ""), "rancher ")).Output()
+	cmd := exec.Command("/bin/sh", "-c", "printf '%s\\n' "+strings.TrimPrefix(clierr.ExpandRemedies(out.ConfigRecovery.Command, ""), "rancher "))
+	cmd.Env = testfs.EnvWithoutGit()
+	words, err := cmd.Output()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"config", "delete-server", hostile}, strings.Split(strings.TrimRight(string(words), "\n"), "\n"))
 }

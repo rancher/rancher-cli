@@ -5,7 +5,9 @@
 // runtime.GOOS, os.Symlink, os.Chmod, os.Geteuid, a modification time read
 // or the raw access list calls. Each difference is then handled in one place.
 // It also writes a file a test then runs, because Linux refuses to run a file
-// that a forked child still has open for writing.
+// that a forked child still has open for writing. It also builds the
+// environment of a process a test starts, without the variables git sets for
+// its hooks.
 // Tests only; no production package imports it.
 package testfs
 

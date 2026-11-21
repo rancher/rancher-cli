@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kubeconfig"
 	rt "github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // noOwnerCommandRE picks one command out of the notice: rancher, the
@@ -65,7 +66,9 @@ func TestNoOwnerNoticeRemediesRunInTheCommandTree(t *testing.T) {
 // noOwnerShellWords splits line the way a POSIX shell does.
 func noOwnerShellWords(t *testing.T, line string) []string {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\n' `+line).Output()
+	cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", `printf '%s\n' `+line)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err, line)
 	return slices.DeleteFunc(strings.Split(string(out), "\n"), func(s string) bool { return s == "" })
 }

@@ -45,7 +45,9 @@ func buildFakeHelper(t *testing.T) string {
 			ext = ".exe"
 		}
 		bin := filepath.Join(dir, "rancher-credential-fake"+ext)
-		if out, err := exec.Command("go", "build", "-o", bin, "./testdata/fakehelper").CombinedOutput(); err != nil {
+		cmd := exec.Command("go", "build", "-o", bin, "./testdata/fakehelper")
+		cmd.Env = testfs.EnvWithoutGit()
+		if out, err := cmd.CombinedOutput(); err != nil {
 			fakeHelperErr = &buildError{out: string(out), err: err}
 			return
 		}
@@ -80,7 +82,9 @@ func firstRun(ctx context.Context, bins ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, firstRunLimit)
 	defer cancel()
 	for _, bin := range bins {
-		out, err := exec.CommandContext(ctx, bin, "noop").CombinedOutput()
+		cmd := exec.CommandContext(ctx, bin, "noop")
+		cmd.Env = testfs.EnvWithoutGit()
+		out, err := cmd.CombinedOutput()
 		if ctx.Err() != nil {
 			return fmt.Errorf("first run of %s did not finish within %s", bin, firstRunLimit)
 		}

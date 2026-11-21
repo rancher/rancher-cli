@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +19,9 @@ func shellFields(t *testing.T, line string) []string {
 	if runtime.GOOS == "windows" {
 		t.Skip("no POSIX shell")
 	}
-	out, err := exec.Command("/bin/sh", "-c", "printf '%s\\n' "+strings.TrimPrefix(line, "rancher ")).Output()
+	cmd := exec.Command("/bin/sh", "-c", "printf '%s\\n' "+strings.TrimPrefix(line, "rancher "))
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err)
 	return append([]string{"rancher"}, strings.Split(strings.TrimRight(string(out), "\n"), "\n")...)
 }

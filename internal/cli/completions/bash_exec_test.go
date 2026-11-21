@@ -67,7 +67,9 @@ printf 'REPLY:%%s\n' "$(printf '%%s,' "${COMPREPLY[@]}")"
 printf 'MARKER:%%s\n' "$([ -e %q ] && echo true || echo false)"
 `, fakeDir, scriptPath, marker, marker, marker)
 
-	out, err := exec.Command(bash, "-c", driver).CombinedOutput()
+	cmd := exec.Command(bash, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("running bash driver: %v\noutput:\n%s", err, out)
 	}
@@ -156,7 +158,9 @@ printf 'REPLY:%%s\n' "$(printf '%%s|' "${COMPREPLY[@]}")"
 printf 'EVIL:%%s\n' "$([ -e %q ] && echo true || echo false)"
 `, fakeDir, scriptPath, evil, evil)
 
-	out, err := exec.Command(bash, "-c", driver).CombinedOutput()
+	cmd := exec.Command(bash, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("running bash driver: %v\noutput:\n%s", err, out)
 	}

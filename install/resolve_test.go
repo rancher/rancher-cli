@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -580,10 +581,14 @@ func TestTagGrammarSharedSource(t *testing.T) {
 	guard, err := filepath.Abs("../scripts/check-release-tag")
 	require.NoError(t, err)
 	for _, tag := range accept {
-		require.NoErrorf(t, exec.Command("sh", guard, tag).Run(), "guard must accept %s", tag)
+		cmd := exec.Command("sh", guard, tag)
+		cmd.Env = testfs.EnvWithoutGit()
+		require.NoErrorf(t, cmd.Run(), "guard must accept %s", tag)
 	}
 	for _, tag := range reject {
-		assert.Errorf(t, exec.Command("sh", guard, tag).Run(), "guard must reject %s", tag)
+		cmd := exec.Command("sh", guard, tag)
+		cmd.Env = testfs.EnvWithoutGit()
+		assert.Errorf(t, cmd.Run(), "guard must reject %s", tag)
 	}
 }
 

@@ -1552,7 +1552,9 @@ func copyRepositoryFile(t *testing.T, rel, destRoot string) {
 // file as a program and a copy that was just written cannot fail with "text
 // file busy".
 func scriptCommand(ctx context.Context, path string, args ...string) *exec.Cmd {
-	return exec.CommandContext(ctx, "/bin/bash", append([]string{path}, args...)...)
+	cmd := exec.CommandContext(ctx, "/bin/bash", append([]string{path}, args...)...)
+	cmd.Env = testfs.EnvWithoutGit()
+	return cmd
 }
 
 // runScript runs the script at path as a program: its first line names the
@@ -1576,7 +1578,7 @@ func runCopiedScript(t *testing.T, dir, path string, env []string, args ...strin
 func runCommandStderr(t *testing.T, cmd *exec.Cmd, dir string, env []string) (int, string) {
 	t.Helper()
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(testfs.EnvWithoutGit(), env...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err := cmd.Run()
@@ -1932,7 +1934,9 @@ func TestGolangciLintVersionCheck(t *testing.T) {
 		assert.Equal(t, 1, strings.Count(stderr, "\n"), "%s: want one line on stderr, got %q", c.name, stderr)
 	}
 
-	out, err := exec.CommandContext(t.Context(), "git", "ls-files", "-s", "--", versionScript).Output()
+	cmd := exec.CommandContext(t.Context(), "git", "ls-files", "-s", "--", versionScript)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(string(out), "100755 "), "%s must be tracked with mode 100755, git has %q", versionScript, strings.TrimSpace(string(out)))
 }

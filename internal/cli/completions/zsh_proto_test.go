@@ -45,7 +45,9 @@ words=%s
 _rancher
 `, binDir, scriptPath, wordsLiteral)
 
-	if out, err := exec.Command(zsh, "-c", driver).CombinedOutput(); err != nil {
+	cmd := exec.Command(zsh, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("zsh driver: %v\n%s", err, out)
 	}
 
@@ -83,7 +85,9 @@ words=('rancher' 'get' '')
 _rancher
 `, binDir, scriptPath)
 
-	out, err := exec.Command(zsh, "-c", driver).CombinedOutput()
+	cmd := exec.Command(zsh, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("zsh driver: %v\n%s", err, out)
 	}

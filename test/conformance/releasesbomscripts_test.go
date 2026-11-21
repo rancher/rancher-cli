@@ -167,7 +167,7 @@ func runScriptCopy(t *testing.T, script, dir string, env []string, args ...strin
 	copyRepositoryFile(t, "scripts/check-release-tag", root)
 	cmd := scriptCommand(t.Context(), filepath.Join(root, script), args...)
 	cmd.Dir = dir
-	cmd.Env = append(gitFreeEnv(), env...)
+	cmd.Env = append(testfs.EnvWithoutGit(), env...)
 	var out, errOut strings.Builder
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	return exitCodeOf(t, cmd.Run()), out.String(), errOut.String()
@@ -558,20 +558,6 @@ jq -n --arg version 2.3 --arg name "$file" --arg digest "$digest" --arg ns "http
   | if env.STUB_NO_NAMESPACE != null then del(.documentNamespace) else . end' > "$out"
 `
 
-// gitFreeEnv returns the environment of this process without the variables git
-// sets for a hook or reads from the caller (GIT_DIR, GIT_INDEX_FILE and the
-// others). A test that runs from a hook inherits them, and they would send the
-// git commands of a temporary repository to the repository being committed.
-func gitFreeEnv() []string {
-	var out []string
-	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GIT_") {
-			out = append(out, kv)
-		}
-	}
-	return out
-}
-
 func newSbomRepo(t *testing.T) *sbomRepo {
 	t.Helper()
 	requireSbomTools(t)
@@ -596,7 +582,7 @@ func newSbomRepo(t *testing.T) *sbomRepo {
 	for _, args := range [][]string{{"init", "-q", "."}, {"add", "-A"}, {"commit", "-q", "-m", "x"}} {
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = r.root
-		cmd.Env = append(gitFreeEnv(), r.env...)
+		cmd.Env = append(testfs.EnvWithoutGit(), r.env...)
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, string(out))
 	}
@@ -607,7 +593,7 @@ func (r *sbomRepo) run(t *testing.T, env []string, args ...string) (int, string)
 	t.Helper()
 	cmd := scriptCommand(t.Context(), filepath.Join(r.root, "scripts/release-sbom"), args...)
 	cmd.Dir = r.root
-	cmd.Env = append(append(gitFreeEnv(), r.env...), env...)
+	cmd.Env = append(append(testfs.EnvWithoutGit(), r.env...), env...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	return exitCodeOf(t, cmd.Run()), stderr.String()
@@ -778,7 +764,7 @@ func TestReleaseBundles(t *testing.T) {
 			copyRepositoryFile(t, bundlesScript, root)
 			cmd := scriptCommand(t.Context(), filepath.Join(root, bundlesScript))
 			cmd.Dir = root
-			cmd.Env = append(gitFreeEnv(), "BUNDLES="+list)
+			cmd.Env = append(testfs.EnvWithoutGit(), "BUNDLES="+list)
 			var stderr strings.Builder
 			cmd.Stderr = &stderr
 			code := exitCodeOf(t, cmd.Run())
@@ -795,20 +781,5 @@ func TestReleaseBundles(t *testing.T) {
 			assert.Equal(t, 1, code)
 			assert.Contains(t, stderr.String(), c.want)
 		})
-	}
-}
-
-// TestGitFreeEnvDropsEveryGitVariable asserts the environment the tests give
-// to git commands in a temporary repository holds no GIT_ variable of the
-// process that runs them, so that a run from a git hook cannot reach the
-// repository being committed.
-func TestGitFreeEnvDropsEveryGitVariable(t *testing.T) {
-	t.Setenv("GIT_DIR", t.TempDir())
-	t.Setenv("GIT_INDEX_FILE", filepath.Join(t.TempDir(), "index"))
-	t.Setenv("GIT_WORK_TREE", t.TempDir())
-	env := gitFreeEnv()
-	assert.NotEmpty(t, env)
-	for _, kv := range env {
-		assert.False(t, strings.HasPrefix(kv, "GIT_"), kv)
 	}
 }

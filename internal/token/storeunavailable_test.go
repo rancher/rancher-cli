@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 )
 
@@ -51,7 +52,9 @@ func TestPluginFirstLoginOnALockedKeychainRefuses(t *testing.T) {
 	require.NoError(t, err)
 	cfg.CredentialStore = ""
 	require.NoError(t, cfg.Write())
-	locked := exec.Command("/bin/sh", "-c", "exit 128").Run()
+	cmd := exec.Command("/bin/sh", "-c", "exit 128")
+	cmd.Env = testfs.EnvWithoutGit()
+	locked := cmd.Run()
 	t.Cleanup(config.SetKeyringBackendForTest(lockedKeychain{err: locked}))
 
 	_, err = x.getToken(t, "c-test", "n", localPrompter())

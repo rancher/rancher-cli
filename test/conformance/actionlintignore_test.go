@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -113,6 +114,7 @@ func TestActionlintIgnoresStayNarrow(t *testing.T) {
 				args = append(args, "-ignore", p)
 			}
 			cmd := exec.CommandContext(t.Context(), tool, append(args, files...)...)
+			cmd.Env = testfs.EnvWithoutGit()
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err == nil {

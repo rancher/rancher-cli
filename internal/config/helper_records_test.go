@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,6 +70,7 @@ func TestHelperRecordsConcurrentAddsLoseNothing(t *testing.T) {
 func TestHelperRecordsLockCrossProcessContention(t *testing.T) {
 	dir := t.TempDir()
 	child := exec.Command(fakeHelperBin(t), "lockhold", filepath.Join(dir, helperRecordsLockName), "2s")
+	child.Env = testfs.EnvWithoutGit()
 	waitForLocked(t, child) // child provably owns the lock now
 
 	start := time.Now()
@@ -85,6 +87,7 @@ func TestHelperRecordsLockBoundedWait(t *testing.T) {
 	defer restore()
 	dir := t.TempDir()
 	child := exec.Command(fakeHelperBin(t), "lockhold", filepath.Join(dir, helperRecordsLockName), "30s")
+	child.Env = testfs.EnvWithoutGit()
 	waitForLocked(t, child)
 
 	err := withHelperRecordsLock(t.Context(), dir, func(*helperRecords) error { return nil })
@@ -95,6 +98,7 @@ func TestHelperRecordsLockBoundedWait(t *testing.T) {
 func TestHelperRecordsLockReleasedOnProcessDeath(t *testing.T) {
 	dir := t.TempDir()
 	child := exec.Command(fakeHelperBin(t), "lockhold", filepath.Join(dir, helperRecordsLockName), "30s")
+	child.Env = testfs.EnvWithoutGit()
 	waitForLocked(t, child) // owns the lock…
 	require.NoError(t, child.Process.Kill(), "…and dies holding it")
 	_, _ = child.Process.Wait()

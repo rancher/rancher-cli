@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -104,7 +105,7 @@ func TestRequireShellPolicy(t *testing.T) {
 	t.Parallel()
 	run := func(call, ci string) (string, error) {
 		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestRequireShellChild$", "-test.v")
-		cmd.Env = append(os.Environ(), shellHelperChild+"="+call, "CI="+ci)
+		cmd.Env = append(testfs.EnvWithoutGit(), shellHelperChild+"="+call, "CI="+ci)
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}

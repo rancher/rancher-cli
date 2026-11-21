@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -77,7 +78,9 @@ var extraStatusReasons = []string{"Denied"}
 // in apimachinery's types.go, read from the module the build uses.
 func statusReasonsInSource(t *testing.T) []string {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "go", "list", "-m", "-f", "{{.Dir}}", "k8s.io/apimachinery").Output()
+	cmd := exec.CommandContext(t.Context(), "go", "list", "-m", "-f", "{{.Dir}}", "k8s.io/apimachinery")
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err, "find the apimachinery module directory")
 	dir := strings.TrimSpace(string(out))
 	require.NotEmpty(t, dir)

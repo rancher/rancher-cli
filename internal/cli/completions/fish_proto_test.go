@@ -53,7 +53,9 @@ source %q
 __rancher_perform_completion
 `, binDir, opcLines.String(), ctQ, scriptPath)
 
-	if out, err := exec.Command(fish, "-c", driver).CombinedOutput(); err != nil {
+	cmd := exec.Command(fish, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("fish driver: %v\n%s", err, out)
 	}
 
@@ -183,7 +185,9 @@ source %q
 __rancher_perform_completion
 `, binDir, opcLines.String(), ctQ, scriptPath)
 
-	out, err := exec.Command(fish, "-c", driver).CombinedOutput()
+	cmd := exec.Command(fish, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("fish driver: %v\n%s", err, out)
 	}

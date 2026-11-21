@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // buildRancherLineStub builds a stand-in `rancher` that prints the lines
@@ -36,7 +38,7 @@ func buildRancherLineStub(t *testing.T) string {
 	}
 	build := exec.Command("go", "build", "-o", filepath.Join(binDir, binName), "main.go")
 	build.Dir = srcDir
-	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GO111MODULE=off")
+	build.Env = append(testfs.EnvWithoutGit(), "CGO_ENABLED=0", "GO111MODULE=off")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building rancher stub: %s", out)
 	}
@@ -74,7 +76,9 @@ foreach ($m in $r.CompletionMatches) { Write-Output ('MATCH:' + $m.CompletionTex
 	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
 		t.Fatalf("writing driver.ps1: %v", err)
 	}
-	out, err := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath).CombinedOutput()
+	cmd := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("pwsh driver: %v\n%s", err, out)
 	}

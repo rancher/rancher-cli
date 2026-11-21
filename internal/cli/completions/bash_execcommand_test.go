@@ -26,7 +26,7 @@ func TestBashExecCommandCompletion(t *testing.T) {
 	bash := requireShell(t, "bash")
 	binDir := t.TempDir()
 	build := exec.CommandContext(t.Context(), "go", "build", "-o", filepath.Join(binDir, "rancher"), "github.com/rancher/rancher-cli/cmd/rancher")
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	build.Env = append(testfs.EnvWithoutGit(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building rancher: %s", out)
 	}
@@ -59,7 +59,9 @@ COMP_TYPE=""
 __rancher_bash_autocomplete
 printf 'REPLY:'; for c in "${COMPREPLY[@]}"; do printf '%%s,' "${c%% }"; done; printf '\n'
 `, binDir, tools, t.TempDir(), t.TempDir(), scriptPath, "'"+tc.word+"'")
-		out, err := exec.CommandContext(t.Context(), bash, "-c", driver).CombinedOutput()
+		cmd := exec.CommandContext(t.Context(), bash, "-c", driver)
+		cmd.Env = testfs.EnvWithoutGit()
+		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("running bash driver: %v\n%s", err, out)
 		}

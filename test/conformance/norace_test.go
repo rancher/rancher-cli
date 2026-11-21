@@ -467,7 +467,7 @@ done
 	}, extraEnv...)
 	cmd := scriptCommand(t.Context(), filepath.Join(root, noRaceScriptPath), args...)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(testfs.EnvWithoutGit(), env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	code := exitCodeOf(t, cmd.Run())

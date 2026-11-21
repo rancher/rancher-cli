@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 func psSingleQuote(s string) string {
@@ -41,7 +43,7 @@ func TestPwshCompletionScriptExecutesSafely(t *testing.T) {
 	// The entry point by import path, so the build does not depend on how
 	// deep this package sits.
 	build := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher")
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	build.Env = append(testfs.EnvWithoutGit(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building rancher: %s", out)
 	}
@@ -77,6 +79,7 @@ Write-Output ('MARKER:' + (Test-Path %s))
 	}
 
 	cmd := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath)
+	cmd.Env = testfs.EnvWithoutGit()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("running pwsh driver: %v\noutput:\n%s", err, out)
@@ -190,7 +193,9 @@ $null = TabExpansion2 -inputScript $line -cursorColumn %d
 			if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
 				t.Fatalf("writing driver.ps1: %v", err)
 			}
-			out, err := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath).CombinedOutput()
+			cmd := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath)
+			cmd.Env = testfs.EnvWithoutGit()
+			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("pwsh driver: %v\n%s", err, out)
 			}
@@ -243,7 +248,7 @@ func buildRancherRecorder(t *testing.T) string {
 	}
 	build := exec.Command("go", "build", "-o", filepath.Join(binDir, binName), "main.go")
 	build.Dir = srcDir
-	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GO111MODULE=off")
+	build.Env = append(testfs.EnvWithoutGit(), "CGO_ENABLED=0", "GO111MODULE=off")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building rancher recorder: %s", out)
 	}
@@ -295,7 +300,9 @@ $null = TabExpansion2 -inputScript $line -cursorColumn $line.Length
 	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
 		t.Fatalf("writing driver.ps1: %v", err)
 	}
-	if out, err := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath).CombinedOutput(); err != nil {
+	cmd := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath)
+	cmd.Env = testfs.EnvWithoutGit()
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("running pwsh driver: %v\noutput:\n%s", err, out)
 	}
 
@@ -324,7 +331,7 @@ func TestPwshCompletionRespectsCursorAndLiteralWildcards(t *testing.T) {
 		binName += ".exe"
 	}
 	build := exec.Command("go", "build", "-o", filepath.Join(binDir, binName), "github.com/rancher/rancher-cli/cmd/rancher")
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	build.Env = append(testfs.EnvWithoutGit(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building rancher: %s", out)
 	}
@@ -356,7 +363,9 @@ Write-Output ('GLOB:' + (($rg.CompletionMatches | Where-Object { $_.ResultType -
 	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
 		t.Fatalf("writing driver.ps1: %v", err)
 	}
-	out, err := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath).CombinedOutput()
+	cmd := exec.Command(shell, "-NoProfile", "-NonInteractive", "-File", driverPath)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("running pwsh driver: %v\noutput:\n%s", err, out)
 	}

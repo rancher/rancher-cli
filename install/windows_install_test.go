@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1361,7 +1362,7 @@ func shortPathName(t *testing.T, path string) string {
 	// cmd quoting both mangle quoted paths handed through exec argv.
 	cmd := exec.Command("powershell", "-NoProfile", "-Command",
 		"(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:RANCHER_TEST_SHORTPATH_TARGET).ShortPath")
-	cmd.Env = append(os.Environ(), "RANCHER_TEST_SHORTPATH_TARGET="+path)
+	cmd.Env = append(testfs.EnvWithoutGit(), "RANCHER_TEST_SHORTPATH_TARGET="+path)
 	out, err := cmd.Output()
 	require.NoError(t, err)
 	s := strings.TrimSpace(string(out))

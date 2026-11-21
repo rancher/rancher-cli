@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -261,7 +262,9 @@ func execArgv(t *testing.T, hint string) []string {
 	t.Helper()
 	const sep = "\x1e"
 	script := "rancher() { for a in \"$@\"; do printf '%s" + sep + "' \"$a\"; done; }\n" + hint
-	out, err := exec.Command("sh", "-c", script).Output()
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.Output()
 	require.NoError(t, err, "hint must be valid, executable POSIX sh: %q", hint)
 	s := strings.TrimSuffix(string(out), sep)
 	if s == "" {

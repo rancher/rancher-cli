@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/packages"
@@ -153,7 +154,7 @@ func closureFindings(t *testing.T, goos, goarch string, patterns ...string) []st
 	t.Helper()
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps,
-		Env:  append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"),
+		Env:  append(testfs.EnvWithoutGit(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"),
 	}
 	roots, err := packages.Load(cfg, patterns...)
 	require.NoError(t, err)
@@ -253,7 +254,7 @@ func lockHolderFindings(t *testing.T, goos, goarch string, patterns ...string) [
 	t.Helper()
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps,
-		Env:  append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"),
+		Env:  append(testfs.EnvWithoutGit(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0"),
 	}
 	roots, err := packages.Load(cfg, patterns...)
 	require.NoError(t, err)

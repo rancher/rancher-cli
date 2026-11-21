@@ -1,4 +1,14 @@
 #!/bin/bash
 # Enforce the per-commit validation gate (gofmt + vet + lint + tests; the
 # race detector covers all but the source scans and the cache model).
+#
+# git sets GIT_DIR, GIT_INDEX_FILE and other GIT_* variables for a hook. The
+# gate runs tests that start git in temporary directories, and with these
+# variables set such a git command would act on this repository. Clear every
+# GIT_* variable; the gate needs none of them.
+for v in $(compgen -e); do
+  case $v in
+    GIT_*) unset "$v" ;;
+  esac
+done
 exec make validate

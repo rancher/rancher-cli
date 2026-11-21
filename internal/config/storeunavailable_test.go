@@ -14,6 +14,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/testfs"
 )
 
 // assertStoreUnavailable asserts err is CREDENTIAL_STORE_UNAVAILABLE as an
@@ -47,7 +48,9 @@ func securityExit(t *testing.T, status int) error {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a POSIX shell to produce an exit status")
 	}
-	err := exec.Command("/bin/sh", "-c", fmt.Sprintf("exit %d", status)).Run()
+	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("exit %d", status))
+	cmd.Env = testfs.EnvWithoutGit()
+	err := cmd.Run()
 	_, ok := errors.AsType[*exec.ExitError](err)
 	require.True(t, ok, "got %v", err)
 	return err

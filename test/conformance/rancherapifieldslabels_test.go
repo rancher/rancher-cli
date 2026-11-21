@@ -82,7 +82,7 @@ func runAPIFieldsScript(t *testing.T, hook map[string]any, extraEnv ...string) a
 	marker := filepath.Join(t.TempDir(), "docker-calls")
 
 	cmd := exec.CommandContext(t.Context(), "bash", apiFieldsScript)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(testfs.EnvWithoutGit(),
 		"PATH="+stubs+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"RANCHER_API_FIELDS_LABELS_FILE="+hookFile,
 		"RANCHER_API_FIELDS_UPDATE=",

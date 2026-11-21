@@ -145,7 +145,7 @@ func (s *admissionCheckSetup) goModDir(files map[string]string) string {
 func (s *admissionCheckSetup) run(env ...string) admissionCheckRun {
 	s.t.Helper()
 	cmd := exec.CommandContext(s.t.Context(), "bash", admissionCheckScript)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(testfs.EnvWithoutGit(),
 		"GOPROXY=off",
 		"GOMODCACHE="+s.t.TempDir(),
 		"GOTOOLCHAIN=local",
@@ -223,7 +223,7 @@ func buildAdmissionCheck(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "check")
 	cmd := exec.CommandContext(t.Context(), "bash", admissionCheckScript)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(testfs.EnvWithoutGit(),
 		"GOPROXY=off",
 		"GOMODCACHE="+t.TempDir(),
 		"GOTOOLCHAIN=local",
@@ -782,7 +782,9 @@ func admissionCheckVersionRules(t *testing.T, bin string) {
 
 	t.Run("the repository edition reads the go.mod of this repository", func(t *testing.T) {
 		t.Parallel()
-		out, err := exec.CommandContext(t.Context(), "go", "mod", "edit", "-json", "go.mod").Output()
+		cmd := exec.CommandContext(t.Context(), "go", "mod", "edit", "-json", "go.mod")
+		cmd.Env = testfs.EnvWithoutGit()
+		out, err := cmd.Output()
 		require.NoError(t, err)
 		var edit struct {
 			Replace []struct {

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -178,7 +179,9 @@ func TestCLIImagesWorkload(t *testing.T) {
 func buildCLI(t *testing.T) (string, error) {
 	t.Helper()
 	binPath := t.TempDir() + "/rancher"
-	out, err := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher").CombinedOutput()
+	cmd := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher")
+	cmd.Env = testfs.EnvWithoutGit()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("building rancher CLI: %s", out)
 	}

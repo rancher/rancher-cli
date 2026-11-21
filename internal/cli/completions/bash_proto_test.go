@@ -81,7 +81,9 @@ COMP_TYPE=""
 __rancher_bash_autocomplete
 `, binDir, scriptPath, wordsLiteral, compCword)
 
-	if out, err := exec.Command(bash, "-c", driver).CombinedOutput(); err != nil {
+	cmd := exec.Command(bash, "-c", driver)
+	cmd.Env = testfs.EnvWithoutGit()
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("bash driver: %v\n%s", err, out)
 	}
 

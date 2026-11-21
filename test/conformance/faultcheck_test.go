@@ -97,7 +97,7 @@ func runFaultCheck(t *testing.T, dir, allowlist string) (int, string) {
 	list := filepath.Join(t.TempDir(), "allowlist")
 	writeTestFile(t, list, allowlist)
 	cmd := exec.CommandContext(t.Context(), script)
-	cmd.Env = append(os.Environ(), "FAULT_LOG_DIR="+dir, "FAULT_ALLOWLIST="+list)
+	cmd.Env = append(testfs.EnvWithoutGit(), "FAULT_LOG_DIR="+dir, "FAULT_ALLOWLIST="+list)
 	out, err := cmd.CombinedOutput()
 	return exitCodeOf(t, err), string(out)
 }
