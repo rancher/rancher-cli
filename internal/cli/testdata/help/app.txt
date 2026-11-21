@@ -1,0 +1,25 @@
+NAME:
+   rancher app - Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)
+
+USAGE:
+   rancher app [command [command options]]
+
+COMMANDS:
+   install:    Install a chart from a ClusterRepo as a Helm release
+   uninstall:  Uninstall a Helm release that Rancher shows as an App
+   upgrade:    Upgrade, downgrade or change the values of a Helm release that Rancher shows as an App
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

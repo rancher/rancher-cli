@@ -1,0 +1,22 @@
+{"line":["delete","persistentvolumeclaim","--cluster","v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim","--cluster=v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim","-cluster","v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","persistentvolumeclaim","--namespace","v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim","--namespace=v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim","-n","v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim","--wait"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"wait":true},"exit":0}
+{"line":["delete","persistentvolumeclaim","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","persistentvolumeclaim","--wait=false"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"wait":false},"exit":0}
+{"line":["delete","persistentvolumeclaim","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","persistentvolumeclaim","-wait"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"wait":true},"exit":0}
+{"line":["delete","persistentvolumeclaim","--timeout","v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim","--timeout=v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim","-timeout","v"],"kind":"runs","command":"delete persistentvolumeclaim","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","persistentvolumeclaim"],"kind":"runs","command":"delete persistentvolumeclaim","exit":0}
+{"line":["delete","persistentvolumeclaim","--help"],"kind":"help","command":"delete persistentvolumeclaim","exit":0,"helpPath":"delete-persistentvolumeclaim.txt"}
+{"line":["delete","persistentvolumeclaim","x"],"kind":"runs","command":"delete persistentvolumeclaim","args":["x"],"exit":0}
+{"line":["delete","persistentvolumeclaim","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","persistentvolumeclaims"],"kind":"runs","command":"delete persistentvolumeclaim","exit":0}
+{"line":["delete","pvc"],"kind":"runs","command":"delete persistentvolumeclaim","exit":0}
+{"line":["delete","persistentvolumeclaims","--help"],"kind":"help","command":"delete persistentvolumeclaim","exit":0,"helpPath":"delete-persistentvolumeclaim.txt"}

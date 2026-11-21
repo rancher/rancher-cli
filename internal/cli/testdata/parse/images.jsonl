@@ -1,0 +1,19 @@
+{"line":["images","--cluster","v"],"kind":"runs","command":"images","flags":{"cluster":"v"},"exit":0}
+{"line":["images","--cluster=v"],"kind":"runs","command":"images","flags":{"cluster":"v"},"exit":0}
+{"line":["images","-cluster","v"],"kind":"runs","command":"images","flags":{"cluster":"v"},"exit":0}
+{"line":["images","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["images","--all-clusters"],"kind":"runs","command":"images","flags":{"all-clusters":true},"exit":0}
+{"line":["images","--all-clusters="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all-clusters= has an empty value; a bool flag typed with = takes true or false","  hint: write --all-clusters or --all-clusters=true|false"]}
+{"line":["images","--all-clusters=false"],"kind":"runs","command":"images","flags":{"all-clusters":false},"exit":0}
+{"line":["images","--all-clusters= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all-clusters= has an empty value; a bool flag typed with = takes true or false","  hint: write --all-clusters or --all-clusters=true|false"]}
+{"line":["images","-all-clusters"],"kind":"runs","command":"images","flags":{"all-clusters":true},"exit":0}
+{"line":["images","--by","v"],"kind":"runs","command":"images","flags":{"by":"v"},"exit":0}
+{"line":["images","--by=v"],"kind":"runs","command":"images","flags":{"by":"v"},"exit":0}
+{"line":["images","-by","v"],"kind":"runs","command":"images","flags":{"by":"v"},"exit":0}
+{"line":["images","--match","v"],"kind":"runs","command":"images","flags":{"match":["v"]},"exit":0}
+{"line":["images","--match=v"],"kind":"runs","command":"images","flags":{"match":["v"]},"exit":0}
+{"line":["images","-match","v"],"kind":"runs","command":"images","flags":{"match":["v"]},"exit":0}
+{"line":["images"],"kind":"runs","command":"images","exit":0}
+{"line":["images","--help"],"kind":"help","command":"images","exit":0,"helpPath":"images.txt"}
+{"line":["images","x"],"kind":"runs","command":"images","args":["x"],"exit":0}
+{"line":["images","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

@@ -1,0 +1,27 @@
+{"line":["get","app","--cluster","v"],"kind":"runs","command":"get app","flags":{"cluster":"v"},"exit":0}
+{"line":["get","app","--cluster=v"],"kind":"runs","command":"get app","flags":{"cluster":"v"},"exit":0}
+{"line":["get","app","-cluster","v"],"kind":"runs","command":"get app","flags":{"cluster":"v"},"exit":0}
+{"line":["get","app","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","app","--namespace","v"],"kind":"runs","command":"get app","flags":{"namespace":"v"},"exit":0}
+{"line":["get","app","--namespace=v"],"kind":"runs","command":"get app","flags":{"namespace":"v"},"exit":0}
+{"line":["get","app","-n","v"],"kind":"runs","command":"get app","flags":{"namespace":"v"},"exit":0}
+{"line":["get","app","--selector","v"],"kind":"runs","command":"get app","flags":{"selector":"v"},"exit":0}
+{"line":["get","app","--selector=v"],"kind":"runs","command":"get app","flags":{"selector":"v"},"exit":0}
+{"line":["get","app","-l","v"],"kind":"runs","command":"get app","flags":{"selector":"v"},"exit":0}
+{"line":["get","app","--wait"],"kind":"runs","command":"get app","flags":{"wait":true},"exit":0}
+{"line":["get","app","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","app","--wait=false"],"kind":"runs","command":"get app","flags":{"wait":false},"exit":0}
+{"line":["get","app","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","app","-wait"],"kind":"runs","command":"get app","flags":{"wait":true},"exit":0}
+{"line":["get","app","--for","v"],"kind":"runs","command":"get app","flags":{"for":"v"},"exit":0}
+{"line":["get","app","--for=v"],"kind":"runs","command":"get app","flags":{"for":"v"},"exit":0}
+{"line":["get","app","-for","v"],"kind":"runs","command":"get app","flags":{"for":"v"},"exit":0}
+{"line":["get","app","--timeout","v"],"kind":"runs","command":"get app","flags":{"timeout":"v"},"exit":0}
+{"line":["get","app","--timeout=v"],"kind":"runs","command":"get app","flags":{"timeout":"v"},"exit":0}
+{"line":["get","app","-timeout","v"],"kind":"runs","command":"get app","flags":{"timeout":"v"},"exit":0}
+{"line":["get","app"],"kind":"runs","command":"get app","exit":0}
+{"line":["get","app","--help"],"kind":"help","command":"get app","exit":0,"helpPath":"get-app.txt"}
+{"line":["get","app","x"],"kind":"runs","command":"get app","args":["x"],"exit":0}
+{"line":["get","app","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","apps"],"kind":"runs","command":"get app","exit":0}
+{"line":["get","apps","--help"],"kind":"help","command":"get app","exit":0,"helpPath":"get-app.txt"}

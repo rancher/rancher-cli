@@ -1,0 +1,18 @@
+{"line":["delete","management-token","--wait"],"kind":"runs","command":"delete management-token","flags":{"wait":true},"exit":0}
+{"line":["delete","management-token","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","management-token","--wait=false"],"kind":"runs","command":"delete management-token","flags":{"wait":false},"exit":0}
+{"line":["delete","management-token","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","management-token","-wait"],"kind":"runs","command":"delete management-token","flags":{"wait":true},"exit":0}
+{"line":["delete","management-token","--timeout","v"],"kind":"runs","command":"delete management-token","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","management-token","--timeout=v"],"kind":"runs","command":"delete management-token","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","management-token","-timeout","v"],"kind":"runs","command":"delete management-token","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","management-token","--timeout"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --timeout; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","management-token"],"kind":"runs","command":"delete management-token","exit":0}
+{"line":["delete","management-token","--help"],"kind":"help","command":"delete management-token","exit":0,"helpPath":"delete-management-token.txt"}
+{"line":["delete","management-token","x"],"kind":"runs","command":"delete management-token","args":["x"],"exit":0}
+{"line":["delete","management-token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","managementtokens"],"kind":"runs","command":"delete management-token","exit":0}
+{"line":["delete","management-tokens"],"kind":"runs","command":"delete management-token","exit":0}
+{"line":["delete","v3token"],"kind":"runs","command":"delete management-token","exit":0}
+{"line":["delete","v3tokens"],"kind":"runs","command":"delete management-token","exit":0}
+{"line":["delete","managementtokens","--help"],"kind":"help","command":"delete management-token","exit":0,"helpPath":"delete-management-token.txt"}

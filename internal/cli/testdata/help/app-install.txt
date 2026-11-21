@@ -1,0 +1,35 @@
+NAME:
+   rancher app install - Install a chart from a ClusterRepo as a Helm release
+
+USAGE:
+   rancher app install [options] <release>
+
+OPTIONS:
+   --chart name                         chart name in the repository
+   --cluster id|name                    target cluster id|name
+   --description description            release description
+   --disable-openapi-validation         do not validate the rendered resources against the OpenAPI schema
+   --helm-timeout timeout               Helm timeout for each step, 1s to 15m (default 10m)
+   --helm-wait                          Helm waits for the chart's resources (default true; --helm-wait=false sends false)
+   --help, -h                           show help
+   --namespace namespace, -n namespace  namespace of the release; it must exist
+   --no-hooks                           do not run the chart's hooks
+   --no-system-default-registry         send neither registry value, also when a values file sets one
+   --repo name                          ClusterRepo name to install from
+   --system-default-registry host       registry host to send at values.global.cattle.systemDefaultRegistry and values.global.systemDefaultRegistry
+   --timeout timeout                    wait timeout, e.g. 10m (default 55m, at most 55m; starts the wait)
+   --values file [ --values file ]      values file, repeatable, merged in order; - reads stdin
+   --version version                    exact chart version (default: the version `rancher charts` shows)
+   --wait                               wait until Helm's run finishes and report how it ended
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

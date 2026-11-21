@@ -1,0 +1,29 @@
+{"line":["access","explain","--cluster","v"],"kind":"runs","command":"access explain","flags":{"cluster":"v"},"exit":0}
+{"line":["access","explain","--cluster=v"],"kind":"runs","command":"access explain","flags":{"cluster":"v"},"exit":0}
+{"line":["access","explain","-cluster","v"],"kind":"runs","command":"access explain","flags":{"cluster":"v"},"exit":0}
+{"line":["access","explain","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","explain","--namespace","v"],"kind":"runs","command":"access explain","flags":{"namespace":"v"},"exit":0}
+{"line":["access","explain","--namespace=v"],"kind":"runs","command":"access explain","flags":{"namespace":"v"},"exit":0}
+{"line":["access","explain","-n","v"],"kind":"runs","command":"access explain","flags":{"namespace":"v"},"exit":0}
+{"line":["access","explain","--group","v"],"kind":"runs","command":"access explain","flags":{"group":"v"},"exit":0}
+{"line":["access","explain","--group=v"],"kind":"runs","command":"access explain","flags":{"group":"v"},"exit":0}
+{"line":["access","explain","-group","v"],"kind":"runs","command":"access explain","flags":{"group":"v"},"exit":0}
+{"line":["access","explain","--subresource","v"],"kind":"runs","command":"access explain","flags":{"subresource":"v"},"exit":0}
+{"line":["access","explain","--subresource=v"],"kind":"runs","command":"access explain","flags":{"subresource":"v"},"exit":0}
+{"line":["access","explain","-subresource","v"],"kind":"runs","command":"access explain","flags":{"subresource":"v"},"exit":0}
+{"line":["access","explain","--non-resource-url","v"],"kind":"runs","command":"access explain","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","explain","--non-resource-url=v"],"kind":"runs","command":"access explain","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","explain","-non-resource-url","v"],"kind":"runs","command":"access explain","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","explain","--as","v"],"kind":"runs","command":"access explain","flags":{"as":"v"},"exit":0}
+{"line":["access","explain","--as=v"],"kind":"runs","command":"access explain","flags":{"as":"v"},"exit":0}
+{"line":["access","explain","-as","v"],"kind":"runs","command":"access explain","flags":{"as":"v"},"exit":0}
+{"line":["access","explain","--type","v"],"kind":"runs","command":"access explain","flags":{"type":"v"},"exit":0}
+{"line":["access","explain","--type=v"],"kind":"runs","command":"access explain","flags":{"type":"v"},"exit":0}
+{"line":["access","explain","-type","v"],"kind":"runs","command":"access explain","flags":{"type":"v"},"exit":0}
+{"line":["access","explain","--timeout","v"],"kind":"runs","command":"access explain","flags":{"timeout":"v"},"exit":0}
+{"line":["access","explain","--timeout=v"],"kind":"runs","command":"access explain","flags":{"timeout":"v"},"exit":0}
+{"line":["access","explain","-timeout","v"],"kind":"runs","command":"access explain","flags":{"timeout":"v"},"exit":0}
+{"line":["access","explain"],"kind":"runs","command":"access explain","exit":0}
+{"line":["access","explain","--help"],"kind":"help","command":"access explain","exit":0,"helpPath":"access-explain.txt"}
+{"line":["access","explain","x"],"kind":"runs","command":"access explain","args":["x"],"exit":0}
+{"line":["access","explain","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

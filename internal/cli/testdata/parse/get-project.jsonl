@@ -1,0 +1,24 @@
+{"line":["get","project","--cluster","v"],"kind":"runs","command":"get project","flags":{"cluster":"v"},"exit":0}
+{"line":["get","project","--cluster=v"],"kind":"runs","command":"get project","flags":{"cluster":"v"},"exit":0}
+{"line":["get","project","-cluster","v"],"kind":"runs","command":"get project","flags":{"cluster":"v"},"exit":0}
+{"line":["get","project","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","project","--selector","v"],"kind":"runs","command":"get project","flags":{"selector":"v"},"exit":0}
+{"line":["get","project","--selector=v"],"kind":"runs","command":"get project","flags":{"selector":"v"},"exit":0}
+{"line":["get","project","-l","v"],"kind":"runs","command":"get project","flags":{"selector":"v"},"exit":0}
+{"line":["get","project","--wait"],"kind":"runs","command":"get project","flags":{"wait":true},"exit":0}
+{"line":["get","project","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","project","--wait=false"],"kind":"runs","command":"get project","flags":{"wait":false},"exit":0}
+{"line":["get","project","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","project","-wait"],"kind":"runs","command":"get project","flags":{"wait":true},"exit":0}
+{"line":["get","project","--for","v"],"kind":"runs","command":"get project","flags":{"for":"v"},"exit":0}
+{"line":["get","project","--for=v"],"kind":"runs","command":"get project","flags":{"for":"v"},"exit":0}
+{"line":["get","project","-for","v"],"kind":"runs","command":"get project","flags":{"for":"v"},"exit":0}
+{"line":["get","project","--timeout","v"],"kind":"runs","command":"get project","flags":{"timeout":"v"},"exit":0}
+{"line":["get","project","--timeout=v"],"kind":"runs","command":"get project","flags":{"timeout":"v"},"exit":0}
+{"line":["get","project","-timeout","v"],"kind":"runs","command":"get project","flags":{"timeout":"v"},"exit":0}
+{"line":["get","project"],"kind":"runs","command":"get project","exit":0}
+{"line":["get","project","--help"],"kind":"help","command":"get project","exit":0,"helpPath":"get-project.txt"}
+{"line":["get","project","x"],"kind":"runs","command":"get project","args":["x"],"exit":0}
+{"line":["get","project","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","projects"],"kind":"runs","command":"get project","exit":0}
+{"line":["get","projects","--help"],"kind":"help","command":"get project","exit":0,"helpPath":"get-project.txt"}

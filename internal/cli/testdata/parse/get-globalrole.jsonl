@@ -1,0 +1,21 @@
+{"line":["get","globalrole","--selector","v"],"kind":"runs","command":"get globalrole","flags":{"selector":"v"},"exit":0}
+{"line":["get","globalrole","--selector=v"],"kind":"runs","command":"get globalrole","flags":{"selector":"v"},"exit":0}
+{"line":["get","globalrole","-l","v"],"kind":"runs","command":"get globalrole","flags":{"selector":"v"},"exit":0}
+{"line":["get","globalrole","--selector"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --selector; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","globalrole","--wait"],"kind":"runs","command":"get globalrole","flags":{"wait":true},"exit":0}
+{"line":["get","globalrole","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","globalrole","--wait=false"],"kind":"runs","command":"get globalrole","flags":{"wait":false},"exit":0}
+{"line":["get","globalrole","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","globalrole","-wait"],"kind":"runs","command":"get globalrole","flags":{"wait":true},"exit":0}
+{"line":["get","globalrole","--for","v"],"kind":"runs","command":"get globalrole","flags":{"for":"v"},"exit":0}
+{"line":["get","globalrole","--for=v"],"kind":"runs","command":"get globalrole","flags":{"for":"v"},"exit":0}
+{"line":["get","globalrole","-for","v"],"kind":"runs","command":"get globalrole","flags":{"for":"v"},"exit":0}
+{"line":["get","globalrole","--timeout","v"],"kind":"runs","command":"get globalrole","flags":{"timeout":"v"},"exit":0}
+{"line":["get","globalrole","--timeout=v"],"kind":"runs","command":"get globalrole","flags":{"timeout":"v"},"exit":0}
+{"line":["get","globalrole","-timeout","v"],"kind":"runs","command":"get globalrole","flags":{"timeout":"v"},"exit":0}
+{"line":["get","globalrole"],"kind":"runs","command":"get globalrole","exit":0}
+{"line":["get","globalrole","--help"],"kind":"help","command":"get globalrole","exit":0,"helpPath":"get-globalrole.txt"}
+{"line":["get","globalrole","x"],"kind":"runs","command":"get globalrole","args":["x"],"exit":0}
+{"line":["get","globalrole","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","globalroles"],"kind":"runs","command":"get globalrole","exit":0}
+{"line":["get","globalroles","--help"],"kind":"help","command":"get globalrole","exit":0,"helpPath":"get-globalrole.txt"}

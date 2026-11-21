@@ -1,0 +1,22 @@
+NAME:
+   rancher auth get-token - Authenticate and print a kubeconfig ExecCredential
+
+USAGE:
+   rancher auth get-token [options]
+
+OPTIONS:
+   --auth-flow flow      identity-provider flow
+   --auth-provider name  auth config name to sign in with (for example corp-ldap); with --user-id it must be the auth config's exact name, and only tokens made through it are used; without --user-id a provider name or type such as openldap also works, and with several matches the CLI asks, or lists them in the error
+   --cacert path         PEM CA bundle, a path or the literal PEM
+   --cluster id|name     cluster id|name to create the exec-credential token for; required unless --user-id is given
+   --help, -h            show help
+   --name name           stored server name to use
+   --server url          Rancher server url
+   --user-id id          Rancher user id the token must belong to; with it, --cluster may be omitted for a token for Rancher itself
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>

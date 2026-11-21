@@ -1,0 +1,14 @@
+{"line":["access","clusters","--as","v"],"kind":"runs","command":"access clusters","flags":{"as":"v"},"exit":0}
+{"line":["access","clusters","--as=v"],"kind":"runs","command":"access clusters","flags":{"as":"v"},"exit":0}
+{"line":["access","clusters","-as","v"],"kind":"runs","command":"access clusters","flags":{"as":"v"},"exit":0}
+{"line":["access","clusters","--as"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --as; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","clusters","--type","v"],"kind":"runs","command":"access clusters","flags":{"type":"v"},"exit":0}
+{"line":["access","clusters","--type=v"],"kind":"runs","command":"access clusters","flags":{"type":"v"},"exit":0}
+{"line":["access","clusters","-type","v"],"kind":"runs","command":"access clusters","flags":{"type":"v"},"exit":0}
+{"line":["access","clusters","--timeout","v"],"kind":"runs","command":"access clusters","flags":{"timeout":"v"},"exit":0}
+{"line":["access","clusters","--timeout=v"],"kind":"runs","command":"access clusters","flags":{"timeout":"v"},"exit":0}
+{"line":["access","clusters","-timeout","v"],"kind":"runs","command":"access clusters","flags":{"timeout":"v"},"exit":0}
+{"line":["access","clusters"],"kind":"runs","command":"access clusters","exit":0}
+{"line":["access","clusters","--help"],"kind":"help","command":"access clusters","exit":0,"helpPath":"access-clusters.txt"}
+{"line":["access","clusters","x"],"kind":"runs","command":"access clusters","args":["x"],"exit":0}
+{"line":["access","clusters","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

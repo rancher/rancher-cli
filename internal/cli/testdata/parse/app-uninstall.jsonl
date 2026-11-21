@@ -1,0 +1,32 @@
+{"line":["app","uninstall","--cluster","v"],"kind":"runs","command":"app uninstall","flags":{"cluster":"v"},"exit":0}
+{"line":["app","uninstall","--cluster=v"],"kind":"runs","command":"app uninstall","flags":{"cluster":"v"},"exit":0}
+{"line":["app","uninstall","-cluster","v"],"kind":"runs","command":"app uninstall","flags":{"cluster":"v"},"exit":0}
+{"line":["app","uninstall","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["app","uninstall","--namespace","v"],"kind":"runs","command":"app uninstall","flags":{"namespace":"v"},"exit":0}
+{"line":["app","uninstall","--namespace=v"],"kind":"runs","command":"app uninstall","flags":{"namespace":"v"},"exit":0}
+{"line":["app","uninstall","-n","v"],"kind":"runs","command":"app uninstall","flags":{"namespace":"v"},"exit":0}
+{"line":["app","uninstall","--keep-history"],"kind":"runs","command":"app uninstall","flags":{"keep-history":true},"exit":0}
+{"line":["app","uninstall","--keep-history="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --keep-history= has an empty value; a bool flag typed with = takes true or false","  hint: write --keep-history or --keep-history=true|false"]}
+{"line":["app","uninstall","--keep-history=false"],"kind":"runs","command":"app uninstall","flags":{"keep-history":false},"exit":0}
+{"line":["app","uninstall","--keep-history= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --keep-history= has an empty value; a bool flag typed with = takes true or false","  hint: write --keep-history or --keep-history=true|false"]}
+{"line":["app","uninstall","-keep-history"],"kind":"runs","command":"app uninstall","flags":{"keep-history":true},"exit":0}
+{"line":["app","uninstall","--no-hooks"],"kind":"runs","command":"app uninstall","flags":{"no-hooks":true},"exit":0}
+{"line":["app","uninstall","--no-hooks="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-hooks= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-hooks or --no-hooks=true|false"]}
+{"line":["app","uninstall","--no-hooks=false"],"kind":"runs","command":"app uninstall","flags":{"no-hooks":false},"exit":0}
+{"line":["app","uninstall","--no-hooks= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-hooks= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-hooks or --no-hooks=true|false"]}
+{"line":["app","uninstall","-no-hooks"],"kind":"runs","command":"app uninstall","flags":{"no-hooks":true},"exit":0}
+{"line":["app","uninstall","--helm-timeout","v"],"kind":"runs","command":"app uninstall","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","uninstall","--helm-timeout=v"],"kind":"runs","command":"app uninstall","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","uninstall","-helm-timeout","v"],"kind":"runs","command":"app uninstall","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","uninstall","--wait"],"kind":"runs","command":"app uninstall","flags":{"wait":true},"exit":0}
+{"line":["app","uninstall","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["app","uninstall","--wait=false"],"kind":"runs","command":"app uninstall","flags":{"wait":false},"exit":0}
+{"line":["app","uninstall","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["app","uninstall","-wait"],"kind":"runs","command":"app uninstall","flags":{"wait":true},"exit":0}
+{"line":["app","uninstall","--timeout","v"],"kind":"runs","command":"app uninstall","flags":{"timeout":"v"},"exit":0}
+{"line":["app","uninstall","--timeout=v"],"kind":"runs","command":"app uninstall","flags":{"timeout":"v"},"exit":0}
+{"line":["app","uninstall","-timeout","v"],"kind":"runs","command":"app uninstall","flags":{"timeout":"v"},"exit":0}
+{"line":["app","uninstall"],"kind":"runs","command":"app uninstall","exit":0}
+{"line":["app","uninstall","--help"],"kind":"help","command":"app uninstall","exit":0,"helpPath":"app-uninstall.txt"}
+{"line":["app","uninstall","x"],"kind":"runs","command":"app uninstall","args":["x"],"exit":0}
+{"line":["app","uninstall","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

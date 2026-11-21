@@ -1,0 +1,22 @@
+{"line":["delete","daemonset","--cluster","v"],"kind":"runs","command":"delete daemonset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","daemonset","--cluster=v"],"kind":"runs","command":"delete daemonset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","daemonset","-cluster","v"],"kind":"runs","command":"delete daemonset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","daemonset","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","daemonset","--namespace","v"],"kind":"runs","command":"delete daemonset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","daemonset","--namespace=v"],"kind":"runs","command":"delete daemonset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","daemonset","-n","v"],"kind":"runs","command":"delete daemonset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","daemonset","--wait"],"kind":"runs","command":"delete daemonset","flags":{"wait":true},"exit":0}
+{"line":["delete","daemonset","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","daemonset","--wait=false"],"kind":"runs","command":"delete daemonset","flags":{"wait":false},"exit":0}
+{"line":["delete","daemonset","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","daemonset","-wait"],"kind":"runs","command":"delete daemonset","flags":{"wait":true},"exit":0}
+{"line":["delete","daemonset","--timeout","v"],"kind":"runs","command":"delete daemonset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","daemonset","--timeout=v"],"kind":"runs","command":"delete daemonset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","daemonset","-timeout","v"],"kind":"runs","command":"delete daemonset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","daemonset"],"kind":"runs","command":"delete daemonset","exit":0}
+{"line":["delete","daemonset","--help"],"kind":"help","command":"delete daemonset","exit":0,"helpPath":"delete-daemonset.txt"}
+{"line":["delete","daemonset","x"],"kind":"runs","command":"delete daemonset","args":["x"],"exit":0}
+{"line":["delete","daemonset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","daemonsets"],"kind":"runs","command":"delete daemonset","exit":0}
+{"line":["delete","ds"],"kind":"runs","command":"delete daemonset","exit":0}
+{"line":["delete","daemonsets","--help"],"kind":"help","command":"delete daemonset","exit":0,"helpPath":"delete-daemonset.txt"}

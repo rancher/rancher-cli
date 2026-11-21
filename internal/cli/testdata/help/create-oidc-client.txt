@@ -1,0 +1,29 @@
+NAME:
+   rancher create oidc-client - Create an OIDC client for Rancher's embedded OIDC provider
+
+DESCRIPTION:
+   A Rancher Prime feature; the connected server decides whether it is available.
+
+USAGE:
+   rancher create oidc-client [options] <name>
+
+OPTIONS:
+   --description string                       description of the client
+   --help, -h                                 show help
+   --redirect-uri URI [ --redirect-uri URI ]  allowed redirect URI (repeatable)
+   --refresh-ttl string                       refresh token expiration, a duration of whole seconds above zero, e.g. 24h (default 24h)
+   --scope scope [ --scope scope ]            OAuth scope the client is allowed to request (repeatable)
+   --timeout timeout                          wait timeout for the server to provision the client, e.g. 90s (default 60s)
+   --token-ttl string                         access token expiration, a duration of whole seconds above zero, e.g. 1h (default 1h)
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

@@ -1,0 +1,22 @@
+{"line":["patch","cronjob","--cluster","v"],"kind":"runs","command":"patch cronjob","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","cronjob","--cluster=v"],"kind":"runs","command":"patch cronjob","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","cronjob","-cluster","v"],"kind":"runs","command":"patch cronjob","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","cronjob","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","cronjob","--namespace","v"],"kind":"runs","command":"patch cronjob","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","cronjob","--namespace=v"],"kind":"runs","command":"patch cronjob","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","cronjob","-n","v"],"kind":"runs","command":"patch cronjob","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","cronjob","--patch","v"],"kind":"runs","command":"patch cronjob","flags":{"patch":"v"},"exit":0}
+{"line":["patch","cronjob","--patch=v"],"kind":"runs","command":"patch cronjob","flags":{"patch":"v"},"exit":0}
+{"line":["patch","cronjob","-p","v"],"kind":"runs","command":"patch cronjob","flags":{"patch":"v"},"exit":0}
+{"line":["patch","cronjob","--patch-file","v"],"kind":"runs","command":"patch cronjob","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","cronjob","--patch-file=v"],"kind":"runs","command":"patch cronjob","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","cronjob","-patch-file","v"],"kind":"runs","command":"patch cronjob","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","cronjob","--type","v"],"kind":"runs","command":"patch cronjob","flags":{"type":"v"},"exit":0}
+{"line":["patch","cronjob","--type=v"],"kind":"runs","command":"patch cronjob","flags":{"type":"v"},"exit":0}
+{"line":["patch","cronjob","-type","v"],"kind":"runs","command":"patch cronjob","flags":{"type":"v"},"exit":0}
+{"line":["patch","cronjob"],"kind":"runs","command":"patch cronjob","exit":0}
+{"line":["patch","cronjob","--help"],"kind":"help","command":"patch cronjob","exit":0,"helpPath":"patch-cronjob.txt"}
+{"line":["patch","cronjob","x"],"kind":"runs","command":"patch cronjob","args":["x"],"exit":0}
+{"line":["patch","cronjob","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","cronjobs"],"kind":"runs","command":"patch cronjob","exit":0}
+{"line":["patch","cronjobs","--help"],"kind":"help","command":"patch cronjob","exit":0,"helpPath":"patch-cronjob.txt"}

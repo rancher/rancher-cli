@@ -1,0 +1,25 @@
+{"line":["get","etcd-snapshot-restore","--cluster","v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"cluster":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","--cluster=v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"cluster":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","-cluster","v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"cluster":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","etcd-snapshot-restore","--selector","v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"selector":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","--selector=v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"selector":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","-l","v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"selector":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","--wait"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"wait":true},"exit":0}
+{"line":["get","etcd-snapshot-restore","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","etcd-snapshot-restore","--wait=false"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"wait":false},"exit":0}
+{"line":["get","etcd-snapshot-restore","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","etcd-snapshot-restore","-wait"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"wait":true},"exit":0}
+{"line":["get","etcd-snapshot-restore","--for","v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"for":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","--for=v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"for":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","-for","v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"for":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","--timeout","v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"timeout":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","--timeout=v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"timeout":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore","-timeout","v"],"kind":"runs","command":"get etcd-snapshot-restore","flags":{"timeout":"v"},"exit":0}
+{"line":["get","etcd-snapshot-restore"],"kind":"runs","command":"get etcd-snapshot-restore","exit":0}
+{"line":["get","etcd-snapshot-restore","--help"],"kind":"help","command":"get etcd-snapshot-restore","exit":0,"helpPath":"get-etcd-snapshot-restore.txt"}
+{"line":["get","etcd-snapshot-restore","x"],"kind":"runs","command":"get etcd-snapshot-restore","args":["x"],"exit":0}
+{"line":["get","etcd-snapshot-restore","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","etcdsnapshotrestores"],"kind":"runs","command":"get etcd-snapshot-restore","exit":0}
+{"line":["get","etcd-snapshot-restores"],"kind":"runs","command":"get etcd-snapshot-restore","exit":0}
+{"line":["get","etcdsnapshotrestores","--help"],"kind":"help","command":"get etcd-snapshot-restore","exit":0,"helpPath":"get-etcd-snapshot-restore.txt"}

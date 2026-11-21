@@ -1,0 +1,35 @@
+{"line":["create","machine-config","--region","v"],"kind":"runs","command":"create machine-config","flags":{"region":"v"},"exit":0}
+{"line":["create","machine-config","--region=v"],"kind":"runs","command":"create machine-config","flags":{"region":"v"},"exit":0}
+{"line":["create","machine-config","-region","v"],"kind":"runs","command":"create machine-config","flags":{"region":"v"},"exit":0}
+{"line":["create","machine-config","--region"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --region; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","machine-config","--size","v"],"kind":"runs","command":"create machine-config","flags":{"size":"v"},"exit":0}
+{"line":["create","machine-config","--size=v"],"kind":"runs","command":"create machine-config","flags":{"size":"v"},"exit":0}
+{"line":["create","machine-config","-size","v"],"kind":"runs","command":"create machine-config","flags":{"size":"v"},"exit":0}
+{"line":["create","machine-config","--image","v"],"kind":"runs","command":"create machine-config","flags":{"image":"v"},"exit":0}
+{"line":["create","machine-config","--image=v"],"kind":"runs","command":"create machine-config","flags":{"image":"v"},"exit":0}
+{"line":["create","machine-config","-image","v"],"kind":"runs","command":"create machine-config","flags":{"image":"v"},"exit":0}
+{"line":["create","machine-config","--monitoring"],"kind":"runs","command":"create machine-config","flags":{"monitoring":true},"exit":0}
+{"line":["create","machine-config","--monitoring="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --monitoring= has an empty value; a bool flag typed with = takes true or false","  hint: write --monitoring or --monitoring=true|false"]}
+{"line":["create","machine-config","--monitoring=false"],"kind":"runs","command":"create machine-config","flags":{"monitoring":false},"exit":0}
+{"line":["create","machine-config","--monitoring= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --monitoring= has an empty value; a bool flag typed with = takes true or false","  hint: write --monitoring or --monitoring=true|false"]}
+{"line":["create","machine-config","-monitoring"],"kind":"runs","command":"create machine-config","flags":{"monitoring":true},"exit":0}
+{"line":["create","machine-config","--ipv6"],"kind":"runs","command":"create machine-config","flags":{"ipv6":true},"exit":0}
+{"line":["create","machine-config","--ipv6="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --ipv6= has an empty value; a bool flag typed with = takes true or false","  hint: write --ipv6 or --ipv6=true|false"]}
+{"line":["create","machine-config","--ipv6=false"],"kind":"runs","command":"create machine-config","flags":{"ipv6":false},"exit":0}
+{"line":["create","machine-config","--ipv6= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --ipv6= has an empty value; a bool flag typed with = takes true or false","  hint: write --ipv6 or --ipv6=true|false"]}
+{"line":["create","machine-config","-ipv6"],"kind":"runs","command":"create machine-config","flags":{"ipv6":true},"exit":0}
+{"line":["create","machine-config","--private-networking"],"kind":"runs","command":"create machine-config","flags":{"private-networking":true},"exit":0}
+{"line":["create","machine-config","--private-networking="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --private-networking= has an empty value; a bool flag typed with = takes true or false","  hint: write --private-networking or --private-networking=true|false"]}
+{"line":["create","machine-config","--private-networking=false"],"kind":"runs","command":"create machine-config","flags":{"private-networking":false},"exit":0}
+{"line":["create","machine-config","--private-networking= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --private-networking= has an empty value; a bool flag typed with = takes true or false","  hint: write --private-networking or --private-networking=true|false"]}
+{"line":["create","machine-config","-private-networking"],"kind":"runs","command":"create machine-config","flags":{"private-networking":true},"exit":0}
+{"line":["create","machine-config","--tags","v"],"kind":"runs","command":"create machine-config","flags":{"tags":"v"},"exit":0}
+{"line":["create","machine-config","--tags=v"],"kind":"runs","command":"create machine-config","flags":{"tags":"v"},"exit":0}
+{"line":["create","machine-config","-tags","v"],"kind":"runs","command":"create machine-config","flags":{"tags":"v"},"exit":0}
+{"line":["create","machine-config","--set","v"],"kind":"runs","command":"create machine-config","flags":{"set":["v"]},"exit":0}
+{"line":["create","machine-config","--set=v"],"kind":"runs","command":"create machine-config","flags":{"set":["v"]},"exit":0}
+{"line":["create","machine-config","-set","v"],"kind":"runs","command":"create machine-config","flags":{"set":["v"]},"exit":0}
+{"line":["create","machine-config"],"kind":"runs","command":"create machine-config","exit":0}
+{"line":["create","machine-config","--help"],"kind":"help","command":"create machine-config","exit":0,"helpPath":"create-machine-config.txt"}
+{"line":["create","machine-config","x"],"kind":"runs","command":"create machine-config","args":["x"],"exit":0}
+{"line":["create","machine-config","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}

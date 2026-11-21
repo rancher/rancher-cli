@@ -1,0 +1,23 @@
+{"line":["create","oidc-client","--description","v"],"kind":"runs","command":"create oidc-client","flags":{"description":"v"},"exit":0}
+{"line":["create","oidc-client","--description=v"],"kind":"runs","command":"create oidc-client","flags":{"description":"v"},"exit":0}
+{"line":["create","oidc-client","-description","v"],"kind":"runs","command":"create oidc-client","flags":{"description":"v"},"exit":0}
+{"line":["create","oidc-client","--description"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --description; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","oidc-client","--redirect-uri","v"],"kind":"runs","command":"create oidc-client","flags":{"redirect-uri":["v"]},"exit":0}
+{"line":["create","oidc-client","--redirect-uri=v"],"kind":"runs","command":"create oidc-client","flags":{"redirect-uri":["v"]},"exit":0}
+{"line":["create","oidc-client","-redirect-uri","v"],"kind":"runs","command":"create oidc-client","flags":{"redirect-uri":["v"]},"exit":0}
+{"line":["create","oidc-client","--scope","v"],"kind":"runs","command":"create oidc-client","flags":{"scope":["v"]},"exit":0}
+{"line":["create","oidc-client","--scope=v"],"kind":"runs","command":"create oidc-client","flags":{"scope":["v"]},"exit":0}
+{"line":["create","oidc-client","-scope","v"],"kind":"runs","command":"create oidc-client","flags":{"scope":["v"]},"exit":0}
+{"line":["create","oidc-client","--token-ttl","v"],"kind":"runs","command":"create oidc-client","flags":{"token-ttl":"v"},"exit":0}
+{"line":["create","oidc-client","--token-ttl=v"],"kind":"runs","command":"create oidc-client","flags":{"token-ttl":"v"},"exit":0}
+{"line":["create","oidc-client","-token-ttl","v"],"kind":"runs","command":"create oidc-client","flags":{"token-ttl":"v"},"exit":0}
+{"line":["create","oidc-client","--refresh-ttl","v"],"kind":"runs","command":"create oidc-client","flags":{"refresh-ttl":"v"},"exit":0}
+{"line":["create","oidc-client","--refresh-ttl=v"],"kind":"runs","command":"create oidc-client","flags":{"refresh-ttl":"v"},"exit":0}
+{"line":["create","oidc-client","-refresh-ttl","v"],"kind":"runs","command":"create oidc-client","flags":{"refresh-ttl":"v"},"exit":0}
+{"line":["create","oidc-client","--timeout","v"],"kind":"runs","command":"create oidc-client","flags":{"timeout":"v"},"exit":0}
+{"line":["create","oidc-client","--timeout=v"],"kind":"runs","command":"create oidc-client","flags":{"timeout":"v"},"exit":0}
+{"line":["create","oidc-client","-timeout","v"],"kind":"runs","command":"create oidc-client","flags":{"timeout":"v"},"exit":0}
+{"line":["create","oidc-client"],"kind":"runs","command":"create oidc-client","exit":0}
+{"line":["create","oidc-client","--help"],"kind":"help","command":"create oidc-client","exit":0,"helpPath":"create-oidc-client.txt"}
+{"line":["create","oidc-client","x"],"kind":"runs","command":"create oidc-client","args":["x"],"exit":0}
+{"line":["create","oidc-client","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

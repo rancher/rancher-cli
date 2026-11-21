@@ -1,0 +1,7 @@
+{"line":["completion"],"kind":"runs","command":"completion","exit":0}
+{"line":["completion","--help"],"kind":"help","command":"completion","exit":0,"helpPath":"completion.txt"}
+{"line":["completion","x"],"kind":"runs","command":"completion","args":["x"],"exit":0}
+{"line":["completion","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["completion","-o","--yes"],"kind":"refused","command":"completion","flags":{"output":"--yes"},"exit":2,"stderr":["error (VALIDATION): flag -o got flag --yes as its value - empty shell variable? check that the value for -o is set, or use -o=<value> to pass a literal flag-like string"]}
+{"line":["completion","--config="],"kind":"runs","command":"completion","flags":{"config":""},"exit":0}
+{"line":["completion","--config",""],"kind":"runs","command":"completion","flags":{"config":""},"exit":0}

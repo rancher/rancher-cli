@@ -1,0 +1,23 @@
+{"line":["patch","configmap","--cluster","v"],"kind":"runs","command":"patch configmap","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","configmap","--cluster=v"],"kind":"runs","command":"patch configmap","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","configmap","-cluster","v"],"kind":"runs","command":"patch configmap","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","configmap","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","configmap","--namespace","v"],"kind":"runs","command":"patch configmap","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","configmap","--namespace=v"],"kind":"runs","command":"patch configmap","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","configmap","-n","v"],"kind":"runs","command":"patch configmap","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","configmap","--patch","v"],"kind":"runs","command":"patch configmap","flags":{"patch":"v"},"exit":0}
+{"line":["patch","configmap","--patch=v"],"kind":"runs","command":"patch configmap","flags":{"patch":"v"},"exit":0}
+{"line":["patch","configmap","-p","v"],"kind":"runs","command":"patch configmap","flags":{"patch":"v"},"exit":0}
+{"line":["patch","configmap","--patch-file","v"],"kind":"runs","command":"patch configmap","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","configmap","--patch-file=v"],"kind":"runs","command":"patch configmap","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","configmap","-patch-file","v"],"kind":"runs","command":"patch configmap","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","configmap","--type","v"],"kind":"runs","command":"patch configmap","flags":{"type":"v"},"exit":0}
+{"line":["patch","configmap","--type=v"],"kind":"runs","command":"patch configmap","flags":{"type":"v"},"exit":0}
+{"line":["patch","configmap","-type","v"],"kind":"runs","command":"patch configmap","flags":{"type":"v"},"exit":0}
+{"line":["patch","configmap"],"kind":"runs","command":"patch configmap","exit":0}
+{"line":["patch","configmap","--help"],"kind":"help","command":"patch configmap","exit":0,"helpPath":"patch-configmap.txt"}
+{"line":["patch","configmap","x"],"kind":"runs","command":"patch configmap","args":["x"],"exit":0}
+{"line":["patch","configmap","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","configmaps"],"kind":"runs","command":"patch configmap","exit":0}
+{"line":["patch","cm"],"kind":"runs","command":"patch configmap","exit":0}
+{"line":["patch","configmaps","--help"],"kind":"help","command":"patch configmap","exit":0,"helpPath":"patch-configmap.txt"}

@@ -1,0 +1,83 @@
+{"line":["app","upgrade","--cluster","v"],"kind":"runs","command":"app upgrade","flags":{"cluster":"v"},"exit":0}
+{"line":["app","upgrade","--cluster=v"],"kind":"runs","command":"app upgrade","flags":{"cluster":"v"},"exit":0}
+{"line":["app","upgrade","-cluster","v"],"kind":"runs","command":"app upgrade","flags":{"cluster":"v"},"exit":0}
+{"line":["app","upgrade","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["app","upgrade","--namespace","v"],"kind":"runs","command":"app upgrade","flags":{"namespace":"v"},"exit":0}
+{"line":["app","upgrade","--namespace=v"],"kind":"runs","command":"app upgrade","flags":{"namespace":"v"},"exit":0}
+{"line":["app","upgrade","-n","v"],"kind":"runs","command":"app upgrade","flags":{"namespace":"v"},"exit":0}
+{"line":["app","upgrade","--repo","v"],"kind":"runs","command":"app upgrade","flags":{"repo":"v"},"exit":0}
+{"line":["app","upgrade","--repo=v"],"kind":"runs","command":"app upgrade","flags":{"repo":"v"},"exit":0}
+{"line":["app","upgrade","-repo","v"],"kind":"runs","command":"app upgrade","flags":{"repo":"v"},"exit":0}
+{"line":["app","upgrade","--chart","v"],"kind":"runs","command":"app upgrade","flags":{"chart":"v"},"exit":0}
+{"line":["app","upgrade","--chart=v"],"kind":"runs","command":"app upgrade","flags":{"chart":"v"},"exit":0}
+{"line":["app","upgrade","-chart","v"],"kind":"runs","command":"app upgrade","flags":{"chart":"v"},"exit":0}
+{"line":["app","upgrade","--version","v"],"kind":"runs","command":"app upgrade","flags":{"version":"v"},"exit":0}
+{"line":["app","upgrade","--version=v"],"kind":"runs","command":"app upgrade","flags":{"version":"v"},"exit":0}
+{"line":["app","upgrade","-version","v"],"kind":"runs","command":"app upgrade","flags":{"version":"v"},"exit":0}
+{"line":["app","upgrade","--values","v"],"kind":"runs","command":"app upgrade","flags":{"values":["v"]},"exit":0}
+{"line":["app","upgrade","--values=v"],"kind":"runs","command":"app upgrade","flags":{"values":["v"]},"exit":0}
+{"line":["app","upgrade","-values","v"],"kind":"runs","command":"app upgrade","flags":{"values":["v"]},"exit":0}
+{"line":["app","upgrade","--reset-values"],"kind":"runs","command":"app upgrade","flags":{"reset-values":true},"exit":0}
+{"line":["app","upgrade","--reset-values="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --reset-values= has an empty value; a bool flag typed with = takes true or false","  hint: write --reset-values or --reset-values=true|false"]}
+{"line":["app","upgrade","--reset-values=false"],"kind":"runs","command":"app upgrade","flags":{"reset-values":false},"exit":0}
+{"line":["app","upgrade","--reset-values= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --reset-values= has an empty value; a bool flag typed with = takes true or false","  hint: write --reset-values or --reset-values=true|false"]}
+{"line":["app","upgrade","-reset-values"],"kind":"runs","command":"app upgrade","flags":{"reset-values":true},"exit":0}
+{"line":["app","upgrade","--force"],"kind":"runs","command":"app upgrade","flags":{"force":true},"exit":0}
+{"line":["app","upgrade","--force="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --force= has an empty value; a bool flag typed with = takes true or false","  hint: write --force or --force=true|false"]}
+{"line":["app","upgrade","--force=false"],"kind":"runs","command":"app upgrade","flags":{"force":false},"exit":0}
+{"line":["app","upgrade","--force= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --force= has an empty value; a bool flag typed with = takes true or false","  hint: write --force or --force=true|false"]}
+{"line":["app","upgrade","-force"],"kind":"runs","command":"app upgrade","flags":{"force":true},"exit":0}
+{"line":["app","upgrade","--take-ownership"],"kind":"runs","command":"app upgrade","flags":{"take-ownership":true},"exit":0}
+{"line":["app","upgrade","--take-ownership="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --take-ownership= has an empty value; a bool flag typed with = takes true or false","  hint: write --take-ownership or --take-ownership=true|false"]}
+{"line":["app","upgrade","--take-ownership=false"],"kind":"runs","command":"app upgrade","flags":{"take-ownership":false},"exit":0}
+{"line":["app","upgrade","--take-ownership= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --take-ownership= has an empty value; a bool flag typed with = takes true or false","  hint: write --take-ownership or --take-ownership=true|false"]}
+{"line":["app","upgrade","-take-ownership"],"kind":"runs","command":"app upgrade","flags":{"take-ownership":true},"exit":0}
+{"line":["app","upgrade","--cleanup-on-fail"],"kind":"runs","command":"app upgrade","flags":{"cleanup-on-fail":true},"exit":0}
+{"line":["app","upgrade","--cleanup-on-fail="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --cleanup-on-fail= has an empty value; a bool flag typed with = takes true or false","  hint: write --cleanup-on-fail or --cleanup-on-fail=true|false"]}
+{"line":["app","upgrade","--cleanup-on-fail=false"],"kind":"runs","command":"app upgrade","flags":{"cleanup-on-fail":false},"exit":0}
+{"line":["app","upgrade","--cleanup-on-fail= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --cleanup-on-fail= has an empty value; a bool flag typed with = takes true or false","  hint: write --cleanup-on-fail or --cleanup-on-fail=true|false"]}
+{"line":["app","upgrade","-cleanup-on-fail"],"kind":"runs","command":"app upgrade","flags":{"cleanup-on-fail":true},"exit":0}
+{"line":["app","upgrade","--history-max","v"],"kind":"runs","command":"app upgrade","flags":{"history-max":"v"},"exit":0}
+{"line":["app","upgrade","--history-max=v"],"kind":"runs","command":"app upgrade","flags":{"history-max":"v"},"exit":0}
+{"line":["app","upgrade","-history-max","v"],"kind":"runs","command":"app upgrade","flags":{"history-max":"v"},"exit":0}
+{"line":["app","upgrade","--helm-wait"],"kind":"runs","command":"app upgrade","flags":{"helm-wait":true},"exit":0}
+{"line":["app","upgrade","--helm-wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --helm-wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --helm-wait or --helm-wait=true|false"]}
+{"line":["app","upgrade","--helm-wait=false"],"kind":"runs","command":"app upgrade","flags":{"helm-wait":false},"exit":0}
+{"line":["app","upgrade","--helm-wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --helm-wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --helm-wait or --helm-wait=true|false"]}
+{"line":["app","upgrade","-helm-wait"],"kind":"runs","command":"app upgrade","flags":{"helm-wait":true},"exit":0}
+{"line":["app","upgrade","--helm-timeout","v"],"kind":"runs","command":"app upgrade","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","upgrade","--helm-timeout=v"],"kind":"runs","command":"app upgrade","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","upgrade","-helm-timeout","v"],"kind":"runs","command":"app upgrade","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","upgrade","--no-hooks"],"kind":"runs","command":"app upgrade","flags":{"no-hooks":true},"exit":0}
+{"line":["app","upgrade","--no-hooks="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-hooks= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-hooks or --no-hooks=true|false"]}
+{"line":["app","upgrade","--no-hooks=false"],"kind":"runs","command":"app upgrade","flags":{"no-hooks":false},"exit":0}
+{"line":["app","upgrade","--no-hooks= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-hooks= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-hooks or --no-hooks=true|false"]}
+{"line":["app","upgrade","-no-hooks"],"kind":"runs","command":"app upgrade","flags":{"no-hooks":true},"exit":0}
+{"line":["app","upgrade","--disable-openapi-validation"],"kind":"runs","command":"app upgrade","flags":{"disable-openapi-validation":true},"exit":0}
+{"line":["app","upgrade","--disable-openapi-validation="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --disable-openapi-validation= has an empty value; a bool flag typed with = takes true or false","  hint: write --disable-openapi-validation or --disable-openapi-validation=true|false"]}
+{"line":["app","upgrade","--disable-openapi-validation=false"],"kind":"runs","command":"app upgrade","flags":{"disable-openapi-validation":false},"exit":0}
+{"line":["app","upgrade","--disable-openapi-validation= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --disable-openapi-validation= has an empty value; a bool flag typed with = takes true or false","  hint: write --disable-openapi-validation or --disable-openapi-validation=true|false"]}
+{"line":["app","upgrade","-disable-openapi-validation"],"kind":"runs","command":"app upgrade","flags":{"disable-openapi-validation":true},"exit":0}
+{"line":["app","upgrade","--description","v"],"kind":"runs","command":"app upgrade","flags":{"description":"v"},"exit":0}
+{"line":["app","upgrade","--description=v"],"kind":"runs","command":"app upgrade","flags":{"description":"v"},"exit":0}
+{"line":["app","upgrade","-description","v"],"kind":"runs","command":"app upgrade","flags":{"description":"v"},"exit":0}
+{"line":["app","upgrade","--system-default-registry","v"],"kind":"runs","command":"app upgrade","flags":{"system-default-registry":"v"},"exit":0}
+{"line":["app","upgrade","--system-default-registry=v"],"kind":"runs","command":"app upgrade","flags":{"system-default-registry":"v"},"exit":0}
+{"line":["app","upgrade","-system-default-registry","v"],"kind":"runs","command":"app upgrade","flags":{"system-default-registry":"v"},"exit":0}
+{"line":["app","upgrade","--no-system-default-registry"],"kind":"runs","command":"app upgrade","flags":{"no-system-default-registry":true},"exit":0}
+{"line":["app","upgrade","--no-system-default-registry="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-system-default-registry= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-system-default-registry or --no-system-default-registry=true|false"]}
+{"line":["app","upgrade","--no-system-default-registry=false"],"kind":"runs","command":"app upgrade","flags":{"no-system-default-registry":false},"exit":0}
+{"line":["app","upgrade","--no-system-default-registry= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-system-default-registry= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-system-default-registry or --no-system-default-registry=true|false"]}
+{"line":["app","upgrade","-no-system-default-registry"],"kind":"runs","command":"app upgrade","flags":{"no-system-default-registry":true},"exit":0}
+{"line":["app","upgrade","--wait"],"kind":"runs","command":"app upgrade","flags":{"wait":true},"exit":0}
+{"line":["app","upgrade","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["app","upgrade","--wait=false"],"kind":"runs","command":"app upgrade","flags":{"wait":false},"exit":0}
+{"line":["app","upgrade","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["app","upgrade","-wait"],"kind":"runs","command":"app upgrade","flags":{"wait":true},"exit":0}
+{"line":["app","upgrade","--timeout","v"],"kind":"runs","command":"app upgrade","flags":{"timeout":"v"},"exit":0}
+{"line":["app","upgrade","--timeout=v"],"kind":"runs","command":"app upgrade","flags":{"timeout":"v"},"exit":0}
+{"line":["app","upgrade","-timeout","v"],"kind":"runs","command":"app upgrade","flags":{"timeout":"v"},"exit":0}
+{"line":["app","upgrade"],"kind":"runs","command":"app upgrade","exit":0}
+{"line":["app","upgrade","--help"],"kind":"help","command":"app upgrade","exit":0,"helpPath":"app-upgrade.txt"}
+{"line":["app","upgrade","x"],"kind":"runs","command":"app upgrade","args":["x"],"exit":0}
+{"line":["app","upgrade","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

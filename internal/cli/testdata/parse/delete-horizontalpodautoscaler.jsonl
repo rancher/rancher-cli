@@ -1,0 +1,22 @@
+{"line":["delete","horizontalpodautoscaler","--cluster","v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler","--cluster=v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler","-cluster","v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","horizontalpodautoscaler","--namespace","v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler","--namespace=v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler","-n","v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler","--wait"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"wait":true},"exit":0}
+{"line":["delete","horizontalpodautoscaler","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","horizontalpodautoscaler","--wait=false"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"wait":false},"exit":0}
+{"line":["delete","horizontalpodautoscaler","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","horizontalpodautoscaler","-wait"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"wait":true},"exit":0}
+{"line":["delete","horizontalpodautoscaler","--timeout","v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler","--timeout=v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler","-timeout","v"],"kind":"runs","command":"delete horizontalpodautoscaler","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","horizontalpodautoscaler"],"kind":"runs","command":"delete horizontalpodautoscaler","exit":0}
+{"line":["delete","horizontalpodautoscaler","--help"],"kind":"help","command":"delete horizontalpodautoscaler","exit":0,"helpPath":"delete-horizontalpodautoscaler.txt"}
+{"line":["delete","horizontalpodautoscaler","x"],"kind":"runs","command":"delete horizontalpodautoscaler","args":["x"],"exit":0}
+{"line":["delete","horizontalpodautoscaler","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","horizontalpodautoscalers"],"kind":"runs","command":"delete horizontalpodautoscaler","exit":0}
+{"line":["delete","hpa"],"kind":"runs","command":"delete horizontalpodautoscaler","exit":0}
+{"line":["delete","horizontalpodautoscalers","--help"],"kind":"help","command":"delete horizontalpodautoscaler","exit":0,"helpPath":"delete-horizontalpodautoscaler.txt"}

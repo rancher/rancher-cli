@@ -1,0 +1,11 @@
+{"line":["skill","uninstall","--agent","v"],"kind":"runs","command":"skill uninstall","flags":{"agent":"v"},"exit":0}
+{"line":["skill","uninstall","--agent=v"],"kind":"runs","command":"skill uninstall","flags":{"agent":"v"},"exit":0}
+{"line":["skill","uninstall","-agent","v"],"kind":"runs","command":"skill uninstall","flags":{"agent":"v"},"exit":0}
+{"line":["skill","uninstall","--agent"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --agent; pass --help for usage","  hint: rancher schema"]}
+{"line":["skill","uninstall","--scope","v"],"kind":"runs","command":"skill uninstall","flags":{"scope":"v"},"exit":0}
+{"line":["skill","uninstall","--scope=v"],"kind":"runs","command":"skill uninstall","flags":{"scope":"v"},"exit":0}
+{"line":["skill","uninstall","-scope","v"],"kind":"runs","command":"skill uninstall","flags":{"scope":"v"},"exit":0}
+{"line":["skill","uninstall"],"kind":"runs","command":"skill uninstall","exit":0}
+{"line":["skill","uninstall","--help"],"kind":"help","command":"skill uninstall","exit":0,"helpPath":"skill-uninstall.txt"}
+{"line":["skill","uninstall","x"],"kind":"runs","command":"skill uninstall","args":["x"],"exit":0}
+{"line":["skill","uninstall","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

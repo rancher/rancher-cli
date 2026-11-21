@@ -1,0 +1,15 @@
+NAME:
+   rancher telemetry reset - Delete what is recorded and keep the telemetry key
+
+USAGE:
+   rancher telemetry reset [options]
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>

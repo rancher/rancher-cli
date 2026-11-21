@@ -1,0 +1,27 @@
+{"line":["get","operation","--cluster","v"],"kind":"runs","command":"get operation","flags":{"cluster":"v"},"exit":0}
+{"line":["get","operation","--cluster=v"],"kind":"runs","command":"get operation","flags":{"cluster":"v"},"exit":0}
+{"line":["get","operation","-cluster","v"],"kind":"runs","command":"get operation","flags":{"cluster":"v"},"exit":0}
+{"line":["get","operation","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","operation","--namespace","v"],"kind":"runs","command":"get operation","flags":{"namespace":"v"},"exit":0}
+{"line":["get","operation","--namespace=v"],"kind":"runs","command":"get operation","flags":{"namespace":"v"},"exit":0}
+{"line":["get","operation","-n","v"],"kind":"runs","command":"get operation","flags":{"namespace":"v"},"exit":0}
+{"line":["get","operation","--selector","v"],"kind":"runs","command":"get operation","flags":{"selector":"v"},"exit":0}
+{"line":["get","operation","--selector=v"],"kind":"runs","command":"get operation","flags":{"selector":"v"},"exit":0}
+{"line":["get","operation","-l","v"],"kind":"runs","command":"get operation","flags":{"selector":"v"},"exit":0}
+{"line":["get","operation","--wait"],"kind":"runs","command":"get operation","flags":{"wait":true},"exit":0}
+{"line":["get","operation","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","operation","--wait=false"],"kind":"runs","command":"get operation","flags":{"wait":false},"exit":0}
+{"line":["get","operation","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","operation","-wait"],"kind":"runs","command":"get operation","flags":{"wait":true},"exit":0}
+{"line":["get","operation","--for","v"],"kind":"runs","command":"get operation","flags":{"for":"v"},"exit":0}
+{"line":["get","operation","--for=v"],"kind":"runs","command":"get operation","flags":{"for":"v"},"exit":0}
+{"line":["get","operation","-for","v"],"kind":"runs","command":"get operation","flags":{"for":"v"},"exit":0}
+{"line":["get","operation","--timeout","v"],"kind":"runs","command":"get operation","flags":{"timeout":"v"},"exit":0}
+{"line":["get","operation","--timeout=v"],"kind":"runs","command":"get operation","flags":{"timeout":"v"},"exit":0}
+{"line":["get","operation","-timeout","v"],"kind":"runs","command":"get operation","flags":{"timeout":"v"},"exit":0}
+{"line":["get","operation"],"kind":"runs","command":"get operation","exit":0}
+{"line":["get","operation","--help"],"kind":"help","command":"get operation","exit":0,"helpPath":"get-operation.txt"}
+{"line":["get","operation","x"],"kind":"runs","command":"get operation","args":["x"],"exit":0}
+{"line":["get","operation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","operations"],"kind":"runs","command":"get operation","exit":0}
+{"line":["get","operations","--help"],"kind":"help","command":"get operation","exit":0,"helpPath":"get-operation.txt"}

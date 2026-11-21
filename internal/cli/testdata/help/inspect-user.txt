@@ -1,0 +1,16 @@
+NAME:
+   rancher inspect user - Inspect a user: id and names, groups, and role bindings at global, cluster and project level
+
+USAGE:
+   rancher inspect user [options] <user>
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

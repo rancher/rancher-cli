@@ -1,0 +1,24 @@
+{"line":["get","clustergroup","--namespace","v"],"kind":"runs","command":"get clustergroup","flags":{"namespace":"v"},"exit":0}
+{"line":["get","clustergroup","--namespace=v"],"kind":"runs","command":"get clustergroup","flags":{"namespace":"v"},"exit":0}
+{"line":["get","clustergroup","-n","v"],"kind":"runs","command":"get clustergroup","flags":{"namespace":"v"},"exit":0}
+{"line":["get","clustergroup","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","clustergroup","--selector","v"],"kind":"runs","command":"get clustergroup","flags":{"selector":"v"},"exit":0}
+{"line":["get","clustergroup","--selector=v"],"kind":"runs","command":"get clustergroup","flags":{"selector":"v"},"exit":0}
+{"line":["get","clustergroup","-l","v"],"kind":"runs","command":"get clustergroup","flags":{"selector":"v"},"exit":0}
+{"line":["get","clustergroup","--wait"],"kind":"runs","command":"get clustergroup","flags":{"wait":true},"exit":0}
+{"line":["get","clustergroup","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","clustergroup","--wait=false"],"kind":"runs","command":"get clustergroup","flags":{"wait":false},"exit":0}
+{"line":["get","clustergroup","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","clustergroup","-wait"],"kind":"runs","command":"get clustergroup","flags":{"wait":true},"exit":0}
+{"line":["get","clustergroup","--for","v"],"kind":"runs","command":"get clustergroup","flags":{"for":"v"},"exit":0}
+{"line":["get","clustergroup","--for=v"],"kind":"runs","command":"get clustergroup","flags":{"for":"v"},"exit":0}
+{"line":["get","clustergroup","-for","v"],"kind":"runs","command":"get clustergroup","flags":{"for":"v"},"exit":0}
+{"line":["get","clustergroup","--timeout","v"],"kind":"runs","command":"get clustergroup","flags":{"timeout":"v"},"exit":0}
+{"line":["get","clustergroup","--timeout=v"],"kind":"runs","command":"get clustergroup","flags":{"timeout":"v"},"exit":0}
+{"line":["get","clustergroup","-timeout","v"],"kind":"runs","command":"get clustergroup","flags":{"timeout":"v"},"exit":0}
+{"line":["get","clustergroup"],"kind":"runs","command":"get clustergroup","exit":0}
+{"line":["get","clustergroup","--help"],"kind":"help","command":"get clustergroup","exit":0,"helpPath":"get-clustergroup.txt"}
+{"line":["get","clustergroup","x"],"kind":"runs","command":"get clustergroup","args":["x"],"exit":0}
+{"line":["get","clustergroup","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","clustergroups"],"kind":"runs","command":"get clustergroup","exit":0}
+{"line":["get","clustergroups","--help"],"kind":"help","command":"get clustergroup","exit":0,"helpPath":"get-clustergroup.txt"}

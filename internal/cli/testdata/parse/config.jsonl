@@ -1,0 +1,118 @@
+{"line":["config",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","\t"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\\t\"","  hint: rancher schema"]}
+{"line":["config","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["config"," x "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" x \"","  hint: rancher schema"]}
+{"line":["config","","","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","","","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config"," ","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"get\"","  hint: rancher schema"]}
+{"line":["config"," get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" get\"","  hint: rancher schema"]}
+{"line":["config","nosuch"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["config","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["config"," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" - \"","  hint: rancher schema"]}
+{"line":["config","\t-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\\t-\"","  hint: rancher schema"]}
+{"line":["config","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["config"," - ","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["config","-","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["config","-","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["config","- x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"- x\"","  hint: rancher schema"]}
+{"line":["config","--"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config"," -- "],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--help\"","  hint: rancher schema"]}
+{"line":["config","--","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["config","--","--yes="],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--yes=\"","  hint: rancher schema"]}
+{"line":["config","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["config","-1","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["config","-\u20ac"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\u20ac\"","  hint: rancher schema"]}
+{"line":["config","-\u00e9"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","---x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","---yes"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","---help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","--=x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","-="],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-=\"","  hint: rancher schema"]}
+{"line":["config","--help"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","-h"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","-help"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--help=false"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--help="],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--help= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --help= has an empty value; a bool flag typed with = takes true or false","  hint: write --help or --help=true|false"]}
+{"line":["config","-h="],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--help=true"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","-v"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","--version=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","--version= "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","--yes"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--yes="],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["config","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["config","--yes=false"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag -yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","--yes","false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"false\"","  hint: rancher schema"]}
+{"line":["config","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","-o","json"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","-o=json"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","-o","-"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","-o","--help"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config"," --yes "],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["x","config"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["-","config"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":[" - ","config"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["--","config"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["-1","config"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["--help","config"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["--help=false","config"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["--version","config"],"kind":"version","command":"","exit":0,"stdout":["rancher version v-test"]}
+{"line":["--bogus","config"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 1 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["--yes= ","config"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes=","config"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["--yes","config"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["-o","json","config"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["get","config"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"config\"","  hint: rancher schema"]}
+{"line":["nosuch","config"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["","config"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":[" ","config"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","x",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["config","-",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["config",""," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config"," - ",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["config","","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","--",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","-1",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["config","--help",""],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}
+{"line":["config","","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","--help=false",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config","--version",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","--bogus",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config",""," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["config"," ",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config"," ","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","x"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["config"," ","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","-"," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["config"," "," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config"," - "," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["config"," ","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","--"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config"," ","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","-1"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["config"," ","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","--help"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config"," ","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","--help=false"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config"," ","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","--version"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config"," ","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config","--bogus"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["config"," "," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["config"],"kind":"help","command":"config","exit":0,"helpPath":"config.txt"}

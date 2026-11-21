@@ -1,0 +1,28 @@
+{"line":["get","poddisruptionbudget","--cluster","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"cluster":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--cluster=v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"cluster":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","-cluster","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"cluster":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","poddisruptionbudget","--namespace","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"namespace":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--namespace=v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"namespace":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","-n","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"namespace":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--selector","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"selector":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--selector=v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"selector":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","-l","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"selector":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--wait"],"kind":"runs","command":"get poddisruptionbudget","flags":{"wait":true},"exit":0}
+{"line":["get","poddisruptionbudget","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","poddisruptionbudget","--wait=false"],"kind":"runs","command":"get poddisruptionbudget","flags":{"wait":false},"exit":0}
+{"line":["get","poddisruptionbudget","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","poddisruptionbudget","-wait"],"kind":"runs","command":"get poddisruptionbudget","flags":{"wait":true},"exit":0}
+{"line":["get","poddisruptionbudget","--for","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"for":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--for=v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"for":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","-for","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"for":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--timeout","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"timeout":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","--timeout=v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"timeout":"v"},"exit":0}
+{"line":["get","poddisruptionbudget","-timeout","v"],"kind":"runs","command":"get poddisruptionbudget","flags":{"timeout":"v"},"exit":0}
+{"line":["get","poddisruptionbudget"],"kind":"runs","command":"get poddisruptionbudget","exit":0}
+{"line":["get","poddisruptionbudget","--help"],"kind":"help","command":"get poddisruptionbudget","exit":0,"helpPath":"get-poddisruptionbudget.txt"}
+{"line":["get","poddisruptionbudget","x"],"kind":"runs","command":"get poddisruptionbudget","args":["x"],"exit":0}
+{"line":["get","poddisruptionbudget","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","poddisruptionbudgets"],"kind":"runs","command":"get poddisruptionbudget","exit":0}
+{"line":["get","pdb"],"kind":"runs","command":"get poddisruptionbudget","exit":0}
+{"line":["get","poddisruptionbudgets","--help"],"kind":"help","command":"get poddisruptionbudget","exit":0,"helpPath":"get-poddisruptionbudget.txt"}

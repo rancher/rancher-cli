@@ -1,0 +1,23 @@
+{"line":["patch","networkpolicy","--cluster","v"],"kind":"runs","command":"patch networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","networkpolicy","--cluster=v"],"kind":"runs","command":"patch networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","networkpolicy","-cluster","v"],"kind":"runs","command":"patch networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","networkpolicy","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","networkpolicy","--namespace","v"],"kind":"runs","command":"patch networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","networkpolicy","--namespace=v"],"kind":"runs","command":"patch networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","networkpolicy","-n","v"],"kind":"runs","command":"patch networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","networkpolicy","--patch","v"],"kind":"runs","command":"patch networkpolicy","flags":{"patch":"v"},"exit":0}
+{"line":["patch","networkpolicy","--patch=v"],"kind":"runs","command":"patch networkpolicy","flags":{"patch":"v"},"exit":0}
+{"line":["patch","networkpolicy","-p","v"],"kind":"runs","command":"patch networkpolicy","flags":{"patch":"v"},"exit":0}
+{"line":["patch","networkpolicy","--patch-file","v"],"kind":"runs","command":"patch networkpolicy","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","networkpolicy","--patch-file=v"],"kind":"runs","command":"patch networkpolicy","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","networkpolicy","-patch-file","v"],"kind":"runs","command":"patch networkpolicy","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","networkpolicy","--type","v"],"kind":"runs","command":"patch networkpolicy","flags":{"type":"v"},"exit":0}
+{"line":["patch","networkpolicy","--type=v"],"kind":"runs","command":"patch networkpolicy","flags":{"type":"v"},"exit":0}
+{"line":["patch","networkpolicy","-type","v"],"kind":"runs","command":"patch networkpolicy","flags":{"type":"v"},"exit":0}
+{"line":["patch","networkpolicy"],"kind":"runs","command":"patch networkpolicy","exit":0}
+{"line":["patch","networkpolicy","--help"],"kind":"help","command":"patch networkpolicy","exit":0,"helpPath":"patch-networkpolicy.txt"}
+{"line":["patch","networkpolicy","x"],"kind":"runs","command":"patch networkpolicy","args":["x"],"exit":0}
+{"line":["patch","networkpolicy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","networkpolicies"],"kind":"runs","command":"patch networkpolicy","exit":0}
+{"line":["patch","netpol"],"kind":"runs","command":"patch networkpolicy","exit":0}
+{"line":["patch","networkpolicies","--help"],"kind":"help","command":"patch networkpolicy","exit":0,"helpPath":"patch-networkpolicy.txt"}

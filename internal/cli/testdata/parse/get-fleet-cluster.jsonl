@@ -1,0 +1,25 @@
+{"line":["get","fleet-cluster","--namespace","v"],"kind":"runs","command":"get fleet-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["get","fleet-cluster","--namespace=v"],"kind":"runs","command":"get fleet-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["get","fleet-cluster","-n","v"],"kind":"runs","command":"get fleet-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["get","fleet-cluster","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","fleet-cluster","--selector","v"],"kind":"runs","command":"get fleet-cluster","flags":{"selector":"v"},"exit":0}
+{"line":["get","fleet-cluster","--selector=v"],"kind":"runs","command":"get fleet-cluster","flags":{"selector":"v"},"exit":0}
+{"line":["get","fleet-cluster","-l","v"],"kind":"runs","command":"get fleet-cluster","flags":{"selector":"v"},"exit":0}
+{"line":["get","fleet-cluster","--wait"],"kind":"runs","command":"get fleet-cluster","flags":{"wait":true},"exit":0}
+{"line":["get","fleet-cluster","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","fleet-cluster","--wait=false"],"kind":"runs","command":"get fleet-cluster","flags":{"wait":false},"exit":0}
+{"line":["get","fleet-cluster","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","fleet-cluster","-wait"],"kind":"runs","command":"get fleet-cluster","flags":{"wait":true},"exit":0}
+{"line":["get","fleet-cluster","--for","v"],"kind":"runs","command":"get fleet-cluster","flags":{"for":"v"},"exit":0}
+{"line":["get","fleet-cluster","--for=v"],"kind":"runs","command":"get fleet-cluster","flags":{"for":"v"},"exit":0}
+{"line":["get","fleet-cluster","-for","v"],"kind":"runs","command":"get fleet-cluster","flags":{"for":"v"},"exit":0}
+{"line":["get","fleet-cluster","--timeout","v"],"kind":"runs","command":"get fleet-cluster","flags":{"timeout":"v"},"exit":0}
+{"line":["get","fleet-cluster","--timeout=v"],"kind":"runs","command":"get fleet-cluster","flags":{"timeout":"v"},"exit":0}
+{"line":["get","fleet-cluster","-timeout","v"],"kind":"runs","command":"get fleet-cluster","flags":{"timeout":"v"},"exit":0}
+{"line":["get","fleet-cluster"],"kind":"runs","command":"get fleet-cluster","exit":0}
+{"line":["get","fleet-cluster","--help"],"kind":"help","command":"get fleet-cluster","exit":0,"helpPath":"get-fleet-cluster.txt"}
+{"line":["get","fleet-cluster","x"],"kind":"runs","command":"get fleet-cluster","args":["x"],"exit":0}
+{"line":["get","fleet-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","fleetclusters"],"kind":"runs","command":"get fleet-cluster","exit":0}
+{"line":["get","fleet-clusters"],"kind":"runs","command":"get fleet-cluster","exit":0}
+{"line":["get","fleetclusters","--help"],"kind":"help","command":"get fleet-cluster","exit":0,"helpPath":"get-fleet-cluster.txt"}

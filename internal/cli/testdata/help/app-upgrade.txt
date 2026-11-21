@@ -1,0 +1,40 @@
+NAME:
+   rancher app upgrade - Upgrade, downgrade or change the values of a Helm release that Rancher shows as an App
+
+USAGE:
+   rancher app upgrade [options] <release>
+
+OPTIONS:
+   --chart name                         the app's chart name; an upgrade cannot change the chart
+   --cleanup-on-fail                    Helm deletes the resources this upgrade created when it fails
+   --cluster id|name                    target cluster id|name
+   --description description            release description
+   --disable-openapi-validation         do not validate the rendered resources against the OpenAPI schema
+   --force                              Helm replaces the release's resources instead of patching them; not with --take-ownership
+   --helm-timeout timeout               Helm timeout for each step, 1s to 15m (default 10m)
+   --helm-wait                          Helm waits for the chart's resources (default true; --helm-wait=false sends false)
+   --help, -h                           show help
+   --history-max string                 maximum number of revisions Helm keeps for the release, 1 to 100 (Rancher uses 5 when it is omitted)
+   --namespace namespace, -n namespace  namespace of the release
+   --no-hooks                           do not run the chart's hooks
+   --no-system-default-registry         send neither registry value, also when the release's values or a values file set one
+   --repo name                          ClusterRepo name to upgrade from (default: the ClusterRepo the app came from)
+   --reset-values                       do not send the release's values; send only the --values files and the values rancher-cli adds
+   --system-default-registry host       registry host to send at values.global.cattle.systemDefaultRegistry and values.global.systemDefaultRegistry
+   --take-ownership                     Helm takes ownership of existing resources; Rancher also sends --server-side=true and --force-conflicts
+   --timeout timeout                    wait timeout, e.g. 10m (default 55m, at most 55m; starts the wait)
+   --values file [ --values file ]      values file, repeatable, merged in order over the release's values; - reads stdin
+   --version version                    exact chart version (default: the app's installed version)
+   --wait                               wait until Helm's run finishes and report how it ended
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

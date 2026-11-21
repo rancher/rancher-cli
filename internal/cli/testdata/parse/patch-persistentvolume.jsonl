@@ -1,0 +1,20 @@
+{"line":["patch","persistentvolume","--cluster","v"],"kind":"runs","command":"patch persistentvolume","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","persistentvolume","--cluster=v"],"kind":"runs","command":"patch persistentvolume","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","persistentvolume","-cluster","v"],"kind":"runs","command":"patch persistentvolume","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","persistentvolume","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","persistentvolume","--patch","v"],"kind":"runs","command":"patch persistentvolume","flags":{"patch":"v"},"exit":0}
+{"line":["patch","persistentvolume","--patch=v"],"kind":"runs","command":"patch persistentvolume","flags":{"patch":"v"},"exit":0}
+{"line":["patch","persistentvolume","-p","v"],"kind":"runs","command":"patch persistentvolume","flags":{"patch":"v"},"exit":0}
+{"line":["patch","persistentvolume","--patch-file","v"],"kind":"runs","command":"patch persistentvolume","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","persistentvolume","--patch-file=v"],"kind":"runs","command":"patch persistentvolume","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","persistentvolume","-patch-file","v"],"kind":"runs","command":"patch persistentvolume","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","persistentvolume","--type","v"],"kind":"runs","command":"patch persistentvolume","flags":{"type":"v"},"exit":0}
+{"line":["patch","persistentvolume","--type=v"],"kind":"runs","command":"patch persistentvolume","flags":{"type":"v"},"exit":0}
+{"line":["patch","persistentvolume","-type","v"],"kind":"runs","command":"patch persistentvolume","flags":{"type":"v"},"exit":0}
+{"line":["patch","persistentvolume"],"kind":"runs","command":"patch persistentvolume","exit":0}
+{"line":["patch","persistentvolume","--help"],"kind":"help","command":"patch persistentvolume","exit":0,"helpPath":"patch-persistentvolume.txt"}
+{"line":["patch","persistentvolume","x"],"kind":"runs","command":"patch persistentvolume","args":["x"],"exit":0}
+{"line":["patch","persistentvolume","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","persistentvolumes"],"kind":"runs","command":"patch persistentvolume","exit":0}
+{"line":["patch","pv"],"kind":"runs","command":"patch persistentvolume","exit":0}
+{"line":["patch","persistentvolumes","--help"],"kind":"help","command":"patch persistentvolume","exit":0,"helpPath":"patch-persistentvolume.txt"}

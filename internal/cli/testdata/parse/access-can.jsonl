@@ -1,0 +1,29 @@
+{"line":["access","can","--cluster","v"],"kind":"runs","command":"access can","flags":{"cluster":"v"},"exit":0}
+{"line":["access","can","--cluster=v"],"kind":"runs","command":"access can","flags":{"cluster":"v"},"exit":0}
+{"line":["access","can","-cluster","v"],"kind":"runs","command":"access can","flags":{"cluster":"v"},"exit":0}
+{"line":["access","can","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","can","--namespace","v"],"kind":"runs","command":"access can","flags":{"namespace":"v"},"exit":0}
+{"line":["access","can","--namespace=v"],"kind":"runs","command":"access can","flags":{"namespace":"v"},"exit":0}
+{"line":["access","can","-n","v"],"kind":"runs","command":"access can","flags":{"namespace":"v"},"exit":0}
+{"line":["access","can","--as","v"],"kind":"runs","command":"access can","flags":{"as":"v"},"exit":0}
+{"line":["access","can","--as=v"],"kind":"runs","command":"access can","flags":{"as":"v"},"exit":0}
+{"line":["access","can","-as","v"],"kind":"runs","command":"access can","flags":{"as":"v"},"exit":0}
+{"line":["access","can","--type","v"],"kind":"runs","command":"access can","flags":{"type":"v"},"exit":0}
+{"line":["access","can","--type=v"],"kind":"runs","command":"access can","flags":{"type":"v"},"exit":0}
+{"line":["access","can","-type","v"],"kind":"runs","command":"access can","flags":{"type":"v"},"exit":0}
+{"line":["access","can","--group","v"],"kind":"runs","command":"access can","flags":{"group":"v"},"exit":0}
+{"line":["access","can","--group=v"],"kind":"runs","command":"access can","flags":{"group":"v"},"exit":0}
+{"line":["access","can","-group","v"],"kind":"runs","command":"access can","flags":{"group":"v"},"exit":0}
+{"line":["access","can","--subresource","v"],"kind":"runs","command":"access can","flags":{"subresource":"v"},"exit":0}
+{"line":["access","can","--subresource=v"],"kind":"runs","command":"access can","flags":{"subresource":"v"},"exit":0}
+{"line":["access","can","-subresource","v"],"kind":"runs","command":"access can","flags":{"subresource":"v"},"exit":0}
+{"line":["access","can","--non-resource-url","v"],"kind":"runs","command":"access can","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","can","--non-resource-url=v"],"kind":"runs","command":"access can","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","can","-non-resource-url","v"],"kind":"runs","command":"access can","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","can","--timeout","v"],"kind":"runs","command":"access can","flags":{"timeout":"v"},"exit":0}
+{"line":["access","can","--timeout=v"],"kind":"runs","command":"access can","flags":{"timeout":"v"},"exit":0}
+{"line":["access","can","-timeout","v"],"kind":"runs","command":"access can","flags":{"timeout":"v"},"exit":0}
+{"line":["access","can"],"kind":"runs","command":"access can","exit":0}
+{"line":["access","can","--help"],"kind":"help","command":"access can","exit":0,"helpPath":"access-can.txt"}
+{"line":["access","can","x"],"kind":"runs","command":"access can","args":["x"],"exit":0}
+{"line":["access","can","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

@@ -1,0 +1,17 @@
+{"line":["access","projects","--cluster","v"],"kind":"runs","command":"access projects","flags":{"cluster":"v"},"exit":0}
+{"line":["access","projects","--cluster=v"],"kind":"runs","command":"access projects","flags":{"cluster":"v"},"exit":0}
+{"line":["access","projects","-cluster","v"],"kind":"runs","command":"access projects","flags":{"cluster":"v"},"exit":0}
+{"line":["access","projects","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","projects","--as","v"],"kind":"runs","command":"access projects","flags":{"as":"v"},"exit":0}
+{"line":["access","projects","--as=v"],"kind":"runs","command":"access projects","flags":{"as":"v"},"exit":0}
+{"line":["access","projects","-as","v"],"kind":"runs","command":"access projects","flags":{"as":"v"},"exit":0}
+{"line":["access","projects","--type","v"],"kind":"runs","command":"access projects","flags":{"type":"v"},"exit":0}
+{"line":["access","projects","--type=v"],"kind":"runs","command":"access projects","flags":{"type":"v"},"exit":0}
+{"line":["access","projects","-type","v"],"kind":"runs","command":"access projects","flags":{"type":"v"},"exit":0}
+{"line":["access","projects","--timeout","v"],"kind":"runs","command":"access projects","flags":{"timeout":"v"},"exit":0}
+{"line":["access","projects","--timeout=v"],"kind":"runs","command":"access projects","flags":{"timeout":"v"},"exit":0}
+{"line":["access","projects","-timeout","v"],"kind":"runs","command":"access projects","flags":{"timeout":"v"},"exit":0}
+{"line":["access","projects"],"kind":"runs","command":"access projects","exit":0}
+{"line":["access","projects","--help"],"kind":"help","command":"access projects","exit":0,"helpPath":"access-projects.txt"}
+{"line":["access","projects","x"],"kind":"runs","command":"access projects","args":["x"],"exit":0}
+{"line":["access","projects","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

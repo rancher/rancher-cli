@@ -1,0 +1,32 @@
+{"line":["node","drain","--cluster","v"],"kind":"runs","command":"node drain","flags":{"cluster":"v"},"exit":0}
+{"line":["node","drain","--cluster=v"],"kind":"runs","command":"node drain","flags":{"cluster":"v"},"exit":0}
+{"line":["node","drain","-cluster","v"],"kind":"runs","command":"node drain","flags":{"cluster":"v"},"exit":0}
+{"line":["node","drain","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["node","drain","--force"],"kind":"runs","command":"node drain","flags":{"force":true},"exit":0}
+{"line":["node","drain","--force="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --force= has an empty value; a bool flag typed with = takes true or false","  hint: write --force or --force=true|false"]}
+{"line":["node","drain","--force=false"],"kind":"runs","command":"node drain","flags":{"force":false},"exit":0}
+{"line":["node","drain","--force= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --force= has an empty value; a bool flag typed with = takes true or false","  hint: write --force or --force=true|false"]}
+{"line":["node","drain","-force"],"kind":"runs","command":"node drain","flags":{"force":true},"exit":0}
+{"line":["node","drain","--delete-emptydir-data"],"kind":"runs","command":"node drain","flags":{"delete-emptydir-data":true},"exit":0}
+{"line":["node","drain","--delete-emptydir-data="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --delete-emptydir-data= has an empty value; a bool flag typed with = takes true or false","  hint: write --delete-emptydir-data or --delete-emptydir-data=true|false"]}
+{"line":["node","drain","--delete-emptydir-data=false"],"kind":"runs","command":"node drain","flags":{"delete-emptydir-data":false},"exit":0}
+{"line":["node","drain","--delete-emptydir-data= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --delete-emptydir-data= has an empty value; a bool flag typed with = takes true or false","  hint: write --delete-emptydir-data or --delete-emptydir-data=true|false"]}
+{"line":["node","drain","-delete-emptydir-data"],"kind":"runs","command":"node drain","flags":{"delete-emptydir-data":true},"exit":0}
+{"line":["node","drain","--grace-period","v"],"kind":"runs","command":"node drain","flags":{"grace-period":"v"},"exit":0}
+{"line":["node","drain","--grace-period=v"],"kind":"runs","command":"node drain","flags":{"grace-period":"v"},"exit":0}
+{"line":["node","drain","-grace-period","v"],"kind":"runs","command":"node drain","flags":{"grace-period":"v"},"exit":0}
+{"line":["node","drain","--drain-timeout","v"],"kind":"runs","command":"node drain","flags":{"drain-timeout":"v"},"exit":0}
+{"line":["node","drain","--drain-timeout=v"],"kind":"runs","command":"node drain","flags":{"drain-timeout":"v"},"exit":0}
+{"line":["node","drain","-drain-timeout","v"],"kind":"runs","command":"node drain","flags":{"drain-timeout":"v"},"exit":0}
+{"line":["node","drain","--wait"],"kind":"runs","command":"node drain","flags":{"wait":true},"exit":0}
+{"line":["node","drain","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["node","drain","--wait=false"],"kind":"runs","command":"node drain","flags":{"wait":false},"exit":0}
+{"line":["node","drain","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["node","drain","-wait"],"kind":"runs","command":"node drain","flags":{"wait":true},"exit":0}
+{"line":["node","drain","--timeout","v"],"kind":"runs","command":"node drain","flags":{"timeout":"v"},"exit":0}
+{"line":["node","drain","--timeout=v"],"kind":"runs","command":"node drain","flags":{"timeout":"v"},"exit":0}
+{"line":["node","drain","-timeout","v"],"kind":"runs","command":"node drain","flags":{"timeout":"v"},"exit":0}
+{"line":["node","drain"],"kind":"runs","command":"node drain","exit":0}
+{"line":["node","drain","--help"],"kind":"help","command":"node drain","exit":0,"helpPath":"node-drain.txt"}
+{"line":["node","drain","x"],"kind":"runs","command":"node drain","args":["x"],"exit":0}
+{"line":["node","drain","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

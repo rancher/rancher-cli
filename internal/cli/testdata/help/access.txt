@@ -1,0 +1,25 @@
+NAME:
+   rancher access - Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)
+
+USAGE:
+   rancher access [command [command options]]
+
+COMMANDS:
+   can:       Ask the cluster's authorizer whether a subject can perform a verb on a resource
+   clusters:  List the clusters Rancher lets a subject into, and the bindings that grant it
+   explain:   Explain the cluster's authorizer's decision for a subject, a verb, and a resource
+   list:      List the rules a subject holds in a namespace, as the cluster's authorizer reports them
+   projects:  List the projects a subject can see into, and the Rancher memberships behind them
+   who-can:   List the subjects the cluster's authorizer allows to perform a verb on a resource
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --project string            the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

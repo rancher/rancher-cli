@@ -1,0 +1,28 @@
+{"line":["get","deployment","--cluster","v"],"kind":"runs","command":"get deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["get","deployment","--cluster=v"],"kind":"runs","command":"get deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["get","deployment","-cluster","v"],"kind":"runs","command":"get deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["get","deployment","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","deployment","--namespace","v"],"kind":"runs","command":"get deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["get","deployment","--namespace=v"],"kind":"runs","command":"get deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["get","deployment","-n","v"],"kind":"runs","command":"get deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["get","deployment","--selector","v"],"kind":"runs","command":"get deployment","flags":{"selector":"v"},"exit":0}
+{"line":["get","deployment","--selector=v"],"kind":"runs","command":"get deployment","flags":{"selector":"v"},"exit":0}
+{"line":["get","deployment","-l","v"],"kind":"runs","command":"get deployment","flags":{"selector":"v"},"exit":0}
+{"line":["get","deployment","--wait"],"kind":"runs","command":"get deployment","flags":{"wait":true},"exit":0}
+{"line":["get","deployment","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","deployment","--wait=false"],"kind":"runs","command":"get deployment","flags":{"wait":false},"exit":0}
+{"line":["get","deployment","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","deployment","-wait"],"kind":"runs","command":"get deployment","flags":{"wait":true},"exit":0}
+{"line":["get","deployment","--for","v"],"kind":"runs","command":"get deployment","flags":{"for":"v"},"exit":0}
+{"line":["get","deployment","--for=v"],"kind":"runs","command":"get deployment","flags":{"for":"v"},"exit":0}
+{"line":["get","deployment","-for","v"],"kind":"runs","command":"get deployment","flags":{"for":"v"},"exit":0}
+{"line":["get","deployment","--timeout","v"],"kind":"runs","command":"get deployment","flags":{"timeout":"v"},"exit":0}
+{"line":["get","deployment","--timeout=v"],"kind":"runs","command":"get deployment","flags":{"timeout":"v"},"exit":0}
+{"line":["get","deployment","-timeout","v"],"kind":"runs","command":"get deployment","flags":{"timeout":"v"},"exit":0}
+{"line":["get","deployment"],"kind":"runs","command":"get deployment","exit":0}
+{"line":["get","deployment","--help"],"kind":"help","command":"get deployment","exit":0,"helpPath":"get-deployment.txt"}
+{"line":["get","deployment","x"],"kind":"runs","command":"get deployment","args":["x"],"exit":0}
+{"line":["get","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","deployments"],"kind":"runs","command":"get deployment","exit":0}
+{"line":["get","deploy"],"kind":"runs","command":"get deployment","exit":0}
+{"line":["get","deployments","--help"],"kind":"help","command":"get deployment","exit":0,"helpPath":"get-deployment.txt"}

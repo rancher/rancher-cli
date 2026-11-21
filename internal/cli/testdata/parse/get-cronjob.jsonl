@@ -1,0 +1,27 @@
+{"line":["get","cronjob","--cluster","v"],"kind":"runs","command":"get cronjob","flags":{"cluster":"v"},"exit":0}
+{"line":["get","cronjob","--cluster=v"],"kind":"runs","command":"get cronjob","flags":{"cluster":"v"},"exit":0}
+{"line":["get","cronjob","-cluster","v"],"kind":"runs","command":"get cronjob","flags":{"cluster":"v"},"exit":0}
+{"line":["get","cronjob","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","cronjob","--namespace","v"],"kind":"runs","command":"get cronjob","flags":{"namespace":"v"},"exit":0}
+{"line":["get","cronjob","--namespace=v"],"kind":"runs","command":"get cronjob","flags":{"namespace":"v"},"exit":0}
+{"line":["get","cronjob","-n","v"],"kind":"runs","command":"get cronjob","flags":{"namespace":"v"},"exit":0}
+{"line":["get","cronjob","--selector","v"],"kind":"runs","command":"get cronjob","flags":{"selector":"v"},"exit":0}
+{"line":["get","cronjob","--selector=v"],"kind":"runs","command":"get cronjob","flags":{"selector":"v"},"exit":0}
+{"line":["get","cronjob","-l","v"],"kind":"runs","command":"get cronjob","flags":{"selector":"v"},"exit":0}
+{"line":["get","cronjob","--wait"],"kind":"runs","command":"get cronjob","flags":{"wait":true},"exit":0}
+{"line":["get","cronjob","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","cronjob","--wait=false"],"kind":"runs","command":"get cronjob","flags":{"wait":false},"exit":0}
+{"line":["get","cronjob","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","cronjob","-wait"],"kind":"runs","command":"get cronjob","flags":{"wait":true},"exit":0}
+{"line":["get","cronjob","--for","v"],"kind":"runs","command":"get cronjob","flags":{"for":"v"},"exit":0}
+{"line":["get","cronjob","--for=v"],"kind":"runs","command":"get cronjob","flags":{"for":"v"},"exit":0}
+{"line":["get","cronjob","-for","v"],"kind":"runs","command":"get cronjob","flags":{"for":"v"},"exit":0}
+{"line":["get","cronjob","--timeout","v"],"kind":"runs","command":"get cronjob","flags":{"timeout":"v"},"exit":0}
+{"line":["get","cronjob","--timeout=v"],"kind":"runs","command":"get cronjob","flags":{"timeout":"v"},"exit":0}
+{"line":["get","cronjob","-timeout","v"],"kind":"runs","command":"get cronjob","flags":{"timeout":"v"},"exit":0}
+{"line":["get","cronjob"],"kind":"runs","command":"get cronjob","exit":0}
+{"line":["get","cronjob","--help"],"kind":"help","command":"get cronjob","exit":0,"helpPath":"get-cronjob.txt"}
+{"line":["get","cronjob","x"],"kind":"runs","command":"get cronjob","args":["x"],"exit":0}
+{"line":["get","cronjob","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","cronjobs"],"kind":"runs","command":"get cronjob","exit":0}
+{"line":["get","cronjobs","--help"],"kind":"help","command":"get cronjob","exit":0,"helpPath":"get-cronjob.txt"}

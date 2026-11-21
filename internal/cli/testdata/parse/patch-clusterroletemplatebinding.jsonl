@@ -1,0 +1,20 @@
+{"line":["patch","clusterroletemplatebinding","--cluster","v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","--cluster=v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","-cluster","v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","clusterroletemplatebinding","--patch","v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","--patch=v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","-p","v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","--patch-file","v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","--patch-file=v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","-patch-file","v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","--type","v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","--type=v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding","-type","v"],"kind":"runs","command":"patch clusterroletemplatebinding","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterroletemplatebinding"],"kind":"runs","command":"patch clusterroletemplatebinding","exit":0}
+{"line":["patch","clusterroletemplatebinding","--help"],"kind":"help","command":"patch clusterroletemplatebinding","exit":0,"helpPath":"patch-clusterroletemplatebinding.txt"}
+{"line":["patch","clusterroletemplatebinding","x"],"kind":"runs","command":"patch clusterroletemplatebinding","args":["x"],"exit":0}
+{"line":["patch","clusterroletemplatebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","clusterroletemplatebindings"],"kind":"runs","command":"patch clusterroletemplatebinding","exit":0}
+{"line":["patch","crtb"],"kind":"runs","command":"patch clusterroletemplatebinding","exit":0}
+{"line":["patch","clusterroletemplatebindings","--help"],"kind":"help","command":"patch clusterroletemplatebinding","exit":0,"helpPath":"patch-clusterroletemplatebinding.txt"}

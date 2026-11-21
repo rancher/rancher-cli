@@ -1,0 +1,27 @@
+{"line":["get","role","--cluster","v"],"kind":"runs","command":"get role","flags":{"cluster":"v"},"exit":0}
+{"line":["get","role","--cluster=v"],"kind":"runs","command":"get role","flags":{"cluster":"v"},"exit":0}
+{"line":["get","role","-cluster","v"],"kind":"runs","command":"get role","flags":{"cluster":"v"},"exit":0}
+{"line":["get","role","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","role","--namespace","v"],"kind":"runs","command":"get role","flags":{"namespace":"v"},"exit":0}
+{"line":["get","role","--namespace=v"],"kind":"runs","command":"get role","flags":{"namespace":"v"},"exit":0}
+{"line":["get","role","-n","v"],"kind":"runs","command":"get role","flags":{"namespace":"v"},"exit":0}
+{"line":["get","role","--selector","v"],"kind":"runs","command":"get role","flags":{"selector":"v"},"exit":0}
+{"line":["get","role","--selector=v"],"kind":"runs","command":"get role","flags":{"selector":"v"},"exit":0}
+{"line":["get","role","-l","v"],"kind":"runs","command":"get role","flags":{"selector":"v"},"exit":0}
+{"line":["get","role","--wait"],"kind":"runs","command":"get role","flags":{"wait":true},"exit":0}
+{"line":["get","role","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","role","--wait=false"],"kind":"runs","command":"get role","flags":{"wait":false},"exit":0}
+{"line":["get","role","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","role","-wait"],"kind":"runs","command":"get role","flags":{"wait":true},"exit":0}
+{"line":["get","role","--for","v"],"kind":"runs","command":"get role","flags":{"for":"v"},"exit":0}
+{"line":["get","role","--for=v"],"kind":"runs","command":"get role","flags":{"for":"v"},"exit":0}
+{"line":["get","role","-for","v"],"kind":"runs","command":"get role","flags":{"for":"v"},"exit":0}
+{"line":["get","role","--timeout","v"],"kind":"runs","command":"get role","flags":{"timeout":"v"},"exit":0}
+{"line":["get","role","--timeout=v"],"kind":"runs","command":"get role","flags":{"timeout":"v"},"exit":0}
+{"line":["get","role","-timeout","v"],"kind":"runs","command":"get role","flags":{"timeout":"v"},"exit":0}
+{"line":["get","role"],"kind":"runs","command":"get role","exit":0}
+{"line":["get","role","--help"],"kind":"help","command":"get role","exit":0,"helpPath":"get-role.txt"}
+{"line":["get","role","x"],"kind":"runs","command":"get role","args":["x"],"exit":0}
+{"line":["get","role","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","roles"],"kind":"runs","command":"get role","exit":0}
+{"line":["get","roles","--help"],"kind":"help","command":"get role","exit":0,"helpPath":"get-role.txt"}

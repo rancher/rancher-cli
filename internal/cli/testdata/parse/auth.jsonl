@@ -1,0 +1,118 @@
+{"line":["auth",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","\t"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\\t\"","  hint: rancher schema"]}
+{"line":["auth","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["auth"," x "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" x \"","  hint: rancher schema"]}
+{"line":["auth","","","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","","","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth"," ","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"get\"","  hint: rancher schema"]}
+{"line":["auth"," get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" get\"","  hint: rancher schema"]}
+{"line":["auth","nosuch"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["auth","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["auth"," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" - \"","  hint: rancher schema"]}
+{"line":["auth","\t-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\\t-\"","  hint: rancher schema"]}
+{"line":["auth","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["auth"," - ","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["auth","-","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["auth","-","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["auth","- x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"- x\"","  hint: rancher schema"]}
+{"line":["auth","--"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth"," -- "],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--help\"","  hint: rancher schema"]}
+{"line":["auth","--","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["auth","--","--yes="],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--yes=\"","  hint: rancher schema"]}
+{"line":["auth","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["auth","-1","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["auth","-\u20ac"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\u20ac\"","  hint: rancher schema"]}
+{"line":["auth","-\u00e9"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","---x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","---yes"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","---help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","--=x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","-="],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-=\"","  hint: rancher schema"]}
+{"line":["auth","--help"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","-h"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","-help"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--help=false"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--help="],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--help= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --help= has an empty value; a bool flag typed with = takes true or false","  hint: write --help or --help=true|false"]}
+{"line":["auth","-h="],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--help=true"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","-v"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","--version=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","--version= "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","--yes"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--yes="],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["auth","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["auth","--yes=false"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag -yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","--yes","false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"false\"","  hint: rancher schema"]}
+{"line":["auth","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","-o","json"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","-o=json"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","-o","-"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","-o","--help"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth"," --yes "],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["x","auth"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["-","auth"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":[" - ","auth"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["--","auth"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["-1","auth"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["--help","auth"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["--help=false","auth"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["--version","auth"],"kind":"version","command":"","exit":0,"stdout":["rancher version v-test"]}
+{"line":["--bogus","auth"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 1 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["--yes= ","auth"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes=","auth"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["--yes","auth"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["-o","json","auth"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["get","auth"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"auth\"","  hint: rancher schema"]}
+{"line":["nosuch","auth"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["","auth"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":[" ","auth"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","x",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["auth","-",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["auth",""," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth"," - ",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["auth","","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","--",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","-1",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["auth","--help",""],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}
+{"line":["auth","","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","--help=false",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth","--version",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","--bogus",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth",""," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["auth"," ",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth"," ","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","x"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["auth"," ","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","-"," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["auth"," "," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth"," - "," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["auth"," ","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","--"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth"," ","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","-1"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["auth"," ","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","--help"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth"," ","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","--help=false"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth"," ","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","--version"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth"," ","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth","--bogus"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth"," "," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["auth"],"kind":"help","command":"auth","exit":0,"helpPath":"auth.txt"}

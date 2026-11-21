@@ -1,0 +1,30 @@
+NAME:
+   rancher create cluster - Create a provisioning cluster (--import, --custom, or --machine-config for a node-driver cluster)
+
+USAGE:
+   rancher create cluster [options] <name>
+
+OPTIONS:
+   --cloud-credential id|display name  cloud credential id|display name for a node-driver cluster
+   --controlplane                      machine pool: control-plane role
+   --custom                            custom cluster; nodes join separately via a registration command
+   --etcd                              machine pool: etcd role
+   --help, -h                          show help
+   --import                            imported cluster (no RKE config)
+   --k8s-version version               Kubernetes version; required for --custom and for a node-driver cluster, optional for --import
+   --machine-config kind/name          machine config kind/name for the machine pool of a node-driver cluster; kinds: amazonec2config, azureconfig, digitaloceanconfig, harvesterconfig, vmwarevsphereconfig
+   --pool-name string                  machine pool name (default: pool1)
+   --quantity string                   number of nodes in the machine pool (default: 1)
+   --worker                            machine pool: worker role
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

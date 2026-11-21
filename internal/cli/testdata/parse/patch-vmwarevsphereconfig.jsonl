@@ -1,0 +1,19 @@
+{"line":["patch","vmwarevsphereconfig","--namespace","v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","--namespace=v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","-n","v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","vmwarevsphereconfig","--patch","v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","--patch=v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","-p","v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","--patch-file","v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","--patch-file=v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","-patch-file","v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","--type","v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","--type=v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig","-type","v"],"kind":"runs","command":"patch vmwarevsphereconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","vmwarevsphereconfig"],"kind":"runs","command":"patch vmwarevsphereconfig","exit":0}
+{"line":["patch","vmwarevsphereconfig","--help"],"kind":"help","command":"patch vmwarevsphereconfig","exit":0,"helpPath":"patch-vmwarevsphereconfig.txt"}
+{"line":["patch","vmwarevsphereconfig","x"],"kind":"runs","command":"patch vmwarevsphereconfig","args":["x"],"exit":0}
+{"line":["patch","vmwarevsphereconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","vmwarevsphereconfigs"],"kind":"runs","command":"patch vmwarevsphereconfig","exit":0}
+{"line":["patch","vmwarevsphereconfigs","--help"],"kind":"help","command":"patch vmwarevsphereconfig","exit":0,"helpPath":"patch-vmwarevsphereconfig.txt"}

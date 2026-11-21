@@ -1,0 +1,25 @@
+NAME:
+   rancher project - Project namespace commands (project membership is managed with `rancher grant` and `rancher revoke`)
+
+USAGE:
+   rancher project [command [command options]]
+
+COMMANDS:
+   add-namespace:     Add a namespace to a project
+   remove-namespace:  Remove a namespace from its project and remove its project label
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --project string            the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

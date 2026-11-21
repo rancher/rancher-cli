@@ -1,0 +1,22 @@
+{"line":["delete","deployment","--cluster","v"],"kind":"runs","command":"delete deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","deployment","--cluster=v"],"kind":"runs","command":"delete deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","deployment","-cluster","v"],"kind":"runs","command":"delete deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","deployment","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","deployment","--namespace","v"],"kind":"runs","command":"delete deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","deployment","--namespace=v"],"kind":"runs","command":"delete deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","deployment","-n","v"],"kind":"runs","command":"delete deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","deployment","--wait"],"kind":"runs","command":"delete deployment","flags":{"wait":true},"exit":0}
+{"line":["delete","deployment","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","deployment","--wait=false"],"kind":"runs","command":"delete deployment","flags":{"wait":false},"exit":0}
+{"line":["delete","deployment","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","deployment","-wait"],"kind":"runs","command":"delete deployment","flags":{"wait":true},"exit":0}
+{"line":["delete","deployment","--timeout","v"],"kind":"runs","command":"delete deployment","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","deployment","--timeout=v"],"kind":"runs","command":"delete deployment","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","deployment","-timeout","v"],"kind":"runs","command":"delete deployment","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","deployment"],"kind":"runs","command":"delete deployment","exit":0}
+{"line":["delete","deployment","--help"],"kind":"help","command":"delete deployment","exit":0,"helpPath":"delete-deployment.txt"}
+{"line":["delete","deployment","x"],"kind":"runs","command":"delete deployment","args":["x"],"exit":0}
+{"line":["delete","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","deployments"],"kind":"runs","command":"delete deployment","exit":0}
+{"line":["delete","deploy"],"kind":"runs","command":"delete deployment","exit":0}
+{"line":["delete","deployments","--help"],"kind":"help","command":"delete deployment","exit":0,"helpPath":"delete-deployment.txt"}

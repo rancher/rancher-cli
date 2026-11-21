@@ -1,0 +1,14 @@
+{"line":["create","resource","--filename","v"],"kind":"runs","command":"create resource","flags":{"filename":"v"},"exit":0}
+{"line":["create","resource","--filename=v"],"kind":"runs","command":"create resource","flags":{"filename":"v"},"exit":0}
+{"line":["create","resource","-f","v"],"kind":"runs","command":"create resource","flags":{"filename":"v"},"exit":0}
+{"line":["create","resource","--filename"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --filename; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","resource","--cluster","v"],"kind":"runs","command":"create resource","flags":{"cluster":"v"},"exit":0}
+{"line":["create","resource","--cluster=v"],"kind":"runs","command":"create resource","flags":{"cluster":"v"},"exit":0}
+{"line":["create","resource","-cluster","v"],"kind":"runs","command":"create resource","flags":{"cluster":"v"},"exit":0}
+{"line":["create","resource","--namespace","v"],"kind":"runs","command":"create resource","flags":{"namespace":"v"},"exit":0}
+{"line":["create","resource","--namespace=v"],"kind":"runs","command":"create resource","flags":{"namespace":"v"},"exit":0}
+{"line":["create","resource","-n","v"],"kind":"runs","command":"create resource","flags":{"namespace":"v"},"exit":0}
+{"line":["create","resource"],"kind":"runs","command":"create resource","exit":0}
+{"line":["create","resource","--help"],"kind":"help","command":"create resource","exit":0,"helpPath":"create-resource.txt"}
+{"line":["create","resource","x"],"kind":"runs","command":"create resource","args":["x"],"exit":0}
+{"line":["create","resource","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}

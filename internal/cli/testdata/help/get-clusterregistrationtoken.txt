@@ -1,0 +1,18 @@
+NAME:
+   rancher get clusterregistrationtoken - List clusterregistrationtokens or show one
+
+USAGE:
+   rancher get clusterregistrationtoken [options] [name]
+
+OPTIONS:
+   --help, -h                        show help
+   --namespace id, -n id             cluster id (c-...), the namespace of its cluster registration tokens
+   --selector selector, -l selector  filter a list by Kubernetes label selector, e.g. app=web,tier!=cache (kubectl's -l)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

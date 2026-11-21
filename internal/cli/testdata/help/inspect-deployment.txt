@@ -1,0 +1,18 @@
+NAME:
+   rancher inspect deployment - Inspect a deployment and the pods it selects
+
+USAGE:
+   rancher inspect deployment [options] <name>
+
+OPTIONS:
+   --cluster id|name                    target cluster id|name
+   --help, -h                           show help
+   --namespace namespace, -n namespace  namespace to operate in
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

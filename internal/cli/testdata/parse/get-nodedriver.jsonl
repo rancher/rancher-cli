@@ -1,0 +1,21 @@
+{"line":["get","nodedriver","--selector","v"],"kind":"runs","command":"get nodedriver","flags":{"selector":"v"},"exit":0}
+{"line":["get","nodedriver","--selector=v"],"kind":"runs","command":"get nodedriver","flags":{"selector":"v"},"exit":0}
+{"line":["get","nodedriver","-l","v"],"kind":"runs","command":"get nodedriver","flags":{"selector":"v"},"exit":0}
+{"line":["get","nodedriver","--selector"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --selector; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","nodedriver","--wait"],"kind":"runs","command":"get nodedriver","flags":{"wait":true},"exit":0}
+{"line":["get","nodedriver","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","nodedriver","--wait=false"],"kind":"runs","command":"get nodedriver","flags":{"wait":false},"exit":0}
+{"line":["get","nodedriver","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","nodedriver","-wait"],"kind":"runs","command":"get nodedriver","flags":{"wait":true},"exit":0}
+{"line":["get","nodedriver","--for","v"],"kind":"runs","command":"get nodedriver","flags":{"for":"v"},"exit":0}
+{"line":["get","nodedriver","--for=v"],"kind":"runs","command":"get nodedriver","flags":{"for":"v"},"exit":0}
+{"line":["get","nodedriver","-for","v"],"kind":"runs","command":"get nodedriver","flags":{"for":"v"},"exit":0}
+{"line":["get","nodedriver","--timeout","v"],"kind":"runs","command":"get nodedriver","flags":{"timeout":"v"},"exit":0}
+{"line":["get","nodedriver","--timeout=v"],"kind":"runs","command":"get nodedriver","flags":{"timeout":"v"},"exit":0}
+{"line":["get","nodedriver","-timeout","v"],"kind":"runs","command":"get nodedriver","flags":{"timeout":"v"},"exit":0}
+{"line":["get","nodedriver"],"kind":"runs","command":"get nodedriver","exit":0}
+{"line":["get","nodedriver","--help"],"kind":"help","command":"get nodedriver","exit":0,"helpPath":"get-nodedriver.txt"}
+{"line":["get","nodedriver","x"],"kind":"runs","command":"get nodedriver","args":["x"],"exit":0}
+{"line":["get","nodedriver","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","nodedrivers"],"kind":"runs","command":"get nodedriver","exit":0}
+{"line":["get","nodedrivers","--help"],"kind":"help","command":"get nodedriver","exit":0,"helpPath":"get-nodedriver.txt"}

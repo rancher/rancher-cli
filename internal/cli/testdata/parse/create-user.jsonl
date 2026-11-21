@@ -1,0 +1,326 @@
+{"line":["create","user",""],"kind":"runs","command":"create user","args":[""],"exit":0}
+{"line":["create","user"," "],"kind":"runs","command":"create user","args":[" "],"exit":0}
+{"line":["create","user","\t"],"kind":"runs","command":"create user","args":["\t"],"exit":0}
+{"line":["create","user","x"],"kind":"runs","command":"create user","args":["x"],"exit":0}
+{"line":["create","user"," x "],"kind":"runs","command":"create user","args":[" x "],"exit":0}
+{"line":["create","user","","","-"],"kind":"runs","command":"create user","args":["","","-"],"exit":0}
+{"line":["create","user","","","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","","-"],"kind":"runs","command":"create user","args":["","-"],"exit":0}
+{"line":["create","user","","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 4 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","","get"],"kind":"runs","command":"create user","args":["","get"],"exit":0}
+{"line":["create","user","","--help"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user"," ","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","get"],"kind":"runs","command":"create user","args":["get"],"exit":0}
+{"line":["create","user"," get"],"kind":"runs","command":"create user","args":[" get"],"exit":0}
+{"line":["create","user","nosuch"],"kind":"runs","command":"create user","args":["nosuch"],"exit":0}
+{"line":["create","user","-"],"kind":"runs","command":"create user","args":["-"],"exit":0}
+{"line":["create","user"," - "],"kind":"runs","command":"create user","args":[" - "],"exit":0}
+{"line":["create","user","\t-"],"kind":"runs","command":"create user","args":["\t-"],"exit":0}
+{"line":["create","user","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","- x"],"kind":"runs","command":"create user","args":["- x"],"exit":0}
+{"line":["create","user","--"],"kind":"runs","command":"create user","exit":0}
+{"line":["create","user"," -- "],"kind":"runs","command":"create user","exit":0}
+{"line":["create","user","--","--help"],"kind":"runs","command":"create user","args":["--help"],"exit":0}
+{"line":["create","user","--","-","x"],"kind":"runs","command":"create user","args":["-","x"],"exit":0}
+{"line":["create","user","--","--yes="],"kind":"runs","command":"create user","args":["--yes="],"exit":0}
+{"line":["create","user","-1"],"kind":"runs","command":"create user","args":["-1"],"exit":0}
+{"line":["create","user","-1","--help"],"kind":"runs","command":"create user","args":["-1","--help"],"exit":0}
+{"line":["create","user","-\u20ac"],"kind":"runs","command":"create user","args":["-\u20ac"],"exit":0}
+{"line":["create","user","-\u00e9"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","---x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","---yes"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","---help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--=x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","-="],"kind":"runs","command":"create user","args":["-="],"exit":0}
+{"line":["create","user","--help"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","-h"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","-help"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help=false"],"kind":"runs","command":"create user","flags":{"help":false},"exit":0}
+{"line":["create","user","--help="],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --help= has an empty value; a bool flag typed with = takes true or false","  hint: write --help or --help=true|false"]}
+{"line":["create","user","-h="],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help=true"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","-v"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version= "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--yes"],"kind":"runs","command":"create user","flags":{"yes":true},"exit":0}
+{"line":["create","user","--yes="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","user","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","user","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","user","--yes=false"],"kind":"runs","command":"create user","flags":{"yes":false},"exit":0}
+{"line":["create","user","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag -yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--yes","false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): create user: argument at position 1 was typed after the bool flag --yes; a bool flag takes its value only as --yes=<value>. To pass an argument such as true or false, put it before the flags or after --","  hint: rancher create user --help"]}
+{"line":["create","user","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","-o","json"],"kind":"runs","command":"create user","flags":{"output":"json"},"exit":0}
+{"line":["create","user","-o=json"],"kind":"runs","command":"create user","flags":{"output":"json"},"exit":0}
+{"line":["create","user","-o","-"],"kind":"runs","command":"create user","flags":{"output":"-"},"exit":0}
+{"line":["create","user","-o","--help"],"kind":"runs","command":"create user","flags":{"output":"--help"},"exit":0}
+{"line":["create","user"," --yes "],"kind":"runs","command":"create user","flags":{"yes":true},"exit":0}
+{"line":["x","create","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["create","x","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["-","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 2 words after a - on its own are not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","-","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":[" - ","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 2 words after a - on its own are not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create"," - ","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["--","create","user"],"kind":"runs","command":"create user","exit":0}
+{"line":["create","--","user"],"kind":"runs","command":"create user","exit":0}
+{"line":["-1","create","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["create","-1","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["--help","create","user"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","--help","user"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["--help=false","create","user"],"kind":"runs","command":"create user","exit":0}
+{"line":["create","--help=false","user"],"kind":"runs","command":"create user","exit":0}
+{"line":["--version","create","user"],"kind":"version","command":"","exit":0,"stdout":["rancher version v-test"]}
+{"line":["create","--version","user"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["--bogus","create","user"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 1 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","--bogus","user"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["--yes= ","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","--yes= ","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes=","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","--yes=","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes","create","user"],"kind":"runs","command":"create user","flags":{"yes":true},"exit":0}
+{"line":["create","--yes","user"],"kind":"runs","command":"create user","flags":{"yes":true},"exit":0}
+{"line":["-o","json","create","user"],"kind":"runs","command":"create user","flags":{"output":"json"},"exit":0}
+{"line":["create","-o","json","user"],"kind":"runs","command":"create user","flags":{"output":"json"},"exit":0}
+{"line":["get","create","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"create\"","  hint: rancher schema"]}
+{"line":["create","get","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"get\"","  hint: rancher schema"]}
+{"line":["nosuch","create","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["create","nosuch","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["","create","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["create","","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":[" ","create","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["create"," ","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["create","user","x","x"],"kind":"runs","command":"create user","args":["x","x"],"exit":0}
+{"line":["create","user","x","-"],"kind":"runs","command":"create user","args":["x","-"],"exit":0}
+{"line":["create","user","x"," - "],"kind":"runs","command":"create user","args":["x"," - "],"exit":0}
+{"line":["create","user","x","--"],"kind":"runs","command":"create user","args":["x"],"exit":0}
+{"line":["create","user","x","-1"],"kind":"runs","command":"create user","args":["x","-1"],"exit":0}
+{"line":["create","user","x","--help"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","x","--help=false"],"kind":"runs","command":"create user","args":["x"],"flags":{"help":false},"exit":0}
+{"line":["create","user","x","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 4 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","x","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 4 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","x",""],"kind":"runs","command":"create user","args":["x",""],"exit":0}
+{"line":["create","user","x"," "],"kind":"runs","command":"create user","args":["x"," "],"exit":0}
+{"line":["create","user","-","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-"," - "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-","--"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-","-1"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-","--help=false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-","--version"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","-"," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - "," - "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ","--"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ","-1"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ","--help=false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ","--version"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - ",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user"," - "," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","user","--","x"],"kind":"runs","command":"create user","args":["x"],"exit":0}
+{"line":["create","user","--","-"],"kind":"runs","command":"create user","args":["-"],"exit":0}
+{"line":["create","user","--"," - "],"kind":"runs","command":"create user","args":[" - "],"exit":0}
+{"line":["create","user","--","--"],"kind":"runs","command":"create user","args":["--"],"exit":0}
+{"line":["create","user","--","-1"],"kind":"runs","command":"create user","args":["-1"],"exit":0}
+{"line":["create","user","--","--help=false"],"kind":"runs","command":"create user","args":["--help=false"],"exit":0}
+{"line":["create","user","--","--version"],"kind":"runs","command":"create user","args":["--version"],"exit":0}
+{"line":["create","user","--","--bogus"],"kind":"runs","command":"create user","args":["--bogus"],"exit":0}
+{"line":["create","user","--",""],"kind":"runs","command":"create user","args":[""],"exit":0}
+{"line":["create","user","--"," "],"kind":"runs","command":"create user","args":[" "],"exit":0}
+{"line":["create","user","-1","x"],"kind":"runs","command":"create user","args":["-1","x"],"exit":0}
+{"line":["create","user","-1","-"],"kind":"runs","command":"create user","args":["-1","-"],"exit":0}
+{"line":["create","user","-1"," - "],"kind":"runs","command":"create user","args":["-1"," - "],"exit":0}
+{"line":["create","user","-1","--"],"kind":"runs","command":"create user","args":["-1","--"],"exit":0}
+{"line":["create","user","-1","-1"],"kind":"runs","command":"create user","args":["-1","-1"],"exit":0}
+{"line":["create","user","-1","--help=false"],"kind":"runs","command":"create user","args":["-1","--help=false"],"exit":0}
+{"line":["create","user","-1","--version"],"kind":"runs","command":"create user","args":["-1","--version"],"exit":0}
+{"line":["create","user","-1","--bogus"],"kind":"runs","command":"create user","args":["-1","--bogus"],"exit":0}
+{"line":["create","user","-1",""],"kind":"runs","command":"create user","args":["-1",""],"exit":0}
+{"line":["create","user","-1"," "],"kind":"runs","command":"create user","args":["-1"," "],"exit":0}
+{"line":["create","user","--help","x"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help","-"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help"," - "],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help","--"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help","-1"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help","--help"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help","--help=false"],"kind":"runs","command":"create user","flags":{"help":false},"exit":0}
+{"line":["create","user","--help","--version"],"kind":"help","command":"create user","exit":0,"stdout":["NAME:","   rancher create user - Create a local user and bind its global roles","","USAGE:","   rancher create user <username>","","OPTIONS:","   --description description              short description of the user","   --display-name string                  display name (default: the username)","   --enabled string                       account enabled state (server default true)","   --global-role id [ --global-role id ]  global role id to bind (repeatable); default: the roles the server marks newUserDefault; list them with: `rancher get globalroles`","   --help, -h                             show help","   --must-change-password                 require the user to set a new password at their next Rancher UI login","   --password-stdin                       read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default; a newline inside the password is refused)","","GLOBAL OPTIONS:","   --allow-deprecated          allow writing to a deprecated resource","   --apply                     apply the change","   --color string              auto|always|never","   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]","   --debug                     print telemetry upload details on stderr (development builds)","   --dry-run                   preview the changes without applying them","   --no-input                  never prompt; fail with an error when the input is ambiguous","   --output string, -o string  table|wide|json|yaml|name|template=<go-template>","   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it","   --yes                       confirm a destructive change"]}
+{"line":["create","user","--help","--bogus"],"kind":"help","command":"create user","exit":0,"stdout":["NAME:","   rancher create user - Create a local user and bind its global roles","","USAGE:","   rancher create user <username>","","OPTIONS:","   --description description              short description of the user","   --display-name string                  display name (default: the username)","   --enabled string                       account enabled state (server default true)","   --global-role id [ --global-role id ]  global role id to bind (repeatable); default: the roles the server marks newUserDefault; list them with: `rancher get globalroles`","   --help, -h                             show help","   --must-change-password                 require the user to set a new password at their next Rancher UI login","   --password-stdin                       read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default; a newline inside the password is refused)","","GLOBAL OPTIONS:","   --allow-deprecated          allow writing to a deprecated resource","   --apply                     apply the change","   --color string              auto|always|never","   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]","   --debug                     print telemetry upload details on stderr (development builds)","   --dry-run                   preview the changes without applying them","   --no-input                  never prompt; fail with an error when the input is ambiguous","   --output string, -o string  table|wide|json|yaml|name|template=<go-template>","   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it","   --yes                       confirm a destructive change"]}
+{"line":["create","user","--help",""],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help"," "],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help=false","x"],"kind":"runs","command":"create user","args":["x"],"flags":{"help":false},"exit":0}
+{"line":["create","user","--help=false","-"],"kind":"runs","command":"create user","args":["-"],"flags":{"help":false},"exit":0}
+{"line":["create","user","--help=false"," - "],"kind":"runs","command":"create user","args":[" - "],"flags":{"help":false},"exit":0}
+{"line":["create","user","--help=false","--"],"kind":"runs","command":"create user","flags":{"help":false},"exit":0}
+{"line":["create","user","--help=false","-1"],"kind":"runs","command":"create user","args":["-1"],"flags":{"help":false},"exit":0}
+{"line":["create","user","--help=false","--help"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user","--help=false","--help=false"],"kind":"runs","command":"create user","flags":{"help":false},"exit":0}
+{"line":["create","user","--help=false","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 4 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--help=false","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 4 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--help=false",""],"kind":"runs","command":"create user","args":[""],"flags":{"help":false},"exit":0}
+{"line":["create","user","--help=false"," "],"kind":"runs","command":"create user","args":[" "],"flags":{"help":false},"exit":0}
+{"line":["create","user","--version","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--version"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--bogus"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","","x"],"kind":"runs","command":"create user","args":["","x"],"exit":0}
+{"line":["create","user",""," - "],"kind":"runs","command":"create user","args":[""," - "],"exit":0}
+{"line":["create","user","","--"],"kind":"runs","command":"create user","args":[""],"exit":0}
+{"line":["create","user","","-1"],"kind":"runs","command":"create user","args":["","-1"],"exit":0}
+{"line":["create","user","","--help=false"],"kind":"runs","command":"create user","args":[""],"flags":{"help":false},"exit":0}
+{"line":["create","user","","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 4 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","",""],"kind":"runs","command":"create user","args":["",""],"exit":0}
+{"line":["create","user",""," "],"kind":"runs","command":"create user","args":[""," "],"exit":0}
+{"line":["create","user"," ","x"],"kind":"runs","command":"create user","args":[" ","x"],"exit":0}
+{"line":["create","user"," ","-"],"kind":"runs","command":"create user","args":[" ","-"],"exit":0}
+{"line":["create","user"," "," - "],"kind":"runs","command":"create user","args":[" "," - "],"exit":0}
+{"line":["create","user"," ","--"],"kind":"runs","command":"create user","args":[" "],"exit":0}
+{"line":["create","user"," ","-1"],"kind":"runs","command":"create user","args":[" ","-1"],"exit":0}
+{"line":["create","user"," ","--help"],"kind":"help","command":"create user","exit":0,"helpPath":"create-user.txt"}
+{"line":["create","user"," ","--help=false"],"kind":"runs","command":"create user","args":[" "],"flags":{"help":false},"exit":0}
+{"line":["create","user"," ","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 4 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user"," ","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 4 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user"," ",""],"kind":"runs","command":"create user","args":[" ",""],"exit":0}
+{"line":["create","user"," "," "],"kind":"runs","command":"create user","args":[" "," "],"exit":0}
+{"line":["create","user","--debug"],"kind":"runs","command":"create user","flags":{"debug":true},"exit":0}
+{"line":["--debug","create","user"],"kind":"runs","command":"create user","flags":{"debug":true},"exit":0}
+{"line":["create","user","--debug="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["--debug=","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["create","user","--debug=false"],"kind":"runs","command":"create user","flags":{"debug":false},"exit":0}
+{"line":["--debug=false","create","user"],"kind":"runs","command":"create user","flags":{"debug":false},"exit":0}
+{"line":["create","user","--debug= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["--debug= ","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["create","user","-debug"],"kind":"runs","command":"create user","flags":{"debug":true},"exit":0}
+{"line":["-debug","create","user"],"kind":"runs","command":"create user","flags":{"debug":true},"exit":0}
+{"line":["create","user","--config","v"],"kind":"runs","command":"create user","flags":{"config":"v"},"exit":0}
+{"line":["--config","v","create","user"],"kind":"runs","command":"create user","flags":{"config":"v"},"exit":0}
+{"line":["create","user","--config=v"],"kind":"runs","command":"create user","flags":{"config":"v"},"exit":0}
+{"line":["--config=v","create","user"],"kind":"runs","command":"create user","flags":{"config":"v"},"exit":0}
+{"line":["create","user","-c","v"],"kind":"runs","command":"create user","flags":{"config":"v"},"exit":0}
+{"line":["-c","v","create","user"],"kind":"runs","command":"create user","flags":{"config":"v"},"exit":0}
+{"line":["create","user","--config"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --config; pass --help for usage","  hint: rancher schema"]}
+{"line":["--config","create","user"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"user\"","  hint: rancher schema"]}
+{"line":["create","user","--dry-run"],"kind":"runs","command":"create user","flags":{"dry-run":true},"exit":0}
+{"line":["--dry-run","create","user"],"kind":"runs","command":"create user","flags":{"dry-run":true},"exit":0}
+{"line":["create","user","--dry-run="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["--dry-run=","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["create","user","--dry-run=false"],"kind":"runs","command":"create user","flags":{"dry-run":false},"exit":0}
+{"line":["--dry-run=false","create","user"],"kind":"runs","command":"create user","flags":{"dry-run":false},"exit":0}
+{"line":["create","user","--dry-run= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["--dry-run= ","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["create","user","-dry-run"],"kind":"runs","command":"create user","flags":{"dry-run":true},"exit":0}
+{"line":["-dry-run","create","user"],"kind":"runs","command":"create user","flags":{"dry-run":true},"exit":0}
+{"line":["create","user","--apply"],"kind":"runs","command":"create user","flags":{"apply":true},"exit":0}
+{"line":["--apply","create","user"],"kind":"runs","command":"create user","flags":{"apply":true},"exit":0}
+{"line":["create","user","--apply="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["--apply=","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["create","user","--apply=false"],"kind":"runs","command":"create user","flags":{"apply":false},"exit":0}
+{"line":["--apply=false","create","user"],"kind":"runs","command":"create user","flags":{"apply":false},"exit":0}
+{"line":["create","user","--apply= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["--apply= ","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["create","user","-apply"],"kind":"runs","command":"create user","flags":{"apply":true},"exit":0}
+{"line":["-apply","create","user"],"kind":"runs","command":"create user","flags":{"apply":true},"exit":0}
+{"line":["--yes=false","create","user"],"kind":"runs","command":"create user","flags":{"yes":false},"exit":0}
+{"line":["create","user","-yes"],"kind":"runs","command":"create user","flags":{"yes":true},"exit":0}
+{"line":["-yes","create","user"],"kind":"runs","command":"create user","flags":{"yes":true},"exit":0}
+{"line":["create","user","--allow-deprecated"],"kind":"runs","command":"create user","flags":{"allow-deprecated":true},"exit":0}
+{"line":["--allow-deprecated","create","user"],"kind":"runs","command":"create user","flags":{"allow-deprecated":true},"exit":0}
+{"line":["create","user","--allow-deprecated="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["--allow-deprecated=","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["create","user","--allow-deprecated=false"],"kind":"runs","command":"create user","flags":{"allow-deprecated":false},"exit":0}
+{"line":["--allow-deprecated=false","create","user"],"kind":"runs","command":"create user","flags":{"allow-deprecated":false},"exit":0}
+{"line":["create","user","--allow-deprecated= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["--allow-deprecated= ","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["create","user","-allow-deprecated"],"kind":"runs","command":"create user","flags":{"allow-deprecated":true},"exit":0}
+{"line":["-allow-deprecated","create","user"],"kind":"runs","command":"create user","flags":{"allow-deprecated":true},"exit":0}
+{"line":["create","user","--no-input"],"kind":"runs","command":"create user","flags":{"no-input":true},"exit":0}
+{"line":["--no-input","create","user"],"kind":"runs","command":"create user","flags":{"no-input":true},"exit":0}
+{"line":["create","user","--no-input="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["--no-input=","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["create","user","--no-input=false"],"kind":"runs","command":"create user","flags":{"no-input":false},"exit":0}
+{"line":["--no-input=false","create","user"],"kind":"runs","command":"create user","flags":{"no-input":false},"exit":0}
+{"line":["create","user","--no-input= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["--no-input= ","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["create","user","-no-input"],"kind":"runs","command":"create user","flags":{"no-input":true},"exit":0}
+{"line":["-no-input","create","user"],"kind":"runs","command":"create user","flags":{"no-input":true},"exit":0}
+{"line":["create","user","--output","v"],"kind":"runs","command":"create user","flags":{"output":"v"},"exit":0}
+{"line":["--output","v","create","user"],"kind":"runs","command":"create user","flags":{"output":"v"},"exit":0}
+{"line":["create","user","--output=v"],"kind":"runs","command":"create user","flags":{"output":"v"},"exit":0}
+{"line":["--output=v","create","user"],"kind":"runs","command":"create user","flags":{"output":"v"},"exit":0}
+{"line":["create","user","-o","v"],"kind":"runs","command":"create user","flags":{"output":"v"},"exit":0}
+{"line":["-o","v","create","user"],"kind":"runs","command":"create user","flags":{"output":"v"},"exit":0}
+{"line":["create","user","--color","v"],"kind":"runs","command":"create user","flags":{"color":"v"},"exit":0}
+{"line":["--color","v","create","user"],"kind":"runs","command":"create user","flags":{"color":"v"},"exit":0}
+{"line":["create","user","--color=v"],"kind":"runs","command":"create user","flags":{"color":"v"},"exit":0}
+{"line":["--color=v","create","user"],"kind":"runs","command":"create user","flags":{"color":"v"},"exit":0}
+{"line":["create","user","-color","v"],"kind":"runs","command":"create user","flags":{"color":"v"},"exit":0}
+{"line":["-color","v","create","user"],"kind":"runs","command":"create user","flags":{"color":"v"},"exit":0}
+{"line":["create","user","--project","v"],"kind":"runs","command":"create user","flags":{"project":"v"},"exit":0}
+{"line":["--project","v","create","user"],"kind":"runs","command":"create user","flags":{"project":"v"},"exit":0}
+{"line":["create","user","--project=v"],"kind":"runs","command":"create user","flags":{"project":"v"},"exit":0}
+{"line":["--project=v","create","user"],"kind":"runs","command":"create user","flags":{"project":"v"},"exit":0}
+{"line":["create","user","-project","v"],"kind":"runs","command":"create user","flags":{"project":"v"},"exit":0}
+{"line":["-project","v","create","user"],"kind":"runs","command":"create user","flags":{"project":"v"},"exit":0}
+{"line":["create","user","--read-only"],"kind":"runs","command":"create user","flags":{"read-only":true},"exit":0}
+{"line":["--read-only","create","user"],"kind":"runs","command":"create user","flags":{"read-only":true},"exit":0}
+{"line":["create","user","--read-only="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["--read-only=","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["create","user","--read-only=false"],"kind":"runs","command":"create user","flags":{"read-only":false},"exit":0}
+{"line":["--read-only=false","create","user"],"kind":"runs","command":"create user","flags":{"read-only":false},"exit":0}
+{"line":["create","user","--read-only= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["--read-only= ","create","user"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["create","user","-read-only"],"kind":"runs","command":"create user","flags":{"read-only":true},"exit":0}
+{"line":["-read-only","create","user"],"kind":"runs","command":"create user","flags":{"read-only":true},"exit":0}
+{"line":["create","user","--password-stdin"],"kind":"runs","command":"create user","flags":{"password-stdin":true},"exit":0}
+{"line":["create","user","--password-stdin="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --password-stdin= has an empty value; a bool flag typed with = takes true or false","  hint: write --password-stdin or --password-stdin=true|false"]}
+{"line":["create","user","--password-stdin=false"],"kind":"runs","command":"create user","flags":{"password-stdin":false},"exit":0}
+{"line":["create","user","--password-stdin= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --password-stdin= has an empty value; a bool flag typed with = takes true or false","  hint: write --password-stdin or --password-stdin=true|false"]}
+{"line":["create","user","-password-stdin"],"kind":"runs","command":"create user","flags":{"password-stdin":true},"exit":0}
+{"line":["create","user","--display-name","v"],"kind":"runs","command":"create user","flags":{"display-name":"v"},"exit":0}
+{"line":["create","user","--display-name=v"],"kind":"runs","command":"create user","flags":{"display-name":"v"},"exit":0}
+{"line":["create","user","-display-name","v"],"kind":"runs","command":"create user","flags":{"display-name":"v"},"exit":0}
+{"line":["create","user","--display-name"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --display-name; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","user","--enabled","v"],"kind":"runs","command":"create user","flags":{"enabled":"v"},"exit":0}
+{"line":["create","user","--enabled=v"],"kind":"runs","command":"create user","flags":{"enabled":"v"},"exit":0}
+{"line":["create","user","-enabled","v"],"kind":"runs","command":"create user","flags":{"enabled":"v"},"exit":0}
+{"line":["create","user","--description","v"],"kind":"runs","command":"create user","flags":{"description":"v"},"exit":0}
+{"line":["create","user","--description=v"],"kind":"runs","command":"create user","flags":{"description":"v"},"exit":0}
+{"line":["create","user","-description","v"],"kind":"runs","command":"create user","flags":{"description":"v"},"exit":0}
+{"line":["create","user","--must-change-password"],"kind":"runs","command":"create user","flags":{"must-change-password":true},"exit":0}
+{"line":["create","user","--must-change-password="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --must-change-password= has an empty value; a bool flag typed with = takes true or false","  hint: write --must-change-password or --must-change-password=true|false"]}
+{"line":["create","user","--must-change-password=false"],"kind":"runs","command":"create user","flags":{"must-change-password":false},"exit":0}
+{"line":["create","user","--must-change-password= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --must-change-password= has an empty value; a bool flag typed with = takes true or false","  hint: write --must-change-password or --must-change-password=true|false"]}
+{"line":["create","user","-must-change-password"],"kind":"runs","command":"create user","flags":{"must-change-password":true},"exit":0}
+{"line":["create","user","--global-role","v"],"kind":"runs","command":"create user","flags":{"global-role":["v"]},"exit":0}
+{"line":["create","user","--global-role=v"],"kind":"runs","command":"create user","flags":{"global-role":["v"]},"exit":0}
+{"line":["create","user","-global-role","v"],"kind":"runs","command":"create user","flags":{"global-role":["v"]},"exit":0}
+{"line":["create","user"],"kind":"runs","command":"create user","exit":0}
+{"line":["create","user","--global-role","a,b"],"kind":"runs","command":"create user","flags":{"global-role":["a,b"]},"exit":0}
+{"line":["create","user","--global-role","a,b","--global-role","c,d"],"kind":"runs","command":"create user","flags":{"global-role":["a,b","c,d"]},"exit":0}
+{"line":["create","user","--global-role","a","--global-role","b"],"kind":"runs","command":"create user","flags":{"global-role":["a","b"]},"exit":0}
+{"line":["create","user","--global-role=a b"],"kind":"runs","command":"create user","flags":{"global-role":["a b"]},"exit":0}

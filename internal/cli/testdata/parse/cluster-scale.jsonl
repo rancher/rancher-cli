@@ -1,0 +1,14 @@
+{"line":["cluster","scale","--pool","v"],"kind":"runs","command":"cluster scale","flags":{"pool":"v"},"exit":0}
+{"line":["cluster","scale","--pool=v"],"kind":"runs","command":"cluster scale","flags":{"pool":"v"},"exit":0}
+{"line":["cluster","scale","-pool","v"],"kind":"runs","command":"cluster scale","flags":{"pool":"v"},"exit":0}
+{"line":["cluster","scale","--pool"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --pool; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","scale","--nodes","v"],"kind":"runs","command":"cluster scale","flags":{"nodes":"v"},"exit":0}
+{"line":["cluster","scale","--nodes=v"],"kind":"runs","command":"cluster scale","flags":{"nodes":"v"},"exit":0}
+{"line":["cluster","scale","-nodes","v"],"kind":"runs","command":"cluster scale","flags":{"nodes":"v"},"exit":0}
+{"line":["cluster","scale","--namespace","v"],"kind":"runs","command":"cluster scale","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","scale","--namespace=v"],"kind":"runs","command":"cluster scale","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","scale","-n","v"],"kind":"runs","command":"cluster scale","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","scale"],"kind":"runs","command":"cluster scale","exit":0}
+{"line":["cluster","scale","--help"],"kind":"help","command":"cluster scale","exit":0,"helpPath":"cluster-scale.txt"}
+{"line":["cluster","scale","x"],"kind":"runs","command":"cluster scale","args":["x"],"exit":0}
+{"line":["cluster","scale","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

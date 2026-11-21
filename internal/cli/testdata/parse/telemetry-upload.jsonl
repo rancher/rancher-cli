@@ -1,0 +1,4 @@
+{"line":["telemetry","upload"],"kind":"runs","command":"telemetry upload","exit":0}
+{"line":["telemetry","upload","--help"],"kind":"help","command":"telemetry upload","exit":0,"helpPath":"telemetry-upload.txt"}
+{"line":["telemetry","upload","x"],"kind":"runs","command":"telemetry upload","args":["x"],"exit":0}
+{"line":["telemetry","upload","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

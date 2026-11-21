@@ -1,0 +1,21 @@
+{"line":["charts","--cluster","v"],"kind":"runs","command":"charts","flags":{"cluster":"v"},"exit":0}
+{"line":["charts","--cluster=v"],"kind":"runs","command":"charts","flags":{"cluster":"v"},"exit":0}
+{"line":["charts","-cluster","v"],"kind":"runs","command":"charts","flags":{"cluster":"v"},"exit":0}
+{"line":["charts","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["charts","--repo","v"],"kind":"runs","command":"charts","flags":{"repo":"v"},"exit":0}
+{"line":["charts","--repo=v"],"kind":"runs","command":"charts","flags":{"repo":"v"},"exit":0}
+{"line":["charts","-repo","v"],"kind":"runs","command":"charts","flags":{"repo":"v"},"exit":0}
+{"line":["charts","--all-versions"],"kind":"runs","command":"charts","flags":{"all-versions":true},"exit":0}
+{"line":["charts","--all-versions="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all-versions= has an empty value; a bool flag typed with = takes true or false","  hint: write --all-versions or --all-versions=true|false"]}
+{"line":["charts","--all-versions=false"],"kind":"runs","command":"charts","flags":{"all-versions":false},"exit":0}
+{"line":["charts","--all-versions= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all-versions= has an empty value; a bool flag typed with = takes true or false","  hint: write --all-versions or --all-versions=true|false"]}
+{"line":["charts","-all-versions"],"kind":"runs","command":"charts","flags":{"all-versions":true},"exit":0}
+{"line":["charts","--include-deprecated"],"kind":"runs","command":"charts","flags":{"include-deprecated":true},"exit":0}
+{"line":["charts","--include-deprecated="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --include-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --include-deprecated or --include-deprecated=true|false"]}
+{"line":["charts","--include-deprecated=false"],"kind":"runs","command":"charts","flags":{"include-deprecated":false},"exit":0}
+{"line":["charts","--include-deprecated= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --include-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --include-deprecated or --include-deprecated=true|false"]}
+{"line":["charts","-include-deprecated"],"kind":"runs","command":"charts","flags":{"include-deprecated":true},"exit":0}
+{"line":["charts"],"kind":"runs","command":"charts","exit":0}
+{"line":["charts","--help"],"kind":"help","command":"charts","exit":0,"helpPath":"charts.txt"}
+{"line":["charts","x"],"kind":"runs","command":"charts","args":["x"],"exit":0}
+{"line":["charts","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

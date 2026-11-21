@@ -1,0 +1,34 @@
+NAME:
+   rancher create - Create resources
+
+USAGE:
+   rancher create [command [command options]]
+
+COMMANDS:
+   cluster:                  Create a provisioning cluster (--import, --custom, or --machine-config for a node-driver cluster)
+   kubeconfig:               Create a kubeconfig with an embedded token
+   machine-config:           Create a machine config for the machine pool of a node-driver cluster
+   namespace:                Create a namespace, optionally inside a project
+   oidc-client:              [Prime] Create an OIDC client for Rancher's embedded OIDC provider
+   password-change-request:  Change a local user's password
+   project:                  Create a project in a cluster
+   resource:                 Create a resource from a manifest file
+   secret:                   Create a secret, optionally project-scoped
+   token:                    Create a token on the server
+   user:                     Create a local user and bind its global roles
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --project string            the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

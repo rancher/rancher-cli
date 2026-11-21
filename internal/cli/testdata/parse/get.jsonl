@@ -1,0 +1,282 @@
+{"line":["get",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get","\t"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\\t\"","  hint: rancher schema"]}
+{"line":["get","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get"," x "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" x \"","  hint: rancher schema"]}
+{"line":["get","","","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get"," ","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"get\"","  hint: rancher schema"]}
+{"line":["get"," get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" get\"","  hint: rancher schema"]}
+{"line":["get","nosuch"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["get","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["get"," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" - \"","  hint: rancher schema"]}
+{"line":["get","\t-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\\t-\"","  hint: rancher schema"]}
+{"line":["get","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","- x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"- x\"","  hint: rancher schema"]}
+{"line":["get","--"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get"," -- "],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--help\"","  hint: rancher schema"]}
+{"line":["get","--","-","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["get","--","--yes="],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--yes=\"","  hint: rancher schema"]}
+{"line":["get","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-\u20ac"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\u20ac\"","  hint: rancher schema"]}
+{"line":["get","-\u00e9"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","---x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","---yes"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","---help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--=x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","-="],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-=\"","  hint: rancher schema"]}
+{"line":["get","--help"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-h"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-help"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --help= has an empty value; a bool flag typed with = takes true or false","  hint: write --help or --help=true|false"]}
+{"line":["get","-h="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help=true"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","-v"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version= "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--yes"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--yes="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["get","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["get","--yes=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value for flag -yes: the value must be true or false; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--yes","false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"false\"","  hint: rancher schema"]}
+{"line":["get","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","-o","json"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-o=json"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-o","-"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-o","--help"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get"," --yes "],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["x","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["-","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":[" - ","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["--","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-1","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["--help","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--help=false","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--version","get"],"kind":"version","command":"","exit":0,"stdout":["rancher version v-test"]}
+{"line":["--bogus","get"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 1 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["--yes= ","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes=","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--yes","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-o","json","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["nosuch","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":[" ","get"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get","x","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x"," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","-","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-"," - "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-","--"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-","-1"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-","--help=false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-","--version"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-"," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - "," - "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","--"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","-1"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","--help=false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","--version"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - "," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","--","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","--","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["get","--"," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" - \"","  hint: rancher schema"]}
+{"line":["get","--","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--\"","  hint: rancher schema"]}
+{"line":["get","--","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","--","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--help=false\"","  hint: rancher schema"]}
+{"line":["get","--","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--version\"","  hint: rancher schema"]}
+{"line":["get","--","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"--bogus\"","  hint: rancher schema"]}
+{"line":["get","--",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","--"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get","-1","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1"," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","--help","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","--help","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["get","--help"," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" - \"","  hint: rancher schema"]}
+{"line":["get","--help","--"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","--help","--help"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help","--help=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help","--version"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help","--bogus"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help",""],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get","--help=false","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","--help=false","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-\"","  hint: rancher schema"]}
+{"line":["get","--help=false"," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" - \"","  hint: rancher schema"]}
+{"line":["get","--help=false","--"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help=false","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","--help=false","--help"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help=false","--help=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--help=false","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--help=false","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--help=false",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","--help=false"," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get","--version","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--version"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get",""," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get",""," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get"," ","x"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ","-"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," "," - "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ","--"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ","-1"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ","--help"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ","--help=false"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ","--version"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ","--bogus"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ",""],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," "," "],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get","--debug"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--debug","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--debug="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--debug=","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--debug=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--debug=false","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--debug= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["--debug= ","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["get","-debug"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-debug","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--config","v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--config","v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--config=v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--config=v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-c","v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-c","v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--config"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --config; pass --help for usage","  hint: rancher schema"]}
+{"line":["--config","get"],"kind":"help","command":"","exit":0,"helpPath":"rancher.txt"}
+{"line":["get","--dry-run"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--dry-run","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--dry-run="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--dry-run=","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--dry-run=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--dry-run=false","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--dry-run= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["--dry-run= ","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["get","-dry-run"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-dry-run","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--apply"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--apply","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--apply="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--apply=","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--apply=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--apply=false","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--apply= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["--apply= ","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["get","-apply"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-apply","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--yes=false","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-yes"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-yes","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--allow-deprecated"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--allow-deprecated","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--allow-deprecated="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--allow-deprecated=","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--allow-deprecated=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--allow-deprecated=false","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--allow-deprecated= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["--allow-deprecated= ","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["get","-allow-deprecated"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-allow-deprecated","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--no-input"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--no-input","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--no-input="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--no-input=","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--no-input=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--no-input=false","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--no-input= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["--no-input= ","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["get","-no-input"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-no-input","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--output","v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--output","v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--output=v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--output=v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-o","v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-o","v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--color","v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--color","v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--color=v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--color=v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-color","v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-color","v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--project","v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--project","v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--project=v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--project=v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","-project","v"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-project","v","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--read-only"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--read-only","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--read-only="],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--read-only=","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--read-only=false"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["--read-only=false","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get","--read-only= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["--read-only= ","get"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["get","-read-only"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["-read-only","get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get"],"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}
+{"line":["get"],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"help","command":"get","exit":0,"helpPath":"get.txt"}

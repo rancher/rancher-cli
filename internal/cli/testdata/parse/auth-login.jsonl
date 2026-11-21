@@ -1,0 +1,33 @@
+{"line":["auth","login","--url","v"],"kind":"runs","command":"auth login","flags":{"url":"v"},"exit":0}
+{"line":["auth","login","--url=v"],"kind":"runs","command":"auth login","flags":{"url":"v"},"exit":0}
+{"line":["auth","login","-url","v"],"kind":"runs","command":"auth login","flags":{"url":"v"},"exit":0}
+{"line":["auth","login","--url"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --url; pass --help for usage","  hint: rancher schema"]}
+{"line":["auth","login","--token-stdin"],"kind":"runs","command":"auth login","flags":{"token-stdin":true},"exit":0}
+{"line":["auth","login","--token-stdin="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --token-stdin= has an empty value; a bool flag typed with = takes true or false","  hint: write --token-stdin or --token-stdin=true|false"]}
+{"line":["auth","login","--token-stdin=false"],"kind":"runs","command":"auth login","flags":{"token-stdin":false},"exit":0}
+{"line":["auth","login","--token-stdin= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --token-stdin= has an empty value; a bool flag typed with = takes true or false","  hint: write --token-stdin or --token-stdin=true|false"]}
+{"line":["auth","login","-token-stdin"],"kind":"runs","command":"auth login","flags":{"token-stdin":true},"exit":0}
+{"line":["auth","login","--cacert","v"],"kind":"runs","command":"auth login","flags":{"cacert":"v"},"exit":0}
+{"line":["auth","login","--cacert=v"],"kind":"runs","command":"auth login","flags":{"cacert":"v"},"exit":0}
+{"line":["auth","login","-cacert","v"],"kind":"runs","command":"auth login","flags":{"cacert":"v"},"exit":0}
+{"line":["auth","login","--auth-provider","v"],"kind":"runs","command":"auth login","flags":{"auth-provider":"v"},"exit":0}
+{"line":["auth","login","--auth-provider=v"],"kind":"runs","command":"auth login","flags":{"auth-provider":"v"},"exit":0}
+{"line":["auth","login","-auth-provider","v"],"kind":"runs","command":"auth login","flags":{"auth-provider":"v"},"exit":0}
+{"line":["auth","login","--auth-flow","v"],"kind":"runs","command":"auth login","flags":{"auth-flow":"v"},"exit":0}
+{"line":["auth","login","--auth-flow=v"],"kind":"runs","command":"auth login","flags":{"auth-flow":"v"},"exit":0}
+{"line":["auth","login","-auth-flow","v"],"kind":"runs","command":"auth login","flags":{"auth-flow":"v"},"exit":0}
+{"line":["auth","login","--ttl","v"],"kind":"runs","command":"auth login","flags":{"ttl":"v"},"exit":0}
+{"line":["auth","login","--ttl=v"],"kind":"runs","command":"auth login","flags":{"ttl":"v"},"exit":0}
+{"line":["auth","login","-ttl","v"],"kind":"runs","command":"auth login","flags":{"ttl":"v"},"exit":0}
+{"line":["auth","login","--no-verify"],"kind":"runs","command":"auth login","flags":{"no-verify":true},"exit":0}
+{"line":["auth","login","--no-verify="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-verify= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-verify or --no-verify=true|false"]}
+{"line":["auth","login","--no-verify=false"],"kind":"runs","command":"auth login","flags":{"no-verify":false},"exit":0}
+{"line":["auth","login","--no-verify= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-verify= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-verify or --no-verify=true|false"]}
+{"line":["auth","login","-no-verify"],"kind":"runs","command":"auth login","flags":{"no-verify":true},"exit":0}
+{"line":["auth","login","--credential-store","v"],"kind":"runs","command":"auth login","flags":{"credential-store":"v"},"exit":0}
+{"line":["auth","login","--credential-store=v"],"kind":"runs","command":"auth login","flags":{"credential-store":"v"},"exit":0}
+{"line":["auth","login","-credential-store","v"],"kind":"runs","command":"auth login","flags":{"credential-store":"v"},"exit":0}
+{"line":["auth","login"],"kind":"runs","command":"auth login","exit":0}
+{"line":["auth","login","--help"],"kind":"help","command":"auth login","exit":0,"helpPath":"auth-login.txt"}
+{"line":["auth","login","x"],"kind":"runs","command":"auth login","args":["x"],"exit":0}
+{"line":["auth","login","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}

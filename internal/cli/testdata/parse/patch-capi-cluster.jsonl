@@ -1,0 +1,20 @@
+{"line":["patch","capi-cluster","--namespace","v"],"kind":"runs","command":"patch capi-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","capi-cluster","--namespace=v"],"kind":"runs","command":"patch capi-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","capi-cluster","-n","v"],"kind":"runs","command":"patch capi-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","capi-cluster","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","capi-cluster","--patch","v"],"kind":"runs","command":"patch capi-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","capi-cluster","--patch=v"],"kind":"runs","command":"patch capi-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","capi-cluster","-p","v"],"kind":"runs","command":"patch capi-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","capi-cluster","--patch-file","v"],"kind":"runs","command":"patch capi-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","capi-cluster","--patch-file=v"],"kind":"runs","command":"patch capi-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","capi-cluster","-patch-file","v"],"kind":"runs","command":"patch capi-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","capi-cluster","--type","v"],"kind":"runs","command":"patch capi-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","capi-cluster","--type=v"],"kind":"runs","command":"patch capi-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","capi-cluster","-type","v"],"kind":"runs","command":"patch capi-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","capi-cluster"],"kind":"runs","command":"patch capi-cluster","exit":0}
+{"line":["patch","capi-cluster","--help"],"kind":"help","command":"patch capi-cluster","exit":0,"helpPath":"patch-capi-cluster.txt"}
+{"line":["patch","capi-cluster","x"],"kind":"runs","command":"patch capi-cluster","args":["x"],"exit":0}
+{"line":["patch","capi-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","capiclusters"],"kind":"runs","command":"patch capi-cluster","exit":0}
+{"line":["patch","capi-clusters"],"kind":"runs","command":"patch capi-cluster","exit":0}
+{"line":["patch","capiclusters","--help"],"kind":"help","command":"patch capi-cluster","exit":0,"helpPath":"patch-capi-cluster.txt"}

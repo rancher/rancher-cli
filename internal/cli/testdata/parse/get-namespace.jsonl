@@ -1,0 +1,25 @@
+{"line":["get","namespace","--cluster","v"],"kind":"runs","command":"get namespace","flags":{"cluster":"v"},"exit":0}
+{"line":["get","namespace","--cluster=v"],"kind":"runs","command":"get namespace","flags":{"cluster":"v"},"exit":0}
+{"line":["get","namespace","-cluster","v"],"kind":"runs","command":"get namespace","flags":{"cluster":"v"},"exit":0}
+{"line":["get","namespace","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","namespace","--selector","v"],"kind":"runs","command":"get namespace","flags":{"selector":"v"},"exit":0}
+{"line":["get","namespace","--selector=v"],"kind":"runs","command":"get namespace","flags":{"selector":"v"},"exit":0}
+{"line":["get","namespace","-l","v"],"kind":"runs","command":"get namespace","flags":{"selector":"v"},"exit":0}
+{"line":["get","namespace","--wait"],"kind":"runs","command":"get namespace","flags":{"wait":true},"exit":0}
+{"line":["get","namespace","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","namespace","--wait=false"],"kind":"runs","command":"get namespace","flags":{"wait":false},"exit":0}
+{"line":["get","namespace","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","namespace","-wait"],"kind":"runs","command":"get namespace","flags":{"wait":true},"exit":0}
+{"line":["get","namespace","--for","v"],"kind":"runs","command":"get namespace","flags":{"for":"v"},"exit":0}
+{"line":["get","namespace","--for=v"],"kind":"runs","command":"get namespace","flags":{"for":"v"},"exit":0}
+{"line":["get","namespace","-for","v"],"kind":"runs","command":"get namespace","flags":{"for":"v"},"exit":0}
+{"line":["get","namespace","--timeout","v"],"kind":"runs","command":"get namespace","flags":{"timeout":"v"},"exit":0}
+{"line":["get","namespace","--timeout=v"],"kind":"runs","command":"get namespace","flags":{"timeout":"v"},"exit":0}
+{"line":["get","namespace","-timeout","v"],"kind":"runs","command":"get namespace","flags":{"timeout":"v"},"exit":0}
+{"line":["get","namespace"],"kind":"runs","command":"get namespace","exit":0}
+{"line":["get","namespace","--help"],"kind":"help","command":"get namespace","exit":0,"helpPath":"get-namespace.txt"}
+{"line":["get","namespace","x"],"kind":"runs","command":"get namespace","args":["x"],"exit":0}
+{"line":["get","namespace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","namespaces"],"kind":"runs","command":"get namespace","exit":0}
+{"line":["get","ns"],"kind":"runs","command":"get namespace","exit":0}
+{"line":["get","namespaces","--help"],"kind":"help","command":"get namespace","exit":0,"helpPath":"get-namespace.txt"}

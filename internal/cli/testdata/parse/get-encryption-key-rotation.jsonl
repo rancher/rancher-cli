@@ -1,0 +1,25 @@
+{"line":["get","encryption-key-rotation","--cluster","v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","--cluster=v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","-cluster","v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","encryption-key-rotation","--selector","v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"selector":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","--selector=v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"selector":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","-l","v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"selector":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","--wait"],"kind":"runs","command":"get encryption-key-rotation","flags":{"wait":true},"exit":0}
+{"line":["get","encryption-key-rotation","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","encryption-key-rotation","--wait=false"],"kind":"runs","command":"get encryption-key-rotation","flags":{"wait":false},"exit":0}
+{"line":["get","encryption-key-rotation","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","encryption-key-rotation","-wait"],"kind":"runs","command":"get encryption-key-rotation","flags":{"wait":true},"exit":0}
+{"line":["get","encryption-key-rotation","--for","v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"for":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","--for=v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"for":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","-for","v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"for":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","--timeout","v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"timeout":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","--timeout=v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"timeout":"v"},"exit":0}
+{"line":["get","encryption-key-rotation","-timeout","v"],"kind":"runs","command":"get encryption-key-rotation","flags":{"timeout":"v"},"exit":0}
+{"line":["get","encryption-key-rotation"],"kind":"runs","command":"get encryption-key-rotation","exit":0}
+{"line":["get","encryption-key-rotation","--help"],"kind":"help","command":"get encryption-key-rotation","exit":0,"helpPath":"get-encryption-key-rotation.txt"}
+{"line":["get","encryption-key-rotation","x"],"kind":"runs","command":"get encryption-key-rotation","args":["x"],"exit":0}
+{"line":["get","encryption-key-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","encryptionkeyrotations"],"kind":"runs","command":"get encryption-key-rotation","exit":0}
+{"line":["get","encryption-key-rotations"],"kind":"runs","command":"get encryption-key-rotation","exit":0}
+{"line":["get","encryptionkeyrotations","--help"],"kind":"help","command":"get encryption-key-rotation","exit":0,"helpPath":"get-encryption-key-rotation.txt"}

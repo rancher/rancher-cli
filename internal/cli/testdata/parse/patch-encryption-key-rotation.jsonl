@@ -1,0 +1,20 @@
+{"line":["patch","encryption-key-rotation","--cluster","v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","--cluster=v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","-cluster","v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","encryption-key-rotation","--patch","v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"patch":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","--patch=v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"patch":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","-p","v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"patch":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","--patch-file","v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","--patch-file=v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","-patch-file","v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","--type","v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"type":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","--type=v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"type":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation","-type","v"],"kind":"runs","command":"patch encryption-key-rotation","flags":{"type":"v"},"exit":0}
+{"line":["patch","encryption-key-rotation"],"kind":"runs","command":"patch encryption-key-rotation","exit":0}
+{"line":["patch","encryption-key-rotation","--help"],"kind":"help","command":"patch encryption-key-rotation","exit":0,"helpPath":"patch-encryption-key-rotation.txt"}
+{"line":["patch","encryption-key-rotation","x"],"kind":"runs","command":"patch encryption-key-rotation","args":["x"],"exit":0}
+{"line":["patch","encryption-key-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","encryptionkeyrotations"],"kind":"runs","command":"patch encryption-key-rotation","exit":0}
+{"line":["patch","encryption-key-rotations"],"kind":"runs","command":"patch encryption-key-rotation","exit":0}
+{"line":["patch","encryptionkeyrotations","--help"],"kind":"help","command":"patch encryption-key-rotation","exit":0,"helpPath":"patch-encryption-key-rotation.txt"}

@@ -1,0 +1,21 @@
+NAME:
+   rancher usage - Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods
+
+USAGE:
+   rancher usage [options]
+
+OPTIONS:
+   --by string                          Group results by namespace, project, node, or pod (default: namespace)
+   --cluster id|name                    target cluster id|name
+   --help, -h                           show help
+   --namespace namespace, -n namespace  namespace to operate in
+   --node string                        Limit results to one node
+   --project string                     keep only the project's namespaces (not with --by node)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

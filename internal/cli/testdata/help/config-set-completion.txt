@@ -1,0 +1,17 @@
+NAME:
+   rancher config set-completion - Configure live shell completion (network on/off, timeout)
+
+USAGE:
+   rancher config set-completion [options]
+
+OPTIONS:
+   --help, -h        show help
+   --network string  enable live resource-name completion (true|false)
+   --timeout budget  per-TAB HTTP budget (e.g. 500ms, 1s; max 2s)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>

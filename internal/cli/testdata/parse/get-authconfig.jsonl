@@ -1,0 +1,21 @@
+{"line":["get","authconfig","--selector","v"],"kind":"runs","command":"get authconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","authconfig","--selector=v"],"kind":"runs","command":"get authconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","authconfig","-l","v"],"kind":"runs","command":"get authconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","authconfig","--selector"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --selector; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","authconfig","--wait"],"kind":"runs","command":"get authconfig","flags":{"wait":true},"exit":0}
+{"line":["get","authconfig","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","authconfig","--wait=false"],"kind":"runs","command":"get authconfig","flags":{"wait":false},"exit":0}
+{"line":["get","authconfig","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","authconfig","-wait"],"kind":"runs","command":"get authconfig","flags":{"wait":true},"exit":0}
+{"line":["get","authconfig","--for","v"],"kind":"runs","command":"get authconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","authconfig","--for=v"],"kind":"runs","command":"get authconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","authconfig","-for","v"],"kind":"runs","command":"get authconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","authconfig","--timeout","v"],"kind":"runs","command":"get authconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","authconfig","--timeout=v"],"kind":"runs","command":"get authconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","authconfig","-timeout","v"],"kind":"runs","command":"get authconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","authconfig"],"kind":"runs","command":"get authconfig","exit":0}
+{"line":["get","authconfig","--help"],"kind":"help","command":"get authconfig","exit":0,"helpPath":"get-authconfig.txt"}
+{"line":["get","authconfig","x"],"kind":"runs","command":"get authconfig","args":["x"],"exit":0}
+{"line":["get","authconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","authconfigs"],"kind":"runs","command":"get authconfig","exit":0}
+{"line":["get","authconfigs","--help"],"kind":"help","command":"get authconfig","exit":0,"helpPath":"get-authconfig.txt"}

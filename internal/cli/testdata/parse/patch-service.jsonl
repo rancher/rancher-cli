@@ -1,0 +1,23 @@
+{"line":["patch","service","--cluster","v"],"kind":"runs","command":"patch service","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","service","--cluster=v"],"kind":"runs","command":"patch service","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","service","-cluster","v"],"kind":"runs","command":"patch service","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","service","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","service","--namespace","v"],"kind":"runs","command":"patch service","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","service","--namespace=v"],"kind":"runs","command":"patch service","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","service","-n","v"],"kind":"runs","command":"patch service","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","service","--patch","v"],"kind":"runs","command":"patch service","flags":{"patch":"v"},"exit":0}
+{"line":["patch","service","--patch=v"],"kind":"runs","command":"patch service","flags":{"patch":"v"},"exit":0}
+{"line":["patch","service","-p","v"],"kind":"runs","command":"patch service","flags":{"patch":"v"},"exit":0}
+{"line":["patch","service","--patch-file","v"],"kind":"runs","command":"patch service","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","service","--patch-file=v"],"kind":"runs","command":"patch service","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","service","-patch-file","v"],"kind":"runs","command":"patch service","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","service","--type","v"],"kind":"runs","command":"patch service","flags":{"type":"v"},"exit":0}
+{"line":["patch","service","--type=v"],"kind":"runs","command":"patch service","flags":{"type":"v"},"exit":0}
+{"line":["patch","service","-type","v"],"kind":"runs","command":"patch service","flags":{"type":"v"},"exit":0}
+{"line":["patch","service"],"kind":"runs","command":"patch service","exit":0}
+{"line":["patch","service","--help"],"kind":"help","command":"patch service","exit":0,"helpPath":"patch-service.txt"}
+{"line":["patch","service","x"],"kind":"runs","command":"patch service","args":["x"],"exit":0}
+{"line":["patch","service","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","services"],"kind":"runs","command":"patch service","exit":0}
+{"line":["patch","svc"],"kind":"runs","command":"patch service","exit":0}
+{"line":["patch","services","--help"],"kind":"help","command":"patch service","exit":0,"helpPath":"patch-service.txt"}

@@ -1,0 +1,17 @@
+{"line":["patch","fleet-workspace","--patch","v"],"kind":"runs","command":"patch fleet-workspace","flags":{"patch":"v"},"exit":0}
+{"line":["patch","fleet-workspace","--patch=v"],"kind":"runs","command":"patch fleet-workspace","flags":{"patch":"v"},"exit":0}
+{"line":["patch","fleet-workspace","-p","v"],"kind":"runs","command":"patch fleet-workspace","flags":{"patch":"v"},"exit":0}
+{"line":["patch","fleet-workspace","--patch"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --patch; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","fleet-workspace","--patch-file","v"],"kind":"runs","command":"patch fleet-workspace","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","fleet-workspace","--patch-file=v"],"kind":"runs","command":"patch fleet-workspace","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","fleet-workspace","-patch-file","v"],"kind":"runs","command":"patch fleet-workspace","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","fleet-workspace","--type","v"],"kind":"runs","command":"patch fleet-workspace","flags":{"type":"v"},"exit":0}
+{"line":["patch","fleet-workspace","--type=v"],"kind":"runs","command":"patch fleet-workspace","flags":{"type":"v"},"exit":0}
+{"line":["patch","fleet-workspace","-type","v"],"kind":"runs","command":"patch fleet-workspace","flags":{"type":"v"},"exit":0}
+{"line":["patch","fleet-workspace"],"kind":"runs","command":"patch fleet-workspace","exit":0}
+{"line":["patch","fleet-workspace","--help"],"kind":"help","command":"patch fleet-workspace","exit":0,"helpPath":"patch-fleet-workspace.txt"}
+{"line":["patch","fleet-workspace","x"],"kind":"runs","command":"patch fleet-workspace","args":["x"],"exit":0}
+{"line":["patch","fleet-workspace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","fleetworkspaces"],"kind":"runs","command":"patch fleet-workspace","exit":0}
+{"line":["patch","fleet-workspaces"],"kind":"runs","command":"patch fleet-workspace","exit":0}
+{"line":["patch","fleetworkspaces","--help"],"kind":"help","command":"patch fleet-workspace","exit":0,"helpPath":"patch-fleet-workspace.txt"}

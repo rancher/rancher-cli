@@ -1,0 +1,20 @@
+{"line":["patch","provisioning-cluster","--namespace","v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","--namespace=v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","-n","v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","provisioning-cluster","--patch","v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","--patch=v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","-p","v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","--patch-file","v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","--patch-file=v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","-patch-file","v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","--type","v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","--type=v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","provisioning-cluster","-type","v"],"kind":"runs","command":"patch provisioning-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","provisioning-cluster"],"kind":"runs","command":"patch provisioning-cluster","exit":0}
+{"line":["patch","provisioning-cluster","--help"],"kind":"help","command":"patch provisioning-cluster","exit":0,"helpPath":"patch-provisioning-cluster.txt"}
+{"line":["patch","provisioning-cluster","x"],"kind":"runs","command":"patch provisioning-cluster","args":["x"],"exit":0}
+{"line":["patch","provisioning-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","provisioningclusters"],"kind":"runs","command":"patch provisioning-cluster","exit":0}
+{"line":["patch","provisioning-clusters"],"kind":"runs","command":"patch provisioning-cluster","exit":0}
+{"line":["patch","provisioningclusters","--help"],"kind":"help","command":"patch provisioning-cluster","exit":0,"helpPath":"patch-provisioning-cluster.txt"}

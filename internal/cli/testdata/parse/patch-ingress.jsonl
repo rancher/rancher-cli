@@ -1,0 +1,23 @@
+{"line":["patch","ingress","--cluster","v"],"kind":"runs","command":"patch ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","ingress","--cluster=v"],"kind":"runs","command":"patch ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","ingress","-cluster","v"],"kind":"runs","command":"patch ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","ingress","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","ingress","--namespace","v"],"kind":"runs","command":"patch ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","ingress","--namespace=v"],"kind":"runs","command":"patch ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","ingress","-n","v"],"kind":"runs","command":"patch ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","ingress","--patch","v"],"kind":"runs","command":"patch ingress","flags":{"patch":"v"},"exit":0}
+{"line":["patch","ingress","--patch=v"],"kind":"runs","command":"patch ingress","flags":{"patch":"v"},"exit":0}
+{"line":["patch","ingress","-p","v"],"kind":"runs","command":"patch ingress","flags":{"patch":"v"},"exit":0}
+{"line":["patch","ingress","--patch-file","v"],"kind":"runs","command":"patch ingress","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","ingress","--patch-file=v"],"kind":"runs","command":"patch ingress","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","ingress","-patch-file","v"],"kind":"runs","command":"patch ingress","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","ingress","--type","v"],"kind":"runs","command":"patch ingress","flags":{"type":"v"},"exit":0}
+{"line":["patch","ingress","--type=v"],"kind":"runs","command":"patch ingress","flags":{"type":"v"},"exit":0}
+{"line":["patch","ingress","-type","v"],"kind":"runs","command":"patch ingress","flags":{"type":"v"},"exit":0}
+{"line":["patch","ingress"],"kind":"runs","command":"patch ingress","exit":0}
+{"line":["patch","ingress","--help"],"kind":"help","command":"patch ingress","exit":0,"helpPath":"patch-ingress.txt"}
+{"line":["patch","ingress","x"],"kind":"runs","command":"patch ingress","args":["x"],"exit":0}
+{"line":["patch","ingress","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","ingresses"],"kind":"runs","command":"patch ingress","exit":0}
+{"line":["patch","ing"],"kind":"runs","command":"patch ingress","exit":0}
+{"line":["patch","ingresses","--help"],"kind":"help","command":"patch ingress","exit":0,"helpPath":"patch-ingress.txt"}

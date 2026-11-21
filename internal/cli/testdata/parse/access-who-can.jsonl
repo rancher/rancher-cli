@@ -1,0 +1,33 @@
+{"line":["access","who-can","--cluster","v"],"kind":"runs","command":"access who-can","flags":{"cluster":"v"},"exit":0}
+{"line":["access","who-can","--cluster=v"],"kind":"runs","command":"access who-can","flags":{"cluster":"v"},"exit":0}
+{"line":["access","who-can","-cluster","v"],"kind":"runs","command":"access who-can","flags":{"cluster":"v"},"exit":0}
+{"line":["access","who-can","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","who-can","--namespace","v"],"kind":"runs","command":"access who-can","flags":{"namespace":"v"},"exit":0}
+{"line":["access","who-can","--namespace=v"],"kind":"runs","command":"access who-can","flags":{"namespace":"v"},"exit":0}
+{"line":["access","who-can","-n","v"],"kind":"runs","command":"access who-can","flags":{"namespace":"v"},"exit":0}
+{"line":["access","who-can","--all-namespaces"],"kind":"runs","command":"access who-can","flags":{"all-namespaces":true},"exit":0}
+{"line":["access","who-can","--all-namespaces="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all-namespaces= has an empty value; a bool flag typed with = takes true or false","  hint: write --all-namespaces or --all-namespaces=true|false"]}
+{"line":["access","who-can","--all-namespaces=false"],"kind":"runs","command":"access who-can","flags":{"all-namespaces":false},"exit":0}
+{"line":["access","who-can","--all-namespaces= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all-namespaces= has an empty value; a bool flag typed with = takes true or false","  hint: write --all-namespaces or --all-namespaces=true|false"]}
+{"line":["access","who-can","-A"],"kind":"runs","command":"access who-can","flags":{"all-namespaces":true},"exit":0}
+{"line":["access","who-can","--group","v"],"kind":"runs","command":"access who-can","flags":{"group":"v"},"exit":0}
+{"line":["access","who-can","--group=v"],"kind":"runs","command":"access who-can","flags":{"group":"v"},"exit":0}
+{"line":["access","who-can","-group","v"],"kind":"runs","command":"access who-can","flags":{"group":"v"},"exit":0}
+{"line":["access","who-can","--subresource","v"],"kind":"runs","command":"access who-can","flags":{"subresource":"v"},"exit":0}
+{"line":["access","who-can","--subresource=v"],"kind":"runs","command":"access who-can","flags":{"subresource":"v"},"exit":0}
+{"line":["access","who-can","-subresource","v"],"kind":"runs","command":"access who-can","flags":{"subresource":"v"},"exit":0}
+{"line":["access","who-can","--non-resource-url","v"],"kind":"runs","command":"access who-can","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","who-can","--non-resource-url=v"],"kind":"runs","command":"access who-can","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","who-can","-non-resource-url","v"],"kind":"runs","command":"access who-can","flags":{"non-resource-url":"v"},"exit":0}
+{"line":["access","who-can","--show-denied"],"kind":"runs","command":"access who-can","flags":{"show-denied":true},"exit":0}
+{"line":["access","who-can","--show-denied="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --show-denied= has an empty value; a bool flag typed with = takes true or false","  hint: write --show-denied or --show-denied=true|false"]}
+{"line":["access","who-can","--show-denied=false"],"kind":"runs","command":"access who-can","flags":{"show-denied":false},"exit":0}
+{"line":["access","who-can","--show-denied= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --show-denied= has an empty value; a bool flag typed with = takes true or false","  hint: write --show-denied or --show-denied=true|false"]}
+{"line":["access","who-can","-show-denied"],"kind":"runs","command":"access who-can","flags":{"show-denied":true},"exit":0}
+{"line":["access","who-can","--timeout","v"],"kind":"runs","command":"access who-can","flags":{"timeout":"v"},"exit":0}
+{"line":["access","who-can","--timeout=v"],"kind":"runs","command":"access who-can","flags":{"timeout":"v"},"exit":0}
+{"line":["access","who-can","-timeout","v"],"kind":"runs","command":"access who-can","flags":{"timeout":"v"},"exit":0}
+{"line":["access","who-can"],"kind":"runs","command":"access who-can","exit":0}
+{"line":["access","who-can","--help"],"kind":"help","command":"access who-can","exit":0,"helpPath":"access-who-can.txt"}
+{"line":["access","who-can","x"],"kind":"runs","command":"access who-can","args":["x"],"exit":0}
+{"line":["access","who-can","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

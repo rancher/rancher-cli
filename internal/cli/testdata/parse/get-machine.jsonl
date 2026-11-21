@@ -1,0 +1,24 @@
+{"line":["get","machine","--namespace","v"],"kind":"runs","command":"get machine","flags":{"namespace":"v"},"exit":0}
+{"line":["get","machine","--namespace=v"],"kind":"runs","command":"get machine","flags":{"namespace":"v"},"exit":0}
+{"line":["get","machine","-n","v"],"kind":"runs","command":"get machine","flags":{"namespace":"v"},"exit":0}
+{"line":["get","machine","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","machine","--selector","v"],"kind":"runs","command":"get machine","flags":{"selector":"v"},"exit":0}
+{"line":["get","machine","--selector=v"],"kind":"runs","command":"get machine","flags":{"selector":"v"},"exit":0}
+{"line":["get","machine","-l","v"],"kind":"runs","command":"get machine","flags":{"selector":"v"},"exit":0}
+{"line":["get","machine","--wait"],"kind":"runs","command":"get machine","flags":{"wait":true},"exit":0}
+{"line":["get","machine","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","machine","--wait=false"],"kind":"runs","command":"get machine","flags":{"wait":false},"exit":0}
+{"line":["get","machine","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","machine","-wait"],"kind":"runs","command":"get machine","flags":{"wait":true},"exit":0}
+{"line":["get","machine","--for","v"],"kind":"runs","command":"get machine","flags":{"for":"v"},"exit":0}
+{"line":["get","machine","--for=v"],"kind":"runs","command":"get machine","flags":{"for":"v"},"exit":0}
+{"line":["get","machine","-for","v"],"kind":"runs","command":"get machine","flags":{"for":"v"},"exit":0}
+{"line":["get","machine","--timeout","v"],"kind":"runs","command":"get machine","flags":{"timeout":"v"},"exit":0}
+{"line":["get","machine","--timeout=v"],"kind":"runs","command":"get machine","flags":{"timeout":"v"},"exit":0}
+{"line":["get","machine","-timeout","v"],"kind":"runs","command":"get machine","flags":{"timeout":"v"},"exit":0}
+{"line":["get","machine"],"kind":"runs","command":"get machine","exit":0}
+{"line":["get","machine","--help"],"kind":"help","command":"get machine","exit":0,"helpPath":"get-machine.txt"}
+{"line":["get","machine","x"],"kind":"runs","command":"get machine","args":["x"],"exit":0}
+{"line":["get","machine","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","machines"],"kind":"runs","command":"get machine","exit":0}
+{"line":["get","machines","--help"],"kind":"help","command":"get machine","exit":0,"helpPath":"get-machine.txt"}

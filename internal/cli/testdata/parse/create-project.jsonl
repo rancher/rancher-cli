@@ -1,0 +1,321 @@
+{"line":["create","project",""],"kind":"runs","command":"create project","args":[""],"exit":0}
+{"line":["create","project"," "],"kind":"runs","command":"create project","args":[" "],"exit":0}
+{"line":["create","project","\t"],"kind":"runs","command":"create project","args":["\t"],"exit":0}
+{"line":["create","project","x"],"kind":"runs","command":"create project","args":["x"],"exit":0}
+{"line":["create","project"," x "],"kind":"runs","command":"create project","args":[" x "],"exit":0}
+{"line":["create","project","","","-"],"kind":"runs","command":"create project","args":["","","-"],"exit":0}
+{"line":["create","project","","","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","","-"],"kind":"runs","command":"create project","args":["","-"],"exit":0}
+{"line":["create","project","","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","","get"],"kind":"runs","command":"create project","args":["","get"],"exit":0}
+{"line":["create","project","","--help"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project"," ","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","get"],"kind":"runs","command":"create project","args":["get"],"exit":0}
+{"line":["create","project"," get"],"kind":"runs","command":"create project","args":[" get"],"exit":0}
+{"line":["create","project","nosuch"],"kind":"runs","command":"create project","args":["nosuch"],"exit":0}
+{"line":["create","project","-"],"kind":"runs","command":"create project","args":["-"],"exit":0}
+{"line":["create","project"," - "],"kind":"runs","command":"create project","args":[" - "],"exit":0}
+{"line":["create","project","\t-"],"kind":"runs","command":"create project","args":["\t-"],"exit":0}
+{"line":["create","project","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--help'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--bogus'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","- x"],"kind":"runs","command":"create project","args":["- x"],"exit":0}
+{"line":["create","project","--"],"kind":"runs","command":"create project","exit":0}
+{"line":["create","project"," -- "],"kind":"runs","command":"create project","exit":0}
+{"line":["create","project","--","--help"],"kind":"runs","command":"create project","args":["--help"],"exit":0}
+{"line":["create","project","--","-","x"],"kind":"runs","command":"create project","args":["-","x"],"exit":0}
+{"line":["create","project","--","--yes="],"kind":"runs","command":"create project","args":["--yes="],"exit":0}
+{"line":["create","project","-1"],"kind":"runs","command":"create project","args":["-1"],"exit":0}
+{"line":["create","project","-1","--help"],"kind":"runs","command":"create project","args":["-1","--help"],"exit":0}
+{"line":["create","project","-\u20ac"],"kind":"runs","command":"create project","args":["-\u20ac"],"exit":0}
+{"line":["create","project","-\u00e9"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -\u00e9; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","---x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --x; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","---yes"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --yes; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","---help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --help; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--=x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","-="],"kind":"runs","command":"create project","args":["-="],"exit":0}
+{"line":["create","project","--help"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","-h"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","-help"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help=false"],"kind":"runs","command":"create project","flags":{"help":false},"exit":0}
+{"line":["create","project","--help="],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --help= has an empty value; a bool flag typed with = takes true or false","  hint: write --help or --help=true|false"]}
+{"line":["create","project","-h="],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help=true"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","-v"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -v; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version= "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--yes"],"kind":"runs","command":"create project","flags":{"yes":true},"exit":0}
+{"line":["create","project","--yes="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","project","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","project","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","project","--yes=false"],"kind":"runs","command":"create project","flags":{"yes":false},"exit":0}
+{"line":["create","project","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value \"maybe\" for flag -yes: parse error; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--yes","false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): create project: 'false' was typed after the bool flag --yes; a bool flag takes its value only as --yes=<value>. To pass an argument such as true or false, put it before the flags or after --","  hint: rancher create project --help"]}
+{"line":["create","project","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","-o","json"],"kind":"runs","command":"create project","flags":{"output":"json"},"exit":0}
+{"line":["create","project","-o=json"],"kind":"runs","command":"create project","flags":{"output":"json"},"exit":0}
+{"line":["create","project","-o","-"],"kind":"runs","command":"create project","flags":{"output":"-"},"exit":0}
+{"line":["create","project","-o","--help"],"kind":"runs","command":"create project","flags":{"output":"--help"},"exit":0}
+{"line":["create","project"," --yes "],"kind":"runs","command":"create project","flags":{"yes":true},"exit":0}
+{"line":["x","create","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["create","x","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["-","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 2 words after a - on its own are not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","-","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":[" - ","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 2 words after a - on its own are not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create"," - ","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["--","create","project"],"kind":"runs","command":"create project","exit":0}
+{"line":["create","--","project"],"kind":"runs","command":"create project","exit":0}
+{"line":["-1","create","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["create","-1","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["--help","create","project"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","--help","project"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["--help=false","create","project"],"kind":"runs","command":"create project","exit":0}
+{"line":["create","--help=false","project"],"kind":"runs","command":"create project","exit":0}
+{"line":["--version","create","project"],"kind":"version","command":"","exit":0,"stdout":["rancher version v-test"]}
+{"line":["create","--version","project"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["--bogus","create","project"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","--bogus","project"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["--yes= ","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","--yes= ","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes=","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["create","--yes=","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes","create","project"],"kind":"runs","command":"create project","flags":{"yes":true},"exit":0}
+{"line":["create","--yes","project"],"kind":"runs","command":"create project","flags":{"yes":true},"exit":0}
+{"line":["-o","json","create","project"],"kind":"runs","command":"create project","flags":{"output":"json"},"exit":0}
+{"line":["create","-o","json","project"],"kind":"runs","command":"create project","flags":{"output":"json"},"exit":0}
+{"line":["get","create","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"create\"","  hint: rancher schema"]}
+{"line":["create","get","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"get\"","  hint: rancher schema"]}
+{"line":["nosuch","create","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["create","nosuch","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["","create","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["create","","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":[" ","create","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["create"," ","project"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["create","project","x","x"],"kind":"runs","command":"create project","args":["x","x"],"exit":0}
+{"line":["create","project","x","-"],"kind":"runs","command":"create project","args":["x","-"],"exit":0}
+{"line":["create","project","x"," - "],"kind":"runs","command":"create project","args":["x"," - "],"exit":0}
+{"line":["create","project","x","--"],"kind":"runs","command":"create project","args":["x"],"exit":0}
+{"line":["create","project","x","-1"],"kind":"runs","command":"create project","args":["x","-1"],"exit":0}
+{"line":["create","project","x","--help"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","x","--help=false"],"kind":"runs","command":"create project","args":["x"],"flags":{"help":false},"exit":0}
+{"line":["create","project","x","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","x","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","x",""],"kind":"runs","command":"create project","args":["x",""],"exit":0}
+{"line":["create","project","x"," "],"kind":"runs","command":"create project","args":["x"," "],"exit":0}
+{"line":["create","project","-","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-"," - "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ' - '","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-","--"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-","-1"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-1'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-","--help=false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--help=false'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-","--version"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--version'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ''","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","-"," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ' '","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - "," - "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ' - '","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ","--"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ","-1"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-1'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--help'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ","--help=false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--help=false'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ","--version"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--version'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--bogus'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - ",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ''","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project"," - "," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ' '","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["create","project","--","x"],"kind":"runs","command":"create project","args":["x"],"exit":0}
+{"line":["create","project","--","-"],"kind":"runs","command":"create project","args":["-"],"exit":0}
+{"line":["create","project","--"," - "],"kind":"runs","command":"create project","args":[" - "],"exit":0}
+{"line":["create","project","--","--"],"kind":"runs","command":"create project","args":["--"],"exit":0}
+{"line":["create","project","--","-1"],"kind":"runs","command":"create project","args":["-1"],"exit":0}
+{"line":["create","project","--","--help=false"],"kind":"runs","command":"create project","args":["--help=false"],"exit":0}
+{"line":["create","project","--","--version"],"kind":"runs","command":"create project","args":["--version"],"exit":0}
+{"line":["create","project","--","--bogus"],"kind":"runs","command":"create project","args":["--bogus"],"exit":0}
+{"line":["create","project","--",""],"kind":"runs","command":"create project","args":[""],"exit":0}
+{"line":["create","project","--"," "],"kind":"runs","command":"create project","args":[" "],"exit":0}
+{"line":["create","project","-1","x"],"kind":"runs","command":"create project","args":["-1","x"],"exit":0}
+{"line":["create","project","-1","-"],"kind":"runs","command":"create project","args":["-1","-"],"exit":0}
+{"line":["create","project","-1"," - "],"kind":"runs","command":"create project","args":["-1"," - "],"exit":0}
+{"line":["create","project","-1","--"],"kind":"runs","command":"create project","args":["-1","--"],"exit":0}
+{"line":["create","project","-1","-1"],"kind":"runs","command":"create project","args":["-1","-1"],"exit":0}
+{"line":["create","project","-1","--help=false"],"kind":"runs","command":"create project","args":["-1","--help=false"],"exit":0}
+{"line":["create","project","-1","--version"],"kind":"runs","command":"create project","args":["-1","--version"],"exit":0}
+{"line":["create","project","-1","--bogus"],"kind":"runs","command":"create project","args":["-1","--bogus"],"exit":0}
+{"line":["create","project","-1",""],"kind":"runs","command":"create project","args":["-1",""],"exit":0}
+{"line":["create","project","-1"," "],"kind":"runs","command":"create project","args":["-1"," "],"exit":0}
+{"line":["create","project","--help","x"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help","-"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help"," - "],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help","--"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help","-1"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help","--help"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help","--help=false"],"kind":"runs","command":"create project","flags":{"help":false},"exit":0}
+{"line":["create","project","--help","--version"],"kind":"help","command":"create project","exit":0,"stdout":["NAME:","   rancher create project - Create a project in a cluster","","USAGE:","   rancher create project [id]","","OPTIONS:","   --cluster id|name                             target cluster id|name","   --container-default-resource-limit key=value  default container resource requests and limits as key=value pairs","   --description description                     short description for the project","   --display-name name                           display name of the project (default: the id; required when no id is given)","   --help, -h                                    show help","   --namespace-default-quota key=value           default resource quota for each namespace as key=value pairs (same keys as --quota-limit)","   --quota-limit key=value                       project resource quota limit as key=value pairs, e.g. limitsCpu=2,limitsMemory=4Gi","","GLOBAL OPTIONS:","   --allow-deprecated          allow writing to a deprecated resource","   --apply                     apply the change","   --color string              auto|always|never","   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]","   --debug                     print telemetry upload details on stderr (development builds)","   --dry-run                   preview the changes without applying them","   --no-input                  never prompt; fail with an error when the input is ambiguous","   --output string, -o string  table|wide|json|yaml|name|template=<go-template>","   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it","   --yes                       confirm a destructive change"]}
+{"line":["create","project","--help","--bogus"],"kind":"help","command":"create project","exit":0,"stdout":["NAME:","   rancher create project - Create a project in a cluster","","USAGE:","   rancher create project [id]","","OPTIONS:","   --cluster id|name                             target cluster id|name","   --container-default-resource-limit key=value  default container resource requests and limits as key=value pairs","   --description description                     short description for the project","   --display-name name                           display name of the project (default: the id; required when no id is given)","   --help, -h                                    show help","   --namespace-default-quota key=value           default resource quota for each namespace as key=value pairs (same keys as --quota-limit)","   --quota-limit key=value                       project resource quota limit as key=value pairs, e.g. limitsCpu=2,limitsMemory=4Gi","","GLOBAL OPTIONS:","   --allow-deprecated          allow writing to a deprecated resource","   --apply                     apply the change","   --color string              auto|always|never","   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]","   --debug                     print telemetry upload details on stderr (development builds)","   --dry-run                   preview the changes without applying them","   --no-input                  never prompt; fail with an error when the input is ambiguous","   --output string, -o string  table|wide|json|yaml|name|template=<go-template>","   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it","   --yes                       confirm a destructive change"]}
+{"line":["create","project","--help",""],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help"," "],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help=false","x"],"kind":"runs","command":"create project","args":["x"],"flags":{"help":false},"exit":0}
+{"line":["create","project","--help=false","-"],"kind":"runs","command":"create project","args":["-"],"flags":{"help":false},"exit":0}
+{"line":["create","project","--help=false"," - "],"kind":"runs","command":"create project","args":[" - "],"flags":{"help":false},"exit":0}
+{"line":["create","project","--help=false","--"],"kind":"runs","command":"create project","flags":{"help":false},"exit":0}
+{"line":["create","project","--help=false","-1"],"kind":"runs","command":"create project","args":["-1"],"flags":{"help":false},"exit":0}
+{"line":["create","project","--help=false","--help"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project","--help=false","--help=false"],"kind":"runs","command":"create project","flags":{"help":false},"exit":0}
+{"line":["create","project","--help=false","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--help=false","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--help=false",""],"kind":"runs","command":"create project","args":[""],"flags":{"help":false},"exit":0}
+{"line":["create","project","--help=false"," "],"kind":"runs","command":"create project","args":[" "],"flags":{"help":false},"exit":0}
+{"line":["create","project","--version","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--version"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--bogus"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","","x"],"kind":"runs","command":"create project","args":["","x"],"exit":0}
+{"line":["create","project",""," - "],"kind":"runs","command":"create project","args":[""," - "],"exit":0}
+{"line":["create","project","","--"],"kind":"runs","command":"create project","args":[""],"exit":0}
+{"line":["create","project","","-1"],"kind":"runs","command":"create project","args":["","-1"],"exit":0}
+{"line":["create","project","","--help=false"],"kind":"runs","command":"create project","args":[""],"flags":{"help":false},"exit":0}
+{"line":["create","project","","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","",""],"kind":"runs","command":"create project","args":["",""],"exit":0}
+{"line":["create","project",""," "],"kind":"runs","command":"create project","args":[""," "],"exit":0}
+{"line":["create","project"," ","x"],"kind":"runs","command":"create project","args":[" ","x"],"exit":0}
+{"line":["create","project"," ","-"],"kind":"runs","command":"create project","args":[" ","-"],"exit":0}
+{"line":["create","project"," "," - "],"kind":"runs","command":"create project","args":[" "," - "],"exit":0}
+{"line":["create","project"," ","--"],"kind":"runs","command":"create project","args":[" "],"exit":0}
+{"line":["create","project"," ","-1"],"kind":"runs","command":"create project","args":[" ","-1"],"exit":0}
+{"line":["create","project"," ","--help"],"kind":"help","command":"create project","exit":0,"helpPath":"create-project.txt"}
+{"line":["create","project"," ","--help=false"],"kind":"runs","command":"create project","args":[" "],"flags":{"help":false},"exit":0}
+{"line":["create","project"," ","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project"," ","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project"," ",""],"kind":"runs","command":"create project","args":[" ",""],"exit":0}
+{"line":["create","project"," "," "],"kind":"runs","command":"create project","args":[" "," "],"exit":0}
+{"line":["create","project","--debug"],"kind":"runs","command":"create project","flags":{"debug":true},"exit":0}
+{"line":["--debug","create","project"],"kind":"runs","command":"create project","flags":{"debug":true},"exit":0}
+{"line":["create","project","--debug="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["--debug=","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["create","project","--debug=false"],"kind":"runs","command":"create project","flags":{"debug":false},"exit":0}
+{"line":["--debug=false","create","project"],"kind":"runs","command":"create project","flags":{"debug":false},"exit":0}
+{"line":["create","project","--debug= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["--debug= ","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["create","project","-debug"],"kind":"runs","command":"create project","flags":{"debug":true},"exit":0}
+{"line":["-debug","create","project"],"kind":"runs","command":"create project","flags":{"debug":true},"exit":0}
+{"line":["create","project","--config","v"],"kind":"runs","command":"create project","flags":{"config":"v"},"exit":0}
+{"line":["--config","v","create","project"],"kind":"runs","command":"create project","flags":{"config":"v"},"exit":0}
+{"line":["create","project","--config=v"],"kind":"runs","command":"create project","flags":{"config":"v"},"exit":0}
+{"line":["--config=v","create","project"],"kind":"runs","command":"create project","flags":{"config":"v"},"exit":0}
+{"line":["create","project","-c","v"],"kind":"runs","command":"create project","flags":{"config":"v"},"exit":0}
+{"line":["-c","v","create","project"],"kind":"runs","command":"create project","flags":{"config":"v"},"exit":0}
+{"line":["create","project","--config"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --config; pass --help for usage","  hint: rancher schema"]}
+{"line":["--config","create","project"],"kind":"help","command":"project","exit":0,"helpPath":"project.txt"}
+{"line":["create","project","--dry-run"],"kind":"runs","command":"create project","flags":{"dry-run":true},"exit":0}
+{"line":["--dry-run","create","project"],"kind":"runs","command":"create project","flags":{"dry-run":true},"exit":0}
+{"line":["create","project","--dry-run="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["--dry-run=","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["create","project","--dry-run=false"],"kind":"runs","command":"create project","flags":{"dry-run":false},"exit":0}
+{"line":["--dry-run=false","create","project"],"kind":"runs","command":"create project","flags":{"dry-run":false},"exit":0}
+{"line":["create","project","--dry-run= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["--dry-run= ","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["create","project","-dry-run"],"kind":"runs","command":"create project","flags":{"dry-run":true},"exit":0}
+{"line":["-dry-run","create","project"],"kind":"runs","command":"create project","flags":{"dry-run":true},"exit":0}
+{"line":["create","project","--apply"],"kind":"runs","command":"create project","flags":{"apply":true},"exit":0}
+{"line":["--apply","create","project"],"kind":"runs","command":"create project","flags":{"apply":true},"exit":0}
+{"line":["create","project","--apply="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["--apply=","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["create","project","--apply=false"],"kind":"runs","command":"create project","flags":{"apply":false},"exit":0}
+{"line":["--apply=false","create","project"],"kind":"runs","command":"create project","flags":{"apply":false},"exit":0}
+{"line":["create","project","--apply= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["--apply= ","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["create","project","-apply"],"kind":"runs","command":"create project","flags":{"apply":true},"exit":0}
+{"line":["-apply","create","project"],"kind":"runs","command":"create project","flags":{"apply":true},"exit":0}
+{"line":["--yes=false","create","project"],"kind":"runs","command":"create project","flags":{"yes":false},"exit":0}
+{"line":["create","project","-yes"],"kind":"runs","command":"create project","flags":{"yes":true},"exit":0}
+{"line":["-yes","create","project"],"kind":"runs","command":"create project","flags":{"yes":true},"exit":0}
+{"line":["create","project","--allow-deprecated"],"kind":"runs","command":"create project","flags":{"allow-deprecated":true},"exit":0}
+{"line":["--allow-deprecated","create","project"],"kind":"runs","command":"create project","flags":{"allow-deprecated":true},"exit":0}
+{"line":["create","project","--allow-deprecated="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["--allow-deprecated=","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["create","project","--allow-deprecated=false"],"kind":"runs","command":"create project","flags":{"allow-deprecated":false},"exit":0}
+{"line":["--allow-deprecated=false","create","project"],"kind":"runs","command":"create project","flags":{"allow-deprecated":false},"exit":0}
+{"line":["create","project","--allow-deprecated= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["--allow-deprecated= ","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["create","project","-allow-deprecated"],"kind":"runs","command":"create project","flags":{"allow-deprecated":true},"exit":0}
+{"line":["-allow-deprecated","create","project"],"kind":"runs","command":"create project","flags":{"allow-deprecated":true},"exit":0}
+{"line":["create","project","--no-input"],"kind":"runs","command":"create project","flags":{"no-input":true},"exit":0}
+{"line":["--no-input","create","project"],"kind":"runs","command":"create project","flags":{"no-input":true},"exit":0}
+{"line":["create","project","--no-input="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["--no-input=","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["create","project","--no-input=false"],"kind":"runs","command":"create project","flags":{"no-input":false},"exit":0}
+{"line":["--no-input=false","create","project"],"kind":"runs","command":"create project","flags":{"no-input":false},"exit":0}
+{"line":["create","project","--no-input= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["--no-input= ","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["create","project","-no-input"],"kind":"runs","command":"create project","flags":{"no-input":true},"exit":0}
+{"line":["-no-input","create","project"],"kind":"runs","command":"create project","flags":{"no-input":true},"exit":0}
+{"line":["create","project","--output","v"],"kind":"runs","command":"create project","flags":{"output":"v"},"exit":0}
+{"line":["--output","v","create","project"],"kind":"runs","command":"create project","flags":{"output":"v"},"exit":0}
+{"line":["create","project","--output=v"],"kind":"runs","command":"create project","flags":{"output":"v"},"exit":0}
+{"line":["--output=v","create","project"],"kind":"runs","command":"create project","flags":{"output":"v"},"exit":0}
+{"line":["create","project","-o","v"],"kind":"runs","command":"create project","flags":{"output":"v"},"exit":0}
+{"line":["-o","v","create","project"],"kind":"runs","command":"create project","flags":{"output":"v"},"exit":0}
+{"line":["create","project","--color","v"],"kind":"runs","command":"create project","flags":{"color":"v"},"exit":0}
+{"line":["--color","v","create","project"],"kind":"runs","command":"create project","flags":{"color":"v"},"exit":0}
+{"line":["create","project","--color=v"],"kind":"runs","command":"create project","flags":{"color":"v"},"exit":0}
+{"line":["--color=v","create","project"],"kind":"runs","command":"create project","flags":{"color":"v"},"exit":0}
+{"line":["create","project","-color","v"],"kind":"runs","command":"create project","flags":{"color":"v"},"exit":0}
+{"line":["-color","v","create","project"],"kind":"runs","command":"create project","flags":{"color":"v"},"exit":0}
+{"line":["create","project","--project","v"],"kind":"runs","command":"create project","flags":{"project":"v"},"exit":0}
+{"line":["--project","v","create","project"],"kind":"runs","command":"create project","flags":{"project":"v"},"exit":0}
+{"line":["create","project","--project=v"],"kind":"runs","command":"create project","flags":{"project":"v"},"exit":0}
+{"line":["--project=v","create","project"],"kind":"runs","command":"create project","flags":{"project":"v"},"exit":0}
+{"line":["create","project","-project","v"],"kind":"runs","command":"create project","flags":{"project":"v"},"exit":0}
+{"line":["-project","v","create","project"],"kind":"runs","command":"create project","flags":{"project":"v"},"exit":0}
+{"line":["create","project","--read-only"],"kind":"runs","command":"create project","flags":{"read-only":true},"exit":0}
+{"line":["--read-only","create","project"],"kind":"runs","command":"create project","flags":{"read-only":true},"exit":0}
+{"line":["create","project","--read-only="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["--read-only=","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["create","project","--read-only=false"],"kind":"runs","command":"create project","flags":{"read-only":false},"exit":0}
+{"line":["--read-only=false","create","project"],"kind":"runs","command":"create project","flags":{"read-only":false},"exit":0}
+{"line":["create","project","--read-only= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["--read-only= ","create","project"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["create","project","-read-only"],"kind":"runs","command":"create project","flags":{"read-only":true},"exit":0}
+{"line":["-read-only","create","project"],"kind":"runs","command":"create project","flags":{"read-only":true},"exit":0}
+{"line":["create","project","--cluster","v"],"kind":"runs","command":"create project","flags":{"cluster":"v"},"exit":0}
+{"line":["create","project","--cluster=v"],"kind":"runs","command":"create project","flags":{"cluster":"v"},"exit":0}
+{"line":["create","project","-cluster","v"],"kind":"runs","command":"create project","flags":{"cluster":"v"},"exit":0}
+{"line":["create","project","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","project","--display-name","v"],"kind":"runs","command":"create project","flags":{"display-name":"v"},"exit":0}
+{"line":["create","project","--display-name=v"],"kind":"runs","command":"create project","flags":{"display-name":"v"},"exit":0}
+{"line":["create","project","-display-name","v"],"kind":"runs","command":"create project","flags":{"display-name":"v"},"exit":0}
+{"line":["create","project","--description","v"],"kind":"runs","command":"create project","flags":{"description":"v"},"exit":0}
+{"line":["create","project","--description=v"],"kind":"runs","command":"create project","flags":{"description":"v"},"exit":0}
+{"line":["create","project","-description","v"],"kind":"runs","command":"create project","flags":{"description":"v"},"exit":0}
+{"line":["create","project","--quota-limit","v"],"kind":"runs","command":"create project","flags":{"quota-limit":"v"},"exit":0}
+{"line":["create","project","--quota-limit=v"],"kind":"runs","command":"create project","flags":{"quota-limit":"v"},"exit":0}
+{"line":["create","project","-quota-limit","v"],"kind":"runs","command":"create project","flags":{"quota-limit":"v"},"exit":0}
+{"line":["create","project","--quota-limit","v","--quota-limit","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -quota-limit: can't duplicate this flag; pass --help for usage; --quota-limit may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["create","project","--namespace-default-quota","v"],"kind":"runs","command":"create project","flags":{"namespace-default-quota":"v"},"exit":0}
+{"line":["create","project","--namespace-default-quota=v"],"kind":"runs","command":"create project","flags":{"namespace-default-quota":"v"},"exit":0}
+{"line":["create","project","-namespace-default-quota","v"],"kind":"runs","command":"create project","flags":{"namespace-default-quota":"v"},"exit":0}
+{"line":["create","project","--namespace-default-quota","v","--namespace-default-quota","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -namespace-default-quota: can't duplicate this flag; pass --help for usage; --namespace-default-quota may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["create","project","--container-default-resource-limit","v"],"kind":"runs","command":"create project","flags":{"container-default-resource-limit":"v"},"exit":0}
+{"line":["create","project","--container-default-resource-limit=v"],"kind":"runs","command":"create project","flags":{"container-default-resource-limit":"v"},"exit":0}
+{"line":["create","project","-container-default-resource-limit","v"],"kind":"runs","command":"create project","flags":{"container-default-resource-limit":"v"},"exit":0}
+{"line":["create","project","--container-default-resource-limit","v","--container-default-resource-limit","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -container-default-resource-limit: can't duplicate this flag; pass --help for usage; --container-default-resource-limit may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["create","project"],"kind":"runs","command":"create project","exit":0}

@@ -1,0 +1,25 @@
+{"line":["get","etcd-snapshot","--namespace","v"],"kind":"runs","command":"get etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["get","etcd-snapshot","--namespace=v"],"kind":"runs","command":"get etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["get","etcd-snapshot","-n","v"],"kind":"runs","command":"get etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["get","etcd-snapshot","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","etcd-snapshot","--selector","v"],"kind":"runs","command":"get etcd-snapshot","flags":{"selector":"v"},"exit":0}
+{"line":["get","etcd-snapshot","--selector=v"],"kind":"runs","command":"get etcd-snapshot","flags":{"selector":"v"},"exit":0}
+{"line":["get","etcd-snapshot","-l","v"],"kind":"runs","command":"get etcd-snapshot","flags":{"selector":"v"},"exit":0}
+{"line":["get","etcd-snapshot","--wait"],"kind":"runs","command":"get etcd-snapshot","flags":{"wait":true},"exit":0}
+{"line":["get","etcd-snapshot","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","etcd-snapshot","--wait=false"],"kind":"runs","command":"get etcd-snapshot","flags":{"wait":false},"exit":0}
+{"line":["get","etcd-snapshot","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","etcd-snapshot","-wait"],"kind":"runs","command":"get etcd-snapshot","flags":{"wait":true},"exit":0}
+{"line":["get","etcd-snapshot","--for","v"],"kind":"runs","command":"get etcd-snapshot","flags":{"for":"v"},"exit":0}
+{"line":["get","etcd-snapshot","--for=v"],"kind":"runs","command":"get etcd-snapshot","flags":{"for":"v"},"exit":0}
+{"line":["get","etcd-snapshot","-for","v"],"kind":"runs","command":"get etcd-snapshot","flags":{"for":"v"},"exit":0}
+{"line":["get","etcd-snapshot","--timeout","v"],"kind":"runs","command":"get etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["get","etcd-snapshot","--timeout=v"],"kind":"runs","command":"get etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["get","etcd-snapshot","-timeout","v"],"kind":"runs","command":"get etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["get","etcd-snapshot"],"kind":"runs","command":"get etcd-snapshot","exit":0}
+{"line":["get","etcd-snapshot","--help"],"kind":"help","command":"get etcd-snapshot","exit":0,"helpPath":"get-etcd-snapshot.txt"}
+{"line":["get","etcd-snapshot","x"],"kind":"runs","command":"get etcd-snapshot","args":["x"],"exit":0}
+{"line":["get","etcd-snapshot","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","etcdsnapshots"],"kind":"runs","command":"get etcd-snapshot","exit":0}
+{"line":["get","etcd-snapshots"],"kind":"runs","command":"get etcd-snapshot","exit":0}
+{"line":["get","etcdsnapshots","--help"],"kind":"help","command":"get etcd-snapshot","exit":0,"helpPath":"get-etcd-snapshot.txt"}

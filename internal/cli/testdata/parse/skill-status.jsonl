@@ -1,0 +1,16 @@
+{"line":["skill","status","--agent","v"],"kind":"runs","command":"skill status","flags":{"agent":"v"},"exit":0}
+{"line":["skill","status","--agent=v"],"kind":"runs","command":"skill status","flags":{"agent":"v"},"exit":0}
+{"line":["skill","status","-agent","v"],"kind":"runs","command":"skill status","flags":{"agent":"v"},"exit":0}
+{"line":["skill","status","--agent"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --agent; pass --help for usage","  hint: rancher schema"]}
+{"line":["skill","status","--scope","v"],"kind":"runs","command":"skill status","flags":{"scope":"v"},"exit":0}
+{"line":["skill","status","--scope=v"],"kind":"runs","command":"skill status","flags":{"scope":"v"},"exit":0}
+{"line":["skill","status","-scope","v"],"kind":"runs","command":"skill status","flags":{"scope":"v"},"exit":0}
+{"line":["skill","status","--require-installed"],"kind":"runs","command":"skill status","flags":{"require-installed":true},"exit":0}
+{"line":["skill","status","--require-installed="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --require-installed= has an empty value; a bool flag typed with = takes true or false","  hint: write --require-installed or --require-installed=true|false"]}
+{"line":["skill","status","--require-installed=false"],"kind":"runs","command":"skill status","flags":{"require-installed":false},"exit":0}
+{"line":["skill","status","--require-installed= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --require-installed= has an empty value; a bool flag typed with = takes true or false","  hint: write --require-installed or --require-installed=true|false"]}
+{"line":["skill","status","-require-installed"],"kind":"runs","command":"skill status","flags":{"require-installed":true},"exit":0}
+{"line":["skill","status"],"kind":"runs","command":"skill status","exit":0}
+{"line":["skill","status","--help"],"kind":"help","command":"skill status","exit":0,"helpPath":"skill-status.txt"}
+{"line":["skill","status","x"],"kind":"runs","command":"skill status","args":["x"],"exit":0}
+{"line":["skill","status","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

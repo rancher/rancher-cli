@@ -1,0 +1,25 @@
+{"line":["get","storageclass","--cluster","v"],"kind":"runs","command":"get storageclass","flags":{"cluster":"v"},"exit":0}
+{"line":["get","storageclass","--cluster=v"],"kind":"runs","command":"get storageclass","flags":{"cluster":"v"},"exit":0}
+{"line":["get","storageclass","-cluster","v"],"kind":"runs","command":"get storageclass","flags":{"cluster":"v"},"exit":0}
+{"line":["get","storageclass","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","storageclass","--selector","v"],"kind":"runs","command":"get storageclass","flags":{"selector":"v"},"exit":0}
+{"line":["get","storageclass","--selector=v"],"kind":"runs","command":"get storageclass","flags":{"selector":"v"},"exit":0}
+{"line":["get","storageclass","-l","v"],"kind":"runs","command":"get storageclass","flags":{"selector":"v"},"exit":0}
+{"line":["get","storageclass","--wait"],"kind":"runs","command":"get storageclass","flags":{"wait":true},"exit":0}
+{"line":["get","storageclass","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","storageclass","--wait=false"],"kind":"runs","command":"get storageclass","flags":{"wait":false},"exit":0}
+{"line":["get","storageclass","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","storageclass","-wait"],"kind":"runs","command":"get storageclass","flags":{"wait":true},"exit":0}
+{"line":["get","storageclass","--for","v"],"kind":"runs","command":"get storageclass","flags":{"for":"v"},"exit":0}
+{"line":["get","storageclass","--for=v"],"kind":"runs","command":"get storageclass","flags":{"for":"v"},"exit":0}
+{"line":["get","storageclass","-for","v"],"kind":"runs","command":"get storageclass","flags":{"for":"v"},"exit":0}
+{"line":["get","storageclass","--timeout","v"],"kind":"runs","command":"get storageclass","flags":{"timeout":"v"},"exit":0}
+{"line":["get","storageclass","--timeout=v"],"kind":"runs","command":"get storageclass","flags":{"timeout":"v"},"exit":0}
+{"line":["get","storageclass","-timeout","v"],"kind":"runs","command":"get storageclass","flags":{"timeout":"v"},"exit":0}
+{"line":["get","storageclass"],"kind":"runs","command":"get storageclass","exit":0}
+{"line":["get","storageclass","--help"],"kind":"help","command":"get storageclass","exit":0,"helpPath":"get-storageclass.txt"}
+{"line":["get","storageclass","x"],"kind":"runs","command":"get storageclass","args":["x"],"exit":0}
+{"line":["get","storageclass","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","storageclasses"],"kind":"runs","command":"get storageclass","exit":0}
+{"line":["get","sc"],"kind":"runs","command":"get storageclass","exit":0}
+{"line":["get","storageclasses","--help"],"kind":"help","command":"get storageclass","exit":0,"helpPath":"get-storageclass.txt"}

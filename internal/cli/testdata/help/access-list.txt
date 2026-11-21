@@ -1,0 +1,23 @@
+NAME:
+   rancher access list - List the rules a subject holds in a namespace, as the cluster's authorizer reports them
+
+USAGE:
+   rancher access list [options]
+
+OPTIONS:
+   --all-namespaces, -A           list rules in every namespace you can list
+   --as string                    user name, id, or principal, or system:serviceaccount:<ns>:<name>; omitted = you
+   --cluster string               cluster name or id
+   --help, -h                     show help
+   --namespace string, -n string  namespace to list rules in (default: default)
+   --project string               ask about the project's namespaces
+   --timeout string               time limit for the whole command, e.g. 2m (default 60s)
+   --type string                  kind of a bare --as value when ambiguous (group is rejected here)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

@@ -1,0 +1,22 @@
+{"line":["get","fleet-workspace","--selector","v"],"kind":"runs","command":"get fleet-workspace","flags":{"selector":"v"},"exit":0}
+{"line":["get","fleet-workspace","--selector=v"],"kind":"runs","command":"get fleet-workspace","flags":{"selector":"v"},"exit":0}
+{"line":["get","fleet-workspace","-l","v"],"kind":"runs","command":"get fleet-workspace","flags":{"selector":"v"},"exit":0}
+{"line":["get","fleet-workspace","--selector"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --selector; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","fleet-workspace","--wait"],"kind":"runs","command":"get fleet-workspace","flags":{"wait":true},"exit":0}
+{"line":["get","fleet-workspace","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","fleet-workspace","--wait=false"],"kind":"runs","command":"get fleet-workspace","flags":{"wait":false},"exit":0}
+{"line":["get","fleet-workspace","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","fleet-workspace","-wait"],"kind":"runs","command":"get fleet-workspace","flags":{"wait":true},"exit":0}
+{"line":["get","fleet-workspace","--for","v"],"kind":"runs","command":"get fleet-workspace","flags":{"for":"v"},"exit":0}
+{"line":["get","fleet-workspace","--for=v"],"kind":"runs","command":"get fleet-workspace","flags":{"for":"v"},"exit":0}
+{"line":["get","fleet-workspace","-for","v"],"kind":"runs","command":"get fleet-workspace","flags":{"for":"v"},"exit":0}
+{"line":["get","fleet-workspace","--timeout","v"],"kind":"runs","command":"get fleet-workspace","flags":{"timeout":"v"},"exit":0}
+{"line":["get","fleet-workspace","--timeout=v"],"kind":"runs","command":"get fleet-workspace","flags":{"timeout":"v"},"exit":0}
+{"line":["get","fleet-workspace","-timeout","v"],"kind":"runs","command":"get fleet-workspace","flags":{"timeout":"v"},"exit":0}
+{"line":["get","fleet-workspace"],"kind":"runs","command":"get fleet-workspace","exit":0}
+{"line":["get","fleet-workspace","--help"],"kind":"help","command":"get fleet-workspace","exit":0,"helpPath":"get-fleet-workspace.txt"}
+{"line":["get","fleet-workspace","x"],"kind":"runs","command":"get fleet-workspace","args":["x"],"exit":0}
+{"line":["get","fleet-workspace","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","fleetworkspaces"],"kind":"runs","command":"get fleet-workspace","exit":0}
+{"line":["get","fleet-workspaces"],"kind":"runs","command":"get fleet-workspace","exit":0}
+{"line":["get","fleetworkspaces","--help"],"kind":"help","command":"get fleet-workspace","exit":0,"helpPath":"get-fleet-workspace.txt"}

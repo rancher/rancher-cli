@@ -1,0 +1,16 @@
+{"line":["patch","authconfig","--patch","v"],"kind":"runs","command":"patch authconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","authconfig","--patch=v"],"kind":"runs","command":"patch authconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","authconfig","-p","v"],"kind":"runs","command":"patch authconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","authconfig","--patch"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --patch; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","authconfig","--patch-file","v"],"kind":"runs","command":"patch authconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","authconfig","--patch-file=v"],"kind":"runs","command":"patch authconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","authconfig","-patch-file","v"],"kind":"runs","command":"patch authconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","authconfig","--type","v"],"kind":"runs","command":"patch authconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","authconfig","--type=v"],"kind":"runs","command":"patch authconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","authconfig","-type","v"],"kind":"runs","command":"patch authconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","authconfig"],"kind":"runs","command":"patch authconfig","exit":0}
+{"line":["patch","authconfig","--help"],"kind":"help","command":"patch authconfig","exit":0,"helpPath":"patch-authconfig.txt"}
+{"line":["patch","authconfig","x"],"kind":"runs","command":"patch authconfig","args":["x"],"exit":0}
+{"line":["patch","authconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","authconfigs"],"kind":"runs","command":"patch authconfig","exit":0}
+{"line":["patch","authconfigs","--help"],"kind":"help","command":"patch authconfig","exit":0,"helpPath":"patch-authconfig.txt"}

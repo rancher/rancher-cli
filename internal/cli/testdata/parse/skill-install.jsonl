@@ -1,0 +1,16 @@
+{"line":["skill","install","--agent","v"],"kind":"runs","command":"skill install","flags":{"agent":"v"},"exit":0}
+{"line":["skill","install","--agent=v"],"kind":"runs","command":"skill install","flags":{"agent":"v"},"exit":0}
+{"line":["skill","install","-agent","v"],"kind":"runs","command":"skill install","flags":{"agent":"v"},"exit":0}
+{"line":["skill","install","--agent"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --agent; pass --help for usage","  hint: rancher schema"]}
+{"line":["skill","install","--scope","v"],"kind":"runs","command":"skill install","flags":{"scope":"v"},"exit":0}
+{"line":["skill","install","--scope=v"],"kind":"runs","command":"skill install","flags":{"scope":"v"},"exit":0}
+{"line":["skill","install","-scope","v"],"kind":"runs","command":"skill install","flags":{"scope":"v"},"exit":0}
+{"line":["skill","install","--force"],"kind":"runs","command":"skill install","flags":{"force":true},"exit":0}
+{"line":["skill","install","--force="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --force= has an empty value; a bool flag typed with = takes true or false","  hint: write --force or --force=true|false"]}
+{"line":["skill","install","--force=false"],"kind":"runs","command":"skill install","flags":{"force":false},"exit":0}
+{"line":["skill","install","--force= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --force= has an empty value; a bool flag typed with = takes true or false","  hint: write --force or --force=true|false"]}
+{"line":["skill","install","-force"],"kind":"runs","command":"skill install","flags":{"force":true},"exit":0}
+{"line":["skill","install"],"kind":"runs","command":"skill install","exit":0}
+{"line":["skill","install","--help"],"kind":"help","command":"skill install","exit":0,"helpPath":"skill-install.txt"}
+{"line":["skill","install","x"],"kind":"runs","command":"skill install","args":["x"],"exit":0}
+{"line":["skill","install","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

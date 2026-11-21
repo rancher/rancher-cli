@@ -1,0 +1,21 @@
+{"line":["delete","job","--cluster","v"],"kind":"runs","command":"delete job","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","job","--cluster=v"],"kind":"runs","command":"delete job","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","job","-cluster","v"],"kind":"runs","command":"delete job","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","job","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","job","--namespace","v"],"kind":"runs","command":"delete job","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","job","--namespace=v"],"kind":"runs","command":"delete job","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","job","-n","v"],"kind":"runs","command":"delete job","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","job","--wait"],"kind":"runs","command":"delete job","flags":{"wait":true},"exit":0}
+{"line":["delete","job","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","job","--wait=false"],"kind":"runs","command":"delete job","flags":{"wait":false},"exit":0}
+{"line":["delete","job","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","job","-wait"],"kind":"runs","command":"delete job","flags":{"wait":true},"exit":0}
+{"line":["delete","job","--timeout","v"],"kind":"runs","command":"delete job","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","job","--timeout=v"],"kind":"runs","command":"delete job","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","job","-timeout","v"],"kind":"runs","command":"delete job","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","job"],"kind":"runs","command":"delete job","exit":0}
+{"line":["delete","job","--help"],"kind":"help","command":"delete job","exit":0,"helpPath":"delete-job.txt"}
+{"line":["delete","job","x"],"kind":"runs","command":"delete job","args":["x"],"exit":0}
+{"line":["delete","job","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","jobs"],"kind":"runs","command":"delete job","exit":0}
+{"line":["delete","jobs","--help"],"kind":"help","command":"delete job","exit":0,"helpPath":"delete-job.txt"}

@@ -1,0 +1,22 @@
+{"line":["delete","networkpolicy","--cluster","v"],"kind":"runs","command":"delete networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","networkpolicy","--cluster=v"],"kind":"runs","command":"delete networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","networkpolicy","-cluster","v"],"kind":"runs","command":"delete networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","networkpolicy","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","networkpolicy","--namespace","v"],"kind":"runs","command":"delete networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","networkpolicy","--namespace=v"],"kind":"runs","command":"delete networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","networkpolicy","-n","v"],"kind":"runs","command":"delete networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","networkpolicy","--wait"],"kind":"runs","command":"delete networkpolicy","flags":{"wait":true},"exit":0}
+{"line":["delete","networkpolicy","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","networkpolicy","--wait=false"],"kind":"runs","command":"delete networkpolicy","flags":{"wait":false},"exit":0}
+{"line":["delete","networkpolicy","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","networkpolicy","-wait"],"kind":"runs","command":"delete networkpolicy","flags":{"wait":true},"exit":0}
+{"line":["delete","networkpolicy","--timeout","v"],"kind":"runs","command":"delete networkpolicy","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","networkpolicy","--timeout=v"],"kind":"runs","command":"delete networkpolicy","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","networkpolicy","-timeout","v"],"kind":"runs","command":"delete networkpolicy","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","networkpolicy"],"kind":"runs","command":"delete networkpolicy","exit":0}
+{"line":["delete","networkpolicy","--help"],"kind":"help","command":"delete networkpolicy","exit":0,"helpPath":"delete-networkpolicy.txt"}
+{"line":["delete","networkpolicy","x"],"kind":"runs","command":"delete networkpolicy","args":["x"],"exit":0}
+{"line":["delete","networkpolicy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","networkpolicies"],"kind":"runs","command":"delete networkpolicy","exit":0}
+{"line":["delete","netpol"],"kind":"runs","command":"delete networkpolicy","exit":0}
+{"line":["delete","networkpolicies","--help"],"kind":"help","command":"delete networkpolicy","exit":0,"helpPath":"delete-networkpolicy.txt"}

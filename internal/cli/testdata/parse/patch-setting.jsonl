@@ -1,0 +1,16 @@
+{"line":["patch","setting","--patch","v"],"kind":"runs","command":"patch setting","flags":{"patch":"v"},"exit":0}
+{"line":["patch","setting","--patch=v"],"kind":"runs","command":"patch setting","flags":{"patch":"v"},"exit":0}
+{"line":["patch","setting","-p","v"],"kind":"runs","command":"patch setting","flags":{"patch":"v"},"exit":0}
+{"line":["patch","setting","--patch"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --patch; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","setting","--patch-file","v"],"kind":"runs","command":"patch setting","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","setting","--patch-file=v"],"kind":"runs","command":"patch setting","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","setting","-patch-file","v"],"kind":"runs","command":"patch setting","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","setting","--type","v"],"kind":"runs","command":"patch setting","flags":{"type":"v"},"exit":0}
+{"line":["patch","setting","--type=v"],"kind":"runs","command":"patch setting","flags":{"type":"v"},"exit":0}
+{"line":["patch","setting","-type","v"],"kind":"runs","command":"patch setting","flags":{"type":"v"},"exit":0}
+{"line":["patch","setting"],"kind":"runs","command":"patch setting","exit":0}
+{"line":["patch","setting","--help"],"kind":"help","command":"patch setting","exit":0,"helpPath":"patch-setting.txt"}
+{"line":["patch","setting","x"],"kind":"runs","command":"patch setting","args":["x"],"exit":0}
+{"line":["patch","setting","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","settings"],"kind":"runs","command":"patch setting","exit":0}
+{"line":["patch","settings","--help"],"kind":"help","command":"patch setting","exit":0,"helpPath":"patch-setting.txt"}

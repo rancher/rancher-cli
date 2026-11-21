@@ -1,0 +1,23 @@
+{"line":["patch","statefulset","--cluster","v"],"kind":"runs","command":"patch statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","statefulset","--cluster=v"],"kind":"runs","command":"patch statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","statefulset","-cluster","v"],"kind":"runs","command":"patch statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","statefulset","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","statefulset","--namespace","v"],"kind":"runs","command":"patch statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","statefulset","--namespace=v"],"kind":"runs","command":"patch statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","statefulset","-n","v"],"kind":"runs","command":"patch statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","statefulset","--patch","v"],"kind":"runs","command":"patch statefulset","flags":{"patch":"v"},"exit":0}
+{"line":["patch","statefulset","--patch=v"],"kind":"runs","command":"patch statefulset","flags":{"patch":"v"},"exit":0}
+{"line":["patch","statefulset","-p","v"],"kind":"runs","command":"patch statefulset","flags":{"patch":"v"},"exit":0}
+{"line":["patch","statefulset","--patch-file","v"],"kind":"runs","command":"patch statefulset","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","statefulset","--patch-file=v"],"kind":"runs","command":"patch statefulset","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","statefulset","-patch-file","v"],"kind":"runs","command":"patch statefulset","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","statefulset","--type","v"],"kind":"runs","command":"patch statefulset","flags":{"type":"v"},"exit":0}
+{"line":["patch","statefulset","--type=v"],"kind":"runs","command":"patch statefulset","flags":{"type":"v"},"exit":0}
+{"line":["patch","statefulset","-type","v"],"kind":"runs","command":"patch statefulset","flags":{"type":"v"},"exit":0}
+{"line":["patch","statefulset"],"kind":"runs","command":"patch statefulset","exit":0}
+{"line":["patch","statefulset","--help"],"kind":"help","command":"patch statefulset","exit":0,"helpPath":"patch-statefulset.txt"}
+{"line":["patch","statefulset","x"],"kind":"runs","command":"patch statefulset","args":["x"],"exit":0}
+{"line":["patch","statefulset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","statefulsets"],"kind":"runs","command":"patch statefulset","exit":0}
+{"line":["patch","sts"],"kind":"runs","command":"patch statefulset","exit":0}
+{"line":["patch","statefulsets","--help"],"kind":"help","command":"patch statefulset","exit":0,"helpPath":"patch-statefulset.txt"}

@@ -1,0 +1,22 @@
+{"line":["delete","limitrange","--cluster","v"],"kind":"runs","command":"delete limitrange","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","limitrange","--cluster=v"],"kind":"runs","command":"delete limitrange","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","limitrange","-cluster","v"],"kind":"runs","command":"delete limitrange","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","limitrange","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","limitrange","--namespace","v"],"kind":"runs","command":"delete limitrange","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","limitrange","--namespace=v"],"kind":"runs","command":"delete limitrange","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","limitrange","-n","v"],"kind":"runs","command":"delete limitrange","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","limitrange","--wait"],"kind":"runs","command":"delete limitrange","flags":{"wait":true},"exit":0}
+{"line":["delete","limitrange","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","limitrange","--wait=false"],"kind":"runs","command":"delete limitrange","flags":{"wait":false},"exit":0}
+{"line":["delete","limitrange","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","limitrange","-wait"],"kind":"runs","command":"delete limitrange","flags":{"wait":true},"exit":0}
+{"line":["delete","limitrange","--timeout","v"],"kind":"runs","command":"delete limitrange","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","limitrange","--timeout=v"],"kind":"runs","command":"delete limitrange","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","limitrange","-timeout","v"],"kind":"runs","command":"delete limitrange","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","limitrange"],"kind":"runs","command":"delete limitrange","exit":0}
+{"line":["delete","limitrange","--help"],"kind":"help","command":"delete limitrange","exit":0,"helpPath":"delete-limitrange.txt"}
+{"line":["delete","limitrange","x"],"kind":"runs","command":"delete limitrange","args":["x"],"exit":0}
+{"line":["delete","limitrange","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","limitranges"],"kind":"runs","command":"delete limitrange","exit":0}
+{"line":["delete","limits"],"kind":"runs","command":"delete limitrange","exit":0}
+{"line":["delete","limitranges","--help"],"kind":"help","command":"delete limitrange","exit":0,"helpPath":"delete-limitrange.txt"}

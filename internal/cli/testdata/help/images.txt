@@ -1,0 +1,20 @@
+NAME:
+   rancher images - List container images in use, grouped by image or owning workload
+
+USAGE:
+   rancher images [options]
+
+OPTIONS:
+   --all-clusters                     read the pods of every cluster you can list
+   --by string                        Group by unique image or by owning workload (default: image)
+   --cluster id|name                  target cluster id|name; pass exactly one of --cluster or --all-clusters
+   --help, -h                         show help
+   --match substr [ --match substr ]  Show only images whose reference contains substr (repeatable, OR)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

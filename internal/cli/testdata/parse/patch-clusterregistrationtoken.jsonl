@@ -1,0 +1,20 @@
+{"line":["patch","clusterregistrationtoken","--namespace","v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","--namespace=v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","-n","v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","clusterregistrationtoken","--patch","v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","--patch=v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","-p","v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","--patch-file","v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","--patch-file=v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","-patch-file","v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","--type","v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","--type=v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken","-type","v"],"kind":"runs","command":"patch clusterregistrationtoken","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterregistrationtoken"],"kind":"runs","command":"patch clusterregistrationtoken","exit":0}
+{"line":["patch","clusterregistrationtoken","--help"],"kind":"help","command":"patch clusterregistrationtoken","exit":0,"helpPath":"patch-clusterregistrationtoken.txt"}
+{"line":["patch","clusterregistrationtoken","x"],"kind":"runs","command":"patch clusterregistrationtoken","args":["x"],"exit":0}
+{"line":["patch","clusterregistrationtoken","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","clusterregistrationtokens"],"kind":"runs","command":"patch clusterregistrationtoken","exit":0}
+{"line":["patch","crt"],"kind":"runs","command":"patch clusterregistrationtoken","exit":0}
+{"line":["patch","clusterregistrationtokens","--help"],"kind":"help","command":"patch clusterregistrationtoken","exit":0,"helpPath":"patch-clusterregistrationtoken.txt"}

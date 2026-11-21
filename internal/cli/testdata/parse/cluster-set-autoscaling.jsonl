@@ -1,0 +1,17 @@
+{"line":["cluster","set-autoscaling","--pool","v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"pool":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","--pool=v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"pool":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","-pool","v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"pool":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","--pool"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --pool; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","set-autoscaling","--min","v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"min":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","--min=v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"min":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","-min","v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"min":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","--max","v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"max":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","--max=v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"max":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","-max","v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"max":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","--namespace","v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","--namespace=v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","set-autoscaling","-n","v"],"kind":"runs","command":"cluster set-autoscaling","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","set-autoscaling"],"kind":"runs","command":"cluster set-autoscaling","exit":0}
+{"line":["cluster","set-autoscaling","--help"],"kind":"help","command":"cluster set-autoscaling","exit":0,"helpPath":"cluster-set-autoscaling.txt"}
+{"line":["cluster","set-autoscaling","x"],"kind":"runs","command":"cluster set-autoscaling","args":["x"],"exit":0}
+{"line":["cluster","set-autoscaling","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

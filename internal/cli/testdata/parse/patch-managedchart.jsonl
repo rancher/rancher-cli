@@ -1,0 +1,19 @@
+{"line":["patch","managedchart","--namespace","v"],"kind":"runs","command":"patch managedchart","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","managedchart","--namespace=v"],"kind":"runs","command":"patch managedchart","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","managedchart","-n","v"],"kind":"runs","command":"patch managedchart","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","managedchart","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","managedchart","--patch","v"],"kind":"runs","command":"patch managedchart","flags":{"patch":"v"},"exit":0}
+{"line":["patch","managedchart","--patch=v"],"kind":"runs","command":"patch managedchart","flags":{"patch":"v"},"exit":0}
+{"line":["patch","managedchart","-p","v"],"kind":"runs","command":"patch managedchart","flags":{"patch":"v"},"exit":0}
+{"line":["patch","managedchart","--patch-file","v"],"kind":"runs","command":"patch managedchart","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","managedchart","--patch-file=v"],"kind":"runs","command":"patch managedchart","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","managedchart","-patch-file","v"],"kind":"runs","command":"patch managedchart","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","managedchart","--type","v"],"kind":"runs","command":"patch managedchart","flags":{"type":"v"},"exit":0}
+{"line":["patch","managedchart","--type=v"],"kind":"runs","command":"patch managedchart","flags":{"type":"v"},"exit":0}
+{"line":["patch","managedchart","-type","v"],"kind":"runs","command":"patch managedchart","flags":{"type":"v"},"exit":0}
+{"line":["patch","managedchart"],"kind":"runs","command":"patch managedchart","exit":0}
+{"line":["patch","managedchart","--help"],"kind":"help","command":"patch managedchart","exit":0,"helpPath":"patch-managedchart.txt"}
+{"line":["patch","managedchart","x"],"kind":"runs","command":"patch managedchart","args":["x"],"exit":0}
+{"line":["patch","managedchart","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","managedcharts"],"kind":"runs","command":"patch managedchart","exit":0}
+{"line":["patch","managedcharts","--help"],"kind":"help","command":"patch managedchart","exit":0,"helpPath":"patch-managedchart.txt"}

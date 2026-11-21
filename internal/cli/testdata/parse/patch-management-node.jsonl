@@ -1,0 +1,20 @@
+{"line":["patch","management-node","--cluster","v"],"kind":"runs","command":"patch management-node","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","management-node","--cluster=v"],"kind":"runs","command":"patch management-node","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","management-node","-cluster","v"],"kind":"runs","command":"patch management-node","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","management-node","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","management-node","--patch","v"],"kind":"runs","command":"patch management-node","flags":{"patch":"v"},"exit":0}
+{"line":["patch","management-node","--patch=v"],"kind":"runs","command":"patch management-node","flags":{"patch":"v"},"exit":0}
+{"line":["patch","management-node","-p","v"],"kind":"runs","command":"patch management-node","flags":{"patch":"v"},"exit":0}
+{"line":["patch","management-node","--patch-file","v"],"kind":"runs","command":"patch management-node","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","management-node","--patch-file=v"],"kind":"runs","command":"patch management-node","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","management-node","-patch-file","v"],"kind":"runs","command":"patch management-node","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","management-node","--type","v"],"kind":"runs","command":"patch management-node","flags":{"type":"v"},"exit":0}
+{"line":["patch","management-node","--type=v"],"kind":"runs","command":"patch management-node","flags":{"type":"v"},"exit":0}
+{"line":["patch","management-node","-type","v"],"kind":"runs","command":"patch management-node","flags":{"type":"v"},"exit":0}
+{"line":["patch","management-node"],"kind":"runs","command":"patch management-node","exit":0}
+{"line":["patch","management-node","--help"],"kind":"help","command":"patch management-node","exit":0,"helpPath":"patch-management-node.txt"}
+{"line":["patch","management-node","x"],"kind":"runs","command":"patch management-node","args":["x"],"exit":0}
+{"line":["patch","management-node","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","managementnodes"],"kind":"runs","command":"patch management-node","exit":0}
+{"line":["patch","management-nodes"],"kind":"runs","command":"patch management-node","exit":0}
+{"line":["patch","managementnodes","--help"],"kind":"help","command":"patch management-node","exit":0,"helpPath":"patch-management-node.txt"}

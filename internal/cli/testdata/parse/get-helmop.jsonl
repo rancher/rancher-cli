@@ -1,0 +1,24 @@
+{"line":["get","helmop","--namespace","v"],"kind":"runs","command":"get helmop","flags":{"namespace":"v"},"exit":0}
+{"line":["get","helmop","--namespace=v"],"kind":"runs","command":"get helmop","flags":{"namespace":"v"},"exit":0}
+{"line":["get","helmop","-n","v"],"kind":"runs","command":"get helmop","flags":{"namespace":"v"},"exit":0}
+{"line":["get","helmop","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","helmop","--selector","v"],"kind":"runs","command":"get helmop","flags":{"selector":"v"},"exit":0}
+{"line":["get","helmop","--selector=v"],"kind":"runs","command":"get helmop","flags":{"selector":"v"},"exit":0}
+{"line":["get","helmop","-l","v"],"kind":"runs","command":"get helmop","flags":{"selector":"v"},"exit":0}
+{"line":["get","helmop","--wait"],"kind":"runs","command":"get helmop","flags":{"wait":true},"exit":0}
+{"line":["get","helmop","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","helmop","--wait=false"],"kind":"runs","command":"get helmop","flags":{"wait":false},"exit":0}
+{"line":["get","helmop","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","helmop","-wait"],"kind":"runs","command":"get helmop","flags":{"wait":true},"exit":0}
+{"line":["get","helmop","--for","v"],"kind":"runs","command":"get helmop","flags":{"for":"v"},"exit":0}
+{"line":["get","helmop","--for=v"],"kind":"runs","command":"get helmop","flags":{"for":"v"},"exit":0}
+{"line":["get","helmop","-for","v"],"kind":"runs","command":"get helmop","flags":{"for":"v"},"exit":0}
+{"line":["get","helmop","--timeout","v"],"kind":"runs","command":"get helmop","flags":{"timeout":"v"},"exit":0}
+{"line":["get","helmop","--timeout=v"],"kind":"runs","command":"get helmop","flags":{"timeout":"v"},"exit":0}
+{"line":["get","helmop","-timeout","v"],"kind":"runs","command":"get helmop","flags":{"timeout":"v"},"exit":0}
+{"line":["get","helmop"],"kind":"runs","command":"get helmop","exit":0}
+{"line":["get","helmop","--help"],"kind":"help","command":"get helmop","exit":0,"helpPath":"get-helmop.txt"}
+{"line":["get","helmop","x"],"kind":"runs","command":"get helmop","args":["x"],"exit":0}
+{"line":["get","helmop","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","helmops"],"kind":"runs","command":"get helmop","exit":0}
+{"line":["get","helmops","--help"],"kind":"help","command":"get helmop","exit":0,"helpPath":"get-helmop.txt"}

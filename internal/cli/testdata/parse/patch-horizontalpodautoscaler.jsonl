@@ -1,0 +1,23 @@
+{"line":["patch","horizontalpodautoscaler","--cluster","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--cluster=v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","-cluster","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","horizontalpodautoscaler","--namespace","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--namespace=v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","-n","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--patch","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"patch":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--patch=v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"patch":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","-p","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"patch":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--patch-file","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--patch-file=v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","-patch-file","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--type","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"type":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","--type=v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"type":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler","-type","v"],"kind":"runs","command":"patch horizontalpodautoscaler","flags":{"type":"v"},"exit":0}
+{"line":["patch","horizontalpodautoscaler"],"kind":"runs","command":"patch horizontalpodautoscaler","exit":0}
+{"line":["patch","horizontalpodautoscaler","--help"],"kind":"help","command":"patch horizontalpodautoscaler","exit":0,"helpPath":"patch-horizontalpodautoscaler.txt"}
+{"line":["patch","horizontalpodautoscaler","x"],"kind":"runs","command":"patch horizontalpodautoscaler","args":["x"],"exit":0}
+{"line":["patch","horizontalpodautoscaler","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","horizontalpodautoscalers"],"kind":"runs","command":"patch horizontalpodautoscaler","exit":0}
+{"line":["patch","hpa"],"kind":"runs","command":"patch horizontalpodautoscaler","exit":0}
+{"line":["patch","horizontalpodautoscalers","--help"],"kind":"help","command":"patch horizontalpodautoscaler","exit":0,"helpPath":"patch-horizontalpodautoscaler.txt"}

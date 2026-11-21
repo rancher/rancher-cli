@@ -1,0 +1,24 @@
+{"line":["get","harvesterconfig","--namespace","v"],"kind":"runs","command":"get harvesterconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","harvesterconfig","--namespace=v"],"kind":"runs","command":"get harvesterconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","harvesterconfig","-n","v"],"kind":"runs","command":"get harvesterconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","harvesterconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","harvesterconfig","--selector","v"],"kind":"runs","command":"get harvesterconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","harvesterconfig","--selector=v"],"kind":"runs","command":"get harvesterconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","harvesterconfig","-l","v"],"kind":"runs","command":"get harvesterconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","harvesterconfig","--wait"],"kind":"runs","command":"get harvesterconfig","flags":{"wait":true},"exit":0}
+{"line":["get","harvesterconfig","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","harvesterconfig","--wait=false"],"kind":"runs","command":"get harvesterconfig","flags":{"wait":false},"exit":0}
+{"line":["get","harvesterconfig","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","harvesterconfig","-wait"],"kind":"runs","command":"get harvesterconfig","flags":{"wait":true},"exit":0}
+{"line":["get","harvesterconfig","--for","v"],"kind":"runs","command":"get harvesterconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","harvesterconfig","--for=v"],"kind":"runs","command":"get harvesterconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","harvesterconfig","-for","v"],"kind":"runs","command":"get harvesterconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","harvesterconfig","--timeout","v"],"kind":"runs","command":"get harvesterconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","harvesterconfig","--timeout=v"],"kind":"runs","command":"get harvesterconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","harvesterconfig","-timeout","v"],"kind":"runs","command":"get harvesterconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","harvesterconfig"],"kind":"runs","command":"get harvesterconfig","exit":0}
+{"line":["get","harvesterconfig","--help"],"kind":"help","command":"get harvesterconfig","exit":0,"helpPath":"get-harvesterconfig.txt"}
+{"line":["get","harvesterconfig","x"],"kind":"runs","command":"get harvesterconfig","args":["x"],"exit":0}
+{"line":["get","harvesterconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","harvesterconfigs"],"kind":"runs","command":"get harvesterconfig","exit":0}
+{"line":["get","harvesterconfigs","--help"],"kind":"help","command":"get harvesterconfig","exit":0,"helpPath":"get-harvesterconfig.txt"}

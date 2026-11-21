@@ -1,0 +1,25 @@
+{"line":["access","list","--cluster","v"],"kind":"runs","command":"access list","flags":{"cluster":"v"},"exit":0}
+{"line":["access","list","--cluster=v"],"kind":"runs","command":"access list","flags":{"cluster":"v"},"exit":0}
+{"line":["access","list","-cluster","v"],"kind":"runs","command":"access list","flags":{"cluster":"v"},"exit":0}
+{"line":["access","list","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["access","list","--namespace","v"],"kind":"runs","command":"access list","flags":{"namespace":"v"},"exit":0}
+{"line":["access","list","--namespace=v"],"kind":"runs","command":"access list","flags":{"namespace":"v"},"exit":0}
+{"line":["access","list","-n","v"],"kind":"runs","command":"access list","flags":{"namespace":"v"},"exit":0}
+{"line":["access","list","--all-namespaces"],"kind":"runs","command":"access list","flags":{"all-namespaces":true},"exit":0}
+{"line":["access","list","--all-namespaces="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all-namespaces= has an empty value; a bool flag typed with = takes true or false","  hint: write --all-namespaces or --all-namespaces=true|false"]}
+{"line":["access","list","--all-namespaces=false"],"kind":"runs","command":"access list","flags":{"all-namespaces":false},"exit":0}
+{"line":["access","list","--all-namespaces= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all-namespaces= has an empty value; a bool flag typed with = takes true or false","  hint: write --all-namespaces or --all-namespaces=true|false"]}
+{"line":["access","list","-A"],"kind":"runs","command":"access list","flags":{"all-namespaces":true},"exit":0}
+{"line":["access","list","--as","v"],"kind":"runs","command":"access list","flags":{"as":"v"},"exit":0}
+{"line":["access","list","--as=v"],"kind":"runs","command":"access list","flags":{"as":"v"},"exit":0}
+{"line":["access","list","-as","v"],"kind":"runs","command":"access list","flags":{"as":"v"},"exit":0}
+{"line":["access","list","--type","v"],"kind":"runs","command":"access list","flags":{"type":"v"},"exit":0}
+{"line":["access","list","--type=v"],"kind":"runs","command":"access list","flags":{"type":"v"},"exit":0}
+{"line":["access","list","-type","v"],"kind":"runs","command":"access list","flags":{"type":"v"},"exit":0}
+{"line":["access","list","--timeout","v"],"kind":"runs","command":"access list","flags":{"timeout":"v"},"exit":0}
+{"line":["access","list","--timeout=v"],"kind":"runs","command":"access list","flags":{"timeout":"v"},"exit":0}
+{"line":["access","list","-timeout","v"],"kind":"runs","command":"access list","flags":{"timeout":"v"},"exit":0}
+{"line":["access","list"],"kind":"runs","command":"access list","exit":0}
+{"line":["access","list","--help"],"kind":"help","command":"access list","exit":0,"helpPath":"access-list.txt"}
+{"line":["access","list","x"],"kind":"runs","command":"access list","args":["x"],"exit":0}
+{"line":["access","list","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

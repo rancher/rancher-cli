@@ -1,0 +1,14 @@
+{"line":["create","token","--ttl","v"],"kind":"runs","command":"create token","flags":{"ttl":"v"},"exit":0}
+{"line":["create","token","--ttl=v"],"kind":"runs","command":"create token","flags":{"ttl":"v"},"exit":0}
+{"line":["create","token","-ttl","v"],"kind":"runs","command":"create token","flags":{"ttl":"v"},"exit":0}
+{"line":["create","token","--ttl"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --ttl; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","token","--description","v"],"kind":"runs","command":"create token","flags":{"description":"v"},"exit":0}
+{"line":["create","token","--description=v"],"kind":"runs","command":"create token","flags":{"description":"v"},"exit":0}
+{"line":["create","token","-description","v"],"kind":"runs","command":"create token","flags":{"description":"v"},"exit":0}
+{"line":["create","token","--cluster","v"],"kind":"runs","command":"create token","flags":{"cluster":"v"},"exit":0}
+{"line":["create","token","--cluster=v"],"kind":"runs","command":"create token","flags":{"cluster":"v"},"exit":0}
+{"line":["create","token","-cluster","v"],"kind":"runs","command":"create token","flags":{"cluster":"v"},"exit":0}
+{"line":["create","token"],"kind":"runs","command":"create token","exit":0}
+{"line":["create","token","--help"],"kind":"help","command":"create token","exit":0,"helpPath":"create-token.txt"}
+{"line":["create","token","x"],"kind":"runs","command":"create token","args":["x"],"exit":0}
+{"line":["create","token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

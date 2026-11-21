@@ -1,0 +1,28 @@
+{"line":["get","limitrange","--cluster","v"],"kind":"runs","command":"get limitrange","flags":{"cluster":"v"},"exit":0}
+{"line":["get","limitrange","--cluster=v"],"kind":"runs","command":"get limitrange","flags":{"cluster":"v"},"exit":0}
+{"line":["get","limitrange","-cluster","v"],"kind":"runs","command":"get limitrange","flags":{"cluster":"v"},"exit":0}
+{"line":["get","limitrange","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","limitrange","--namespace","v"],"kind":"runs","command":"get limitrange","flags":{"namespace":"v"},"exit":0}
+{"line":["get","limitrange","--namespace=v"],"kind":"runs","command":"get limitrange","flags":{"namespace":"v"},"exit":0}
+{"line":["get","limitrange","-n","v"],"kind":"runs","command":"get limitrange","flags":{"namespace":"v"},"exit":0}
+{"line":["get","limitrange","--selector","v"],"kind":"runs","command":"get limitrange","flags":{"selector":"v"},"exit":0}
+{"line":["get","limitrange","--selector=v"],"kind":"runs","command":"get limitrange","flags":{"selector":"v"},"exit":0}
+{"line":["get","limitrange","-l","v"],"kind":"runs","command":"get limitrange","flags":{"selector":"v"},"exit":0}
+{"line":["get","limitrange","--wait"],"kind":"runs","command":"get limitrange","flags":{"wait":true},"exit":0}
+{"line":["get","limitrange","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","limitrange","--wait=false"],"kind":"runs","command":"get limitrange","flags":{"wait":false},"exit":0}
+{"line":["get","limitrange","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","limitrange","-wait"],"kind":"runs","command":"get limitrange","flags":{"wait":true},"exit":0}
+{"line":["get","limitrange","--for","v"],"kind":"runs","command":"get limitrange","flags":{"for":"v"},"exit":0}
+{"line":["get","limitrange","--for=v"],"kind":"runs","command":"get limitrange","flags":{"for":"v"},"exit":0}
+{"line":["get","limitrange","-for","v"],"kind":"runs","command":"get limitrange","flags":{"for":"v"},"exit":0}
+{"line":["get","limitrange","--timeout","v"],"kind":"runs","command":"get limitrange","flags":{"timeout":"v"},"exit":0}
+{"line":["get","limitrange","--timeout=v"],"kind":"runs","command":"get limitrange","flags":{"timeout":"v"},"exit":0}
+{"line":["get","limitrange","-timeout","v"],"kind":"runs","command":"get limitrange","flags":{"timeout":"v"},"exit":0}
+{"line":["get","limitrange"],"kind":"runs","command":"get limitrange","exit":0}
+{"line":["get","limitrange","--help"],"kind":"help","command":"get limitrange","exit":0,"helpPath":"get-limitrange.txt"}
+{"line":["get","limitrange","x"],"kind":"runs","command":"get limitrange","args":["x"],"exit":0}
+{"line":["get","limitrange","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","limitranges"],"kind":"runs","command":"get limitrange","exit":0}
+{"line":["get","limits"],"kind":"runs","command":"get limitrange","exit":0}
+{"line":["get","limitranges","--help"],"kind":"help","command":"get limitrange","exit":0,"helpPath":"get-limitrange.txt"}

@@ -1,0 +1,25 @@
+NAME:
+   rancher oidc-client - Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)
+
+USAGE:
+   rancher oidc-client [command [command options]]
+
+COMMANDS:
+   add-secret:     [Prime] Add a new client secret to an OIDC client
+   remove-secret:  [Prime] Remove a client secret from an OIDC client
+   rotate-secret:  [Prime] Regenerate a client secret on an OIDC client
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

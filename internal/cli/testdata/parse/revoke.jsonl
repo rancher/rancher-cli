@@ -1,0 +1,19 @@
+{"line":["revoke","--role","v"],"kind":"runs","command":"revoke","flags":{"role":"v"},"exit":0}
+{"line":["revoke","--role=v"],"kind":"runs","command":"revoke","flags":{"role":"v"},"exit":0}
+{"line":["revoke","-role","v"],"kind":"runs","command":"revoke","flags":{"role":"v"},"exit":0}
+{"line":["revoke","--role"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --role; pass --help for usage","  hint: rancher schema"]}
+{"line":["revoke","--cluster","v"],"kind":"runs","command":"revoke","flags":{"cluster":"v"},"exit":0}
+{"line":["revoke","--cluster=v"],"kind":"runs","command":"revoke","flags":{"cluster":"v"},"exit":0}
+{"line":["revoke","-cluster","v"],"kind":"runs","command":"revoke","flags":{"cluster":"v"},"exit":0}
+{"line":["revoke","--global"],"kind":"runs","command":"revoke","flags":{"global":true},"exit":0}
+{"line":["revoke","--global="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --global= has an empty value; a bool flag typed with = takes true or false","  hint: write --global or --global=true|false"]}
+{"line":["revoke","--global=false"],"kind":"runs","command":"revoke","flags":{"global":false},"exit":0}
+{"line":["revoke","--global= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --global= has an empty value; a bool flag typed with = takes true or false","  hint: write --global or --global=true|false"]}
+{"line":["revoke","-global"],"kind":"runs","command":"revoke","flags":{"global":true},"exit":0}
+{"line":["revoke","--type","v"],"kind":"runs","command":"revoke","flags":{"type":"v"},"exit":0}
+{"line":["revoke","--type=v"],"kind":"runs","command":"revoke","flags":{"type":"v"},"exit":0}
+{"line":["revoke","-type","v"],"kind":"runs","command":"revoke","flags":{"type":"v"},"exit":0}
+{"line":["revoke"],"kind":"runs","command":"revoke","exit":0}
+{"line":["revoke","--help"],"kind":"help","command":"revoke","exit":0,"helpPath":"revoke.txt"}
+{"line":["revoke","x"],"kind":"runs","command":"revoke","args":["x"],"exit":0}
+{"line":["revoke","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

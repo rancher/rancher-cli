@@ -1,0 +1,8 @@
+{"line":["cluster","pause-autoscaling","--namespace","v"],"kind":"runs","command":"cluster pause-autoscaling","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","pause-autoscaling","--namespace=v"],"kind":"runs","command":"cluster pause-autoscaling","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","pause-autoscaling","-n","v"],"kind":"runs","command":"cluster pause-autoscaling","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","pause-autoscaling","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","pause-autoscaling"],"kind":"runs","command":"cluster pause-autoscaling","exit":0}
+{"line":["cluster","pause-autoscaling","--help"],"kind":"help","command":"cluster pause-autoscaling","exit":0,"helpPath":"cluster-pause-autoscaling.txt"}
+{"line":["cluster","pause-autoscaling","x"],"kind":"runs","command":"cluster pause-autoscaling","args":["x"],"exit":0}
+{"line":["cluster","pause-autoscaling","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

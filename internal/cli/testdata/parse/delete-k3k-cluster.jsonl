@@ -1,0 +1,22 @@
+{"line":["delete","k3k-cluster","--cluster","v"],"kind":"runs","command":"delete k3k-cluster","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","k3k-cluster","--cluster=v"],"kind":"runs","command":"delete k3k-cluster","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","k3k-cluster","-cluster","v"],"kind":"runs","command":"delete k3k-cluster","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","k3k-cluster","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","k3k-cluster","--namespace","v"],"kind":"runs","command":"delete k3k-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","k3k-cluster","--namespace=v"],"kind":"runs","command":"delete k3k-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","k3k-cluster","-n","v"],"kind":"runs","command":"delete k3k-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","k3k-cluster","--wait"],"kind":"runs","command":"delete k3k-cluster","flags":{"wait":true},"exit":0}
+{"line":["delete","k3k-cluster","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","k3k-cluster","--wait=false"],"kind":"runs","command":"delete k3k-cluster","flags":{"wait":false},"exit":0}
+{"line":["delete","k3k-cluster","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","k3k-cluster","-wait"],"kind":"runs","command":"delete k3k-cluster","flags":{"wait":true},"exit":0}
+{"line":["delete","k3k-cluster","--timeout","v"],"kind":"runs","command":"delete k3k-cluster","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","k3k-cluster","--timeout=v"],"kind":"runs","command":"delete k3k-cluster","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","k3k-cluster","-timeout","v"],"kind":"runs","command":"delete k3k-cluster","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","k3k-cluster"],"kind":"runs","command":"delete k3k-cluster","exit":0}
+{"line":["delete","k3k-cluster","--help"],"kind":"help","command":"delete k3k-cluster","exit":0,"helpPath":"delete-k3k-cluster.txt"}
+{"line":["delete","k3k-cluster","x"],"kind":"runs","command":"delete k3k-cluster","args":["x"],"exit":0}
+{"line":["delete","k3k-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","k3kclusters"],"kind":"runs","command":"delete k3k-cluster","exit":0}
+{"line":["delete","k3k-clusters"],"kind":"runs","command":"delete k3k-cluster","exit":0}
+{"line":["delete","k3kclusters","--help"],"kind":"help","command":"delete k3k-cluster","exit":0,"helpPath":"delete-k3k-cluster.txt"}

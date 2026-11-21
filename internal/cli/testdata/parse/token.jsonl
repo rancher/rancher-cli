@@ -1,0 +1,36 @@
+{"line":["token","--server","v"],"kind":"runs","command":"token","flags":{"server":"v"},"exit":0}
+{"line":["token","--server=v"],"kind":"runs","command":"token","flags":{"server":"v"},"exit":0}
+{"line":["token","-server","v"],"kind":"runs","command":"token","flags":{"server":"v"},"exit":0}
+{"line":["token","--server"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --server; pass --help for usage","  hint: rancher schema"]}
+{"line":["token","--user","v"],"kind":"runs","command":"token","flags":{"user":"v"},"exit":0}
+{"line":["token","--user=v"],"kind":"runs","command":"token","flags":{"user":"v"},"exit":0}
+{"line":["token","-user","v"],"kind":"runs","command":"token","flags":{"user":"v"},"exit":0}
+{"line":["token","--cluster","v"],"kind":"runs","command":"token","flags":{"cluster":"v"},"exit":0}
+{"line":["token","--cluster=v"],"kind":"runs","command":"token","flags":{"cluster":"v"},"exit":0}
+{"line":["token","-cluster","v"],"kind":"runs","command":"token","flags":{"cluster":"v"},"exit":0}
+{"line":["token","--auth-provider","v"],"kind":"runs","command":"token","flags":{"auth-provider":"v"},"exit":0}
+{"line":["token","--auth-provider=v"],"kind":"runs","command":"token","flags":{"auth-provider":"v"},"exit":0}
+{"line":["token","-auth-provider","v"],"kind":"runs","command":"token","flags":{"auth-provider":"v"},"exit":0}
+{"line":["token","--auth-flow","v"],"kind":"runs","command":"token","flags":{"auth-flow":"v"},"exit":0}
+{"line":["token","--auth-flow=v"],"kind":"runs","command":"token","flags":{"auth-flow":"v"},"exit":0}
+{"line":["token","-auth-flow","v"],"kind":"runs","command":"token","flags":{"auth-flow":"v"},"exit":0}
+{"line":["token","--cacerts","v"],"kind":"runs","command":"token","flags":{"cacerts":"v"},"exit":0}
+{"line":["token","--cacerts=v"],"kind":"runs","command":"token","flags":{"cacerts":"v"},"exit":0}
+{"line":["token","-cacerts","v"],"kind":"runs","command":"token","flags":{"cacerts":"v"},"exit":0}
+{"line":["token","--skip-verify"],"kind":"runs","command":"token","flags":{"skip-verify":true},"exit":0}
+{"line":["token","--skip-verify="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --skip-verify= has an empty value; a bool flag typed with = takes true or false","  hint: write --skip-verify or --skip-verify=true|false"]}
+{"line":["token","--skip-verify=false"],"kind":"runs","command":"token","flags":{"skip-verify":false},"exit":0}
+{"line":["token","--skip-verify= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --skip-verify= has an empty value; a bool flag typed with = takes true or false","  hint: write --skip-verify or --skip-verify=true|false"]}
+{"line":["token","-skip-verify"],"kind":"runs","command":"token","flags":{"skip-verify":true},"exit":0}
+{"line":["token"],"kind":"runs","command":"token","exit":0}
+{"line":["token","--help"],"kind":"help","command":"token","exit":0,"helpPath":"token.txt"}
+{"line":["token","x"],"kind":"runs","command":"token","args":["x"],"exit":0}
+{"line":["token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["token","--server=https://rancher.example.test","--user=user-abcde"],"kind":"runs","command":"token","flags":{"server":"https://rancher.example.test","user":"user-abcde"},"exit":0}
+{"line":["token","--server=https://rancher.example.test","--user=user-abcde","--cacerts=/parse/ca.pem"],"kind":"runs","command":"token","flags":{"cacerts":"/parse/ca.pem","server":"https://rancher.example.test","user":"user-abcde"},"exit":0}
+{"line":["token","--server=https://rancher.example.test","--user=user-abcde","--cluster=c-m-abcde"],"kind":"runs","command":"token","flags":{"cluster":"c-m-abcde","server":"https://rancher.example.test","user":"user-abcde"},"exit":0}
+{"line":["token","--server=https://rancher.example.test","--user=user-abcde","--cluster=c-m-abcde","--cacerts=/parse/ca.pem"],"kind":"runs","command":"token","flags":{"cacerts":"/parse/ca.pem","cluster":"c-m-abcde","server":"https://rancher.example.test","user":"user-abcde"},"exit":0}
+{"line":["token","--server","https://rancher.example.test","--user","user-abcde"],"kind":"runs","command":"token","flags":{"server":"https://rancher.example.test","user":"user-abcde"},"exit":0}
+{"line":["token","--server","https://rancher.example.test","--user","user-abcde","--cacerts","/parse/ca.pem"],"kind":"runs","command":"token","flags":{"cacerts":"/parse/ca.pem","server":"https://rancher.example.test","user":"user-abcde"},"exit":0}
+{"line":["token","--server","https://rancher.example.test","--user","user-abcde","--cluster","c-m-abcde"],"kind":"runs","command":"token","flags":{"cluster":"c-m-abcde","server":"https://rancher.example.test","user":"user-abcde"},"exit":0}
+{"line":["token","--server","https://rancher.example.test","--user","user-abcde","--cluster","c-m-abcde","--cacerts","/parse/ca.pem"],"kind":"runs","command":"token","flags":{"cacerts":"/parse/ca.pem","cluster":"c-m-abcde","server":"https://rancher.example.test","user":"user-abcde"},"exit":0}

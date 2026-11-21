@@ -1,0 +1,24 @@
+{"line":["get","digitaloceanconfig","--namespace","v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","--namespace=v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","-n","v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","digitaloceanconfig","--selector","v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","--selector=v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","-l","v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","--wait"],"kind":"runs","command":"get digitaloceanconfig","flags":{"wait":true},"exit":0}
+{"line":["get","digitaloceanconfig","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","digitaloceanconfig","--wait=false"],"kind":"runs","command":"get digitaloceanconfig","flags":{"wait":false},"exit":0}
+{"line":["get","digitaloceanconfig","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","digitaloceanconfig","-wait"],"kind":"runs","command":"get digitaloceanconfig","flags":{"wait":true},"exit":0}
+{"line":["get","digitaloceanconfig","--for","v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","--for=v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","-for","v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","--timeout","v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","--timeout=v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","digitaloceanconfig","-timeout","v"],"kind":"runs","command":"get digitaloceanconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","digitaloceanconfig"],"kind":"runs","command":"get digitaloceanconfig","exit":0}
+{"line":["get","digitaloceanconfig","--help"],"kind":"help","command":"get digitaloceanconfig","exit":0,"helpPath":"get-digitaloceanconfig.txt"}
+{"line":["get","digitaloceanconfig","x"],"kind":"runs","command":"get digitaloceanconfig","args":["x"],"exit":0}
+{"line":["get","digitaloceanconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","digitaloceanconfigs"],"kind":"runs","command":"get digitaloceanconfig","exit":0}
+{"line":["get","digitaloceanconfigs","--help"],"kind":"help","command":"get digitaloceanconfig","exit":0,"helpPath":"get-digitaloceanconfig.txt"}

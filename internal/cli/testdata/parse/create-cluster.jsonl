@@ -1,0 +1,45 @@
+{"line":["create","cluster","--import"],"kind":"runs","command":"create cluster","flags":{"import":true},"exit":0}
+{"line":["create","cluster","--import="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --import= has an empty value; a bool flag typed with = takes true or false","  hint: write --import or --import=true|false"]}
+{"line":["create","cluster","--import=false"],"kind":"runs","command":"create cluster","flags":{"import":false},"exit":0}
+{"line":["create","cluster","--import= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --import= has an empty value; a bool flag typed with = takes true or false","  hint: write --import or --import=true|false"]}
+{"line":["create","cluster","-import"],"kind":"runs","command":"create cluster","flags":{"import":true},"exit":0}
+{"line":["create","cluster","--custom"],"kind":"runs","command":"create cluster","flags":{"custom":true},"exit":0}
+{"line":["create","cluster","--custom="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --custom= has an empty value; a bool flag typed with = takes true or false","  hint: write --custom or --custom=true|false"]}
+{"line":["create","cluster","--custom=false"],"kind":"runs","command":"create cluster","flags":{"custom":false},"exit":0}
+{"line":["create","cluster","--custom= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --custom= has an empty value; a bool flag typed with = takes true or false","  hint: write --custom or --custom=true|false"]}
+{"line":["create","cluster","-custom"],"kind":"runs","command":"create cluster","flags":{"custom":true},"exit":0}
+{"line":["create","cluster","--machine-config","v"],"kind":"runs","command":"create cluster","flags":{"machine-config":"v"},"exit":0}
+{"line":["create","cluster","--machine-config=v"],"kind":"runs","command":"create cluster","flags":{"machine-config":"v"},"exit":0}
+{"line":["create","cluster","-machine-config","v"],"kind":"runs","command":"create cluster","flags":{"machine-config":"v"},"exit":0}
+{"line":["create","cluster","--machine-config"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --machine-config; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","cluster","--cloud-credential","v"],"kind":"runs","command":"create cluster","flags":{"cloud-credential":"v"},"exit":0}
+{"line":["create","cluster","--cloud-credential=v"],"kind":"runs","command":"create cluster","flags":{"cloud-credential":"v"},"exit":0}
+{"line":["create","cluster","-cloud-credential","v"],"kind":"runs","command":"create cluster","flags":{"cloud-credential":"v"},"exit":0}
+{"line":["create","cluster","--k8s-version","v"],"kind":"runs","command":"create cluster","flags":{"k8s-version":"v"},"exit":0}
+{"line":["create","cluster","--k8s-version=v"],"kind":"runs","command":"create cluster","flags":{"k8s-version":"v"},"exit":0}
+{"line":["create","cluster","-k8s-version","v"],"kind":"runs","command":"create cluster","flags":{"k8s-version":"v"},"exit":0}
+{"line":["create","cluster","--pool-name","v"],"kind":"runs","command":"create cluster","flags":{"pool-name":"v"},"exit":0}
+{"line":["create","cluster","--pool-name=v"],"kind":"runs","command":"create cluster","flags":{"pool-name":"v"},"exit":0}
+{"line":["create","cluster","-pool-name","v"],"kind":"runs","command":"create cluster","flags":{"pool-name":"v"},"exit":0}
+{"line":["create","cluster","--etcd"],"kind":"runs","command":"create cluster","flags":{"etcd":true},"exit":0}
+{"line":["create","cluster","--etcd="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --etcd= has an empty value; a bool flag typed with = takes true or false","  hint: write --etcd or --etcd=true|false"]}
+{"line":["create","cluster","--etcd=false"],"kind":"runs","command":"create cluster","flags":{"etcd":false},"exit":0}
+{"line":["create","cluster","--etcd= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --etcd= has an empty value; a bool flag typed with = takes true or false","  hint: write --etcd or --etcd=true|false"]}
+{"line":["create","cluster","-etcd"],"kind":"runs","command":"create cluster","flags":{"etcd":true},"exit":0}
+{"line":["create","cluster","--controlplane"],"kind":"runs","command":"create cluster","flags":{"controlplane":true},"exit":0}
+{"line":["create","cluster","--controlplane="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --controlplane= has an empty value; a bool flag typed with = takes true or false","  hint: write --controlplane or --controlplane=true|false"]}
+{"line":["create","cluster","--controlplane=false"],"kind":"runs","command":"create cluster","flags":{"controlplane":false},"exit":0}
+{"line":["create","cluster","--controlplane= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --controlplane= has an empty value; a bool flag typed with = takes true or false","  hint: write --controlplane or --controlplane=true|false"]}
+{"line":["create","cluster","-controlplane"],"kind":"runs","command":"create cluster","flags":{"controlplane":true},"exit":0}
+{"line":["create","cluster","--worker"],"kind":"runs","command":"create cluster","flags":{"worker":true},"exit":0}
+{"line":["create","cluster","--worker="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --worker= has an empty value; a bool flag typed with = takes true or false","  hint: write --worker or --worker=true|false"]}
+{"line":["create","cluster","--worker=false"],"kind":"runs","command":"create cluster","flags":{"worker":false},"exit":0}
+{"line":["create","cluster","--worker= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --worker= has an empty value; a bool flag typed with = takes true or false","  hint: write --worker or --worker=true|false"]}
+{"line":["create","cluster","-worker"],"kind":"runs","command":"create cluster","flags":{"worker":true},"exit":0}
+{"line":["create","cluster","--quantity","v"],"kind":"runs","command":"create cluster","flags":{"quantity":"v"},"exit":0}
+{"line":["create","cluster","--quantity=v"],"kind":"runs","command":"create cluster","flags":{"quantity":"v"},"exit":0}
+{"line":["create","cluster","-quantity","v"],"kind":"runs","command":"create cluster","flags":{"quantity":"v"},"exit":0}
+{"line":["create","cluster"],"kind":"runs","command":"create cluster","exit":0}
+{"line":["create","cluster","--help"],"kind":"help","command":"create cluster","exit":0,"helpPath":"create-cluster.txt"}
+{"line":["create","cluster","x"],"kind":"runs","command":"create cluster","args":["x"],"exit":0}
+{"line":["create","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

@@ -467,6 +467,60 @@ func allCommands(root *ucli.Command, path []string) (out []struct {
 	return out
 }
 
+// parseTarget is a command, given by the words that name it (none for the
+// root), and the tier of command lines it is run with.
+type parseTarget struct {
+	path []string
+	tier lineTier
+}
+
+// parseTargets lists the root and every command below it, with the lines
+// each is run with: the shapes, spellings of the global flags and pairs for
+// the root, every group, "get pod", "create project", the first leaf with a
+// string slice flag and the first leaf with a flag that may be given once;
+// pairs of a blank word and another shape for the other groups; the spellings
+// of its own flags only for every other leaf. It also returns the names of
+// the leaves with a string slice flag and with a flag that may be given once.
+func parseTargets(t *testing.T, root *ucli.Command) (targets []parseTarget, withSlice, withOnce string) {
+	t.Helper()
+	commands := allCommands(root, nil)
+	keys := map[string]bool{}
+	for _, name := range []string{"get pod", "create project"} {
+		keys[name] = true
+	}
+	for _, c := range commands {
+		if len(c.cmd.Commands) > 0 {
+			continue
+		}
+		for _, f := range c.cmd.Flags {
+			_, once := flagKind(f)
+			if _, isSlice := f.(*ucli.StringSliceFlag); isSlice && withSlice == "" {
+				withSlice = strings.Join(c.path, " ")
+			}
+			if once && withOnce == "" {
+				withOnce = strings.Join(c.path, " ")
+			}
+		}
+	}
+	keys[withSlice], keys[withOnce] = true, true
+	require.NotEmpty(t, withSlice, "a leaf with a string slice flag")
+	require.NotEmpty(t, withOnce, "a leaf with a flag that may be given once")
+
+	targets = []parseTarget{{nil, lineTier{shapes: true, globals: true, pairs: true}}}
+	for _, c := range commands {
+		name := strings.Join(c.path, " ")
+		tier := lineTier{}
+		if len(c.cmd.Commands) > 0 || keys[name] {
+			tier.shapes = true
+			tier.globals = name == "get" || keys[name]
+			tier.pairs = tier.globals
+			tier.blankPairs = !tier.pairs && len(c.cmd.Commands) > 0
+		}
+		targets = append(targets, parseTarget{c.path, tier})
+	}
+	return targets, withSlice, withOnce
+}
+
 // TestParseLineAgreesWithUrfave asserts that parseLine reads a command line
 // as urfave does: for a set of lines on the root, every group and every
 // leaf, the command urfave runs or the level and kind of the error it
@@ -498,46 +552,7 @@ func TestParseLineAgreesWithUrfave(t *testing.T) {
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	commands := allCommands(root, nil)
-	keys := map[string]bool{}
-	for _, name := range []string{"get pod", "create project"} {
-		keys[name] = true
-	}
-	var withSlice, withOnce string
-	for _, c := range commands {
-		if len(c.cmd.Commands) > 0 {
-			continue
-		}
-		for _, f := range c.cmd.Flags {
-			_, once := flagKind(f)
-			if _, isSlice := f.(*ucli.StringSliceFlag); isSlice && withSlice == "" {
-				withSlice = strings.Join(c.path, " ")
-			}
-			if once && withOnce == "" {
-				withOnce = strings.Join(c.path, " ")
-			}
-		}
-	}
-	keys[withSlice], keys[withOnce] = true, true
-	require.NotEmpty(t, withSlice, "a leaf with a string slice flag")
-	require.NotEmpty(t, withOnce, "a leaf with a flag that may be given once")
-
-	type target struct {
-		path []string
-		tier lineTier
-	}
-	targets := []target{{nil, lineTier{shapes: true, globals: true, pairs: true}}}
-	for _, c := range commands {
-		name := strings.Join(c.path, " ")
-		tier := lineTier{}
-		if len(c.cmd.Commands) > 0 || keys[name] {
-			tier.shapes = true
-			tier.globals = name == "get" || keys[name]
-			tier.pairs = tier.globals
-			tier.blankPairs = !tier.pairs && len(c.cmd.Commands) > 0
-		}
-		targets = append(targets, target{c.path, tier})
-	}
+	targets, _, _ := parseTargets(t, root)
 
 	total := 0
 	for _, tg := range targets {

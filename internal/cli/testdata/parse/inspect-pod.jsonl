@@ -1,0 +1,17 @@
+{"line":["inspect","pod","--cluster","v"],"kind":"runs","command":"inspect pod","flags":{"cluster":"v"},"exit":0}
+{"line":["inspect","pod","--cluster=v"],"kind":"runs","command":"inspect pod","flags":{"cluster":"v"},"exit":0}
+{"line":["inspect","pod","-cluster","v"],"kind":"runs","command":"inspect pod","flags":{"cluster":"v"},"exit":0}
+{"line":["inspect","pod","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["inspect","pod","--namespace","v"],"kind":"runs","command":"inspect pod","flags":{"namespace":"v"},"exit":0}
+{"line":["inspect","pod","--namespace=v"],"kind":"runs","command":"inspect pod","flags":{"namespace":"v"},"exit":0}
+{"line":["inspect","pod","-n","v"],"kind":"runs","command":"inspect pod","flags":{"namespace":"v"},"exit":0}
+{"line":["inspect","pod","--tail","v"],"kind":"runs","command":"inspect pod","flags":{"tail":"v"},"exit":0}
+{"line":["inspect","pod","--tail=v"],"kind":"runs","command":"inspect pod","flags":{"tail":"v"},"exit":0}
+{"line":["inspect","pod","-tail","v"],"kind":"runs","command":"inspect pod","flags":{"tail":"v"},"exit":0}
+{"line":["inspect","pod"],"kind":"runs","command":"inspect pod","exit":0}
+{"line":["inspect","pod","--help"],"kind":"help","command":"inspect pod","exit":0,"helpPath":"inspect-pod.txt"}
+{"line":["inspect","pod","x"],"kind":"runs","command":"inspect pod","args":["x"],"exit":0}
+{"line":["inspect","pod","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["inspect","pods"],"kind":"runs","command":"inspect pod","exit":0}
+{"line":["inspect","po"],"kind":"runs","command":"inspect pod","exit":0}
+{"line":["inspect","pods","--help"],"kind":"help","command":"inspect pod","exit":0,"helpPath":"inspect-pod.txt"}

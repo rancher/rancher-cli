@@ -1,0 +1,19 @@
+{"line":["patch","digitaloceanconfig","--namespace","v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","--namespace=v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","-n","v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","digitaloceanconfig","--patch","v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","--patch=v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","-p","v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","--patch-file","v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","--patch-file=v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","-patch-file","v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","--type","v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","--type=v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig","-type","v"],"kind":"runs","command":"patch digitaloceanconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","digitaloceanconfig"],"kind":"runs","command":"patch digitaloceanconfig","exit":0}
+{"line":["patch","digitaloceanconfig","--help"],"kind":"help","command":"patch digitaloceanconfig","exit":0,"helpPath":"patch-digitaloceanconfig.txt"}
+{"line":["patch","digitaloceanconfig","x"],"kind":"runs","command":"patch digitaloceanconfig","args":["x"],"exit":0}
+{"line":["patch","digitaloceanconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","digitaloceanconfigs"],"kind":"runs","command":"patch digitaloceanconfig","exit":0}
+{"line":["patch","digitaloceanconfigs","--help"],"kind":"help","command":"patch digitaloceanconfig","exit":0,"helpPath":"patch-digitaloceanconfig.txt"}

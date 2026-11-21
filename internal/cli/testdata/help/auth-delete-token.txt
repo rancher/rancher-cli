@@ -1,0 +1,16 @@
+NAME:
+   rancher auth delete-token - Delete cached exec-credential token(s)
+
+USAGE:
+   rancher auth delete-token [options] [name]
+
+OPTIONS:
+   --all       delete all cached credentials
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>

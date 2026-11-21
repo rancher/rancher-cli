@@ -1,0 +1,16 @@
+{"line":["patch","oidcclient","--patch","v"],"kind":"runs","command":"patch oidcclient","flags":{"patch":"v"},"exit":0}
+{"line":["patch","oidcclient","--patch=v"],"kind":"runs","command":"patch oidcclient","flags":{"patch":"v"},"exit":0}
+{"line":["patch","oidcclient","-p","v"],"kind":"runs","command":"patch oidcclient","flags":{"patch":"v"},"exit":0}
+{"line":["patch","oidcclient","--patch"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --patch; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","oidcclient","--patch-file","v"],"kind":"runs","command":"patch oidcclient","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","oidcclient","--patch-file=v"],"kind":"runs","command":"patch oidcclient","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","oidcclient","-patch-file","v"],"kind":"runs","command":"patch oidcclient","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","oidcclient","--type","v"],"kind":"runs","command":"patch oidcclient","flags":{"type":"v"},"exit":0}
+{"line":["patch","oidcclient","--type=v"],"kind":"runs","command":"patch oidcclient","flags":{"type":"v"},"exit":0}
+{"line":["patch","oidcclient","-type","v"],"kind":"runs","command":"patch oidcclient","flags":{"type":"v"},"exit":0}
+{"line":["patch","oidcclient"],"kind":"runs","command":"patch oidcclient","exit":0}
+{"line":["patch","oidcclient","--help"],"kind":"help","command":"patch oidcclient","exit":0,"helpPath":"patch-oidcclient.txt"}
+{"line":["patch","oidcclient","x"],"kind":"runs","command":"patch oidcclient","args":["x"],"exit":0}
+{"line":["patch","oidcclient","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","oidcclients"],"kind":"runs","command":"patch oidcclient","exit":0}
+{"line":["patch","oidcclients","--help"],"kind":"help","command":"patch oidcclient","exit":0,"helpPath":"patch-oidcclient.txt"}

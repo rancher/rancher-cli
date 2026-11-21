@@ -1,0 +1,4 @@
+{"line":["config","use-server"],"kind":"runs","command":"config use-server","exit":0}
+{"line":["config","use-server","--help"],"kind":"help","command":"config use-server","exit":0,"helpPath":"config-use-server.txt"}
+{"line":["config","use-server","x"],"kind":"runs","command":"config use-server","args":["x"],"exit":0}
+{"line":["config","use-server","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

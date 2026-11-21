@@ -1,0 +1,24 @@
+NAME:
+   rancher node - Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)
+
+USAGE:
+   rancher node [command [command options]]
+
+COMMANDS:
+   drain:       Drain a node: Rancher cordons it and evicts its pods
+   stop-drain:  Stop a running drain of a node; the node stays cordoned
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

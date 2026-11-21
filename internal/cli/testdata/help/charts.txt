@@ -1,0 +1,20 @@
+NAME:
+   rancher charts - List the charts and versions the repositories of a cluster offer
+
+USAGE:
+   rancher charts [options]
+
+OPTIONS:
+   --all-versions        list every version of each chart, not only the newest
+   --cluster id|name     target cluster id|name
+   --help, -h            show help
+   --include-deprecated  also list deprecated versions
+   --repo name           list only the ClusterRepo name
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

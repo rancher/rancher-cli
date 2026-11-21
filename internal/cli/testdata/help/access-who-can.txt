@@ -1,0 +1,25 @@
+NAME:
+   rancher access who-can - List the subjects the cluster's authorizer allows to perform a verb on a resource
+
+USAGE:
+   rancher access who-can [options] <verb> [resource]
+
+OPTIONS:
+   --all-namespaces, -A           ask in every namespace you can list, one row per subject per namespace
+   --cluster string               cluster name or id the question is about
+   --group string                 API group when the resource name exists in several groups
+   --help, -h                     show help
+   --namespace string, -n string  namespace the question is about
+   --non-resource-url string      ask about a non-resource path such as /healthz instead of a resource
+   --project string               ask about the project's namespaces
+   --show-denied                  list the denied subjects in the text output too
+   --subresource string           subresource such as status or log
+   --timeout string               time limit for the whole command, e.g. 2m (default 60s)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

@@ -1,0 +1,18 @@
+{"line":["delete","azureconfig","--namespace","v"],"kind":"runs","command":"delete azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","azureconfig","--namespace=v"],"kind":"runs","command":"delete azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","azureconfig","-n","v"],"kind":"runs","command":"delete azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","azureconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","azureconfig","--wait"],"kind":"runs","command":"delete azureconfig","flags":{"wait":true},"exit":0}
+{"line":["delete","azureconfig","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","azureconfig","--wait=false"],"kind":"runs","command":"delete azureconfig","flags":{"wait":false},"exit":0}
+{"line":["delete","azureconfig","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","azureconfig","-wait"],"kind":"runs","command":"delete azureconfig","flags":{"wait":true},"exit":0}
+{"line":["delete","azureconfig","--timeout","v"],"kind":"runs","command":"delete azureconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","azureconfig","--timeout=v"],"kind":"runs","command":"delete azureconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","azureconfig","-timeout","v"],"kind":"runs","command":"delete azureconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","azureconfig"],"kind":"runs","command":"delete azureconfig","exit":0}
+{"line":["delete","azureconfig","--help"],"kind":"help","command":"delete azureconfig","exit":0,"helpPath":"delete-azureconfig.txt"}
+{"line":["delete","azureconfig","x"],"kind":"runs","command":"delete azureconfig","args":["x"],"exit":0}
+{"line":["delete","azureconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","azureconfigs"],"kind":"runs","command":"delete azureconfig","exit":0}
+{"line":["delete","azureconfigs","--help"],"kind":"help","command":"delete azureconfig","exit":0,"helpPath":"delete-azureconfig.txt"}

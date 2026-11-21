@@ -1,0 +1,20 @@
+{"line":["patch","storageclass","--cluster","v"],"kind":"runs","command":"patch storageclass","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","storageclass","--cluster=v"],"kind":"runs","command":"patch storageclass","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","storageclass","-cluster","v"],"kind":"runs","command":"patch storageclass","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","storageclass","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","storageclass","--patch","v"],"kind":"runs","command":"patch storageclass","flags":{"patch":"v"},"exit":0}
+{"line":["patch","storageclass","--patch=v"],"kind":"runs","command":"patch storageclass","flags":{"patch":"v"},"exit":0}
+{"line":["patch","storageclass","-p","v"],"kind":"runs","command":"patch storageclass","flags":{"patch":"v"},"exit":0}
+{"line":["patch","storageclass","--patch-file","v"],"kind":"runs","command":"patch storageclass","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","storageclass","--patch-file=v"],"kind":"runs","command":"patch storageclass","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","storageclass","-patch-file","v"],"kind":"runs","command":"patch storageclass","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","storageclass","--type","v"],"kind":"runs","command":"patch storageclass","flags":{"type":"v"},"exit":0}
+{"line":["patch","storageclass","--type=v"],"kind":"runs","command":"patch storageclass","flags":{"type":"v"},"exit":0}
+{"line":["patch","storageclass","-type","v"],"kind":"runs","command":"patch storageclass","flags":{"type":"v"},"exit":0}
+{"line":["patch","storageclass"],"kind":"runs","command":"patch storageclass","exit":0}
+{"line":["patch","storageclass","--help"],"kind":"help","command":"patch storageclass","exit":0,"helpPath":"patch-storageclass.txt"}
+{"line":["patch","storageclass","x"],"kind":"runs","command":"patch storageclass","args":["x"],"exit":0}
+{"line":["patch","storageclass","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","storageclasses"],"kind":"runs","command":"patch storageclass","exit":0}
+{"line":["patch","sc"],"kind":"runs","command":"patch storageclass","exit":0}
+{"line":["patch","storageclasses","--help"],"kind":"help","command":"patch storageclass","exit":0,"helpPath":"patch-storageclass.txt"}

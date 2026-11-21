@@ -1,0 +1,16 @@
+{"line":["cluster","save-etcd-snapshot","--namespace","v"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","save-etcd-snapshot","--namespace=v"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","save-etcd-snapshot","-n","v"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["cluster","save-etcd-snapshot","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["cluster","save-etcd-snapshot","--wait"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"wait":true},"exit":0}
+{"line":["cluster","save-etcd-snapshot","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["cluster","save-etcd-snapshot","--wait=false"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"wait":false},"exit":0}
+{"line":["cluster","save-etcd-snapshot","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["cluster","save-etcd-snapshot","-wait"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"wait":true},"exit":0}
+{"line":["cluster","save-etcd-snapshot","--timeout","v"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["cluster","save-etcd-snapshot","--timeout=v"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["cluster","save-etcd-snapshot","-timeout","v"],"kind":"runs","command":"cluster save-etcd-snapshot","flags":{"timeout":"v"},"exit":0}
+{"line":["cluster","save-etcd-snapshot"],"kind":"runs","command":"cluster save-etcd-snapshot","exit":0}
+{"line":["cluster","save-etcd-snapshot","--help"],"kind":"help","command":"cluster save-etcd-snapshot","exit":0,"helpPath":"cluster-save-etcd-snapshot.txt"}
+{"line":["cluster","save-etcd-snapshot","x"],"kind":"runs","command":"cluster save-etcd-snapshot","args":["x"],"exit":0}
+{"line":["cluster","save-etcd-snapshot","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

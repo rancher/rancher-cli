@@ -1,0 +1,21 @@
+NAME:
+   rancher support-bundle - Collect diagnostics reachable through the API into one tar.gz for support
+
+USAGE:
+   rancher support-bundle [options]
+
+OPTIONS:
+   --clusters string   downstream cluster ids/names to include (comma-separated)
+   --help, -h          show help
+   --output-file file  write the tar.gz archive to a new file; an existing file or - is refused
+   --since duration    collect logs newer than this duration (default 24h)
+   --tail lines        max log lines per target (default 10000)
+   --targets targets   comma-separated log targets (server, agent, fleet-agent, kube-api-auth, webhook, api-extension), or all (the default)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

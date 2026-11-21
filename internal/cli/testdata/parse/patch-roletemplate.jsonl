@@ -1,0 +1,16 @@
+{"line":["patch","roletemplate","--patch","v"],"kind":"runs","command":"patch roletemplate","flags":{"patch":"v"},"exit":0}
+{"line":["patch","roletemplate","--patch=v"],"kind":"runs","command":"patch roletemplate","flags":{"patch":"v"},"exit":0}
+{"line":["patch","roletemplate","-p","v"],"kind":"runs","command":"patch roletemplate","flags":{"patch":"v"},"exit":0}
+{"line":["patch","roletemplate","--patch"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --patch; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","roletemplate","--patch-file","v"],"kind":"runs","command":"patch roletemplate","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","roletemplate","--patch-file=v"],"kind":"runs","command":"patch roletemplate","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","roletemplate","-patch-file","v"],"kind":"runs","command":"patch roletemplate","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","roletemplate","--type","v"],"kind":"runs","command":"patch roletemplate","flags":{"type":"v"},"exit":0}
+{"line":["patch","roletemplate","--type=v"],"kind":"runs","command":"patch roletemplate","flags":{"type":"v"},"exit":0}
+{"line":["patch","roletemplate","-type","v"],"kind":"runs","command":"patch roletemplate","flags":{"type":"v"},"exit":0}
+{"line":["patch","roletemplate"],"kind":"runs","command":"patch roletemplate","exit":0}
+{"line":["patch","roletemplate","--help"],"kind":"help","command":"patch roletemplate","exit":0,"helpPath":"patch-roletemplate.txt"}
+{"line":["patch","roletemplate","x"],"kind":"runs","command":"patch roletemplate","args":["x"],"exit":0}
+{"line":["patch","roletemplate","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","roletemplates"],"kind":"runs","command":"patch roletemplate","exit":0}
+{"line":["patch","roletemplates","--help"],"kind":"help","command":"patch roletemplate","exit":0,"helpPath":"patch-roletemplate.txt"}

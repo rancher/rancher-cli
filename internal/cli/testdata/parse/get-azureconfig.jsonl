@@ -1,0 +1,24 @@
+{"line":["get","azureconfig","--namespace","v"],"kind":"runs","command":"get azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","azureconfig","--namespace=v"],"kind":"runs","command":"get azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","azureconfig","-n","v"],"kind":"runs","command":"get azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","azureconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","azureconfig","--selector","v"],"kind":"runs","command":"get azureconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","azureconfig","--selector=v"],"kind":"runs","command":"get azureconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","azureconfig","-l","v"],"kind":"runs","command":"get azureconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","azureconfig","--wait"],"kind":"runs","command":"get azureconfig","flags":{"wait":true},"exit":0}
+{"line":["get","azureconfig","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","azureconfig","--wait=false"],"kind":"runs","command":"get azureconfig","flags":{"wait":false},"exit":0}
+{"line":["get","azureconfig","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","azureconfig","-wait"],"kind":"runs","command":"get azureconfig","flags":{"wait":true},"exit":0}
+{"line":["get","azureconfig","--for","v"],"kind":"runs","command":"get azureconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","azureconfig","--for=v"],"kind":"runs","command":"get azureconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","azureconfig","-for","v"],"kind":"runs","command":"get azureconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","azureconfig","--timeout","v"],"kind":"runs","command":"get azureconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","azureconfig","--timeout=v"],"kind":"runs","command":"get azureconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","azureconfig","-timeout","v"],"kind":"runs","command":"get azureconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","azureconfig"],"kind":"runs","command":"get azureconfig","exit":0}
+{"line":["get","azureconfig","--help"],"kind":"help","command":"get azureconfig","exit":0,"helpPath":"get-azureconfig.txt"}
+{"line":["get","azureconfig","x"],"kind":"runs","command":"get azureconfig","args":["x"],"exit":0}
+{"line":["get","azureconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","azureconfigs"],"kind":"runs","command":"get azureconfig","exit":0}
+{"line":["get","azureconfigs","--help"],"kind":"help","command":"get azureconfig","exit":0,"helpPath":"get-azureconfig.txt"}

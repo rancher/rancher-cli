@@ -1,0 +1,28 @@
+{"line":["get","ingress","--cluster","v"],"kind":"runs","command":"get ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["get","ingress","--cluster=v"],"kind":"runs","command":"get ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["get","ingress","-cluster","v"],"kind":"runs","command":"get ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["get","ingress","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","ingress","--namespace","v"],"kind":"runs","command":"get ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["get","ingress","--namespace=v"],"kind":"runs","command":"get ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["get","ingress","-n","v"],"kind":"runs","command":"get ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["get","ingress","--selector","v"],"kind":"runs","command":"get ingress","flags":{"selector":"v"},"exit":0}
+{"line":["get","ingress","--selector=v"],"kind":"runs","command":"get ingress","flags":{"selector":"v"},"exit":0}
+{"line":["get","ingress","-l","v"],"kind":"runs","command":"get ingress","flags":{"selector":"v"},"exit":0}
+{"line":["get","ingress","--wait"],"kind":"runs","command":"get ingress","flags":{"wait":true},"exit":0}
+{"line":["get","ingress","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","ingress","--wait=false"],"kind":"runs","command":"get ingress","flags":{"wait":false},"exit":0}
+{"line":["get","ingress","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","ingress","-wait"],"kind":"runs","command":"get ingress","flags":{"wait":true},"exit":0}
+{"line":["get","ingress","--for","v"],"kind":"runs","command":"get ingress","flags":{"for":"v"},"exit":0}
+{"line":["get","ingress","--for=v"],"kind":"runs","command":"get ingress","flags":{"for":"v"},"exit":0}
+{"line":["get","ingress","-for","v"],"kind":"runs","command":"get ingress","flags":{"for":"v"},"exit":0}
+{"line":["get","ingress","--timeout","v"],"kind":"runs","command":"get ingress","flags":{"timeout":"v"},"exit":0}
+{"line":["get","ingress","--timeout=v"],"kind":"runs","command":"get ingress","flags":{"timeout":"v"},"exit":0}
+{"line":["get","ingress","-timeout","v"],"kind":"runs","command":"get ingress","flags":{"timeout":"v"},"exit":0}
+{"line":["get","ingress"],"kind":"runs","command":"get ingress","exit":0}
+{"line":["get","ingress","--help"],"kind":"help","command":"get ingress","exit":0,"helpPath":"get-ingress.txt"}
+{"line":["get","ingress","x"],"kind":"runs","command":"get ingress","args":["x"],"exit":0}
+{"line":["get","ingress","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","ingresses"],"kind":"runs","command":"get ingress","exit":0}
+{"line":["get","ing"],"kind":"runs","command":"get ingress","exit":0}
+{"line":["get","ingresses","--help"],"kind":"help","command":"get ingress","exit":0,"helpPath":"get-ingress.txt"}

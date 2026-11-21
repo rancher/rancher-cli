@@ -1,0 +1,23 @@
+{"line":["patch","resourcequota","--cluster","v"],"kind":"runs","command":"patch resourcequota","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","resourcequota","--cluster=v"],"kind":"runs","command":"patch resourcequota","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","resourcequota","-cluster","v"],"kind":"runs","command":"patch resourcequota","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","resourcequota","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","resourcequota","--namespace","v"],"kind":"runs","command":"patch resourcequota","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","resourcequota","--namespace=v"],"kind":"runs","command":"patch resourcequota","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","resourcequota","-n","v"],"kind":"runs","command":"patch resourcequota","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","resourcequota","--patch","v"],"kind":"runs","command":"patch resourcequota","flags":{"patch":"v"},"exit":0}
+{"line":["patch","resourcequota","--patch=v"],"kind":"runs","command":"patch resourcequota","flags":{"patch":"v"},"exit":0}
+{"line":["patch","resourcequota","-p","v"],"kind":"runs","command":"patch resourcequota","flags":{"patch":"v"},"exit":0}
+{"line":["patch","resourcequota","--patch-file","v"],"kind":"runs","command":"patch resourcequota","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","resourcequota","--patch-file=v"],"kind":"runs","command":"patch resourcequota","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","resourcequota","-patch-file","v"],"kind":"runs","command":"patch resourcequota","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","resourcequota","--type","v"],"kind":"runs","command":"patch resourcequota","flags":{"type":"v"},"exit":0}
+{"line":["patch","resourcequota","--type=v"],"kind":"runs","command":"patch resourcequota","flags":{"type":"v"},"exit":0}
+{"line":["patch","resourcequota","-type","v"],"kind":"runs","command":"patch resourcequota","flags":{"type":"v"},"exit":0}
+{"line":["patch","resourcequota"],"kind":"runs","command":"patch resourcequota","exit":0}
+{"line":["patch","resourcequota","--help"],"kind":"help","command":"patch resourcequota","exit":0,"helpPath":"patch-resourcequota.txt"}
+{"line":["patch","resourcequota","x"],"kind":"runs","command":"patch resourcequota","args":["x"],"exit":0}
+{"line":["patch","resourcequota","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","resourcequotas"],"kind":"runs","command":"patch resourcequota","exit":0}
+{"line":["patch","quota"],"kind":"runs","command":"patch resourcequota","exit":0}
+{"line":["patch","resourcequotas","--help"],"kind":"help","command":"patch resourcequota","exit":0,"helpPath":"patch-resourcequota.txt"}

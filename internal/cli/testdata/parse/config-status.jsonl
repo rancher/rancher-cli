@@ -1,0 +1,4 @@
+{"line":["config","status"],"kind":"runs","command":"config status","exit":0}
+{"line":["config","status","--help"],"kind":"help","command":"config status","exit":0,"helpPath":"config-status.txt"}
+{"line":["config","status","x"],"kind":"runs","command":"config status","args":["x"],"exit":0}
+{"line":["config","status","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

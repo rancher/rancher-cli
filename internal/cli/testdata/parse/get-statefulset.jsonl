@@ -1,0 +1,28 @@
+{"line":["get","statefulset","--cluster","v"],"kind":"runs","command":"get statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["get","statefulset","--cluster=v"],"kind":"runs","command":"get statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["get","statefulset","-cluster","v"],"kind":"runs","command":"get statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["get","statefulset","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","statefulset","--namespace","v"],"kind":"runs","command":"get statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["get","statefulset","--namespace=v"],"kind":"runs","command":"get statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["get","statefulset","-n","v"],"kind":"runs","command":"get statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["get","statefulset","--selector","v"],"kind":"runs","command":"get statefulset","flags":{"selector":"v"},"exit":0}
+{"line":["get","statefulset","--selector=v"],"kind":"runs","command":"get statefulset","flags":{"selector":"v"},"exit":0}
+{"line":["get","statefulset","-l","v"],"kind":"runs","command":"get statefulset","flags":{"selector":"v"},"exit":0}
+{"line":["get","statefulset","--wait"],"kind":"runs","command":"get statefulset","flags":{"wait":true},"exit":0}
+{"line":["get","statefulset","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","statefulset","--wait=false"],"kind":"runs","command":"get statefulset","flags":{"wait":false},"exit":0}
+{"line":["get","statefulset","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","statefulset","-wait"],"kind":"runs","command":"get statefulset","flags":{"wait":true},"exit":0}
+{"line":["get","statefulset","--for","v"],"kind":"runs","command":"get statefulset","flags":{"for":"v"},"exit":0}
+{"line":["get","statefulset","--for=v"],"kind":"runs","command":"get statefulset","flags":{"for":"v"},"exit":0}
+{"line":["get","statefulset","-for","v"],"kind":"runs","command":"get statefulset","flags":{"for":"v"},"exit":0}
+{"line":["get","statefulset","--timeout","v"],"kind":"runs","command":"get statefulset","flags":{"timeout":"v"},"exit":0}
+{"line":["get","statefulset","--timeout=v"],"kind":"runs","command":"get statefulset","flags":{"timeout":"v"},"exit":0}
+{"line":["get","statefulset","-timeout","v"],"kind":"runs","command":"get statefulset","flags":{"timeout":"v"},"exit":0}
+{"line":["get","statefulset"],"kind":"runs","command":"get statefulset","exit":0}
+{"line":["get","statefulset","--help"],"kind":"help","command":"get statefulset","exit":0,"helpPath":"get-statefulset.txt"}
+{"line":["get","statefulset","x"],"kind":"runs","command":"get statefulset","args":["x"],"exit":0}
+{"line":["get","statefulset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","statefulsets"],"kind":"runs","command":"get statefulset","exit":0}
+{"line":["get","sts"],"kind":"runs","command":"get statefulset","exit":0}
+{"line":["get","statefulsets","--help"],"kind":"help","command":"get statefulset","exit":0,"helpPath":"get-statefulset.txt"}

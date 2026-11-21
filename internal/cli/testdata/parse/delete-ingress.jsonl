@@ -1,0 +1,22 @@
+{"line":["delete","ingress","--cluster","v"],"kind":"runs","command":"delete ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","ingress","--cluster=v"],"kind":"runs","command":"delete ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","ingress","-cluster","v"],"kind":"runs","command":"delete ingress","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","ingress","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","ingress","--namespace","v"],"kind":"runs","command":"delete ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","ingress","--namespace=v"],"kind":"runs","command":"delete ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","ingress","-n","v"],"kind":"runs","command":"delete ingress","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","ingress","--wait"],"kind":"runs","command":"delete ingress","flags":{"wait":true},"exit":0}
+{"line":["delete","ingress","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","ingress","--wait=false"],"kind":"runs","command":"delete ingress","flags":{"wait":false},"exit":0}
+{"line":["delete","ingress","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","ingress","-wait"],"kind":"runs","command":"delete ingress","flags":{"wait":true},"exit":0}
+{"line":["delete","ingress","--timeout","v"],"kind":"runs","command":"delete ingress","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","ingress","--timeout=v"],"kind":"runs","command":"delete ingress","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","ingress","-timeout","v"],"kind":"runs","command":"delete ingress","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","ingress"],"kind":"runs","command":"delete ingress","exit":0}
+{"line":["delete","ingress","--help"],"kind":"help","command":"delete ingress","exit":0,"helpPath":"delete-ingress.txt"}
+{"line":["delete","ingress","x"],"kind":"runs","command":"delete ingress","args":["x"],"exit":0}
+{"line":["delete","ingress","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","ingresses"],"kind":"runs","command":"delete ingress","exit":0}
+{"line":["delete","ing"],"kind":"runs","command":"delete ingress","exit":0}
+{"line":["delete","ingresses","--help"],"kind":"help","command":"delete ingress","exit":0,"helpPath":"delete-ingress.txt"}

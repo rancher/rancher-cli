@@ -2,3 +2,5 @@ scripts/archive-sha export-subst
 telemetry/contract/** text eol=lf
 internal/telemetry/testdata/contract/** text eol=lf
 cmd/rancher/testdata/exit-table.golden text eol=lf
+internal/cli/testdata/help/** text eol=lf
+internal/cli/testdata/parse/** text eol=lf

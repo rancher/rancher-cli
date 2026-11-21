@@ -1,0 +1,37 @@
+{"line":["schema","--all"],"kind":"runs","command":"schema","flags":{"all":true},"exit":0}
+{"line":["schema","--all="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all= has an empty value; a bool flag typed with = takes true or false","  hint: write --all or --all=true|false"]}
+{"line":["schema","--all=false"],"kind":"runs","command":"schema","flags":{"all":false},"exit":0}
+{"line":["schema","--all= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --all= has an empty value; a bool flag typed with = takes true or false","  hint: write --all or --all=true|false"]}
+{"line":["schema","-all"],"kind":"runs","command":"schema","flags":{"all":true},"exit":0}
+{"line":["schema","--kind"],"kind":"runs","command":"schema","flags":{"kind":true},"exit":0}
+{"line":["schema","--kind="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --kind= has an empty value; a bool flag typed with = takes true or false","  hint: write --kind or --kind=true|false"]}
+{"line":["schema","--kind=false"],"kind":"runs","command":"schema","flags":{"kind":false},"exit":0}
+{"line":["schema","--kind= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --kind= has an empty value; a bool flag typed with = takes true or false","  hint: write --kind or --kind=true|false"]}
+{"line":["schema","-kind"],"kind":"runs","command":"schema","flags":{"kind":true},"exit":0}
+{"line":["schema","--verb","v"],"kind":"runs","command":"schema","flags":{"verb":"v"},"exit":0}
+{"line":["schema","--verb=v"],"kind":"runs","command":"schema","flags":{"verb":"v"},"exit":0}
+{"line":["schema","-verb","v"],"kind":"runs","command":"schema","flags":{"verb":"v"},"exit":0}
+{"line":["schema","--verb"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --verb; pass --help for usage","  hint: rancher schema"]}
+{"line":["schema","--destructive"],"kind":"runs","command":"schema","flags":{"destructive":true},"exit":0}
+{"line":["schema","--destructive="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --destructive= has an empty value; a bool flag typed with = takes true or false","  hint: write --destructive or --destructive=true|false"]}
+{"line":["schema","--destructive=false"],"kind":"runs","command":"schema","flags":{"destructive":false},"exit":0}
+{"line":["schema","--destructive= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --destructive= has an empty value; a bool flag typed with = takes true or false","  hint: write --destructive or --destructive=true|false"]}
+{"line":["schema","-destructive"],"kind":"runs","command":"schema","flags":{"destructive":true},"exit":0}
+{"line":["schema","--contract","v"],"kind":"runs","command":"schema","flags":{"contract":"v"},"exit":0}
+{"line":["schema","--contract=v"],"kind":"runs","command":"schema","flags":{"contract":"v"},"exit":0}
+{"line":["schema","-contract","v"],"kind":"runs","command":"schema","flags":{"contract":"v"},"exit":0}
+{"line":["schema","--mutating"],"kind":"runs","command":"schema","flags":{"mutating":true},"exit":0}
+{"line":["schema","--mutating="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --mutating= has an empty value; a bool flag typed with = takes true or false","  hint: write --mutating or --mutating=true|false"]}
+{"line":["schema","--mutating=false"],"kind":"runs","command":"schema","flags":{"mutating":false},"exit":0}
+{"line":["schema","--mutating= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --mutating= has an empty value; a bool flag typed with = takes true or false","  hint: write --mutating or --mutating=true|false"]}
+{"line":["schema","-mutating"],"kind":"runs","command":"schema","flags":{"mutating":true},"exit":0}
+{"line":["schema","--search","v"],"kind":"runs","command":"schema","flags":{"search":"v"},"exit":0}
+{"line":["schema","--search=v"],"kind":"runs","command":"schema","flags":{"search":"v"},"exit":0}
+{"line":["schema","-search","v"],"kind":"runs","command":"schema","flags":{"search":"v"},"exit":0}
+{"line":["schema"],"kind":"runs","command":"schema","exit":0}
+{"line":["schema","--help"],"kind":"help","command":"schema","exit":0,"helpPath":"schema.txt"}
+{"line":["schema","x"],"kind":"runs","command":"schema","args":["x"],"exit":0}
+{"line":["schema","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["schema","-o","--yes"],"kind":"refused","command":"schema","flags":{"output":"--yes"},"exit":2,"stderr":["error (VALIDATION): flag -o got flag --yes as its value - empty shell variable? check that the value for -o is set, or use -o=<value> to pass a literal flag-like string"]}
+{"line":["schema","--config="],"kind":"runs","command":"schema","flags":{"config":""},"exit":0}
+{"line":["schema","--config",""],"kind":"runs","command":"schema","flags":{"config":""},"exit":0}

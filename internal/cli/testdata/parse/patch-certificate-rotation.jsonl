@@ -1,0 +1,20 @@
+{"line":["patch","certificate-rotation","--cluster","v"],"kind":"runs","command":"patch certificate-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","certificate-rotation","--cluster=v"],"kind":"runs","command":"patch certificate-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","certificate-rotation","-cluster","v"],"kind":"runs","command":"patch certificate-rotation","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","certificate-rotation","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","certificate-rotation","--patch","v"],"kind":"runs","command":"patch certificate-rotation","flags":{"patch":"v"},"exit":0}
+{"line":["patch","certificate-rotation","--patch=v"],"kind":"runs","command":"patch certificate-rotation","flags":{"patch":"v"},"exit":0}
+{"line":["patch","certificate-rotation","-p","v"],"kind":"runs","command":"patch certificate-rotation","flags":{"patch":"v"},"exit":0}
+{"line":["patch","certificate-rotation","--patch-file","v"],"kind":"runs","command":"patch certificate-rotation","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","certificate-rotation","--patch-file=v"],"kind":"runs","command":"patch certificate-rotation","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","certificate-rotation","-patch-file","v"],"kind":"runs","command":"patch certificate-rotation","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","certificate-rotation","--type","v"],"kind":"runs","command":"patch certificate-rotation","flags":{"type":"v"},"exit":0}
+{"line":["patch","certificate-rotation","--type=v"],"kind":"runs","command":"patch certificate-rotation","flags":{"type":"v"},"exit":0}
+{"line":["patch","certificate-rotation","-type","v"],"kind":"runs","command":"patch certificate-rotation","flags":{"type":"v"},"exit":0}
+{"line":["patch","certificate-rotation"],"kind":"runs","command":"patch certificate-rotation","exit":0}
+{"line":["patch","certificate-rotation","--help"],"kind":"help","command":"patch certificate-rotation","exit":0,"helpPath":"patch-certificate-rotation.txt"}
+{"line":["patch","certificate-rotation","x"],"kind":"runs","command":"patch certificate-rotation","args":["x"],"exit":0}
+{"line":["patch","certificate-rotation","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","certificaterotations"],"kind":"runs","command":"patch certificate-rotation","exit":0}
+{"line":["patch","certificate-rotations"],"kind":"runs","command":"patch certificate-rotation","exit":0}
+{"line":["patch","certificaterotations","--help"],"kind":"help","command":"patch certificate-rotation","exit":0,"helpPath":"patch-certificate-rotation.txt"}

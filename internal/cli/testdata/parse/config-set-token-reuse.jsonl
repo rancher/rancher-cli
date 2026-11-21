@@ -1,0 +1,4 @@
+{"line":["config","set-token-reuse"],"kind":"runs","command":"config set-token-reuse","exit":0}
+{"line":["config","set-token-reuse","--help"],"kind":"help","command":"config set-token-reuse","exit":0,"helpPath":"config-set-token-reuse.txt"}
+{"line":["config","set-token-reuse","x"],"kind":"runs","command":"config set-token-reuse","args":["x"],"exit":0}
+{"line":["config","set-token-reuse","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

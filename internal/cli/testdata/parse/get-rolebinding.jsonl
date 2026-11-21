@@ -1,0 +1,27 @@
+{"line":["get","rolebinding","--cluster","v"],"kind":"runs","command":"get rolebinding","flags":{"cluster":"v"},"exit":0}
+{"line":["get","rolebinding","--cluster=v"],"kind":"runs","command":"get rolebinding","flags":{"cluster":"v"},"exit":0}
+{"line":["get","rolebinding","-cluster","v"],"kind":"runs","command":"get rolebinding","flags":{"cluster":"v"},"exit":0}
+{"line":["get","rolebinding","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","rolebinding","--namespace","v"],"kind":"runs","command":"get rolebinding","flags":{"namespace":"v"},"exit":0}
+{"line":["get","rolebinding","--namespace=v"],"kind":"runs","command":"get rolebinding","flags":{"namespace":"v"},"exit":0}
+{"line":["get","rolebinding","-n","v"],"kind":"runs","command":"get rolebinding","flags":{"namespace":"v"},"exit":0}
+{"line":["get","rolebinding","--selector","v"],"kind":"runs","command":"get rolebinding","flags":{"selector":"v"},"exit":0}
+{"line":["get","rolebinding","--selector=v"],"kind":"runs","command":"get rolebinding","flags":{"selector":"v"},"exit":0}
+{"line":["get","rolebinding","-l","v"],"kind":"runs","command":"get rolebinding","flags":{"selector":"v"},"exit":0}
+{"line":["get","rolebinding","--wait"],"kind":"runs","command":"get rolebinding","flags":{"wait":true},"exit":0}
+{"line":["get","rolebinding","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","rolebinding","--wait=false"],"kind":"runs","command":"get rolebinding","flags":{"wait":false},"exit":0}
+{"line":["get","rolebinding","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","rolebinding","-wait"],"kind":"runs","command":"get rolebinding","flags":{"wait":true},"exit":0}
+{"line":["get","rolebinding","--for","v"],"kind":"runs","command":"get rolebinding","flags":{"for":"v"},"exit":0}
+{"line":["get","rolebinding","--for=v"],"kind":"runs","command":"get rolebinding","flags":{"for":"v"},"exit":0}
+{"line":["get","rolebinding","-for","v"],"kind":"runs","command":"get rolebinding","flags":{"for":"v"},"exit":0}
+{"line":["get","rolebinding","--timeout","v"],"kind":"runs","command":"get rolebinding","flags":{"timeout":"v"},"exit":0}
+{"line":["get","rolebinding","--timeout=v"],"kind":"runs","command":"get rolebinding","flags":{"timeout":"v"},"exit":0}
+{"line":["get","rolebinding","-timeout","v"],"kind":"runs","command":"get rolebinding","flags":{"timeout":"v"},"exit":0}
+{"line":["get","rolebinding"],"kind":"runs","command":"get rolebinding","exit":0}
+{"line":["get","rolebinding","--help"],"kind":"help","command":"get rolebinding","exit":0,"helpPath":"get-rolebinding.txt"}
+{"line":["get","rolebinding","x"],"kind":"runs","command":"get rolebinding","args":["x"],"exit":0}
+{"line":["get","rolebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","rolebindings"],"kind":"runs","command":"get rolebinding","exit":0}
+{"line":["get","rolebindings","--help"],"kind":"help","command":"get rolebinding","exit":0,"helpPath":"get-rolebinding.txt"}

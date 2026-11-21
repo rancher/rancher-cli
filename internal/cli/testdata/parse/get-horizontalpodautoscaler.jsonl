@@ -1,0 +1,28 @@
+{"line":["get","horizontalpodautoscaler","--cluster","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--cluster=v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","-cluster","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"cluster":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","horizontalpodautoscaler","--namespace","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--namespace=v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","-n","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"namespace":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--selector","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"selector":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--selector=v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"selector":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","-l","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"selector":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--wait"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"wait":true},"exit":0}
+{"line":["get","horizontalpodautoscaler","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","horizontalpodautoscaler","--wait=false"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"wait":false},"exit":0}
+{"line":["get","horizontalpodautoscaler","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","horizontalpodautoscaler","-wait"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"wait":true},"exit":0}
+{"line":["get","horizontalpodautoscaler","--for","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"for":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--for=v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"for":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","-for","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"for":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--timeout","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"timeout":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","--timeout=v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"timeout":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler","-timeout","v"],"kind":"runs","command":"get horizontalpodautoscaler","flags":{"timeout":"v"},"exit":0}
+{"line":["get","horizontalpodautoscaler"],"kind":"runs","command":"get horizontalpodautoscaler","exit":0}
+{"line":["get","horizontalpodautoscaler","--help"],"kind":"help","command":"get horizontalpodautoscaler","exit":0,"helpPath":"get-horizontalpodautoscaler.txt"}
+{"line":["get","horizontalpodautoscaler","x"],"kind":"runs","command":"get horizontalpodautoscaler","args":["x"],"exit":0}
+{"line":["get","horizontalpodautoscaler","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","horizontalpodautoscalers"],"kind":"runs","command":"get horizontalpodautoscaler","exit":0}
+{"line":["get","hpa"],"kind":"runs","command":"get horizontalpodautoscaler","exit":0}
+{"line":["get","horizontalpodautoscalers","--help"],"kind":"help","command":"get horizontalpodautoscaler","exit":0,"helpPath":"get-horizontalpodautoscaler.txt"}

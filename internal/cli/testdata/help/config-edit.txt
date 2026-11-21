@@ -1,0 +1,15 @@
+NAME:
+   rancher config edit - Edit the config file in $VISUAL or $EDITOR (needs a TTY)
+
+USAGE:
+   rancher config edit [options]
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>

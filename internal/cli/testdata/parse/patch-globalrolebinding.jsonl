@@ -1,0 +1,16 @@
+{"line":["patch","globalrolebinding","--patch","v"],"kind":"runs","command":"patch globalrolebinding","flags":{"patch":"v"},"exit":0}
+{"line":["patch","globalrolebinding","--patch=v"],"kind":"runs","command":"patch globalrolebinding","flags":{"patch":"v"},"exit":0}
+{"line":["patch","globalrolebinding","-p","v"],"kind":"runs","command":"patch globalrolebinding","flags":{"patch":"v"},"exit":0}
+{"line":["patch","globalrolebinding","--patch"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --patch; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","globalrolebinding","--patch-file","v"],"kind":"runs","command":"patch globalrolebinding","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","globalrolebinding","--patch-file=v"],"kind":"runs","command":"patch globalrolebinding","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","globalrolebinding","-patch-file","v"],"kind":"runs","command":"patch globalrolebinding","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","globalrolebinding","--type","v"],"kind":"runs","command":"patch globalrolebinding","flags":{"type":"v"},"exit":0}
+{"line":["patch","globalrolebinding","--type=v"],"kind":"runs","command":"patch globalrolebinding","flags":{"type":"v"},"exit":0}
+{"line":["patch","globalrolebinding","-type","v"],"kind":"runs","command":"patch globalrolebinding","flags":{"type":"v"},"exit":0}
+{"line":["patch","globalrolebinding"],"kind":"runs","command":"patch globalrolebinding","exit":0}
+{"line":["patch","globalrolebinding","--help"],"kind":"help","command":"patch globalrolebinding","exit":0,"helpPath":"patch-globalrolebinding.txt"}
+{"line":["patch","globalrolebinding","x"],"kind":"runs","command":"patch globalrolebinding","args":["x"],"exit":0}
+{"line":["patch","globalrolebinding","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","globalrolebindings"],"kind":"runs","command":"patch globalrolebinding","exit":0}
+{"line":["patch","globalrolebindings","--help"],"kind":"help","command":"patch globalrolebinding","exit":0,"helpPath":"patch-globalrolebinding.txt"}

@@ -1,0 +1,19 @@
+{"line":["patch","clustergroup","--namespace","v"],"kind":"runs","command":"patch clustergroup","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","clustergroup","--namespace=v"],"kind":"runs","command":"patch clustergroup","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","clustergroup","-n","v"],"kind":"runs","command":"patch clustergroup","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","clustergroup","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","clustergroup","--patch","v"],"kind":"runs","command":"patch clustergroup","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clustergroup","--patch=v"],"kind":"runs","command":"patch clustergroup","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clustergroup","-p","v"],"kind":"runs","command":"patch clustergroup","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clustergroup","--patch-file","v"],"kind":"runs","command":"patch clustergroup","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clustergroup","--patch-file=v"],"kind":"runs","command":"patch clustergroup","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clustergroup","-patch-file","v"],"kind":"runs","command":"patch clustergroup","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clustergroup","--type","v"],"kind":"runs","command":"patch clustergroup","flags":{"type":"v"},"exit":0}
+{"line":["patch","clustergroup","--type=v"],"kind":"runs","command":"patch clustergroup","flags":{"type":"v"},"exit":0}
+{"line":["patch","clustergroup","-type","v"],"kind":"runs","command":"patch clustergroup","flags":{"type":"v"},"exit":0}
+{"line":["patch","clustergroup"],"kind":"runs","command":"patch clustergroup","exit":0}
+{"line":["patch","clustergroup","--help"],"kind":"help","command":"patch clustergroup","exit":0,"helpPath":"patch-clustergroup.txt"}
+{"line":["patch","clustergroup","x"],"kind":"runs","command":"patch clustergroup","args":["x"],"exit":0}
+{"line":["patch","clustergroup","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","clustergroups"],"kind":"runs","command":"patch clustergroup","exit":0}
+{"line":["patch","clustergroups","--help"],"kind":"help","command":"patch clustergroup","exit":0,"helpPath":"patch-clustergroup.txt"}

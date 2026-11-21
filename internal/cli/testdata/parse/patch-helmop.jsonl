@@ -1,0 +1,19 @@
+{"line":["patch","helmop","--namespace","v"],"kind":"runs","command":"patch helmop","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","helmop","--namespace=v"],"kind":"runs","command":"patch helmop","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","helmop","-n","v"],"kind":"runs","command":"patch helmop","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","helmop","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","helmop","--patch","v"],"kind":"runs","command":"patch helmop","flags":{"patch":"v"},"exit":0}
+{"line":["patch","helmop","--patch=v"],"kind":"runs","command":"patch helmop","flags":{"patch":"v"},"exit":0}
+{"line":["patch","helmop","-p","v"],"kind":"runs","command":"patch helmop","flags":{"patch":"v"},"exit":0}
+{"line":["patch","helmop","--patch-file","v"],"kind":"runs","command":"patch helmop","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","helmop","--patch-file=v"],"kind":"runs","command":"patch helmop","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","helmop","-patch-file","v"],"kind":"runs","command":"patch helmop","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","helmop","--type","v"],"kind":"runs","command":"patch helmop","flags":{"type":"v"},"exit":0}
+{"line":["patch","helmop","--type=v"],"kind":"runs","command":"patch helmop","flags":{"type":"v"},"exit":0}
+{"line":["patch","helmop","-type","v"],"kind":"runs","command":"patch helmop","flags":{"type":"v"},"exit":0}
+{"line":["patch","helmop"],"kind":"runs","command":"patch helmop","exit":0}
+{"line":["patch","helmop","--help"],"kind":"help","command":"patch helmop","exit":0,"helpPath":"patch-helmop.txt"}
+{"line":["patch","helmop","x"],"kind":"runs","command":"patch helmop","args":["x"],"exit":0}
+{"line":["patch","helmop","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","helmops"],"kind":"runs","command":"patch helmop","exit":0}
+{"line":["patch","helmops","--help"],"kind":"help","command":"patch helmop","exit":0,"helpPath":"patch-helmop.txt"}

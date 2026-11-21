@@ -1,0 +1,15 @@
+{"line":["delete","oidcclient","--wait"],"kind":"runs","command":"delete oidcclient","flags":{"wait":true},"exit":0}
+{"line":["delete","oidcclient","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","oidcclient","--wait=false"],"kind":"runs","command":"delete oidcclient","flags":{"wait":false},"exit":0}
+{"line":["delete","oidcclient","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","oidcclient","-wait"],"kind":"runs","command":"delete oidcclient","flags":{"wait":true},"exit":0}
+{"line":["delete","oidcclient","--timeout","v"],"kind":"runs","command":"delete oidcclient","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","oidcclient","--timeout=v"],"kind":"runs","command":"delete oidcclient","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","oidcclient","-timeout","v"],"kind":"runs","command":"delete oidcclient","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","oidcclient","--timeout"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --timeout; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","oidcclient"],"kind":"runs","command":"delete oidcclient","exit":0}
+{"line":["delete","oidcclient","--help"],"kind":"help","command":"delete oidcclient","exit":0,"helpPath":"delete-oidcclient.txt"}
+{"line":["delete","oidcclient","x"],"kind":"runs","command":"delete oidcclient","args":["x"],"exit":0}
+{"line":["delete","oidcclient","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","oidcclients"],"kind":"runs","command":"delete oidcclient","exit":0}
+{"line":["delete","oidcclients","--help"],"kind":"help","command":"delete oidcclient","exit":0,"helpPath":"delete-oidcclient.txt"}

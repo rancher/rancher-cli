@@ -1,0 +1,16 @@
+{"line":["patch","globalrole","--patch","v"],"kind":"runs","command":"patch globalrole","flags":{"patch":"v"},"exit":0}
+{"line":["patch","globalrole","--patch=v"],"kind":"runs","command":"patch globalrole","flags":{"patch":"v"},"exit":0}
+{"line":["patch","globalrole","-p","v"],"kind":"runs","command":"patch globalrole","flags":{"patch":"v"},"exit":0}
+{"line":["patch","globalrole","--patch"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --patch; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","globalrole","--patch-file","v"],"kind":"runs","command":"patch globalrole","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","globalrole","--patch-file=v"],"kind":"runs","command":"patch globalrole","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","globalrole","-patch-file","v"],"kind":"runs","command":"patch globalrole","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","globalrole","--type","v"],"kind":"runs","command":"patch globalrole","flags":{"type":"v"},"exit":0}
+{"line":["patch","globalrole","--type=v"],"kind":"runs","command":"patch globalrole","flags":{"type":"v"},"exit":0}
+{"line":["patch","globalrole","-type","v"],"kind":"runs","command":"patch globalrole","flags":{"type":"v"},"exit":0}
+{"line":["patch","globalrole"],"kind":"runs","command":"patch globalrole","exit":0}
+{"line":["patch","globalrole","--help"],"kind":"help","command":"patch globalrole","exit":0,"helpPath":"patch-globalrole.txt"}
+{"line":["patch","globalrole","x"],"kind":"runs","command":"patch globalrole","args":["x"],"exit":0}
+{"line":["patch","globalrole","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","globalroles"],"kind":"runs","command":"patch globalrole","exit":0}
+{"line":["patch","globalroles","--help"],"kind":"help","command":"patch globalrole","exit":0,"helpPath":"patch-globalrole.txt"}

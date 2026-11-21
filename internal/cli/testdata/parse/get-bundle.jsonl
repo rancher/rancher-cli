@@ -1,0 +1,24 @@
+{"line":["get","bundle","--namespace","v"],"kind":"runs","command":"get bundle","flags":{"namespace":"v"},"exit":0}
+{"line":["get","bundle","--namespace=v"],"kind":"runs","command":"get bundle","flags":{"namespace":"v"},"exit":0}
+{"line":["get","bundle","-n","v"],"kind":"runs","command":"get bundle","flags":{"namespace":"v"},"exit":0}
+{"line":["get","bundle","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","bundle","--selector","v"],"kind":"runs","command":"get bundle","flags":{"selector":"v"},"exit":0}
+{"line":["get","bundle","--selector=v"],"kind":"runs","command":"get bundle","flags":{"selector":"v"},"exit":0}
+{"line":["get","bundle","-l","v"],"kind":"runs","command":"get bundle","flags":{"selector":"v"},"exit":0}
+{"line":["get","bundle","--wait"],"kind":"runs","command":"get bundle","flags":{"wait":true},"exit":0}
+{"line":["get","bundle","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","bundle","--wait=false"],"kind":"runs","command":"get bundle","flags":{"wait":false},"exit":0}
+{"line":["get","bundle","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","bundle","-wait"],"kind":"runs","command":"get bundle","flags":{"wait":true},"exit":0}
+{"line":["get","bundle","--for","v"],"kind":"runs","command":"get bundle","flags":{"for":"v"},"exit":0}
+{"line":["get","bundle","--for=v"],"kind":"runs","command":"get bundle","flags":{"for":"v"},"exit":0}
+{"line":["get","bundle","-for","v"],"kind":"runs","command":"get bundle","flags":{"for":"v"},"exit":0}
+{"line":["get","bundle","--timeout","v"],"kind":"runs","command":"get bundle","flags":{"timeout":"v"},"exit":0}
+{"line":["get","bundle","--timeout=v"],"kind":"runs","command":"get bundle","flags":{"timeout":"v"},"exit":0}
+{"line":["get","bundle","-timeout","v"],"kind":"runs","command":"get bundle","flags":{"timeout":"v"},"exit":0}
+{"line":["get","bundle"],"kind":"runs","command":"get bundle","exit":0}
+{"line":["get","bundle","--help"],"kind":"help","command":"get bundle","exit":0,"helpPath":"get-bundle.txt"}
+{"line":["get","bundle","x"],"kind":"runs","command":"get bundle","args":["x"],"exit":0}
+{"line":["get","bundle","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","bundles"],"kind":"runs","command":"get bundle","exit":0}
+{"line":["get","bundles","--help"],"kind":"help","command":"get bundle","exit":0,"helpPath":"get-bundle.txt"}

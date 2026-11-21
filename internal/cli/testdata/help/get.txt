@@ -1,0 +1,93 @@
+NAME:
+   rancher get - Get resources
+
+USAGE:
+   rancher get [command [command options]]
+
+COMMANDS:
+   amazonec2config, amazonec2configs:                                          List amazonec2configs or show one
+   app, apps:                                                                  List apps or show one
+   authconfig, authconfigs:                                                    List authconfigs or show one
+   azureconfig, azureconfigs:                                                  List azureconfigs or show one
+   bundle, bundles:                                                            List bundles or show one
+   bundledeployment, bundledeployments:                                        List bundledeployments or show one
+   capi-cluster, capiclusters, capi-clusters:                                  List capi-clusters or show one
+   certificate-rotation, certificaterotations, certificate-rotations:          List certificate-rotations or show one
+   cloud-credential:                                                           List cloud credentials or show one (secret values never shown)
+   cluster, clusters:                                                          List clusters or show one
+   clustergroup, clustergroups:                                                List clustergroups or show one
+   clusterregistrationtoken, clusterregistrationtokens, crt:                   List clusterregistrationtokens or show one
+   clusterrepo, clusterrepos:                                                  List clusterrepos or show one
+   clusterrole, clusterroles:                                                  List clusterroles or show one
+   clusterrolebinding, clusterrolebindings:                                    List clusterrolebindings or show one
+   clusterroletemplatebinding, clusterroletemplatebindings, crtb:              List clusterroletemplatebindings or show one
+   configmap, configmaps, cm:                                                  List configmaps or show one
+   cronjob, cronjobs:                                                          List cronjobs or show one
+   daemonset, daemonsets, ds:                                                  List daemonsets or show one
+   deployment, deployments, deploy:                                            List deployments or show one
+   digitaloceanconfig, digitaloceanconfigs:                                    List digitaloceanconfigs or show one
+   encryption-key-rotation, encryptionkeyrotations, encryption-key-rotations:  List encryption-key-rotations or show one
+   etcd-snapshot, etcdsnapshots, etcd-snapshots:                               List etcd-snapshots or show one
+   etcd-snapshot-restore, etcdsnapshotrestores, etcd-snapshot-restores:        List etcd-snapshot-restores or show one
+   etcd-snapshot-save, etcdsnapshotsaves, etcd-snapshot-saves:                 List etcd-snapshot-saves or show one
+   event, events, ev:                                                          List events or show one
+   feature, features:                                                          List features or show one
+   fleet-cluster, fleetclusters, fleet-clusters:                               List fleet-clusters or show one
+   fleet-workspace, fleetworkspaces, fleet-workspaces:                         List fleet-workspaces or show one
+   gitrepo, gitrepos:                                                          List gitrepos or show one
+   globalrole, globalroles:                                                    List globalroles or show one
+   globalrolebinding, globalrolebindings:                                      List globalrolebindings or show one
+   harvesterconfig, harvesterconfigs:                                          List harvesterconfigs or show one
+   helmop, helmops:                                                            List helmops or show one
+   horizontalpodautoscaler, horizontalpodautoscalers, hpa:                     List horizontalpodautoscalers or show one
+   ingress, ingresses, ing:                                                    List ingresses or show one
+   job, jobs:                                                                  List jobs or show one
+   k3k-cluster, k3kclusters, k3k-clusters:                                     List k3k-clusters or show one
+   kubeconfig, kubeconfigs:                                                    List kubeconfigs or show one
+   kubernetes-versions:                                                        List available Kubernetes versions (rke2/k3s)
+   limitrange, limitranges, limits:                                            List limitranges or show one
+   machine, machines:                                                          List machines or show one
+   machinedeployment, machinedeployments:                                      List machinedeployments or show one
+   machineset, machinesets:                                                    List machinesets or show one
+   managedchart, managedcharts:                                                List managedcharts or show one
+   management-node, managementnodes, management-nodes:                         List management-nodes or show one
+   management-token, managementtokens, management-tokens, v3token, v3tokens:   List management-tokens or show one
+   namespace, namespaces, ns:                                                  List namespaces or show one
+   networkpolicy, networkpolicies, netpol:                                     List networkpolicies or show one
+   node, nodes:                                                                List nodes or show one
+   nodedriver, nodedrivers:                                                    List nodedrivers or show one
+   oidcclient, oidcclients:                                                    [Prime] List oidcclients or show one
+   operation, operations:                                                      List operations or show one
+   persistentvolume, persistentvolumes, pv:                                    List persistentvolumes or show one
+   persistentvolumeclaim, persistentvolumeclaims, pvc:                         List persistentvolumeclaims or show one
+   pod, pods, po:                                                              List pods or show one
+   poddisruptionbudget, poddisruptionbudgets, pdb:                             List poddisruptionbudgets or show one
+   project, projects:                                                          List projects or show one
+   projectroletemplatebinding, projectroletemplatebindings, prtb:              List projectroletemplatebindings or show one
+   provisioning-cluster, provisioningclusters, provisioning-clusters:          List provisioning-clusters or show one
+   replicaset, replicasets, rs:                                                List replicasets or show one
+   resourcequota, resourcequotas, quota:                                       List resourcequotas or show one
+   role, roles:                                                                List roles or show one
+   rolebinding, rolebindings:                                                  List rolebindings or show one
+   roletemplate, roletemplates:                                                List roletemplates or show one
+   secret, secrets:                                                            List secrets or show one
+   service, services, svc:                                                     List services or show one
+   serviceaccount, serviceaccounts, sa:                                        List serviceaccounts or show one
+   setting, settings:                                                          List settings or show one
+   statefulset, statefulsets, sts:                                             List statefulsets or show one
+   storageclass, storageclasses, sc:                                           List storageclasses or show one
+   token, tokens:                                                              List tokens or show one
+   user, users:                                                                List users or show one
+   vmwarevsphereconfig, vmwarevsphereconfigs:                                  List vmwarevsphereconfigs or show one
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --project string            the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

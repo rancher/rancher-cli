@@ -1,0 +1,21 @@
+{"line":["get","token","--selector","v"],"kind":"runs","command":"get token","flags":{"selector":"v"},"exit":0}
+{"line":["get","token","--selector=v"],"kind":"runs","command":"get token","flags":{"selector":"v"},"exit":0}
+{"line":["get","token","-l","v"],"kind":"runs","command":"get token","flags":{"selector":"v"},"exit":0}
+{"line":["get","token","--selector"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --selector; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","token","--wait"],"kind":"runs","command":"get token","flags":{"wait":true},"exit":0}
+{"line":["get","token","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","token","--wait=false"],"kind":"runs","command":"get token","flags":{"wait":false},"exit":0}
+{"line":["get","token","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","token","-wait"],"kind":"runs","command":"get token","flags":{"wait":true},"exit":0}
+{"line":["get","token","--for","v"],"kind":"runs","command":"get token","flags":{"for":"v"},"exit":0}
+{"line":["get","token","--for=v"],"kind":"runs","command":"get token","flags":{"for":"v"},"exit":0}
+{"line":["get","token","-for","v"],"kind":"runs","command":"get token","flags":{"for":"v"},"exit":0}
+{"line":["get","token","--timeout","v"],"kind":"runs","command":"get token","flags":{"timeout":"v"},"exit":0}
+{"line":["get","token","--timeout=v"],"kind":"runs","command":"get token","flags":{"timeout":"v"},"exit":0}
+{"line":["get","token","-timeout","v"],"kind":"runs","command":"get token","flags":{"timeout":"v"},"exit":0}
+{"line":["get","token"],"kind":"runs","command":"get token","exit":0}
+{"line":["get","token","--help"],"kind":"help","command":"get token","exit":0,"helpPath":"get-token.txt"}
+{"line":["get","token","x"],"kind":"runs","command":"get token","args":["x"],"exit":0}
+{"line":["get","token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","tokens"],"kind":"runs","command":"get token","exit":0}
+{"line":["get","tokens","--help"],"kind":"help","command":"get token","exit":0,"helpPath":"get-token.txt"}

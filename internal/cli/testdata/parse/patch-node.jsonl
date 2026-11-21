@@ -1,0 +1,19 @@
+{"line":["patch","node","--cluster","v"],"kind":"runs","command":"patch node","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","node","--cluster=v"],"kind":"runs","command":"patch node","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","node","-cluster","v"],"kind":"runs","command":"patch node","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","node","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","node","--patch","v"],"kind":"runs","command":"patch node","flags":{"patch":"v"},"exit":0}
+{"line":["patch","node","--patch=v"],"kind":"runs","command":"patch node","flags":{"patch":"v"},"exit":0}
+{"line":["patch","node","-p","v"],"kind":"runs","command":"patch node","flags":{"patch":"v"},"exit":0}
+{"line":["patch","node","--patch-file","v"],"kind":"runs","command":"patch node","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","node","--patch-file=v"],"kind":"runs","command":"patch node","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","node","-patch-file","v"],"kind":"runs","command":"patch node","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","node","--type","v"],"kind":"runs","command":"patch node","flags":{"type":"v"},"exit":0}
+{"line":["patch","node","--type=v"],"kind":"runs","command":"patch node","flags":{"type":"v"},"exit":0}
+{"line":["patch","node","-type","v"],"kind":"runs","command":"patch node","flags":{"type":"v"},"exit":0}
+{"line":["patch","node"],"kind":"runs","command":"patch node","exit":0}
+{"line":["patch","node","--help"],"kind":"help","command":"patch node","exit":0,"helpPath":"patch-node.txt"}
+{"line":["patch","node","x"],"kind":"runs","command":"patch node","args":["x"],"exit":0}
+{"line":["patch","node","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","nodes"],"kind":"runs","command":"patch node","exit":0}
+{"line":["patch","nodes","--help"],"kind":"help","command":"patch node","exit":0,"helpPath":"patch-node.txt"}

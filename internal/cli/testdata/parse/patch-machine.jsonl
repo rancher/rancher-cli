@@ -1,0 +1,19 @@
+{"line":["patch","machine","--namespace","v"],"kind":"runs","command":"patch machine","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","machine","--namespace=v"],"kind":"runs","command":"patch machine","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","machine","-n","v"],"kind":"runs","command":"patch machine","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","machine","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","machine","--patch","v"],"kind":"runs","command":"patch machine","flags":{"patch":"v"},"exit":0}
+{"line":["patch","machine","--patch=v"],"kind":"runs","command":"patch machine","flags":{"patch":"v"},"exit":0}
+{"line":["patch","machine","-p","v"],"kind":"runs","command":"patch machine","flags":{"patch":"v"},"exit":0}
+{"line":["patch","machine","--patch-file","v"],"kind":"runs","command":"patch machine","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","machine","--patch-file=v"],"kind":"runs","command":"patch machine","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","machine","-patch-file","v"],"kind":"runs","command":"patch machine","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","machine","--type","v"],"kind":"runs","command":"patch machine","flags":{"type":"v"},"exit":0}
+{"line":["patch","machine","--type=v"],"kind":"runs","command":"patch machine","flags":{"type":"v"},"exit":0}
+{"line":["patch","machine","-type","v"],"kind":"runs","command":"patch machine","flags":{"type":"v"},"exit":0}
+{"line":["patch","machine"],"kind":"runs","command":"patch machine","exit":0}
+{"line":["patch","machine","--help"],"kind":"help","command":"patch machine","exit":0,"helpPath":"patch-machine.txt"}
+{"line":["patch","machine","x"],"kind":"runs","command":"patch machine","args":["x"],"exit":0}
+{"line":["patch","machine","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","machines"],"kind":"runs","command":"patch machine","exit":0}
+{"line":["patch","machines","--help"],"kind":"help","command":"patch machine","exit":0,"helpPath":"patch-machine.txt"}

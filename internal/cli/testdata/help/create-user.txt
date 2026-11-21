@@ -1,0 +1,26 @@
+NAME:
+   rancher create user - Create a local user and bind its global roles
+
+USAGE:
+   rancher create user [options] <username>
+
+OPTIONS:
+   --description description              short description of the user
+   --display-name string                  display name (default: the username)
+   --enabled string                       account enabled state (server default true)
+   --global-role id [ --global-role id ]  global role id to bind (repeatable); default: the roles the server marks newUserDefault; list them with: `rancher get globalroles`
+   --help, -h                             show help
+   --must-change-password                 require the user to set a new password at their next Rancher UI login
+   --password-stdin                       read the new password from stdin (required; there is no --password flag because a flag value would be saved in shell history; the server enforces a minimum length, 12 by default; a newline inside the password is refused)
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

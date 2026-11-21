@@ -1,0 +1,20 @@
+NAME:
+   rancher access projects - List the projects a subject can see into, and the Rancher memberships behind them
+
+USAGE:
+   rancher access projects [options]
+
+OPTIONS:
+   --as string       user name, id, or principal; omitted = you
+   --cluster string  restrict to one cluster, by id or unique display name; omitted = every cluster you can list
+   --help, -h        show help
+   --timeout string  time limit for the whole command, e.g. 2m (default 60s)
+   --type string     kind of the --as value (only user is accepted here)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

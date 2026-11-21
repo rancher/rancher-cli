@@ -1,0 +1,19 @@
+{"line":["patch","azureconfig","--namespace","v"],"kind":"runs","command":"patch azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","azureconfig","--namespace=v"],"kind":"runs","command":"patch azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","azureconfig","-n","v"],"kind":"runs","command":"patch azureconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","azureconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","azureconfig","--patch","v"],"kind":"runs","command":"patch azureconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","azureconfig","--patch=v"],"kind":"runs","command":"patch azureconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","azureconfig","-p","v"],"kind":"runs","command":"patch azureconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","azureconfig","--patch-file","v"],"kind":"runs","command":"patch azureconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","azureconfig","--patch-file=v"],"kind":"runs","command":"patch azureconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","azureconfig","-patch-file","v"],"kind":"runs","command":"patch azureconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","azureconfig","--type","v"],"kind":"runs","command":"patch azureconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","azureconfig","--type=v"],"kind":"runs","command":"patch azureconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","azureconfig","-type","v"],"kind":"runs","command":"patch azureconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","azureconfig"],"kind":"runs","command":"patch azureconfig","exit":0}
+{"line":["patch","azureconfig","--help"],"kind":"help","command":"patch azureconfig","exit":0,"helpPath":"patch-azureconfig.txt"}
+{"line":["patch","azureconfig","x"],"kind":"runs","command":"patch azureconfig","args":["x"],"exit":0}
+{"line":["patch","azureconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","azureconfigs"],"kind":"runs","command":"patch azureconfig","exit":0}
+{"line":["patch","azureconfigs","--help"],"kind":"help","command":"patch azureconfig","exit":0,"helpPath":"patch-azureconfig.txt"}

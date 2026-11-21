@@ -1,0 +1,22 @@
+{"line":["delete","statefulset","--cluster","v"],"kind":"runs","command":"delete statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","statefulset","--cluster=v"],"kind":"runs","command":"delete statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","statefulset","-cluster","v"],"kind":"runs","command":"delete statefulset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","statefulset","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","statefulset","--namespace","v"],"kind":"runs","command":"delete statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","statefulset","--namespace=v"],"kind":"runs","command":"delete statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","statefulset","-n","v"],"kind":"runs","command":"delete statefulset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","statefulset","--wait"],"kind":"runs","command":"delete statefulset","flags":{"wait":true},"exit":0}
+{"line":["delete","statefulset","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","statefulset","--wait=false"],"kind":"runs","command":"delete statefulset","flags":{"wait":false},"exit":0}
+{"line":["delete","statefulset","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","statefulset","-wait"],"kind":"runs","command":"delete statefulset","flags":{"wait":true},"exit":0}
+{"line":["delete","statefulset","--timeout","v"],"kind":"runs","command":"delete statefulset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","statefulset","--timeout=v"],"kind":"runs","command":"delete statefulset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","statefulset","-timeout","v"],"kind":"runs","command":"delete statefulset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","statefulset"],"kind":"runs","command":"delete statefulset","exit":0}
+{"line":["delete","statefulset","--help"],"kind":"help","command":"delete statefulset","exit":0,"helpPath":"delete-statefulset.txt"}
+{"line":["delete","statefulset","x"],"kind":"runs","command":"delete statefulset","args":["x"],"exit":0}
+{"line":["delete","statefulset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","statefulsets"],"kind":"runs","command":"delete statefulset","exit":0}
+{"line":["delete","sts"],"kind":"runs","command":"delete statefulset","exit":0}
+{"line":["delete","statefulsets","--help"],"kind":"help","command":"delete statefulset","exit":0,"helpPath":"delete-statefulset.txt"}

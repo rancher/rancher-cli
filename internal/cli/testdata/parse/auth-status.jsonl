@@ -1,0 +1,4 @@
+{"line":["auth","status"],"kind":"runs","command":"auth status","exit":0}
+{"line":["auth","status","--help"],"kind":"help","command":"auth status","exit":0,"helpPath":"auth-status.txt"}
+{"line":["auth","status","x"],"kind":"runs","command":"auth status","args":["x"],"exit":0}
+{"line":["auth","status","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

@@ -1,0 +1,23 @@
+{"line":["patch","deployment","--cluster","v"],"kind":"runs","command":"patch deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","deployment","--cluster=v"],"kind":"runs","command":"patch deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","deployment","-cluster","v"],"kind":"runs","command":"patch deployment","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","deployment","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","deployment","--namespace","v"],"kind":"runs","command":"patch deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","deployment","--namespace=v"],"kind":"runs","command":"patch deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","deployment","-n","v"],"kind":"runs","command":"patch deployment","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","deployment","--patch","v"],"kind":"runs","command":"patch deployment","flags":{"patch":"v"},"exit":0}
+{"line":["patch","deployment","--patch=v"],"kind":"runs","command":"patch deployment","flags":{"patch":"v"},"exit":0}
+{"line":["patch","deployment","-p","v"],"kind":"runs","command":"patch deployment","flags":{"patch":"v"},"exit":0}
+{"line":["patch","deployment","--patch-file","v"],"kind":"runs","command":"patch deployment","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","deployment","--patch-file=v"],"kind":"runs","command":"patch deployment","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","deployment","-patch-file","v"],"kind":"runs","command":"patch deployment","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","deployment","--type","v"],"kind":"runs","command":"patch deployment","flags":{"type":"v"},"exit":0}
+{"line":["patch","deployment","--type=v"],"kind":"runs","command":"patch deployment","flags":{"type":"v"},"exit":0}
+{"line":["patch","deployment","-type","v"],"kind":"runs","command":"patch deployment","flags":{"type":"v"},"exit":0}
+{"line":["patch","deployment"],"kind":"runs","command":"patch deployment","exit":0}
+{"line":["patch","deployment","--help"],"kind":"help","command":"patch deployment","exit":0,"helpPath":"patch-deployment.txt"}
+{"line":["patch","deployment","x"],"kind":"runs","command":"patch deployment","args":["x"],"exit":0}
+{"line":["patch","deployment","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","deployments"],"kind":"runs","command":"patch deployment","exit":0}
+{"line":["patch","deploy"],"kind":"runs","command":"patch deployment","exit":0}
+{"line":["patch","deployments","--help"],"kind":"help","command":"patch deployment","exit":0,"helpPath":"patch-deployment.txt"}

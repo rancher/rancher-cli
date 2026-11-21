@@ -1,0 +1,18 @@
+{"line":["delete","managedchart","--namespace","v"],"kind":"runs","command":"delete managedchart","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","managedchart","--namespace=v"],"kind":"runs","command":"delete managedchart","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","managedchart","-n","v"],"kind":"runs","command":"delete managedchart","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","managedchart","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","managedchart","--wait"],"kind":"runs","command":"delete managedchart","flags":{"wait":true},"exit":0}
+{"line":["delete","managedchart","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","managedchart","--wait=false"],"kind":"runs","command":"delete managedchart","flags":{"wait":false},"exit":0}
+{"line":["delete","managedchart","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","managedchart","-wait"],"kind":"runs","command":"delete managedchart","flags":{"wait":true},"exit":0}
+{"line":["delete","managedchart","--timeout","v"],"kind":"runs","command":"delete managedchart","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","managedchart","--timeout=v"],"kind":"runs","command":"delete managedchart","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","managedchart","-timeout","v"],"kind":"runs","command":"delete managedchart","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","managedchart"],"kind":"runs","command":"delete managedchart","exit":0}
+{"line":["delete","managedchart","--help"],"kind":"help","command":"delete managedchart","exit":0,"helpPath":"delete-managedchart.txt"}
+{"line":["delete","managedchart","x"],"kind":"runs","command":"delete managedchart","args":["x"],"exit":0}
+{"line":["delete","managedchart","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","managedcharts"],"kind":"runs","command":"delete managedchart","exit":0}
+{"line":["delete","managedcharts","--help"],"kind":"help","command":"delete managedchart","exit":0,"helpPath":"delete-managedchart.txt"}

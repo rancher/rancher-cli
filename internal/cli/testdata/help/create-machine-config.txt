@@ -1,0 +1,28 @@
+NAME:
+   rancher create machine-config - Create a machine config for the machine pool of a node-driver cluster
+
+USAGE:
+   rancher create machine-config [options] <amazonec2config|azureconfig|digitaloceanconfig|harvesterconfig|vmwarevsphereconfig> <name>
+
+OPTIONS:
+   --help, -h                               show help
+   --image image                            digitaloceanconfig: droplet image slug
+   --ipv6                                   digitaloceanconfig: enable IPv6 (omit to keep the driver default)
+   --monitoring                             digitaloceanconfig: enable monitoring (omit to keep the driver default)
+   --private-networking                     digitaloceanconfig: enable private networking (omit to keep the driver default)
+   --region region                          digitaloceanconfig: droplet region slug (e.g. nyc3)
+   --set field=value [ --set field=value ]  driver field=value; repeat the flag for more fields. Values such as true and ["a"] are read as JSON; numbers and other values are sent as strings (Rancher's schema types numeric driver fields as strings)
+   --size size                              digitaloceanconfig: droplet size slug (e.g. s-2vcpu-4gb)
+   --tags tags                              digitaloceanconfig: comma-separated droplet tags
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

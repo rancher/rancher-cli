@@ -1,0 +1,51 @@
+NAME:
+   rancher - rancher-cli
+
+USAGE:
+   rancher [global options] [command [command options]]
+
+VERSION:
+   v-test
+
+COMMANDS:
+   access:          Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)
+   app:             Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)
+   auth:            Auth commands
+   charts:          List the charts and versions the repositories of a cluster offer
+   cluster:         Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster or take an etcd snapshot (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)
+   completion:      Print a shell completion script (ignores -o; always the raw script)
+   config:          Config commands
+   create:          Create resources
+   delete:          Delete resources
+   get:             Get resources
+   grant:           Grant a role to a user or group at project, cluster, or global scope
+   images:          List container images in use, grouped by image or owning workload
+   inspect:         Inspect a cluster, workload or project with its related objects
+   kubeconfig:      Print an exec-credential kubeconfig for a cluster, with its direct endpoint contexts when the cluster has them
+   logs:            Show logs of Rancher components (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)
+   node:            Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)
+   oidc-client:     [Prime] Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)
+   patch:           Patch resources
+   project:         Project namespace commands (project membership is managed with `rancher grant` and `rancher revoke`)
+   revoke:          Revoke a subject's role(s) at project, cluster, or global scope
+   schema:          Print the schema manifest, optionally filtered to one command
+   skill:           Install, remove and check the agent skills that come with rancher-cli
+   support-bundle:  Collect diagnostics reachable through the API into one tar.gz for support
+   telemetry:       Local usage recording: status, turn on, turn off, delete, list and send events
+   token:           Legacy exec-credential shim for Rancher-generated kubeconfigs
+   usage:           Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --help, -h                  show help
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --project string            the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --version, -v               print the version
+   --yes                       confirm a destructive change

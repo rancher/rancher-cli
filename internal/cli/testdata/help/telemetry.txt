@@ -1,0 +1,23 @@
+NAME:
+   rancher telemetry - Local usage recording: status, turn on, turn off, delete, list and send events
+
+USAGE:
+   rancher telemetry [command [command options]]
+
+COMMANDS:
+   off:     Turn usage recording off and delete what is recorded
+   on:      Turn usage recording on
+   reset:   Delete what is recorded and keep the telemetry key
+   show:    List the recorded events
+   status:  Show whether usage recording is on and what is recorded, and any active experiments
+   upload:  Send the stored usage events now (development builds with the telemetryupload experiment)
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>

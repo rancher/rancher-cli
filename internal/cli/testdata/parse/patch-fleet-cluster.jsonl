@@ -1,0 +1,20 @@
+{"line":["patch","fleet-cluster","--namespace","v"],"kind":"runs","command":"patch fleet-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","fleet-cluster","--namespace=v"],"kind":"runs","command":"patch fleet-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","fleet-cluster","-n","v"],"kind":"runs","command":"patch fleet-cluster","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","fleet-cluster","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","fleet-cluster","--patch","v"],"kind":"runs","command":"patch fleet-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","fleet-cluster","--patch=v"],"kind":"runs","command":"patch fleet-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","fleet-cluster","-p","v"],"kind":"runs","command":"patch fleet-cluster","flags":{"patch":"v"},"exit":0}
+{"line":["patch","fleet-cluster","--patch-file","v"],"kind":"runs","command":"patch fleet-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","fleet-cluster","--patch-file=v"],"kind":"runs","command":"patch fleet-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","fleet-cluster","-patch-file","v"],"kind":"runs","command":"patch fleet-cluster","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","fleet-cluster","--type","v"],"kind":"runs","command":"patch fleet-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","fleet-cluster","--type=v"],"kind":"runs","command":"patch fleet-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","fleet-cluster","-type","v"],"kind":"runs","command":"patch fleet-cluster","flags":{"type":"v"},"exit":0}
+{"line":["patch","fleet-cluster"],"kind":"runs","command":"patch fleet-cluster","exit":0}
+{"line":["patch","fleet-cluster","--help"],"kind":"help","command":"patch fleet-cluster","exit":0,"helpPath":"patch-fleet-cluster.txt"}
+{"line":["patch","fleet-cluster","x"],"kind":"runs","command":"patch fleet-cluster","args":["x"],"exit":0}
+{"line":["patch","fleet-cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","fleetclusters"],"kind":"runs","command":"patch fleet-cluster","exit":0}
+{"line":["patch","fleet-clusters"],"kind":"runs","command":"patch fleet-cluster","exit":0}
+{"line":["patch","fleetclusters","--help"],"kind":"help","command":"patch fleet-cluster","exit":0,"helpPath":"patch-fleet-cluster.txt"}

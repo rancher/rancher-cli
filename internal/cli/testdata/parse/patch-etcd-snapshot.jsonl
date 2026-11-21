@@ -1,0 +1,20 @@
+{"line":["patch","etcd-snapshot","--namespace","v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","--namespace=v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","-n","v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","etcd-snapshot","--patch","v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"patch":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","--patch=v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"patch":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","-p","v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"patch":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","--patch-file","v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","--patch-file=v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","-patch-file","v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","--type","v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"type":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","--type=v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"type":"v"},"exit":0}
+{"line":["patch","etcd-snapshot","-type","v"],"kind":"runs","command":"patch etcd-snapshot","flags":{"type":"v"},"exit":0}
+{"line":["patch","etcd-snapshot"],"kind":"runs","command":"patch etcd-snapshot","exit":0}
+{"line":["patch","etcd-snapshot","--help"],"kind":"help","command":"patch etcd-snapshot","exit":0,"helpPath":"patch-etcd-snapshot.txt"}
+{"line":["patch","etcd-snapshot","x"],"kind":"runs","command":"patch etcd-snapshot","args":["x"],"exit":0}
+{"line":["patch","etcd-snapshot","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","etcdsnapshots"],"kind":"runs","command":"patch etcd-snapshot","exit":0}
+{"line":["patch","etcd-snapshots"],"kind":"runs","command":"patch etcd-snapshot","exit":0}
+{"line":["patch","etcdsnapshots","--help"],"kind":"help","command":"patch etcd-snapshot","exit":0,"helpPath":"patch-etcd-snapshot.txt"}

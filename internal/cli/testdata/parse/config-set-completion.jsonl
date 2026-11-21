@@ -1,0 +1,11 @@
+{"line":["config","set-completion","--network","v"],"kind":"runs","command":"config set-completion","flags":{"network":"v"},"exit":0}
+{"line":["config","set-completion","--network=v"],"kind":"runs","command":"config set-completion","flags":{"network":"v"},"exit":0}
+{"line":["config","set-completion","-network","v"],"kind":"runs","command":"config set-completion","flags":{"network":"v"},"exit":0}
+{"line":["config","set-completion","--network"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --network; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","set-completion","--timeout","v"],"kind":"runs","command":"config set-completion","flags":{"timeout":"v"},"exit":0}
+{"line":["config","set-completion","--timeout=v"],"kind":"runs","command":"config set-completion","flags":{"timeout":"v"},"exit":0}
+{"line":["config","set-completion","-timeout","v"],"kind":"runs","command":"config set-completion","flags":{"timeout":"v"},"exit":0}
+{"line":["config","set-completion"],"kind":"runs","command":"config set-completion","exit":0}
+{"line":["config","set-completion","--help"],"kind":"help","command":"config set-completion","exit":0,"helpPath":"config-set-completion.txt"}
+{"line":["config","set-completion","x"],"kind":"runs","command":"config set-completion","args":["x"],"exit":0}
+{"line":["config","set-completion","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

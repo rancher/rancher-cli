@@ -1,0 +1,15 @@
+{"line":["delete","user","--wait"],"kind":"runs","command":"delete user","flags":{"wait":true},"exit":0}
+{"line":["delete","user","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","user","--wait=false"],"kind":"runs","command":"delete user","flags":{"wait":false},"exit":0}
+{"line":["delete","user","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","user","-wait"],"kind":"runs","command":"delete user","flags":{"wait":true},"exit":0}
+{"line":["delete","user","--timeout","v"],"kind":"runs","command":"delete user","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","user","--timeout=v"],"kind":"runs","command":"delete user","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","user","-timeout","v"],"kind":"runs","command":"delete user","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","user","--timeout"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --timeout; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","user"],"kind":"runs","command":"delete user","exit":0}
+{"line":["delete","user","--help"],"kind":"help","command":"delete user","exit":0,"helpPath":"delete-user.txt"}
+{"line":["delete","user","x"],"kind":"runs","command":"delete user","args":["x"],"exit":0}
+{"line":["delete","user","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","users"],"kind":"runs","command":"delete user","exit":0}
+{"line":["delete","users","--help"],"kind":"help","command":"delete user","exit":0,"helpPath":"delete-user.txt"}

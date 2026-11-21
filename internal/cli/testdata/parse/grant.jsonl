@@ -1,0 +1,19 @@
+{"line":["grant","--role","v"],"kind":"runs","command":"grant","flags":{"role":"v"},"exit":0}
+{"line":["grant","--role=v"],"kind":"runs","command":"grant","flags":{"role":"v"},"exit":0}
+{"line":["grant","-role","v"],"kind":"runs","command":"grant","flags":{"role":"v"},"exit":0}
+{"line":["grant","--role"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --role; pass --help for usage","  hint: rancher schema"]}
+{"line":["grant","--cluster","v"],"kind":"runs","command":"grant","flags":{"cluster":"v"},"exit":0}
+{"line":["grant","--cluster=v"],"kind":"runs","command":"grant","flags":{"cluster":"v"},"exit":0}
+{"line":["grant","-cluster","v"],"kind":"runs","command":"grant","flags":{"cluster":"v"},"exit":0}
+{"line":["grant","--global"],"kind":"runs","command":"grant","flags":{"global":true},"exit":0}
+{"line":["grant","--global="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --global= has an empty value; a bool flag typed with = takes true or false","  hint: write --global or --global=true|false"]}
+{"line":["grant","--global=false"],"kind":"runs","command":"grant","flags":{"global":false},"exit":0}
+{"line":["grant","--global= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --global= has an empty value; a bool flag typed with = takes true or false","  hint: write --global or --global=true|false"]}
+{"line":["grant","-global"],"kind":"runs","command":"grant","flags":{"global":true},"exit":0}
+{"line":["grant","--type","v"],"kind":"runs","command":"grant","flags":{"type":"v"},"exit":0}
+{"line":["grant","--type=v"],"kind":"runs","command":"grant","flags":{"type":"v"},"exit":0}
+{"line":["grant","-type","v"],"kind":"runs","command":"grant","flags":{"type":"v"},"exit":0}
+{"line":["grant"],"kind":"runs","command":"grant","exit":0}
+{"line":["grant","--help"],"kind":"help","command":"grant","exit":0,"helpPath":"grant.txt"}
+{"line":["grant","x"],"kind":"runs","command":"grant","args":["x"],"exit":0}
+{"line":["grant","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

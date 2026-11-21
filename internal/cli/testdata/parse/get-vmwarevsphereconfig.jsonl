@@ -1,0 +1,24 @@
+{"line":["get","vmwarevsphereconfig","--namespace","v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","--namespace=v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","-n","v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","vmwarevsphereconfig","--selector","v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","--selector=v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","-l","v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"selector":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","--wait"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"wait":true},"exit":0}
+{"line":["get","vmwarevsphereconfig","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","vmwarevsphereconfig","--wait=false"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"wait":false},"exit":0}
+{"line":["get","vmwarevsphereconfig","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","vmwarevsphereconfig","-wait"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"wait":true},"exit":0}
+{"line":["get","vmwarevsphereconfig","--for","v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","--for=v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","-for","v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"for":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","--timeout","v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","--timeout=v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig","-timeout","v"],"kind":"runs","command":"get vmwarevsphereconfig","flags":{"timeout":"v"},"exit":0}
+{"line":["get","vmwarevsphereconfig"],"kind":"runs","command":"get vmwarevsphereconfig","exit":0}
+{"line":["get","vmwarevsphereconfig","--help"],"kind":"help","command":"get vmwarevsphereconfig","exit":0,"helpPath":"get-vmwarevsphereconfig.txt"}
+{"line":["get","vmwarevsphereconfig","x"],"kind":"runs","command":"get vmwarevsphereconfig","args":["x"],"exit":0}
+{"line":["get","vmwarevsphereconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","vmwarevsphereconfigs"],"kind":"runs","command":"get vmwarevsphereconfig","exit":0}
+{"line":["get","vmwarevsphereconfigs","--help"],"kind":"help","command":"get vmwarevsphereconfig","exit":0,"helpPath":"get-vmwarevsphereconfig.txt"}

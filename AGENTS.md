@@ -137,6 +137,9 @@ Gotchas:
   is a signal, not noise. COMMANDS.md's surface facts (the counts paragraph, the
   Commands table) are conformance-tested against the schema manifest - a failure
   there means update COMMANDS.md, not the test.
+  A surface change also needs the help and parse goldens regenerated on purpose
+  (`go test ./internal/cli/ -run 'TestHelpGolden|TestParseGolden' -update`);
+  review that diff like the schema golden's.
 - **One safety pipeline for every mutation.** Server-side dry-run → an `Effect` →
   explicit gates (`--apply`, `--yes` for destructive, `--allow-deprecated`) →
   execute, bound to the preview by a resourceVersion precondition. A command

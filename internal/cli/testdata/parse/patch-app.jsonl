@@ -1,0 +1,22 @@
+{"line":["patch","app","--cluster","v"],"kind":"runs","command":"patch app","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","app","--cluster=v"],"kind":"runs","command":"patch app","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","app","-cluster","v"],"kind":"runs","command":"patch app","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","app","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","app","--namespace","v"],"kind":"runs","command":"patch app","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","app","--namespace=v"],"kind":"runs","command":"patch app","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","app","-n","v"],"kind":"runs","command":"patch app","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","app","--patch","v"],"kind":"runs","command":"patch app","flags":{"patch":"v"},"exit":0}
+{"line":["patch","app","--patch=v"],"kind":"runs","command":"patch app","flags":{"patch":"v"},"exit":0}
+{"line":["patch","app","-p","v"],"kind":"runs","command":"patch app","flags":{"patch":"v"},"exit":0}
+{"line":["patch","app","--patch-file","v"],"kind":"runs","command":"patch app","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","app","--patch-file=v"],"kind":"runs","command":"patch app","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","app","-patch-file","v"],"kind":"runs","command":"patch app","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","app","--type","v"],"kind":"runs","command":"patch app","flags":{"type":"v"},"exit":0}
+{"line":["patch","app","--type=v"],"kind":"runs","command":"patch app","flags":{"type":"v"},"exit":0}
+{"line":["patch","app","-type","v"],"kind":"runs","command":"patch app","flags":{"type":"v"},"exit":0}
+{"line":["patch","app"],"kind":"runs","command":"patch app","exit":0}
+{"line":["patch","app","--help"],"kind":"help","command":"patch app","exit":0,"helpPath":"patch-app.txt"}
+{"line":["patch","app","x"],"kind":"runs","command":"patch app","args":["x"],"exit":0}
+{"line":["patch","app","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","apps"],"kind":"runs","command":"patch app","exit":0}
+{"line":["patch","apps","--help"],"kind":"help","command":"patch app","exit":0,"helpPath":"patch-app.txt"}

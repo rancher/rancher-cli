@@ -1,0 +1,19 @@
+{"line":["patch","clusterrepo","--cluster","v"],"kind":"runs","command":"patch clusterrepo","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","clusterrepo","--cluster=v"],"kind":"runs","command":"patch clusterrepo","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","clusterrepo","-cluster","v"],"kind":"runs","command":"patch clusterrepo","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","clusterrepo","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","clusterrepo","--patch","v"],"kind":"runs","command":"patch clusterrepo","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterrepo","--patch=v"],"kind":"runs","command":"patch clusterrepo","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterrepo","-p","v"],"kind":"runs","command":"patch clusterrepo","flags":{"patch":"v"},"exit":0}
+{"line":["patch","clusterrepo","--patch-file","v"],"kind":"runs","command":"patch clusterrepo","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterrepo","--patch-file=v"],"kind":"runs","command":"patch clusterrepo","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterrepo","-patch-file","v"],"kind":"runs","command":"patch clusterrepo","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","clusterrepo","--type","v"],"kind":"runs","command":"patch clusterrepo","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterrepo","--type=v"],"kind":"runs","command":"patch clusterrepo","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterrepo","-type","v"],"kind":"runs","command":"patch clusterrepo","flags":{"type":"v"},"exit":0}
+{"line":["patch","clusterrepo"],"kind":"runs","command":"patch clusterrepo","exit":0}
+{"line":["patch","clusterrepo","--help"],"kind":"help","command":"patch clusterrepo","exit":0,"helpPath":"patch-clusterrepo.txt"}
+{"line":["patch","clusterrepo","x"],"kind":"runs","command":"patch clusterrepo","args":["x"],"exit":0}
+{"line":["patch","clusterrepo","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","clusterrepos"],"kind":"runs","command":"patch clusterrepo","exit":0}
+{"line":["patch","clusterrepos","--help"],"kind":"help","command":"patch clusterrepo","exit":0,"helpPath":"patch-clusterrepo.txt"}

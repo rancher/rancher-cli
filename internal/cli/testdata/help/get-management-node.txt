@@ -1,0 +1,21 @@
+NAME:
+   rancher get management-node - List management-nodes or show one
+
+USAGE:
+   rancher get management-node [options] [id]
+
+OPTIONS:
+   --cluster id|name                 cluster id|name; required to get one management-node by id; leave it out to list management-nodes in every cluster
+   --for condition                   wait for condition, e.g. state=active or condition=Ready (starts the wait)
+   --help, -h                        show help
+   --selector selector, -l selector  filter a list by Kubernetes label selector, e.g. app=web,tier!=cache (kubectl's -l)
+   --timeout timeout                 wait timeout, e.g. 5m (default 120s; starts the wait)
+   --wait                            wait for the resource to reach its default wait condition, or --for, before returning
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

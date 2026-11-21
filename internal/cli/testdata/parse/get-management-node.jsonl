@@ -1,0 +1,25 @@
+{"line":["get","management-node","--cluster","v"],"kind":"runs","command":"get management-node","flags":{"cluster":"v"},"exit":0}
+{"line":["get","management-node","--cluster=v"],"kind":"runs","command":"get management-node","flags":{"cluster":"v"},"exit":0}
+{"line":["get","management-node","-cluster","v"],"kind":"runs","command":"get management-node","flags":{"cluster":"v"},"exit":0}
+{"line":["get","management-node","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","management-node","--selector","v"],"kind":"runs","command":"get management-node","flags":{"selector":"v"},"exit":0}
+{"line":["get","management-node","--selector=v"],"kind":"runs","command":"get management-node","flags":{"selector":"v"},"exit":0}
+{"line":["get","management-node","-l","v"],"kind":"runs","command":"get management-node","flags":{"selector":"v"},"exit":0}
+{"line":["get","management-node","--wait"],"kind":"runs","command":"get management-node","flags":{"wait":true},"exit":0}
+{"line":["get","management-node","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","management-node","--wait=false"],"kind":"runs","command":"get management-node","flags":{"wait":false},"exit":0}
+{"line":["get","management-node","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","management-node","-wait"],"kind":"runs","command":"get management-node","flags":{"wait":true},"exit":0}
+{"line":["get","management-node","--for","v"],"kind":"runs","command":"get management-node","flags":{"for":"v"},"exit":0}
+{"line":["get","management-node","--for=v"],"kind":"runs","command":"get management-node","flags":{"for":"v"},"exit":0}
+{"line":["get","management-node","-for","v"],"kind":"runs","command":"get management-node","flags":{"for":"v"},"exit":0}
+{"line":["get","management-node","--timeout","v"],"kind":"runs","command":"get management-node","flags":{"timeout":"v"},"exit":0}
+{"line":["get","management-node","--timeout=v"],"kind":"runs","command":"get management-node","flags":{"timeout":"v"},"exit":0}
+{"line":["get","management-node","-timeout","v"],"kind":"runs","command":"get management-node","flags":{"timeout":"v"},"exit":0}
+{"line":["get","management-node"],"kind":"runs","command":"get management-node","exit":0}
+{"line":["get","management-node","--help"],"kind":"help","command":"get management-node","exit":0,"helpPath":"get-management-node.txt"}
+{"line":["get","management-node","x"],"kind":"runs","command":"get management-node","args":["x"],"exit":0}
+{"line":["get","management-node","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","managementnodes"],"kind":"runs","command":"get management-node","exit":0}
+{"line":["get","management-nodes"],"kind":"runs","command":"get management-node","exit":0}
+{"line":["get","managementnodes","--help"],"kind":"help","command":"get management-node","exit":0,"helpPath":"get-management-node.txt"}

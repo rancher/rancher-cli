@@ -1,0 +1,50 @@
+{"line":["inspect","cluster","--registration"],"kind":"runs","command":"inspect cluster","flags":{"registration":true},"exit":0}
+{"line":["inspect","cluster","--registration="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --registration= has an empty value; a bool flag typed with = takes true or false","  hint: write --registration or --registration=true|false"]}
+{"line":["inspect","cluster","--registration=false"],"kind":"runs","command":"inspect cluster","flags":{"registration":false},"exit":0}
+{"line":["inspect","cluster","--registration= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --registration= has an empty value; a bool flag typed with = takes true or false","  hint: write --registration or --registration=true|false"]}
+{"line":["inspect","cluster","-registration"],"kind":"runs","command":"inspect cluster","flags":{"registration":true},"exit":0}
+{"line":["inspect","cluster","--etcd"],"kind":"runs","command":"inspect cluster","flags":{"etcd":true},"exit":0}
+{"line":["inspect","cluster","--etcd="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --etcd= has an empty value; a bool flag typed with = takes true or false","  hint: write --etcd or --etcd=true|false"]}
+{"line":["inspect","cluster","--etcd=false"],"kind":"runs","command":"inspect cluster","flags":{"etcd":false},"exit":0}
+{"line":["inspect","cluster","--etcd= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --etcd= has an empty value; a bool flag typed with = takes true or false","  hint: write --etcd or --etcd=true|false"]}
+{"line":["inspect","cluster","-etcd"],"kind":"runs","command":"inspect cluster","flags":{"etcd":true},"exit":0}
+{"line":["inspect","cluster","--controlplane"],"kind":"runs","command":"inspect cluster","flags":{"controlplane":true},"exit":0}
+{"line":["inspect","cluster","--controlplane="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --controlplane= has an empty value; a bool flag typed with = takes true or false","  hint: write --controlplane or --controlplane=true|false"]}
+{"line":["inspect","cluster","--controlplane=false"],"kind":"runs","command":"inspect cluster","flags":{"controlplane":false},"exit":0}
+{"line":["inspect","cluster","--controlplane= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --controlplane= has an empty value; a bool flag typed with = takes true or false","  hint: write --controlplane or --controlplane=true|false"]}
+{"line":["inspect","cluster","-controlplane"],"kind":"runs","command":"inspect cluster","flags":{"controlplane":true},"exit":0}
+{"line":["inspect","cluster","--worker"],"kind":"runs","command":"inspect cluster","flags":{"worker":true},"exit":0}
+{"line":["inspect","cluster","--worker="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --worker= has an empty value; a bool flag typed with = takes true or false","  hint: write --worker or --worker=true|false"]}
+{"line":["inspect","cluster","--worker=false"],"kind":"runs","command":"inspect cluster","flags":{"worker":false},"exit":0}
+{"line":["inspect","cluster","--worker= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --worker= has an empty value; a bool flag typed with = takes true or false","  hint: write --worker or --worker=true|false"]}
+{"line":["inspect","cluster","-worker"],"kind":"runs","command":"inspect cluster","flags":{"worker":true},"exit":0}
+{"line":["inspect","cluster","--node-name","v"],"kind":"runs","command":"inspect cluster","flags":{"node-name":"v"},"exit":0}
+{"line":["inspect","cluster","--node-name=v"],"kind":"runs","command":"inspect cluster","flags":{"node-name":"v"},"exit":0}
+{"line":["inspect","cluster","-node-name","v"],"kind":"runs","command":"inspect cluster","flags":{"node-name":"v"},"exit":0}
+{"line":["inspect","cluster","--node-name"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --node-name; pass --help for usage","  hint: rancher schema"]}
+{"line":["inspect","cluster","--node-name","v","--node-name","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -node-name: can't duplicate this flag; pass --help for usage; --node-name may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["inspect","cluster","--address","v"],"kind":"runs","command":"inspect cluster","flags":{"address":"v"},"exit":0}
+{"line":["inspect","cluster","--address=v"],"kind":"runs","command":"inspect cluster","flags":{"address":"v"},"exit":0}
+{"line":["inspect","cluster","-address","v"],"kind":"runs","command":"inspect cluster","flags":{"address":"v"},"exit":0}
+{"line":["inspect","cluster","--address","v","--address","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -address: can't duplicate this flag; pass --help for usage; --address may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["inspect","cluster","--internal-address","v"],"kind":"runs","command":"inspect cluster","flags":{"internal-address":"v"},"exit":0}
+{"line":["inspect","cluster","--internal-address=v"],"kind":"runs","command":"inspect cluster","flags":{"internal-address":"v"},"exit":0}
+{"line":["inspect","cluster","-internal-address","v"],"kind":"runs","command":"inspect cluster","flags":{"internal-address":"v"},"exit":0}
+{"line":["inspect","cluster","--internal-address","v","--internal-address","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -internal-address: can't duplicate this flag; pass --help for usage; --internal-address may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
+{"line":["inspect","cluster","--label","v"],"kind":"runs","command":"inspect cluster","flags":{"label":["v"]},"exit":0}
+{"line":["inspect","cluster","--label=v"],"kind":"runs","command":"inspect cluster","flags":{"label":["v"]},"exit":0}
+{"line":["inspect","cluster","-label","v"],"kind":"runs","command":"inspect cluster","flags":{"label":["v"]},"exit":0}
+{"line":["inspect","cluster","--taint","v"],"kind":"runs","command":"inspect cluster","flags":{"taint":["v"]},"exit":0}
+{"line":["inspect","cluster","--taint=v"],"kind":"runs","command":"inspect cluster","flags":{"taint":["v"]},"exit":0}
+{"line":["inspect","cluster","-taint","v"],"kind":"runs","command":"inspect cluster","flags":{"taint":["v"]},"exit":0}
+{"line":["inspect","cluster","--windows"],"kind":"runs","command":"inspect cluster","flags":{"windows":true},"exit":0}
+{"line":["inspect","cluster","--windows="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --windows= has an empty value; a bool flag typed with = takes true or false","  hint: write --windows or --windows=true|false"]}
+{"line":["inspect","cluster","--windows=false"],"kind":"runs","command":"inspect cluster","flags":{"windows":false},"exit":0}
+{"line":["inspect","cluster","--windows= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --windows= has an empty value; a bool flag typed with = takes true or false","  hint: write --windows or --windows=true|false"]}
+{"line":["inspect","cluster","-windows"],"kind":"runs","command":"inspect cluster","flags":{"windows":true},"exit":0}
+{"line":["inspect","cluster"],"kind":"runs","command":"inspect cluster","exit":0}
+{"line":["inspect","cluster","--help"],"kind":"help","command":"inspect cluster","exit":0,"helpPath":"inspect-cluster.txt"}
+{"line":["inspect","cluster","x"],"kind":"runs","command":"inspect cluster","args":["x"],"exit":0}
+{"line":["inspect","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["inspect","clusters"],"kind":"runs","command":"inspect cluster","exit":0}
+{"line":["inspect","clusters","--help"],"kind":"help","command":"inspect cluster","exit":0,"helpPath":"inspect-cluster.txt"}

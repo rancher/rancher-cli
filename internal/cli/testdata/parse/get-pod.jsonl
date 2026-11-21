@@ -1,0 +1,344 @@
+{"line":["get","pod",""],"kind":"runs","command":"get pod","args":[""],"exit":0}
+{"line":["get","pod"," "],"kind":"runs","command":"get pod","args":[" "],"exit":0}
+{"line":["get","pod","\t"],"kind":"runs","command":"get pod","args":["\t"],"exit":0}
+{"line":["get","pod","x"],"kind":"runs","command":"get pod","args":["x"],"exit":0}
+{"line":["get","pod"," x "],"kind":"runs","command":"get pod","args":[" x "],"exit":0}
+{"line":["get","pod","","","-"],"kind":"runs","command":"get pod","args":["","","-"],"exit":0}
+{"line":["get","pod","","","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","","-"],"kind":"runs","command":"get pod","args":["","-"],"exit":0}
+{"line":["get","pod","","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","","get"],"kind":"runs","command":"get pod","args":["","get"],"exit":0}
+{"line":["get","pod","","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod"," ","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","get"],"kind":"runs","command":"get pod","args":["get"],"exit":0}
+{"line":["get","pod"," get"],"kind":"runs","command":"get pod","args":[" get"],"exit":0}
+{"line":["get","pod","nosuch"],"kind":"runs","command":"get pod","args":["nosuch"],"exit":0}
+{"line":["get","pod","-"],"kind":"runs","command":"get pod","args":["-"],"exit":0}
+{"line":["get","pod"," - "],"kind":"runs","command":"get pod","args":[" - "],"exit":0}
+{"line":["get","pod","\t-"],"kind":"runs","command":"get pod","args":["\t-"],"exit":0}
+{"line":["get","pod","-","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ","x"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'x'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--help'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--bogus'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","- x"],"kind":"runs","command":"get pod","args":["- x"],"exit":0}
+{"line":["get","pod","--"],"kind":"runs","command":"get pod","exit":0}
+{"line":["get","pod"," -- "],"kind":"runs","command":"get pod","exit":0}
+{"line":["get","pod","--","--help"],"kind":"runs","command":"get pod","args":["--help"],"exit":0}
+{"line":["get","pod","--","-","x"],"kind":"runs","command":"get pod","args":["-","x"],"exit":0}
+{"line":["get","pod","--","--yes="],"kind":"runs","command":"get pod","args":["--yes="],"exit":0}
+{"line":["get","pod","-1"],"kind":"runs","command":"get pod","args":["-1"],"exit":0}
+{"line":["get","pod","-1","--help"],"kind":"runs","command":"get pod","args":["-1","--help"],"exit":0}
+{"line":["get","pod","-\u20ac"],"kind":"runs","command":"get pod","args":["-\u20ac"],"exit":0}
+{"line":["get","pod","-\u00e9"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -\u00e9; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","---x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --x; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","---yes"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --yes; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","---help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: --help; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--=x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","-="],"kind":"runs","command":"get pod","args":["-="],"exit":0}
+{"line":["get","pod","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","-h"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","-help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help=false"],"kind":"runs","command":"get pod","flags":{"help":false},"exit":0}
+{"line":["get","pod","--help="],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --help= has an empty value; a bool flag typed with = takes true or false","  hint: write --help or --help=true|false"]}
+{"line":["get","pod","-h="],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help=true"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","-v"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -v; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version= "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--yes"],"kind":"runs","command":"get pod","flags":{"yes":true},"exit":0}
+{"line":["get","pod","--yes="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["get","pod","--yes= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["get","pod","--yes=\t"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["get","pod","--yes=false"],"kind":"runs","command":"get pod","flags":{"yes":false},"exit":0}
+{"line":["get","pod","--yes=maybe"],"kind":"error","command":"","errorClass":"bad bool value","exit":2,"stderr":["error (VALIDATION): invalid value \"maybe\" for flag -yes: parse error; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--yes","false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): get pod: 'false' was typed after the bool flag --yes; a bool flag takes its value only as --yes=<value>. To pass an argument such as true or false, put it before the flags or after --","  hint: rancher get pod --help"]}
+{"line":["get","pod","--output"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --output; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","-o","json"],"kind":"runs","command":"get pod","flags":{"output":"json"},"exit":0}
+{"line":["get","pod","-o=json"],"kind":"runs","command":"get pod","flags":{"output":"json"},"exit":0}
+{"line":["get","pod","-o","-"],"kind":"runs","command":"get pod","flags":{"output":"-"},"exit":0}
+{"line":["get","pod","-o","--help"],"kind":"runs","command":"get pod","flags":{"output":"--help"},"exit":0}
+{"line":["get","pod"," --yes "],"kind":"runs","command":"get pod","flags":{"yes":true},"exit":0}
+{"line":["x","get","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["get","x","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"x\"","  hint: rancher schema"]}
+{"line":["-","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 2 words after a - on its own are not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","-","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":[" - ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 2 words after a - on its own are not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get"," - ","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): 1 word after a - on its own is not used","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["--","get","pod"],"kind":"runs","command":"get pod","exit":0}
+{"line":["get","--","pod"],"kind":"runs","command":"get pod","exit":0}
+{"line":["-1","get","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["get","-1","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"-1\"","  hint: rancher schema"]}
+{"line":["--help","get","pod"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","--help","pod"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["--help=false","get","pod"],"kind":"runs","command":"get pod","exit":0}
+{"line":["get","--help=false","pod"],"kind":"runs","command":"get pod","exit":0}
+{"line":["--version","get","pod"],"kind":"version","command":"","exit":0,"stdout":["rancher version v-test"]}
+{"line":["get","--version","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["--bogus","get","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","--bogus","pod"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["--yes= ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["get","--yes= ","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes=","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["get","--yes=","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false","  hint: write --yes or --yes=true|false"]}
+{"line":["--yes","get","pod"],"kind":"runs","command":"get pod","flags":{"yes":true},"exit":0}
+{"line":["get","--yes","pod"],"kind":"runs","command":"get pod","flags":{"yes":true},"exit":0}
+{"line":["-o","json","get","pod"],"kind":"runs","command":"get pod","flags":{"output":"json"},"exit":0}
+{"line":["get","-o","json","pod"],"kind":"runs","command":"get pod","flags":{"output":"json"},"exit":0}
+{"line":["get","get","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"get\"","  hint: rancher schema"]}
+{"line":["nosuch","get","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["get","nosuch","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"nosuch\"","  hint: rancher schema"]}
+{"line":["","get","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":["get","","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"\"","  hint: rancher schema"]}
+{"line":[" ","get","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get"," ","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \" \"","  hint: rancher schema"]}
+{"line":["get","pod","x","x"],"kind":"runs","command":"get pod","args":["x","x"],"exit":0}
+{"line":["get","pod","x","-"],"kind":"runs","command":"get pod","args":["x","-"],"exit":0}
+{"line":["get","pod","x"," - "],"kind":"runs","command":"get pod","args":["x"," - "],"exit":0}
+{"line":["get","pod","x","--"],"kind":"runs","command":"get pod","args":["x"],"exit":0}
+{"line":["get","pod","x","-1"],"kind":"runs","command":"get pod","args":["x","-1"],"exit":0}
+{"line":["get","pod","x","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","x","--help=false"],"kind":"runs","command":"get pod","args":["x"],"flags":{"help":false},"exit":0}
+{"line":["get","pod","x","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","x","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","x",""],"kind":"runs","command":"get pod","args":["x",""],"exit":0}
+{"line":["get","pod","x"," "],"kind":"runs","command":"get pod","args":["x"," "],"exit":0}
+{"line":["get","pod","-","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-"," - "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ' - '","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-","--"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-","-1"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-1'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-","--help=false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--help=false'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-","--version"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--version'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ''","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-"," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ' '","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ","-"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - "," - "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ' - '","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ","--"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ","-1"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '-1'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ","--help"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--help'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ","--help=false"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--help=false'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ","--version"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--version'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ","--bogus"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: '--bogus'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - ",""],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ''","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod"," - "," "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: ' '","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","--","x"],"kind":"runs","command":"get pod","args":["x"],"exit":0}
+{"line":["get","pod","--","-"],"kind":"runs","command":"get pod","args":["-"],"exit":0}
+{"line":["get","pod","--"," - "],"kind":"runs","command":"get pod","args":[" - "],"exit":0}
+{"line":["get","pod","--","--"],"kind":"runs","command":"get pod","args":["--"],"exit":0}
+{"line":["get","pod","--","-1"],"kind":"runs","command":"get pod","args":["-1"],"exit":0}
+{"line":["get","pod","--","--help=false"],"kind":"runs","command":"get pod","args":["--help=false"],"exit":0}
+{"line":["get","pod","--","--version"],"kind":"runs","command":"get pod","args":["--version"],"exit":0}
+{"line":["get","pod","--","--bogus"],"kind":"runs","command":"get pod","args":["--bogus"],"exit":0}
+{"line":["get","pod","--",""],"kind":"runs","command":"get pod","args":[""],"exit":0}
+{"line":["get","pod","--"," "],"kind":"runs","command":"get pod","args":[" "],"exit":0}
+{"line":["get","pod","-1","x"],"kind":"runs","command":"get pod","args":["-1","x"],"exit":0}
+{"line":["get","pod","-1","-"],"kind":"runs","command":"get pod","args":["-1","-"],"exit":0}
+{"line":["get","pod","-1"," - "],"kind":"runs","command":"get pod","args":["-1"," - "],"exit":0}
+{"line":["get","pod","-1","--"],"kind":"runs","command":"get pod","args":["-1","--"],"exit":0}
+{"line":["get","pod","-1","-1"],"kind":"runs","command":"get pod","args":["-1","-1"],"exit":0}
+{"line":["get","pod","-1","--help=false"],"kind":"runs","command":"get pod","args":["-1","--help=false"],"exit":0}
+{"line":["get","pod","-1","--version"],"kind":"runs","command":"get pod","args":["-1","--version"],"exit":0}
+{"line":["get","pod","-1","--bogus"],"kind":"runs","command":"get pod","args":["-1","--bogus"],"exit":0}
+{"line":["get","pod","-1",""],"kind":"runs","command":"get pod","args":["-1",""],"exit":0}
+{"line":["get","pod","-1"," "],"kind":"runs","command":"get pod","args":["-1"," "],"exit":0}
+{"line":["get","pod","--help","x"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help","-"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help"," - "],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help","--"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help","-1"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help","--help=false"],"kind":"runs","command":"get pod","flags":{"help":false},"exit":0}
+{"line":["get","pod","--help","--version"],"kind":"help","command":"get pod","exit":0,"stdout":["NAME:","   rancher get pod - List pods or show one","","USAGE:","   rancher get pod [name]","","OPTIONS:","   --cluster id|name                    target cluster id|name","   --for condition                      wait for condition, e.g. state=active or condition=Ready (starts the wait)","   --help, -h                           show help","   --namespace namespace, -n namespace  namespace to operate in","   --selector selector, -l selector     filter a list by Kubernetes label selector, e.g. app=web,tier!=cache (kubectl's -l)","   --timeout timeout                    wait timeout, e.g. 5m (default 120s; starts the wait)","   --wait                               wait for the resource to reach its default wait condition, or --for, before returning","","GLOBAL OPTIONS:","   --color string              auto|always|never","   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]","   --debug                     print telemetry upload details on stderr (development builds)","   --no-input                  never prompt; fail with an error when the input is ambiguous","   --output string, -o string  table|wide|json|yaml|name|template=<go-template>","   --project string            the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)","   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it"]}
+{"line":["get","pod","--help","--bogus"],"kind":"help","command":"get pod","exit":0,"stdout":["NAME:","   rancher get pod - List pods or show one","","USAGE:","   rancher get pod [name]","","OPTIONS:","   --cluster id|name                    target cluster id|name","   --for condition                      wait for condition, e.g. state=active or condition=Ready (starts the wait)","   --help, -h                           show help","   --namespace namespace, -n namespace  namespace to operate in","   --selector selector, -l selector     filter a list by Kubernetes label selector, e.g. app=web,tier!=cache (kubectl's -l)","   --timeout timeout                    wait timeout, e.g. 5m (default 120s; starts the wait)","   --wait                               wait for the resource to reach its default wait condition, or --for, before returning","","GLOBAL OPTIONS:","   --color string              auto|always|never","   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]","   --debug                     print telemetry upload details on stderr (development builds)","   --no-input                  never prompt; fail with an error when the input is ambiguous","   --output string, -o string  table|wide|json|yaml|name|template=<go-template>","   --project string            the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)","   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it"]}
+{"line":["get","pod","--help",""],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help"," "],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help=false","x"],"kind":"runs","command":"get pod","args":["x"],"flags":{"help":false},"exit":0}
+{"line":["get","pod","--help=false","-"],"kind":"runs","command":"get pod","args":["-"],"flags":{"help":false},"exit":0}
+{"line":["get","pod","--help=false"," - "],"kind":"runs","command":"get pod","args":[" - "],"flags":{"help":false},"exit":0}
+{"line":["get","pod","--help=false","--"],"kind":"runs","command":"get pod","flags":{"help":false},"exit":0}
+{"line":["get","pod","--help=false","-1"],"kind":"runs","command":"get pod","args":["-1"],"flags":{"help":false},"exit":0}
+{"line":["get","pod","--help=false","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--help=false","--help=false"],"kind":"runs","command":"get pod","flags":{"help":false},"exit":0}
+{"line":["get","pod","--help=false","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--help=false","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--help=false",""],"kind":"runs","command":"get pod","args":[""],"flags":{"help":false},"exit":0}
+{"line":["get","pod","--help=false"," "],"kind":"runs","command":"get pod","args":[" "],"flags":{"help":false},"exit":0}
+{"line":["get","pod","--version","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--version"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","x"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","-"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus"," - "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","-1"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--help"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--help=false"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus",""],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--bogus"," "],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","","x"],"kind":"runs","command":"get pod","args":["","x"],"exit":0}
+{"line":["get","pod",""," - "],"kind":"runs","command":"get pod","args":[""," - "],"exit":0}
+{"line":["get","pod","","--"],"kind":"runs","command":"get pod","args":[""],"exit":0}
+{"line":["get","pod","","-1"],"kind":"runs","command":"get pod","args":["","-1"],"exit":0}
+{"line":["get","pod","","--help=false"],"kind":"runs","command":"get pod","args":[""],"flags":{"help":false},"exit":0}
+{"line":["get","pod","","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","",""],"kind":"runs","command":"get pod","args":["",""],"exit":0}
+{"line":["get","pod",""," "],"kind":"runs","command":"get pod","args":[""," "],"exit":0}
+{"line":["get","pod"," ","x"],"kind":"runs","command":"get pod","args":[" ","x"],"exit":0}
+{"line":["get","pod"," ","-"],"kind":"runs","command":"get pod","args":[" ","-"],"exit":0}
+{"line":["get","pod"," "," - "],"kind":"runs","command":"get pod","args":[" "," - "],"exit":0}
+{"line":["get","pod"," ","--"],"kind":"runs","command":"get pod","args":[" "],"exit":0}
+{"line":["get","pod"," ","-1"],"kind":"runs","command":"get pod","args":[" ","-1"],"exit":0}
+{"line":["get","pod"," ","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod"," ","--help=false"],"kind":"runs","command":"get pod","args":[" "],"flags":{"help":false},"exit":0}
+{"line":["get","pod"," ","--version"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -version; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod"," ","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod"," ",""],"kind":"runs","command":"get pod","args":[" ",""],"exit":0}
+{"line":["get","pod"," "," "],"kind":"runs","command":"get pod","args":[" "," "],"exit":0}
+{"line":["get","pod","--debug"],"kind":"runs","command":"get pod","flags":{"debug":true},"exit":0}
+{"line":["--debug","get","pod"],"kind":"runs","command":"get pod","flags":{"debug":true},"exit":0}
+{"line":["get","pod","--debug="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["--debug=","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["get","pod","--debug=false"],"kind":"runs","command":"get pod","flags":{"debug":false},"exit":0}
+{"line":["--debug=false","get","pod"],"kind":"runs","command":"get pod","flags":{"debug":false},"exit":0}
+{"line":["get","pod","--debug= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["--debug= ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --debug= has an empty value; a bool flag typed with = takes true or false","  hint: write --debug or --debug=true|false"]}
+{"line":["get","pod","-debug"],"kind":"runs","command":"get pod","flags":{"debug":true},"exit":0}
+{"line":["-debug","get","pod"],"kind":"runs","command":"get pod","flags":{"debug":true},"exit":0}
+{"line":["get","pod","--config","v"],"kind":"runs","command":"get pod","flags":{"config":"v"},"exit":0}
+{"line":["--config","v","get","pod"],"kind":"runs","command":"get pod","flags":{"config":"v"},"exit":0}
+{"line":["get","pod","--config=v"],"kind":"runs","command":"get pod","flags":{"config":"v"},"exit":0}
+{"line":["--config=v","get","pod"],"kind":"runs","command":"get pod","flags":{"config":"v"},"exit":0}
+{"line":["get","pod","-c","v"],"kind":"runs","command":"get pod","flags":{"config":"v"},"exit":0}
+{"line":["-c","v","get","pod"],"kind":"runs","command":"get pod","flags":{"config":"v"},"exit":0}
+{"line":["get","pod","--config"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --config; pass --help for usage","  hint: rancher schema"]}
+{"line":["--config","get","pod"],"kind":"error","command":"","errorClass":"unknown command","exit":2,"stderr":["error (VALIDATION): unknown command \"pod\"","  hint: rancher schema"]}
+{"line":["get","pod","--dry-run"],"kind":"runs","command":"get pod","flags":{"dry-run":true},"exit":0}
+{"line":["--dry-run","get","pod"],"kind":"runs","command":"get pod","flags":{"dry-run":true},"exit":0}
+{"line":["get","pod","--dry-run="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["--dry-run=","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["get","pod","--dry-run=false"],"kind":"runs","command":"get pod","flags":{"dry-run":false},"exit":0}
+{"line":["--dry-run=false","get","pod"],"kind":"runs","command":"get pod","flags":{"dry-run":false},"exit":0}
+{"line":["get","pod","--dry-run= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["--dry-run= ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --dry-run= has an empty value; a bool flag typed with = takes true or false","  hint: write --dry-run or --dry-run=true|false"]}
+{"line":["get","pod","-dry-run"],"kind":"runs","command":"get pod","flags":{"dry-run":true},"exit":0}
+{"line":["-dry-run","get","pod"],"kind":"runs","command":"get pod","flags":{"dry-run":true},"exit":0}
+{"line":["get","pod","--apply"],"kind":"runs","command":"get pod","flags":{"apply":true},"exit":0}
+{"line":["--apply","get","pod"],"kind":"runs","command":"get pod","flags":{"apply":true},"exit":0}
+{"line":["get","pod","--apply="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["--apply=","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["get","pod","--apply=false"],"kind":"runs","command":"get pod","flags":{"apply":false},"exit":0}
+{"line":["--apply=false","get","pod"],"kind":"runs","command":"get pod","flags":{"apply":false},"exit":0}
+{"line":["get","pod","--apply= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["--apply= ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --apply= has an empty value; a bool flag typed with = takes true or false","  hint: write --apply or --apply=true|false"]}
+{"line":["get","pod","-apply"],"kind":"runs","command":"get pod","flags":{"apply":true},"exit":0}
+{"line":["-apply","get","pod"],"kind":"runs","command":"get pod","flags":{"apply":true},"exit":0}
+{"line":["--yes=false","get","pod"],"kind":"runs","command":"get pod","flags":{"yes":false},"exit":0}
+{"line":["get","pod","-yes"],"kind":"runs","command":"get pod","flags":{"yes":true},"exit":0}
+{"line":["-yes","get","pod"],"kind":"runs","command":"get pod","flags":{"yes":true},"exit":0}
+{"line":["get","pod","--allow-deprecated"],"kind":"runs","command":"get pod","flags":{"allow-deprecated":true},"exit":0}
+{"line":["--allow-deprecated","get","pod"],"kind":"runs","command":"get pod","flags":{"allow-deprecated":true},"exit":0}
+{"line":["get","pod","--allow-deprecated="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["--allow-deprecated=","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["get","pod","--allow-deprecated=false"],"kind":"runs","command":"get pod","flags":{"allow-deprecated":false},"exit":0}
+{"line":["--allow-deprecated=false","get","pod"],"kind":"runs","command":"get pod","flags":{"allow-deprecated":false},"exit":0}
+{"line":["get","pod","--allow-deprecated= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["--allow-deprecated= ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --allow-deprecated= has an empty value; a bool flag typed with = takes true or false","  hint: write --allow-deprecated or --allow-deprecated=true|false"]}
+{"line":["get","pod","-allow-deprecated"],"kind":"runs","command":"get pod","flags":{"allow-deprecated":true},"exit":0}
+{"line":["-allow-deprecated","get","pod"],"kind":"runs","command":"get pod","flags":{"allow-deprecated":true},"exit":0}
+{"line":["get","pod","--no-input"],"kind":"runs","command":"get pod","flags":{"no-input":true},"exit":0}
+{"line":["--no-input","get","pod"],"kind":"runs","command":"get pod","flags":{"no-input":true},"exit":0}
+{"line":["get","pod","--no-input="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["--no-input=","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["get","pod","--no-input=false"],"kind":"runs","command":"get pod","flags":{"no-input":false},"exit":0}
+{"line":["--no-input=false","get","pod"],"kind":"runs","command":"get pod","flags":{"no-input":false},"exit":0}
+{"line":["get","pod","--no-input= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["--no-input= ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-input= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-input or --no-input=true|false"]}
+{"line":["get","pod","-no-input"],"kind":"runs","command":"get pod","flags":{"no-input":true},"exit":0}
+{"line":["-no-input","get","pod"],"kind":"runs","command":"get pod","flags":{"no-input":true},"exit":0}
+{"line":["get","pod","--output","v"],"kind":"runs","command":"get pod","flags":{"output":"v"},"exit":0}
+{"line":["--output","v","get","pod"],"kind":"runs","command":"get pod","flags":{"output":"v"},"exit":0}
+{"line":["get","pod","--output=v"],"kind":"runs","command":"get pod","flags":{"output":"v"},"exit":0}
+{"line":["--output=v","get","pod"],"kind":"runs","command":"get pod","flags":{"output":"v"},"exit":0}
+{"line":["get","pod","-o","v"],"kind":"runs","command":"get pod","flags":{"output":"v"},"exit":0}
+{"line":["-o","v","get","pod"],"kind":"runs","command":"get pod","flags":{"output":"v"},"exit":0}
+{"line":["get","pod","--color","v"],"kind":"runs","command":"get pod","flags":{"color":"v"},"exit":0}
+{"line":["--color","v","get","pod"],"kind":"runs","command":"get pod","flags":{"color":"v"},"exit":0}
+{"line":["get","pod","--color=v"],"kind":"runs","command":"get pod","flags":{"color":"v"},"exit":0}
+{"line":["--color=v","get","pod"],"kind":"runs","command":"get pod","flags":{"color":"v"},"exit":0}
+{"line":["get","pod","-color","v"],"kind":"runs","command":"get pod","flags":{"color":"v"},"exit":0}
+{"line":["-color","v","get","pod"],"kind":"runs","command":"get pod","flags":{"color":"v"},"exit":0}
+{"line":["get","pod","--project","v"],"kind":"runs","command":"get pod","flags":{"project":"v"},"exit":0}
+{"line":["--project","v","get","pod"],"kind":"runs","command":"get pod","flags":{"project":"v"},"exit":0}
+{"line":["get","pod","--project=v"],"kind":"runs","command":"get pod","flags":{"project":"v"},"exit":0}
+{"line":["--project=v","get","pod"],"kind":"runs","command":"get pod","flags":{"project":"v"},"exit":0}
+{"line":["get","pod","-project","v"],"kind":"runs","command":"get pod","flags":{"project":"v"},"exit":0}
+{"line":["-project","v","get","pod"],"kind":"runs","command":"get pod","flags":{"project":"v"},"exit":0}
+{"line":["get","pod","--read-only"],"kind":"runs","command":"get pod","flags":{"read-only":true},"exit":0}
+{"line":["--read-only","get","pod"],"kind":"runs","command":"get pod","flags":{"read-only":true},"exit":0}
+{"line":["get","pod","--read-only="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["--read-only=","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["get","pod","--read-only=false"],"kind":"runs","command":"get pod","flags":{"read-only":false},"exit":0}
+{"line":["--read-only=false","get","pod"],"kind":"runs","command":"get pod","flags":{"read-only":false},"exit":0}
+{"line":["get","pod","--read-only= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["--read-only= ","get","pod"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --read-only= has an empty value; a bool flag typed with = takes true or false","  hint: write --read-only or --read-only=true|false"]}
+{"line":["get","pod","-read-only"],"kind":"runs","command":"get pod","flags":{"read-only":true},"exit":0}
+{"line":["-read-only","get","pod"],"kind":"runs","command":"get pod","flags":{"read-only":true},"exit":0}
+{"line":["get","pod","--cluster","v"],"kind":"runs","command":"get pod","flags":{"cluster":"v"},"exit":0}
+{"line":["get","pod","--cluster=v"],"kind":"runs","command":"get pod","flags":{"cluster":"v"},"exit":0}
+{"line":["get","pod","-cluster","v"],"kind":"runs","command":"get pod","flags":{"cluster":"v"},"exit":0}
+{"line":["get","pod","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","pod","--namespace","v"],"kind":"runs","command":"get pod","flags":{"namespace":"v"},"exit":0}
+{"line":["get","pod","--namespace=v"],"kind":"runs","command":"get pod","flags":{"namespace":"v"},"exit":0}
+{"line":["get","pod","-n","v"],"kind":"runs","command":"get pod","flags":{"namespace":"v"},"exit":0}
+{"line":["get","pod","--selector","v"],"kind":"runs","command":"get pod","flags":{"selector":"v"},"exit":0}
+{"line":["get","pod","--selector=v"],"kind":"runs","command":"get pod","flags":{"selector":"v"},"exit":0}
+{"line":["get","pod","-l","v"],"kind":"runs","command":"get pod","flags":{"selector":"v"},"exit":0}
+{"line":["get","pod","--wait"],"kind":"runs","command":"get pod","flags":{"wait":true},"exit":0}
+{"line":["get","pod","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","pod","--wait=false"],"kind":"runs","command":"get pod","flags":{"wait":false},"exit":0}
+{"line":["get","pod","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","pod","-wait"],"kind":"runs","command":"get pod","flags":{"wait":true},"exit":0}
+{"line":["get","pod","--for","v"],"kind":"runs","command":"get pod","flags":{"for":"v"},"exit":0}
+{"line":["get","pod","--for=v"],"kind":"runs","command":"get pod","flags":{"for":"v"},"exit":0}
+{"line":["get","pod","-for","v"],"kind":"runs","command":"get pod","flags":{"for":"v"},"exit":0}
+{"line":["get","pod","--timeout","v"],"kind":"runs","command":"get pod","flags":{"timeout":"v"},"exit":0}
+{"line":["get","pod","--timeout=v"],"kind":"runs","command":"get pod","flags":{"timeout":"v"},"exit":0}
+{"line":["get","pod","-timeout","v"],"kind":"runs","command":"get pod","flags":{"timeout":"v"},"exit":0}
+{"line":["get","pod"],"kind":"runs","command":"get pod","exit":0}
+{"line":["get","pods"],"kind":"runs","command":"get pod","exit":0}
+{"line":["get","po"],"kind":"runs","command":"get pod","exit":0}
+{"line":["get","pods","--help"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","x","-","y"],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): the words after a - on its own are not used: 'y'","  hint: put - last, or after -- when it is meant as an argument"]}
+{"line":["get","pod","-o","--yes"],"kind":"refused","command":"get pod","flags":{"output":"--yes"},"exit":2,"stderr":["error (VALIDATION): flag -o got flag --yes as its value - empty shell variable? check that the value for -o is set, or use -o=<value> to pass a literal flag-like string"]}
+{"line":["get","pod","--config="],"kind":"runs","command":"get pod","flags":{"config":""},"exit":2,"stderr":["error (VALIDATION): --config is empty; pass a value or omit --config"]}
+{"line":["get","pod","--config="],"env":{"RANCHER_CLI_CONFIG_DIR":""},"kind":"runs","command":"get pod","flags":{"config":""},"exit":0}
+{"line":["get","pod","--config="],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":""},"exit":2,"stderr":["error (VALIDATION): --config is empty; pass a value or omit --config"]}
+{"line":["get","pod","--config",""],"kind":"runs","command":"get pod","flags":{"config":""},"exit":2,"stderr":["error (VALIDATION): --config is empty; pass a value or omit --config"]}
+{"line":["get","pod","--config",""],"env":{"RANCHER_CLI_CONFIG_DIR":""},"kind":"runs","command":"get pod","flags":{"config":""},"exit":0}
+{"line":["get","pod","--config",""],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":""},"exit":2,"stderr":["error (VALIDATION): --config is empty; pass a value or omit --config"]}
+{"line":["get","pod","--config= "],"kind":"runs","command":"get pod","flags":{"config":" "},"exit":2,"stderr":["error (VALIDATION): --config is empty; pass a value or omit --config"]}
+{"line":["get","pod","--config= "],"env":{"RANCHER_CLI_CONFIG_DIR":""},"kind":"runs","command":"get pod","flags":{"config":" "},"exit":0}
+{"line":["get","pod","--config= "],"env":{"RANCHER_CLI_CONFIG_DIR":" "},"kind":"runs","command":"get pod","flags":{"config":" "},"exit":2,"stderr":["error (VALIDATION): RANCHER_CLI_CONFIG_DIR is empty; set it to a directory or unset it"]}
+{"line":["get","pod","--config= "],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":" "},"exit":2,"stderr":["error (VALIDATION): --config is empty; pass a value or omit --config"]}
+{"line":["get","pod","--config"," "],"kind":"runs","command":"get pod","flags":{"config":" "},"exit":2,"stderr":["error (VALIDATION): --config is empty; pass a value or omit --config"]}
+{"line":["get","pod","--config"," "],"env":{"RANCHER_CLI_CONFIG_DIR":""},"kind":"runs","command":"get pod","flags":{"config":" "},"exit":0}
+{"line":["get","pod","--config"," "],"env":{"RANCHER_CLI_CONFIG_DIR":" "},"kind":"runs","command":"get pod","flags":{"config":" "},"exit":2,"stderr":["error (VALIDATION): RANCHER_CLI_CONFIG_DIR is empty; set it to a directory or unset it"]}
+{"line":["get","pod","--config"," "],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":" "},"exit":2,"stderr":["error (VALIDATION): --config is empty; pass a value or omit --config"]}
+{"line":["get","pod"],"env":{"RANCHER_CLI_CONFIG_DIR":""},"kind":"runs","command":"get pod","flags":{"config":""},"exit":0}
+{"line":["get","pod"],"env":{"RANCHER_CLI_CONFIG_DIR":" "},"kind":"runs","command":"get pod","flags":{"config":" "},"exit":2,"stderr":["error (VALIDATION): RANCHER_CLI_CONFIG_DIR is empty; set it to a directory or unset it"]}
+{"line":["get","pod"],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":"/parse/config"},"exit":0}
+{"line":["get","pod","--config","/parse/other"],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":"/parse/other"},"exit":0}
+{"line":["get","pod","-c","/parse/other"],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":"/parse/other"},"exit":0}
+{"line":["get","pod","--help"],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}

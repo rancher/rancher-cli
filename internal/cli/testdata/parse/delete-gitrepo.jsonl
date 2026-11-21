@@ -1,0 +1,18 @@
+{"line":["delete","gitrepo","--namespace","v"],"kind":"runs","command":"delete gitrepo","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","gitrepo","--namespace=v"],"kind":"runs","command":"delete gitrepo","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","gitrepo","-n","v"],"kind":"runs","command":"delete gitrepo","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","gitrepo","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","gitrepo","--wait"],"kind":"runs","command":"delete gitrepo","flags":{"wait":true},"exit":0}
+{"line":["delete","gitrepo","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","gitrepo","--wait=false"],"kind":"runs","command":"delete gitrepo","flags":{"wait":false},"exit":0}
+{"line":["delete","gitrepo","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","gitrepo","-wait"],"kind":"runs","command":"delete gitrepo","flags":{"wait":true},"exit":0}
+{"line":["delete","gitrepo","--timeout","v"],"kind":"runs","command":"delete gitrepo","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","gitrepo","--timeout=v"],"kind":"runs","command":"delete gitrepo","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","gitrepo","-timeout","v"],"kind":"runs","command":"delete gitrepo","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","gitrepo"],"kind":"runs","command":"delete gitrepo","exit":0}
+{"line":["delete","gitrepo","--help"],"kind":"help","command":"delete gitrepo","exit":0,"helpPath":"delete-gitrepo.txt"}
+{"line":["delete","gitrepo","x"],"kind":"runs","command":"delete gitrepo","args":["x"],"exit":0}
+{"line":["delete","gitrepo","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","gitrepos"],"kind":"runs","command":"delete gitrepo","exit":0}
+{"line":["delete","gitrepos","--help"],"kind":"help","command":"delete gitrepo","exit":0,"helpPath":"delete-gitrepo.txt"}

@@ -1,0 +1,28 @@
+{"line":["get","networkpolicy","--cluster","v"],"kind":"runs","command":"get networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["get","networkpolicy","--cluster=v"],"kind":"runs","command":"get networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["get","networkpolicy","-cluster","v"],"kind":"runs","command":"get networkpolicy","flags":{"cluster":"v"},"exit":0}
+{"line":["get","networkpolicy","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","networkpolicy","--namespace","v"],"kind":"runs","command":"get networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["get","networkpolicy","--namespace=v"],"kind":"runs","command":"get networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["get","networkpolicy","-n","v"],"kind":"runs","command":"get networkpolicy","flags":{"namespace":"v"},"exit":0}
+{"line":["get","networkpolicy","--selector","v"],"kind":"runs","command":"get networkpolicy","flags":{"selector":"v"},"exit":0}
+{"line":["get","networkpolicy","--selector=v"],"kind":"runs","command":"get networkpolicy","flags":{"selector":"v"},"exit":0}
+{"line":["get","networkpolicy","-l","v"],"kind":"runs","command":"get networkpolicy","flags":{"selector":"v"},"exit":0}
+{"line":["get","networkpolicy","--wait"],"kind":"runs","command":"get networkpolicy","flags":{"wait":true},"exit":0}
+{"line":["get","networkpolicy","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","networkpolicy","--wait=false"],"kind":"runs","command":"get networkpolicy","flags":{"wait":false},"exit":0}
+{"line":["get","networkpolicy","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","networkpolicy","-wait"],"kind":"runs","command":"get networkpolicy","flags":{"wait":true},"exit":0}
+{"line":["get","networkpolicy","--for","v"],"kind":"runs","command":"get networkpolicy","flags":{"for":"v"},"exit":0}
+{"line":["get","networkpolicy","--for=v"],"kind":"runs","command":"get networkpolicy","flags":{"for":"v"},"exit":0}
+{"line":["get","networkpolicy","-for","v"],"kind":"runs","command":"get networkpolicy","flags":{"for":"v"},"exit":0}
+{"line":["get","networkpolicy","--timeout","v"],"kind":"runs","command":"get networkpolicy","flags":{"timeout":"v"},"exit":0}
+{"line":["get","networkpolicy","--timeout=v"],"kind":"runs","command":"get networkpolicy","flags":{"timeout":"v"},"exit":0}
+{"line":["get","networkpolicy","-timeout","v"],"kind":"runs","command":"get networkpolicy","flags":{"timeout":"v"},"exit":0}
+{"line":["get","networkpolicy"],"kind":"runs","command":"get networkpolicy","exit":0}
+{"line":["get","networkpolicy","--help"],"kind":"help","command":"get networkpolicy","exit":0,"helpPath":"get-networkpolicy.txt"}
+{"line":["get","networkpolicy","x"],"kind":"runs","command":"get networkpolicy","args":["x"],"exit":0}
+{"line":["get","networkpolicy","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","networkpolicies"],"kind":"runs","command":"get networkpolicy","exit":0}
+{"line":["get","netpol"],"kind":"runs","command":"get networkpolicy","exit":0}
+{"line":["get","networkpolicies","--help"],"kind":"help","command":"get networkpolicy","exit":0,"helpPath":"get-networkpolicy.txt"}

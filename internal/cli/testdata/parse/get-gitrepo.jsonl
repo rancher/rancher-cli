@@ -1,0 +1,24 @@
+{"line":["get","gitrepo","--namespace","v"],"kind":"runs","command":"get gitrepo","flags":{"namespace":"v"},"exit":0}
+{"line":["get","gitrepo","--namespace=v"],"kind":"runs","command":"get gitrepo","flags":{"namespace":"v"},"exit":0}
+{"line":["get","gitrepo","-n","v"],"kind":"runs","command":"get gitrepo","flags":{"namespace":"v"},"exit":0}
+{"line":["get","gitrepo","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","gitrepo","--selector","v"],"kind":"runs","command":"get gitrepo","flags":{"selector":"v"},"exit":0}
+{"line":["get","gitrepo","--selector=v"],"kind":"runs","command":"get gitrepo","flags":{"selector":"v"},"exit":0}
+{"line":["get","gitrepo","-l","v"],"kind":"runs","command":"get gitrepo","flags":{"selector":"v"},"exit":0}
+{"line":["get","gitrepo","--wait"],"kind":"runs","command":"get gitrepo","flags":{"wait":true},"exit":0}
+{"line":["get","gitrepo","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","gitrepo","--wait=false"],"kind":"runs","command":"get gitrepo","flags":{"wait":false},"exit":0}
+{"line":["get","gitrepo","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","gitrepo","-wait"],"kind":"runs","command":"get gitrepo","flags":{"wait":true},"exit":0}
+{"line":["get","gitrepo","--for","v"],"kind":"runs","command":"get gitrepo","flags":{"for":"v"},"exit":0}
+{"line":["get","gitrepo","--for=v"],"kind":"runs","command":"get gitrepo","flags":{"for":"v"},"exit":0}
+{"line":["get","gitrepo","-for","v"],"kind":"runs","command":"get gitrepo","flags":{"for":"v"},"exit":0}
+{"line":["get","gitrepo","--timeout","v"],"kind":"runs","command":"get gitrepo","flags":{"timeout":"v"},"exit":0}
+{"line":["get","gitrepo","--timeout=v"],"kind":"runs","command":"get gitrepo","flags":{"timeout":"v"},"exit":0}
+{"line":["get","gitrepo","-timeout","v"],"kind":"runs","command":"get gitrepo","flags":{"timeout":"v"},"exit":0}
+{"line":["get","gitrepo"],"kind":"runs","command":"get gitrepo","exit":0}
+{"line":["get","gitrepo","--help"],"kind":"help","command":"get gitrepo","exit":0,"helpPath":"get-gitrepo.txt"}
+{"line":["get","gitrepo","x"],"kind":"runs","command":"get gitrepo","args":["x"],"exit":0}
+{"line":["get","gitrepo","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","gitrepos"],"kind":"runs","command":"get gitrepo","exit":0}
+{"line":["get","gitrepos","--help"],"kind":"help","command":"get gitrepo","exit":0,"helpPath":"get-gitrepo.txt"}

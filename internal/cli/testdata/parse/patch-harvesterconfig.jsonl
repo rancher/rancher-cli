@@ -1,0 +1,19 @@
+{"line":["patch","harvesterconfig","--namespace","v"],"kind":"runs","command":"patch harvesterconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","harvesterconfig","--namespace=v"],"kind":"runs","command":"patch harvesterconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","harvesterconfig","-n","v"],"kind":"runs","command":"patch harvesterconfig","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","harvesterconfig","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","harvesterconfig","--patch","v"],"kind":"runs","command":"patch harvesterconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","harvesterconfig","--patch=v"],"kind":"runs","command":"patch harvesterconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","harvesterconfig","-p","v"],"kind":"runs","command":"patch harvesterconfig","flags":{"patch":"v"},"exit":0}
+{"line":["patch","harvesterconfig","--patch-file","v"],"kind":"runs","command":"patch harvesterconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","harvesterconfig","--patch-file=v"],"kind":"runs","command":"patch harvesterconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","harvesterconfig","-patch-file","v"],"kind":"runs","command":"patch harvesterconfig","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","harvesterconfig","--type","v"],"kind":"runs","command":"patch harvesterconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","harvesterconfig","--type=v"],"kind":"runs","command":"patch harvesterconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","harvesterconfig","-type","v"],"kind":"runs","command":"patch harvesterconfig","flags":{"type":"v"},"exit":0}
+{"line":["patch","harvesterconfig"],"kind":"runs","command":"patch harvesterconfig","exit":0}
+{"line":["patch","harvesterconfig","--help"],"kind":"help","command":"patch harvesterconfig","exit":0,"helpPath":"patch-harvesterconfig.txt"}
+{"line":["patch","harvesterconfig","x"],"kind":"runs","command":"patch harvesterconfig","args":["x"],"exit":0}
+{"line":["patch","harvesterconfig","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","harvesterconfigs"],"kind":"runs","command":"patch harvesterconfig","exit":0}
+{"line":["patch","harvesterconfigs","--help"],"kind":"help","command":"patch harvesterconfig","exit":0,"helpPath":"patch-harvesterconfig.txt"}

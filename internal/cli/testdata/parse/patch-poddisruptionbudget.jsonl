@@ -1,0 +1,23 @@
+{"line":["patch","poddisruptionbudget","--cluster","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--cluster=v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","-cluster","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","poddisruptionbudget","--namespace","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--namespace=v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","-n","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--patch","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"patch":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--patch=v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"patch":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","-p","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"patch":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--patch-file","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--patch-file=v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","-patch-file","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--type","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"type":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","--type=v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"type":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget","-type","v"],"kind":"runs","command":"patch poddisruptionbudget","flags":{"type":"v"},"exit":0}
+{"line":["patch","poddisruptionbudget"],"kind":"runs","command":"patch poddisruptionbudget","exit":0}
+{"line":["patch","poddisruptionbudget","--help"],"kind":"help","command":"patch poddisruptionbudget","exit":0,"helpPath":"patch-poddisruptionbudget.txt"}
+{"line":["patch","poddisruptionbudget","x"],"kind":"runs","command":"patch poddisruptionbudget","args":["x"],"exit":0}
+{"line":["patch","poddisruptionbudget","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","poddisruptionbudgets"],"kind":"runs","command":"patch poddisruptionbudget","exit":0}
+{"line":["patch","pdb"],"kind":"runs","command":"patch poddisruptionbudget","exit":0}
+{"line":["patch","poddisruptionbudgets","--help"],"kind":"help","command":"patch poddisruptionbudget","exit":0,"helpPath":"patch-poddisruptionbudget.txt"}

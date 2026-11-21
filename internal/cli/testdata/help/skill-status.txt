@@ -1,0 +1,18 @@
+NAME:
+   rancher skill status - Report, for each harness, the installed skill version and whether its files are unchanged
+
+USAGE:
+   rancher skill status [options]
+
+OPTIONS:
+   --agent all          target harness (or all; default all)
+   --help, -h           show help
+   --require-installed  fail when a selected target is absent
+   --scope scope        install location scope to check: user or project (default user)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>

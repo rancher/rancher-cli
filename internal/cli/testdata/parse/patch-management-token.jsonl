@@ -1,0 +1,19 @@
+{"line":["patch","management-token","--patch","v"],"kind":"runs","command":"patch management-token","flags":{"patch":"v"},"exit":0}
+{"line":["patch","management-token","--patch=v"],"kind":"runs","command":"patch management-token","flags":{"patch":"v"},"exit":0}
+{"line":["patch","management-token","-p","v"],"kind":"runs","command":"patch management-token","flags":{"patch":"v"},"exit":0}
+{"line":["patch","management-token","--patch"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --patch; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","management-token","--patch-file","v"],"kind":"runs","command":"patch management-token","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","management-token","--patch-file=v"],"kind":"runs","command":"patch management-token","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","management-token","-patch-file","v"],"kind":"runs","command":"patch management-token","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","management-token","--type","v"],"kind":"runs","command":"patch management-token","flags":{"type":"v"},"exit":0}
+{"line":["patch","management-token","--type=v"],"kind":"runs","command":"patch management-token","flags":{"type":"v"},"exit":0}
+{"line":["patch","management-token","-type","v"],"kind":"runs","command":"patch management-token","flags":{"type":"v"},"exit":0}
+{"line":["patch","management-token"],"kind":"runs","command":"patch management-token","exit":0}
+{"line":["patch","management-token","--help"],"kind":"help","command":"patch management-token","exit":0,"helpPath":"patch-management-token.txt"}
+{"line":["patch","management-token","x"],"kind":"runs","command":"patch management-token","args":["x"],"exit":0}
+{"line":["patch","management-token","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","managementtokens"],"kind":"runs","command":"patch management-token","exit":0}
+{"line":["patch","management-tokens"],"kind":"runs","command":"patch management-token","exit":0}
+{"line":["patch","v3token"],"kind":"runs","command":"patch management-token","exit":0}
+{"line":["patch","v3tokens"],"kind":"runs","command":"patch management-token","exit":0}
+{"line":["patch","managementtokens","--help"],"kind":"help","command":"patch management-token","exit":0,"helpPath":"patch-management-token.txt"}

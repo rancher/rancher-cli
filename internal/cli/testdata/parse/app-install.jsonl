@@ -1,0 +1,60 @@
+{"line":["app","install","--cluster","v"],"kind":"runs","command":"app install","flags":{"cluster":"v"},"exit":0}
+{"line":["app","install","--cluster=v"],"kind":"runs","command":"app install","flags":{"cluster":"v"},"exit":0}
+{"line":["app","install","-cluster","v"],"kind":"runs","command":"app install","flags":{"cluster":"v"},"exit":0}
+{"line":["app","install","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["app","install","--namespace","v"],"kind":"runs","command":"app install","flags":{"namespace":"v"},"exit":0}
+{"line":["app","install","--namespace=v"],"kind":"runs","command":"app install","flags":{"namespace":"v"},"exit":0}
+{"line":["app","install","-n","v"],"kind":"runs","command":"app install","flags":{"namespace":"v"},"exit":0}
+{"line":["app","install","--repo","v"],"kind":"runs","command":"app install","flags":{"repo":"v"},"exit":0}
+{"line":["app","install","--repo=v"],"kind":"runs","command":"app install","flags":{"repo":"v"},"exit":0}
+{"line":["app","install","-repo","v"],"kind":"runs","command":"app install","flags":{"repo":"v"},"exit":0}
+{"line":["app","install","--chart","v"],"kind":"runs","command":"app install","flags":{"chart":"v"},"exit":0}
+{"line":["app","install","--chart=v"],"kind":"runs","command":"app install","flags":{"chart":"v"},"exit":0}
+{"line":["app","install","-chart","v"],"kind":"runs","command":"app install","flags":{"chart":"v"},"exit":0}
+{"line":["app","install","--version","v"],"kind":"runs","command":"app install","flags":{"version":"v"},"exit":0}
+{"line":["app","install","--version=v"],"kind":"runs","command":"app install","flags":{"version":"v"},"exit":0}
+{"line":["app","install","-version","v"],"kind":"runs","command":"app install","flags":{"version":"v"},"exit":0}
+{"line":["app","install","--values","v"],"kind":"runs","command":"app install","flags":{"values":["v"]},"exit":0}
+{"line":["app","install","--values=v"],"kind":"runs","command":"app install","flags":{"values":["v"]},"exit":0}
+{"line":["app","install","-values","v"],"kind":"runs","command":"app install","flags":{"values":["v"]},"exit":0}
+{"line":["app","install","--helm-wait"],"kind":"runs","command":"app install","flags":{"helm-wait":true},"exit":0}
+{"line":["app","install","--helm-wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --helm-wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --helm-wait or --helm-wait=true|false"]}
+{"line":["app","install","--helm-wait=false"],"kind":"runs","command":"app install","flags":{"helm-wait":false},"exit":0}
+{"line":["app","install","--helm-wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --helm-wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --helm-wait or --helm-wait=true|false"]}
+{"line":["app","install","-helm-wait"],"kind":"runs","command":"app install","flags":{"helm-wait":true},"exit":0}
+{"line":["app","install","--helm-timeout","v"],"kind":"runs","command":"app install","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","install","--helm-timeout=v"],"kind":"runs","command":"app install","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","install","-helm-timeout","v"],"kind":"runs","command":"app install","flags":{"helm-timeout":"v"},"exit":0}
+{"line":["app","install","--no-hooks"],"kind":"runs","command":"app install","flags":{"no-hooks":true},"exit":0}
+{"line":["app","install","--no-hooks="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-hooks= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-hooks or --no-hooks=true|false"]}
+{"line":["app","install","--no-hooks=false"],"kind":"runs","command":"app install","flags":{"no-hooks":false},"exit":0}
+{"line":["app","install","--no-hooks= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-hooks= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-hooks or --no-hooks=true|false"]}
+{"line":["app","install","-no-hooks"],"kind":"runs","command":"app install","flags":{"no-hooks":true},"exit":0}
+{"line":["app","install","--disable-openapi-validation"],"kind":"runs","command":"app install","flags":{"disable-openapi-validation":true},"exit":0}
+{"line":["app","install","--disable-openapi-validation="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --disable-openapi-validation= has an empty value; a bool flag typed with = takes true or false","  hint: write --disable-openapi-validation or --disable-openapi-validation=true|false"]}
+{"line":["app","install","--disable-openapi-validation=false"],"kind":"runs","command":"app install","flags":{"disable-openapi-validation":false},"exit":0}
+{"line":["app","install","--disable-openapi-validation= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --disable-openapi-validation= has an empty value; a bool flag typed with = takes true or false","  hint: write --disable-openapi-validation or --disable-openapi-validation=true|false"]}
+{"line":["app","install","-disable-openapi-validation"],"kind":"runs","command":"app install","flags":{"disable-openapi-validation":true},"exit":0}
+{"line":["app","install","--description","v"],"kind":"runs","command":"app install","flags":{"description":"v"},"exit":0}
+{"line":["app","install","--description=v"],"kind":"runs","command":"app install","flags":{"description":"v"},"exit":0}
+{"line":["app","install","-description","v"],"kind":"runs","command":"app install","flags":{"description":"v"},"exit":0}
+{"line":["app","install","--system-default-registry","v"],"kind":"runs","command":"app install","flags":{"system-default-registry":"v"},"exit":0}
+{"line":["app","install","--system-default-registry=v"],"kind":"runs","command":"app install","flags":{"system-default-registry":"v"},"exit":0}
+{"line":["app","install","-system-default-registry","v"],"kind":"runs","command":"app install","flags":{"system-default-registry":"v"},"exit":0}
+{"line":["app","install","--no-system-default-registry"],"kind":"runs","command":"app install","flags":{"no-system-default-registry":true},"exit":0}
+{"line":["app","install","--no-system-default-registry="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-system-default-registry= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-system-default-registry or --no-system-default-registry=true|false"]}
+{"line":["app","install","--no-system-default-registry=false"],"kind":"runs","command":"app install","flags":{"no-system-default-registry":false},"exit":0}
+{"line":["app","install","--no-system-default-registry= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --no-system-default-registry= has an empty value; a bool flag typed with = takes true or false","  hint: write --no-system-default-registry or --no-system-default-registry=true|false"]}
+{"line":["app","install","-no-system-default-registry"],"kind":"runs","command":"app install","flags":{"no-system-default-registry":true},"exit":0}
+{"line":["app","install","--wait"],"kind":"runs","command":"app install","flags":{"wait":true},"exit":0}
+{"line":["app","install","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["app","install","--wait=false"],"kind":"runs","command":"app install","flags":{"wait":false},"exit":0}
+{"line":["app","install","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["app","install","-wait"],"kind":"runs","command":"app install","flags":{"wait":true},"exit":0}
+{"line":["app","install","--timeout","v"],"kind":"runs","command":"app install","flags":{"timeout":"v"},"exit":0}
+{"line":["app","install","--timeout=v"],"kind":"runs","command":"app install","flags":{"timeout":"v"},"exit":0}
+{"line":["app","install","-timeout","v"],"kind":"runs","command":"app install","flags":{"timeout":"v"},"exit":0}
+{"line":["app","install"],"kind":"runs","command":"app install","exit":0}
+{"line":["app","install","--help"],"kind":"help","command":"app install","exit":0,"helpPath":"app-install.txt"}
+{"line":["app","install","x"],"kind":"runs","command":"app install","args":["x"],"exit":0}
+{"line":["app","install","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

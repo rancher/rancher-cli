@@ -1,0 +1,19 @@
+{"line":["patch","amazonec2config","--namespace","v"],"kind":"runs","command":"patch amazonec2config","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","amazonec2config","--namespace=v"],"kind":"runs","command":"patch amazonec2config","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","amazonec2config","-n","v"],"kind":"runs","command":"patch amazonec2config","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","amazonec2config","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","amazonec2config","--patch","v"],"kind":"runs","command":"patch amazonec2config","flags":{"patch":"v"},"exit":0}
+{"line":["patch","amazonec2config","--patch=v"],"kind":"runs","command":"patch amazonec2config","flags":{"patch":"v"},"exit":0}
+{"line":["patch","amazonec2config","-p","v"],"kind":"runs","command":"patch amazonec2config","flags":{"patch":"v"},"exit":0}
+{"line":["patch","amazonec2config","--patch-file","v"],"kind":"runs","command":"patch amazonec2config","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","amazonec2config","--patch-file=v"],"kind":"runs","command":"patch amazonec2config","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","amazonec2config","-patch-file","v"],"kind":"runs","command":"patch amazonec2config","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","amazonec2config","--type","v"],"kind":"runs","command":"patch amazonec2config","flags":{"type":"v"},"exit":0}
+{"line":["patch","amazonec2config","--type=v"],"kind":"runs","command":"patch amazonec2config","flags":{"type":"v"},"exit":0}
+{"line":["patch","amazonec2config","-type","v"],"kind":"runs","command":"patch amazonec2config","flags":{"type":"v"},"exit":0}
+{"line":["patch","amazonec2config"],"kind":"runs","command":"patch amazonec2config","exit":0}
+{"line":["patch","amazonec2config","--help"],"kind":"help","command":"patch amazonec2config","exit":0,"helpPath":"patch-amazonec2config.txt"}
+{"line":["patch","amazonec2config","x"],"kind":"runs","command":"patch amazonec2config","args":["x"],"exit":0}
+{"line":["patch","amazonec2config","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","amazonec2configs"],"kind":"runs","command":"patch amazonec2config","exit":0}
+{"line":["patch","amazonec2configs","--help"],"kind":"help","command":"patch amazonec2config","exit":0,"helpPath":"patch-amazonec2config.txt"}

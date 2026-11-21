@@ -1,0 +1,26 @@
+{"line":["get","user","--selector","v"],"kind":"runs","command":"get user","flags":{"selector":"v"},"exit":0}
+{"line":["get","user","--selector=v"],"kind":"runs","command":"get user","flags":{"selector":"v"},"exit":0}
+{"line":["get","user","-l","v"],"kind":"runs","command":"get user","flags":{"selector":"v"},"exit":0}
+{"line":["get","user","--selector"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --selector; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","user","--wait"],"kind":"runs","command":"get user","flags":{"wait":true},"exit":0}
+{"line":["get","user","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","user","--wait=false"],"kind":"runs","command":"get user","flags":{"wait":false},"exit":0}
+{"line":["get","user","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","user","-wait"],"kind":"runs","command":"get user","flags":{"wait":true},"exit":0}
+{"line":["get","user","--for","v"],"kind":"runs","command":"get user","flags":{"for":"v"},"exit":0}
+{"line":["get","user","--for=v"],"kind":"runs","command":"get user","flags":{"for":"v"},"exit":0}
+{"line":["get","user","-for","v"],"kind":"runs","command":"get user","flags":{"for":"v"},"exit":0}
+{"line":["get","user","--timeout","v"],"kind":"runs","command":"get user","flags":{"timeout":"v"},"exit":0}
+{"line":["get","user","--timeout=v"],"kind":"runs","command":"get user","flags":{"timeout":"v"},"exit":0}
+{"line":["get","user","-timeout","v"],"kind":"runs","command":"get user","flags":{"timeout":"v"},"exit":0}
+{"line":["get","user","--include-system"],"kind":"runs","command":"get user","flags":{"include-system":true},"exit":0}
+{"line":["get","user","--include-system="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --include-system= has an empty value; a bool flag typed with = takes true or false","  hint: write --include-system or --include-system=true|false"]}
+{"line":["get","user","--include-system=false"],"kind":"runs","command":"get user","flags":{"include-system":false},"exit":0}
+{"line":["get","user","--include-system= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --include-system= has an empty value; a bool flag typed with = takes true or false","  hint: write --include-system or --include-system=true|false"]}
+{"line":["get","user","-include-system"],"kind":"runs","command":"get user","flags":{"include-system":true},"exit":0}
+{"line":["get","user"],"kind":"runs","command":"get user","exit":0}
+{"line":["get","user","--help"],"kind":"help","command":"get user","exit":0,"helpPath":"get-user.txt"}
+{"line":["get","user","x"],"kind":"runs","command":"get user","args":["x"],"exit":0}
+{"line":["get","user","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","users"],"kind":"runs","command":"get user","exit":0}
+{"line":["get","users","--help"],"kind":"help","command":"get user","exit":0,"helpPath":"get-user.txt"}

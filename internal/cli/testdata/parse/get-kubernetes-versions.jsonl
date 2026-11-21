@@ -1,0 +1,4 @@
+{"line":["get","kubernetes-versions"],"kind":"runs","command":"get kubernetes-versions","exit":0}
+{"line":["get","kubernetes-versions","--help"],"kind":"help","command":"get kubernetes-versions","exit":0,"helpPath":"get-kubernetes-versions.txt"}
+{"line":["get","kubernetes-versions","x"],"kind":"runs","command":"get kubernetes-versions","args":["x"],"exit":0}
+{"line":["get","kubernetes-versions","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

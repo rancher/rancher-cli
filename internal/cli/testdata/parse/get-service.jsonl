@@ -1,0 +1,28 @@
+{"line":["get","service","--cluster","v"],"kind":"runs","command":"get service","flags":{"cluster":"v"},"exit":0}
+{"line":["get","service","--cluster=v"],"kind":"runs","command":"get service","flags":{"cluster":"v"},"exit":0}
+{"line":["get","service","-cluster","v"],"kind":"runs","command":"get service","flags":{"cluster":"v"},"exit":0}
+{"line":["get","service","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","service","--namespace","v"],"kind":"runs","command":"get service","flags":{"namespace":"v"},"exit":0}
+{"line":["get","service","--namespace=v"],"kind":"runs","command":"get service","flags":{"namespace":"v"},"exit":0}
+{"line":["get","service","-n","v"],"kind":"runs","command":"get service","flags":{"namespace":"v"},"exit":0}
+{"line":["get","service","--selector","v"],"kind":"runs","command":"get service","flags":{"selector":"v"},"exit":0}
+{"line":["get","service","--selector=v"],"kind":"runs","command":"get service","flags":{"selector":"v"},"exit":0}
+{"line":["get","service","-l","v"],"kind":"runs","command":"get service","flags":{"selector":"v"},"exit":0}
+{"line":["get","service","--wait"],"kind":"runs","command":"get service","flags":{"wait":true},"exit":0}
+{"line":["get","service","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","service","--wait=false"],"kind":"runs","command":"get service","flags":{"wait":false},"exit":0}
+{"line":["get","service","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","service","-wait"],"kind":"runs","command":"get service","flags":{"wait":true},"exit":0}
+{"line":["get","service","--for","v"],"kind":"runs","command":"get service","flags":{"for":"v"},"exit":0}
+{"line":["get","service","--for=v"],"kind":"runs","command":"get service","flags":{"for":"v"},"exit":0}
+{"line":["get","service","-for","v"],"kind":"runs","command":"get service","flags":{"for":"v"},"exit":0}
+{"line":["get","service","--timeout","v"],"kind":"runs","command":"get service","flags":{"timeout":"v"},"exit":0}
+{"line":["get","service","--timeout=v"],"kind":"runs","command":"get service","flags":{"timeout":"v"},"exit":0}
+{"line":["get","service","-timeout","v"],"kind":"runs","command":"get service","flags":{"timeout":"v"},"exit":0}
+{"line":["get","service"],"kind":"runs","command":"get service","exit":0}
+{"line":["get","service","--help"],"kind":"help","command":"get service","exit":0,"helpPath":"get-service.txt"}
+{"line":["get","service","x"],"kind":"runs","command":"get service","args":["x"],"exit":0}
+{"line":["get","service","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","services"],"kind":"runs","command":"get service","exit":0}
+{"line":["get","svc"],"kind":"runs","command":"get service","exit":0}
+{"line":["get","services","--help"],"kind":"help","command":"get service","exit":0,"helpPath":"get-service.txt"}

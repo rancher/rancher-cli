@@ -1,0 +1,16 @@
+{"line":["config","update-server","--url","v"],"kind":"runs","command":"config update-server","flags":{"url":"v"},"exit":0}
+{"line":["config","update-server","--url=v"],"kind":"runs","command":"config update-server","flags":{"url":"v"},"exit":0}
+{"line":["config","update-server","-url","v"],"kind":"runs","command":"config update-server","flags":{"url":"v"},"exit":0}
+{"line":["config","update-server","--url"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --url; pass --help for usage","  hint: rancher schema"]}
+{"line":["config","update-server","--cacert","v"],"kind":"runs","command":"config update-server","flags":{"cacert":"v"},"exit":0}
+{"line":["config","update-server","--cacert=v"],"kind":"runs","command":"config update-server","flags":{"cacert":"v"},"exit":0}
+{"line":["config","update-server","-cacert","v"],"kind":"runs","command":"config update-server","flags":{"cacert":"v"},"exit":0}
+{"line":["config","update-server","--clear-cacert"],"kind":"runs","command":"config update-server","flags":{"clear-cacert":true},"exit":0}
+{"line":["config","update-server","--clear-cacert="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --clear-cacert= has an empty value; a bool flag typed with = takes true or false","  hint: write --clear-cacert or --clear-cacert=true|false"]}
+{"line":["config","update-server","--clear-cacert=false"],"kind":"runs","command":"config update-server","flags":{"clear-cacert":false},"exit":0}
+{"line":["config","update-server","--clear-cacert= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --clear-cacert= has an empty value; a bool flag typed with = takes true or false","  hint: write --clear-cacert or --clear-cacert=true|false"]}
+{"line":["config","update-server","-clear-cacert"],"kind":"runs","command":"config update-server","flags":{"clear-cacert":true},"exit":0}
+{"line":["config","update-server"],"kind":"runs","command":"config update-server","exit":0}
+{"line":["config","update-server","--help"],"kind":"help","command":"config update-server","exit":0,"helpPath":"config-update-server.txt"}
+{"line":["config","update-server","x"],"kind":"runs","command":"config update-server","args":["x"],"exit":0}
+{"line":["config","update-server","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}

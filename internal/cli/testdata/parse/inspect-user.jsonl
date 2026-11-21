@@ -1,0 +1,6 @@
+{"line":["inspect","user"],"kind":"runs","command":"inspect user","exit":0}
+{"line":["inspect","user","--help"],"kind":"help","command":"inspect user","exit":0,"helpPath":"inspect-user.txt"}
+{"line":["inspect","user","x"],"kind":"runs","command":"inspect user","args":["x"],"exit":0}
+{"line":["inspect","user","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["inspect","users"],"kind":"runs","command":"inspect user","exit":0}
+{"line":["inspect","users","--help"],"kind":"help","command":"inspect user","exit":0,"helpPath":"inspect-user.txt"}

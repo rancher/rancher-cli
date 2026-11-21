@@ -1,0 +1,23 @@
+{"line":["patch","persistentvolumeclaim","--cluster","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--cluster=v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","-cluster","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"cluster":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","persistentvolumeclaim","--namespace","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--namespace=v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","-n","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--patch","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"patch":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--patch=v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"patch":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","-p","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"patch":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--patch-file","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--patch-file=v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","-patch-file","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--type","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"type":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","--type=v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"type":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim","-type","v"],"kind":"runs","command":"patch persistentvolumeclaim","flags":{"type":"v"},"exit":0}
+{"line":["patch","persistentvolumeclaim"],"kind":"runs","command":"patch persistentvolumeclaim","exit":0}
+{"line":["patch","persistentvolumeclaim","--help"],"kind":"help","command":"patch persistentvolumeclaim","exit":0,"helpPath":"patch-persistentvolumeclaim.txt"}
+{"line":["patch","persistentvolumeclaim","x"],"kind":"runs","command":"patch persistentvolumeclaim","args":["x"],"exit":0}
+{"line":["patch","persistentvolumeclaim","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","persistentvolumeclaims"],"kind":"runs","command":"patch persistentvolumeclaim","exit":0}
+{"line":["patch","pvc"],"kind":"runs","command":"patch persistentvolumeclaim","exit":0}
+{"line":["patch","persistentvolumeclaims","--help"],"kind":"help","command":"patch persistentvolumeclaim","exit":0,"helpPath":"patch-persistentvolumeclaim.txt"}

@@ -1,0 +1,66 @@
+NAME:
+   rancher delete - Delete resources
+
+USAGE:
+   rancher delete [command [command options]]
+
+COMMANDS:
+   amazonec2config, amazonec2configs:                                          Delete the amazonec2config
+   azureconfig, azureconfigs:                                                  Delete the azureconfig
+   certificate-rotation, certificaterotations, certificate-rotations:          Delete the certificate-rotation
+   clusterroletemplatebinding, clusterroletemplatebindings, crtb:              Delete the clusterroletemplatebinding
+   configmap, configmaps, cm:                                                  Delete the configmap
+   cronjob, cronjobs:                                                          Delete the cronjob
+   daemonset, daemonsets, ds:                                                  Delete the daemonset
+   deployment, deployments, deploy:                                            Delete the deployment
+   digitaloceanconfig, digitaloceanconfigs:                                    Delete the digitaloceanconfig
+   encryption-key-rotation, encryptionkeyrotations, encryption-key-rotations:  Delete the encryption-key-rotation
+   etcd-snapshot-restore, etcdsnapshotrestores, etcd-snapshot-restores:        Delete the etcd-snapshot-restore
+   etcd-snapshot-save, etcdsnapshotsaves, etcd-snapshot-saves:                 Delete the etcd-snapshot-save
+   gitrepo, gitrepos:                                                          Delete the gitrepo
+   globalrolebinding, globalrolebindings:                                      Delete the globalrolebinding
+   harvesterconfig, harvesterconfigs:                                          Delete the harvesterconfig
+   helmop, helmops:                                                            Delete the helmop
+   horizontalpodautoscaler, horizontalpodautoscalers, hpa:                     Delete the horizontalpodautoscaler
+   ingress, ingresses, ing:                                                    Delete the ingress
+   job, jobs:                                                                  Delete the job
+   k3k-cluster, k3kclusters, k3k-clusters:                                     Delete the k3k-cluster
+   kubeconfig, kubeconfigs:                                                    Delete the kubeconfig
+   limitrange, limitranges, limits:                                            Delete the limitrange
+   managedchart, managedcharts:                                                Delete the managedchart
+   management-token, managementtokens, management-tokens, v3token, v3tokens:   Delete the management-token
+   namespace, namespaces, ns:                                                  Delete the namespace
+   networkpolicy, networkpolicies, netpol:                                     Delete the networkpolicy
+   oidcclient, oidcclients:                                                    [Prime] Delete the oidcclient
+   persistentvolumeclaim, persistentvolumeclaims, pvc:                         Delete the persistentvolumeclaim
+   pod, pods, po:                                                              Delete the pod
+   poddisruptionbudget, poddisruptionbudgets, pdb:                             Delete the poddisruptionbudget
+   project, projects:                                                          Delete the project
+   projectroletemplatebinding, projectroletemplatebindings, prtb:              Delete the projectroletemplatebinding
+   provisioning-cluster, provisioningclusters, provisioning-clusters:          Delete the provisioning-cluster
+   replicaset, replicasets, rs:                                                Delete the replicaset
+   resourcequota, resourcequotas, quota:                                       Delete the resourcequota
+   secret, secrets:                                                            Delete the secret
+   service, services, svc:                                                     Delete the service
+   serviceaccount, serviceaccounts, sa:                                        Delete the serviceaccount
+   statefulset, statefulsets, sts:                                             Delete the statefulset
+   storageclass, storageclasses, sc:                                           Delete the storageclass
+   token, tokens:                                                              Delete the token
+   user, users:                                                                Delete the user
+   vmwarevsphereconfig, vmwarevsphereconfigs:                                  Delete the vmwarevsphereconfig
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --project string            the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

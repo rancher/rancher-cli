@@ -1,0 +1,23 @@
+NAME:
+   rancher logs - Show logs of Rancher components (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)
+
+USAGE:
+   rancher logs [options] <server|agent|fleet-agent|kube-api-auth|webhook|api-extension>
+
+OPTIONS:
+   --cluster id|name      target cluster id|name
+   --container container  container name (default: the containers and init containers of each pod)
+   --help, -h             show help
+   --pod pod              restrict to one pod name, to read the logs of a single replica
+   --previous             logs from the previous container instance
+   --since duration       logs newer than this duration, e.g. 30m, 2h; omit for no limit
+   --tail lines           max lines (default 200)
+   --timestamps           prefix each line with a timestamp
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

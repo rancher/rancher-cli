@@ -1,0 +1,22 @@
+{"line":["delete","replicaset","--cluster","v"],"kind":"runs","command":"delete replicaset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","replicaset","--cluster=v"],"kind":"runs","command":"delete replicaset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","replicaset","-cluster","v"],"kind":"runs","command":"delete replicaset","flags":{"cluster":"v"},"exit":0}
+{"line":["delete","replicaset","--cluster"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --cluster; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","replicaset","--namespace","v"],"kind":"runs","command":"delete replicaset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","replicaset","--namespace=v"],"kind":"runs","command":"delete replicaset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","replicaset","-n","v"],"kind":"runs","command":"delete replicaset","flags":{"namespace":"v"},"exit":0}
+{"line":["delete","replicaset","--wait"],"kind":"runs","command":"delete replicaset","flags":{"wait":true},"exit":0}
+{"line":["delete","replicaset","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","replicaset","--wait=false"],"kind":"runs","command":"delete replicaset","flags":{"wait":false},"exit":0}
+{"line":["delete","replicaset","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["delete","replicaset","-wait"],"kind":"runs","command":"delete replicaset","flags":{"wait":true},"exit":0}
+{"line":["delete","replicaset","--timeout","v"],"kind":"runs","command":"delete replicaset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","replicaset","--timeout=v"],"kind":"runs","command":"delete replicaset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","replicaset","-timeout","v"],"kind":"runs","command":"delete replicaset","flags":{"timeout":"v"},"exit":0}
+{"line":["delete","replicaset"],"kind":"runs","command":"delete replicaset","exit":0}
+{"line":["delete","replicaset","--help"],"kind":"help","command":"delete replicaset","exit":0,"helpPath":"delete-replicaset.txt"}
+{"line":["delete","replicaset","x"],"kind":"runs","command":"delete replicaset","args":["x"],"exit":0}
+{"line":["delete","replicaset","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["delete","replicasets"],"kind":"runs","command":"delete replicaset","exit":0}
+{"line":["delete","rs"],"kind":"runs","command":"delete replicaset","exit":0}
+{"line":["delete","replicasets","--help"],"kind":"help","command":"delete replicaset","exit":0,"helpPath":"delete-replicaset.txt"}

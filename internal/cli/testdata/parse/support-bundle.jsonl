@@ -1,0 +1,20 @@
+{"line":["support-bundle","--targets","v"],"kind":"runs","command":"support-bundle","flags":{"targets":"v"},"exit":0}
+{"line":["support-bundle","--targets=v"],"kind":"runs","command":"support-bundle","flags":{"targets":"v"},"exit":0}
+{"line":["support-bundle","-targets","v"],"kind":"runs","command":"support-bundle","flags":{"targets":"v"},"exit":0}
+{"line":["support-bundle","--targets"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --targets; pass --help for usage","  hint: rancher schema"]}
+{"line":["support-bundle","--clusters","v"],"kind":"runs","command":"support-bundle","flags":{"clusters":"v"},"exit":0}
+{"line":["support-bundle","--clusters=v"],"kind":"runs","command":"support-bundle","flags":{"clusters":"v"},"exit":0}
+{"line":["support-bundle","-clusters","v"],"kind":"runs","command":"support-bundle","flags":{"clusters":"v"},"exit":0}
+{"line":["support-bundle","--since","v"],"kind":"runs","command":"support-bundle","flags":{"since":"v"},"exit":0}
+{"line":["support-bundle","--since=v"],"kind":"runs","command":"support-bundle","flags":{"since":"v"},"exit":0}
+{"line":["support-bundle","-since","v"],"kind":"runs","command":"support-bundle","flags":{"since":"v"},"exit":0}
+{"line":["support-bundle","--tail","v"],"kind":"runs","command":"support-bundle","flags":{"tail":"v"},"exit":0}
+{"line":["support-bundle","--tail=v"],"kind":"runs","command":"support-bundle","flags":{"tail":"v"},"exit":0}
+{"line":["support-bundle","-tail","v"],"kind":"runs","command":"support-bundle","flags":{"tail":"v"},"exit":0}
+{"line":["support-bundle","--output-file","v"],"kind":"runs","command":"support-bundle","flags":{"output-file":"v"},"exit":0}
+{"line":["support-bundle","--output-file=v"],"kind":"runs","command":"support-bundle","flags":{"output-file":"v"},"exit":0}
+{"line":["support-bundle","-output-file","v"],"kind":"runs","command":"support-bundle","flags":{"output-file":"v"},"exit":0}
+{"line":["support-bundle"],"kind":"runs","command":"support-bundle","exit":0}
+{"line":["support-bundle","--help"],"kind":"help","command":"support-bundle","exit":0,"helpPath":"support-bundle.txt"}
+{"line":["support-bundle","x"],"kind":"runs","command":"support-bundle","args":["x"],"exit":0}
+{"line":["support-bundle","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
