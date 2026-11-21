@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -170,18 +169,10 @@ type fieldWord struct {
 	position           int
 }
 
-// fieldNameShape is the shape of every credential field name: a lower-case
-// letter, then letters and digits.
-var fieldNameShape = regexp.MustCompile(`^[a-z][A-Za-z0-9]{0,23}$`)
-
-// typedField words the field of a word the user typed. A word that has the
-// shape of a field name is quoted; any other is named by its flag and
-// position, because a pasted secret that holds "=" splits into a field part
-// and a value part.
-func (w fieldWord) typedField() string {
-	if fieldNameShape.MatchString(w.field) {
-		return strconv.Quote(w.field)
-	}
+// named words the word by its flag and position, never by what the user
+// typed: a pasted secret that holds "=" splits into a field part and a value
+// part.
+func (w fieldWord) named() string {
 	return fmt.Sprintf("the field of --%s argument #%d", w.flag, w.position)
 }
 
@@ -329,16 +320,14 @@ func readFieldFlags(in runtime.Input) (sets, files []fieldWord, err error) {
 	case stdinWords == 1 && stdinIsTerminal(in):
 		return nil, nil, clierr.New(clierr.CodeValidation, "--from-file - reads stdin, which is a terminal; pipe the value on stdin or give a file")
 	}
-	seen := map[string]bool{}
+	seen := map[string]fieldWord{}
 	for _, w := range slices.Concat(sets, files) {
-		if seen[w.field] {
-			subject := w.typedField()
-			if fieldNameShape.MatchString(w.field) {
-				subject = "the field " + subject
-			}
-			return nil, nil, clierr.New(clierr.CodeValidation, subject+" is given more than once; give each field once")
+		if first, ok := seen[w.field]; ok {
+			return nil, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
+				"--%s argument #%d and --%s argument #%d give the same field; give each field once",
+				first.flag, first.position, w.flag, w.position))
 		}
-		seen[w.field] = true
+		seen[w.field] = w
 	}
 	return sets, files, nil
 }
@@ -445,23 +434,49 @@ func secretInSetError(typed, canonical string) error {
 	return clierr.New(clierr.CodeValidation, msg)
 }
 
+// unknownFieldError refuses a word that is not a field of the driver. It
+// quotes the word only when it equals a field of the driver without regard to
+// case; any other word may be a pasted secret and is named by its flag and
+// position.
 func unknownFieldError(d cloudcredfields.Driver, w fieldWord) error {
-	subject := w.typedField()
-	if fieldNameShape.MatchString(w.field) {
-		subject += " after --" + w.flag
+	subject := w.named()
+	if _, ok := d.FieldFolded(w.field); ok {
+		subject = quoteField(w.field) + " after --" + w.flag
 	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf("%s is not a field of %s; its fields are %s",
 		subject, d.Prefix, strings.Join(d.Names(func(cloudcredfields.Field) bool { return true }), ", ")))
 }
 
 // readValues reads each --from-file value and checks every value against the
-// white space rules. warnings names a value the command trimmed.
+// white space rules. warnings names a value the command trimmed. Every error
+// it returns has the values read so far hidden, the value of the word that
+// failed included, so a refusal added to readWords cannot show one.
 func (c *createCloudCredentialCmd) readValues(d cloudcredfields.Driver, sets, files []fieldWord) ([]credentialValue, []string, error) {
+	var read []string
+	out, warnings, err := c.readWords(d, sets, files, func(texts ...string) { read = append(read, texts...) })
+	if err != nil {
+		return nil, nil, engine.FilterError(err, engine.NewTextFilter(read, true))
+	}
+	return out, warnings, nil
+}
+
+// readWords is readValues without the filter. It calls record with each form
+// of a value of a secret or multi-line field as soon as the form exists, before
+// any check that can refuse the value: the bytes as read, the text after the
+// byte order marks are dropped, and the cleaned value.
+func (c *createCloudCredentialCmd) readWords(d cloudcredfields.Driver, sets, files []fieldWord, record func(texts ...string)) ([]credentialValue, []string, error) {
 	var out []credentialValue
 	var warnings []string
 	for _, w := range sets {
 		f, _ := d.Field(w.field)
+		hidden := f.Secret || f.Multiline
+		if hidden {
+			record(w.value)
+		}
 		cleaned, problem, trimmed := cloudcredfields.Clean(f, w.value, false)
+		if hidden {
+			record(cleaned)
+		}
 		if err := valueProblemError(problem, f, "--"+flagSet, ""); err != nil {
 			return nil, nil, err
 		}
@@ -472,15 +487,25 @@ func (c *createCloudCredentialCmd) readValues(d cloudcredfields.Driver, sets, fi
 	}
 	for _, w := range files {
 		f, _ := d.Field(w.field)
+		hidden := f.Secret || f.Multiline
 		raw, err := c.src.Read(w.value)
 		if err != nil {
 			return nil, nil, clierr.New(clierr.CodeValidation, "cannot read the --from-file file "+w.value)
+		}
+		if hidden {
+			record(string(raw))
 		}
 		if cloudcredfields.RawEncodingProblem(raw) != cloudcredfields.ProblemNone {
 			return nil, nil, valueProblemError(cloudcredfields.ProblemEncoding, f, "--"+flagFromFile, w.value)
 		}
 		text := engine.DropLeadingByteOrderMarks(string(raw))
+		if hidden {
+			record(text)
+		}
 		cleaned, problem, trimmed := cloudcredfields.Clean(f, text, true)
+		if hidden {
+			record(cleaned)
+		}
 		if err := valueProblemError(problem, f, "--"+flagFromFile, w.value); err != nil {
 			return nil, nil, err
 		}

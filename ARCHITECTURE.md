@@ -10,7 +10,7 @@ without reading docs, and non-interactive output is a stable, versioned JSON env
 **Resource operations go through Rancher's Kubernetes API, with one named exception: cloud credential writes.** Every other `get` /
 `create` / `delete` request is a client-go call against Rancher's k8s proxy -
 `/k8s/clusters/local` for management-plane kinds, `/k8s/clusters/<id>` for downstream
-clusters. The one Norman/`v3` code on the resource path is `engine.CloudCredentialClient`, which creates, patches and deletes cloud credentials through `/v3/cloudcredentials`; their reads stay on the Kubernetes API. Off the resource path, `internal/token` sends one Norman request, the `/v3/tokens` create of a cluster token on a Rancher without ext.cattle.io tokens (O3).
+clusters. The one Norman/`v3` code on the resource path is `engine.CloudCredentialClient`, which creates, patches and deletes cloud credentials through `/v3/cloudcredentials`; their reads stay on the Kubernetes API. Off the resource path, `internal/token` sends one Norman request, the `/v3/tokens` create of a cluster token on a Rancher without ext.cattle.io tokens.
 
 **Five documented exceptions: interactive auth-provider login, root reads, `get` of the kinds that set `SteveReadOnForbidden` and the etcd snapshot lists of `cluster upgrade` and `cluster save-etcd-snapshot`, each through the Steve API when the Kubernetes API responds with 403, and the read of a management Cluster by `cluster upgrade` and `cluster save-etcd-snapshot`, which goes to the Steve API first, and cloud credential writes.** `auth
 get-token` (the kubectl exec-credential plugin) authenticates against Rancher's legacy

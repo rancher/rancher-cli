@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -58,7 +60,14 @@ func TestCloudCredentialHarvesterCreateBody(t *testing.T) {
 
 	stdout, stderr, code := runWithStdin(t, []string{"create", "cloud-credential", "harvester", "h", "--set", "clusterId=c-x", "--from-file", "kubeconfigContent=-", "--apply", "-o", "json"}, ccKube)
 	require.Zero(t, code, stderr)
-	assert.Contains(t, stdout, "CloudCredential")
+	var envelope struct {
+		Kind string `json:"kind"`
+		Data any    `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &envelope), stdout)
+	assert.Equal(t, "CloudCredential", envelope.Kind)
+	assert.True(t, slices.ContainsFunc(ccStringLeaves(envelope.Data), func(leaf string) bool { return strings.HasPrefix(leaf, "cc-") }),
+		"the data of the envelope names the new credential: %s", stdout)
 
 	records := rancher.NormanCloudCredentialRequests()
 	require.Len(t, records, 1)

@@ -18,11 +18,11 @@ const (
 	harvesterScenario = "test/e2e/scripts/cloud-credential-harvester.txtar"
 )
 
-// harvesterPlaceholders are the values the scenario uses for the recipe's
-// placeholders.
 // harvesterScenarioDescription marks the kubeconfig the scenario creates.
 const harvesterScenarioDescription = "e2e-harvester-recipe"
 
+// harvesterPlaceholders are the values the scenario uses for the recipe's
+// placeholders.
 var harvesterPlaceholders = strings.NewReplacer("<cluster-id>", "c-test", "<display-name>", "harvester-cc")
 
 // scenarioRecipe returns the recipe the scenario runs: the exec lines of the

@@ -100,6 +100,22 @@ func TestSecretFoldedFindsEverySpellingOfASecretField(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestFieldFoldedFindsEverySpellingOfAnyField asserts the lookup ignores case
+// for a public and a secret field, and finds no word that is not a field.
+func TestFieldFoldedFindsEverySpellingOfAnyField(t *testing.T) {
+	t.Parallel()
+	d, _ := Static("s3")
+	for typed, want := range map[string]string{"ACCESSKEY": "accessKey", "accessKey": "accessKey", "SecretKey": "secretKey", "DEFAULTBUCKET": "defaultBucket"} {
+		f, ok := d.FieldFolded(typed)
+		require.True(t, ok, typed)
+		assert.Equal(t, want, f.Name)
+	}
+	for _, typed := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa", "accessKeys", ""} {
+		_, ok := d.FieldFolded(typed)
+		assert.False(t, ok, typed)
+	}
+}
+
 // TestOperatorActiveAndOfferedPrefixes asserts the kev2-operators setting is
 // read as a JSON list, with an absent or unreadable value meaning inactive, and
 // that the offered drivers are the usable node drivers with credential fields,

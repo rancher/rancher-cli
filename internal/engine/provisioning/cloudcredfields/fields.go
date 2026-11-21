@@ -56,6 +56,18 @@ func (d Driver) SecretFolded(name string) (Field, bool) {
 	return Field{}, false
 }
 
+// FieldFolded returns the field, secret or public, whose name equals name
+// without regard to case, for a refusal that may quote a typed word only when
+// it names a field of the driver.
+func (d Driver) FieldFolded(name string) (Field, bool) {
+	for _, f := range d.Fields {
+		if strings.EqualFold(f.Name, name) {
+			return f, true
+		}
+	}
+	return Field{}, false
+}
+
 // Names returns the names of the fields for which keep is true, sorted.
 func (d Driver) Names(keep func(Field) bool) []string {
 	var out []string

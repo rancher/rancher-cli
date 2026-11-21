@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/provisioning/cloudcredfields"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -113,8 +114,12 @@ func ccsRuns() map[string]ccsRun {
 		secret := slices.Concat(ccsFields(d.private), password)
 		out[d.name] = ccsInputFor(d.name, public, secret)
 	}
-	out["s3"] = ccsInputFor("s3", []string{"accessKey", "defaultBucket"}, []string{"secretKey"})
-	out["alibaba"] = ccsInputFor("alibaba", []string{"accessKeyId"}, []string{"accessKeySecret"})
+	for _, prefix := range cloudcredfields.StaticPrefixes() {
+		d, _ := cloudcredfields.Static(prefix)
+		public := d.Names(func(f cloudcredfields.Field) bool { return !f.Secret && !f.Multiline })
+		secret := d.Names(func(f cloudcredfields.Field) bool { return f.Secret })
+		out[prefix] = ccsInputFor(prefix, public, secret)
+	}
 	return out
 }
 
@@ -136,8 +141,9 @@ func ccsRig(files map[string]string) *ccwRig {
 }
 
 // ccsExecute runs the command through the pipeline and returns what it wrote
-// and the error it ended with, rendered in every form a caller can read.
-func ccsExecute(t *testing.T, r *ccwRig, in ccwInput, format string, dryRun bool) (written string, ce *clierr.Error) {
+// and the error it ended with, rendered in every form a caller can read, and
+// what it wrote to the output alone.
+func ccsExecute(t *testing.T, r *ccwRig, in ccwInput, format string, dryRun bool) (written, stdout string, ce *clierr.Error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	_, ce = runtime.Run(t.Context(), r.cmd, in, runtime.IO{Out: &out, Err: &errOut, Format: format, DryRun: dryRun, Apply: !dryRun}, safety.Binding{})
@@ -146,7 +152,38 @@ func ccsExecute(t *testing.T, r *ccwRig, in ccwInput, format string, dryRun bool
 		raw, _ := json.Marshal(ce)
 		written += ce.Error() + ce.Message + ce.Hint + string(raw)
 	}
-	return written, ce
+	return written, out.String(), ce
+}
+
+// ccsAssertKind asserts what a successful run wrote: in JSON, an envelope of
+// this kind whose data holds a string equal to want; in text, the text want.
+func ccsAssertKind(t *testing.T, format, stdout, kind, want string) {
+	t.Helper()
+	if format != "json" {
+		assert.Contains(t, stdout, want)
+		return
+	}
+	var envelope struct {
+		Kind string `json:"kind"`
+		Data any    `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &envelope), stdout)
+	assert.Equal(t, kind, envelope.Kind)
+	assert.True(t, ccsHasString(envelope.Data, want), "the data of the envelope holds %q: %s", want, stdout)
+}
+
+// ccsHasString reports whether a string leaf of the decoded JSON value
+// contains want.
+func ccsHasString(v any, want string) bool {
+	switch v := v.(type) {
+	case string:
+		return strings.Contains(v, want)
+	case []any:
+		return slices.ContainsFunc(v, func(e any) bool { return ccsHasString(e, want) })
+	case map[string]any:
+		return slices.ContainsFunc(slices.Collect(maps.Values(v)), func(e any) bool { return ccsHasString(e, want) })
+	}
+	return false
 }
 
 func ccsRefused(status int, body string) error {
@@ -233,9 +270,9 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 				t.Run("a preview "+format, func(t *testing.T) {
 					t.Parallel()
 					r := ccsRig(run.files)
-					written, ce := ccsExecute(t, r, run.in, format, true)
+					written, stdout, ce := ccsExecute(t, r, run.in, format, true)
 					require.Nil(t, ce)
-					assert.Contains(t, written, "cloud-credential")
+					ccsAssertKind(t, format, stdout, "Effect", "cloud-credential")
 					assert.Zero(t, r.norman.creates)
 					assertNoForms(t, run.needles, written, "the preview")
 				})
@@ -244,10 +281,10 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 						t.Parallel()
 						r := ccsRig(run.files)
 						r.norman.err = tc.err
-						written, ce := ccsExecute(t, r, run.in, format, false)
+						written, stdout, ce := ccsExecute(t, r, run.in, format, false)
 						if tc.code == "" {
 							require.Nil(t, ce)
-							assert.Contains(t, written, "cc-abcde")
+							ccsAssertKind(t, format, stdout, "CloudCredential", "cc-abcde")
 						} else {
 							require.NotNil(t, ce)
 							assert.Equal(t, tc.code, ce.Code)
@@ -273,6 +310,7 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 	t.Parallel()
 	const secret = "fake-refusal-secret-0001"
 	lines := "fake-refusal-line-one-0001\nfake-refusal-line-two-0002\n"
+	tabLines := "fake-refusal-line-one-0001\nfake-refusal-line-two\t0002\n"
 	type row struct {
 		name    string
 		in      ccwInput
@@ -284,7 +322,7 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 	amazon := func(set []string, fromFile ...string) ccwInput {
 		return ccwInput{args: []string{"amazonec2", "prod"}, set: set, fromFile: fromFile}
 	}
-	for _, tc := range []row{
+	rows := []row{
 		{name: "an unknown driver", in: ccwInput{args: []string{"nope", "n"}, fromFile: []string{"secretKey=secret.txt"}}, code: clierr.CodeValidation},
 		{name: "an inactive driver", in: ccwInput{args: []string{"linode", "n"}, fromFile: []string{"token=secret.txt"}}, code: clierr.CodeValidation,
 			prep: func(r *ccwRig) { r.client.drivers = defaultDrivers() }},
@@ -305,6 +343,8 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 		{name: "an empty value", in: amazon([]string{"accessKey="}, "secretKey=secret.txt"), code: clierr.CodeValidation},
 		{name: "a line break in a single-line value", in: amazon([]string{"accessKey=AKIAFAKE"}, "secretKey=lines.txt"), code: clierr.CodeValidation,
 			files: map[string]string{"lines.txt": lines}, needles: []string{"fake-refusal-line-one-0001", "fake-refusal-line-two-0002"}},
+		{name: "a line break and a tab in a single-line value", in: amazon([]string{"accessKey=AKIAFAKE"}, "secretKey=lines.txt"), code: clierr.CodeValidation,
+			files: map[string]string{"lines.txt": tabLines}, needles: []string{"fake-refusal-line-one-0001", "fake-refusal-line-two\t0002", tabLines}},
 		{name: "white space at the end of a value", in: amazon([]string{"accessKey=AKIAFAKE"}, "secretKey=padded.txt"), code: clierr.CodeValidation,
 			files: map[string]string{"padded.txt": secret + " \n"}},
 		{name: "a UTF-16 value", in: amazon([]string{"accessKey=AKIAFAKE"}, "secretKey=utf16.txt"), code: clierr.CodeValidation,
@@ -320,7 +360,16 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 			prep: func(r *ccwRig) {
 				r.client.review = func() (engine.ReviewResponse, error) { return reviewAnswer(false), nil }
 			}},
-	} {
+	}
+	for _, shaped := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa"} {
+		word := shaped + "=="
+		needles := []string{shaped, word}
+		rows = append(rows,
+			row{name: "a pasted secret shaped like a field name as a --set word: " + shaped, in: amazon([]string{word}), code: clierr.CodeValidation, needles: needles},
+			row{name: "a pasted secret shaped like a field name as a --from-file word: " + shaped, in: amazon(nil, word), code: clierr.CodeValidation, needles: needles},
+			row{name: "a pasted secret shaped like a field name given twice: " + shaped, in: amazon([]string{word, word}), code: clierr.CodeValidation, needles: needles})
+	}
+	for _, tc := range rows {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			for _, format := range []string{"json", ""} {
@@ -330,7 +379,7 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 				if tc.prep != nil {
 					tc.prep(r)
 				}
-				written, ce := ccsExecute(t, r, tc.in, format, false)
+				written, _, ce := ccsExecute(t, r, tc.in, format, false)
 				require.NotNil(t, ce, "the row ends with an error")
 				assert.Equal(t, tc.code, ce.Code, ce.Message)
 				assert.Zero(t, r.norman.creates, "a refusal sends no request")

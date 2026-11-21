@@ -76,7 +76,11 @@ func machineConfigPrefixes(spelling string) []string {
 // without a static namespace and an unknown one; the oidc-client secret
 // name of the typed client; charts --repo and app install's --repo, --chart and
 // --version (the ClusterRepo and index reads, the charts the index allows, the
-// versions that are not deprecated); create user's --global-role. Each row asserts the exact
+// versions that are not deprecated); create user's --global-role; create
+// cloud-credential's <driver>, --set and --from-file (the node drivers and
+// the operator setting, the fields of the typed driver, with the network
+// off, for an inactive driver and before a driver); get cloud-credential's
+// <credential>. Each row asserts the exact
 // candidates and the exact requests per path. NOT parallel: t.Setenv
 // mutates env globals, setStoredConfig mutates storedConfig.
 func TestCommandSitesFullCallback(t *testing.T) {

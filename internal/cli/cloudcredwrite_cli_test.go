@@ -8,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/provisioning/cloudcredfields"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,6 +24,7 @@ const (
 	ccCanary    = "fake-cc-canary-secret-0001"
 	ccLineOne   = "fake-cc-first-line-0001"
 	ccLineTwo   = "fake-cc-second-line-0002"
+	ccTabLine   = "fake-cc-second\tline-0002"
 	ccKube      = "apiVersion: v1\nclusters:\n- name: c\nusers:\n- name: u\n  user:\n    token: kubeconfig-user-x:" + ccCanary + "\n"
 	ccNodeDrv   = "/k8s/clusters/local/apis/management.cattle.io/v3/nodedrivers"
 	ccSecrets   = "/k8s/clusters/local/api/v1/namespaces/cattle-global-data/secrets"
@@ -89,8 +92,9 @@ type ccNorman struct {
 }
 
 // ccOptions changes what the stub serves: an inactive node driver in the list,
-// the alibaba operator marked inactive, or a stored credential named "prod".
-type ccOptions struct{ dormant, alibabaOff, existing bool }
+// the alibaba operator marked inactive, a stored credential named "prod",
+// or an access review that denies the create.
+type ccOptions struct{ dormant, alibabaOff, existing, reviewDenied bool }
 
 // ccStub answers the reads and the review of the command, and the create as
 // norman says. The posts it saw are returned through *posts.
@@ -115,7 +119,7 @@ func ccStubWith(opts ccOptions, norman ccNorman, posts *[]string, listRefused bo
 		case r.URL.Path == ccSettings:
 			writeKubeJSON(w, http.StatusOK, `{"apiVersion":"management.cattle.io/v3","kind":"Setting","value":"[{\"name\":\"alibaba\",\"active\":`+alibaba+`}]"}`)
 		case r.URL.Path == ccReviews:
-			writeKubeJSON(w, http.StatusCreated, `{"status":{"allowed":true}}`)
+			writeKubeJSON(w, http.StatusCreated, `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","status":{"allowed":`+strconv.FormatBool(!opts.reviewDenied)+`}}`)
 		case r.URL.Path == ccSecrets && listRefused:
 			writeKubeJSON(w, http.StatusForbidden, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Forbidden","code":403,"message":"secrets is forbidden: User cannot list"}`)
 		case r.URL.Path == ccSecrets:
@@ -143,7 +147,7 @@ func ccStubWith(opts ccOptions, norman ccNorman, posts *[]string, listRefused bo
 	}
 }
 
-// ccOutput runs argv with stdin and returns what the run wrote, and every file
+// ccRun runs argv with stdin and returns what the run wrote, and every file
 // the run left in the config directory (the telemetry events included).
 func ccRun(t *testing.T, stub secretStub, argv []string, stdin string) (stdout, stderr string, code int, files string) {
 	t.Helper()
@@ -167,6 +171,27 @@ func ccForms(secret string) []string {
 	escaped, _ := json.Marshal(secret)
 	forms = append(forms, strings.Trim(string(escaped), `"`), base64.StdEncoding.EncodeToString([]byte(secret)))
 	return forms
+}
+
+// ccStringLeaves lists every string of a decoded JSON value, keys excluded.
+func ccStringLeaves(v any) []string {
+	switch v := v.(type) {
+	case string:
+		return []string{v}
+	case []any:
+		var out []string
+		for _, e := range v {
+			out = append(out, ccStringLeaves(e)...)
+		}
+		return out
+	case map[string]any:
+		var out []string
+		for _, e := range v {
+			out = append(out, ccStringLeaves(e)...)
+		}
+		return out
+	}
+	return nil
 }
 
 // ccCase is one command line of the G5 table with what it must end in.
@@ -247,13 +272,13 @@ func ccCheck(t *testing.T, c ccCase) {
 				require.NoError(t, json.Unmarshal([]byte(stdout), &listed), stdout)
 				assert.Equal(t, c.kind, listed.Kind)
 				assert.NotNil(t, listed.Data)
-				decoded = stdout
+				decoded = strings.Join(ccStringLeaves(listed.Data), "\n")
 			case asJSON:
 				require.NoError(t, json.Unmarshal([]byte(stderr), &envelope), stderr)
 				errBody, _ := envelope.Data["error"].(map[string]any)
 				assert.Equal(t, "Error", envelope.Kind)
 				assert.Equal(t, c.errCode, errBody["code"])
-				decoded = stderr
+				decoded = strings.Join(ccStringLeaves(envelope.Data), "\n")
 			case c.errCode != "":
 				assert.Contains(t, stderr, "error ("+c.errCode+")")
 			}
@@ -337,11 +362,15 @@ func ccDriverCase(t *testing.T, driver string, public, secret []string, norman c
 }
 
 // ccDriverRows lists the public and secret fields of every driver the stub
-// serves, and of s3 and alibaba.
+// serves, and of the drivers that have no node driver.
 func ccDriverRows() map[string][2][]string {
-	rows := map[string][2][]string{
-		"s3":      {{"accessKey", "defaultBucket"}, {"secretKey"}},
-		"alibaba": {{"accessKeyId"}, {"accessKeySecret"}},
+	rows := map[string][2][]string{}
+	for _, prefix := range cloudcredfields.StaticPrefixes() {
+		d, _ := cloudcredfields.Static(prefix)
+		rows[prefix] = [2][]string{
+			d.Names(func(f cloudcredfields.Field) bool { return !f.Secret && !f.Multiline }),
+			d.Names(func(f cloudcredfields.Field) bool { return f.Secret }),
+		}
 	}
 	split := func(list string) []string {
 		var out []string
@@ -448,12 +477,32 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 		{"alibaba while its operator is inactive", ccCase{argv: []string{"create", "cloud-credential", "alibaba", "a", "--from-file", "accessKeySecret=-", "--dry-run"}, stdin: base + "\n", opts: ccOptions{alibabaOff: true}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a missing required field", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--from-file", "secretKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a line break in a single-line value", ccCase{argv: ccAmazon("--dry-run"), stdin: ccLineOne + "\n" + ccLineTwo + "\n", errCode: clierr.CodeValidation, secrets: []string{ccLineOne, ccLineTwo}}},
+		{"a line break and a tab in a single-line value", ccCase{argv: ccAmazon("--dry-run"), stdin: ccLineOne + "\n" + ccTabLine + "\n", errCode: clierr.CodeValidation, secrets: []string{ccLineOne, ccTabLine}}},
+		{"a secret as the field of a --set word", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", base + "=x", "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
+		{"a secret given with --set in another case", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "SECRETKEY=" + base, "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
+		{"a public field given with --from-file", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--from-file", "accessKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
+		{"a missing required field with stdin that fails", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "defaultRegion=us-east-1", "--from-file", "secretKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
+		{"an empty value", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "accessKey=", "--from-file", "secretKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
+		{"an access review that denies", ccCase{argv: ccAmazon("--dry-run"), stdin: base + "\n", opts: ccOptions{reviewDenied: true}, errCode: clierr.CodeRBAC, secrets: []string{base}}},
 		{"white space at the end of a value", ccCase{argv: ccAmazon("--dry-run"), stdin: base + " \n", errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a UTF-16 value", ccCase{argv: ccAmazon("--dry-run"), stdin: "\xff\xfe" + "f\x00a\x00k\x00e\x00", errCode: clierr.CodeValidation}},
 		{"a harvester file that is not a kubeconfig", ccCase{argv: []string{"create", "cloud-credential", "harvester", "h", "--from-file", "kubeconfigContent=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"stdin given twice", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--from-file", "secretKey=-", "--from-file", "accessKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a file that cannot be read", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "accessKey=AKIAFAKE", "--from-file", "secretKey=missing.txt", "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a display name in use", ccCase{argv: ccAmazon("--dry-run"), stdin: base + "\n", opts: ccOptions{existing: true}, errCode: clierr.CodeValidation, secrets: []string{base}}},
+	}
+	for _, shaped := range []string{"hunter2Secret", "q3XrT9vLm2Pz8KdWb1YcNa"} {
+		word := shaped + "=="
+		secrets := []string{shaped, word}
+		amazon := []string{"create", "cloud-credential", "amazonec2", "prod"}
+		rows = append(rows, []struct {
+			name string
+			c    ccCase
+		}{
+			{"a pasted secret shaped like a field name as a --set word: " + shaped, ccCase{argv: append(slices.Clone(amazon), "--set", word, "--dry-run"), errCode: clierr.CodeValidation, secrets: secrets}},
+			{"a pasted secret shaped like a field name as a --from-file word: " + shaped, ccCase{argv: append(slices.Clone(amazon), "--from-file", word, "--dry-run"), errCode: clierr.CodeValidation, secrets: secrets}},
+			{"a pasted secret shaped like a field name given twice: " + shaped, ccCase{argv: append(slices.Clone(amazon), "--set", word, "--set", word, "--dry-run"), errCode: clierr.CodeValidation, secrets: secrets}},
+		}...)
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) { ccCheck(t, row.c) })
