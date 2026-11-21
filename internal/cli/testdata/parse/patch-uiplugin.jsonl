@@ -1,0 +1,19 @@
+{"line":["patch","uiplugin","--namespace","v"],"kind":"runs","command":"patch uiplugin","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","uiplugin","--namespace=v"],"kind":"runs","command":"patch uiplugin","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","uiplugin","-n","v"],"kind":"runs","command":"patch uiplugin","flags":{"namespace":"v"},"exit":0}
+{"line":["patch","uiplugin","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","uiplugin","--patch","v"],"kind":"runs","command":"patch uiplugin","flags":{"patch":"v"},"exit":0}
+{"line":["patch","uiplugin","--patch=v"],"kind":"runs","command":"patch uiplugin","flags":{"patch":"v"},"exit":0}
+{"line":["patch","uiplugin","-p","v"],"kind":"runs","command":"patch uiplugin","flags":{"patch":"v"},"exit":0}
+{"line":["patch","uiplugin","--patch-file","v"],"kind":"runs","command":"patch uiplugin","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","uiplugin","--patch-file=v"],"kind":"runs","command":"patch uiplugin","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","uiplugin","-patch-file","v"],"kind":"runs","command":"patch uiplugin","flags":{"patch-file":"v"},"exit":0}
+{"line":["patch","uiplugin","--type","v"],"kind":"runs","command":"patch uiplugin","flags":{"type":"v"},"exit":0}
+{"line":["patch","uiplugin","--type=v"],"kind":"runs","command":"patch uiplugin","flags":{"type":"v"},"exit":0}
+{"line":["patch","uiplugin","-type","v"],"kind":"runs","command":"patch uiplugin","flags":{"type":"v"},"exit":0}
+{"line":["patch","uiplugin"],"kind":"runs","command":"patch uiplugin","exit":0}
+{"line":["patch","uiplugin","--help"],"kind":"help","command":"patch uiplugin","exit":0,"helpPath":"patch-uiplugin.txt"}
+{"line":["patch","uiplugin","x"],"kind":"runs","command":"patch uiplugin","args":["x"],"exit":0}
+{"line":["patch","uiplugin","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["patch","uiplugins"],"kind":"runs","command":"patch uiplugin","exit":0}
+{"line":["patch","uiplugins","--help"],"kind":"help","command":"patch uiplugin","exit":0,"helpPath":"patch-uiplugin.txt"}

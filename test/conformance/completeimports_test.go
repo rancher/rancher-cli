@@ -33,6 +33,7 @@ import (
 // completePackages is the closed set of restricted source packages.
 var completePackages = map[string]bool{
 	"internal/engine/kinds/complete":        true,
+	"internal/engine/catalog/complete":      true,
 	"internal/engine/access/complete":       true,
 	"internal/engine/projects/complete":     true,
 	"internal/engine/rbac/complete":         true,
@@ -51,6 +52,7 @@ var completeImportAllowlist = map[string]bool{
 	modulePrefix + "internal/engine/kinds":                   true,
 	modulePrefix + "internal/clierr":                         true,
 	modulePrefix + "internal/engine/provisioning/clusterops": true,
+	modulePrefix + "internal/engine/catalog/extension":       true,
 }
 
 // scanCompleteImports parses the production Go files of the package

@@ -1,3 +1,4 @@
+internal/engine/catalog.addRepositoryCmd.Plan
 internal/engine/extres.createKubeconfigCmd.Plan
 internal/engine/extres.createPasswordChangeRequestCmd.Plan
 internal/engine/extres.createTokenCmd.Plan

@@ -127,6 +127,7 @@ var byIDReadAllowlist = map[string]byIDAllowance{
 	"internal/testrancher/testrancher.go:projectsCollectionCluster":                  {1, "", "the test server's own route parsing, not a request the CLI sends"},
 	"internal/testrancher/fidelity/callerscope_probes.go:callerScopeProbes":          {5, "", "probe paths recorded against a Rancher the fidelity suite boots, not a lookup the CLI makes"},
 	"internal/testrancher/fidelity/projectlookup_probes.go:projectLookupProbes":      {5, "", "probe paths recorded against a Rancher the fidelity suite boots, not a lookup the CLI makes"},
+	"internal/testrancher/fidelity/extension_probes.go:extensionProbes":              {1, "", "the local cluster path recorded against a Rancher the fidelity suite boots, not a lookup the CLI makes"},
 	"internal/testrancher/fidelity/catalogcleanup.go:(catalogCleanup).clusterValues": {2, "", "reads of the downstream cluster the fidelity suite boots, not a lookup the CLI makes"},
 }
 

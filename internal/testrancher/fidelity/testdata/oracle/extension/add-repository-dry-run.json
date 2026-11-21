@@ -1,0 +1,43 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b",
+  "observations": [
+    {
+      "name": "list",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "items": [],
+        "kind": "ClusterRepoList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    },
+    {
+      "name": "dry-run-create",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "kind": "ClusterRepo",
+        "metadata": {
+          "name": "partner-extensions"
+        },
+        "spec": {
+          "gitBranch": "main",
+          "gitRepo": "https://github.com/rancher/partner-extensions"
+        }
+      }
+    },
+    {
+      "name": "list-after",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "items": [],
+        "kind": "ClusterRepoList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    }
+  ]
+}

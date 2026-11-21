@@ -189,7 +189,7 @@ func TestSchemaContractEnumMatchesCommandContracts(t *testing.T) {
 
 // TestSchemaDisclosureSizes asserts the point of progressive disclosure:
 // the bare TOC and a narrowed card stay small (TOC
-// < 20KB, card < 3KB). A regression here means a view regrew a
+// < 24KB, card < 3KB). A regression here means a view regrew a
 // full-manifest section.
 func TestSchemaDisclosureSizes(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -203,7 +203,7 @@ func TestSchemaDisclosureSizes(t *testing.T) {
 		require.NoError(t, root.Run(t.Context(), append([]string{"rancher", "--config", dir}, args...)))
 		return out.Len()
 	}
-	assert.Less(t, run("schema", "-o", "json"), 20*1024, "bare TOC JSON")
+	assert.Less(t, run("schema", "-o", "json"), 24*1024, "bare TOC JSON")
 	assert.Less(t, run("schema", "get", "pod", "-o", "json"), 3*1024, "command card JSON")
 }
 

@@ -165,6 +165,7 @@ or point the instructions file of any other coding-agent harness at it.
 | [Nodes](COMMANDS.md#nodes) | drain a node (`node drain`) or stop a drain (`node stop-drain`); Rancher runs the drain, and `get management-node` shows its state |
 | [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project/user reads, images, usage, charts |
 | [Apps](COMMANDS.md#apps) | install a chart from a ClusterRepo as a Helm release (`app install`), upgrade one (`app upgrade`), uninstall one (`app uninstall`); Rancher runs Helm, previews come from server reads |
+| [Extensions](COMMANDS.md#extensions) | add one of the two Rancher extension repositories (`extension add-repository`), list what the ClusterRepos offer and what is installed (`extension list`) |
 | [Access](COMMANDS.md#access) | who can do what, as the cluster's authorizer answers it (`access can`, `access list`, `access who-can`, `access explain`), which clusters a subject can reach through Rancher's proxy (`access clusters`), and which projects a subject can see and is a member of (`access projects`) |
 | [Logs & support](COMMANDS.md#logs--support) | logs of Rancher components, support bundle |
 | [kubectl integration](COMMANDS.md#kubectl-integration) | kubeconfig that uses the exec plugin, legacy `rancher token` command |
@@ -179,7 +180,7 @@ Composite reads (`inspect *`, `images`, `usage`) return what you can
 see: each section you cannot read in full is named in the `data.degraded`
 field, and each entry has one warning. The command still exits 0.
 
-Generated `get`/`patch`/`delete` commands cover the 72 kinds that
+Generated `get`/`patch`/`delete` commands cover the 73 kinds that
 `rancher schema` lists (`delete` only for the kinds that can be deleted).
 The full catalog is [COMMANDS.md](COMMANDS.md), and `rancher schema` lists
 the same for the version you have installed. Per-kind verb rules:

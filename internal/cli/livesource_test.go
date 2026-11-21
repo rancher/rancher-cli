@@ -188,7 +188,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		"oidc-client rotate-secret", "oidc-client remove-secret",
 		"logs", "inspect project", "inspect cluster",
 		"auth login", "auth get-token", "token",
-		"node drain", "node stop-drain",
+		"node drain", "node stop-drain", "extension add-repository",
 	}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)

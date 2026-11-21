@@ -1,0 +1,37 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# A dry run previews the create from the server's dry-run and stores nothing.
+exec rancher extension add-repository partner-extensions --dry-run -o json
+jsonquery stdout data.previewSource serverDryRun
+! exec rancher get clusterrepo partner-extensions --cluster local -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+# --apply creates the ClusterRepo with the three fields the Rancher UI sends.
+exec rancher extension add-repository partner-extensions --apply -o json
+exec rancher get clusterrepo partner-extensions --cluster local -o json
+jsonquery stdout data.spec.gitRepo https://github.com/rancher/partner-extensions
+jsonquery stdout data.spec.gitBranch main
+
+# The same repository again is a conflict.
+! exec rancher extension add-repository partner-extensions --apply -o json
+jsonquery stderr data.error.code CONFLICT
+
+# The Prime repository needs a Rancher Prime server, and any other name is refused.
+! exec rancher extension add-repository rancher-ui-plugins --apply -o json
+jsonquery stderr data.error.code VALIDATION
+! exec rancher extension add-repository nothing --apply -o json
+jsonquery stderr data.error.code VALIDATION
+
+# A ClusterRepo cannot be created from a manifest; the refusal points to the command.
+! exec rancher create resource -f clusterrepo.yaml --cluster local --apply -o json
+jsonquery stderr data.error.code VALIDATION
+
+-- clusterrepo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: other-repo
+spec:
+  gitRepo: https://example.test/other
+  gitBranch: main

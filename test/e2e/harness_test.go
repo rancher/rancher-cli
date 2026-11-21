@@ -104,6 +104,15 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	// The index link of a ClusterRepo, which the envtest apiserver does not
 	// serve.
 	"charts": func(o *testrancher.Options) { o.Fallthrough = chartIndexRoute(o.Fallthrough) },
+	// The version document, responding that the server is not Rancher Prime.
+	"extension-add-repository": func(o *testrancher.Options) { o.Fallthrough = rancherVersionRoute(o.Fallthrough, "false") },
+	// The extension list reads the ClusterRepo collection of steve, the index of
+	// a ClusterRepo and the local management Cluster, which the envtest
+	// apiserver and the facade do not serve.
+	"extension-list": func(o *testrancher.Options) {
+		o.ClusterObject = extensionLocalCluster(o.ClusterObject)
+		o.Fallthrough = rancherVersionRoute(extensionRepoRoutes(chartIndexRoute(o.Fallthrough)), "false")
+	},
 	// The index and info links of a ClusterRepo, the install and uninstall
 	// actions and the Settings app install reads, none of which the envtest
 	// apiserver serves; every action body is kept for the script's check.
@@ -162,9 +171,71 @@ var chartIndexes = map[string]string{
 	  "app-upgrade-chart":[
 	    {"name":"app-upgrade-chart","version":"1.2.0","appVersion":"12","description":"the chart","digest":"u2","urls":["app-upgrade-chart-1.2.0.tgz"]},
 	    {"name":"app-upgrade-chart","version":"1.1.0","appVersion":"11","description":"older","digest":"u1","urls":["app-upgrade-chart-1.1.0.tgz"]}]}}`,
+	"extension-list-repo": `{"apiVersion":"v1","entries":{
+	  "ext-installed":[
+	    {"name":"ext-installed","version":"2.0.0","appVersion":"2.0.0","description":"installed","annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}},
+	    {"name":"ext-installed","version":"1.0.0","appVersion":"1.0.0","description":"installed","annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}}],
+	  "ext-available":[
+	    {"name":"ext-available","version":"1.0.0","appVersion":"1.0.0","description":"available","annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}}],
+	  "ext-needs-prime":[
+	    {"name":"ext-needs-prime","version":"1.0.0","appVersion":"1.0.0","description":"prime","annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0","catalog.cattle.io/prime-only":"true"}}],
+	  "ext-hidden":[
+	    {"name":"ext-hidden","version":"1.0.0","description":"hidden","annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/hidden":"true","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}}],
+	  "plain-chart":[
+	    {"name":"plain-chart","version":"1.0.0","description":"not an extension"}]}}`,
 	"app-wait-repo": `{"apiVersion":"v1","generated":"2026-01-02T03:04:05Z","entries":{
 	  "app-install-chart":[
 	    {"name":"app-install-chart","version":"1.1.0","appVersion":"11","description":"the chart","digest":"a1","urls":["app-install-chart-1.1.0.tgz"]}]}}`,
+}
+
+// extensionLocalCluster responds to the local management Cluster with the
+// Kubernetes version the extension list reads, and every other cluster as next
+// does.
+func extensionLocalCluster(next func(string) (map[string]any, bool)) func(string) (map[string]any, bool) {
+	return func(id string) (map[string]any, bool) {
+		if id != "local" {
+			if next == nil {
+				return nil, false
+			}
+			return next(id)
+		}
+		return map[string]any{
+			"metadata": map[string]any{"name": "local"},
+			"spec":     map[string]any{"displayName": "local"},
+			"status":   map[string]any{"info": map[string]any{"kubernetesVersion": "v1.36.5+k3s1"}},
+		}, true
+	}
+}
+
+// extensionRepoRoutes responds to GET /v1/catalog.cattle.io.clusterrepos with the
+// steve collection of the one ClusterRepo of the extension-list scenario, in
+// the state active, and passes every other request on.
+func extensionRepoRoutes(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/catalog.cattle.io.clusterrepos" || r.Method != http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+testToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"metadata":{"name":"extension-list-repo","state":{"name":"active"}},"spec":{}}],"count":1,"revision":"1"}`))
+	})
+}
+
+// rancherVersionRoute responds to GET /rancherversion with the given RancherPrime
+// text and passes every other request on.
+func rancherVersionRoute(next http.Handler, prime string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rancherversion" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Version":"v2.15.3","GitCommit":"abc","RancherPrime":"` + prime + `"}`))
+	})
 }
 
 // chartIndexRoute answers GET

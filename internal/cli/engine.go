@@ -364,6 +364,27 @@ func (f *clientFactory) ServerVersion(ctx context.Context) (string, error) {
 	return info.Version, nil
 }
 
+// ServerEdition implements engine.ServerEditionProvider on the memoized
+// ServerInfo.
+func (f *clientFactory) ServerEdition(ctx context.Context) (engine.Edition, error) {
+	info, err := f.ServerInfo(ctx)
+	if err != nil {
+		return engine.EditionUnknown, err
+	}
+	return engineEdition(info.Edition), nil
+}
+
+// engineEdition maps the edition the version read decoded to the engine's.
+func engineEdition(e provider.Edition) engine.Edition {
+	switch e {
+	case provider.EditionPrime:
+		return engine.EditionPrime
+	case provider.EditionCommunity:
+		return engine.EditionCommunity
+	}
+	return engine.EditionUnknown
+}
+
 // StoredLoginName implements engine.StoredLoginNamer: the current server
 // entry's name when its stored token is the bearer, "" when
 // RANCHER_CLI_TOKEN supplies the bearer or RANCHER_CLI_URL names another

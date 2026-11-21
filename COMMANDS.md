@@ -16,6 +16,7 @@ in detail.
 [Nodes](#nodes) ·
 [Read & inspect](#read--inspect) ·
 [Apps](#apps) ·
+[Extensions](#extensions) ·
 [Access](#access) ·
 [Logs & support](#logs--support) ·
 [kubectl integration](#kubectl-integration) ·
@@ -138,6 +139,13 @@ Read nodes with `get node --cluster <cluster>` and the drain state with
 | `app upgrade <release> --cluster <c> --namespace <ns> [--version <v>] [--values <file>] [--reset-values]` | Ask Rancher to upgrade, downgrade or change the values of an installed Helm release shown as an App, through the upgrade action of its ClusterRepo; Rancher runs Helm in its own pod, and there is no rollback. The preview comes from server reads (`previewSource: serverReads`) and carries no resourceVersion precondition; it lists the path of every value added, removed or changed, never the value (except the values the CLI adds and the registry host), and counts the release's values it sends unchanged; the release's values are read from the release Secret, which needs permission to get Secrets in the release's namespace, and `--reset-values` sends only your files. The chart is the release's chart; a request that changes nothing is refused. `--wait` returns when Helm's run finishes, with the revision and status - destructive; dry-run/apply --yes. Details in [REFERENCE.md](REFERENCE.md#installing-upgrading-and-uninstalling-apps) |
 | `app uninstall <release> --cluster <c> --namespace <ns> [--keep-history]` | Ask Rancher to uninstall a Helm release shown as an App, which removes the release's resources; the preview comes from server reads, with no resourceVersion precondition; `--wait` waits for Helm's run to finish - destructive; dry-run/apply --yes |
 
+## Extensions
+
+| Command | Purpose |
+|---|---|
+| `extension add-repository <name>` | Add one of the two Rancher extension repositories as a ClusterRepo on the local cluster: `partner-extensions` on every server, `rancher-ui-plugins` on Rancher Prime. It sends the name, git URL and branch the Rancher UI's Extensions page sends, and nothing else; the command is refused with `CONFLICT` when a ClusterRepo already reads the same URL. Rancher downloads the repository from github.com after the command; dry-run/apply. Details in [REFERENCE.md](REFERENCE.md#extensions) |
+| `extension list` | List the extensions the Rancher UI's Extensions page shows: what the ClusterRepos offer and what is installed, with the version each can be upgraded to and, in `-o json`, why a version is not compatible with the server (`--show all\|installed\|available`). Read-only. Details in [REFERENCE.md](REFERENCE.md#listing-extensions) |
+
 ## Access
 
 | Command | Purpose |
@@ -203,9 +211,9 @@ Per-kind verb rules and kind notes:
 [REFERENCE.md](REFERENCE.md#project-scope---project).
 
 <!-- conformance:surface-counts -->
-Generated per kind from the 72-kind table: `get <kind>` (72), `patch <kind>`
-(72), `delete <kind>` (43 - 42 deletable kinds, including the Rancher role binding
+Generated per kind from the 73-kind table: `get <kind>` (73), `patch <kind>`
+(73), `delete <kind>` (43 - 42 deletable kinds, including the Rancher role binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-187 generated commands, 265 total together with the fixed commands above. The authoritative, always-current list is
+189 generated commands, 269 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

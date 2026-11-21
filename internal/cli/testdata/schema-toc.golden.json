@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 265,
+  "commandCount": 269,
   "effectSchema": {
     "actions": [
       "create",
@@ -74,7 +74,7 @@
       "rancherAction"
     ]
   },
-  "generatedCommandCount": 187,
+  "generatedCommandCount": 189,
   "globalExitCodes": {
     "AMBIGUOUS_SELECTION": 2,
     "AUTH": 3,
@@ -444,7 +444,7 @@
       ],
       "desc": "Get one resource by name, or list all of a kind. Generated for every kind `rancher schema` lists; `rancher get cloud-credential` and `rancher get kubernetes-versions` are dedicated commands.",
       "generated": {
-        "count": 72,
+        "count": 73,
         "pattern": "get <kind>"
       },
       "name": "get"
@@ -466,6 +466,20 @@
       ],
       "desc": "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
       "name": "app"
+    },
+    {
+      "commands": [
+        {
+          "name": "extension add-repository",
+          "usage": "Add a Rancher extension repository"
+        },
+        {
+          "name": "extension list",
+          "usage": "List the Rancher UI extensions the ClusterRepos offer and the installed ones"
+        }
+      ],
+      "desc": "Add one of the two Rancher extension repositories and list the Rancher UI extensions the ClusterRepos offer. The two repositories are the ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
+      "name": "extension"
     },
     {
       "commands": [
@@ -510,7 +524,7 @@
     {
       "desc": "Apply a partial update to a resource from a patch file or stdin. Generated for every kind `rancher schema` lists.",
       "generated": {
-        "count": 72,
+        "count": 73,
         "pattern": "patch <kind>"
       },
       "name": "patch"
@@ -524,7 +538,7 @@
       "name": "delete"
     }
   ],
-  "kindCount": 72,
+  "kindCount": 73,
   "kinds": [
     "cluster",
     "project",
@@ -588,6 +602,7 @@
     "clusterrepo",
     "app",
     "operation",
+    "uiplugin",
     "token",
     "management-token",
     "kubeconfig",

@@ -1,0 +1,24 @@
+{"line":["get","uiplugin","--namespace","v"],"kind":"runs","command":"get uiplugin","flags":{"namespace":"v"},"exit":0}
+{"line":["get","uiplugin","--namespace=v"],"kind":"runs","command":"get uiplugin","flags":{"namespace":"v"},"exit":0}
+{"line":["get","uiplugin","-n","v"],"kind":"runs","command":"get uiplugin","flags":{"namespace":"v"},"exit":0}
+{"line":["get","uiplugin","--namespace"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --namespace; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","uiplugin","--selector","v"],"kind":"runs","command":"get uiplugin","flags":{"selector":"v"},"exit":0}
+{"line":["get","uiplugin","--selector=v"],"kind":"runs","command":"get uiplugin","flags":{"selector":"v"},"exit":0}
+{"line":["get","uiplugin","-l","v"],"kind":"runs","command":"get uiplugin","flags":{"selector":"v"},"exit":0}
+{"line":["get","uiplugin","--wait"],"kind":"runs","command":"get uiplugin","flags":{"wait":true},"exit":0}
+{"line":["get","uiplugin","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","uiplugin","--wait=false"],"kind":"runs","command":"get uiplugin","flags":{"wait":false},"exit":0}
+{"line":["get","uiplugin","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["get","uiplugin","-wait"],"kind":"runs","command":"get uiplugin","flags":{"wait":true},"exit":0}
+{"line":["get","uiplugin","--for","v"],"kind":"runs","command":"get uiplugin","flags":{"for":"v"},"exit":0}
+{"line":["get","uiplugin","--for=v"],"kind":"runs","command":"get uiplugin","flags":{"for":"v"},"exit":0}
+{"line":["get","uiplugin","-for","v"],"kind":"runs","command":"get uiplugin","flags":{"for":"v"},"exit":0}
+{"line":["get","uiplugin","--timeout","v"],"kind":"runs","command":"get uiplugin","flags":{"timeout":"v"},"exit":0}
+{"line":["get","uiplugin","--timeout=v"],"kind":"runs","command":"get uiplugin","flags":{"timeout":"v"},"exit":0}
+{"line":["get","uiplugin","-timeout","v"],"kind":"runs","command":"get uiplugin","flags":{"timeout":"v"},"exit":0}
+{"line":["get","uiplugin"],"kind":"runs","command":"get uiplugin","exit":0}
+{"line":["get","uiplugin","--help"],"kind":"help","command":"get uiplugin","exit":0,"helpPath":"get-uiplugin.txt"}
+{"line":["get","uiplugin","x"],"kind":"runs","command":"get uiplugin","args":["x"],"exit":0}
+{"line":["get","uiplugin","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["get","uiplugins"],"kind":"runs","command":"get uiplugin","exit":0}
+{"line":["get","uiplugins","--help"],"kind":"help","command":"get uiplugin","exit":0,"helpPath":"get-uiplugin.txt"}

@@ -30,6 +30,7 @@ func TestDeleteHintNamesTheReasonForEveryTypedName(t *testing.T) {
 		"operations":       `unknown command "operations"; operation cannot be deleted - this CLI does not delete operations`,
 		"clusterrepos":     `unknown command "clusterrepos"; clusterrepo cannot be deleted - this CLI does not delete repositories`,
 		"management-nodes": `unknown command "management-nodes"; management-node cannot be deleted - Rancher deletes a management node when its node leaves the cluster`,
+		"uiplugins":        `unknown command "uiplugins"; uiplugin cannot be deleted - Helm deletes the UIPlugin of an extension chart when the extension is uninstalled, and the Rancher UI deletes the UIPlugin of an extension loaded from a URL when the extension is uninstalled there; this CLI does not uninstall extensions yet`,
 		"etcd-snapshot":    `unknown command "etcd-snapshot"; etcd-snapshot cannot be deleted - an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place`,
 		"etcdsnapshots":    `unknown command "etcdsnapshots"; etcd-snapshot cannot be deleted - an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place`,
 		"etcd-snapshots":   `unknown command "etcd-snapshots"; etcd-snapshot cannot be deleted - an etcd snapshot object is only Rancher's record of a snapshot file on a node or in S3; deleting the object leaves the file in place`,
@@ -80,7 +81,7 @@ func TestNoPatchReasonRowsShowPatchAsARefusal(t *testing.T) {
 	require.NotNil(t, patchGroup)
 	bindings := kinds.Bindings()
 
-	for _, key := range []string{"clusterrepo", "app", "operation", "etcdsnapshot"} {
+	for _, key := range []string{"clusterrepo", "app", "operation", "etcdsnapshot", "uiplugin"} {
 		row, ok := kinds.ByKey(key)
 		require.True(t, ok, key)
 		require.NotEmpty(t, row.NoPatchReason, key)

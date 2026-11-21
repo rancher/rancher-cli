@@ -1,0 +1,103 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b",
+  "observations": [
+    {
+      "name": "create",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "kind": "ClusterRepo",
+        "metadata": {
+          "name": "partner-extensions"
+        },
+        "spec": {
+          "gitBranch": "main",
+          "gitRepo": "https://github.com/rancher/partner-extensions"
+        }
+      }
+    },
+    {
+      "name": "repository",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "id": "partner-extensions",
+        "kind": "ClusterRepo",
+        "metadata": {
+          "name": "partner-extensions",
+          "state": {
+            "name": "active"
+          }
+        },
+        "spec": {
+          "gitBranch": "main",
+          "gitRepo": "https://github.com/rancher/partner-extensions"
+        },
+        "type": "catalog.cattle.io.clusterrepo"
+      }
+    },
+    {
+      "name": "collection",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "data": "\u003cscrubbed\u003e",
+        "resourceType": "catalog.cattle.io.clusterrepo",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "index",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "entries": "\u003cscrubbed\u003e",
+        "generated": "\u003cts\u003e"
+      }
+    },
+    {
+      "name": "local-cluster",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "id": "local",
+        "kind": "Cluster",
+        "status": {
+          "info": {
+            "kubernetesVersion": "\u003cversion\u003e"
+          },
+          "version": {
+            "gitVersion": "\u003cversion\u003e"
+          }
+        },
+        "type": "management.cattle.io.cluster"
+      }
+    },
+    {
+      "name": "uiplugins",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "items": "\u003cscrubbed\u003e",
+        "kind": "UIPluginList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    },
+    {
+      "name": "apps",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "catalog.cattle.io/v1",
+        "items": "\u003cscrubbed\u003e",
+        "kind": "AppList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    }
+  ]
+}

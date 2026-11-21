@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Record mode: re-runs scripts/extension-sources so it writes the table of
+# Extensions API versions instead of comparing it. The table's diff is review
+# material, like the schema golden.
+EXTENSION_SOURCES_UPDATE=1 exec "$(dirname "$0")/extension-sources"

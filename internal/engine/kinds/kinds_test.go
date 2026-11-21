@@ -52,6 +52,7 @@ var cliOnlyKinds = map[string]bool{
 	"etcdsnapshotrestore":   true, // no rancher-ai-mcp tool counterpart
 	"encryptionkeyrotation": true, // no rancher-ai-mcp tool counterpart
 	"certificaterotation":   true, // no rancher-ai-mcp tool counterpart
+	"uiplugin":              true, // no rancher-ai-mcp tool counterpart
 }
 
 func TestConformsToMCPVocabulary(t *testing.T) {

@@ -983,6 +983,7 @@ func handWrittenScrubRows() []scrubRow {
 			input: createFromManifest, manifest: managedChartManifest},
 		{command: "create project", kind: "project", class: classEcho, input: in([]string{"web"}, map[string]string{"cluster": scrubCluster})},
 		{command: "create namespace", kind: "namespace", class: classEcho, input: in([]string{"team-b"}, map[string]string{"cluster": scrubCluster})},
+		{command: "extension add-repository", kind: "clusterrepo", class: classEcho, input: in([]string{"partner-extensions"}, map[string]string{})},
 		{command: "create secret", variant: "namespace", kind: "secret", class: classEcho,
 			input: in([]string{"app"}, map[string]string{"cluster": scrubCluster, "namespace": "team-a", "from-literal": "k=submittedSecret1"}),
 			extra: func(*plantSet) []string { return []string{"submittedSecret1"} }},

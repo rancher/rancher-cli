@@ -10,6 +10,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/catalog/extension"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -117,6 +118,9 @@ func (*chartsCmd) Describe() runtime.Descriptor {
 			"and one whose index cannot be read is left out with a warning that names it; the exit code stays 0. " +
 			"Charts the Rancher UI does not list (the annotation catalog.cattle.io/hidden is present and not empty) " +
 			"are listed, with hidden true in JSON; the table has no column for it. " +
+			"Charts that are Rancher UI extensions (any version has the annotation catalog.cattle.io/ui-component set to plugins) " +
+			"are left out, as the Rancher UI's Charts page leaves them out, and `rancher extension list` lists them; " +
+			"--repo naming a repository that holds only extension charts prints an empty table. " +
 			"-o name prints the NAME column; a chart name repeats across repositories and, with --all-versions, across versions.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
@@ -163,6 +167,7 @@ func (c *chartsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		if err != nil {
 			return runtime.Result{}, withRepoRemedy(err, in.String(engine.FlagCluster))
 		}
+		idx = withoutExtensionCharts(idx)
 		return runtime.Result{Kind: "ChartList", Data: payload(itemsOf(repo, idx, all, deprecated), deprecated)}, nil
 	}
 
@@ -181,9 +186,40 @@ func (c *chartsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 			warnings = append(warnings, "skipped "+clierr.From(err).Message)
 			continue
 		}
+		idx = withoutExtensionCharts(idx)
 		items = append(items, itemsOf(repo, idx, all, deprecated)...)
 	}
 	return runtime.Result{Kind: "ChartList", Data: payload(items, deprecated), Warnings: warnings}, nil
+}
+
+// withoutExtensionCharts leaves out of the index the charts that are Rancher UI
+// extensions, as the Rancher UI's Charts page does: a chart any of whose
+// versions carries catalog.cattle.io/ui-component "plugins". The rule looks at
+// every version of the index as served, before versions are filtered.
+func withoutExtensionCharts(idx Index) Index {
+	entries := make(map[string][]ChartVersion, len(idx.Entries))
+	for name, versions := range idx.Entries {
+		if !isExtensionChart(versions) {
+			entries[name] = versions
+		}
+	}
+	return Index{Entries: entries}
+}
+
+// isExtensionChart reports whether any version of the chart is a Rancher UI
+// extension.
+func isExtensionChart(versions []ChartVersion) bool {
+	return extension.IsExtensionChart(versionAnnotations(versions))
+}
+
+// versionAnnotations returns the annotations of each version of a chart, in the
+// order of the versions.
+func versionAnnotations(versions []ChartVersion) []map[string]string {
+	annotations := make([]map[string]string, 0, len(versions))
+	for _, v := range versions {
+		annotations = append(annotations, v.Annotations)
+	}
+	return annotations
 }
 
 // payload is the list with a DEPRECATED column when deprecated versions are

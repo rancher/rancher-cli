@@ -15,6 +15,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Upgrading a cluster's Kubernetes version](#upgrading-a-clusters-kubernetes-version)
 - [Day-2 operations on imported clusters](#day-2-operations-on-imported-clusters)
 - [Installing, upgrading and uninstalling apps](#installing-upgrading-and-uninstalling-apps)
+- [Extensions](#extensions)
 - [Draining a node](#draining-a-node)
 - [Composite commands](#composite-commands)
 - [Access management](#access-management)
@@ -880,7 +881,10 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   and the CLI sends no parameter that changes the filter. A chart with the
   `catalog.cattle.io/hidden` annotation (present and not empty, whatever the
   value) is not listed by the Rancher UI; `charts` lists it, with `hidden: true`
-  in JSON. A version is deprecated when its index entry has `deprecated: true`
+  in JSON. A chart that is a Rancher UI extension (any of its versions has the
+  annotation `catalog.cattle.io/ui-component` set to `plugins`) is left out, as the
+  Rancher UI's Charts page leaves it out, whatever its other annotations say; `--repo`
+  naming a repository that holds only extension charts prints an empty table. A version is deprecated when its index entry has `deprecated: true`
   or the annotation `catalog.cattle.io/deprecated` is `"true"`. The CLI decides
   per version; the Rancher UI decides per chart from its first served version.
   Deprecated versions are left out, before the version to show is picked, and so
@@ -2462,6 +2466,122 @@ waiting for release <release>; last state: ...`; an operation whose
 `status.observedGeneration` is behind `metadata.generation` shows as `behind`
 there. The `INTERRUPTED` error of Ctrl-C carries the same details and, for an
 install, the request id.
+
+## Extensions
+
+The Rancher UI's Extensions page lists extensions: add-ons to the Rancher UI
+that a Helm chart delivers. `rancher extension add-repository <name>` adds one
+of the two repositories that page adds, and no other repository.
+
+| Name | Label in the Rancher UI | Git repository | Offered on |
+|---|---|---|---|
+| `partner-extensions` | Add Partners Extensions Repository | `https://github.com/rancher/partner-extensions` | every server |
+| `rancher-ui-plugins` | Add Rancher Prime Extensions Repository | `https://github.com/rancher/ui-plugin-charts` | Rancher Prime |
+
+- The command creates a ClusterRepo on the local cluster with the repository's
+  name, `spec.gitRepo` and `spec.gitBranch` (`main`), and nothing else: the
+  three fields the Rancher UI sends. It previews through a server-side
+  dry-run and needs `--apply`; it is not destructive and has no `--wait`. It
+  lists the ClusterRepos first, so it needs `list` and `create` on
+  `clusterrepos`. The Rancher UI shows the Extensions page to administrators
+  by default.
+- `rancher-ui-plugins` is offered on Rancher Prime only. The command reads the
+  edition from `/rancherversion` (the field `RancherPrime`) and refuses the
+  repository with `VALIDATION` on a server that is not Rancher Prime or whose
+  edition cannot be read. Neither case asks for the edition when the name is
+  `partner-extensions`. Any other name is refused with `VALIDATION` before a
+  request.
+- A repository is already added when a ClusterRepo's `status.url`, else its
+  `spec.gitRepo`, else its `spec.url`, equals the repository's address, character
+  for character: a trailing slash or a `.git` suffix makes another address. The
+  command then refuses with `CONFLICT` and names the ClusterRepo. A
+  ClusterRepo of the same name with another address is `CONFLICT` too, from the
+  server's dry-run.
+- Rancher downloads the repository from github.com after the command. A
+  server with no access to github.com (an air-gapped server) cannot download it. The
+  result's warning says so and names the command that shows the
+  ClusterRepo's state.
+- The CLI does not change the setting `display-add-extension-repos-banner`,
+  which the Rancher UI sets when it opens its dialog.
+- Shell completion offers the names the command accepts: `partner-extensions`,
+  and `rancher-ui-plugins` on Rancher Prime, and neither once added.
+- `rancher get uiplugin` reads the UIPlugin objects, whose plugin name, version
+  and state it shows. Without `--namespace` it reads the namespace
+  `cattle-ui-plugin-system`, where Rancher installs extensions;
+  `--namespace <namespace>` reads another one. There is no `-A` flag: the CLI
+  has no all-namespaces flag. `patch` and `delete` of a UIPlugin and `create
+  resource` of one are refused with `VALIDATION`.
+- `create resource` of a ClusterRepo is refused with `VALIDATION`, and the text
+  names `rancher extension add-repository`.
+
+### Listing extensions
+
+`rancher extension list [--show all|installed|available]` lists the extensions
+the Rancher UI's Extensions page shows, one line per extension, with what is
+installed, what can be upgraded and, in `-o json`, why a version is not compatible
+with the server.
+
+- An extension is a chart of a ClusterRepo the Rancher UI reads (not hidden by
+  the annotation `clusterrepo.cattle.io/hidden`, `spec.enabled` not false, in
+  the state `active`) with a version that has the annotation
+  `catalog.cattle.io/ui-component` set to `plugins`. A chart with any version
+  that has `catalog.cattle.io/hidden` set to `true` is left out. A ClusterRepo
+  that is not active, or whose index cannot be read, is left out with a warning
+  that names it, and a 503 response, which Rancher sends while it is still
+  downloading the repository, gets its own warning; the exit code stays 0.
+- An extension is installed when a UIPlugin of any namespace has
+  `spec.plugin.name` equal to the extension's name (`get uiplugins` reads the namespace `cattle-ui-plugin-system` only).
+  A UIPlugin is paired with a chart through the App of the same name in
+  `cattle-ui-plugin-system`: the chart is the one of that name in the
+  repository the App's annotation `catalog.cattle.io/ui-source-repo` names,
+  else its label `catalog.cattle.io/cluster-repo-name`. On a Rancher server
+  below v2.15 the UIPlugin is paired with the first chart of that name in
+  repository name order. A UIPlugin with no App is installed and has no
+  repository; an App with no UIPlugin is not installed, and its STATE is
+  `app without a UIPlugin`.
+- Columns: NAME, DISPLAY-NAME, REPO, INSTALLED (the UIPlugin's
+  `spec.plugin.version`), INSTALLABLE (the newest version compatible with this server),
+  UPGRADE (that version, when it differs from the installed one), PRIME-ONLY
+  (`yes` when a version has `catalog.cattle.io/prime-only` set to `true`) and
+  STATE (the UIPlugin's `status.cacheState`, or `error` when `status.error`
+  is set). A version is shown as its `appVersion`, or `<appVersion>
+  (<version>)` when the two differ.
+- A version is compatible with the server when none of these checks fails,
+  run in this order and stopping at the first failure, as the Rancher UI does:
+  `kube-version`
+  (against the Kubernetes version of the local cluster, from
+  `status.info.kubernetesVersion`, else `status.version.gitVersion`, with the
+  `+...` or `-...` suffix removed), `rancher-version`, `ui-version`,
+  `ui-extensions-version` (against the Extensions API version of the Rancher
+  UI that this Rancher release ships, and a version without the annotation is
+  not compatible), `ui-extensions-host` (a version that has it is not
+  compatible, as in the Rancher UI) and `prime-only` (on a server that is not
+  Rancher Prime). Ranges are read with the rules of Node's `semver` package, which the
+  Rancher UI uses.
+- The Extensions API version of each Rancher release comes from a table
+  recorded in the CLI. The table has one row for each release of every minor
+  from the oldest minor this CLI supports, and a weekly check compares it with
+  the Rancher and Rancher UI sources. A Rancher version not in the table makes
+  the `ui-extensions-version` ranges not checked, and one warning names the
+  ranges. A Kubernetes version that cannot be read makes a version with the
+  annotation `catalog.cattle.io/kube-version` not compatible, with a warning.
+- `-o json` lists each extension with `versions`, every version of the chart
+  in the index's order, each with `installable`, `reason` and `checks`: the
+  checks that ran, each with its annotation, range, value and a result of `ok`,
+  `failed` or `notChecked`.
+- It is refused with `VALIDATION` when the feature `uiextension` is turned off,
+  and with `NOT_FOUND` when the namespace `cattle-ui-plugin-system` does not
+  exist. With no extension chart offered, no UIPlugin and no ClusterRepo at the
+  address of either Rancher extension repository, the list is empty and a
+  warning names the two repositories and the command that previews adding one.
+- It reads the Feature `uiextension`, the namespace, the management Cluster
+  `local`, the ClusterRepos through Steve, the index of each repository the
+  Rancher UI reads, and the UIPlugins and Apps; it needs `get` or `list` on
+  each of them, and a refused read of the management Cluster only gives the
+  warning.
+- `rancher charts` leaves extension charts out, as the Rancher UI's Charts page
+  does, and `rancher app install` refuses one with `VALIDATION`, with and
+  without `--version`; this CLI does not install extensions yet.
 
 ## Draining a node
 

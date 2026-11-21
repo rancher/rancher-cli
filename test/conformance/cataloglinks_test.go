@@ -37,9 +37,10 @@ const catalogLinkFile = "internal/engine/catalog/index.go"
 // index link request, or hold a "link" literal for another reason, each with
 // its reason.
 var catalogLinkAllowlist = map[string]string{
-	"internal/telemetry/fsroot.go":                    "the name of the file system operation Link, passed to the operation observer",
-	"internal/runtime/completion/path.go":             "the completion read of the same filtered index, for --chart and --version of app install; it never sets skipFilter or k8sVersion",
-	"internal/testrancher/fidelity/catalogcleanup.go": "the fidelity probes' wait for the chart in the same filtered index before they install it; it never sets skipFilter or k8sVersion",
+	"internal/telemetry/fsroot.go":                      "the name of the file system operation Link, passed to the operation observer",
+	"internal/runtime/completion/path.go":               "the completion read of the same filtered index, for --chart and --version of app install; it never sets skipFilter or k8sVersion",
+	"internal/testrancher/fidelity/catalogcleanup.go":   "the fidelity probes' wait for the chart in the same filtered index before they install it; it never sets skipFilter or k8sVersion",
+	"internal/testrancher/fidelity/extension_probes.go": "the fidelity probe that records the index of a ClusterRepo the probe adds; it never sets skipFilter or k8sVersion",
 }
 
 // catalogLiteralFinding is one constant string the scan reports.

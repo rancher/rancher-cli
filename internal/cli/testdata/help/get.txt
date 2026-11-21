@@ -77,6 +77,7 @@ COMMANDS:
    statefulset, statefulsets, sts:                                             List statefulsets or show one
    storageclass, storageclasses, sc:                                           List storageclasses or show one
    token, tokens:                                                              List tokens or show one
+   uiplugin, uiplugins:                                                        List uiplugins or show one
    user, users:                                                                List users or show one
    vmwarevsphereconfig, vmwarevsphereconfigs:                                  List vmwarevsphereconfigs or show one
 

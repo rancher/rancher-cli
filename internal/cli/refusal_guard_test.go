@@ -99,6 +99,14 @@ func refusalCases() []refusalCase {
 			"etcd-snapshot: patch is not supported - Rancher creates and manages etcd snapshot objects from the snapshot files; this CLI does not change them; read it with "+clierr.Rancher+" get 'etcd-snapshot' --namespace 'default'",
 			"--namespace", "default"),
 
+		patchRefusal("uiplugin", "uiplugin",
+			"uiplugin: patch is not supported - the chart of an extension creates the UIPlugin and Rancher sets its status; this CLI does not change a UIPlugin; read it with "+clierr.Rancher+" get 'uiplugin' --namespace 'default'",
+			"--namespace", "default"),
+		createRefusal("uiplugin", "uiplugin", manifestOf("catalog.cattle.io/v1", "UIPlugin", true),
+			"cannot create a uiplugin from a manifest; this CLI does not load an extension from a URL"),
+		deleteRefusal("uiplugin", "uiplugin",
+			`unknown command "uiplugin"; uiplugin cannot be deleted - Helm deletes the UIPlugin of an extension chart when the extension is uninstalled, and the Rancher UI deletes the UIPlugin of an extension loaded from a URL when the extension is uninstalled there; this CLI does not uninstall extensions yet`),
+
 		patchRefusal("authconfig", "authconfig",
 			"authconfig: patch is not supported - auth configs are read-only in this CLI for now: Rancher configures, enables and disables auth providers through its own test-and-apply flow, and changing them from the CLI is planned separately; read it with "+clierr.Rancher+" get 'authconfig'"),
 
@@ -149,7 +157,7 @@ func refusalCases() []refusalCase {
 			`unknown command "management-node"; management-node cannot be deleted - Rancher deletes a management node when its node leaves the cluster`),
 
 		createRefusal("clusterrepo", "clusterrepo", manifestOf("catalog.cattle.io/v1", "ClusterRepo", false),
-			"cannot create a clusterrepo from a manifest; this CLI does not add repositories"),
+			"cannot create a clusterrepo from a manifest; this CLI adds only the Rancher extension repositories; to add one (<name> is partner-extensions, or rancher-ui-plugins on Rancher Prime), run `"+clierr.Rancher+" extension add-repository <name> --dry-run` and add --apply after reading the preview"),
 		createRefusal("app", "app", manifestOf("catalog.cattle.io/v1", "App", true),
 			"cannot create an app from a manifest; Rancher creates an app when it installs a chart; to install one (<release> is the Helm release name, <c> the cluster, <ns> the namespace, <repo> the ClusterRepo and <chart> the chart), run `"+clierr.Rancher+" app install <release> --cluster <c> --namespace <ns> --repo <repo> --chart <chart> --dry-run` and add --apply after reading the preview"),
 		createRefusal("operation", "operation", manifestOf("catalog.cattle.io/v1", "Operation", true),

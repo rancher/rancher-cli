@@ -80,6 +80,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"etcdsnapshot/discovery-local", "etcdsnapshot/list-local", "etcdsnapshot/crd-local",
 		"etcdsnapshot/standard-user-local",
 		"authproviders/only-local-enabled", "authproviders/external-providers-enabled",
+		"extension/add-repository-dry-run", "extension/add-and-list",
 	}
 	var got []string
 	for _, p := range All() {
@@ -316,7 +317,10 @@ func TestFixtureNamesCarryTheFidelityPrefix(t *testing.T) {
 	t.Parallel()
 	for _, p := range All() {
 		for _, o := range p.Observations {
-			if strings.Contains(o.Request.Body, `"metadata"`) && strings.Contains(o.Request.Body, `"name"`) {
+			// The extension probes add the Rancher extension repository under its own name
+			// and delete only that name, after a check that no such ClusterRepo exists.
+			if strings.Contains(o.Request.Body, `"metadata"`) && strings.Contains(o.Request.Body, `"name"`) &&
+				!strings.Contains(o.Request.Body, `"`+extensionRepoName+`"`) {
 				assert.Contains(t, o.Request.Body, "e2e-fid-",
 					"%s %s creates a named fixture without the e2e-fid- prefix", p.Name, o.Name)
 			}

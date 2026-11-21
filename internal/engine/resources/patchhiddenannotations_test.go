@@ -95,5 +95,5 @@ func TestPatchDiffHidesTheHiddenAnnotationsOfEveryKind(t *testing.T) {
 	}
 	// These rows have a refusal instead of a generated patch. A row that gets
 	// a NoPatchReason fails here until it is named on purpose.
-	assert.ElementsMatch(t, []string{"etcdsnapshot", "clusterrepo", "app", "operation", "authconfig", "role", "rolebinding", "clusterrole", "clusterrolebinding", "managementnode"}, skippedKeys)
+	assert.ElementsMatch(t, []string{"etcdsnapshot", "clusterrepo", "app", "operation", "authconfig", "role", "rolebinding", "clusterrole", "clusterrolebinding", "managementnode", "uiplugin"}, skippedKeys)
 }

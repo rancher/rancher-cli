@@ -1,0 +1,24 @@
+NAME:
+   rancher extension - Add a Rancher extension repository and list Rancher UI extensions
+
+USAGE:
+   rancher extension [command [command options]]
+
+COMMANDS:
+   add-repository:  Add a Rancher extension repository
+   list:            List the Rancher UI extensions the ClusterRepos offer and the installed ones
+
+OPTIONS:
+   --help, -h  show help
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

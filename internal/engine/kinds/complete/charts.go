@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/engine/catalog/extension"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 )
@@ -41,6 +42,17 @@ func (v indexVersion) deprecated() bool {
 // hidden reports whether the annotation catalog.cattle.io/hidden is present
 // and not empty, whatever its value.
 func (v indexVersion) hidden() bool { return v.Annotations[annotationHidden] != "" }
+
+// isExtensionChart reports whether the chart with these versions is a Rancher
+// UI extension, which app install refuses and the Rancher UI's Charts page
+// leaves out.
+func isExtensionChart(versions []indexVersion) bool {
+	annotations := make([]map[string]string, 0, len(versions))
+	for _, v := range versions {
+		annotations = append(annotations, v.Annotations)
+	}
+	return extension.IsExtensionChart(annotations)
+}
 
 // namesAChart reports whether an annotation value that lists charts holds at
 // least one entry.
@@ -130,7 +142,8 @@ func chartListing() completion.Requirements {
 
 // ChartSource is the live source of the --chart flag of app install: the
 // chart names of the filtered index of the typed --repo that the command
-// would not refuse for what the index shows. A chart is offered when it has a
+// would not refuse for what the index shows. A chart that is a Rancher UI
+// extension is not offered. A chart is offered when it has a
 // version that is not deprecated and every such version is installable (not
 // hidden, no auto-install or auto-install-gvr annotation, and a fixed
 // catalog.cattle.io/namespace or release-name equal to the typed --namespace
@@ -169,8 +182,12 @@ func ChartSource(command string) completion.Source {
 
 // offered reports whether a chart with these versions is offered: with a
 // version typed, that exact version is installable; otherwise the chart has a
-// version that is not deprecated and every such version is installable.
+// version that is not deprecated and every such version is installable. A
+// Rancher UI extension chart is never offered.
 func offered(versions []indexVersion, typed, namespace, release string) bool {
+	if isExtensionChart(versions) {
+		return false
+	}
 	if typed != "" {
 		for _, v := range versions {
 			if v.Version == typed {
@@ -195,8 +212,9 @@ func offered(versions []indexVersion, typed, namespace, release string) bool {
 // VersionSource is the live source of the --version flag of app install: the
 // versions of the typed --chart in the filtered index of the typed --repo, in
 // the order Rancher serves them, deprecated ones left out and prereleases
-// kept in place. Nothing without --cluster, --repo and --chart, and nothing
-// for a disabled repository. It claims no other site.
+// kept in place. Nothing without --cluster, --repo and --chart, nothing for a
+// disabled repository and nothing for a Rancher UI extension chart. It claims
+// no other site.
 func VersionSource(command string) completion.Source {
 	return completion.Source{
 		Claim: func(req completion.Request) (completion.Requirements, bool) {
@@ -212,6 +230,9 @@ func VersionSource(command string) completion.Source {
 			}
 			idx, ok := repoIndexOf(ctx, conn, req)
 			if !ok {
+				return completion.Result{}
+			}
+			if isExtensionChart(idx.Entries[chart]) {
 				return completion.Result{}
 			}
 			var names []string

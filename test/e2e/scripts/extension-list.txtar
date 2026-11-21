@@ -1,0 +1,85 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj core/v1/namespaces . namespace.yaml
+seedobj management.cattle.io/v3/features . feature.yaml
+seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
+seedobj catalog.cattle.io/v1/uiplugins cattle-ui-plugin-system uiplugin.yaml
+seedobj catalog.cattle.io/v1/apps cattle-ui-plugin-system app.yaml
+
+# The list has one installed extension, one available extension and one with no
+# version compatible with the server; that one has a reason for its version.
+exec rancher extension list -o json
+cp stdout list.json
+jsonquery list.json 'data.#(name=="ext-installed").installed' 1.0.0
+jsonquery list.json 'data.#(name=="ext-installed").upgrade' 2.0.0
+jsonquery list.json 'data.#(name=="ext-installed").repo' extension-list-repo
+jsonquery list.json 'data.#(installed=="")#.name' '["ext-available","ext-needs-prime"]'
+jsonquery list.json 'data.#(name=="ext-available").installable' 1.0.0
+jsonquery list.json 'data.#(installable=="")#.name' '["ext-needs-prime"]'
+jsonquery list.json 'data.#(name=="ext-needs-prime").versions.0.reason' 'requires Rancher Prime'
+jsonquery list.json 'data.#(name=="ext-needs-prime").primeOnly' true
+jsonquery list.json 'data.#' 3
+! stdout 'ext-hidden'
+! stdout 'plain-chart'
+
+# The table has its columns, and --show filters the two tabs.
+exec rancher extension list -o table
+stdout 'NAME'
+stdout 'PRIME-ONLY'
+stdout 'ext-installed'
+exec rancher extension list --show installed -o json
+cp stdout installed.json
+jsonquery installed.json 'data.#' 1
+jsonquery installed.json 'data.0.name' ext-installed
+exec rancher extension list --show available -o json
+cp stdout available.json
+jsonquery available.json 'data.#(name=="ext-installed").name' ''
+jsonquery available.json 'data.#' 2
+
+# The feature turned off is refused before anything is read.
+exec rancher patch feature uiextension --patch '[{"op":"replace","path":"/spec/value","value":false}]' --apply --yes -o json
+! exec rancher extension list -o json
+cp stderr refused.json
+jsonquery refused.json 'data.error.code' VALIDATION
+
+-- namespace.yaml --
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cattle-ui-plugin-system
+-- feature.yaml --
+apiVersion: management.cattle.io/v3
+kind: Feature
+metadata:
+  name: uiextension
+spec:
+  value: true
+-- repo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: extension-list-repo
+spec:
+  gitRepo: https://example.test/extension-list-repo
+  gitBranch: main
+-- uiplugin.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: UIPlugin
+metadata:
+  name: ext-installed
+  namespace: cattle-ui-plugin-system
+spec:
+  plugin:
+    name: ext-installed
+    version: 1.0.0
+-- app.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: App
+metadata:
+  name: ext-installed
+  namespace: cattle-ui-plugin-system
+  labels:
+    catalog.cattle.io/cluster-repo-name: extension-list-repo
+spec:
+  name: ext-installed

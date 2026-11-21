@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/catalog"
 	"github.com/rancher/rancher-cli/internal/engine/extres"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
@@ -213,6 +214,19 @@ func createPreviewRows(t *testing.T) []createPreviewRow {
 		lastApplied = "kubectl.kubernetes.io~1last-applied-configuration"
 	)
 	return []createPreviewRow{
+		{"extension add-repository", "internal/engine/catalog.addRepositoryCmd.Plan", []previewCase{{
+			name: "partner repository",
+			plan: func(t *testing.T) previewResult {
+				t.Helper()
+				in := fieldCoverageInput{args: []string{"partner-extensions"}}
+				return planPreview(t, t.Context(), catalog.NewExtensionAddRepository(&fieldRecorder{}), in)
+			},
+			present: map[string]any{
+				"/spec/gitRepo":   "https://github.com/rancher/partner-extensions",
+				"/spec/gitBranch": "main",
+			},
+			absent: []string{"/metadata/labels", "/metadata/annotations", "/spec/url", "/spec/enabled"},
+		}}},
 		{"create project", "internal/engine/projects.createCmd.Plan", coverageCases(t, "create project")},
 		{"create user", "internal/engine/user.createCmd.Plan", coverageCases(t, "create user")},
 		{"create oidc-client", "internal/engine/oidcclient.createCmd.Plan", coverageCases(t, "create oidc-client")},
@@ -386,7 +400,7 @@ func TestCreatePreviewTableCoversEveryPlanner(t *testing.T) {
 
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)
-	want := []string{"grant"}
+	want := []string{"grant", "extension add-repository"}
 	for _, c := range m.Commands {
 		if strings.HasPrefix(c.Name, "create ") {
 			want = append(want, c.Name)

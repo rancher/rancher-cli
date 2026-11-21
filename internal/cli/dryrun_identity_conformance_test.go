@@ -55,6 +55,7 @@ var dryRunDisplayIdentityGenericCommands = map[string]bool{
 	"create oidc-client":           true,
 	"create secret":                true,
 	"create token":                 true,
+	"extension add-repository":     true,
 	"oidc-client add-secret":       true,
 	"oidc-client remove-secret":    true,
 	"oidc-client rotate-secret":    true,

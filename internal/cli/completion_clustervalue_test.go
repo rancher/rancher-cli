@@ -275,6 +275,7 @@ var clusterValueWiringsWithoutSites = map[string]string{
 	"command cluster set-upgrade-strategy": "the command takes no --cluster",
 	"command oidc-client rotate-secret":    "the command takes no --cluster",
 	"command oidc-client remove-secret":    "the command takes no --cluster",
+	"command extension add-repository":     "the command takes no --cluster",
 
 	"flag --cluster on access projects": "the command's own source claims the flag",
 

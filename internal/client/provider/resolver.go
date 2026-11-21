@@ -60,6 +60,7 @@ func NewResolver() map[string]safety.Binding {
 		"images":                  {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"usage":                   {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"charts":                  {Contract: safety.ContractInternal, Stability: safety.Beta},
+		"extension list":          {Contract: safety.ContractInternal, Stability: safety.Beta},
 
 		// The access commands front the Kubernetes authorization reviews
 		// (SubjectAccessReview, SelfSubjectRulesReview) through the Rancher

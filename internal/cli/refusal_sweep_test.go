@@ -58,6 +58,7 @@ var refusalExemptions = map[string]refusalExemption{
 	"patch app":                      {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher creates and manages app objects from the Helm release", nil},
 	"patch operation":                {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher creates and manages operation objects", nil},
 	"patch etcd-snapshot":            {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: Rancher creates and manages etcd snapshot objects from the snapshot files", nil},
+	"patch uiplugin":                 {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: the chart of an extension creates the UIPlugin and Rancher sets its status", nil},
 	"patch authconfig":               {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: auth configs are read-only in this CLI for now", nil},
 	"patch management-node":          {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: drain a node with `rancher node drain`, stop a drain with `rancher node stop-drain`, and cordon or uncordon it by setting spec.unschedulable on the node", nil},
 	"patch role":                     {[]int{http.StatusUnauthorized, http.StatusForbidden}, nil, 2, "refused before any request: this CLI does not change Kubernetes RBAC objects yet", nil},
@@ -118,6 +119,14 @@ var refusalSetup = map[string][]string{
 	"config update-server": {"config", "add-server", "a1", "--url", "{url}", "--cacert", "{ca}"},
 }
 
+// refusalPositionals gives, for a command whose first request needs a valid
+// positional, the positional values to use in place of the placeholder
+// argValues builds: extension add-repository checks its name before any
+// request.
+var refusalPositionals = map[string][]string{
+	"extension add-repository": {"partner-extensions"},
+}
+
 // refusalArgs completes a command line the manifest alone cannot: the
 // values a command checks before its first request.
 var refusalArgs = map[string][]string{
@@ -154,7 +163,11 @@ func (s *refusalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // flags, the server's URL where a flag names a server, the path of its CA
 // file where a flag takes one, and refusalArgs.
 func refusalArgv(c runtime.SchemaCommand, cluster, url, caPath, manifest string) []string {
-	argv := append(strings.Fields(c.Name), argValues(c.Args)...)
+	positionals := argValues(c.Args)
+	if values, ok := refusalPositionals[c.Name]; ok {
+		positionals = values
+	}
+	argv := append(strings.Fields(c.Name), positionals...)
 	extra := refusalArgs[c.Name]
 	for _, f := range c.Flags {
 		if slices.Contains(extra, "--global") && f.Name == "cluster" {

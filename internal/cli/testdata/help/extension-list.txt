@@ -1,0 +1,17 @@
+NAME:
+   rancher extension list - List the Rancher UI extensions the ClusterRepos offer and the installed ones
+
+USAGE:
+   rancher extension list [options]
+
+OPTIONS:
+   --help, -h     show help
+   --show string  which extensions to list: all, installed or available (default all)
+
+GLOBAL OPTIONS:
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it

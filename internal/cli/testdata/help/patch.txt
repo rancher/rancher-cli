@@ -75,6 +75,7 @@ COMMANDS:
    statefulset, statefulsets, sts:                                             Patch the statefulset
    storageclass, storageclasses, sc:                                           Patch the storageclass
    token, tokens:                                                              Patch the token
+   uiplugin, uiplugins:                                                        Refused: uiplugin cannot be patched
    user, users:                                                                Patch the user
    vmwarevsphereconfig, vmwarevsphereconfigs:                                  Patch the vmwarevsphereconfig
 

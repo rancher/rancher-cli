@@ -134,6 +134,8 @@ func buildEntries() []entry {
 			return catalog.NewUpgrade(d.clients, d.roots, d.actions, d.src)
 		}},
 		{group: "app", make: func(d runDeps) runtime.Command { return catalog.NewUninstall(d.clients, d.actions) }},
+		{group: "extension", make: func(d runDeps) runtime.Command { return catalog.NewExtensionAddRepository(d.clients) }},
+		{group: "extension", make: func(d runDeps) runtime.Command { return catalog.NewExtensionList(d.clients, d.roots) }},
 		{group: "", make: func(d runDeps) runtime.Command { return catalog.NewCharts(d.clients, d.roots) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewGrant(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewRevoke(d.clients) }},
@@ -507,6 +509,7 @@ var groupUsages = map[string]string{
 	"cluster":     "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy or take an etcd snapshot (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
 	"node":        "Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)",
 	"app":         "Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)",
+	"extension":   "Add a Rancher extension repository and list Rancher UI extensions",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 
@@ -756,6 +759,7 @@ var derivedOpKinds = map[string]string{
 	"app install":                  "app",
 	"app upgrade":                  "app",
 	"app uninstall":                "app",
+	"extension add-repository":     "clusterrepo",
 	"cluster scale":                "provisioningcluster",
 	"cluster set-autoscaling":      "provisioningcluster",
 	"cluster clear-autoscaling":    "provisioningcluster",
@@ -1037,9 +1041,10 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// "node" is both a command group and a kind, the same deliberate
 		// collision as "project" and "cluster": `rancher schema node` returns
 		// this group's card and --kind reaches the node kind card.
-		"node":    "Drain a node of a cluster or stop a running drain, through the management node Rancher keeps for it; Rancher runs the drain. Read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`.",
-		"app":     "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
-		"inspect": "Show the current state, events and related objects of a cluster, workload or project.",
+		"node":      "Drain a node of a cluster or stop a running drain, through the management node Rancher keeps for it; Rancher runs the drain. Read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`.",
+		"app":       "Install a chart from a ClusterRepo as an app, upgrade an app or uninstall one, through Rancher's catalog actions; list charts with `rancher charts` and read apps with `rancher get app`.",
+		"extension": "Add one of the two Rancher extension repositories and list the Rancher UI extensions the ClusterRepos offer. The two repositories are the ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
+		"inspect":   "Show the current state, events and related objects of a cluster, workload or project.",
 		"access": "Questions about access, answered by the server: whether a subject can perform a verb on a resource, the rules a subject has in a namespace, " +
 			"which of the subjects named in the cluster's bindings the authorizer allows to perform a verb on a resource, why the authorizer decided as it did for one subject " +
 			"(the chain of Rancher bindings and templates behind the binding it accepted), which clusters Rancher's proxy lets a subject into, " +

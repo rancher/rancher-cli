@@ -37,6 +37,7 @@ const modulePath = "github.com/rancher/rancher-cli"
 // reads the loaded config, the environment and a CA file and nothing else.
 var liveSourcePackages = map[string]bool{
 	modulePath + "/internal/engine/kinds/complete":        true,
+	modulePath + "/internal/engine/catalog/complete":      true,
 	modulePath + "/internal/engine/access/complete":       true,
 	modulePath + "/internal/engine/projects/complete":     true,
 	modulePath + "/internal/engine/rbac/complete":         true,

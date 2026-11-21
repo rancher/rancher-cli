@@ -17,6 +17,7 @@ COMMANDS:
    config:          Config commands
    create:          Create resources
    delete:          Delete resources
+   extension:       Add a Rancher extension repository and list Rancher UI extensions
    get:             Get resources
    grant:           Grant a role to a user or group at project, cluster, or global scope
    images:          List container images in use, grouped by image or owning workload

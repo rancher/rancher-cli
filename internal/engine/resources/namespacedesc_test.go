@@ -94,6 +94,7 @@ var namespaceCanBeOutsideAWorkspace = map[string]string{
 	"capimachine":           "a CAPI machine is in the namespace of its CAPI cluster, which can be any namespace when Rancher does not provision the cluster",
 	"capimachineset":        "a CAPI machine set is in the namespace of its CAPI cluster, which can be any namespace when Rancher does not provision the cluster",
 	"capimachinedeployment": "a CAPI machine deployment is in the namespace of its CAPI cluster, which can be any namespace when Rancher does not provision the cluster",
+	"uiplugin":              "Rancher installs extensions into cattle-ui-plugin-system, not a Fleet workspace, and the Rancher UI reads the UIPlugins of every namespace",
 }
 
 // TestEveryManagementRowWithAPlainOrWorkspaceNamespaceDescribesIt asserts
