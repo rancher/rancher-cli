@@ -284,22 +284,14 @@ func upgradeWarnings(r upgradeRead, target string, again bool, wait clusterWait,
 	if again {
 		out = append(out, fmt.Sprintf("cluster %s already has version %s set and its upgrade is not finished: nothing changes; the command waits for the upgrade", r.name, target))
 	}
-	if f.Provisioned {
-		status, message, found := conditionOf(r.prov, "Updated")
-		if found && status != "True" {
-			out = append(out, runningUpgradeWarning(message))
-		}
-	} else {
-		status, message, found := conditionOf(r.mgmt, "Upgraded")
-		if found && status == "Unknown" {
-			out = append(out, runningUpgradeWarning(message))
-		}
+	if message, running := upgradeRunning(upgradeObject(r), f.Provisioned); running {
+		out = append(out, runningUpgradeWarning(message))
 	}
 	if f.ManuallyUpgraded {
 		out = append(out, fmt.Sprintf("cluster %s runs %s while the version in its config is %s; the Rancher UI shows it as manually upgraded; this command compares the new version with %s", r.name, f.Current, f.Stored, f.Current))
 	}
 	if f.AddAnnotation {
-		out = append(out, fmt.Sprintf("cluster %s has no annotation %s; Rancher's admission webhook denies an update without it, and the command sets it to system-default", r.name, versionManagementAnnotation))
+		out = append(out, annotationWarning(r.name))
 	}
 	out = append(out, orderWarnings(r)...)
 
@@ -335,6 +327,27 @@ func upgradeWarnings(r upgradeRead, target string, again bool, wait clusterWait,
 
 // upgradeShortTimeout is the shortest --timeout that does not warn.
 const upgradeShortTimeout = 10 * time.Minute
+
+// annotationWarning says the command adds the version management annotation,
+// which Rancher's admission webhook requires on an update of an imported
+// cluster.
+func annotationWarning(name string) string {
+	return fmt.Sprintf("cluster %s has no annotation %s; Rancher's admission webhook denies an update without it, and the command sets it to system-default", name, versionManagementAnnotation)
+}
+
+// upgradeRunning reports whether Rancher runs an upgrade of the cluster, and
+// the message of the condition that says so: a provisioning Cluster whose
+// Updated condition is present and not True, or a management Cluster whose
+// Upgraded condition is Unknown. cluster is the provisioning Cluster of a
+// provisioned cluster, else the management Cluster.
+func upgradeRunning(cluster *unstructured.Unstructured, provisioned bool) (message string, running bool) {
+	if provisioned {
+		status, message, found := conditionOf(cluster, "Updated")
+		return message, found && status != "True"
+	}
+	status, message, found := conditionOf(cluster, "Upgraded")
+	return message, found && status == "Unknown"
+}
 
 func runningUpgradeWarning(message string) string {
 	if message == "" {

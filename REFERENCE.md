@@ -1744,6 +1744,89 @@ For an imported cluster with an upgrade pending, the command accepts the version
 the cluster runs: it sets the version in the cluster's config back to that
 version, and the pending upgrade does not run.
 
+### Upgrade strategy
+
+`rancher cluster set-upgrade-strategy <cluster>` sets how Rancher upgrades the
+nodes of an RKE2 or K3s cluster: how many control plane and worker nodes it
+upgrades at a time and whether it drains them first. It writes the strategy of
+a provisioned cluster (`spec.rkeConfig.upgradeStrategy` of its provisioning
+cluster) or of an imported cluster (`spec.rke2Config.rke2upgradeStrategy` or
+`spec.k3sConfig.k3supgradeStrategy` of its management cluster). It previews
+with a server-side dry-run. A provisioned cluster needs `--apply --yes`; an
+imported cluster needs `--apply` only. The command does not wait for an
+upgrade: the strategy applies to the next upgrade, for a provisioned cluster
+also to machine rollouts, and to an upgrade that is running.
+
+    rancher cluster set-upgrade-strategy <cluster> --control-plane-concurrency 1 --worker-concurrency 10% --dry-run
+    rancher cluster set-upgrade-strategy <cluster> --worker-drain --worker-grace-period 60 --apply --yes
+
+- Flags of both kinds of cluster: `--control-plane-concurrency` and
+  `--worker-concurrency` (how many nodes at a time), `--control-plane-drain` and
+  `--worker-drain` (`--control-plane-drain=false` turns the drain off). A
+  provisioned cluster takes a number or a percentage such as `10%`; Rancher
+  checks it at the dry-run. An imported cluster takes a whole number of 1 or
+  more, as the Rancher UI does.
+- Flags of a provisioned cluster only: `--control-plane-drain-force` and
+  `--worker-drain-force`, `--control-plane-delete-emptydir` and
+  `--worker-delete-emptydir` (the option kubectl calls
+  `--delete-emptydir-data` and Rancher stores as `deleteEmptyDirData`),
+  `--control-plane-grace-period` and `--worker-grace-period` (whole seconds of
+  1 or more, or `-1` for the pod's default, typed `--worker-grace-period=-1`),
+  and `--control-plane-drain-timeout` and `--worker-drain-timeout` (a duration
+  of 1s or more in whole seconds, for example `5m`).
+- An imported cluster refuses those drain options: the upgrade plan of Rancher's
+  system-upgrade-controller drains with force and has no other drain option;
+  only `--control-plane-drain` and `--worker-drain` apply. A drain option typed
+  with `--<group>-drain=false` of the same group is refused as a conflict.
+- When the command turns drain on for a provisioned cluster whose drain is not
+  enabled, it also writes the Rancher UI's value for each drain option the
+  cluster does not have and the command line does not give: `deleteEmptyDirData`
+  `true`, `disableEviction` `false`, `force` `false`, `gracePeriod` `-1` (the
+  pod's default), `ignoreDaemonSets` `true`, `skipWaitForDeleteTimeoutSeconds`
+  `0` and `timeout` `120` seconds. Rancher reads a drain that has no
+  `gracePeriod` as `gracePeriod` 0, which gives a pod no time to stop. A drain
+  that is already enabled gets no default, and a flag you type takes
+  precedence. A value of 0 the cluster has is a value, not a missing one. A
+  cluster Rancher has written has 0 and `false` for the options it was not
+  given (`gracePeriod` 0, `deleteEmptyDirData` `false`), and the command keeps
+  them, as the Rancher UI does; the preview warns when the command turns drain
+  on and the cluster has `gracePeriod` 0 or `deleteEmptyDirData` `false`, and
+  names `--<group>-grace-period` and `--<group>-delete-emptydir`, which change
+  them.
+- The local cluster and hosted clusters are refused, as for `cluster upgrade`.
+  An imported cluster that has not reported its version, or whose version
+  management annotation holds a value Rancher refuses, is refused too. An
+  imported cluster with version management off is not refused: the preview warns
+  that the strategy applies once version management is on. An imported cluster
+  paused for an etcd snapshot restore is not refused either: Rancher applies the
+  strategy once the restore ends and version management resumes. When the
+  annotation is absent or empty, the update also sets it to `system-default`,
+  because Rancher's admission webhook denies an update without it.
+- A provisioned cluster is refused, with a retryable `GENERIC` error, while an
+  etcd snapshot restore with `restoreRKEConfig` set to `all` is in progress:
+  it would replace the upgrade strategy. Other operations do not stop the
+  command. If the RKEControlPlane cannot be read, the command warns and does
+  not refuse.
+- The preview warns when an upgrade is in progress (the new strategy applies to
+  it at once) and when a concurrency of 0 upgrades every node of a group at
+  once. For an imported cluster it also warns when the command turns drain on
+  (the drain then stays in Rancher's upgrade plan), when Rancher keeps the
+  drain in that plan after drain is turned off, and when version management is
+  off or cannot be read. A run whose values are already set succeeds, warns,
+  and changes nothing.
+- The Cluster Owner role grants `update` on the cluster.
+- Completion offers the clusters the command accepts (one list of the
+  provisioning clusters and one page of the management clusters in the Steve
+  API; a Cluster Owner with no other role is offered nothing and types the
+  name, and a cluster beyond the first page is not offered). It reads only the
+  cluster objects and cannot see an etcd snapshot restore in progress. The two
+  concurrency flags offer `1`, `2` and `3`. With the completion network opt-in
+  on, the grace period and
+  drain timeout flags offer values for a provisioned cluster typed before them,
+  and none for an imported cluster or after `--<group>-drain=false` of the
+  same group.
+- Output: `cluster/<name> upgrade strategy set`; `data` is the written cluster.
+
 ## Day-2 operations on imported clusters
 
 Rancher takes etcd snapshots of an imported RKE2 or K3s cluster, restores them,

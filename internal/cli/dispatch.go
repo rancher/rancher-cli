@@ -313,6 +313,11 @@ func dispatchSite(
 		if drainFlagSite(site, d, "grace-period") {
 			return resolveStaticEnum(gracePeriodSuggestions, site)
 		}
+		// cluster set-upgrade-strategy: how many nodes of a group upgrade at a
+		// time. 1, 2 and 3 are accepted for a provisioned and for an imported cluster.
+		if strategyConcurrencySite(site, d) {
+			return resolveStaticEnum(strategyConcurrencySuggestions, site)
+		}
 		// `auth login --credential-store`: the three stores that can be
 		// named without knowing anything about the machine. The flag
 		// carries no enum, because a typed exec:<name> has to be accepted.
@@ -608,6 +613,19 @@ var drainTimeoutSuggestions = []string{"30s", "1m", "2m", "5m", "10m", "30m", "1
 // gracePeriodSuggestions are the static --grace-period candidates of node
 // drain, in whole seconds.
 var gracePeriodSuggestions = []string{"10", "30", "60", "120", "300"}
+
+// strategyConcurrencySuggestions are the static --control-plane-concurrency and
+// --worker-concurrency candidates of cluster set-upgrade-strategy: whole numbers
+// that both kinds of cluster accept.
+var strategyConcurrencySuggestions = []string{"1", "2", "3"}
+
+// strategyConcurrencySite reports a flag-value site of the concurrency flags of
+// cluster set-upgrade-strategy.
+func strategyConcurrencySite(site CompletionSite, d runtime.Descriptor) bool {
+	return site.Kind == SiteFlagValue && d.Name == "cluster set-upgrade-strategy" &&
+		(site.FlagName == "control-plane-concurrency" || site.FlagName == "worker-concurrency") &&
+		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == site.FlagName })
+}
 
 // nodeDrainCommand reports whether name is node drain or node stop-drain.
 func nodeDrainCommand(name string) bool {

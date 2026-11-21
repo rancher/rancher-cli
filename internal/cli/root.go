@@ -111,6 +111,7 @@ func buildEntries() []entry {
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewResumeAutoscaling(d.clients) }},
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewUpgrade(d.clients, d.roots) }},
 		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewSaveEtcdSnapshot(d.clients, d.roots) }},
+		{group: "cluster", make: func(d runDeps) runtime.Command { return provisioning.NewUpgradeStrategy(d.clients, d.roots) }},
 		{group: "node", make: func(d runDeps) runtime.Command { return nodes.NewDrain(d.clients, d.roots, d.nodeActions) }},
 		{group: "node", make: func(d runDeps) runtime.Command { return nodes.NewStopDrain(d.clients, d.roots, d.nodeActions) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectCluster(d.clients, d.roots) }},
@@ -503,7 +504,7 @@ var groupUsages = map[string]string{
 	"skill":       "Install, remove and check the agent skills that come with rancher-cli",
 	"telemetry":   "Local usage recording: status, turn on, turn off, delete, list and send events",
 	"oidc-client": "Manage OIDC client secrets (`rancher create oidc-client` creates the client itself)",
-	"cluster":     "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster or take an etcd snapshot (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
+	"cluster":     "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy or take an etcd snapshot (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
 	"node":        "Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)",
 	"app":         "Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
@@ -740,30 +741,31 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 // same core-v1 dynamic path as the generated namespace verbs and are bound
 // to that row, not the project verbs they sit beside.
 var derivedOpKinds = map[string]string{
-	"create project":             "project",
-	"create token":               "token",
-	"create kubeconfig":          "kubeconfig",
-	"create namespace":           "namespace",
-	"project add-namespace":      "namespace",
-	"project remove-namespace":   "namespace",
-	"create secret":              "secret",
-	"create cluster":             "provisioningcluster",
-	"create oidc-client":         "oidcclient",
-	"oidc-client add-secret":     "oidcclient",
-	"oidc-client rotate-secret":  "oidcclient",
-	"oidc-client remove-secret":  "oidcclient",
-	"app install":                "app",
-	"app upgrade":                "app",
-	"app uninstall":              "app",
-	"cluster scale":              "provisioningcluster",
-	"cluster set-autoscaling":    "provisioningcluster",
-	"cluster clear-autoscaling":  "provisioningcluster",
-	"cluster pause-autoscaling":  "provisioningcluster",
-	"cluster resume-autoscaling": "provisioningcluster",
-	"cluster upgrade":            "provisioningcluster",
-	"cluster save-etcd-snapshot": "provisioningcluster",
-	"node drain":                 "managementnode",
-	"node stop-drain":            "managementnode",
+	"create project":               "project",
+	"create token":                 "token",
+	"create kubeconfig":            "kubeconfig",
+	"create namespace":             "namespace",
+	"project add-namespace":        "namespace",
+	"project remove-namespace":     "namespace",
+	"create secret":                "secret",
+	"create cluster":               "provisioningcluster",
+	"create oidc-client":           "oidcclient",
+	"oidc-client add-secret":       "oidcclient",
+	"oidc-client rotate-secret":    "oidcclient",
+	"oidc-client remove-secret":    "oidcclient",
+	"app install":                  "app",
+	"app upgrade":                  "app",
+	"app uninstall":                "app",
+	"cluster scale":                "provisioningcluster",
+	"cluster set-autoscaling":      "provisioningcluster",
+	"cluster clear-autoscaling":    "provisioningcluster",
+	"cluster pause-autoscaling":    "provisioningcluster",
+	"cluster resume-autoscaling":   "provisioningcluster",
+	"cluster upgrade":              "provisioningcluster",
+	"cluster save-etcd-snapshot":   "provisioningcluster",
+	"cluster set-upgrade-strategy": "provisioningcluster",
+	"node drain":                   "managementnode",
+	"node stop-drain":              "managementnode",
 }
 
 // bespokePublicOps is the closed, reviewed set of ContractPublic ops with
@@ -1030,7 +1032,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// allowlist. Lifecycle CRUD (`create cluster`, `delete
 		// provisioning-cluster`, `get cluster`) stays where it is; `get
 		// provisioning-cluster` is the read path for this family's target.
-		"cluster": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster or take an etcd snapshot; " +
+		"cluster": "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy or take an etcd snapshot; " +
 			"to create or delete a provisioning cluster use `rancher create cluster` and `rancher delete provisioning-cluster`, and to read one use `rancher get provisioning-cluster`.",
 		// "node" is both a command group and a kind, the same deliberate
 		// collision as "project" and "cluster": `rancher schema node` returns

@@ -180,6 +180,19 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "cluster save-etcd-snapshot --timeout", words: []string{"cluster", "save-etcd-snapshot", "prod", "--timeout"}, want: []string{"10m", "1h", "2h", "30m"}, hits: map[string]int{}},
 		{name: "cluster save-etcd-snapshot --timeout after --wait=false", words: []string{"cluster", "save-etcd-snapshot", "prod", "--wait=false", "--timeout"}, hits: map[string]int{}},
 		{name: "cluster save-etcd-snapshot --timeout after --wait=true", words: []string{"cluster", "save-etcd-snapshot", "prod", "--wait=true", "--timeout"}, want: []string{"10m", "1h", "2h", "30m"}, hits: map[string]int{}},
+		// cluster set-upgrade-strategy: the concurrency flags offer static
+		// values, the grace period and drain timeout flags read the typed cluster
+		{name: "cluster set-upgrade-strategy --control-plane-concurrency", words: []string{"cluster", "set-upgrade-strategy", "prod", "--control-plane-concurrency"}, want: []string{"1", "2", "3"}, hits: map[string]int{}},
+		{name: "cluster set-upgrade-strategy --worker-concurrency without a cluster", words: []string{"cluster", "set-upgrade-strategy", "--worker-concurrency"}, want: []string{"1", "2", "3"}, hits: map[string]int{}},
+		{name: "cluster set-upgrade-strategy --worker-drain-force has no values", words: []string{"cluster", "set-upgrade-strategy", "prod", "--worker-drain-force"}, hits: map[string]int{}},
+		{name: "cluster set-upgrade-strategy --worker-grace-period", words: []string{"cluster", "set-upgrade-strategy", "prod", "--worker-grace-period"}, want: []string{"120", "30", "300", "60"}, hits: map[string]int{provProdPath: 1}},
+		{name: "cluster set-upgrade-strategy --control-plane-drain-timeout", words: []string{"cluster", "set-upgrade-strategy", "prod", "--control-plane-drain-timeout"}, want: []string{"10m", "1m", "2m", "30s", "5m"}, hits: map[string]int{provProdPath: 1}},
+		{name: "cluster set-upgrade-strategy --worker-grace-period after its own drain=false", words: []string{"cluster", "set-upgrade-strategy", "prod", "--worker-drain=false", "--worker-grace-period"}, hits: map[string]int{}},
+		{name: "cluster set-upgrade-strategy --worker-grace-period after the other group's drain=false", words: []string{"cluster", "set-upgrade-strategy", "prod", "--control-plane-drain=false", "--worker-grace-period"}, want: []string{"120", "30", "300", "60"}, hits: map[string]int{provProdPath: 1}},
+		{name: "cluster set-upgrade-strategy --worker-grace-period after a bare drain", words: []string{"cluster", "set-upgrade-strategy", "prod", "--worker-drain", "--worker-grace-period"}, want: []string{"120", "30", "300", "60"}, hits: map[string]int{provProdPath: 1}},
+		{name: "cluster set-upgrade-strategy --worker-grace-period without a cluster", words: []string{"cluster", "set-upgrade-strategy", "--worker-grace-period"}, hits: map[string]int{}},
+		{name: "cluster set-upgrade-strategy --worker-grace-period in a typed namespace", words: []string{"cluster", "set-upgrade-strategy", "prod", "--namespace", "team-a", "--worker-grace-period"}, want: []string{"120", "30", "300", "60"}, hits: map[string]int{provTeamProdPath: 1}},
+		{name: "cluster set-upgrade-strategy --worker-grace-period with the network off", words: []string{"cluster", "set-upgrade-strategy", "prod", "--worker-grace-period"}, noNet: true, hits: map[string]int{}},
 		// logs --pod
 		{name: "logs --pod of a local-only target", words: []string{"logs", "webhook", "--pod"}, want: webhookPods, hits: map[string]int{localCattlePods: 1}},
 		{name: "logs --pod= equals form", words: []string{"logs", "webhook"}, cur: "--pod=", want: []string{"--pod=rancher-webhook-1", "--pod=rancher-webhook-2"}, hits: map[string]int{localCattlePods: 1}},

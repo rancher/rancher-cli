@@ -234,6 +234,8 @@ func missingRows() []missingRow {
 			code: clierr.CodeNotFound, last: provisioning},
 		missingRow{name: "cluster save-etcd-snapshot", class: classChecks, argv: slices.Concat([]string{"cluster", "save-etcd-snapshot", "prod"}, preview),
 			code: clierr.CodeNotFound, last: provisioning},
+		missingRow{name: "cluster set-upgrade-strategy", class: classChecks, argv: slices.Concat([]string{"cluster", "set-upgrade-strategy", "prod", "--worker-concurrency", "2"}, preview),
+			code: clierr.CodeNotFound, last: provisioning},
 		missingRow{name: "inspect pod", class: classChecks, argv: slices.Concat([]string{"inspect", "pod", "x"}, cluster),
 			code: clierr.CodeNotFound, last: "GET " + downstream + "/api/v1/namespaces/" + missingNamespace + "/pods/x"},
 		missingRow{name: "inspect deployment", class: classChecks, argv: slices.Concat([]string{"inspect", "deployment", "x"}, cluster),
@@ -464,8 +466,8 @@ func TestEveryNamespaceCommandHasAMissingNamespaceRow(t *testing.T) {
 			"add its row to "+table+" in this file, saying what it does with a namespace that does not exist")
 	}
 	commands, rowCount := len(declaring), len(rows)
-	assert.Equal(t, 136, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
-	assert.Equal(t, 180, rowCount, "the rows; uncovered commands: %v", uncovered)
+	assert.Equal(t, 137, commands, "the commands that declare --namespace; uncovered: %v", uncovered)
+	assert.Equal(t, 181, rowCount, "the rows; uncovered commands: %v", uncovered)
 
 	h := newMissingHarness(t)
 	for _, row := range rows {

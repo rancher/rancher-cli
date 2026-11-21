@@ -1,0 +1,81 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed a provisioned cluster with an empty rkeConfig, as a custom cluster has.
+# The harness runs no controllers: the cluster has no RKEControlPlane, and every
+# preview warns that the RKEControlPlane cannot be read. provisioningcluster is
+# Sensitive: every write below needs --yes.
+exec rancher create resource -f strategy-cluster.yaml --apply --yes
+
+# the preview: a server-side dry-run, reversible.
+exec rancher cluster set-upgrade-strategy e2e-strategy --control-plane-concurrency 2 --worker-drain --dry-run -o json
+jsonquery stdout data.reversible true
+jsonquery stdout data.previewSource serverDryRun
+jsonquery stdout 'warnings.#(%"cannot read the RKEControlPlane of cluster e2e-strategy *")#|#' 1
+
+# an apply without --yes is refused.
+! exec rancher cluster set-upgrade-strategy e2e-strategy --control-plane-concurrency 2 --worker-drain --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+
+# the write stores the concurrency, turns the worker drain on and fills the
+# drain options the cluster did not have with the Rancher UI's values.
+exec rancher cluster set-upgrade-strategy e2e-strategy --control-plane-concurrency 2 --worker-drain --apply --yes
+stdout 'cluster/e2e-strategy upgrade strategy set'
+exec rancher get provisioning-cluster e2e-strategy -o json
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.controlPlaneConcurrency 2
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.enabled true
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.gracePeriod -1
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.timeout 120
+
+# no flag, a drain option with the drain turned off and a grace period of 0 are
+# refused.
+! exec rancher cluster set-upgrade-strategy e2e-strategy
+stderr 'error \(VALIDATION\):'
+stderr 'give at least one flag that sets the upgrade strategy, for example --worker-concurrency 1'
+! exec rancher cluster set-upgrade-strategy e2e-strategy --worker-drain=false --worker-drain-force
+stderr 'error \(VALIDATION\):'
+stderr 'conflicts with --worker-drain=false'
+! exec rancher cluster set-upgrade-strategy e2e-strategy --worker-grace-period 0
+stderr 'error \(VALIDATION\):'
+stderr 'must be a whole number of seconds'
+
+# A cluster Rancher has written has 0 and false for the drain options it was
+# not given. Turning drain on keeps them and the preview warns, naming the flags
+# that change them.
+exec rancher create resource -f strategy-zeros-cluster.yaml --apply --yes
+exec rancher cluster set-upgrade-strategy e2e-strategy-zeros --worker-drain --dry-run -o json
+jsonquery stdout 'warnings.#(%"cluster e2e-strategy-zeros has gracePeriod 0 for draining the worker nodes*--worker-grace-period changes it)")#|#' 1
+jsonquery stdout 'warnings.#(%"cluster e2e-strategy-zeros has deleteEmptyDirData false for draining the worker nodes*--worker-delete-emptydir changes it)")#|#' 1
+exec rancher cluster set-upgrade-strategy e2e-strategy-zeros --worker-drain --apply --yes
+exec rancher get provisioning-cluster e2e-strategy-zeros -o json
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.enabled true
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.gracePeriod 0
+jsonquery stdout data.spec.rkeConfig.upgradeStrategy.workerDrainOptions.deleteEmptyDirData false
+
+-- strategy-cluster.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-strategy
+  namespace: fleet-default
+spec:
+  kubernetesVersion: v1.30.5+rke2r1
+  rkeConfig: {}
+-- strategy-zeros-cluster.yaml --
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: e2e-strategy-zeros
+  namespace: fleet-default
+spec:
+  kubernetesVersion: v1.30.5+rke2r1
+  rkeConfig:
+    upgradeStrategy:
+      workerDrainOptions:
+        enabled: false
+        force: false
+        deleteEmptyDirData: false
+        disableEviction: false
+        gracePeriod: 0
+        timeout: 0
+        skipWaitForDeleteTimeoutSeconds: 0

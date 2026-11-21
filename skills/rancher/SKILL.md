@@ -306,6 +306,18 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   progress, a cluster that has not reported its version) means: try again later.
   A timeout leaves the upgrade running: run the same command again with the same
   version to wait again.
+- `cluster set-upgrade-strategy <cluster>` sets how Rancher upgrades the nodes of
+  an RKE2 or K3s cluster: `--control-plane-concurrency` and
+  `--worker-concurrency`, `--control-plane-drain` and `--worker-drain`, and for a
+  provisioned cluster the drain options `--control-plane-drain-force`,
+  `--control-plane-delete-emptydir`, `--control-plane-grace-period` and
+  `--control-plane-drain-timeout` (and the same four with `--worker-` in place of `--control-plane-`). Preview
+  first (`--dry-run`) and read the warnings. A provisioned cluster needs
+  `--apply --yes`, an imported cluster `--apply`. An imported cluster takes only
+  the two concurrency flags (whole numbers of 1 or more) and the two drain
+  flags. The command does not wait for an upgrade. When it turns drain on for a provisioned
+  cluster, it writes the Rancher UI's values for the drain options the cluster
+  does not have yet.
 - `delete` waits until the object is gone (default `--timeout 5m`);
   `--wait=false` returns at once and prints `deletion started`. Read
   `data.waited` and the warnings. Without `--wait=false`, a `data.waited`

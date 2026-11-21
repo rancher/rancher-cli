@@ -1,0 +1,33 @@
+NAME:
+   rancher cluster set-upgrade-strategy - Set how Rancher upgrades the nodes of an RKE2 or K3s cluster
+
+USAGE:
+   rancher cluster set-upgrade-strategy [options] <cluster>
+
+OPTIONS:
+   --control-plane-concurrency number      number of control plane nodes to upgrade at a time, or a percentage such as 10% (provisioned cluster only); an imported cluster takes a whole number of 1 or more
+   --control-plane-delete-emptydir         delete the data of pods that use an emptyDir volume when draining control plane nodes: kubectl --delete-emptydir-data, Rancher field deleteEmptyDirData (provisioned cluster only)
+   --control-plane-drain                   drain control plane nodes before they are upgraded (--control-plane-drain=false turns it off)
+   --control-plane-drain-force             when draining control plane nodes, also delete standalone pods that no workload controller manages (Rancher field force; provisioned cluster only)
+   --control-plane-drain-timeout duration  longest duration a drain of control plane nodes may take: 1s or more in whole seconds, for example 90s or 5m (provisioned cluster only)
+   --control-plane-grace-period seconds    seconds each pod gets to stop when draining control plane nodes: 1 or more, or -1 for the pod's default (provisioned cluster only)
+   --help, -h                              show help
+   --namespace string, -n string           Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)
+   --worker-concurrency number             number of worker nodes to upgrade at a time, or a percentage such as 10% (provisioned cluster only); an imported cluster takes a whole number of 1 or more
+   --worker-delete-emptydir                delete the data of pods that use an emptyDir volume when draining worker nodes: kubectl --delete-emptydir-data, Rancher field deleteEmptyDirData (provisioned cluster only)
+   --worker-drain                          drain worker nodes before they are upgraded (--worker-drain=false turns it off)
+   --worker-drain-force                    when draining worker nodes, also delete standalone pods that no workload controller manages (Rancher field force; provisioned cluster only)
+   --worker-drain-timeout duration         longest duration a drain of worker nodes may take: 1s or more in whole seconds, for example 90s or 5m (provisioned cluster only)
+   --worker-grace-period seconds           seconds each pod gets to stop when draining worker nodes: 1 or more, or -1 for the pod's default (provisioned cluster only)
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

@@ -121,9 +121,10 @@ var refusalSetup = map[string][]string{
 // refusalArgs completes a command line the manifest alone cannot: the
 // values a command checks before its first request.
 var refusalArgs = map[string][]string{
-	"create cluster": {"--machine-config", "amazonec2config/x", "--cloud-credential", "cc", "--k8s-version", "v1.33.1+rke2r1", "--etcd", "--controlplane", "--worker"},
-	"grant":          {"--global"},
-	"revoke":         {"--global"},
+	"cluster set-upgrade-strategy": {"--worker-concurrency", "2"},
+	"create cluster":               {"--machine-config", "amazonec2config/x", "--cloud-credential", "cc", "--k8s-version", "v1.33.1+rke2r1", "--etcd", "--controlplane", "--worker"},
+	"grant":                        {"--global"},
+	"revoke":                       {"--global"},
 }
 
 // refusalServer answers every request with one status and body and counts

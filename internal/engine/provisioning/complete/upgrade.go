@@ -125,35 +125,32 @@ func linkedManagementID(prov map[string]any) string {
 	return id
 }
 
-func completeUpgradeClusters(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
-	ns, ok := namespaceOf(req)
-	if !ok {
-		return completion.Result{}
-	}
-	var cache settingCache
-	// Each of the two lists is one request: the first page of a Steve
-	// collection. A cluster beyond a page is not offered; a value is never
-	// offered that the command would refuse.
+// readClusterLists reads the first page of the provisioning Clusters of the
+// namespace and the first page of the management Clusters, each one request,
+// and returns the provisioning Clusters and the management Clusters by id. A
+// cluster beyond a page is not offered: a value is never offered that the
+// command would refuse. ok is false when either read fails.
+func readClusterLists(ctx context.Context, conn *completion.Connection, ns string) (provisioning []map[string]any, managementByID map[string]map[string]any, ok bool) {
 	k, _ := kinds.ByKey("provisioningcluster")
 	provPath, err := completion.SteveNamespacedCollectionPath(k.SteveType(), ns)
 	if err != nil {
-		return completion.Result{}
+		return nil, nil, false
 	}
 	var provList struct {
 		Items []map[string]any `json:"data"`
 	}
 	if err := conn.GetJSON(ctx, provPath, "", &provList); err != nil {
-		return completion.Result{}
+		return nil, nil, false
 	}
 	mgmtPath, err := completion.SteveCollectionPath(steveClusters)
 	if err != nil {
-		return completion.Result{}
+		return nil, nil, false
 	}
 	var mgmtList struct {
 		Items []map[string]any `json:"data"`
 	}
 	if err := conn.GetJSON(ctx, mgmtPath, "", &mgmtList); err != nil {
-		return completion.Result{}
+		return nil, nil, false
 	}
 	byID := map[string]map[string]any{}
 	for _, m := range mgmtList.Items {
@@ -162,8 +159,21 @@ func completeUpgradeClusters(ctx context.Context, conn *completion.Connection, r
 			byID[id] = m
 		}
 	}
+	return provList.Items, byID, true
+}
+
+func completeUpgradeClusters(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
+	ns, ok := namespaceOf(req)
+	if !ok {
+		return completion.Result{}
+	}
+	var cache settingCache
+	provItems, byID, ok := readClusterLists(ctx, conn, ns)
+	if !ok {
+		return completion.Result{}
+	}
 	var names []string
-	for _, prov := range provList.Items {
+	for _, prov := range provItems {
 		meta, _ := prov["metadata"].(map[string]any)
 		name, _ := meta["name"].(string)
 		if name == "" {
