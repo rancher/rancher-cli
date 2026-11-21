@@ -13,19 +13,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Every DELETE the CLI sends to a Kubernetes API states a propagationPolicy
-// of Background, as kubectl does. Without one the server applies the default
-// of the kind: a Job (batch/v1) keeps its pods and the server answers with a
-// warning on each request, the dry run included. The scans below fail on
-// each shape that sends a DELETE without it, now or later:
+// Every DELETE the CLI sends through the cluster client sends a
+// propagationPolicy of Background, as kubectl does. Without one the server
+// applies the default for that kind: a Job (batch/v1) keeps its pods and the
+// server's response carries a warning on each request, the dry-run preview
+// included. The scans below fail on each of these shapes:
 //
 //   - a metav1.DeleteOptions anywhere in the production tree outside the
-//     one function that builds the options of every Kubernetes delete
-//     (deletePropagationSeam), as a literal, a var, a result, a struct
-//     field, an element type, new or a conversion, because a zero value
-//     sends no policy; and a call of metav1.NewDeleteOptions or
-//     metav1.NewPreconditionDeleteOptions anywhere, which return options
-//     with no policy;
+//     one function that builds the options of every delete through the
+//     cluster client (deletePropagationSeam, the method
+//     (*dynamicClient).Delete), in any form: a literal, a var, a function
+//     result, a struct field, an element type, `new(metav1.DeleteOptions)`
+//     or a conversion; a zero value sends no policy;
+//   - a call of metav1.NewDeleteOptions or metav1.NewPreconditionDeleteOptions
+//     anywhere; both return options with no policy;
 //   - in that function: not exactly one DeleteOptions, a literal with no
 //     PropagationPolicy key, a function that does not name
 //     metav1.DeletePropagationBackground, or one that names another
@@ -41,26 +42,32 @@ import (
 // fidelity recorder, which are not the CLI). A request built through a
 // helper that takes its method from a variable is covered where the method
 // is written. The request each ClusterClient delete sends is asserted by
-// TestEveryDeleteTheClusterClientSendsStatesTheBackgroundPropagationPolicy
+// TestEveryClusterClientDeleteSendsTheBackgroundPropagationPolicy
 // in internal/client/provider.
 //
 // Limits: a DeleteOptions value made through reflection or a decoder
 // (json.Unmarshal into a value of another type) is not followed, and neither
 // is a method written as another string constant or a Verb call whose
-// argument is computed instead of a string literal.
+// argument is computed instead of a string literal. An assignment to
+// PropagationPolicy after the literal, and a policy value built by a
+// conversion (no metav1.DeletePropagation selector), are checked only by that
+// provider test.
 
 const (
-	deletePropagationSeam = "internal/client/provider/client.go:Delete"
+	deletePropagationSeam = "internal/client/provider/client.go:(*dynamicClient).Delete"
 	deleteMethodText      = "DELETE"
 )
 
 // deletePropagationAllowlist maps "<file>:<func>" to the matches of the
 // delete rule it covers. A different number of matches fails the test.
 var deletePropagationAllowlist = map[string]requestAllowance{
-	deletePropagationSeam:                         {1, "the one Kubernetes delete: the method name it gives the error mapper; its DeleteOptions are checked above"},
-	"internal/token/revoke.go:revokeToken":        {1, "the delete of one Token object with the token's own bearer, sent without a body by the revoke path that TestTokenRevokesOnlyFromTheFilesThatMayDeleteTokens restricts"},
-	"internal/token/token.go:samlAuth":            {2, "Rancher's /v1-public/authtokens/<id> delete and the error text that names it; Norman takes no DeleteOptions"},
-	"cmd/rancher-credential-vault/vault.go:Erase": {1, "HashiCorp Vault's API, not a Kubernetes API"},
+	deletePropagationSeam: {1, "the one delete through the cluster client: the method name it gives the error mapper; its DeleteOptions are checked above"},
+	"internal/token/revoke.go:revokeToken": {1, "the delete of one v3 token or ext token the CLI created, sent with no body outside the cluster client; " +
+		"a v3 token is a custom resource, for which the policy changes nothing, and an ext token is stored as a Secret, " +
+		"whose default policy already deletes dependents in the background; the revoke path is restricted credential code " +
+		"(TestTokenRevokesOnlyFromTheFilesThatMayDeleteTokens lists the files that may send it)"},
+	"internal/token/token.go:samlAuth":                            {2, "Rancher's /v1-public/authtokens/<id> delete and the error text that names it; Norman takes no DeleteOptions"},
+	"cmd/rancher-credential-vault/vault.go:(*vaultHandler).Erase": {1, "HashiCorp Vault's API, not a delete through the cluster client"},
 }
 
 // deleteOptionsConstructors are the functions of apimachinery that return
@@ -81,7 +88,7 @@ func scanDeletePropagation(fset *token.FileSet, filePath string, f *ast.File) de
 	for _, decl := range f.Decls {
 		fn := "(package level)"
 		if fd, ok := decl.(*ast.FuncDecl); ok {
-			fn = fd.Name.Name
+			fn = byIDFunctionName(fd)
 		}
 		key := filePath + ":" + fn
 		selected := map[*ast.Ident]bool{}
@@ -173,7 +180,7 @@ func scanDeletePropagation(fset *token.FileSet, filePath string, f *ast.File) de
 					if lit, ok := ast.Unparen(n.Args[0]).(*ast.BasicLit); ok && lit.Kind == token.STRING {
 						// The exact string "DELETE" is reported by the string rule.
 						if s, err := strconv.Unquote(lit.Value); err == nil && strings.EqualFold(s, deleteMethodText) && s != deleteMethodText {
-							request(lit.Pos(), `a Verb of "delete" in another case`)
+							request(lit.Pos(), `a Verb of "delete" in a case other than the exact string "DELETE"; send the delete through ClusterClient.Delete`)
 						}
 					}
 				}
@@ -184,11 +191,11 @@ func scanDeletePropagation(fset *token.FileSet, filePath string, f *ast.File) de
 			out.findings = append(out.findings, fset.Position(pos).String()+": "+text)
 		}
 		for pos, name := range constructors {
-			report(pos, "metav1."+name+" returns DeleteOptions with no propagationPolicy; build the options in the one function that builds the options of a Kubernetes delete")
+			report(pos, "metav1."+name+" returns DeleteOptions with no propagationPolicy; build the options in the one function that builds the options of a delete through the cluster client")
 		}
 		if key != deletePropagationSeam {
 			for _, pos := range options {
-				report(pos, "metav1.DeleteOptions outside the one function that builds the options of a Kubernetes delete; a zero value sends no propagationPolicy")
+				report(pos, "metav1.DeleteOptions outside the one function that builds the options of a delete through the cluster client; a zero value sends no propagationPolicy")
 			}
 			continue
 		}
@@ -216,17 +223,17 @@ func scanDeletePropagation(fset *token.FileSet, filePath string, f *ast.File) de
 			report(decl.Pos(), fmt.Sprintf("%s names metav1.DeletePropagationBackground %d times, want 1", fn, background))
 		}
 		for _, pos := range otherKinds {
-			report(pos, "a propagation policy other than Background")
+			report(pos, "a propagation policy other than Background; the delete options of a delete through the cluster client carry Background")
 		}
 	}
 	return out
 }
 
-// TestEveryKubernetesDeleteStatesTheBackgroundPropagationPolicy asserts the
+// TestEveryDeleteSendsTheBackgroundPropagationPolicyOrIsListed asserts the
 // scans above over the production tree: the DeleteOptions of the one
 // function, and every other DELETE written in the tree, which the allowlist
 // says does not go through that function.
-func TestEveryKubernetesDeleteStatesTheBackgroundPropagationPolicy(t *testing.T) {
+func TestEveryDeleteSendsTheBackgroundPropagationPolicyOrIsListed(t *testing.T) {
 	t.Parallel()
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -242,10 +249,10 @@ func TestEveryKubernetesDeleteStatesTheBackgroundPropagationPolicy(t *testing.T)
 		scan := scanDeletePropagation(tree.fset, tree.paths[i], f)
 		requests = append(requests, scan.requests...)
 		findings = append(findings, scan.findings...)
-		if seamFile, _, _ := strings.Cut(deletePropagationSeam, ":"); tree.paths[i] == seamFile {
+		if seamFile, seamName, _ := strings.Cut(deletePropagationSeam, ":"); tree.paths[i] == seamFile {
 			seamSeen = slices.ContainsFunc(f.Decls, func(d ast.Decl) bool {
 				fd, ok := d.(*ast.FuncDecl)
-				return ok && fd.Name.Name == "Delete"
+				return ok && byIDFunctionName(fd) == seamName
 			})
 		}
 	}
@@ -279,19 +286,21 @@ func TestDeletePropagationScanFixtures(t *testing.T) {
 		findings            string
 		requests            string
 	}{
-		{"the seam with Background", seam, `package p; ` + meta + `func Delete() { b := metav1.DeletePropagationBackground; _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "", ""},
-		{"the seam with no policy", seam, `package p; ` + meta + `func Delete() { b := metav1.DeletePropagationBackground; _ = b; _ = metav1.DeleteOptions{} }`, "DeleteOptions literal with no PropagationPolicy", ""},
-		{"the seam with Foreground", seam, `package p; ` + meta + `func Delete() { b := metav1.DeletePropagationForeground; _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "a propagation policy other than Background", ""},
-		{"the seam with a policy and Foreground beside it", seam, `package p; ` + meta + `func Delete() { b := metav1.DeletePropagationBackground; f := metav1.DeletePropagationForeground; _, _ = f, metav1.DeleteOptions{PropagationPolicy: &b} }`, "a propagation policy other than Background", ""},
-		{"the seam with a policy that is not a constant", seam, `package p; ` + meta + `func Delete(b metav1.DeletionPropagation) { _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "names metav1.DeletePropagationBackground 0 times, want 1", ""},
-		{"the seam with two literals", seam, `package p; ` + meta + `func Delete() { b := metav1.DeletePropagationBackground; _, _ = metav1.DeleteOptions{PropagationPolicy: &b}, metav1.DeleteOptions{PropagationPolicy: &b} }`, "has 2 DeleteOptions and 2 literal(s)", ""},
-		{"the seam with no options", seam, `package p; ` + meta + `func Delete() { _ = metav1.DeletePropagationBackground }`, "Delete builds no DeleteOptions", ""},
-		{"the seam with a constructor", seam, `package p; ` + meta + `func Delete() { b := metav1.DeletePropagationBackground; _ = metav1.DeleteOptions{PropagationPolicy: &b}; _ = metav1.NewDeleteOptions(0) }`, "metav1.NewDeleteOptions returns DeleteOptions with no propagationPolicy", ""},
-		{"the seam name in another file", "internal/cli/x.go", `package p; ` + meta + `func Delete() { b := metav1.DeletePropagationBackground; _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "metav1.DeleteOptions outside the one function", ""},
+		{"the seam with Background", seam, `package p; ` + meta + `func (c *dynamicClient) Delete() { b := metav1.DeletePropagationBackground; _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "", ""},
+		{"the seam with no policy", seam, `package p; ` + meta + `func (c *dynamicClient) Delete() { b := metav1.DeletePropagationBackground; _ = b; _ = metav1.DeleteOptions{} }`, "DeleteOptions literal with no PropagationPolicy", ""},
+		{"the seam with Foreground", seam, `package p; ` + meta + `func (c *dynamicClient) Delete() { b := metav1.DeletePropagationForeground; _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "a propagation policy other than Background", ""},
+		{"the seam with a policy and Foreground beside it", seam, `package p; ` + meta + `func (c *dynamicClient) Delete() { b := metav1.DeletePropagationBackground; f := metav1.DeletePropagationForeground; _, _ = f, metav1.DeleteOptions{PropagationPolicy: &b} }`, "a propagation policy other than Background", ""},
+		{"the seam with a policy that is not a constant", seam, `package p; ` + meta + `func (c *dynamicClient) Delete(b metav1.DeletionPropagation) { _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "names metav1.DeletePropagationBackground 0 times, want 1", ""},
+		{"the seam with two literals", seam, `package p; ` + meta + `func (c *dynamicClient) Delete() { b := metav1.DeletePropagationBackground; _, _ = metav1.DeleteOptions{PropagationPolicy: &b}, metav1.DeleteOptions{PropagationPolicy: &b} }`, "has 2 DeleteOptions and 2 literal(s)", ""},
+		{"the seam with no options", seam, `package p; ` + meta + `func (c *dynamicClient) Delete() { _ = metav1.DeletePropagationBackground }`, "Delete builds no DeleteOptions", ""},
+		{"the seam with a constructor", seam, `package p; ` + meta + `func (c *dynamicClient) Delete() { b := metav1.DeletePropagationBackground; _ = metav1.DeleteOptions{PropagationPolicy: &b}; _ = metav1.NewDeleteOptions(0) }`, "metav1.NewDeleteOptions returns DeleteOptions with no propagationPolicy", ""},
+		{"a function named Delete in the seam file", seam, `package p; ` + meta + `func Delete() { b := metav1.DeletePropagationBackground; _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "metav1.DeleteOptions outside the one function", ""},
+		{"a method named Delete of another type in the seam file", seam, `package p; ` + meta + `func (o *other) Delete() { b := metav1.DeletePropagationBackground; _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "metav1.DeleteOptions outside the one function", ""},
+		{"the seam name in another file", "internal/cli/x.go", `package p; ` + meta + `func (c *dynamicClient) Delete() { b := metav1.DeletePropagationBackground; _ = metav1.DeleteOptions{PropagationPolicy: &b} }`, "metav1.DeleteOptions outside the one function", ""},
 		{"a literal elsewhere", "internal/cli/x.go", `package p; ` + meta + `func f() { _ = metav1.DeleteOptions{} }`, "metav1.DeleteOptions outside the one function", ""},
 		{"a literal with a policy elsewhere", "internal/cli/x.go", `package p; ` + meta + `func f(b *metav1.DeletionPropagation) { _ = metav1.DeleteOptions{PropagationPolicy: b} }`, "metav1.DeleteOptions outside the one function", ""},
-		{"a var", "internal/cli/x.go", `package p; ` + meta + `func f() { var o metav1.DeleteOptions; _ = o }`, "metav1.DeleteOptions outside the one function", ""},
-		{"new", "internal/cli/x.go", `package p; ` + meta + `func f() { _ = new(metav1.DeleteOptions) }`, "metav1.DeleteOptions outside the one function", ""},
+		{"a var declaration", "internal/cli/x.go", `package p; ` + meta + `func f() { var o metav1.DeleteOptions; _ = o }`, "metav1.DeleteOptions outside the one function", ""},
+		{"the new keyword", "internal/cli/x.go", `package p; ` + meta + `func f() { _ = new(metav1.DeleteOptions) }`, "metav1.DeleteOptions outside the one function", ""},
 		{"a parameter", "internal/cli/x.go", `package p; ` + meta + `func f(o metav1.DeleteOptions) {}`, "metav1.DeleteOptions outside the one function", ""},
 		{"a struct field", "internal/cli/x.go", `package p; ` + meta + `type s struct { o metav1.DeleteOptions }`, "metav1.DeleteOptions outside the one function", ""},
 		{"an aliased import", "internal/cli/x.go", `package p; import mv "k8s.io/apimachinery/pkg/apis/meta/v1"; func f() { _ = mv.DeleteOptions{} }`, "metav1.DeleteOptions outside the one function", ""},
@@ -307,8 +316,8 @@ func TestDeletePropagationScanFixtures(t *testing.T) {
 		{"the string DELETE in a request literal", "internal/cli/x.go", `package p; ` + web + `func f() { _ = &http.Request{Method: "DELETE"} }`, "", `the string "DELETE"`},
 		{"MethodDelete through a dot import", "internal/cli/x.go", `package p; import . "net/http"; func f() { _, _ = NewRequest(MethodDelete, "", nil) }`, "", "reference to MethodDelete"},
 		{"a rest request delete", "internal/cli/x.go", `package p; func f(c interface{ Delete() int }) { _ = c.Delete() }`, "", "call of Delete with no arguments"},
-		{"a rest request verb in lower case", "internal/cli/x.go", `package p; func f(c interface{ Verb(string) int }) { _ = c.Verb("delete") }`, "", `a Verb of "delete" in another case`},
-		{"a rest request verb in mixed case", "internal/cli/x.go", `package p; func f(c interface{ Verb(string) int }) { _ = c.Verb("Delete") }`, "", `a Verb of "delete" in another case`},
+		{"a rest request verb in lower case", "internal/cli/x.go", `package p; func f(c interface{ Verb(string) int }) { _ = c.Verb("delete") }`, "", `a Verb of "delete" in a case other than the exact string "DELETE"`},
+		{"a rest request verb in mixed case", "internal/cli/x.go", `package p; func f(c interface{ Verb(string) int }) { _ = c.Verb("Delete") }`, "", `a Verb of "delete" in a case other than the exact string "DELETE"`},
 		{"a rest request verb in upper case", "internal/cli/x.go", `package p; func f(c interface{ Verb(string) int }) { _ = c.Verb("DELETE") }`, "", `the string "DELETE"`},
 		{"a rest request verb of another method", "internal/cli/x.go", `package p; func f(c interface{ Verb(string) int }) { _ = c.Verb("get") }`, "", ""},
 		{"a GET", "internal/cli/x.go", `package p; ` + web + `func f() { _, _ = http.NewRequest(http.MethodGet, "", nil) }`, "", ""},

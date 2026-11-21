@@ -225,7 +225,8 @@ request and prints `deletion started`.
 Every `delete` asks Kubernetes to delete the object's dependents in the
 background (`propagationPolicy: Background`, the default of `kubectl delete`),
 whatever the kind: `rancher delete job <name>` deletes the Job's pods too,
-shortly after the Job is gone.
+shortly after the Job is gone. The wait above ends when the Job is gone, not
+when its pods are.
 
 Rule of thumb: `--apply` means "yes, make the change"; `--yes` means "yes, I
 saw it is destructive".

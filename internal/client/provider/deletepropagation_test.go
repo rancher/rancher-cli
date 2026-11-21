@@ -22,14 +22,15 @@ type deleteRequest struct {
 	options metav1.DeleteOptions
 }
 
-// TestEveryDeleteTheClusterClientSendsStatesTheBackgroundPropagationPolicy
-// asserts that the DELETE of every namespaced and cluster-scoped kind, as a
-// dry run or not and with or without a resourceVersion, carries the
-// propagationPolicy Background in its DeleteOptions, next to the dry run and
-// the resourceVersion precondition it already sent. Without a policy the
-// server applies the default of the kind, which keeps the pods of a Job.
-// Building the DeleteOptions without PropagationPolicy fails every row.
-func TestEveryDeleteTheClusterClientSendsStatesTheBackgroundPropagationPolicy(t *testing.T) {
+// TestEveryClusterClientDeleteSendsTheBackgroundPropagationPolicy asserts
+// the DELETE of a namespaced kind, of a cluster-scoped kind and of a kind
+// whose version is found by discovery carries propagationPolicy Background in
+// its DeleteOptions, as a dry-run preview or not, with or without a
+// resourceVersion. The dry-run value and the resourceVersion precondition stay
+// in the same body. Without a policy the server applies the default for that
+// kind, which keeps the pods of a Job. Building the DeleteOptions without
+// PropagationPolicy fails every row.
+func TestEveryClusterClientDeleteSendsTheBackgroundPropagationPolicy(t *testing.T) {
 	t.Parallel()
 	kinds := []struct {
 		name      string
@@ -39,13 +40,14 @@ func TestEveryDeleteTheClusterClientSendsStatesTheBackgroundPropagationPolicy(t 
 	}{
 		{"a namespaced kind", schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}, "default", "/apis/batch/v1/namespaces/default/jobs/x"},
 		{"a cluster-scoped kind", schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}, "", "/api/v1/namespaces/x"},
+		{"a kind whose version is found by discovery", schema.GroupVersionResource{Group: "ext.cattle.io", Resource: "tokens"}, "", "/apis/ext.cattle.io/v1/tokens/x"},
 	}
 	for _, kind := range kinds {
 		for _, dryRun := range []bool{false, true} {
 			for _, resourceVersion := range []string{"", "7"} {
 				name := kind.name
 				if dryRun {
-					name += " as a dry run"
+					name += " as a dry-run preview"
 				}
 				if resourceVersion != "" {
 					name += " with a resourceVersion"
@@ -59,9 +61,14 @@ func TestEveryDeleteTheClusterClientSendsStatesTheBackgroundPropagationPolicy(t 
 					srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						body, err := io.ReadAll(r.Body)
 						assert.NoError(t, err)
+						if r.Method == http.MethodGet && r.URL.Path == "/apis" {
+							w.Header().Set("Content-Type", "application/json")
+							_, _ = w.Write([]byte(`{"kind":"APIGroupList","apiVersion":"v1","groups":[{"name":"ext.cattle.io","versions":[{"groupVersion":"ext.cattle.io/v1","version":"v1"}],"preferredVersion":{"groupVersion":"ext.cattle.io/v1","version":"v1"}}]}`))
+							return
+						}
 						if r.Method == http.MethodDelete {
 							got := deleteRequest{path: r.URL.Path, rawBody: string(body)}
-							assert.NoError(t, json.Unmarshal(body, &got.options), "the body is DeleteOptions: %s", body)
+							assert.NoError(t, json.Unmarshal(body, &got.options), "the body of the DELETE is not DeleteOptions JSON: %s", body)
 							mu.Lock()
 							requests = append(requests, got)
 							mu.Unlock()
@@ -80,7 +87,7 @@ func TestEveryDeleteTheClusterClientSendsStatesTheBackgroundPropagationPolicy(t 
 					assert.Equal(t, kind.path, got.path)
 					require.NotNil(t, got.options.PropagationPolicy, "no propagationPolicy in %s", got.rawBody)
 					assert.Equal(t, metav1.DeletePropagationBackground, *got.options.PropagationPolicy)
-					assert.Equal(t, dryRun, len(got.options.DryRun) == 1 && got.options.DryRun[0] == metav1.DryRunAll)
+					assert.Equal(t, dryRun, len(got.options.DryRun) == 1 && got.options.DryRun[0] == metav1.DryRunAll, "the dry-run value of the DELETE body %s", got.rawBody)
 					if resourceVersion == "" {
 						assert.Nil(t, got.options.Preconditions)
 						return
