@@ -1988,12 +1988,36 @@ operation started since the preview; run the command again to see a new preview.
 This is a check before the request, not a precondition: without `--wait` nothing
 checks for a change after the request is sent, and the result says so. When the
 connection fails after the request was written, or the server answers 500, 502
-or 504, the CLI does not know whether Rancher ran the action. Every other status
-keeps its code from the error codes table. The CLI reports `GENERIC`, not
-retryable, with the command that lists the operations and the one that shows the
-App; read them before you run the command again, because a second request runs
-Helm a second time. An install or an upgrade sends a request id in the chart's
-annotations (`cli.rancher.io/request-id`) and prints it in this error.
+or 504 (a 500 that refuses the pod Rancher runs Helm in is the exception in the
+next paragraph), the CLI does not know whether Rancher ran the action. Every
+other status keeps its code from the error codes table. The CLI reports
+`GENERIC`, not retryable, with the command that lists the operations and the one
+that shows the App; read them before you run the command again, because a second
+request runs Helm a second time. An install or an upgrade sends a request id in
+the chart's annotations (`cli.rancher.io/request-id`) and prints it in this
+error.
+
+**A refused Helm pod.** When Kubernetes admission refuses the pod Rancher
+runs Helm in (a ValidatingAdmissionPolicy, a ResourceQuota, a LimitRanger or Pod
+Security admission), Rancher 2.14 to 2.16 answer the install, upgrade or
+uninstall with a 500 whose message begins `pods "helm-operation-<id>" is
+forbidden: ` (the id is empty when admission ran before Rancher generated the
+pod's name). When the text after it is an admission text, the CLI reports it as
+it reports a 403 with that text: VALIDATION (exit 2), or a retryable GENERIC
+ending " - retry later" for a temporary refusal, with the server's text up to
+2048 bytes and no hint. The message says Rancher created no operation for the
+request. Fix the policy or the values, then try the command again. A 403 that
+carries the same refusal gets the same message. On Rancher 2.15 and later, or
+when the CLI cannot read the server's version, Rancher may already have created,
+changed or deleted the image pull secrets it manages for the release before it
+created the pod, and the message says so; each refused attempt also leaves one
+ClusterRoleBinding named `helm-op-...`, which Rancher's own cleanup may remove
+later. One case remains: Rancher's Kubernetes client retries a pod create when
+the API server says it may not have finished, and the retry can be refused while
+the first pod exists. Then "created no operation" does not promise that Helm did
+not run. A 500 that names another object, a 502, a 504 and an admission
+webhook's denial of the pod keep the error above that says the CLI does not know
+whether Rancher ran the action.
 
 **Values come only from files.** `--values <file>` is repeatable; the files merge
 in the order given (maps merge key by key; any other value replaces the earlier
@@ -3009,7 +3033,7 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 | `CREDENTIAL_STORE_UNAVAILABLE` | 14 | the credential store this directory uses cannot be read or written right now: a locked keychain, a keychain prompt that was cancelled, a keychain that cannot be reached, or a credential helper that is missing, timed out or failed; the message names the store, the entry, the cause as far as it is known, and the remedy |
 | `NOT_FOUND` | 4 | no such resource, server entry, or name: the server answered 404 for an object or for an API through a downstream cluster, the config directory has no such entry, or the name matched nothing in already-fetched data; when the command holds the list of names it could have meant, the error lists them as candidates |
 | `RBAC` | 6 | the server denied the request for lack of permission (HTTP 403, except a 403 from Kubernetes admission that the VALIDATION description lists, and a temporary 403 from Kubernetes admission (the server could not check the request yet), which is a retryable GENERIC; and for `create password-change-request` the 401 Rancher sends when you change another user's password without permission) |
-| `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, an object the server refused (HTTP 400 or 422, or a 403 from Kubernetes admission: a ResourceQuota, a LimitRanger, PodSecurity, a namespace that is being deleted or may not be deleted, a ValidatingAdmissionPolicy, or a refusal by one of the ServiceAccount, Priority, RuntimeClass, PersistentVolumeClaimResize or CertificateSubjectRestriction admission plugins), or, for `create password-change-request`, a missing or wrong current password that Rancher reports with a 500 |
+| `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, an object the server refused (HTTP 400 or 422, or a 403 from Kubernetes admission: a ResourceQuota, a LimitRanger, PodSecurity, a namespace that is being deleted or may not be deleted, a ValidatingAdmissionPolicy, or a refusal by one of the ServiceAccount, Priority, RuntimeClass, PersistentVolumeClaimResize or CertificateSubjectRestriction admission plugins; for `app install`, `app upgrade` and `app uninstall`, also the 500 Rancher answers when Kubernetes admission refuses the pod it runs Helm in), or, for `create password-change-request`, a missing or wrong current password that Rancher reports with a 500 |
 | `PRIME_REQUIRED` | 9 | the command requires Rancher Prime and the connected server does not have it |
 | `TLS_TRUST` | 10 | the server's TLS certificate is not trusted and was not accepted |
 | `CAPABILITY_UNSUPPORTED` | 11 | the workflow the command needs is not supported by the connected server or by this CLI |

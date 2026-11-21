@@ -40,6 +40,14 @@ const (
 	warnPullSecretsUninstall = "Rancher may delete image pull secrets for this release; the preview cannot list them"
 )
 
+// The sentences that the error for a refused pod Rancher runs Helm in adds on
+// the image pull secrets, under the same condition as the preview warnings
+// above: Rancher manages them before it creates the pod.
+const (
+	notePullSecretsInstall   = "Rancher may have created, changed or deleted the image pull secrets it manages for this release"
+	notePullSecretsUninstall = "Rancher may have deleted the image pull secrets it manages for this release"
+)
+
 // identityWarning names the identity Helm runs as.
 func identityWarning(identity string) string {
 	return "Rancher runs Helm in a pod as " + identity + "; the chart's own writes are checked only when Helm runs them"

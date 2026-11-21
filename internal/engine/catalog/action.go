@@ -123,12 +123,16 @@ func actionRequest(cluster, typ, ns, name string) steve.Request {
 
 // actionTarget is what the follow-up commands and the outcome-unknown error
 // name: the cluster as typed, the release and its namespace, and for an
-// install the request id.
+// install the request id. pullSecretNote is the sentence on the image pull
+// secrets that the error for a refused pod Rancher runs Helm in adds: the
+// preview sets it when its own warning on those secrets applies, and it is
+// empty otherwise.
 type actionTarget struct {
-	typedCluster string
-	namespace    string
-	release      string
-	requestID    string
+	typedCluster   string
+	namespace      string
+	release        string
+	requestID      string
+	pullSecretNote string
 }
 
 // getApp is the command that shows the App of the release.
@@ -143,9 +147,10 @@ func (t actionTarget) getOperations() clierr.Command {
 
 // postAction sends body once through the action port and decodes Rancher's
 // answer. An answer that does not tell whether Rancher ran the action is
-// GENERIC and not retryable, naming what to read before any rerun; every
-// other error keeps its code, with the server's text passed through the
-// values filter.
+// GENERIC and not retryable, naming what to read before any rerun, except the
+// admission refusal of the pod Rancher runs Helm in, which is reported as an
+// admission refusal; every other error keeps its code, with the server's text
+// passed through the values filter.
 func postAction(ctx context.Context, actions engine.ActionClientFactory, path string, body any, t actionTarget, values Values) (actionAnswer, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -157,10 +162,24 @@ func postAction(ctx context.Context, actions engine.ActionClientFactory, path st
 	}
 	answer, err := client.PostAction(ctx, path, raw)
 	if err != nil {
-		if _, ok := errors.AsType[*engine.ActionOutcomeUnknown](err); ok {
+		if u, ok := errors.AsType[*engine.ActionOutcomeUnknown](err); ok {
+			// Rancher 2.14 to 2.16 respond with a 500 when admission refuses the
+			// pod Rancher runs Helm in. This branch can go once the minimum
+			// supported Rancher responds with a 403, which the ActionRefused
+			// branch below handles.
+			if status, ok := clierr.HTTPStatus(u.Err); ok && status == http.StatusInternalServerError && isRancherServerError(u.Body) {
+				if ce, ok := operationPodRefusal(path, u.Body, t, values); ok {
+					return actionAnswer{}, ce
+				}
+			}
 			return actionAnswer{}, outcomeUnknown(t, err, values)
 		}
 		if r, ok := errors.AsType[*engine.ActionRefused](err); ok {
+			if status, ok := clierr.HTTPStatus(r.Err); ok && status == http.StatusForbidden {
+				if ce, ok := operationPodRefusal(path, r.Body, t, values); ok {
+					return actionAnswer{}, ce
+				}
+			}
 			return actionAnswer{}, refused(path, r, values)
 		}
 		return actionAnswer{}, values.FilterError(err)
@@ -173,6 +192,52 @@ func postAction(ctx context.Context, actions engine.ActionClientFactory, path st
 			WithHintCommand(t.getOperations())
 	}
 	return a, nil
+}
+
+// The pod Rancher runs Helm in. Rancher creates it from the generateName
+// operationPodNamePrefix before it creates the Operation, and returns the pod
+// create's error unwrapped. A refusal by Kubernetes admission therefore reads
+// `pods "helm-operation-<id>" is forbidden: <admission text>`, where the id is
+// the generated part of the name and is empty when admission ran before the
+// name was generated.
+const (
+	operationPodResource   = "pods"
+	operationPodNamePrefix = "helm-operation-"
+)
+
+// isRancherServerError reports whether body is Rancher's error object for an
+// internal error: JSON with type "error", code "ServerError" and status 500. A
+// Kubernetes Status, a body with another code and a text body are not.
+func isRancherServerError(body []byte) bool {
+	var obj struct {
+		Type   string `json:"type"`
+		Code   string `json:"code"`
+		Status int    `json:"status"`
+	}
+	if json.Unmarshal(body, &obj) != nil {
+		return false
+	}
+	return obj.Type == "error" && obj.Code == "ServerError" && obj.Status == http.StatusInternalServerError
+}
+
+// operationPodRefusal is the error for a response that is Kubernetes admission
+// refusing the pod Rancher runs Helm in, with false for any other response. The
+// pod is created before the Operation and a refused create stores no pod, which
+// proves Rancher created no operation for this request. The error is what
+// clierr reports for the same refusal in a 403: its code, retry advice and
+// " - retry later" text; it carries no hint and no cause, because a cause would
+// have the server's text as sent. The shown text is the server's message after
+// the values filter.
+func operationPodRefusal(path string, body []byte, t actionTarget, values Values) (*clierr.Error, bool) {
+	show := func(filtered string) string {
+		msg := "POST " + path + " on the Rancher server was refused: " + filtered +
+			"; Rancher created no operation for this request of release " + clierr.ShellQuote(t.release)
+		if t.pullSecretNote != "" {
+			msg += "; " + t.pullSecretNote
+		}
+		return msg
+	}
+	return clierr.AdmissionRefusalOfBody(body, values.Filter, operationPodResource, operationPodNamePrefix, show)
 }
 
 // refused is the error for an action the server refused: the answer

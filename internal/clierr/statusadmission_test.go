@@ -948,3 +948,82 @@ func TestEveryServiceAccountTemporaryTextHasAPositiveSample(t *testing.T) {
 		assert.True(t, found, "the temporary text %q has no positive sample", temporary)
 	}
 }
+
+// operationPodNames are the two names the pod Rancher runs Helm in has in a
+// refusal: the generateName before Kubernetes generates the name, and a
+// generated name.
+var operationPodNames = []string{"helm-operation-", "helm-operation-abcde"}
+
+// podForbiddenMessage is the message apierrors.NewForbidden writes for the pod
+// name, with text after `forbidden: `.
+func podForbiddenMessage(name, text string) string {
+	return fmt.Sprintf("pods %q is forbidden: %s", name, text)
+}
+
+// rancherErrorBody is the body of Rancher's error object for message.
+func rancherErrorBody(t *testing.T, message string) []byte {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{"type": "error", "code": "ServerError", "message": message, "status": 500})
+	require.NoError(t, err)
+	return body
+}
+
+// TestAdmissionRefusalGivesEveryTextItsCode asserts AdmissionRefusal and
+// AdmissionRefusalOfBody give every sample of the list the code the 403 gives
+// it, a retryable GENERIC ending " - retry later" or VALIDATION, in both names
+// of the pod Rancher runs Helm in, and that a text that nearly matches an entry
+// gives neither.
+func TestAdmissionRefusalGivesEveryTextItsCode(t *testing.T) {
+	t.Parallel()
+	identity := func(s string) string { return s }
+	for _, s := range admissionSamples {
+		for _, podName := range operationPodNames {
+			t.Run(s.id+" "+s.label+" "+podName, func(t *testing.T) {
+				t.Parallel()
+				message := podForbiddenMessage(podName, s.text)
+				want := message
+				code := CodeValidation
+				if s.retryable {
+					want += " - retry later"
+					code = CodeGeneric
+				}
+				check := func(label string, ce *Error, ok bool) {
+					require.True(t, ok, label)
+					require.NotNil(t, ce, label)
+					assert.Equal(t, code, ce.Code, label)
+					assert.Equal(t, s.retryable, ce.Retryable, label)
+					assert.Equal(t, want, ce.Message, label)
+					assert.Empty(t, ce.Hint, label)
+				}
+				ce, ok := AdmissionRefusal(message, message)
+				check("AdmissionRefusal", ce, ok)
+
+				ce, ok = AdmissionRefusalOfBody(rancherErrorBody(t, message), identity, "pods", "helm-operation-", identity)
+				check("AdmissionRefusalOfBody", ce, ok)
+			})
+		}
+	}
+
+	for _, r := range admissionRows() {
+		if r.negativeFor == "" {
+			continue
+		}
+		_, text, found := strings.Cut(r.se.ErrStatus.Message, " is forbidden: ")
+		require.True(t, found, r.name)
+		for _, podName := range operationPodNames {
+			t.Run("near miss "+r.name+" "+podName, func(t *testing.T) {
+				t.Parallel()
+				message := podForbiddenMessage(podName, text)
+				ce, ok := AdmissionRefusal(message, message)
+				assert.False(t, ok)
+				assert.Nil(t, ce)
+				ce, ok = AdmissionRefusalOfBody(rancherErrorBody(t, message), identity, "pods", "helm-operation-", func(string) string {
+					t.Error("show ran for a text that is not an admission text")
+					return ""
+				})
+				assert.False(t, ok)
+				assert.Nil(t, ce)
+			})
+		}
+	}
+}

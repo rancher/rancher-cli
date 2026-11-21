@@ -319,7 +319,8 @@ func (a *actionClient) PostAction(ctx context.Context, path string, body []byte)
 
 // maxActionAnswer bounds the answer body an action request reads: Rancher's
 // answer is a short JSON object, and an error answer is shown cut to a few
-// hundred bytes.
+// hundred bytes, except the admission refusal of the pod Rancher runs Helm in,
+// which is shown up to clierr's maxAdmissionMessage bytes.
 const maxActionAnswer = 1 << 20
 
 // doBounded sends req once and reads at most maxActionAnswer bytes of the

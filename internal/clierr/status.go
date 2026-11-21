@@ -85,6 +85,11 @@ const unknownMessage = "unknown"
 // error page or a long body cannot fill the message.
 const maxServerMessage = 200
 
+// maxAdmissionMessage bounds the server's text of an admission refusal that a
+// caller shows in full. It keeps more bytes than maxServerMessage because the
+// text names the policy and what it refused.
+const maxAdmissionMessage = 2048
+
 // forbiddenText words a 403 that gave no reason: client-go leaves the
 // message empty for the dynamic client's AbsPath requests, and Rancher's
 // proxy answers a user without access with an empty body.
@@ -270,7 +275,13 @@ func serverMessage(body []byte) string { return decodeMessage(body, keepText) }
 // bound every server message keeps. Running the filter first lets it hide a
 // value the cut would split.
 func FilteredServerMessage(body []byte, filter func(string) string) string {
-	return decodeMessage(body, func(s string) string { return strings.TrimSpace(filter(s)) })
+	return filteredMessage(body, filter, bounded)
+}
+
+// filteredMessage decodes body as every server message is decoded, runs filter
+// on the whole text, trims it and cuts it with bound.
+func filteredMessage(body []byte, filter, bound func(string) string) string {
+	return decodeMessageBound(body, func(s string) string { return strings.TrimSpace(filter(s)) }, bound)
 }
 
 // keepText is the filter of the callers that show the message as sent.
@@ -331,11 +342,18 @@ func objectMessageBound(text string, filter, bound func(string) string) (string,
 }
 
 // bounded cuts s to maxServerMessage bytes on a character boundary.
-func bounded(s string) string {
-	if len(s) <= maxServerMessage {
+func bounded(s string) string { return cutAt(s, maxServerMessage) }
+
+// boundedAdmission cuts s to maxAdmissionMessage bytes on a character boundary.
+func boundedAdmission(s string) string { return cutAt(s, maxAdmissionMessage) }
+
+// cutAt cuts s to limit bytes on a character boundary and ends a cut text with
+// an ellipsis.
+func cutAt(s string, limit int) string {
+	if len(s) <= limit {
 		return s
 	}
-	cut := maxServerMessage
+	cut := limit
 	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
 	}
@@ -399,11 +417,8 @@ func classifyStatus(err error, se *apierrors.StatusError, req *Request) *Error {
 		// permission. The admission text match reads the server's own text, not
 		// msg, which starts with the caller's prefix, and runs for every request:
 		// a write can reach admission with no verb or no request.
-		if entry, ok := matchAdmissionText(fullForbiddenMessage(se, reason, wrapped)); ok {
-			if entry.retryable {
-				return Retryable(CodeGeneric, msg+" - retry later")
-			}
-			return New(CodeValidation, msg)
+		if ce, ok := AdmissionRefusal(fullForbiddenMessage(se, reason, wrapped), msg); ok {
+			return ce
 		}
 		if noReason {
 			msg = prefix + forbiddenText(req)

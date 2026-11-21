@@ -135,6 +135,7 @@ var evFilterRows = []evFilterRow{
 	{"internal/engine/catalog.appWait.clean", evPrintable, false, "", "the condition and status messages a wait reads from the server"},
 	{"internal/engine/catalog.installCmd.execute", evValuesFilterFunc, true, "", "the values filter handed to the install wait"},
 	{"internal/engine/catalog.outcomeUnknown", evValuesFilter, true, "", "the values filter over the server's message"},
+	{"internal/engine/catalog.operationPodRefusal", evValuesFilter, true, "", "the values filter over the server's message of a refused pod Rancher runs Helm in"},
 	{"internal/engine/catalog.postAction", evValuesFilterError, true, "", "the values filter over the error of an action"},
 	{"internal/engine/catalog.refused", evValuesFilterFunc, true, "", "the values filter over the body of a refused action"},
 	{"internal/engine/catalog.uninstallCmd.Plan", evValuesFilterFunc, true, "", "the values filter handed to the uninstall wait"},

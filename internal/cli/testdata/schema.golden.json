@@ -14580,7 +14580,7 @@
     },
     {
       "code": "VALIDATION",
-      "desc": "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, an object the server refused (HTTP 400 or 422, or a 403 from Kubernetes admission: a ResourceQuota, a LimitRanger, PodSecurity, a namespace that is being deleted or may not be deleted, a ValidatingAdmissionPolicy, or a refusal by one of the ServiceAccount, Priority, RuntimeClass, PersistentVolumeClaimResize or CertificateSubjectRestriction admission plugins), or, for `create password-change-request`, a missing or wrong current password that Rancher reports with a 500",
+      "desc": "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, an object the server refused (HTTP 400 or 422, or a 403 from Kubernetes admission: a ResourceQuota, a LimitRanger, PodSecurity, a namespace that is being deleted or may not be deleted, a ValidatingAdmissionPolicy, or a refusal by one of the ServiceAccount, Priority, RuntimeClass, PersistentVolumeClaimResize or CertificateSubjectRestriction admission plugins; for `app install`, `app upgrade` and `app uninstall`, also the 500 Rancher answers when Kubernetes admission refuses the pod it runs Helm in), or, for `create password-change-request`, a missing or wrong current password that Rancher reports with a 500",
       "exit": 2
     },
     {

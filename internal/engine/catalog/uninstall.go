@@ -170,6 +170,7 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 	}
 	if pullSecretsWarningApplies(ctx, c.clients) {
 		eff.Warnings = append(eff.Warnings, warnPullSecretsUninstall)
+		t.pullSecretNote = notePullSecretsUninstall
 	}
 	rv := app.GetResourceVersion()
 	exec := func(ctx context.Context) (runtime.Result, error) {

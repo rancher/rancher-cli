@@ -153,7 +153,7 @@ var admissionTexts = []admissionText{
 	{id: "serviceaccount-lookup-error", retryable: true, match: serviceAccountLookupError},
 }
 
-// matchAdmissionText returns the list entry that matches the 403 message, and
+// matchAdmissionText returns the list entry that matches a server message, and
 // false when none does. It reads the beginning of the message that
 // apierrors.NewForbidden writes, then tries every entry on the text after
 // `forbidden: `.
@@ -168,6 +168,62 @@ func matchAdmissionText(reason string) (admissionText, bool) {
 		}
 	}
 	return admissionText{}, false
+}
+
+// AdmissionRefusal reports whether message, the whole server message of a
+// refused write, is an admission text, and returns the error to report: a
+// VALIDATION with shown, or, for the texts of a temporary refusal, a retryable
+// GENERIC with shown followed by " - retry later". message is only read to
+// match; shown is the text the caller shows for the refusal. It returns nil
+// and false when message is not an admission text.
+func AdmissionRefusal(message, shown string) (*Error, bool) {
+	entry, ok := matchAdmissionText(message)
+	if !ok {
+		return nil, false
+	}
+	if entry.retryable {
+		return Retryable(CodeGeneric, shown+" - retry later"), true
+	}
+	return New(CodeValidation, shown), true
+}
+
+// AdmissionRefusalOfBody is AdmissionRefusal for a caller that has the body
+// of the response to a refused write. It decodes the body's message as every
+// server message is decoded and returns nil and false unless that whole
+// message, as the server sent it, begins as apierrors.NewForbidden writes it
+// for a named object, `<resource> "<name>" is forbidden: `, with the given
+// resource and a name that begins with namePrefix, and the text after it is an
+// admission text. When it does, it calls show with the message after filter,
+// which sees the whole decoded message, trimmed and cut to maxAdmissionMessage
+// bytes, and returns what AdmissionRefusal returns for the text show gives.
+// The message as the server sent it is never returned: the text a caller shows
+// has passed filter.
+func AdmissionRefusalOfBody(body []byte, filter func(string) string, resource, namePrefix string, show func(filtered string) string) (*Error, bool) {
+	whole := fullServerMessage(body)
+	if !forbiddenObject(whole, resource, namePrefix) {
+		return nil, false
+	}
+	// AdmissionRefusal matches the list again; this check keeps show from
+	// running for a message that is not an admission text.
+	if _, ok := matchAdmissionText(whole); !ok {
+		return nil, false
+	}
+	return AdmissionRefusal(whole, show(filteredMessage(body, filter, boundedAdmission)))
+}
+
+// forbiddenObject reports whether message begins as apierrors.NewForbidden
+// writes it for a named object, `<resource> "<name>" is forbidden: `, with
+// resource and a name that begins with namePrefix.
+func forbiddenObject(message, resource, namePrefix string) bool {
+	rest, ok := strings.CutPrefix(message, resource+" ")
+	if !ok {
+		return false
+	}
+	quoted, name, ok := quotedName(rest)
+	if !ok {
+		return false
+	}
+	return strings.HasPrefix(name, namePrefix) && strings.HasPrefix(rest[len(quoted):], " is forbidden: ")
 }
 
 // textAfterForbidden returns the text that follows the beginning of a message

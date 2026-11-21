@@ -301,6 +301,7 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	}
 	if pullSecretsWarningApplies(ctx, c.clients) {
 		eff.Warnings = append(eff.Warnings, warnPullSecretsInstall)
+		p.target.pullSecretNote = notePullSecretsInstall
 	}
 	exec := func(ctx context.Context) (runtime.Result, error) { return c.execute(ctx, p) }
 	return eff, exec, nil
