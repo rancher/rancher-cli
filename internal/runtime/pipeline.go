@@ -1216,9 +1216,7 @@ func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Sty
 	}
 	ce, notices = streams.forErrorText(ce, notices)
 	var b strings.Builder
-	for _, warn := range append(append([]string{}, notices...), ce.Warnings()...) {
-		fmt.Fprintf(&b, "%s %s\n", s.Yellow("# warning:"), output.Printable(streams.ExpandText(clierr.LineText(warn))))
-	}
+	mirrorWarnings(&b, append(append([]string{}, notices...), ce.Warnings()...), nil, s, streams.ExpandText)
 	b.WriteString(errorText(ce, s, streams.ExpandText))
 	_, err := w.Write([]byte(b.String()))
 	return err

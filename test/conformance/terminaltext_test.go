@@ -187,11 +187,6 @@ func (e terminalEnv) remedyExpected(p string) string {
 	return "run " + e.expanded + " " + terminalFilteredLines(p)
 }
 
-// remedyExpectedLine is remedyText(p) as a one-line channel writes it.
-func (e terminalEnv) remedyExpectedLine(p string) string {
-	return "run " + e.expanded + " " + terminalFilteredLine(p)
-}
-
 // remedyExpectedQuoted is remedyText(p) as the message, the hint or a warning
 // of an error writes it: the words before the command as written, then the
 // command with its directory, then the rest of the text up to its end as one

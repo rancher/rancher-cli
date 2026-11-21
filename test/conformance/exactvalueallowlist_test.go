@@ -172,7 +172,6 @@ var evFilterRows = []evFilterRow{
 	{"internal/runtime.ObjectLines", evPrintable, false, "", "the lines of an object's details"},
 	{"internal/runtime.OnceOnlyLine", evPrintable, false, "", "compares a value with its filtered form; no text is printed from it"},
 	{"internal/runtime.PrintableRemedies", evPrintableLines, true, "", "the filter itself"},
-	{"internal/runtime.RenderErrorStyled", evPrintable, false, "", "the warnings of an error"},
 	{"internal/runtime.detailLineText", evPrintable, false, "", "a details line, each value shown with its hidden characters as escapes"},
 	{"internal/runtime.dryRunText", evPrintable, false, "", "the changes a dry run reports, field paths and values"},
 	{"internal/runtime.dryRunText", evPrintableRemedies, true, "", "the server and the lines of a dry run, which can hold a remedy"},
