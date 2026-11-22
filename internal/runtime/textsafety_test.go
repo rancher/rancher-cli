@@ -177,15 +177,92 @@ func TestErrorTextQuotesControlCharacters(t *testing.T) {
 	assert.Contains(t, out, `"rancher get x\r"`)
 }
 
-// TestDryRunTextStripsControlCharacters asserts a diff value from the
-// server's dry-run answer cannot forge a preview line.
-func TestDryRunTextStripsControlCharacters(t *testing.T) {
+// previewEffect is an Effect for a preview row: a create of project/web with
+// set applied.
+func previewEffect(set func(*safety.Effect)) safety.Effect {
+	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "project", DisplayName: "web"}
+	set(&eff)
+	return eff
+}
+
+// TestDryRunTextWritesHiddenCharactersAsEscapes asserts every field and value
+// of the preview body that has a hidden character or an invalid byte is
+// written as a double-quoted string with escapes: a value cannot drive the
+// terminal or forge a line. A single quote stays outside the quotes, and a
+// remedy command in a field stays as written for the expansion.
+func TestDryRunTextWritesHiddenCharactersAsEscapes(t *testing.T) {
 	t.Parallel()
-	eff := safety.Effect{PreviewSource: safety.PreviewServerDryRun, Action: safety.ActionCreate, DisplayKind: "project", DisplayName: "web",
-		Diff: []safety.DiffEntry{{Path: "/spec/description", From: "", To: "a\nb\x1b[2J"}}}
-	out := dryRunText(eff)
-	assert.Contains(t, out, "/spec/description:  -> ab[2J")
-	assert.NotContains(t, out, "\x1b")
+	const gate = "  dry-run preview - re-run with --apply to apply the change\n"
+	for _, tc := range []struct {
+		name string
+		set  func(*safety.Effect)
+		want string
+	}{
+		{
+			name: "a diff value with an escape sequence and a newline",
+			set: func(e *safety.Effect) {
+				e.Diff = []safety.DiffEntry{{Path: "/spec/description", From: "", To: "a\nb\x1b[2J"}}
+			},
+			want: "create project/web\n" + `  /spec/description:  -> "a\nb\x1b[2J"` + "\n" + gate,
+		},
+		{
+			name: "a diff path with an invalid byte",
+			set: func(e *safety.Effect) {
+				e.Diff = []safety.DiffEntry{{Path: "/metadata/labels/a\xffb", From: nil, To: "v"}}
+			},
+			want: "create project/web\n" + `  "/metadata/labels/a\xffb": <nil> -> v` + "\n" + gate,
+		},
+		{
+			name: "map and list sides written as JSON, an invalid byte as U+FFFD",
+			set: func(e *safety.Effect) {
+				e.Diff = []safety.DiffEntry{{Path: "/spec/x", From: map[string]any{"k": "a\u200bb\xff"}, To: []any{"x\u202e"}}}
+			},
+			want: "create project/web\n" + `  /spec/x: "{\"k\":\"a\u200bb` + "\ufffd" + `\"}" -> "[\"x\u202e\"]"` + "\n" + gate,
+		},
+		{
+			name: "the kind, the name, the server and the cluster",
+			set: func(e *safety.Effect) {
+				e.DisplayKind, e.DisplayName, e.Server, e.Cluster = "pro\u200bject", "we\x1bb", "s\u2028", "c\xff"
+			},
+			want: `create "pro\u200bject"/"we\x1bb"` + "\n" + `  server: "s\u2028"` + "\n" + `  cluster: "c\xff"` + "\n" + gate,
+		},
+		{
+			name: "a single quote stays outside the quotes, the hidden character is quoted",
+			set:  func(e *safety.Effect) { e.DisplayName = "o'b\u200b" },
+			want: `create project/o'"b\u200b"` + "\n" + gate,
+		},
+		{
+			name: "a remedy command in the server stays as written",
+			set:  func(e *safety.Effect) { e.Server = "x\u200b; " + clierr.Rancher + " get pods" },
+			want: "create project/web\n" + `  server: "x\u200b"; ` + clierr.Rancher + " get pods\n" + gate,
+		},
+		{
+			name: "a name that is the escaped form of another prints as it is",
+			set:  func(e *safety.Effect) { e.DisplayName = `"a\u200bb"` },
+			want: `create project/"a\u200bb"` + "\n" + gate,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, dryRunText(previewEffect(tc.set)))
+		})
+	}
+}
+
+// TestDryRunTextKeepsDifferentValuesApart asserts names and diff values that
+// differ only by a hidden character or an invalid byte print differently.
+func TestDryRunTextKeepsDifferentValuesApart(t *testing.T) {
+	t.Parallel()
+	names := map[string]bool{}
+	values := map[string]bool{}
+	for _, v := range []string{"a\u200bb", "a\u200cb", "ab", "a\xffb"} {
+		names[dryRunText(previewEffect(func(e *safety.Effect) { e.DisplayName = v }))] = true
+		values[dryRunText(previewEffect(func(e *safety.Effect) {
+			e.Diff = []safety.DiffEntry{{Path: "/spec/x", To: v}}
+		}))] = true
+	}
+	assert.Len(t, names, 4)
+	assert.Len(t, values, 4)
 }
 
 // candidatesLine returns the candidates line of the default-format error text

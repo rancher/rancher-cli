@@ -284,16 +284,27 @@ var (
 	previewWithCommand = []string{"DisplayKind", "DisplayName", "Server", "Cluster"}
 )
 
-// plantedEffect is an Effect with the hostile value in every text field, and
-// a command of the CLI in the four fields that keep it, with a valid action.
+// previewObjectText is the value planted at the name and the message of the
+// object of a preview: the hostile value, a single quote, a clause that ends
+// at "; ", a command of this process and a clause that starts at " (".
+func previewObjectText(p string) string {
+	return terminalHostile(p) + " it's; run " + clierr.Rancher + " auth status (done)"
+}
+
+// plantedEffect is an Effect with the hostile value in every text field, a
+// command of the CLI in the four fields that keep it, previewObjectText in the
+// name and the message of the object, with a valid action.
 func plantedEffect(t *testing.T) safety.Effect {
 	t.Helper()
 	typ := reflect.TypeFor[safety.Effect]()
 	assert.ElementsMatch(t, remedytest.TextPaths(typ), slices.Concat(previewPrinted, previewNotPrinted, previewByHand),
 		"every text field of an Effect is printed, not printed or set by the row")
 	planted := remedytest.PlantText(t, typ, func(p string) string {
-		if slices.Contains(previewWithCommand, p) {
+		switch {
+		case slices.Contains(previewWithCommand, p):
 			return remedyText(p)
+		case p == "Objects[].Name" || p == "Objects[].Message":
+			return previewObjectText(p)
 		}
 		return terminalHostile(p)
 	})
@@ -303,6 +314,32 @@ func plantedEffect(t *testing.T) safety.Effect {
 	eff.PreviewSource = safety.PreviewServerDryRun
 	eff.WriteVia = safety.WriteViaRancherAction
 	return eff
+}
+
+// previewExpected is the dry-run preview of plantedEffect with the outcome of
+// its object set to outcome. The four fields that have a command are written
+// as clierr.ValueText writes a text with a remedy marker (each clause alone,
+// the command outside the quotes) and the command is expanded. The name and the
+// message of the object are written the same way, with the command plain
+// because the object lines remove the marker. Every other printed field is one
+// double-quoted string with escapes. The object's message shows for an outcome
+// that gives a reason.
+func (e terminalEnv) previewExpected(outcome string) string {
+	quoted := func(p string) string { return strconv.Quote(terminalHostile(p)) }
+	objectText := func(p string) string {
+		return strconv.Quote(terminalHostile(p)+" it") + "'s; run rancher auth status (done)"
+	}
+	object := "    " + quoted("Objects[].Outcome") + ": " + objectText("Objects[].Name")
+	if outcome == safety.OutcomeNotDeleted || outcome == safety.OutcomeFailed {
+		object = "    " + outcome + ": " + objectText("Objects[].Name") + " (" + objectText("Objects[].Message") + ")"
+	}
+	return "update " + e.lineExpected("DisplayKind") + "/" + e.lineExpected("DisplayName") + "\n" +
+		"  server: " + e.lineExpected("Server") + "\n" +
+		"  cluster: " + e.lineExpected("Cluster") + "\n" +
+		"  " + quoted("Diff[].Path") + ": " + quoted("Diff[].From") + " -> " + quoted("Diff[].To") + "\n" +
+		"  " + quoted("Objects[].Kind") + "s:\n" +
+		object + "\n" +
+		"  dry-run preview - re-run with --apply to apply the change\n"
 }
 
 // previewDescriptor is the descriptor of a mutating command whose preview a
@@ -442,11 +479,12 @@ var terminalRows = []terminalRow{
 			assertBothClean(t, out, errOut, terminalSequences)
 			assertNoForgedLine(t, "standard output", out)
 			assertNoForgedLine(t, "standard error", errOut)
-			assert.Equal(t, len(previewWithCommand), strings.Count(out, e.expanded), "each of the four fields expands its command: %q", out)
+			assert.Equal(t, e.previewExpected(outcome), out, "the preview text differs from the expected text with every printed field written with escapes")
 			shown.WriteString(out)
 		}
 		for _, p := range previewPrinted {
 			assert.Contains(t, shown.String(), p, "the preview prints the text planted at %s", p)
+			assert.NotContains(t, shown.String(), terminalFilteredLine(p), "the preview removed a character of the text planted at %s", p)
 		}
 	}},
 	{"table", func(e terminalEnv) {

@@ -659,7 +659,7 @@ var ioOutReferences = map[string][]string{
 		"filtered: the envelope writer, which expands json and yaml data for the invocation and removes this process's marker from the other formats; the table, wide and name renderers filter each header and cell; raw: json, yaml and template, whose bytes are the data (rows: table, wide, name, json, yaml, template)",
 	},
 	"internal/runtime.renderEffect": {
-		"filtered: the dry-run preview text, through output.PrintableLines and expanded for the invocation's directory (rows: preview)",
+		"filtered: the dry-run preview text, each field and value written with escapes for a hidden character, through output.PrintableLines and expanded for the invocation's directory (rows: preview)",
 		"raw: the envelope writer, which expands json and yaml data for the invocation and removes this process's marker from the other formats; an Effect is not a table, and its name and template output is the data",
 	},
 	"internal/runtime.finishOnceOnlyResult": {

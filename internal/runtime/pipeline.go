@@ -1101,21 +1101,29 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 // server/cluster when set, a change summary from the Effect's diff entries,
 // and the confirmation gate line naming the flags a real run needs.
 // Effect.Warnings are deliberately NOT part of this body (see renderEffect).
+// Each field and value is written as clierr.ValueText writes it: one that has
+// a control character, an invisible format character, a line or paragraph
+// separator or an invalid UTF-8 byte shows as a double-quoted string with
+// escapes, and a remedy command in the server, cluster, kind or name stays
+// for renderEffect to expand.
 func dryRunText(eff safety.Effect) string {
 	var lines []string
 	if eff.Server != "" {
-		lines = append(lines, "server: "+PrintableRemedies(eff.Server))
+		lines = append(lines, "server: "+clierr.ValueText(eff.Server))
 	}
 	if eff.Cluster != "" {
-		lines = append(lines, "cluster: "+PrintableRemedies(eff.Cluster))
+		lines = append(lines, "cluster: "+clierr.ValueText(eff.Cluster))
 	}
 	for _, d := range eff.Diff {
 		// d.Path is an RFC 6901 JSON Pointer ("~1" for "/", "~0" for "~"),
-		// printed verbatim: it is valid as-is for a JSON Patch op's "path".
-		// The values are the fields the request sets or changes, computed
-		// by the command: one line each, with control characters stripped
-		// so a value cannot forge a line.
-		lines = append(lines, output.Printable(fmt.Sprintf("%s: %s -> %s", d.Path, diffValueText(d.From), diffValueText(d.To))))
+		// printed as it is when it has nothing to escape; a path printed
+		// that way is valid for the "path" of a JSON Patch operation. The
+		// values are the fields the request sets or changes, computed by
+		// the command. The path and each value are written as
+		// clierr.ValueText writes them: one that has a hidden character or
+		// an invalid byte shows as a double-quoted string with escapes, and
+		// a value cannot add a line.
+		lines = append(lines, output.Printable(fmt.Sprintf("%s: %s -> %s", clierr.ValueText(d.Path), clierr.ValueText(diffValueText(d.From)), clierr.ValueText(diffValueText(d.To)))))
 	}
 	lines = append(lines, ObjectLines(eff.Objects, eff.DisplayKind)...)
 	gate := "dry-run preview - re-run with --apply"
@@ -1124,7 +1132,7 @@ func dryRunText(eff safety.Effect) string {
 	}
 	gate += " to apply the change"
 	lines = append(lines, gate)
-	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, PrintableRemedies(eff.DisplayKind), PrintableRemedies(eff.DisplayName)), lines...).Text
+	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, clierr.ValueText(eff.DisplayKind), clierr.ValueText(eff.DisplayName)), lines...).Text
 }
 
 // diffValueText renders one side of a diff entry for the text preview: a

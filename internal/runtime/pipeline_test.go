@@ -320,8 +320,9 @@ func TestDryRunTextDiffLines(t *testing.T) {
 }
 
 // TestDryRunTextDiffValues asserts a map or list value prints as compact JSON
-// on its entry's one line (<, > and & as typed, a newline as the two
-// characters \n), and a missing side prints as <nil>, inside the map or
+// on its entry's one line (<, > and & as typed, a newline inside it as the
+// two characters \n), a text value with a newline prints as a double-quoted
+// string with escapes, and a missing side prints as <nil>, inside the map or
 // list as a null and as a side of the entry.
 func TestDryRunTextDiffValues(t *testing.T) {
 	t.Parallel()
@@ -351,7 +352,7 @@ func TestDryRunTextDiffValues(t *testing.T) {
 		"  /spec/uris: <nil> -> [\"https://a/?x=1&y=<2>\",null]\n"+
 		"  /spec/empty: <nil> -> {}\n"+
 		"  /spec/none: <nil> -> []\n"+
-		"  /spec/text: <nil> -> ab\n"+
+		"  /spec/text: <nil> -> \"a\\nb\"\n"+
 		"  /spec/json: <nil> -> {\"k\":\"line1\\nline2\"}\n"+
 		"  /spec/removed: [\"a\",\"b\"] -> <nil>\n"+
 		"  dry-run preview - re-run with --apply to apply the change\n", out.String())

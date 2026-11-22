@@ -3125,14 +3125,20 @@ under `table`/default format instead, with warnings on stderr as
 `# warning: <w>` lines; `-o json`/`yaml`/`template=`/`name` still see the
 normal envelope over `data`.
 Every text format - the text of composites and
-`access` and the dry-run preview - removes control characters (including the escape character
+`access` - removes control characters (including the escape character
 that starts an ANSI sequence, carriage return and tab) and Unicode format
 characters from server-sourced text before it reaches the terminal, so server
 text cannot drive the terminal. Progress messages on stderr get the same
-treatment under every `-o` format. The dry-run preview also removes newlines, so
-a value cannot add a line there. In the text of
-`inspect cluster`, `inspect deployment`, `inspect project`, `inspect user`,
-`config status`, `config set-token-reuse`, `create token`,
+treatment under every `-o` format. The dry-run preview writes its fields and
+values as they are, except that a field or value with a control character, an
+invisible format character, a line or paragraph separator or an invalid UTF-8
+byte is written as a double-quoted string with escapes, and nothing is
+removed. The fields and values are: the kind and name, the server and cluster,
+each changed field's path and values, and each object's kind, outcome, name
+and message. A newline in one is the text `\n`: a value cannot add a line. The
+namespace lines of the `delete project` result are written the same way. In
+the text of `inspect cluster`, `inspect deployment`, `inspect project`,
+`inspect user`, `config status`, `config set-token-reuse`, `create token`,
 `project remove-namespace`, the OIDC client commands and `auth status`, in the
 revoke lines of `auth logout`, `auth delete-token`, `config delete-server` and
 `config update-server`, and in the messages `auth login` and the kubectl plugin

@@ -1,6 +1,7 @@
 package extres
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -14,7 +15,29 @@ import (
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/remedytest"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"sigs.k8s.io/yaml"
 )
+
+// allowCapability is a capability checker that lets every command proceed.
+type allowCapability struct{}
+
+func (allowCapability) Check(context.Context, runtime.CapabilityRequirement) runtime.CapabilityDecision {
+	return runtime.CapabilityDecision{Outcome: runtime.CapabilityProceed}
+}
+
+// passwordChangePreview runs a dry run of a password change for id through the
+// pipeline in format and returns what it wrote to standard output.
+func passwordChangePreview(t *testing.T, id, format string) string {
+	t.Helper()
+	client := &fakeClient{status: passwordUpdatedStatus()}
+	cmd := NewCreatePasswordChangeRequest(stubFactory{c: client}, fakeFileSource{body: []byte("aVeryLongPassword123\n")})
+	var out, errBuf strings.Builder
+	_, ce := runtime.Run(t.Context(), cmd, pcrInput{args: []string{id}, bools: map[string]bool{"password-stdin": true}},
+		runtime.IO{Out: &out, Err: &errBuf, Format: format, DryRun: true, Capability: allowCapability{}}, safety.Binding{})
+	require.Nil(t, ce)
+	return out.String()
+}
 
 // TestUnconfirmedPasswordChangeShowsAnIdWithHiddenRunesAsEscapes asserts that
 // a typed user id holding a direction override, a zero-width space, a bell, a
@@ -62,9 +85,9 @@ func TestUnconfirmedPasswordChangeShowsAnIdWithHiddenRunesAsEscapes(t *testing.T
 
 // TestPasswordChangeShowsAnIdWithAnInvalidByteAsAnEscape asserts that a typed
 // user id whose only problem is an invalid UTF-8 byte reaches the error
-// message of an unconfirmed password change and the preview name as a
-// double-quoted string with the byte as an escape, and that the details keep
-// the exact id.
+// message of an unconfirmed password change and the text preview as a
+// double-quoted string with the byte as an escape, and that the preview's
+// name and the details keep the exact id.
 func TestPasswordChangeShowsAnIdWithAnInvalidByteAsAnEscape(t *testing.T) {
 	t.Parallel()
 	const id = "u-a\xffb"
@@ -72,8 +95,10 @@ func TestPasswordChangeShowsAnIdWithAnInvalidByteAsAnEscape(t *testing.T) {
 	cmd := NewCreatePasswordChangeRequest(stubFactory{c: client}, fakeFileSource{body: []byte("aVeryLongPassword123\n")})
 	eff, exec, err := cmd.(runtime.MutatingCommand).Plan(t.Context(), pcrInput{args: []string{id}, bools: map[string]bool{"password-stdin": true}})
 	require.NoError(t, err)
-	assert.Equal(t, strconv.Quote(id), eff.DisplayName)
-	remedytest.AssertIDShownWithEscapes(t, eff.DisplayName, id)
+	assert.Equal(t, id, eff.DisplayName, "the preview's name keeps the exact id")
+	preview := passwordChangePreview(t, id, "")
+	assert.Contains(t, preview, "create password-change-request/"+strconv.Quote(id)+"\n")
+	remedytest.AssertIDShownWithEscapes(t, preview, id)
 
 	_, err = exec(t.Context())
 	ce, ok := errors.AsType[*clierr.Error](err)
@@ -95,9 +120,9 @@ func TestUnconfirmedPasswordChangeRecoveryNamesAUserIDAsBefore(t *testing.T) {
 }
 
 // TestPasswordChangePreviewAndResultShowAnIdWithHiddenRunesAsEscapes asserts
-// the name in the dry-run preview and in the completed line shows a typed id
+// the name in the text preview and in the completed line shows a typed id
 // holding hidden runes with escapes, never with the runes removed, and that
-// the target and the data keep the exact id.
+// the preview's name and target and the data keep the exact id.
 func TestPasswordChangePreviewAndResultShowAnIdWithHiddenRunesAsEscapes(t *testing.T) {
 	t.Parallel()
 	const id = "u-\u202e\u200b\a\n\u2063rancher-x"
@@ -105,11 +130,40 @@ func TestPasswordChangePreviewAndResultShowAnIdWithHiddenRunesAsEscapes(t *testi
 	cmd := NewCreatePasswordChangeRequest(stubFactory{c: client}, fakeFileSource{body: []byte("aVeryLongPassword123\n")})
 	eff, exec, err := cmd.(runtime.MutatingCommand).Plan(t.Context(), pcrInput{args: []string{id}, bools: map[string]bool{"password-stdin": true}})
 	require.NoError(t, err)
-	remedytest.AssertIDShownWithEscapes(t, eff.DisplayName, id)
+	assert.Equal(t, id, eff.DisplayName, "the preview's name keeps the exact id")
 	assert.Equal(t, "passwordchangerequests/"+id, eff.Target, "the target keeps the exact id")
+	remedytest.AssertIDShownWithEscapes(t, passwordChangePreview(t, id, ""), id)
 
 	res, err := exec(t.Context())
 	require.NoError(t, err)
 	remedytest.AssertIDShownWithEscapes(t, res.Text, id)
 	assert.Equal(t, id, res.Data.(map[string]any)["userID"], "the data keeps the exact id")
+}
+
+// TestPasswordChangePreviewInJSONAndYAMLCarriesTheIdAsItIs asserts the json
+// and yaml preview of a password change carry a typed id that has hidden
+// characters unchanged, in displayName and in target.
+func TestPasswordChangePreviewInJSONAndYAMLCarriesTheIdAsItIs(t *testing.T) {
+	t.Parallel()
+	const id = "u-\u202e\u200b\ab"
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			t.Parallel()
+			raw := []byte(passwordChangePreview(t, id, format))
+			if format == "yaml" {
+				var err error
+				raw, err = yaml.YAMLToJSON(raw)
+				require.NoError(t, err)
+			}
+			var got struct {
+				Data struct {
+					DisplayName string `json:"displayName"`
+					Target      string `json:"target"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &got))
+			assert.Equal(t, id, got.Data.DisplayName)
+			assert.Equal(t, "passwordchangerequests/"+id, got.Data.Target)
+		})
+	}
 }

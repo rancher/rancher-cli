@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,11 +119,11 @@ func TestEffectObjectsMarshalAsAnArrayOnlyWhenPresent(t *testing.T) {
 	assert.NotContains(t, decoded, "objects")
 }
 
-// TestObjectLinesGroupAndCompareByTheValuesAsGiven asserts the filter on the
+// TestObjectLinesGroupAndCompareByTheValuesAsGiven asserts the escape of the
 // kind and the outcome is for printing only: a kind that differs from the
-// headline kind only by a character the filter removes gets its own line,
-// and two outcomes that differ only by one stay two lines, each with its own
-// names and message; no line holds the character.
+// headline kind only by a hidden character gets its own line, and two
+// outcomes that differ only by one stay two lines, each with its own names
+// and message; each line shows the character as an escape.
 func TestObjectLinesGroupAndCompareByTheValuesAsGiven(t *testing.T) {
 	t.Parallel()
 	t.Run("kind", func(t *testing.T) {
@@ -132,7 +133,7 @@ func TestObjectLinesGroupAndCompareByTheValuesAsGiven(t *testing.T) {
 			{Kind: "Clu\x1bster", Name: "other", Outcome: safety.OutcomeRancherKeeps},
 		}
 		lines := ObjectLines(objs, "Cluster")
-		assert.Equal(t, []string{"Clusters:", "  rancher keeps: other"}, lines)
+		assert.Equal(t, []string{`"Clu\x1bster"s:`, "  rancher keeps: other"}, lines)
 	})
 	t.Run("outcome", func(t *testing.T) {
 		t.Parallel()
@@ -141,8 +142,66 @@ func TestObjectLinesGroupAndCompareByTheValuesAsGiven(t *testing.T) {
 			{Kind: "namespace", Name: "b", Outcome: "fail\x1bed", Message: "second"},
 		}
 		lines := ObjectLines(objs, "project")
-		assert.Equal(t, []string{"namespaces:", "  failed: a (first)", "  failed: b"}, lines)
+		assert.Equal(t, []string{"namespaces:", "  failed: a (first)", `  "fail\x1bed": b`}, lines)
 	})
+}
+
+// TestObjectLinesWriteHiddenCharactersAsEscapes asserts a name or a message
+// that has a hidden character or an invalid byte is written as a
+// double-quoted string with escapes, a single quote stays outside the quotes,
+// the labels stay as written, and a remedy command in a message prints as the
+// plain command.
+func TestObjectLinesWriteHiddenCharactersAsEscapes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		obj  safety.Object
+		want string
+	}{
+		{
+			name: "a name with a zero-width space",
+			obj:  safety.Object{Kind: "namespace", Name: "a\u200bb", Outcome: safety.OutcomeRancherKeeps},
+			want: `  rancher keeps: "a\u200bb"`,
+		},
+		{
+			name: "a name with a newline cannot add a line",
+			obj:  safety.Object{Kind: "namespace", Name: "a\nforged line", Outcome: safety.OutcomeRancherKeeps},
+			want: `  rancher keeps: "a\nforged line"`,
+		},
+		{
+			name: "a message with an invalid byte",
+			obj:  safety.Object{Kind: "namespace", Name: "a", Outcome: safety.OutcomeFailed, Message: "denied \xff"},
+			want: `  failed: a ("denied \xff")`,
+		},
+		{
+			name: "a single quote stays outside the quotes, the hidden character is quoted",
+			obj:  safety.Object{Kind: "namespace", Name: "o'b\u200b", Outcome: safety.OutcomeRancherKeeps},
+			want: `  rancher keeps: o'"b\u200b"`,
+		},
+		{
+			name: "a remedy command in a message",
+			obj:  safety.Object{Kind: "namespace", Name: "a", Outcome: safety.OutcomeFailed, Message: "x\u200b; " + clierr.Rancher + " get pods"},
+			want: `  failed: a ("x\u200b"; rancher get pods)`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, []string{"namespaces:", tc.want}, ObjectLines([]safety.Object{tc.obj}, "project"))
+		})
+	}
+}
+
+// TestObjectLinesKeepDifferentNamesApart asserts names that differ only by a
+// hidden character or an invalid byte print differently.
+func TestObjectLinesKeepDifferentNamesApart(t *testing.T) {
+	t.Parallel()
+	lines := map[string]bool{}
+	for _, name := range []string{"a\u200bb", "a\u200cb", "ab", "a\xffb"} {
+		got := ObjectLines([]safety.Object{{Kind: "namespace", Name: name, Outcome: safety.OutcomeRancherKeeps}}, "project")
+		require.Len(t, got, 2)
+		lines[got[1]] = true
+	}
+	assert.Len(t, lines, 4)
 }
 
 // outcomeConstants are the string values of the constants of file whose

@@ -174,7 +174,6 @@ var evFilterRows = []evFilterRow{
 	{"internal/runtime.PrintableRemedies", evPrintableLines, true, "", "the filter itself"},
 	{"internal/runtime.detailLineText", evPrintable, false, "", "a details line, each value shown with its hidden characters as escapes"},
 	{"internal/runtime.dryRunText", evPrintable, false, "", "the changes a dry run reports, field paths and values"},
-	{"internal/runtime.dryRunText", evPrintableRemedies, true, "", "the server and the lines of a dry run, which can hold a remedy"},
 	{"internal/runtime.errorLineText", evPrintable, false, "", "the message and hint of a TLS_TRUST error"},
 	{"internal/runtime.mirrorWarnings", evPrintable, false, "", "the warnings an invocation mirrors to stderr"},
 	{"internal/runtime.printableText", evPrintableLines, true, "", "the text of a result, which can hold a remedy"},

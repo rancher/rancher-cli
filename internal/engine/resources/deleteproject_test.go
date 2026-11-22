@@ -409,6 +409,23 @@ func TestDeleteProjectPreviewClassifiesTheNamespaces(t *testing.T) {
 	assert.Equal(t, []string{"delete c-abc/p-1 rv=5", "get c-abc/p-1"}, f.log[len(f.log)-2:], "the delete, then the read that sees the project gone")
 }
 
+// TestDeleteProjectResultShowsAHiddenCharacterInANamespaceNameAsAnEscape
+// asserts a namespace name that has a hidden character is written in the
+// result text of a project delete as a double-quoted string with escapes,
+// never with the character removed, and the data keeps the name as it is.
+func TestDeleteProjectResultShowsAHiddenCharacterInANamespaceNameAsAnEscape(t *testing.T) {
+	t.Parallel()
+	const name = "app\u200bs"
+	f := newProjectFixture(t, member(name, "3"))
+	_, exec := f.mustPlan(t, false)
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "project/p-1 deleted\n  namespaces:\n    rancher keeps: \"app\\u200bs\"\n", res.Text)
+	_, objects := resultData(t, res)
+	require.Len(t, objects, 1)
+	assert.Equal(t, name, objects[0].Name, "the data keeps the name as it is")
+}
+
 // TestDeleteProjectPreviewListsAtMostFiveNamesPerOutcome asserts the text
 // lines show five names and a count of the rest.
 func TestDeleteProjectPreviewListsAtMostFiveNamesPerOutcome(t *testing.T) {

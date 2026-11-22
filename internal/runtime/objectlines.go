@@ -86,12 +86,22 @@ func ObjectDetailLines(objs []safety.Object, headlineKind string) []clierr.Detai
 	return lines
 }
 
-// ObjectLines is ObjectDetailLines as text lines for TextLines, each passed
-// through output.Printable for printing. The caller indents the lines.
+// ObjectLines is ObjectDetailLines as text lines for TextLines: each line's
+// indent and labels as written and each value as clierr.ValueText writes it,
+// then the line through output.Printable, which removes only this process's
+// remedy markers. A kind, outcome, name or message that has a hidden character
+// or an invalid byte shows as a double-quoted string with escapes. The caller
+// indents the lines.
 func ObjectLines(objs []safety.Object, headlineKind string) []string {
 	var lines []string
 	for _, l := range ObjectDetailLines(objs, headlineKind) {
-		lines = append(lines, output.Printable(l.String()))
+		var b strings.Builder
+		b.WriteString(l.Indent)
+		for _, p := range l.Parts {
+			b.WriteString(p.Label)
+			b.WriteString(clierr.ValueText(p.Value))
+		}
+		lines = append(lines, output.Printable(b.String()))
 	}
 	return lines
 }

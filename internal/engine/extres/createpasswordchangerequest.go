@@ -105,6 +105,8 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 	// PlanCreate's generic Effect-building derives DisplayName from the
 	// dry-run response's name, which would be empty here - built by hand
 	// instead, naming the target user rather than the (nonexistent) object.
+	// DisplayName is the id as it was typed: json and yaml carry it, and the
+	// text preview writes it with escapes for a hidden character.
 	// The diff still comes from the same walk the planner uses.
 	diff, err := engine.CreateDiff(passwordChangeRequestGVR, obj.Object, passwordChangeRequestRedaction)
 	if err != nil {
@@ -120,7 +122,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 		Action:            safety.ActionCreate,
 		Target:            passwordChangeRequestGVR.Resource + "/" + userID,
 		DisplayKind:       "password-change-request",
-		DisplayName:       clierr.IDText(userID),
+		DisplayName:       userID,
 		Cluster:           engine.LocalCluster,
 		Diff:              diff,
 		ConflictDetection: true,
