@@ -735,7 +735,7 @@ var rootWriterReferences = map[string][]string{
 		"raw: completion candidates, which pass their own filter and are not a remedy channel",
 	},
 	"internal/cli.showHelpCard": {
-		"raw: urfave's help text, which holds only text the CLI wrote as literals and no remedy command",
+		"raw: the help page, which holds only text the CLI wrote as literals and no remedy command",
 	},
 	"internal/cli.helpStyle": {
 		"no text: the terminal check that decides the help's styling",

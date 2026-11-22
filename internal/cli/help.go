@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,9 +15,10 @@ import (
 	ucli "github.com/urfave/cli/v3"
 )
 
-// init wires the styled help templates once, package-wide: every help
-// render path in urfave/cli/v3 (root, group, and leaf) funnels through the
-// single HelpPrinter var, so overriding it here covers all three shapes.
+// init installs the CLI's help printer, version printer and help templates
+// once, package-wide: every help path in urfave/cli/v3 (root, group and leaf)
+// calls the HelpPrinter variable with one of the three templates, and the
+// printer renders the page with the CLI's own code (renderHelpPage).
 func init() {
 	ucli.HelpPrinter = printStyledHelp
 	ucli.VersionPrinter = printVersion
@@ -99,35 +101,33 @@ func showHelpCard(cmd *ucli.Command) {
 	ucli.HelpPrinter(cmd.Root().Writer, tmpl, cmd)
 }
 
-// printStyledHelp renders templ through urfave's own template engine,
-// adding a "bold" function resolved from this invocation's --color value
-// and the target writer's TTY-ness - the same activation rule every other
-// styled render site uses. data is always the *ucli.Command whose help is
-// being shown (cmd.Root() for root help); a data of a different shape (only
-// possible on the FishCompletionTemplate path, which never calls this
-// printer) leaves styling disabled.
+// printStyledHelp is the help printer urfave calls with one of the three help
+// templates and the command whose help is shown (the root for root help). The
+// template urfave passes picks the page, not the shape of the command: after a
+// parse error urfave passes the group template for a leaf. renderHelpPage
+// renders the page in the style the --color value and the writer give.
+// urfave's printers return nothing; the write error is kept for the run of the
+// root. For a template other than the three, the printer writes nothing and
+// keeps an error. It also writes nothing for data that is not a *ucli.Command,
+// which no help path of urfave passes.
 func printStyledHelp(w io.Writer, templ string, data any) {
-	kept := &firstErrorWriter{w: w}
-	w = kept
-	var s style.Style
-	if cmd, ok := data.(*ucli.Command); ok {
-		s = helpStyle(cmd)
-		defer func() { noteHelpWriteError(cmd.Root(), kept.err) }()
+	cmd, ok := data.(*ucli.Command)
+	if !ok {
+		return
 	}
-	ucli.HelpPrinterCustom(w, templ, data, map[string]any{
-		"bold":                s.Bold,
-		"colonOffsetCommands": colonOffsetCommands,
-		"sortedCommands":      sortedCommands,
-		"sortedFlags":         sortedFlags,
-		"leafFlags":           leafFlags,
-		"leafGlobalFlags":     leafGlobalFlags,
-		"groupGlobalFlags":    groupGlobalFlags,
-		"primeMark":           primeMark,
-		"colorPrimeMark":      func(cmd *ucli.Command, wrapped string) string { return colorPrimeMark(s, cmd, wrapped) },
-		"colorPrimeDescription": func(cmd *ucli.Command, wrapped string) string {
-			return colorPrimeDescription(s, cmd, wrapped)
-		},
-	})
+	var page helpPage
+	switch templ {
+	case rootCommandHelpTemplate:
+		page = helpPageRoot
+	case subcommandHelpTemplate:
+		page = helpPageGroup
+	case commandHelpTemplate:
+		page = helpPageLeaf
+	default:
+		noteHelpWriteError(cmd.Root(), errors.New("internal error: the help template is not one of the three the CLI renders; no help was written"))
+		return
+	}
+	noteHelpWriteError(cmd.Root(), renderHelpPage(w, page, cmd, helpStyle(cmd)))
 }
 
 // firstErrorWriter passes every write to w and keeps the first error.
@@ -303,30 +303,28 @@ func groupGlobalFlags(cmd *ucli.Command) []ucli.Flag {
 
 // commandsBlock is the colon-aligned, alphabetical COMMANDS list shared by
 // rootCommandHelpTemplate and subcommandHelpTemplate - the two shapes that
-// ever show one. It replaces urfave's own comma-joined, colon-less
-// visibleCommandCategoryTemplate/visibleCommandTemplate, which cannot be
-// overridden (they are unexported template names urfave always re-parses).
+// ever show one.
 const commandsBlock = `{{ $cmds := sortedCommands .VisibleCommands }}{{ $cv := colonOffsetCommands $cmds 5 }}{{range $cmds}}
    {{$s := printf "%s:" (join .Names ", ")}}{{$s}}{{ $sp := subtract $cv (offset $s 3) }}{{ indent $sp ""}}{{colorPrimeMark . (wrap (print (primeMark .) .Usage) $cv)}}{{end}}`
 
-// flagsBlock is urfave's visibleFlagTemplate over an alphabetical copy of
-// the flags; like the command templates, urfave's own is unexported and
-// cannot be overridden in place.
+// flagsBlock is the list of the visible flags of a command in alphabetical
+// order, one row each.
 const flagsBlock = `{{range $i, $e := sortedFlags .VisibleFlags}}
-   {{wrap $e.String 6}}{{end}}`
+   {{wrap (flagRow $e) 6}}{{end}}`
 
 const leafFlagsBlock = `{{range $i, $e := sortedFlags (leafFlags .)}}
-   {{wrap $e.String 6}}{{end}}`
+   {{wrap (flagRow $e) 6}}{{end}}`
 
 const leafGlobalFlagsBlock = `{{range $i, $e := sortedFlags (leafGlobalFlags .)}}
-   {{wrap $e.String 6}}{{end}}`
+   {{wrap (flagRow $e) 6}}{{end}}`
 
 const groupGlobalFlagsBlock = `{{range $i, $e := sortedFlags (groupGlobalFlags .)}}
-   {{wrap $e.String 6}}{{end}}`
+   {{wrap (flagRow $e) 6}}{{end}}`
 
-// rootCommandHelpTemplate is urfave's RootCommandHelpTemplate with bold
-// section headers, the DESCRIPTION block moved above USAGE, and a
-// colon-aligned COMMANDS list in place of the stock comma-joined rows.
+// rootCommandHelpTemplate is the page of the root command: bold section
+// headers, the DESCRIPTION block above USAGE, and a colon-aligned COMMANDS
+// list. It prints no authors, copyright, categories, UsageText or arguments,
+// which urfave's own root template prints; no command or flag sets them.
 var rootCommandHelpTemplate = `{{bold "NAME:"}}
    {{template "helpNameTemplate" .}}{{if .Description}}
 
@@ -334,28 +332,20 @@ var rootCommandHelpTemplate = `{{bold "NAME:"}}
    {{colorPrimeDescription . (wrap .Description 3)}}{{end}}
 
 {{bold "USAGE:"}}
-   {{if .UsageText}}{{wrap .UsageText 3}}{{else}}{{.FullName}} {{if .VisibleFlags}}[global options]{{end}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{else}}{{if .Arguments}} [arguments...]{{end}}{{end}}{{end}}{{if .Version}}{{if not .HideVersion}}
+   {{.FullName}} {{if .VisibleFlags}}[global options]{{end}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{end}}{{if .Version}}{{if not .HideVersion}}
 
 {{bold "VERSION:"}}
-   {{.Version}}{{end}}{{end}}
-{{- if len .Authors}}
+   {{.Version}}{{end}}{{end}}{{if .VisibleCommands}}
 
-{{bold "AUTHOR"}}{{template "authorsTemplate" .}}{{end}}{{if .VisibleCommands}}
+{{bold "COMMANDS:"}}` + commandsBlock + `{{end}}{{if .VisibleFlags}}
 
-{{bold "COMMANDS:"}}` + commandsBlock + `{{end}}{{if .VisibleFlagCategories}}
-
-{{bold "GLOBAL OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if .VisibleFlags}}
-
-{{bold "GLOBAL OPTIONS:"}}` + flagsBlock + `{{end}}{{if .Copyright}}
-
-{{bold "COPYRIGHT:"}}
-   {{template "copyrightTemplate" .}}{{end}}
+{{bold "GLOBAL OPTIONS:"}}` + flagsBlock + `{{end}}
 `
 
-// commandHelpTemplate is urfave's CommandHelpTemplate (a leaf with no
-// visible subcommands) with bold section headers, the DESCRIPTION block
-// moved above USAGE, and --project listed under OPTIONS by the commands
-// that take it and nowhere by the rest.
+// commandHelpTemplate is the page of a leaf (a command with no visible
+// subcommands): bold section headers, the DESCRIPTION block above USAGE, and
+// --project listed under OPTIONS by the commands that take it and nowhere by
+// the rest.
 var commandHelpTemplate = `{{bold "NAME:"}}
    {{template "helpNameTemplate" .}}{{if .Description}}
 
@@ -363,22 +353,16 @@ var commandHelpTemplate = `{{bold "NAME:"}}
    {{colorPrimeDescription . (wrap .Description 3)}}{{end}}
 
 {{bold "USAGE:"}}
-   {{template "usageTemplate" .}}{{if .Category}}
-
-{{bold "CATEGORY:"}}
-   {{.Category}}{{end}}{{if .VisibleFlagCategories}}
-
-{{bold "OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if leafFlags .}}
+   {{template "usageTemplate" .}}{{if leafFlags .}}
 
 {{bold "OPTIONS:"}}` + leafFlagsBlock + `{{end}}{{if leafGlobalFlags .}}
 
 {{bold "GLOBAL OPTIONS:"}}` + leafGlobalFlagsBlock + `{{end}}
 `
 
-// subcommandHelpTemplate is urfave's SubcommandHelpTemplate (a group - has
-// visible subcommands) with bold section headers, the DESCRIPTION block
-// moved above USAGE, and a colon-aligned COMMANDS list in place of the
-// stock comma-joined rows.
+// subcommandHelpTemplate is the page of a group (a command with visible
+// subcommands): bold section headers, the DESCRIPTION block above USAGE, and a
+// colon-aligned COMMANDS list.
 var subcommandHelpTemplate = `{{bold "NAME:"}}
    {{template "helpNameTemplate" .}}{{if .Description}}
 
@@ -386,14 +370,9 @@ var subcommandHelpTemplate = `{{bold "NAME:"}}
    {{colorPrimeDescription . (wrap .Description 3)}}{{end}}
 
 {{bold "USAGE:"}}
-   {{if .UsageText}}{{wrap .UsageText 3}}{{else}}{{.FullName}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{else}}{{if .Arguments}} [arguments...]{{end}}{{end}}{{end}}{{if .Category}}
+   {{.FullName}}{{if .VisibleCommands}} [command [command options]]{{end}}{{if .ArgsUsage}} {{.ArgsUsage}}{{end}}{{if .VisibleCommands}}
 
-{{bold "CATEGORY:"}}
-   {{.Category}}{{end}}{{if .VisibleCommands}}
-
-{{bold "COMMANDS:"}}` + commandsBlock + `{{end}}{{if .VisibleFlagCategories}}
-
-{{bold "OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if .VisibleFlags}}
+{{bold "COMMANDS:"}}` + commandsBlock + `{{end}}{{if .VisibleFlags}}
 
 {{bold "OPTIONS:"}}` + flagsBlock + `{{end}}{{if groupGlobalFlags .}}
 

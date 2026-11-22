@@ -358,14 +358,52 @@ func buildTrees(ctx context.Context, n int) (ready []chan builtTree, release fun
 // runs. Lines run one after the other.
 var activeObserved *observed
 
+// startHelpPrinterCustom and startFlagStringer keep urfave's own functions for
+// printing a help page and writing a flag row, as they are when the test
+// package starts, for assertPrinters to compare against.
+var (
+	startHelpPrinterCustom = ucli.HelpPrinterCustom
+	startFlagStringer      = ucli.FlagStringer
+)
+
+// urfaveRenderCalls holds one entry for each call of urfave's help page printer
+// or flag formatter since wrapPrinters last ran; urfaveRenderLock guards it.
+var (
+	urfaveRenderLock  sync.Mutex
+	urfaveRenderCalls []string
+)
+
+// noteUrfaveRender records a call of the urfave function called function, with
+// the command the page is for when a command line is running.
+func noteUrfaveRender(function string, c *ucli.Command) {
+	entry := function + " called outside a command line"
+	if activeObserved != nil {
+		entry = function + " called by a command line"
+		if c != nil {
+			entry += ` for "rancher ` + commandText(c) + `"`
+		}
+	}
+	urfaveRenderLock.Lock()
+	defer urfaveRenderLock.Unlock()
+	urfaveRenderCalls = append(urfaveRenderCalls, entry)
+}
+
 // wrapPrinters makes the help and version printers note what they print and
-// then call the printers they replaced. restore puts them back before the
-// test ends.
+// then call the printers they replaced. It also replaces urfave's help page
+// printer and flag formatter with functions that note the call and write
+// nothing. assertPrinters fails when one was called; every page a test records
+// then comes from the CLI's own code. restore puts every function back before
+// the test ends.
 func wrapPrinters(t *testing.T) (restore func()) {
 	t.Helper()
 	help, version := ucli.HelpPrinter, ucli.VersionPrinter
+	printCustom, stringer := ucli.HelpPrinterCustom, ucli.FlagStringer
+	urfaveRenderLock.Lock()
+	urfaveRenderCalls = nil
+	urfaveRenderLock.Unlock()
 	restore = func() {
 		ucli.HelpPrinter, ucli.VersionPrinter = help, version
+		ucli.HelpPrinterCustom, ucli.FlagStringer = printCustom, stringer
 	}
 	t.Cleanup(restore)
 	ucli.HelpPrinter = func(w io.Writer, templ string, data any) {
@@ -379,6 +417,14 @@ func wrapPrinters(t *testing.T) (restore func()) {
 			activeObserved.versions++
 		}
 		version(c)
+	}
+	ucli.HelpPrinterCustom = func(_ io.Writer, _ string, data any, _ map[string]any) {
+		c, _ := data.(*ucli.Command)
+		noteUrfaveRender("HelpPrinterCustom", c)
+	}
+	ucli.FlagStringer = func(ucli.Flag) string {
+		noteUrfaveRender("FlagStringer", nil)
+		return ""
 	}
 	return restore
 }
@@ -1272,9 +1318,16 @@ func envText(row parseRow) string {
 }
 
 // assertPrinters asserts that the help and version printers are the ones the
-// package installs.
+// package installs, that urfave's help page printer and flag formatter are
+// urfave's own, and that nothing called either since wrapPrinters ran.
 func assertPrinters(t *testing.T) {
 	t.Helper()
 	assert.Equal(t, reflect.ValueOf(printStyledHelp).Pointer(), reflect.ValueOf(ucli.HelpPrinter).Pointer(), "the help printer is not the one the package installs")
 	assert.Equal(t, reflect.ValueOf(printVersion).Pointer(), reflect.ValueOf(ucli.VersionPrinter).Pointer(), "the version printer is not the one the package installs")
+	assert.Equal(t, reflect.ValueOf(startHelpPrinterCustom).Pointer(), reflect.ValueOf(ucli.HelpPrinterCustom).Pointer(), "urfave's help page printer is not urfave's own")
+	assert.Equal(t, reflect.ValueOf(startFlagStringer).Pointer(), reflect.ValueOf(ucli.FlagStringer).Pointer(), "urfave's flag formatter is not urfave's own")
+	urfaveRenderLock.Lock()
+	calls := slices.Clone(urfaveRenderCalls)
+	urfaveRenderLock.Unlock()
+	assert.Empty(t, calls, "urfave rendered help text: the CLI's own code renders every help page")
 }

@@ -173,8 +173,8 @@ func cannotFail(t types.Type) bool {
 }
 
 // urfaveHelpPrinters are the functions, and the variables that hold a
-// function, of urfave/cli that print a help card. They return nil whether or
-// not the card was written, because the card goes through HelpPrinter, which
+// function, of urfave/cli that show a help page. They return nil whether or
+// not the page was written, because the page goes through HelpPrinter, which
 // has no result; printStyledHelp in internal/cli keeps the write error for
 // the run. They are listed so that a call whose result is dropped is
 // reviewed.
@@ -366,10 +366,10 @@ var discardScanPackages = sync.OnceValues(func() ([]*packages.Package, error) {
 
 // TestNoRenderOrWriteErrorIsDiscarded asserts that no non-test code of the
 // module drops the error of a render or write call of the output path: a
-// function of internal/output or internal/runtime whose name starts with
-// Render or render and returns an error, fmt.Print, Printf, Println, Fprint,
-// Fprintf and Fprintln, io.WriteString, io.Copy, io.CopyN and io.CopyBuffer,
-// the help card printers of urfave/cli, and the Write, WriteString,
+// function of internal/output, internal/runtime or internal/cli whose name
+// starts with Render or render and returns an error, fmt.Print, Printf,
+// Println, Fprint, Fprintf and Fprintln, io.WriteString, io.Copy, io.CopyN and
+// io.CopyBuffer, the help page functions of urfave/cli, and the Write, WriteString,
 // WriteByte, WriteRune, Flush and Encode methods of a writer. Every system
 // the release builds is read; the result does not depend on the machine that
 // runs the test. A write to a strings.Builder, a bytes.Buffer or a hash
@@ -377,13 +377,12 @@ var discardScanPackages = sync.OnceValues(func() ([]*packages.Package, error) {
 // with its count and the reason dropping the error is correct. The scan does
 // not see a writer that is not in these lists, and it does not see a bare
 // call of a function that returns an error and renders without a name that
-// starts with Render or render (renderDepsError in internal/cli is one):
-// those are for review.
+// starts with Render or render: those are for review.
 func TestNoRenderOrWriteErrorIsDiscarded(t *testing.T) {
 	t.Parallel()
 	pkgs, err := discardScanPackages()
 	require.NoError(t, err)
-	hits, files := discardedWrites(pkgs, []string{outputPath, runtimePath})
+	hits, files := discardedWrites(pkgs, []string{outputPath, runtimePath, modulePrefix + "internal/cli"})
 	assert.Greater(t, files, 100, "the scan read too few files")
 	assert.Empty(t, discardedWriteProblems(hits, discardedWriteAllowlist))
 }
