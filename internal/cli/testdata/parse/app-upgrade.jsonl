@@ -81,3 +81,6 @@
 {"line":["app","upgrade","--help"],"kind":"help","command":"app upgrade","exit":0,"helpPath":"app-upgrade.txt"}
 {"line":["app","upgrade","x"],"kind":"runs","command":"app upgrade","args":["x"],"exit":0}
 {"line":["app","upgrade","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["app","upgrade","--values","a,b"],"kind":"runs","command":"app upgrade","flags":{"values":["a,b"]},"exit":0}
+{"line":["app","upgrade","--values","a,b","--values","c"],"kind":"runs","command":"app upgrade","flags":{"values":["a,b","c"]},"exit":0}
+{"line":["app","upgrade","--values=a","--values","b"],"kind":"runs","command":"app upgrade","flags":{"values":["a","b"]},"exit":0}

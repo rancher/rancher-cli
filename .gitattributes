@@ -4,3 +4,4 @@ internal/telemetry/testdata/contract/** text eol=lf
 cmd/rancher/testdata/exit-table.golden text eol=lf
 internal/cli/testdata/help/** text eol=lf
 internal/cli/testdata/parse/** text eol=lf
+internal/cli/testdata/candidates/** text eol=lf

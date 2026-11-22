@@ -17,15 +17,15 @@ import (
 )
 
 // withoutUpdatedGoldens returns the new paths without the ones under
-// testdata/help and testdata/parse when updating is set: a run with -update
-// writes those files. Without -update every new path is kept.
+// testdata/help, testdata/parse and testdata/candidates when updating is set: a
+// run with -update writes those files. Without -update every new path is kept.
 func withoutUpdatedGoldens(paths []string, updating bool) []string {
 	if !updating {
 		return paths
 	}
 	return slices.DeleteFunc(slices.Clone(paths), func(p string) bool {
 		p = filepath.ToSlash(p)
-		for _, dir := range []string{"testdata/help", "testdata/parse"} {
+		for _, dir := range []string{"testdata/help", "testdata/parse", "testdata/candidates"} {
 			if p == dir || strings.HasPrefix(p, dir+"/") {
 				return true
 			}
@@ -35,9 +35,10 @@ func withoutUpdatedGoldens(paths []string, updating bool) []string {
 }
 
 // TestWithoutUpdatedGoldens asserts that the check for files the tests leave
-// behind ignores the paths under testdata/help and testdata/parse in a run with
-// -update only: without it every path is kept, and a path that only starts
-// like one of the directories is kept in both.
+// behind ignores the paths under testdata/help, testdata/parse and
+// testdata/candidates in a run with -update only: without it every path is
+// kept, and a path that only starts like one of the directories is kept in
+// both.
 func TestWithoutUpdatedGoldens(t *testing.T) {
 	t.Parallel()
 	golden := []string{
@@ -45,12 +46,15 @@ func TestWithoutUpdatedGoldens(t *testing.T) {
 		filepath.Join("testdata", "help", "get-pod.txt"),
 		filepath.Join("testdata", "parse"),
 		filepath.Join("testdata", "parse", "get-pod.jsonl"),
+		filepath.Join("testdata", "candidates"),
+		filepath.Join("testdata", "candidates", "get-pod.jsonl"),
 	}
 	others := []string{
 		"stray.txt",
 		filepath.Join("testdata", "stray.txt"),
 		filepath.Join("testdata", "helpful.txt"),
 		filepath.Join("testdata", "parsed", "get-pod.jsonl"),
+		filepath.Join("testdata", "candidates-old", "get-pod.jsonl"),
 	}
 	all := slices.Concat(golden, others)
 	assert.Equal(t, all, withoutUpdatedGoldens(all, false), "without -update every new path is reported")
@@ -68,7 +72,8 @@ func TestWithoutUpdatedGoldens(t *testing.T) {
 // idle connections; a test uses its server's own client instead. It also
 // shortens the interval of the cluster commands' waits once, before any test
 // runs; the wait tests then run in parallel. A run with -update does not count
-// the files it writes under testdata/help and testdata/parse.
+// the files it writes under testdata/help, testdata/parse and
+// testdata/candidates.
 func TestMain(m *testing.M) {
 	provisioning.SetClusterWaitIntervalForTest(time.Millisecond)
 	cmdtest.UnsetResolutionEnv()

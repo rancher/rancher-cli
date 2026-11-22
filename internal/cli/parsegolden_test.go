@@ -20,6 +20,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
@@ -64,9 +65,10 @@ func goldenShown(path string) string {
 }
 
 // parseRow is a command line (the words after the program name) and what it
-// did. The fields are in the order they have in a parse golden file. kind is
-// one of runs, help, version, error, refused and nothing; a row fills the
-// fields its kind names (assertRowFields).
+// did. The fields are in the order they have in a golden file. kind is one of
+// runs, help, version, error, refused, nothing and complete; a row fills the
+// fields its kind names (assertRowFields). Only a completion request has the
+// kind complete.
 type parseRow struct {
 	// Line is the words after the program name.
 	Line []string `json:"line"`
@@ -112,6 +114,9 @@ type observed struct {
 	notFound    int
 	helps       []string
 	versions    int
+	// completed holds the command each completion callback that ran was
+	// reached for, in order.
+	completed []string
 }
 
 // commandText returns the words that name c, below the root, joined by a
@@ -200,6 +205,12 @@ func (o *observed) wrap(root, cmd *ucli.Command, adapted map[string]bool) error 
 		return fmt.Errorf("command %q has no OnUsageError", commandText(cmd))
 	}
 	o.wrapHandlers(cmd)
+	if complete := cmd.ShellComplete; complete != nil {
+		cmd.ShellComplete = func(ctx context.Context, c *ucli.Command) {
+			o.completed = append(o.completed, commandText(c))
+			complete(ctx, c)
+		}
+	}
 	switch {
 	case cmd == root:
 		cmd.Before = func(ctx context.Context, _ *ucli.Command) (context.Context, error) { return ctx, nil }
@@ -502,7 +513,14 @@ func runGoldenLine(t *testing.T, model *ucli.Command, tree builtTree, row parseR
 // runGoldenLineHere runs row.Line on tree in the environment of t.
 func runGoldenLineHere(t *testing.T, model *ucli.Command, tree builtTree, row parseRow, helps *goldenHelps) goldenOutcome {
 	t.Helper()
-	refusal, _ := lineRefusal(parseLine(model, row.Line))
+	label := fmt.Sprintf("rancher %q", row.Line)
+	request := completionRequest(row.Line)
+	var refusal *clierr.Error
+	if request {
+		require.False(t, completionNetworkEnabled(), "%s: live completion is on", label)
+	} else {
+		refusal, _ = lineRefusal(parseLine(model, row.Line))
+	}
 
 	var stdout, stderr bytes.Buffer
 	tree.root.Writer, tree.root.ErrWriter = &stdout, &stderr
@@ -512,7 +530,6 @@ func runGoldenLineHere(t *testing.T, model *ucli.Command, tree builtTree, row pa
 	activeObserved = nil
 	unknown := recordedUnknownCommand(tree.root)
 
-	label := fmt.Sprintf("rancher %q", row.Line)
 	require.NoError(t, tree.obs.snapshotErr, label)
 	require.NotContains(t, stderr.String(), goldenVersion, "%s: stderr holds the version of the build", label)
 	for _, dir := range []string{os.Getenv("HOME"), mustGetwd(t)} {
@@ -531,7 +548,9 @@ func mustGetwd(t *testing.T) string {
 }
 
 // rowOf reads what a run did into the row for its line. refusedFirst says
-// that the line is one the entry point refuses before it parses it.
+// that the line is one the entry point refuses before it parses it. A
+// completion request is never refused first: the entry point skips the
+// refusals for it.
 func rowOf(row parseRow, o *observed, refusedFirst, unknownCommand bool, code int, stdout, stderr string, helps *goldenHelps) (parseRow, error) {
 	res := parseRow{Line: row.Line, Env: row.Env, Exit: code}
 	var err error
@@ -548,6 +567,11 @@ func rowOf(row parseRow, o *observed, refusedFirst, unknownCommand bool, code in
 		}
 	}
 	switch {
+	case completionRequest(row.Line) && len(o.completed) > 0:
+		if len(o.completed) > 1 || refusedFirst || o.ran != nil || o.refused != nil || len(o.usage) > 0 || o.notFound > 0 || len(o.helps) > 0 || o.versions > 0 {
+			return res, fmt.Errorf("a completion callback ran for %q and the line did something else: %+v", o.completed, o)
+		}
+		res.Kind, res.Command = "complete", o.completed[0]
 	case refusedFirst:
 		if o.ran != nil || o.refused != nil || len(o.usage) > 0 || o.notFound > 0 || len(o.helps) > 0 || o.versions > 0 {
 			return res, errors.New("the entry point refused the line, but a command ran or reported on it")
@@ -598,7 +622,9 @@ var errorClasses = []string{"undefined flag", "missing value", "repeated flag", 
 // others: runs fills command, args and flags (and stderr when the stand-in
 // action refused a blank --config); help fills command and helpPath, or the
 // stdout for a command with no help file and for a card that is not the one in
-// the help file of its command; version fills stdout; error fills
+// the help file of its command; version fills stdout; complete fills command
+// (the command the completion reached, "" for the root) and the candidate lines
+// in stdout, which may be none; error fills
 // errorClass and stderr; refused fills stderr, and command, args and flags when
 // the command's own Before refused; nothing fills what was written.
 func assertRowFields(row parseRow) error {
@@ -617,6 +643,10 @@ func assertRowFields(row parseRow) error {
 	case "version":
 		if row.Command != "" || len(row.Stdout) == 0 || row.ErrorClass != "" || len(row.Args) > 0 || len(row.Flags) > 0 || row.HelpPath != "" {
 			return bad("the row holds a field the kind does not use, or lacks one it needs")
+		}
+	case "complete":
+		if row.ErrorClass != "" || len(row.Args) > 0 || len(row.Flags) > 0 || row.HelpPath != "" {
+			return bad("the row holds a field the kind does not use")
 		}
 	case "error":
 		if row.ErrorClass != "" && !slices.Contains(errorClasses, row.ErrorClass) {
@@ -752,6 +782,7 @@ const (
 	sourceExecPlugin parseSource = "exec plugin"
 	sourceRefusal    parseSource = "refusal"
 	sourceEnv        parseSource = "environment"
+	sourceTwice      parseSource = "flag given twice"
 	sourceCompletion parseSource = "__completion"
 )
 
@@ -784,9 +815,11 @@ const fakeCertificate = "-----BEGIN CERTIFICATE-----\nZmFrZSBjZXJ0aWZpY2F0ZQ==\n
 // parseFiles lists the lines of every parse golden file: every line the
 // generator of the parse test makes for each command, then the four lines of
 // every command (the command alone, --help, one extra word, an undefined
-// flag), the aliases, the slice flag, the exec plugin and refusal lines and
-// the environment lines of the command, then the lines of __completion, which
-// is not in the tree until the root runs.
+// flag), the aliases, the first list flag of one command, the exec plugin and
+// refusal lines and the environment lines of the command, the lines that give
+// flags twice, the lines that give every list flag a comma value and a
+// repeated value, then the lines of __completion, which is not in the tree
+// until the root runs.
 func parseFiles(t *testing.T) []goldenFile {
 	t.Helper()
 	root, err := BuildRoot(goldenVersion)
@@ -951,6 +984,55 @@ func parseFiles(t *testing.T) []goldenFile {
 	add([]string{"get"}, sourceEnv, bound, []string{"get"})
 	for _, words := range [][]string{{}, {"--config", "/parse/other"}, {"-c", "/parse/other"}, {"--help"}} {
 		add(getPod, sourceEnv, bound, append(slices.Clone(getPod), words...))
+	}
+
+	createProject := []string{"create", "project"}
+	for _, path := range [][]string{getPod, createProject, {"create", "user"}} {
+		cmd := root
+		for _, name := range path {
+			cmd = cmd.Command(name)
+		}
+		twice, missing := flagTwiceWords(cmd)
+		for _, rule := range missing {
+			t.Logf("rancher %s has no %s to give twice", strings.Join(path, " "), rule)
+		}
+		for _, words := range twice {
+			add(path, sourceTwice, nil, append(slices.Clone(path), words...))
+		}
+	}
+	for _, words := range [][]string{
+		{"-o", "json", "-o", "yaml"},
+		{"--output", "json", "--output=yaml"},
+		{"--no-input", "--no-input=false"},
+	} {
+		add(getPod, sourceTwice, nil, append(slices.Clone(getPod), words...))
+	}
+	add(getPod, sourceTwice, nil, []string{"-o", "json", "-o", "yaml", "get", "pod"})
+	add(createProject, sourceTwice, nil, append(slices.Clone(createProject), "--yes", "--yes=false"))
+
+	sliceRows := func(path []string, cmd *ucli.Command) {
+		for _, f := range cmd.Flags {
+			if _, ok := f.(*ucli.StringSliceFlag); !ok {
+				continue
+			}
+			names := f.Names()
+			long := "--" + names[0]
+			words := [][]string{
+				{long, "a,b"},
+				{long, "a,b", long, "c"},
+				{long + "=a", long, "b"},
+			}
+			if len(names) > 1 {
+				words = append(words, []string{"-" + names[len(names)-1], "a,b", long, "c"})
+			}
+			for _, w := range words {
+				add(path, sourceSliceFlag, nil, append(slices.Clone(path), w...))
+			}
+		}
+	}
+	sliceRows(nil, root)
+	for _, c := range commands {
+		sliceRows(c.path, c.cmd)
 	}
 
 	completion := []string{"__completion"}
@@ -1148,6 +1230,9 @@ func TestParseGolden(t *testing.T) {
 			want, wantFields, err := decodeParseFile(data)
 			require.NoError(t, err, goldenShown(path))
 			require.NotEmpty(t, want, "%s holds no row: every command has rows; run with -update", goldenShown(path))
+			for i, row := range want {
+				require.NotEqual(t, "complete", row.Kind, "%s row %d: a parse file holds no completion row", goldenShown(path), i+1)
+			}
 			got := recordParse(t, f, helps)
 			failures := 0
 			for i, row := range got {

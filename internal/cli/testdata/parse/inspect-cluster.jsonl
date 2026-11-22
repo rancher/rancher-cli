@@ -48,3 +48,9 @@
 {"line":["inspect","cluster","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
 {"line":["inspect","clusters"],"kind":"runs","command":"inspect cluster","exit":0}
 {"line":["inspect","clusters","--help"],"kind":"help","command":"inspect cluster","exit":0,"helpPath":"inspect-cluster.txt"}
+{"line":["inspect","cluster","--label","a,b"],"kind":"runs","command":"inspect cluster","flags":{"label":["a,b"]},"exit":0}
+{"line":["inspect","cluster","--label","a,b","--label","c"],"kind":"runs","command":"inspect cluster","flags":{"label":["a,b","c"]},"exit":0}
+{"line":["inspect","cluster","--label=a","--label","b"],"kind":"runs","command":"inspect cluster","flags":{"label":["a","b"]},"exit":0}
+{"line":["inspect","cluster","--taint","a,b"],"kind":"runs","command":"inspect cluster","flags":{"taint":["a,b"]},"exit":0}
+{"line":["inspect","cluster","--taint","a,b","--taint","c"],"kind":"runs","command":"inspect cluster","flags":{"taint":["a,b","c"]},"exit":0}
+{"line":["inspect","cluster","--taint=a","--taint","b"],"kind":"runs","command":"inspect cluster","flags":{"taint":["a","b"]},"exit":0}

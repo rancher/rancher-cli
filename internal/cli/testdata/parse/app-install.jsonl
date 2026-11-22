@@ -58,3 +58,6 @@
 {"line":["app","install","--help"],"kind":"help","command":"app install","exit":0,"helpPath":"app-install.txt"}
 {"line":["app","install","x"],"kind":"runs","command":"app install","args":["x"],"exit":0}
 {"line":["app","install","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["app","install","--values","a,b"],"kind":"runs","command":"app install","flags":{"values":["a,b"]},"exit":0}
+{"line":["app","install","--values","a,b","--values","c"],"kind":"runs","command":"app install","flags":{"values":["a,b","c"]},"exit":0}
+{"line":["app","install","--values=a","--values","b"],"kind":"runs","command":"app install","flags":{"values":["a","b"]},"exit":0}

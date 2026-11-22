@@ -342,3 +342,12 @@
 {"line":["get","pod","--config","/parse/other"],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":"/parse/other"},"exit":0}
 {"line":["get","pod","-c","/parse/other"],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"runs","command":"get pod","flags":{"config":"/parse/other"},"exit":0}
 {"line":["get","pod","--help"],"env":{"RANCHER_CLI_CONFIG_DIR":"/parse/config"},"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["get","pod","--cluster","a","--cluster","b"],"kind":"runs","command":"get pod","flags":{"cluster":"b"},"exit":0}
+{"line":["get","pod","--wait","--wait=false"],"kind":"runs","command":"get pod","flags":{"wait":false},"exit":0}
+{"line":["get","pod","--wait=false","--wait"],"kind":"runs","command":"get pod","flags":{"wait":true},"exit":0}
+{"line":["get","pod","-n","a","-n","b"],"kind":"runs","command":"get pod","flags":{"namespace":"b"},"exit":0}
+{"line":["get","pod","-n","a","--namespace","b"],"kind":"runs","command":"get pod","flags":{"namespace":"b"},"exit":0}
+{"line":["get","pod","-o","json","-o","yaml"],"kind":"runs","command":"get pod","flags":{"output":"yaml"},"exit":0}
+{"line":["get","pod","--output","json","--output=yaml"],"kind":"runs","command":"get pod","flags":{"output":"yaml"},"exit":0}
+{"line":["get","pod","--no-input","--no-input=false"],"kind":"runs","command":"get pod","flags":{"no-input":false},"exit":0}
+{"line":["-o","json","-o","yaml","get","pod"],"kind":"runs","command":"get pod","flags":{"output":"yaml"},"exit":0}

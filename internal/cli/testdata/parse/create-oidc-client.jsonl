@@ -21,3 +21,9 @@
 {"line":["create","oidc-client","--help"],"kind":"help","command":"create oidc-client","exit":0,"helpPath":"create-oidc-client.txt"}
 {"line":["create","oidc-client","x"],"kind":"runs","command":"create oidc-client","args":["x"],"exit":0}
 {"line":["create","oidc-client","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","oidc-client","--redirect-uri","a,b"],"kind":"runs","command":"create oidc-client","flags":{"redirect-uri":["a,b"]},"exit":0}
+{"line":["create","oidc-client","--redirect-uri","a,b","--redirect-uri","c"],"kind":"runs","command":"create oidc-client","flags":{"redirect-uri":["a,b","c"]},"exit":0}
+{"line":["create","oidc-client","--redirect-uri=a","--redirect-uri","b"],"kind":"runs","command":"create oidc-client","flags":{"redirect-uri":["a","b"]},"exit":0}
+{"line":["create","oidc-client","--scope","a,b"],"kind":"runs","command":"create oidc-client","flags":{"scope":["a,b"]},"exit":0}
+{"line":["create","oidc-client","--scope","a,b","--scope","c"],"kind":"runs","command":"create oidc-client","flags":{"scope":["a,b","c"]},"exit":0}
+{"line":["create","oidc-client","--scope=a","--scope","b"],"kind":"runs","command":"create oidc-client","flags":{"scope":["a","b"]},"exit":0}

@@ -33,3 +33,6 @@
 {"line":["create","machine-config","--help"],"kind":"help","command":"create machine-config","exit":0,"helpPath":"create-machine-config.txt"}
 {"line":["create","machine-config","x"],"kind":"runs","command":"create machine-config","args":["x"],"exit":0}
 {"line":["create","machine-config","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): unknown flag at argument 3 after rancher; pass --help for usage","  hint: rancher schema"]}
+{"line":["create","machine-config","--set","a,b"],"kind":"runs","command":"create machine-config","flags":{"set":["a,b"]},"exit":0}
+{"line":["create","machine-config","--set","a,b","--set","c"],"kind":"runs","command":"create machine-config","flags":{"set":["a,b","c"]},"exit":0}
+{"line":["create","machine-config","--set=a","--set","b"],"kind":"runs","command":"create machine-config","flags":{"set":["a","b"]},"exit":0}

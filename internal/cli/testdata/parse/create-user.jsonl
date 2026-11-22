@@ -324,3 +324,8 @@
 {"line":["create","user","--global-role","a,b","--global-role","c,d"],"kind":"runs","command":"create user","flags":{"global-role":["a,b","c,d"]},"exit":0}
 {"line":["create","user","--global-role","a","--global-role","b"],"kind":"runs","command":"create user","flags":{"global-role":["a","b"]},"exit":0}
 {"line":["create","user","--global-role=a b"],"kind":"runs","command":"create user","flags":{"global-role":["a b"]},"exit":0}
+{"line":["create","user","--display-name","a","--display-name","b"],"kind":"runs","command":"create user","flags":{"display-name":"b"},"exit":0}
+{"line":["create","user","--password-stdin","--password-stdin=false"],"kind":"runs","command":"create user","flags":{"password-stdin":false},"exit":0}
+{"line":["create","user","--password-stdin=false","--password-stdin"],"kind":"runs","command":"create user","flags":{"password-stdin":true},"exit":0}
+{"line":["create","user","--global-role","a,b","--global-role","c"],"kind":"runs","command":"create user","flags":{"global-role":["a,b","c"]},"exit":0}
+{"line":["create","user","--global-role=a","--global-role","b"],"kind":"runs","command":"create user","flags":{"global-role":["a","b"]},"exit":0}

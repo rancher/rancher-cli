@@ -319,3 +319,5 @@
 {"line":["create","project","-container-default-resource-limit","v"],"kind":"runs","command":"create project","flags":{"container-default-resource-limit":"v"},"exit":0}
 {"line":["create","project","--container-default-resource-limit","v","--container-default-resource-limit","w"],"kind":"error","command":"","errorClass":"repeated flag","exit":2,"stderr":["error (VALIDATION): invalid value \"w\" for flag -container-default-resource-limit: can't duplicate this flag; pass --help for usage; --container-default-resource-limit may be given once; give all its entries in one comma-separated value","  hint: rancher schema"]}
 {"line":["create","project"],"kind":"runs","command":"create project","exit":0}
+{"line":["create","project","--cluster","a","--cluster","b"],"kind":"runs","command":"create project","flags":{"cluster":"b"},"exit":0}
+{"line":["create","project","--yes","--yes=false"],"kind":"runs","command":"create project","flags":{"yes":false},"exit":0}
