@@ -115,7 +115,7 @@ var clusterClientCalls = map[string]func(context.Context, engine.ClusterClient, 
 		return err
 	},
 	"Delete": func(ctx context.Context, c engine.ClusterClient, gvr schema.GroupVersionResource) error {
-		return c.Delete(ctx, gvr, "default", "x", "", false)
+		return c.Delete(ctx, gvr, "default", "x", "7", false)
 	},
 	"Logs": func(ctx context.Context, c engine.ClusterClient, _ schema.GroupVersionResource) error {
 		_, err := c.Logs(ctx, "default", "x", engine.LogOptions{})
@@ -257,7 +257,7 @@ func TestCuratedNotFoundKeepsTheStatus(t *testing.T) {
 	for name, call := range map[string]func() error{
 		"Get":    func() error { _, err := c.Get(t.Context(), gvr, "", "x"); return err },
 		"Update": func() error { _, err := c.Update(t.Context(), gvr, "", guardObject(gvr), false); return err },
-		"Delete": func() error { return c.Delete(t.Context(), gvr, "", "x", "", false) },
+		"Delete": func() error { return c.Delete(t.Context(), gvr, "", "x", "7", false) },
 	} {
 		err := call()
 		assert.True(t, clierr.IsNotFound(err), "%s: %v", name, err)

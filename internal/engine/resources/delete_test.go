@@ -151,6 +151,80 @@ func TestDeletePlanCapturesResourceVersionAndExecUsesIt(t *testing.T) {
 		"the executor deletes with the captured RV precondition, for real")
 }
 
+// TestDeletePlanRefusesAnObjectWithNoResourceVersion asserts that the delete
+// of an object whose GET response has no resourceVersion is refused before
+// any delete is sent: its Effect would claim conflict detection for a delete
+// that carries no precondition.
+func TestDeletePlanRefusesAnObjectWithNoResourceVersion(t *testing.T) {
+	t.Parallel()
+	client := &delClient{obj: objWithRV("web", "")}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	_, exec, err := planDelete(t, NewDelete(mustKind(t, "pod"), fac), input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "team-a"}})
+	require.ErrorContains(t, err, "internal error: the server's response for pod web has no resourceVersion; the delete was not sent")
+	assert.Equal(t, clierr.CodeGeneric, clierr.From(err).Code)
+	assert.Nil(t, exec)
+	assert.Empty(t, client.deletes, "no delete is sent, not even the dry run")
+}
+
+// uidDelClient is a delClient that can also delete with a uid precondition,
+// and counts those deletes.
+type uidDelClient struct {
+	*delClient
+	uidDeletes int
+}
+
+func (u *uidDelClient) DeleteWithUID(context.Context, schema.GroupVersionResource, string, string, string, bool) (string, error) {
+	u.uidDeletes++
+	return "u1", nil
+}
+
+// TestADeleteOfAnObjectTheCallerCannotGetRefusesAWaitThatParseDeleteWaitDidNotMake asserts that
+// the delete of an object the caller cannot get refuses a DeleteWait that
+// ParseDeleteWait did not make, as PlanFromFetched does, before any delete is
+// sent.
+func TestADeleteOfAnObjectTheCallerCannotGetRefusesAWaitThatParseDeleteWaitDidNotMake(t *testing.T) {
+	t.Parallel()
+	client := &uidDelClient{delClient: &delClient{}}
+	cmd := deleteCmd{k: mustKind(t, "pod"), clients: &recFactory{client: client}}
+	_, exec, err := cmd.planWithUID(t.Context(), client, "team-a", "web", "c-abc", DeleteWait{}, clierr.New(clierr.CodeRBAC, "forbidden"))
+	require.ErrorContains(t, err, "internal error: the delete has no wait setting")
+	assert.Equal(t, clierr.CodeGeneric, clierr.From(err).Code)
+	assert.Nil(t, exec)
+	assert.Zero(t, client.uidDeletes, "no delete is sent, not even the dry run")
+	assert.Empty(t, client.deletes)
+}
+
+// TestADeleteOfAnObjectTheCallerCannotGetRefusesOwnTokenAndAlsoWaitFor
+// asserts that the delete of an object the caller cannot get refuses, before
+// any delete is sent, a DeleteWait marked OwnToken (the delete of the token
+// this command uses reads the token first) and one with an AlsoWaitFor
+// target (the command does not wait), as PlanFromFetched honors both.
+func TestADeleteOfAnObjectTheCallerCannotGetRefusesOwnTokenAndAlsoWaitFor(t *testing.T) {
+	t.Parallel()
+	k := mustKind(t, "pod")
+	wait := DeleteWait{mode: waitOn, timeout: deleteTimeoutDefault, timeoutText: deleteTimeoutDefaultText}
+	for _, tc := range []struct {
+		name, want string
+		w          DeleteWait
+	}{
+		{"the token this command uses", "internal error: the delete of the token this command uses reads the token first; the delete was not sent", wait.OwnToken()},
+		{"another object to wait for", "internal error: the delete of an object you cannot get does not wait for other objects; the delete was not sent",
+			wait.AlsoWaitFor(newDeleteTarget(k, "team-a", "other", objWithRV("other", "1"), "c-abc"))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &uidDelClient{delClient: &delClient{}}
+			cmd := deleteCmd{k: k, clients: &recFactory{client: client}}
+			_, exec, err := cmd.planWithUID(t.Context(), client, "team-a", "web", "c-abc", tc.w, clierr.New(clierr.CodeRBAC, "forbidden"))
+			require.ErrorContains(t, err, tc.want)
+			assert.Equal(t, clierr.CodeGeneric, clierr.From(err).Code)
+			assert.Nil(t, exec)
+			assert.Zero(t, client.uidDeletes, "no delete is sent, not even the dry run")
+			assert.Empty(t, client.deletes)
+		})
+	}
+}
+
 // TestDeleteMultiWordKindUsesK8sKindCasing asserts, for
 // the delete path, that the envelope kind echoes k.K8sKind's casing
 // ("StatefulSet"), not a naive first-rune capitalization ("Statefulset").
@@ -503,8 +577,21 @@ func TestDeleteAndPatchRequiredClusterDescDropsTheListAdvice(t *testing.T) {
 	}
 }
 
-// deleteGenericDesc is the description every generated delete starts with.
+// deleteGenericDesc is the description every generated delete starts with:
+// the text of the wait, then, for a row that deletes an object the caller
+// cannot get (no DeleteNeedsGet and no delete check of the object), the text
+// of that delete.
 func deleteGenericDesc(k kinds.Kind) string {
+	desc := deleteWaitDesc(k)
+	if k.DeleteNeedsGet == "" && (k.ObjectChecks == nil || k.ObjectChecks.Delete == nil) {
+		desc += " When the Kubernetes authorizer refuses you permission to get the object, the command deletes it with a uid precondition from the response to its dry-run delete, not a resourceVersion precondition, and does not wait. " +
+			"The dry-run preview has uid and conflictDetection false, and the result says deletion started, with a warning."
+	}
+	return desc
+}
+
+// deleteWaitDesc is the text of the wait every generated delete starts with.
+func deleteWaitDesc(k kinds.Kind) string {
 	return "Deletes the " + k.Name + " <" + argName(k) + "> with a resourceVersion precondition from its server-side dry-run preview. " +
 		"By default it waits until the object is gone, then returns (--wait=false turns the wait off). The object is gone when the server responds with not found (404), " +
 		"a watch reports it deleted, or an object with that name has a different uid from the one the command read before the delete (a new object took the name). " +

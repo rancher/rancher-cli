@@ -277,7 +277,7 @@ var (
 		"Diff[].Path", "Diff[].From", "Diff[].To",
 		"Objects[].Kind", "Objects[].Name", "Objects[].Outcome", "Objects[].Message",
 	}
-	previewNotPrinted = []string{"Target", "ResourceVersion", "Objects[].Code", "Warnings[]"}
+	previewNotPrinted = []string{"Target", "ResourceVersion", "UID", "Objects[].Code", "Warnings[]"}
 	previewByHand     = []string{"Action", "PreviewSource", "WriteVia"}
 	// previewWithCommand are the printed paths that keep this process's
 	// marker, so a command of the CLI planted there expands.

@@ -1,0 +1,24 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b",
+  "observations": [
+    {
+      "name": "get",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "details": {
+          "group": "{crdgroup}",
+          "kind": "deletionprobes",
+          "name": "e2e-fid-dwg-resource"
+        },
+        "kind": "Status",
+        "message": "deletionprobes.{crdgroup} \"e2e-fid-dwg-resource\" is forbidden: User \"{userid}\" cannot get resource \"deletionprobes\" in API group \"{crdgroup}\" in the namespace \"{ns}\"",
+        "metadata": {},
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    }
+  ]
+}

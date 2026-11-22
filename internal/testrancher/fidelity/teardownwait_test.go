@@ -551,6 +551,21 @@ var teardownAllowlist = map[stepKey]string{
 	{"catalog/failing-install-downstream", stepRemove}:                                                        "the objects to remove are stored by the record step, which finds none in the guard's run, so the step sends nothing; it deletes the objects this run's Operations created",
 	{"catalog/failing-install-downstream", stepGone}:                                                          "the recorded objects are stored by the record step, which finds none in the guard's run, so the step sends nothing; it waits until those objects answer 404",
 	{"catalog/failing-install-downstream", stepCompare}:                                                       "the before snapshot is stored by the setup step that records the names, which the guard never runs, so the step sends nothing; it compares the names before and after the run",
+	{"delete/configmap-dry-run-and-uid-mismatch", "namespace"}:                                                "ns is stored by the setup step that names the namespace; the step deletes that namespace",
+	{"delete/pod-dry-run", "namespace"}:                                                                       "ns is stored by the setup step that names the namespace; the step deletes that namespace",
+	{"delete/custom-resource-dry-run", "namespace"}:                                                           "ns is stored by the setup step that names the namespace; the step deletes that namespace",
+	{"delete/custom-resource-dry-run", "custom resource definition"}:                                          "crdgroup is stored by the setup step that names the API group; the step deletes that CustomResourceDefinition",
+	{"delete/namespace-dry-run-and-uid-mismatch", "namespace"}:                                                "ns is stored by the setup step that names the namespace; the step deletes that namespace",
+	{"delete/get-refused-for-a-delete-only-role", "namespace"}:                                                "ns is stored by the setup step that names the namespace; the step deletes that namespace",
+	{"delete-downstream/get-refused-for-a-delete-only-role", "namespace"}:                                     "ns is stored by the setup step that names the namespace; the step deletes that namespace",
+	{"delete/get-refused-at-the-cluster-scope", "delete-only cluster role binding"}:                           "role is stored by the setup step that names the cluster role, and the binding takes its name; the step deletes that binding",
+	{"delete/get-refused-at-the-cluster-scope", "delete-only cluster role"}:                                   "role is stored by the setup step that names the cluster role, and the delete-only role takes its name; the step deletes that role",
+	{"delete/get-refused-at-the-cluster-scope", "cluster role"}:                                               "role is stored by the setup step that names the cluster role; the step deletes that cluster role",
+	{"delete/get-refused-for-a-namespace", "cluster role binding"}:                                            "ns is stored by the setup step that names the namespace, and the binding takes its name; the step deletes that binding",
+	{"delete/get-refused-for-a-namespace", "cluster role"}:                                                    "ns is stored by the setup step that names the namespace, and the role takes its name; the step deletes that role",
+	{"delete/get-refused-for-a-namespace", "namespace"}:                                                       "ns is stored by the setup step that names the namespace; the step deletes that namespace",
+	{"delete/get-refused-in-a-named-group", "custom resource definition"}:                                     "crdgroup is stored by the setup step that names the API group; the step deletes that CustomResourceDefinition",
+	{"delete/get-refused-in-a-named-group", "namespace"}:                                                      "ns is stored by the setup step that names the namespace; the step deletes that namespace",
 }
 
 // assertGuardTotals asserts the project delete count the probes' teardowns

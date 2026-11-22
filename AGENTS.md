@@ -145,12 +145,25 @@ Gotchas:
   diff like the schema golden's.
 - **One safety pipeline for every mutation.** Server-side dry-run → an `Effect` →
   explicit gates (`--apply`, `--yes` for destructive, `--allow-deprecated`) →
-  execute, bound to the preview by a resourceVersion precondition. A command
-  cannot weaken its own gates. The one exception: a Rancher action the CLI
-  previews from server reads (`app install`, `app upgrade`, `app uninstall`, and `node drain` and
-  `node stop-drain` for a caller without access to Rancher's local cluster)
-  carries no precondition and says so in the Effect (`previewSource: serverReads`); every
-  other mutation sets `previewSource: serverDryRun`.
+  execute. An update is bound to its preview by the resourceVersion of the
+  object it read, when the object has one. A delete in this pipeline is bound
+  to its preview by a precondition the server checks: a resourceVersion, or the
+  uid from the dry-run response when the Kubernetes authorizer refuses
+  (HTTP 403) permission to get the object. The Effect of a delete with a uid
+  precondition has `uid`, no `resourceVersion`, `conflictDetection: false`
+  and a warning that says so. The cluster client refuses a delete that is not
+  a dry run and has neither precondition, before any request
+  (`TestEveryDeleteIsBoundByAPrecondition`); every DELETE request to
+  Rancher or Kubernetes is sent by that client or by a file the Local
+  rule below lists (`TestEveryDeleteIsSentByTheProviderOrIsListed`);
+  only the authorizer's refusal of the read selects the uid precondition
+  (`TestTheUIDPreconditionIsChosenOnlyByTheAuthorizersRefusal`,
+  `TestEveryDeleteDeletesAnObjectTheCallerCannotGet`). A command cannot weaken
+  its own gates. The one exception: a Rancher action the CLI previews from
+  server reads (`app install`, `app upgrade`, `app uninstall`, and `node drain`
+  and `node stop-drain` for a caller without access to Rancher's local cluster)
+  carries no precondition and says so in the Effect (`previewSource:
+  serverReads`); every other mutation sets `previewSource: serverDryRun`.
 - **A Local command writes to the server only objects the CLI created for its
   own use and can prove it created.** Anything else is a resource mutation and
   goes through the gated pipeline (`rancher delete token <name> --apply --yes`).

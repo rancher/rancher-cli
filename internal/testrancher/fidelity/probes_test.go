@@ -81,6 +81,11 @@ func TestExpectedProbeSet(t *testing.T) {
 		"etcdsnapshot/standard-user-local",
 		"authproviders/only-local-enabled", "authproviders/external-providers-enabled",
 		"extension/add-repository-dry-run", "extension/add-and-list",
+		"delete/configmap-dry-run-and-uid-mismatch", "delete/pod-dry-run", "delete/custom-resource-dry-run",
+		"delete/namespace-dry-run-and-uid-mismatch", "delete/get-refused-for-a-delete-only-role",
+		"delete-downstream/get-refused-for-a-delete-only-role",
+		"delete/get-refused-at-the-cluster-scope", "delete/get-refused-for-a-namespace",
+		"delete/get-refused-in-a-named-group",
 	}
 	var got []string
 	for _, p := range All() {

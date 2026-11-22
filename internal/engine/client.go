@@ -28,8 +28,9 @@ type FileSource interface {
 // ClusterClient is the port for one cluster's Rancher-proxied k8s API
 // (https://<rancher>/k8s/clusters/<id>). The dynamic implementation lives in
 // internal/client/provider. Cluster-scoped resources pass ns == "". Writes
-// take a dryRun flag (server-side dry-run). Delete takes an optional
-// resourceVersion precondition ("" = none).
+// take a dryRun flag (server-side dry-run). Delete takes a resourceVersion
+// precondition; "" sends none, which only a dry run may do: a delete that is
+// not a dry run with an empty resourceVersion is refused before any request.
 type ClusterClient interface {
 	Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error)
 	// List lists objects in ns; selector "" lists all (no label filter).
@@ -89,6 +90,19 @@ type TableReader interface {
 // those of List, with fieldSelector in place of the label selector.
 type FieldSelectorLister interface {
 	ListFieldSelector(ctx context.Context, gvr schema.GroupVersionResource, ns, fieldSelector string) (*unstructured.UnstructuredList, error)
+}
+
+// UIDDeleter is implemented by a ClusterClient that can delete with a uid
+// precondition and return the uid in the server's response. A command
+// type-asserts it, as it does TableReader; a command whose client lacks it
+// sends no delete. With dryRun and an empty uid it sends no precondition and
+// returns the uid in the server's response: details.uid of a Status, else
+// metadata.uid of an object, and "" with a nil error when a 2xx response
+// carries neither; nothing else of the response is kept. With a uid it sends
+// preconditions.uid and returns "". A delete that is not a dry run with an
+// empty uid is refused before any request. The errors are those of Delete.
+type UIDDeleter interface {
+	DeleteWithUID(ctx context.Context, gvr schema.GroupVersionResource, ns, name, uid string, dryRun bool) (string, error)
 }
 
 // DecodeRowObjects decodes each row's raw object of t into

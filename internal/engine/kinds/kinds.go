@@ -218,6 +218,13 @@ type Kind struct {
 	// know about this kind's delete that the generic text does not say.
 	// Only a Deletable row may set it.
 	DeleteDesc string
+	// DeleteNeedsGet, when non-empty, is why the generated delete of this
+	// kind needs get on the object: when the authorizer refuses the GET, the
+	// delete returns that refusal with the hint that names get and sends no
+	// delete. Without it, when the authorizer refuses the caller permission to
+	// get the object, the delete sends a uid precondition from the response to
+	// the dry-run delete. Only a Deletable row may set it.
+	DeleteNeedsGet string
 	// ServerTable marks a kind whose text tables (the default format,
 	// table and wide) come from the cluster's API server, as kubectl's do:
 	// get asks for the server's Table and shows its columns and cells, so
@@ -575,6 +582,10 @@ var table = []Kind{
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
 		ArgDesc: "project id (p-xxxxx when Rancher generated it; a project created with `rancher create project <id>` has that id)",
+
+		// The preview of the namespaces Rancher deletes or keeps, and the wait
+		// for the backing namespace, come from the project object.
+		DeleteNeedsGet: "the preview of the namespaces Rancher deletes or keeps comes from the project object",
 
 		// Rancher deletes the namespaces of the project that carry
 		// field.cattle.io/creatorId and keeps the rest, removing their project
@@ -1401,6 +1412,11 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "tokens"},
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
+		// The ext.cattle.io store checks a uid precondition in its own code,
+		// which no recorded response shows for a caller who may delete and not
+		// get; the store responds to a caller without access to another user's
+		// object with NOT_FOUND, not 403.
+		DeleteNeedsGet: "the ext.cattle.io store checks the uid precondition in its own code",
 		Columns: []Column{
 			// USER/KIND/EXPIRES/DESCRIPTION are plain strings on the wire;
 			// there is still no EXPIRED bool column - EXPIRES carries the
@@ -1428,7 +1444,8 @@ var table = []Kind{
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Deprecated},
 		DeleteDesc: "When the token to delete is the token this command uses (from a login or RANCHER_CLI_TOKEN) and Rancher marks it as derived, the command sends the delete and does not wait: " +
 			"the server refuses every read made with a deleted token. The result is deletion started with a note: log in again or, " +
-			"if RANCHER_CLI_TOKEN holds the token, set it to another token or unset it.",
+			"if RANCHER_CLI_TOKEN holds the token, set it to another token or unset it. " +
+			"The delete of the token this command uses reads it first and needs get.",
 		Columns: []Column{
 			// Plain strings, root-level fields on the v3 Token type (userId,
 			// authProvider, expiresAt, description).
@@ -1452,6 +1469,11 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "kubeconfigs"},
 		Policy: NSNone, K8sKind: "Kubeconfig", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
+		// The ext.cattle.io store checks a uid precondition in its own code,
+		// which no recorded response shows for a caller who may delete and not
+		// get; the store responds to a caller without access to another user's
+		// object with NOT_FOUND, not 403.
+		DeleteNeedsGet: "the ext.cattle.io store checks the uid precondition in its own code",
 		Columns: []Column{
 			// TTL and TOKENS/CLUSTERS are omitted: their exact wire paths
 			// are not verified against a live server - not a renderer
@@ -1664,6 +1686,9 @@ func validateKinds(ts []Kind) error {
 		}
 		if k.DeleteDesc != "" && !k.Deletable {
 			return fmt.Errorf("kind %q sets DeleteDesc but has no generated delete (Deletable is false)", k.Key)
+		}
+		if k.DeleteNeedsGet != "" && !k.Deletable {
+			return fmt.Errorf("kind %q sets DeleteNeedsGet but has no generated delete (Deletable is false)", k.Key)
 		}
 	}
 	// Key uniqueness is its own pass: the self-Key exemption in the collision

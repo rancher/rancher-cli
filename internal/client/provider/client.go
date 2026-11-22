@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -352,6 +354,9 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 }
 
 func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
+	if !dryRun && resourceVersion == "" {
+		return clierr.New(clierr.CodeGeneric, "internal error: a delete that is not a dry run has no resourceVersion precondition; it was not sent")
+	}
 	ctx = kube.WithAnswers(ctx)
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
@@ -375,4 +380,84 @@ func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResou
 	req := r.request("delete", gvr, ns, name)
 	req.Precondition = resourceVersion != ""
 	return r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodDelete, r.ri(gvr, ns).Delete(ctx, name, opts), req))
+}
+
+var _ engine.UIDDeleter = (*dynamicClient)(nil)
+
+// DeleteWithUID deletes as Delete does, with a uid precondition in place of
+// the resourceVersion one (engine.UIDDeleter). It sends the request through
+// tbl, which keeps the response: the dynamic client's Delete discards it. A
+// delete carries no fieldManager: DeleteOptions has none. A uid precondition
+// leaves Request.Precondition false: a 409 on it cannot mean the
+// resourceVersion is out of date.
+func (r *dynamicClient) DeleteWithUID(ctx context.Context, gvr schema.GroupVersionResource, ns, name, uid string, dryRun bool) (string, error) {
+	if !dryRun && uid == "" {
+		return "", clierr.New(clierr.CodeGeneric, "internal error: a delete that is not a dry run has no uid precondition; it was not sent")
+	}
+	ctx = kube.WithAnswers(ctx)
+	gvr, err := r.resolveVersion(ctx, gvr)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := opCtx(ctx)
+	defer cancel()
+	req := r.request("delete", gvr, ns, name)
+	segments, err := objectPath(gvr, ns, name)
+	if err == nil && name == "" {
+		err = errors.New("name is required")
+	}
+	if err != nil {
+		return "", mapRequestErr(ctx, http.MethodDelete, err, req)
+	}
+	// Background, as Delete sends it.
+	background := metav1.DeletePropagationBackground
+	opts := metav1.DeleteOptions{Kind: "DeleteOptions", APIVersion: "v1", PropagationPolicy: &background}
+	if dryRun {
+		opts.DryRun = []string{metav1.DryRunAll}
+	}
+	if uid != "" {
+		u := types.UID(uid)
+		opts.Preconditions = &metav1.Preconditions{UID: &u}
+	}
+	body, err := json.Marshal(opts)
+	if err != nil {
+		return "", mapRequestErr(ctx, http.MethodDelete, err, req)
+	}
+	res := r.tbl.Delete().AbsPath(segments...).SetHeader("Content-Type", "application/json").Body(body).Do(ctx)
+	// Error, not Raw, decodes a Status response into the *StatusError the
+	// status table reads.
+	if err := res.Error(); err != nil {
+		return "", r.curateNotFound(gvr, name, mapRequestErr(ctx, http.MethodDelete, err, req))
+	}
+	raw, _ := res.Raw()
+	if !dryRun {
+		return "", nil
+	}
+	return responseUID(raw), nil
+}
+
+// responseUID is the uid in the response to a delete: details.uid of a
+// Status, else metadata.uid of an object; "" when the body is neither or
+// carries no uid. Only the uid is decoded: an object in the response can
+// hold data (a Secret's) that the caller may not read.
+func responseUID(body []byte) string {
+	var response struct {
+		Kind    string `json:"kind"`
+		Details *struct {
+			UID string `json:"uid"`
+		} `json:"details"`
+		Metadata struct {
+			UID string `json:"uid"`
+		} `json:"metadata"`
+	}
+	if json.Unmarshal(body, &response) != nil {
+		return ""
+	}
+	if response.Kind == "Status" {
+		if response.Details == nil {
+			return ""
+		}
+		return response.Details.UID
+	}
+	return response.Metadata.UID
 }

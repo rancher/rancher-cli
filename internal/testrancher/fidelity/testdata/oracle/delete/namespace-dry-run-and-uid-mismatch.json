@@ -1,0 +1,47 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b",
+  "observations": [
+    {
+      "name": "dry-run-delete",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e",
+          "deletionTimestamp": "\u003cts\u003e",
+          "name": "{ns}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "finalizers": [
+            "kubernetes"
+          ]
+        },
+        "status": {
+          "phase": "Terminating"
+        }
+      }
+    },
+    {
+      "name": "delete-with-a-different-uid",
+      "status": 409,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 409,
+        "details": {
+          "kind": "namespaces",
+          "name": "{ns}"
+        },
+        "kind": "Status",
+        "message": "Operation cannot be fulfilled on namespaces \"{ns}\": Precondition failed: UID in precondition: 00000000-0000-0000-0000-000000000000, UID in object meta: {nsuid}",
+        "metadata": {},
+        "reason": "Conflict",
+        "status": "Failure"
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.3@sha256:3f3a50c6e49c1cf5b4673bef236e0f260f36055de4d073438e38c441dc97aa9b",
+  "observations": [
+    {
+      "name": "dry-run-delete",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "details": {
+          "kind": "configmaps",
+          "name": "e2e-fid-dwg-cm",
+          "uid": "{cmuid}"
+        },
+        "kind": "Status",
+        "metadata": {},
+        "status": "Success"
+      }
+    },
+    {
+      "name": "delete-with-a-different-uid",
+      "status": 409,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 409,
+        "details": {
+          "kind": "ConfigMap",
+          "name": "e2e-fid-dwg-cm"
+        },
+        "kind": "Status",
+        "message": "Operation cannot be fulfilled on ConfigMap \"e2e-fid-dwg-cm\": the UID in the precondition (00000000-0000-0000-0000-000000000000) does not match the UID in record ({cmuid}). The object might have been deleted and then recreated",
+        "metadata": {},
+        "reason": "Conflict",
+        "status": "Failure"
+      }
+    }
+  ]
+}

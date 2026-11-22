@@ -414,6 +414,15 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   reads, with no `resourceVersion` and `conflictDetection` false. A ResourceQuota,
   LimitRanger, PodSecurity or ValidatingAdmissionPolicy refusal on dry-run is
   `VALIDATION`: the server refused the object, not your access.
+- A delete by a role that grants `delete` and not `get` still works: its Effect
+  has `uid` set, no `resourceVersion`, `conflictDetection` false and a warning,
+  the delete carries a uid precondition, and the command does not wait
+  (`deletion started`, `data.waited` false). `delete project`, `delete token`,
+  `delete kubeconfig`, the day-2 operation deletes and the delete of the token
+  the command uses need `get`: their `RBAC` error's hint names the missing
+  verb. When a delete fails with a `CONFLICT` that says the object was deleted
+  and created again after the preview, nothing was deleted: run the delete
+  with `--dry-run` again before you apply it.
 - The dry-run's `resourceVersion`/`conflictDetection` fields describe THAT
   invocation only. An Effect with `previewSource: serverReads` carries no
   resourceVersion and no conflict detection at all; `--apply` reads the state
@@ -422,6 +431,8 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   resourceVersion - and its conflict check spans its own plan-to-execute
   window, not the gap since your dry-run. If the object may have changed
   since the preview, re-run `--dry-run` and re-read the diff before applying.
+  The same holds for `uid`: `--apply` sends the uid in the response to its own
+  dry-run delete, not the one an earlier `--dry-run` showed.
 - Never chain `--apply --yes` onto a command you have not dry-run or whose
   effect the user has not asked for.
 

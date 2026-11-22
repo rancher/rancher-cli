@@ -1374,6 +1374,28 @@ project, as described under `delete project`; `--wait` and `--timeout` work as
 for every other delete, and `--wait=false` skips the wait and the read of the
 backing namespace.
 
+When the Kubernetes authorizer refuses you permission to get the object (your
+role grants `delete` and not `get`), the command still deletes it: the dry-run
+delete carries no precondition, and the delete carries a uid precondition with
+the uid in the response to the dry-run delete. It fails if the object
+was deleted and created again after the preview, and not if the object changed.
+The dry-run preview has `uid`, no `resourceVersion` and `conflictDetection`
+false, with a warning that says so. The command does not wait: the result says
+`deletion started` with the warning
+`you cannot get <kind> <name>; the command does not
+wait for it` and `data.waited` is `false` (with `--wait=false`, no warning). A
+409 on that delete that says the uid is not the object's is `CONFLICT` (exit 5),
+not retryable: the object was deleted and created again after the preview,
+nothing was deleted, and the hint is the same delete with `--dry-run`, to
+preview the object that has the name now. `delete project`, `delete token`,
+`delete kubeconfig` and the deletes of the four day-2 operations
+(`etcd-snapshot-save`, `etcd-snapshot-restore`, `encryption-key-rotation`,
+`certificate-rotation`) read the object before they delete it, and so does the
+delete of the token this command uses: when you cannot get it they
+return the `RBAC` error (exit 6), whose hint names the missing verb. The uid
+holds within one invocation only: a later `--apply` run sends the uid of its
+own dry-run delete, not the one an earlier `--dry-run` run showed.
+
 `rancher kubeconfig` prints one context through the Rancher proxy and, when the
 cluster has the Authorized Cluster Endpoint enabled and the
 multi-cluster-management feature is on, the Authorized Cluster Endpoint contexts

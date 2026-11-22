@@ -474,6 +474,7 @@ type DeleteRecord struct {
 	Bearer       string
 	DryRun       bool   // the body's dryRun contained "All"
 	Precondition string // the body's preconditions.resourceVersion, or ""
+	UID          string // the body's preconditions.uid, or ""
 }
 
 // CreateRecord is one token create request the facade answered.
@@ -1620,6 +1621,7 @@ type deleteOptions struct {
 	DryRun        []string `json:"dryRun"`
 	Preconditions *struct {
 		ResourceVersion *string `json:"resourceVersion"`
+		UID             *string `json:"uid"`
 	} `json:"preconditions"`
 }
 
@@ -1637,9 +1639,12 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 	if len(body) > 0 {
 		_ = json.Unmarshal(body, &opts)
 	}
-	precondition := ""
+	precondition, uid := "", ""
 	if opts.Preconditions != nil && opts.Preconditions.ResourceVersion != nil {
 		precondition = *opts.Preconditions.ResourceVersion
+	}
+	if opts.Preconditions != nil && opts.Preconditions.UID != nil {
+		uid = *opts.Preconditions.UID
 	}
 	dryRun := slices.Contains(opts.DryRun, "All")
 
@@ -1650,6 +1655,7 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 		Bearer:       bearerFromHeader(r),
 		DryRun:       dryRun,
 		Precondition: precondition,
+		UID:          uid,
 	})
 	f.mu.Unlock()
 

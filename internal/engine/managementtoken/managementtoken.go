@@ -123,7 +123,9 @@ func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 			// Target doesn't exist; fall through to the inner Plan's own NOT_FOUND.
 			return c.inner.Plan(ctx, in)
 		}
-		return safety.Effect{}, nil, err
+		// The refusal of a delete of the token this command uses reads
+		// isDerived from the object.
+		return safety.Effect{}, nil, resources.WithGetHint(c.k, ns, args[0], err)
 	}
 	isDerived, _, _ := unstructured.NestedBool(obj.Object, "isDerived")
 	if isDerived {

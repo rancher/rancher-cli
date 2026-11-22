@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +23,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -50,10 +53,12 @@ func dwRefusedWarning(kind, name string) string {
 	return "your access to " + kind + " " + name + " ended after the delete request; the deletion was requested and not confirmed"
 }
 
-// dwRequest is one request a fake client received.
+// dwRequest is one request a fake client received; rv and uid are the
+// precondition a delete carried.
 type dwRequest struct {
 	cluster, verb, ns, name string
 	gvr                     schema.GroupVersionResource
+	rv, uid                 string
 }
 
 // dwServer is what every client of one run talks to. An object of any name
@@ -99,6 +104,14 @@ type dwServer struct {
 	// a name in notFoundOnDelete responds NOT_FOUND to its delete.
 	extraMembers     []string
 	notFoundOnDelete map[string]bool
+	// refuseGet responds to every GET of dwObject before its delete with the
+	// authorizer's refusal of get, as for a caller whose role grants delete
+	// and not get.
+	refuseGet bool
+	// dryRunErr is the response to the dry-run delete of dwObject.
+	dryRunErr error
+	// noResponseUID serves the response to a dry-run delete with no uid.
+	noResponseUID bool
 }
 
 func newDWServer() *dwServer {
@@ -114,9 +127,14 @@ func (s *dwServer) beingDeleted() {
 }
 
 func (s *dwServer) record(cluster, verb string, gvr schema.GroupVersionResource, ns, name string) {
+	s.recordDelete(cluster, verb, gvr, ns, name, "", "")
+}
+
+// recordDelete records a request with the precondition it carried.
+func (s *dwServer) recordDelete(cluster, verb string, gvr schema.GroupVersionResource, ns, name, rv, uid string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.reqs = append(s.reqs, dwRequest{cluster: cluster, verb: verb, gvr: gvr, ns: ns, name: name})
+	s.reqs = append(s.reqs, dwRequest{cluster: cluster, verb: verb, gvr: gvr, ns: ns, name: name, rv: rv, uid: uid})
 }
 
 func (s *dwServer) requests() []dwRequest {
@@ -211,6 +229,8 @@ func (s *dwServer) get(cluster string, gvr schema.GroupVersionResource, ns, name
 		switch {
 		case name == dwObject && s.getErr != nil:
 			return nil, s.getErr
+		case name == dwObject && s.refuseGet:
+			return nil, dwAuthorizerRefusal(gvr, ns, name)
 		case name == dwBacking && s.beforeBacking != nil:
 			return nil, s.beforeBacking
 		}
@@ -239,13 +259,16 @@ func (s *dwServer) get(cluster string, gvr schema.GroupVersionResource, ns, name
 	return nil, dwNotFound(name)
 }
 
-func (s *dwServer) delete(cluster string, gvr schema.GroupVersionResource, ns, name string, dryRun bool) error {
+func (s *dwServer) delete(cluster string, gvr schema.GroupVersionResource, ns, name, rv, uid string, dryRun bool) error {
 	verb := "delete"
 	if dryRun {
 		verb = "dry-run delete"
 	}
-	s.record(cluster, verb, gvr, ns, name)
+	s.recordDelete(cluster, verb, gvr, ns, name, rv, uid)
 	if dryRun {
+		if name == dwObject {
+			return s.dryRunErr
+		}
 		return nil
 	}
 	s.mu.Lock()
@@ -306,8 +329,24 @@ func (c *dwClient) Update(context.Context, schema.GroupVersionResource, string, 
 	return nil, errors.New("dwClient: unexpected update")
 }
 
-func (c *dwClient) Delete(_ context.Context, gvr schema.GroupVersionResource, ns, name, _ string, dryRun bool) error {
-	return c.s.delete(c.cluster, gvr, ns, name, dryRun)
+func (c *dwClient) Delete(_ context.Context, gvr schema.GroupVersionResource, ns, name, rv string, dryRun bool) error {
+	return c.s.delete(c.cluster, gvr, ns, name, rv, "", dryRun)
+}
+
+var _ engine.UIDDeleter = (*dwClient)(nil)
+
+// DeleteWithUID deletes as Delete does with a uid precondition; the response
+// to a dry run carries the server's uid, or none with noResponseUID.
+func (c *dwClient) DeleteWithUID(_ context.Context, gvr schema.GroupVersionResource, ns, name, uid string, dryRun bool) (string, error) {
+	if err := c.s.delete(c.cluster, gvr, ns, name, "", uid, dryRun); err != nil || !dryRun {
+		return "", err
+	}
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	if c.s.noResponseUID {
+		return "", nil
+	}
+	return c.s.uid, nil
 }
 
 func (c *dwClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
@@ -323,6 +362,28 @@ func (c *dwClient) PostReview(_ context.Context, req engine.ReviewRequest) (engi
 
 func (c *dwClient) ServerResources(context.Context) ([]engine.APIResource, error) {
 	return nil, errors.New("dwClient: unexpected discovery")
+}
+
+// dwNoUIDClient is a client that cannot send a uid precondition: embedding
+// the interface hides DeleteWithUID.
+type dwNoUIDClient struct{ engine.ClusterClient }
+
+// dwAuthorizerRefusal is the 403 the API server's authorizer writes, as the
+// cluster client returns it, for a GET of name in ns by a caller whose role
+// grants delete and not get.
+func dwAuthorizerRefusal(gvr schema.GroupVersionResource, ns, name string) error {
+	where := " at the cluster scope"
+	switch {
+	case ns != "":
+		where = " in the namespace " + strconv.Quote(ns)
+	case gvr.Resource == "namespaces" && gvr.Group == "":
+		// The API server words a GET of a namespace as a request in that
+		// namespace.
+		where = " in the namespace " + strconv.Quote(name)
+	}
+	se := apierrors.NewForbidden(schema.GroupResource{Group: gvr.Group, Resource: gvr.Resource}, name,
+		fmt.Errorf("User %q cannot get resource %q in API group %q%s", "u-delete", gvr.Resource, gvr.Group, where))
+	return clierr.FromStatus(se, &clierr.Request{Verb: "get", Group: gvr.Group, Resource: gvr.Resource, Name: name})
 }
 
 // dwWatchClient is a dwClient that can list and watch one object.
@@ -349,8 +410,10 @@ func (c dwWatchClient) WatchObject(_ context.Context, gvr schema.GroupVersionRes
 // dwFactory hands out one client per cluster id, each recording the
 // requests it gets with that id.
 type dwFactory struct {
-	s       *dwServer
-	watch   bool
+	s     *dwServer
+	watch bool
+	// noUID hands out clients that cannot send a uid precondition.
+	noUID   bool
 	mu      sync.Mutex
 	clients map[string]engine.ClusterClient
 }
@@ -367,6 +430,9 @@ func (f *dwFactory) Cluster(_ context.Context, id string) (engine.ClusterClient,
 	var c engine.ClusterClient = &dwClient{s: f.s, cluster: id}
 	if f.watch {
 		c = dwWatchClient{&dwClient{s: f.s, cluster: id}}
+	}
+	if f.noUID {
+		c = dwNoUIDClient{c}
 	}
 	f.clients[id] = c
 	return c, nil
@@ -642,6 +708,10 @@ func TestEveryDeleteWaitsUntilTheObjectIsGone(t *testing.T) {
 				for _, req := range s.requests() {
 					if req.name == dwObject {
 						assert.Equal(t, r.cluster, req.cluster, "%s %s", req.verb, req.name)
+					}
+					if req.verb == "delete" {
+						assert.Equal(t, "5", req.rv, "the delete of %s carries the resourceVersion the command read", req.name)
+						assert.Empty(t, req.uid, "the delete of %s carries no uid precondition", req.name)
 					}
 				}
 				if r.flagRun {

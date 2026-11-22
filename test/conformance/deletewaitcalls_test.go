@@ -20,6 +20,7 @@ var deleteCallsWithoutWait = []struct {
 	file, function, reason string
 }{
 	{"internal/engine/rbac/revoke.go", "revokeCmd.Plan", "revoke is not a delete command; it deletes role bindings"},
+	{"internal/engine/resources/delete.go", "deleteCmd.planWithUID", "the caller cannot get the object: every read of it would be refused, and the result says the command does not wait for it"},
 }
 
 // funcDeclName is the name of a function declaration: "Type.Method" for a
@@ -38,8 +39,8 @@ func funcDeclName(fd *ast.FuncDecl) string {
 	return fd.Name.Name
 }
 
-// deleteSend is one call of a method named Delete with six arguments whose
-// last argument (dryRun) is not the literal true.
+// deleteSend is one call of a method named Delete or DeleteWithUID with six
+// arguments whose last argument (dryRun) is not the literal true.
 type deleteSend struct {
 	// function is the declaration the call is in, as funcDeclName names it.
 	function string
@@ -83,8 +84,8 @@ type waitCall struct {
 // The rule reads the source and has these limits. Whether the wait is reached
 // is the behavior rows' job (internal/cli deletewait_conformance_test.go): a
 // wait in a branch that never runs, such as an if false, or on another client
-// is not detected. The scan sees only a method named Delete with six
-// arguments in a non-test file under internal/engine: a call of another
+// is not detected. The scan sees only a method named Delete or DeleteWithUID
+// with six arguments in a non-test file under internal/engine: a call of another
 // arity, a call through a method value, a raw HTTP DELETE request and any
 // delete outside internal/engine are not seen (no DeleteCollection exists in
 // the repository). The behavior rows cover the delete commands the registry
@@ -129,7 +130,7 @@ func findDeleteSends(path string, src any) ([]deleteSend, error) {
 			current := functions[len(functions)-1]
 			switch fun := call.Fun.(type) {
 			case *ast.SelectorExpr:
-				if fun.Sel.Name != "Delete" || len(call.Args) != 6 {
+				if (fun.Sel.Name != "Delete" && fun.Sel.Name != "DeleteWithUID") || len(call.Args) != 6 {
 					return true
 				}
 				if last, ok := call.Args[5].(*ast.Ident); ok && last.Name == "true" {
@@ -252,7 +253,7 @@ func isWaitsMap(x ast.Expr) bool {
 }
 
 // TestEveryDeleteUnderTheEngineWaitsOrIsListed asserts that every call of a
-// method named Delete with six arguments in a non-test file under
+// method named Delete or DeleteWithUID with six arguments in a non-test file under
 // internal/engine whose last argument (dryRun) is not the literal true is in
 // a function that waits for what it deleted, by the rule of findDeleteSends,
 // or is listed in deleteCallsWithoutWait with its reason; and that every
@@ -287,6 +288,7 @@ func TestEveryDeleteUnderTheEngineWaitsOrIsListed(t *testing.T) {
 	}
 	assert.Empty(t, offenders, "a delete that is not a dry run is followed in its function by a wait for what it deleted, or is listed with its reason")
 	assert.True(t, seen["internal/engine/resources/delete.go PlanFromFetched"], "PlanFromFetched sends the delete")
+	assert.True(t, seen["internal/engine/resources/delete.go deleteCmd.planWithUID"], "planWithUID sends the delete with a uid precondition")
 	assert.True(t, seen["internal/engine/resources/deleteproject.go deleteProjectCmd.execDeleteNamespaces"], "execDeleteNamespaces sends the namespace deletes")
 	assert.True(t, seen["internal/engine/resources/deleteproject.go deleteProjectCmd.deleteProject"], "deleteProject sends the project delete")
 	for _, l := range deleteCallsWithoutWait {

@@ -161,6 +161,10 @@ type Effect struct {
 	ConflictDetection bool          `json:"conflictDetection"`
 	Reversible        bool          `json:"reversible"`
 	Destructive       bool          `json:"destructive"`
+	// UID is the uid precondition of a delete of an object the caller cannot
+	// get, taken from the response to its dry-run delete; a delete that sends
+	// a resourceVersion precondition leaves it empty.
+	UID string `json:"uid,omitempty"`
 	// Objects lists the objects beyond Target that the command acts on or
 	// reports, each with its outcome. Empty for a command that touches one
 	// object, which leaves its output unchanged.

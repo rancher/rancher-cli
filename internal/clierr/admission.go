@@ -1,9 +1,14 @@
 package clierr
 
 import (
+	"errors"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // An admission text is the message the Kubernetes API server returns when
@@ -359,6 +364,72 @@ func inOrder(text string, words []string) bool {
 		text = rest
 	}
 	return true
+}
+
+// UIDConflict reports whether err holds a 409 whose whole message has the
+// words of an entry of uidConflictWords: the server refused a write because
+// the uid sent with it is different from the object's. It reads the Status
+// message before any cut to 200 bytes; any other 409, an admission webhook's
+// denial included, and any other error are false. A 409 whose body is not a
+// Kubernetes Status is false.
+func UIDConflict(err error) bool {
+	se, ok := errors.AsType[*apierrors.StatusError](err)
+	if !ok || !apierrors.IsConflict(se) {
+		return false
+	}
+	if webhookDenial(strings.TrimSpace(se.ErrStatus.Message)) {
+		return false
+	}
+	full := fullStatusMessage(se, strings.TrimSpace(se.ErrStatus.Message), true)
+	return slices.ContainsFunc(uidConflictWords, func(words []string) bool {
+		return inOrder(full, words)
+	})
+}
+
+// AuthorizerRefused reports whether err holds the Kubernetes authorizer's
+// refusal of one request: verb on the object name of resource in group, in
+// namespace ns, the namespace the request was sent in ("" for a request at
+// the cluster scope). For the core namespaces resource only, the API server
+// names the object as the namespace of the request. The response must be
+// HTTP 403 with a Status whose reason is Forbidden, whose details name that
+// group, resource and name, and whose whole message holds the text the
+// authorizer writes for that request, followed by the end of the message or
+// by ": <reason>":
+//
+//	cannot <verb> resource "<resource>" in API group "<group>" in the namespace "<ns>"
+//	cannot <verb> resource "namespaces" in API group "" in the namespace "<name>"
+//	cannot <verb> resource "<resource>" in API group "<group>" at the cluster scope
+//
+// (k8s.io/apiserver@v0.37.1/pkg/endpoints/handlers/responsewriters/errors.go:45-79).
+// The user name before the text is not read. A 403 with no reason, a refusal
+// of another verb, object, resource or namespace, a body that is not a
+// Kubernetes Status and any other code are false.
+func AuthorizerRefused(err error, verb, group, resource, ns, name string) bool {
+	se, ok := errors.AsType[*apierrors.StatusError](err)
+	if !ok {
+		return false
+	}
+	st := se.ErrStatus
+	if st.Code != http.StatusForbidden || st.Reason != metav1.StatusReasonForbidden || st.Details == nil {
+		return false
+	}
+	if st.Details.Name != name || st.Details.Kind != resource || st.Details.Group != group {
+		return false
+	}
+	text := "cannot " + verb + " resource " + strconv.Quote(resource) + " in API group " + strconv.Quote(group)
+	switch {
+	case ns != "":
+		text += " in the namespace " + strconv.Quote(ns)
+	case resource == "namespaces" && group == "":
+		// The API server reads the name in /namespaces/<name> as the
+		// request's namespace, for the namespace object itself too:
+		// k8s.io/apiserver@v0.37.1/pkg/endpoints/request/requestinfo.go:192-194.
+		text += " in the namespace " + strconv.Quote(name)
+	default:
+		text += " at the cluster scope"
+	}
+	_, rest, ok := strings.Cut(fullStatusMessage(se, strings.TrimSpace(st.Message), true), text)
+	return ok && (rest == "" || strings.HasPrefix(rest, ": "))
 }
 
 // exactText matches a text that is exactly the given words.

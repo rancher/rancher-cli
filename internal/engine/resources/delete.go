@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -55,10 +56,21 @@ func deleteDesc(k kinds.Kind) string {
 		"A timeout, an interrupt, or an authentication or certificate failure after the delete request is an error whose details say the deletion " +
 		"was requested and name a get command to check it. When the server refuses (403) a read of an object the command read before the delete, " +
 		"the command stops waiting for that object; the result says deletion started, with a warning."
+	if deletesWithUID(k) {
+		desc += " When the Kubernetes authorizer refuses you permission to get the object, the command deletes it with a uid precondition from the response to its dry-run delete, not a resourceVersion precondition, and does not wait. " +
+			"The dry-run preview has uid and conflictDetection false, and the result says deletion started, with a warning."
+	}
 	if k.DeleteDesc != "" {
 		desc += " " + k.DeleteDesc
 	}
 	return desc
+}
+
+// deletesWithUID reports whether the generated delete of k can delete an
+// object the caller cannot get. A row with DeleteNeedsGet, or with a delete
+// check of the object (ObjectChecks.Delete), needs the object and cannot.
+func deletesWithUID(k kinds.Kind) bool {
+	return k.DeleteNeedsGet == "" && (k.ObjectChecks == nil || k.ObjectChecks.Delete == nil)
 }
 
 // deleteFlags is namedFlags followed by the delete's wait flags: every
@@ -122,7 +134,10 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 func (c deleteCmd) planWith(ctx context.Context, in runtime.Input, w DeleteWait) (safety.Effect, runtime.ExecuteFunc, error) {
 	client, ns, name, obj, effectCluster, err := c.fetch(ctx, in)
 	if err != nil {
-		return safety.Effect{}, nil, err
+		if client == nil || !clierr.AuthorizerRefused(err, "get", c.k.GVR.Group, c.k.GVR.Resource, ns, name) {
+			return safety.Effect{}, nil, err
+		}
+		return c.planWithUID(ctx, client, ns, name, effectCluster, w, err)
 	}
 	var checkWarnings []string
 	if oc := c.k.ObjectChecks; oc != nil && oc.Delete != nil {
@@ -146,7 +161,8 @@ func (deleteCmd) RunsObjectChecks() {}
 
 // fetch routes the command, reads the object to delete and returns it with
 // the client that read it, the namespace it lives in and the cluster the
-// Effect names.
+// Effect names. When the read fails it returns its error with the client,
+// namespace, name and cluster the read was sent with, and no object.
 func (c deleteCmd) fetch(ctx context.Context, in runtime.Input) (client engine.ClusterClient, ns, name string, obj *unstructured.Unstructured, effectCluster string, err error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
@@ -166,13 +182,14 @@ func (c deleteCmd) fetch(ctx context.Context, in runtime.Input) (client engine.C
 	}
 	obj, err = client.Get(ctx, c.k.GVR, ns, name)
 	if err != nil {
-		return nil, "", "", nil, "", lookupHandle(ctx, c.clients, client, c.k, ns, name, err)
+		return client, ns, name, nil, effectCluster, lookupHandle(ctx, c.clients, client, c.k, ns, name, err)
 	}
 	return client, ns, name, obj, effectCluster, nil
 }
 
 // PlanFromFetched builds a delete Effect and exec closure from an object
-// already fetched by the caller. Both the dry-run admission preview and the
+// already fetched by the caller; an object with no resourceVersion is refused
+// before any request. Both the dry-run admission preview and the
 // exec closure derive their resourceVersion from obj - no second GET occurs,
 // so the guard's safety decision and the deletion's precondition are bound to
 // the same read.
@@ -187,6 +204,11 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: the delete has no wait setting")
 	}
 	rv := obj.GetResourceVersion()
+	if rv == "" {
+		// The Effect would claim conflict detection for a delete that sends
+		// no precondition.
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: the server's response for "+k.Name+" "+name+" has no resourceVersion; the delete was not sent")
+	}
 	// Admission preview: a server-side dry-run delete surfaces RBAC/webhook
 	// denials before the user confirms. A TOCTOU race can also produce a
 	// NOT_FOUND here; the dynamic client curates hint-less 404s at the source.
@@ -235,4 +257,89 @@ func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.K
 		return deleteResult(k, name, end), nil
 	}
 	return eff, exec, nil
+}
+
+// planWithUID plans the delete of an object the Kubernetes authorizer
+// refuses the caller permission to get; getErr is that refusal. The dry-run
+// delete sends no precondition, and the delete sends a uid precondition with
+// the uid in the response to the dry-run delete: it fails if the object is
+// deleted and created again after the preview, and not if the object
+// changes. The command does not wait: every read of the object would be
+// refused. A row that needs get, a client that cannot send a uid
+// precondition, and a dry-run response with no uid get getErr with the hint
+// of WithGetHint, and no delete is sent. A DeleteWait that ParseDeleteWait
+// did not make, a DeleteWait marked OwnToken and one with AlsoWaitFor
+// targets are refused before any request.
+func (c deleteCmd) planWithUID(ctx context.Context, client engine.ClusterClient, ns, name, effectCluster string, w DeleteWait, getErr error) (safety.Effect, runtime.ExecuteFunc, error) {
+	k := c.k
+	deleter, ok := client.(engine.UIDDeleter)
+	if !ok || !deletesWithUID(k) {
+		return safety.Effect{}, nil, WithGetHint(k, ns, name, getErr)
+	}
+	if w.mode == waitUnset {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: the delete has no wait setting")
+	}
+	if w.ownToken {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: the delete of the token this command uses reads the token first; the delete was not sent")
+	}
+	if len(w.also) > 0 {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: the delete of an object you cannot get does not wait for other objects; the delete was not sent")
+	}
+	uid, err := deleter.DeleteWithUID(ctx, k.GVR, ns, name, "", true)
+	if err != nil {
+		ce := clierr.From(err)
+		return safety.Effect{}, nil, ce.WithMessage(ce.Message + "; the command also could not get " + k.Name + " " + name + ": " + clierr.From(getErr).Message)
+	}
+	if uid == "" {
+		return safety.Effect{}, nil, WithGetHint(k, ns, name, getErr)
+	}
+	eff := safety.Effect{
+		PreviewSource:     safety.PreviewServerDryRun,
+		Action:            safety.ActionDelete,
+		Target:            k.GVR.Resource + "/" + name,
+		DisplayKind:       k.Name,
+		DisplayName:       name,
+		Cluster:           effectCluster,
+		UID:               uid,
+		ConflictDetection: false,
+		Reversible:        false,
+		Destructive:       true,
+		Warnings: []string{"you cannot get " + k.Name + " " + name + ": the delete sends a uid precondition (" + uid + "), not a resourceVersion precondition. " +
+			"It fails if the object is deleted and created again after this preview; it does not fail if the object only changes"},
+	}
+	if k.DeleteCascadeWarning != "" {
+		eff.Warnings = append(eff.Warnings, k.DeleteCascadeWarning)
+	}
+	if w.mode == waitOn {
+		w = w.NotWaitedFor("you cannot get " + k.Name + " " + name + "; the command does not wait for it")
+	}
+	eff.Warnings = append(eff.Warnings, w.notWaited...)
+	exec := func(ctx context.Context) (runtime.Result, error) {
+		if _, err := deleter.DeleteWithUID(ctx, k.GVR, ns, name, uid, false); err != nil {
+			if clierr.UIDConflict(err) {
+				return runtime.Result{}, clierr.New(clierr.CodeConflict, k.Name+" "+name+" was deleted and created again after the preview; this command deleted nothing. "+
+					"The "+k.Name+" named "+name+" now is a new object, and you have not previewed it: preview it before you delete it").
+					WithHintCommand(routedCommand("delete", deleteFlags(k), k, ns, name, effectCluster).Flag("--dry-run")).WithCause(err)
+			}
+			return runtime.Result{}, err
+		}
+		return deleteResult(k, name, deleteEnd{warnings: slices.Clip(w.notWaited)}), nil
+	}
+	return eff, exec, nil
+}
+
+// WithGetHint adds, to the authorizer's refusal of a GET of the object name
+// of k in ns that a delete of k sends before its delete, the hint that names
+// the missing verb. Any other error, and one that already has a hint, is
+// returned as it is.
+func WithGetHint(k kinds.Kind, ns, name string, err error) error {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok || ce.Hint != "" || !clierr.AuthorizerRefused(err, "get", k.GVR.Group, k.GVR.Resource, ns, name) {
+		return err
+	}
+	resource := k.GVR.Resource
+	if k.GVR.Group != "" {
+		resource += "." + k.GVR.Group
+	}
+	return ce.WithMessage(ce.Message).WithHint("this delete reads the " + k.Name + " first; your role needs permission to get " + resource + " as well as delete")
 }

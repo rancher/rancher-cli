@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"slices"
 	"testing"
+	"testing/synctest"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -44,10 +46,16 @@ var writeViaRows = map[string]safety.WriteVia{
 // asserts its previewSource: serverReads for exactly the commands of
 // serverReadsCommands and the rows of serverReadsRows, serverDryRun for every
 // other, and its writeVia: set for the node rows to the path they take and
-// absent for every other row. A row that ends in a
+// absent for every other row. An update or delete Effect that says
+// conflictDetection true carries a resourceVersion, and one with a uid says
+// conflictDetection false; a create has no object to bind to and is not
+// checked. A row that ends in a
 // refusal at Plan reaches no Effect and is skipped; every mutating command
 // still has a row that reaches one, unless every row of it is a refusal (a
-// verb the kind row refuses builds no Effect).
+// verb the kind row refuses builds no Effect). Every delete command that
+// deletes an object the caller cannot get also runs with --dry-run against a
+// server that refuses its GET, which gives the same assertions an Effect with
+// a uid.
 func TestEveryMutatingCommandNamesItsPreviewSource(t *testing.T) {
 	wr, err := buildWiredRegistry("v-test", nil)
 	require.NoError(t, err)
@@ -96,6 +104,7 @@ func TestEveryMutatingCommandNamesItsPreviewSource(t *testing.T) {
 			assert.Equal(t, want, planned[0].PreviewSource, row.name())
 			wantVia := writeViaRows[row.name()]
 			assert.Equal(t, wantVia, planned[0].WriteVia, "%s: the planned Effect's write path", row.name())
+			assertEffectBinding(t, row.name(), planned[0])
 			if format == "json" {
 				env := decodeEnvelope(t, "json", run.stdout)
 				require.Equal(t, "Effect", env["kind"], "%s: --dry-run did not render the Effect", row.name())
@@ -112,6 +121,31 @@ func TestEveryMutatingCommandNamesItsPreviewSource(t *testing.T) {
 			reachedRows[row.name()] = true
 		})
 	}
+	for _, r := range dwRows(t) {
+		if _, ok := deleteNeedsGet[r.command]; ok {
+			continue
+		}
+		t.Run(r.name+" of an object the caller cannot get", func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				s := newDWServer()
+				s.refuseGet = true
+				mc, ok := r.e.make(runDeps{clients: &dwFactory{s: s}, roots: failingRoots{}}).(runtime.MutatingCommand)
+				require.True(t, ok, "%s is a mutating command", r.name)
+				var planned []safety.Effect
+				var out, errOut bytes.Buffer
+				status, ce := runtime.Run(t.Context(), effectRecorder{MutatingCommand: mc, effects: &planned}, r.input(nil, nil), runtime.IO{
+					Out: &out, Err: &errOut, Format: "json", DryRun: true,
+					Capability: scrubAllowAll{}, Projects: scrubProjects{},
+				}, wr.reg.Binding(r.command))
+				require.Nil(t, ce, "%s: --dry-run did not reach the Effect: %v", r.name, ce)
+				assert.Equal(t, 0, status)
+				require.Len(t, planned, 1, "%s: Plan ran once", r.name)
+				require.NotEmpty(t, planned[0].UID, "%s: the delete of an object the caller cannot get carries a uid precondition", r.name)
+				assert.Equal(t, safety.PreviewServerDryRun, planned[0].PreviewSource, r.name)
+				assertEffectBinding(t, r.name, planned[0])
+			})
+		})
+	}
 	for _, c := range mutating {
 		if refusedOnly[c] {
 			continue
@@ -126,6 +160,22 @@ func TestEveryMutatingCommandNamesItsPreviewSource(t *testing.T) {
 	}
 	for name := range writeViaRows {
 		assert.True(t, reachedRows[name], "%s is listed with a write path but no row of that name reached its Effect", name)
+	}
+}
+
+// assertEffectBinding asserts the binding an update or delete Effect claims:
+// conflictDetection true carries a resourceVersion, and a uid says
+// conflictDetection false. Any other action is not checked.
+func assertEffectBinding(t *testing.T, name string, eff safety.Effect) {
+	t.Helper()
+	if eff.Action != safety.ActionUpdate && eff.Action != safety.ActionDelete {
+		return
+	}
+	if eff.ConflictDetection {
+		assert.NotEmpty(t, eff.ResourceVersion, "%s: an update or delete that claims conflict detection carries a resourceVersion", name)
+	}
+	if eff.UID != "" {
+		assert.False(t, eff.ConflictDetection, "%s: a delete with a uid precondition claims no conflict detection", name)
 	}
 }
 

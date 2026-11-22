@@ -53,6 +53,7 @@ func All() []Probe {
 	probes = append(probes, authProviderProbes()...)
 	probes = append(probes, catalogWriteProbes()...)
 	probes = append(probes, extensionProbes()...)
+	probes = append(probes, deleteCannotGetProbes()...)
 	return probes
 }
 

@@ -1,13 +1,16 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,14 +25,61 @@ type deleteRequest struct {
 	options metav1.DeleteOptions
 }
 
+// propagationCall is one call of a method that sends a DELETE: Delete with
+// or without a resourceVersion precondition, or DeleteWithUID with or without
+// a uid precondition.
+type propagationCall struct {
+	// name is the call in the subtest name, after the kind.
+	name string
+	// field is the precondition field the call fills.
+	field string
+	// precondition is the value the call sends; "" sends none.
+	precondition string
+	call         func(ctx context.Context, c engine.ClusterClient, gvr schema.GroupVersionResource, ns string, dryRun bool) error
+	// sent is the precondition the server read from the body.
+	sent func(*metav1.Preconditions) *string
+}
+
+// propagationCalls are the calls of Delete and DeleteWithUID, each with and
+// without its precondition.
+func propagationCalls() []propagationCall {
+	var calls []propagationCall
+	for _, precondition := range []string{"", "7"} {
+		calls = append(calls, propagationCall{"", "resourceVersion", precondition, func(ctx context.Context, c engine.ClusterClient, gvr schema.GroupVersionResource, ns string, dryRun bool) error {
+			return c.Delete(ctx, gvr, ns, "x", precondition, dryRun)
+		}, func(p *metav1.Preconditions) *string { return p.ResourceVersion }})
+	}
+	for _, precondition := range []string{"", "u-7"} {
+		calls = append(calls, propagationCall{" with DeleteWithUID", "uid", precondition, func(ctx context.Context, c engine.ClusterClient, gvr schema.GroupVersionResource, ns string, dryRun bool) error {
+			d, ok := c.(engine.UIDDeleter)
+			if !ok {
+				return fmt.Errorf("%T does not delete with a uid precondition", c)
+			}
+			_, err := d.DeleteWithUID(ctx, gvr, ns, "x", precondition, dryRun)
+			return err
+		}, func(p *metav1.Preconditions) *string {
+			if p.UID == nil {
+				return nil
+			}
+			uid := string(*p.UID)
+			return &uid
+		}})
+	}
+	return calls
+}
+
 // TestEveryClusterClientDeleteSendsTheBackgroundPropagationPolicy asserts
 // the DELETE of a namespaced kind, of a cluster-scoped kind and of a kind
 // whose version is found by discovery carries propagationPolicy Background in
-// its DeleteOptions, as a dry-run preview or not, with or without a
-// resourceVersion. The dry-run value and the resourceVersion precondition stay
-// in the same body. Without a policy the server applies the default for that
-// kind, which keeps the pods of a Job. Building the DeleteOptions without
-// PropagationPolicy fails every row.
+// its DeleteOptions, sent by Delete or by DeleteWithUID: as a dry-run preview
+// with or without a precondition, and with a precondition (a resourceVersion
+// for Delete, a uid for DeleteWithUID) when it is not one. The dry-run value
+// and the precondition stay in the same body. A delete that is not a dry run
+// and has no precondition sends no request
+// (TestEveryDeleteIsBoundByAPrecondition). Without a policy the server
+// applies the default for that kind, which keeps the pods of a Job. Building
+// the DeleteOptions of either method without PropagationPolicy fails its
+// rows.
 func TestEveryClusterClientDeleteSendsTheBackgroundPropagationPolicy(t *testing.T) {
 	t.Parallel()
 	kinds := []struct {
@@ -44,13 +94,16 @@ func TestEveryClusterClientDeleteSendsTheBackgroundPropagationPolicy(t *testing.
 	}
 	for _, kind := range kinds {
 		for _, dryRun := range []bool{false, true} {
-			for _, resourceVersion := range []string{"", "7"} {
-				name := kind.name
+			for _, call := range propagationCalls() {
+				if !dryRun && call.precondition == "" {
+					continue
+				}
+				name := kind.name + call.name
 				if dryRun {
 					name += " as a dry-run preview"
 				}
-				if resourceVersion != "" {
-					name += " with a resourceVersion"
+				if call.precondition != "" {
+					name += " with a " + call.field
 				}
 				t.Run(name, func(t *testing.T) {
 					t.Parallel()
@@ -79,7 +132,7 @@ func TestEveryClusterClientDeleteSendsTheBackgroundPropagationPolicy(t *testing.
 					t.Cleanup(srv.Close)
 					c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local")
 					require.NoError(t, err)
-					require.NoError(t, c.Delete(t.Context(), kind.gvr, kind.namespace, "x", resourceVersion, dryRun))
+					require.NoError(t, call.call(t.Context(), c, kind.gvr, kind.namespace, dryRun))
 					mu.Lock()
 					defer mu.Unlock()
 					require.Len(t, requests, 1)
@@ -88,13 +141,14 @@ func TestEveryClusterClientDeleteSendsTheBackgroundPropagationPolicy(t *testing.
 					require.NotNil(t, got.options.PropagationPolicy, "no propagationPolicy in %s", got.rawBody)
 					assert.Equal(t, metav1.DeletePropagationBackground, *got.options.PropagationPolicy)
 					assert.Equal(t, dryRun, len(got.options.DryRun) == 1 && got.options.DryRun[0] == metav1.DryRunAll, "the dry-run value of the DELETE body %s", got.rawBody)
-					if resourceVersion == "" {
+					if call.precondition == "" {
 						assert.Nil(t, got.options.Preconditions)
 						return
 					}
 					require.NotNil(t, got.options.Preconditions)
-					require.NotNil(t, got.options.Preconditions.ResourceVersion)
-					assert.Equal(t, resourceVersion, *got.options.Preconditions.ResourceVersion)
+					sent := call.sent(got.options.Preconditions)
+					require.NotNil(t, sent, "no %s precondition in %s", call.field, got.rawBody)
+					assert.Equal(t, call.precondition, *sent)
 				})
 			}
 		}

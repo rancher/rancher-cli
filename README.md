@@ -217,7 +217,14 @@ Every command that changes the server runs these steps, in order:
    instead of overwriting it. A `--dry-run` run on its own is a preview
    only; the later `--apply` run takes a new dry-run preview and sets its
    precondition from the resource as it is at that time. Creating an object
-   has no precondition (there is no existing object to check).
+   has no precondition (there is no existing object to check). When your
+   role grants `delete` and not `get`, a delete carries a uid precondition
+   instead, from the response to its dry-run delete: it fails if the object
+   was deleted and created again, and not if the object changed. Its preview
+   says so (`uid`, `conflictDetection: false`, a warning), and the command
+   does not wait for the object. `delete project`, `delete token`,
+   `delete kubeconfig`, the day-2 operation deletes and the delete of the
+   token the command uses still need `get`.
 
 A `delete` also waits until the object is gone, for up to 5 minutes by
 default (`--timeout`). `--wait=false` returns once the server accepts the

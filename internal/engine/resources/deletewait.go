@@ -137,8 +137,14 @@ func newDeleteTarget(k kinds.Kind, ns, name string, obj *unstructured.Unstructur
 // ProjectBackingNamespace never gets --cluster: its get command runs on the
 // local cluster and names the project's backing namespace with --namespace.
 func deleteRecovery(k kinds.Kind, ns, name, effectCluster string) clierr.Command {
-	cmd := clierr.NewCommand("get").Word(k.Word()).Arg(name)
-	flags := getFlags(k)
+	return routedCommand("get", getFlags(k), k, ns, name, effectCluster)
+}
+
+// routedCommand builds the command verb of the object name of kind k in
+// namespace ns, whose flags are flags, routed as the delete was, by the
+// rules of deleteRecovery.
+func routedCommand(verb clierr.CommandWord, flags []runtime.ArgSpec, k kinds.Kind, ns, name, effectCluster string) clierr.Command {
+	cmd := clierr.NewCommand(verb).Word(k.Word()).Arg(name)
 	has := func(flag string) bool {
 		for _, f := range flags {
 			if f.Name == flag {

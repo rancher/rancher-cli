@@ -124,7 +124,8 @@ func (c *deleteProjectCmd) Plan(ctx context.Context, in runtime.Input) (safety.E
 	}
 	local, ns, name, project, effectCluster, err := c.inner.fetch(ctx, in)
 	if err != nil {
-		return safety.Effect{}, nil, err
+		// The preview of the namespaces comes from the project object.
+		return safety.Effect{}, nil, WithGetHint(c.inner.k, ns, name, err)
 	}
 	if w.mode == waitOn {
 		if w, err = waitForBackingNamespace(ctx, local, project, w); err != nil {

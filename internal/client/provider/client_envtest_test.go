@@ -93,7 +93,11 @@ func deleteWidgetOnCleanup(t *testing.T, repo engine.ClusterClient, name string)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 30*time.Second)
 		defer cancel()
-		if err := repo.Delete(ctx, widgetGVR, "default", name, "", false); err != nil && !clierr.IsNotFound(err) {
+		obj, err := repo.Get(ctx, widgetGVR, "default", name)
+		if err == nil {
+			err = repo.Delete(ctx, widgetGVR, "default", name, obj.GetResourceVersion(), false)
+		}
+		if err != nil && !clierr.IsNotFound(err) {
 			t.Errorf("delete widget %q: %v", name, err)
 		}
 	})

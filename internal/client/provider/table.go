@@ -23,11 +23,22 @@ const tableAccept = "application/json;as=Table;v=v1;g=meta.k8s.io," +
 var _ engine.TableReader = (*dynamicClient)(nil)
 
 // tableRequest starts a GET for gvr's path, built from path segments alone
-// as the dynamic client builds it: a request that names its resource or
-// object through the builder's own fields words a server refusal with a
-// suffix List and Get do not have. The namespace and name are validated
-// with the dynamic client's own check and text.
+// as the dynamic client builds it (objectPath).
 func (r *dynamicClient) tableRequest(gvr schema.GroupVersionResource, ns, name string) (*rest.Request, error) {
+	segments, err := objectPath(gvr, ns, name)
+	if err != nil {
+		return nil, err
+	}
+	return r.tbl.Get().AbsPath(segments...).SetHeader("Accept", tableAccept), nil
+}
+
+// objectPath is the path of gvr's resource in ns, or of the object name when
+// it is set, as path segments, built as the dynamic client builds them: a
+// request that names its resource or object through the builder's own fields
+// words a server refusal with a suffix List and Get do not have. The
+// namespace and name are validated with the dynamic client's own check and
+// text.
+func objectPath(gvr schema.GroupVersionResource, ns, name string) ([]string, error) {
 	if msgs := rest.IsValidPathSegmentName(ns); len(msgs) != 0 {
 		return nil, fmt.Errorf("invalid namespace %q: %v", ns, msgs)
 	}
@@ -49,7 +60,7 @@ func (r *dynamicClient) tableRequest(gvr schema.GroupVersionResource, ns, name s
 	if name != "" {
 		segments = append(segments, name)
 	}
-	return r.tbl.Get().AbsPath(segments...).SetHeader("Accept", tableAccept), nil
+	return segments, nil
 }
 
 // ListTable lists gvr's objects in ns as the server's Table.

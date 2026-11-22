@@ -70,6 +70,7 @@ conformance test (`internal/cli/migrating_test.go` +
 
 | Before | Now |
 |---|---|
+| `rancher delete <kind> <name>` when your role grants `delete` and not `get` was refused with `RBAC` (exit 6) when it read the object, and deleted nothing | `rancher delete configmap <name> --cluster <c> --namespace <ns> --apply --yes` deletes it with a uid precondition from its dry-run delete and does not wait (`deletion started`, `data.waited` false, a warning); `delete project`, `delete token`, `delete kubeconfig`, the day-2 operation deletes and the delete of the token the command uses still need `get`, and the `RBAC` error's hint names the missing verb |
 | `rancher delete <kind>` returned once the server accepted the request and printed `deleted` | `rancher delete <kind>` waits until the object is gone (default 5m); exit 1 with `details.committed` when it is not gone in time; with `--wait=false` it returns at once and prints `deletion started` |
 | `rancher create secret <name> --project <p> --project-scoped --cluster <c>` | `rancher create secret <name> --project <p> --cluster <c>` - `--project-scoped` is gone; `--project` alone creates the project-scoped secret, and `--project` with `--namespace` is refused |
 | `rancher project remove-namespace <ns> --project <p> --cluster <c>` | `rancher project remove-namespace <ns> --cluster <c>` - the namespace's own annotation names its project; a typed `--project` is refused, and when the namespace and `--cluster` are typed the refusal names this command |

@@ -59,8 +59,10 @@ type conflictCall struct {
 	call         func(context.Context, engine.ClusterClient, schema.GroupVersionResource) error
 }
 
-// conflictCalls has a row for every ClusterClient method; Update and Delete
-// have one with and one without a resourceVersion.
+// conflictCalls has a row for every ClusterClient and UIDDeleter method;
+// Update and Delete have one with and one without a resourceVersion (for
+// Delete, a dry run: a delete that is not one is refused without one), and
+// DeleteWithUID one with a uid and one dry run.
 var conflictCalls = []conflictCall{
 	{"Get", false, clusterClientCalls["Get"]},
 	{"List", false, clusterClientCalls["List"]},
@@ -75,7 +77,25 @@ var conflictCalls = []conflictCall{
 	{"Delete with a resourceVersion", true, func(ctx context.Context, c engine.ClusterClient, gvr schema.GroupVersionResource) error {
 		return c.Delete(ctx, gvr, "default", "x", "7", false)
 	}},
-	{"Delete with an empty resourceVersion", false, clusterClientCalls["Delete"]},
+	{"Delete dry run with no resourceVersion", false, func(ctx context.Context, c engine.ClusterClient, gvr schema.GroupVersionResource) error {
+		return c.Delete(ctx, gvr, "default", "x", "", true)
+	}},
+	{"DeleteWithUID with a uid", false, func(ctx context.Context, c engine.ClusterClient, gvr schema.GroupVersionResource) error {
+		d, ok := c.(engine.UIDDeleter)
+		if !ok {
+			return errors.New("the client does not delete with a uid precondition")
+		}
+		_, err := d.DeleteWithUID(ctx, gvr, "default", "x", "u1", false)
+		return err
+	}},
+	{"DeleteWithUID dry run", false, func(ctx context.Context, c engine.ClusterClient, gvr schema.GroupVersionResource) error {
+		d, ok := c.(engine.UIDDeleter)
+		if !ok {
+			return errors.New("the client does not delete with a uid precondition")
+		}
+		_, err := d.DeleteWithUID(ctx, gvr, "default", "x", "", true)
+		return err
+	}},
 	{"Logs", false, clusterClientCalls["Logs"]},
 	{"PostReview", false, clusterClientCalls["PostReview"]},
 	{"ServerResources", false, clusterClientCalls["ServerResources"]},
@@ -90,25 +110,27 @@ var conflictCalls = []conflictCall{
 }
 
 // TestEveryClusterClientWriteSendsAPreconditionOnlyWithAResourceVersion
-// asserts every ClusterClient call that gets a 409 returns a CONFLICT, under
+// asserts every ClusterClient and UIDDeleter call that gets a 409 returns a CONFLICT, under
 // each of the 409 messages. An admission webhook's denial and a uid
 // precondition give every call a CONFLICT that is not retryable and keeps the
 // server's message, an update whose object carries a resourceVersion and a
 // delete given one included.
 // Kubernetes' resourceVersion conflict gives the retryable message that the
 // resource changed since it was last read only to an update whose object
-// carries a resourceVersion and a delete given one; every other call returns a
-// CONFLICT that is not retryable and keeps the server's message. A method
-// added to the interface fails here until it has a row.
+// carries a resourceVersion and a delete given one; every other call, a delete
+// with a uid precondition included, returns a CONFLICT that is not retryable
+// and keeps the server's message. A method added to either interface fails
+// here until it has a row.
 func TestEveryClusterClientWriteSendsAPreconditionOnlyWithAResourceVersion(t *testing.T) {
 	t.Parallel()
-	it := reflect.TypeFor[engine.ClusterClient]()
-	for m := range it.Methods() {
-		found := slices.ContainsFunc(conflictCalls, func(c conflictCall) bool {
-			method, _, _ := strings.Cut(c.name, " ")
-			return method == m.Name
-		})
-		require.True(t, found, "every ClusterClient method has a row: %s", m.Name)
+	for _, it := range []reflect.Type{reflect.TypeFor[engine.ClusterClient](), reflect.TypeFor[engine.UIDDeleter]()} {
+		for m := range it.Methods() {
+			found := slices.ContainsFunc(conflictCalls, func(c conflictCall) bool {
+				method, _, _ := strings.Cut(c.name, " ")
+				return method == m.Name
+			})
+			require.True(t, found, "every %s method has a row: %s", it.Name(), m.Name)
+		}
 	}
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
 	for _, body := range conflictBodies {

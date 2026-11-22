@@ -238,7 +238,7 @@ func TestDynamicRepoListAndDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, list.Items, 2)
 
-	require.NoError(t, r.Delete(t.Context(), projectGVR, "c-x", "p-1", "", false))
+	require.NoError(t, r.Delete(t.Context(), projectGVR, "c-x", "p-1", "1", false))
 	after, err := r.List(t.Context(), projectGVR, "c-x", "")
 	require.NoError(t, err)
 	assert.Len(t, after.Items, 1)
@@ -429,7 +429,7 @@ func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
-	err := r.Delete(t.Context(), projectGVR, "c-x", "p-missing", "", false)
+	err := r.Delete(t.Context(), projectGVR, "c-x", "p-missing", "1", false)
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -464,7 +464,7 @@ func TestClusterClientDeleteRefusesCrossOriginRedirect(t *testing.T) {
 	cc, err := NewClusterClient(rc, "local")
 	require.NoError(t, err)
 	gvr := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
-	err = cc.Delete(t.Context(), gvr, "", "p-x", "", false)
+	err = cc.Delete(t.Context(), gvr, "", "p-x", "1", false)
 	ce2, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeGeneric, ce2.Code)

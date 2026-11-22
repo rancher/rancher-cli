@@ -931,10 +931,12 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 	assert.Len(t, f.TokensWithDescriptionContaining("ext", "[op:0123456789ab]"), 1, "dry run deletes nothing")
 	assert.Equal(t, http.StatusConflict, del(`{"preconditions":{"resourceVersion":"stale"}}`))
 	assert.Len(t, f.TokensWithDescriptionContaining("ext", "[op:0123456789ab]"), 1, "a stale precondition deletes nothing")
+	assert.Equal(t, http.StatusOK, del(`{"dryRun":["All"],"preconditions":{"uid":"u-1"}}`))
 	recs := f.DeleteRequests()
-	require.Len(t, recs, 2, "every attempt is recorded")
+	require.Len(t, recs, 3, "every attempt is recorded")
 	assert.Equal(t, testrancher.DeleteRecord{Kind: "ext", Name: names[0], Bearer: "seed:secret", DryRun: true, Precondition: rv}, recs[0])
 	assert.Equal(t, testrancher.DeleteRecord{Kind: "ext", Name: names[0], Bearer: "seed:secret", Precondition: "stale"}, recs[1])
+	assert.Equal(t, testrancher.DeleteRecord{Kind: "ext", Name: names[0], Bearer: "seed:secret", DryRun: true, UID: "u-1"}, recs[2], "a uid precondition is recorded")
 }
 
 // TestFacadeCreateEchoesOwnerAndScope asserts a scoped create answers with

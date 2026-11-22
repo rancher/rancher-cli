@@ -633,7 +633,12 @@ decode error are unknown, which never blocks. The day-2 operation rows use the
    without access to Rancher's local cluster); Plan sets `Effect.PreviewSource` to `serverReads`, the
    Effect carries no `resourceVersion` and no conflict detection, and Execute reads the
    state again before it POSTs the action once (a check, not a precondition). Every other
-   Plan sets `serverDryRun`; the pipeline refuses an Effect with neither.
+   Plan sets `serverDryRun`; the pipeline refuses an Effect with neither. A delete
+   of an object the Kubernetes authorizer refuses (HTTP 403) permission to get
+   has no `resourceVersion`: Plan dry-runs the delete with no precondition and
+   binds Execute to the uid in that response (`Effect.UID`,
+   `conflictDetection: false`); see "A delete of an object the caller cannot
+   get" under Key design decisions.
 2. Pipeline invariants (enforced centrally, never trusted from command code):
    - `Effect.Action` must be in the closed enum `{create, update, delete}`;
      unknown → structured error before any gate.
@@ -1351,7 +1356,7 @@ Verb reservation. get/create/patch/delete are reserved for kind-table resources 
 
 **`rancher extension list` runs the Rancher UI's checks in the Rancher UI's order, and the ranges of the checks are read with the rules of the Node.js semver module.** For each version of an extension chart the command runs the six checks of the Extensions page in its order and stops at the first failure; a version is compatible with the server when none fails, and `-o json` shows each check and the reason. The CLI differs from the Rancher UI's page in one place, on purpose: a version with a `kube-version` annotation is not compatible when the Kubernetes version of the local cluster cannot be read (the Rancher UI throws an error while it builds the list). For `ui-extensions-host` the Rancher UI has two checks that disagree: the one the page lists and installs with fails every version that has the annotation, and the one that loads an extension accepts the value `rancher-manager`. The CLI follows the first. The `ui-extensions-version` range is checked against the Extensions API version of the Rancher UI that the server's Rancher release ships. Only the Rancher UI bundle carries that version, and the CLI keeps its own table from each Rancher release to it, with one row for each release of every supported minor; the weekly check compares the table with the Rancher and Rancher UI sources. A release that is not in the table (a head build, a release candidate, a newer patch release, because the version can change inside a minor) is not checked: its versions stay compatible and a warning names the ranges. The ranges of the checks are Node.js semver ranges, and Go's constraint libraries read some of them differently (prerelease versions, x-ranges, hyphen ranges, `||`). `internal/nodesemver` reads them with the module's rules, limited to what the checks call (`Satisfies` and `Coerce`), adds no module dependency and is tested against a golden recorded from the Node.js module. No command installs an extension yet, into the namespace `cattle-ui-plugin-system` where the Rancher UI installs them; until then the completion of `app install` leaves extension charts out too.
 
-**`app install`, `app upgrade` and `app uninstall` are previewed from server reads and carry no precondition, and so are `node drain` and `node stop-drain` for a caller without access to Rancher's local cluster.** Their Effect says so with `previewSource: serverReads`; every other mutation, and those two commands for a caller with that access, is `serverDryRun`, and a conformance allowlist names the files whose preview comes from reads, so a new one fails until it is reviewed. The preview proves what reads can show: the repository and the chart version are in the filtered index (except the version an app already runs, which `app upgrade` accepts when the index of the repository the app came from no longer lists it, from the info of that version), the chart annotations Rancher does not enforce pass (fixed namespace and release name, required resources, permitted operating systems), the App is in the state the command needs, and no operation for the release is running. It cannot prove that Helm's own writes will be allowed, and its warnings say so. `--version` takes one exact version from the index, never a range, so the server cannot choose another one after the preview; the one exception is the version an app already runs, which `app upgrade` keeps when the index of the repository the app came from no longer lists it. A chart that names another chart to install first is refused, with the next step in the message. The values the Rancher UI adds to a chart (cluster values, and the registry for a chart that declares one) are added to its values from server reads in the same Plan.
+**`app install`, `app upgrade` and `app uninstall` are previewed from server reads and carry no precondition, and so are `node drain` and `node stop-drain` for a caller without access to Rancher's local cluster.** Their Effect says so with `previewSource: serverReads`; every other mutation, and those two commands for a caller with that access, is `serverDryRun` (a delete of an object the caller cannot get included: its preview is the server's dry-run delete, and a uid precondition binds it), and a conformance allowlist names the files whose preview comes from reads, so a new one fails until it is reviewed. The preview proves what reads can show: the repository and the chart version are in the filtered index (except the version an app already runs, which `app upgrade` accepts when the index of the repository the app came from no longer lists it, from the info of that version), the chart annotations Rancher does not enforce pass (fixed namespace and release name, required resources, permitted operating systems), the App is in the state the command needs, and no operation for the release is running. It cannot prove that Helm's own writes will be allowed, and its warnings say so. `--version` takes one exact version from the index, never a range, so the server cannot choose another one after the preview; the one exception is the version an app already runs, which `app upgrade` keeps when the index of the repository the app came from no longer lists it. A chart that names another chart to install first is refused, with the next step in the message. The values the Rancher UI adds to a chart (cluster values, and the registry for a chart that declares one) are added to its values from server reads in the same Plan.
 
 **A catalog action is sent once, and a doubtful answer is never retried.** `engine.ActionClient` POSTs the action with no retry. After a 500, 502 or 504, or a lost answer, nobody can tell from the answer whether Rancher ran it, so the error is GENERIC, not retryable, and names what to read first (the namespace's operations and the App, with the request id the CLI put on the release). The exception is a 500, or a 403, whose message is Kubernetes admission refusing the pod Rancher runs Helm in (`pods "helm-operation-<id>" is forbidden: <admission text>`). Rancher creates that pod before the Operation. The response therefore proves Rancher created no operation for this request. The error is then the one `clierr.AdmissionRefusal` returns for a 403, not the error that says the outcome is unknown. A 502, a 504, a 500 with any other message and an admission webhook's denial of the pod keep that error. One case the response does not exclude: Rancher's Kubernetes client retries a pod create that may have been stored. Every other refusal keeps the status mapping every command uses and adds Rancher's own text. No value from the values files reaches the server's text as shown: before that text is shown, every occurrence of such a value, raw or JSON-escaped, is replaced by `<hidden>`, and overlapping occurrences are replaced as one. A value only the CLI adds is shown as is in that text. The preview shows the values the CLI adds and the registry host, for a chart that declares a registry path.
 
@@ -1494,12 +1499,14 @@ delete` waits by default and the CLI matches it: the result line says
 with no maximum (nothing on the server limits a deletion); the default, 5m,
 keeps an unattended delete from hanging. `--wait=false` with `--timeout` is a
 VALIDATION error, and there is no `--for` because the only end is the object
-being gone. Every delete command reaches the wait through `PlanFromFetched`,
-which refuses a `DeleteWait` that `ParseDeleteWait` did not make; a source
+being gone. Every delete command that read the object reaches the wait through
+`PlanFromFetched`, which refuses a `DeleteWait` that `ParseDeleteWait` did not
+make (the delete of an object the caller cannot get refuses one the same way); a source
 scan in `test/conformance` fails on any other delete request outside a dry-run
 unless the function that sends it also waits for the object it deleted, or the
 request is listed with a reason (revoke, which deletes role bindings and is not
-a delete command). `delete project --delete-namespaces` waits like every other
+a delete command, and the delete of an object the caller cannot get, which
+does not wait). `delete project --delete-namespaces` waits like every other
 delete. `ParseDeleteWait` runs before any request, `--dry-run` included, and a
 dry-run never waits.
 
@@ -1532,6 +1539,41 @@ the caller can read is waited for, one that returns 403 is not waited for and
 gets a warning, and one that is not found needs no wait. Only the response to a
 GET reaches `WaitParams.StopOn`; a 403 on a list or a watch still switches the
 wait to polling.
+
+**A delete of an object the caller cannot get is bound by a uid precondition.**
+`kubectl delete` and Rancher's own delete paths authorize a delete with
+`delete` alone; the CLI reads the object first, and a role that grants `delete`
+and not `get` was refused on that read. When the response to the GET is the
+Kubernetes authorizer's refusal of `get`, Plan sends the dry-run delete with no
+precondition through `engine.UIDDeleter` and binds Execute to the uid in its
+response. `clierr.AuthorizerRefused` reads that refusal: HTTP 403, a Status
+with reason `Forbidden` whose `details` name the resource, group and name the
+GET sent, and the authorizer's `cannot get resource` text for that resource,
+group and namespace. The uid is `details.uid` of a Status, else
+`metadata.uid`; nothing else of the response is kept. The delete then fails if
+the object was deleted and created again after the preview, and not if it
+changed; the Effect says so with `uid`, no `resourceVersion`,
+`conflictDetection: false` and a warning, and the gates are the same.
+A 409 that says the uid is not the object's (`clierr.UIDConflict`)
+is a CONFLICT that says nothing was deleted and names the dry-run delete as the
+next step; a rerun with `--apply` is never offered, since it would delete an
+object nobody previewed. The command does not wait: every read would be
+refused. Rows that need the object keep the read and return the refusal with a
+hint that names the missing verb: `delete project` (its preview of the
+namespaces comes from the project), the ext.cattle.io token and kubeconfig rows
+(their store checks the uid itself; `DeleteNeedsGet`), the four day-2 operation
+rows (their delete check reads `status.phase`) and the delete of the token the
+command uses (it reads `isDerived`). A dry-run response with no uid, or a client
+without the method, sends no delete. The client refuses a delete that is not a
+dry run with neither precondition, before any request, and `PlanFromFetched`
+refuses an object with no resourceVersion: the Effect never claims a binding the
+request does not carry. Guards: a table over every delete command
+(internal/cli), a reflection table over every provider `Delete` method with the
+wire body, the preview-source assertion over every update and delete Effect, a
+source scan that allows a DELETE only in the two provider methods and the listed
+token and Vault requests, and a source scan that allows a call of
+`DeleteWithUID` only in `planWithUID`, and of `planWithUID` only in
+`planWith`.
 
 **`delete project --delete-namespaces` waits for the namespaces before it
 deletes the project.** The project's role bindings still exist while the CLI

@@ -57,6 +57,10 @@
         "type": "bool"
       },
       {
+        "name": "uid",
+        "type": "string"
+      },
+      {
         "name": "objects",
         "type": "array"
       },

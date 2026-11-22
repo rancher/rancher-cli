@@ -130,7 +130,13 @@ func guardPaths() []guardPath {
 		{name: "delete", method: "Delete", retries: true, named: true, clusterOK: true,
 			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
 				t.Helper()
-				return guardClient(t, srv, cluster).Delete(ctx, guardNamespaces, "", "a", "", false)
+				return guardClient(t, srv, cluster).Delete(ctx, guardNamespaces, "", "a", "1", false)
+			}},
+		{name: "delete with a uid precondition", method: "DeleteWithUID", retries: true, named: true, clusterOK: true,
+			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
+				t.Helper()
+				_, err := guardClient(t, srv, cluster).(engine.UIDDeleter).DeleteWithUID(ctx, guardNamespaces, "", "a", "u1", false)
+				return err
 			}},
 		{name: "logs", method: "Logs", retries: true, named: true, clusterOK: true,
 			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, cluster string) error {
@@ -420,7 +426,7 @@ func TestEveryClientPathWordsAnUnavailableServerTheSame(t *testing.T) {
 }
 
 // TestTheGuardCoversEveryClusterClientMethod asserts every method of
-// engine.ClusterClient, engine.TableReader and engine.FieldSelectorLister has a path in the guard, so a
+// engine.ClusterClient, engine.TableReader, engine.FieldSelectorLister and engine.UIDDeleter has a path in the guard: a
 // method added without one fails here. A method that sends no request goes
 // in the allowlist with its reason.
 func TestTheGuardCoversEveryClusterClientMethod(t *testing.T) {
@@ -430,7 +436,7 @@ func TestTheGuardCoversEveryClusterClientMethod(t *testing.T) {
 	for _, p := range guardPaths() {
 		covered[p.method] = true
 	}
-	for _, typ := range []reflect.Type{reflect.TypeFor[engine.ClusterClient](), reflect.TypeFor[engine.TableReader](), reflect.TypeFor[engine.FieldSelectorLister]()} {
+	for _, typ := range []reflect.Type{reflect.TypeFor[engine.ClusterClient](), reflect.TypeFor[engine.TableReader](), reflect.TypeFor[engine.FieldSelectorLister](), reflect.TypeFor[engine.UIDDeleter]()} {
 		for m := range typ.Methods() {
 			if _, ok := noRequest[m.Name]; ok {
 				continue

@@ -33,12 +33,21 @@ func (a adminOnlyTarget) Bearer(ctx context.Context, id Identity) (string, error
 // probesWithoutTeardownRequests lists every probe whose teardown sends no
 // request in the all-probes test, each with its reason.
 var probesWithoutTeardownRequests = map[string]string{
-	"access/standard-cloud-credential-by-name": "the credential id is captured by the setup step and not seeded",
-	"access-downstream/member-cluster-token":   "the token name is captured by the setup step and not seeded",
-	"access-downstream/owner-steve":            "the owner's login token and user id are captured by the setup step and not seeded",
-	"access-downstream/owner-management-gate":  "the owner's login token and user id are captured by the setup step and not seeded",
-	"serverfacts/install-uuid-no-global-role":  "the login token and user id are captured by the setup step and not seeded",
-	"authproviders/external-providers-enabled": "a restore sends nothing for an auth config its enable step never wrote; TestAuthProvidersProbeRestoresWhenTheCallerContextIsCancelled covers the sends",
+	"access/standard-cloud-credential-by-name":             "the credential id is captured by the setup step and not seeded",
+	"access-downstream/member-cluster-token":               "the token name is captured by the setup step and not seeded",
+	"access-downstream/owner-steve":                        "the owner's login token and user id are captured by the setup step and not seeded",
+	"access-downstream/owner-management-gate":              "the owner's login token and user id are captured by the setup step and not seeded",
+	"serverfacts/install-uuid-no-global-role":              "the login token and user id are captured by the setup step and not seeded",
+	"authproviders/external-providers-enabled":             "a restore sends nothing for an auth config its enable step never wrote; TestAuthProvidersProbeRestoresWhenTheCallerContextIsCancelled covers the sends",
+	"delete/configmap-dry-run-and-uid-mismatch":            "the namespace name is chosen by the setup step and not seeded",
+	"delete/pod-dry-run":                                   "the namespace name is chosen by the setup step and not seeded",
+	"delete/custom-resource-dry-run":                       "the API group and namespace names are chosen by the setup steps and not seeded",
+	"delete/namespace-dry-run-and-uid-mismatch":            "the namespace name is chosen by the setup step and not seeded",
+	"delete/get-refused-for-a-delete-only-role":            "the namespace name is chosen by the setup step and not seeded",
+	"delete-downstream/get-refused-for-a-delete-only-role": "the namespace name is chosen by the setup step and not seeded",
+	"delete/get-refused-at-the-cluster-scope":              "the cluster role name is chosen by the setup step and not seeded",
+	"delete/get-refused-for-a-namespace":                   "the namespace name is chosen by the setup step and not seeded",
+	"delete/get-refused-in-a-named-group":                  "the API group and namespace names are chosen by the setup steps and not seeded",
 }
 
 // teardownRun is what one run of a probe's teardown did.

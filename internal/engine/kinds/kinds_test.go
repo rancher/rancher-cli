@@ -1244,6 +1244,19 @@ func TestValidateRejectsDeleteDescOnARowWithoutTheGeneratedDelete(t *testing.T) 
 	require.ErrorContains(t, err, "DeleteDesc")
 }
 
+// TestValidateRejectsDeleteNeedsGetOnARowWithoutTheGeneratedDelete asserts
+// a row that sets DeleteNeedsGet must be Deletable: the reason is about the
+// generated delete, which a row with Deletable false does not have.
+func TestValidateRejectsDeleteNeedsGetOnARowWithoutTheGeneratedDelete(t *testing.T) {
+	t.Parallel()
+	row := func(deletable bool) []Kind {
+		return []Kind{{Key: "foo", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, Deletable: deletable, DeleteNeedsGet: "a reason"}}
+	}
+	require.NoError(t, validateKinds(row(true)))
+	err := validateKinds(row(false))
+	require.ErrorContains(t, err, "DeleteNeedsGet")
+}
+
 // TestDeleteDescRowsAreTheProjectAndManagementToken asserts which rows add
 // text to their generated delete's description.
 func TestDeleteDescRowsAreTheProjectAndManagementToken(t *testing.T) {
