@@ -98,3 +98,29 @@ func TestVersionLabel(t *testing.T) {
 	assert.Equal(t, "2.0.0", PluginVersion("1.2.3", "2.0.0"))
 	assert.Equal(t, "1.2.3", PluginVersion("1.2.3", ""))
 }
+
+// TestIsBundleChartReadsEveryVersion asserts the bundle rule at every position
+// of the annotation: the first version, a later one, an empty value and none.
+func TestIsBundleChartReadsEveryVersion(t *testing.T) {
+	t.Parallel()
+	bundle := map[string]string{AnnotationBundleMembers: "a,b"}
+	empty := map[string]string{AnnotationBundleMembers: ""}
+	plain := map[string]string{}
+	cases := []struct {
+		name     string
+		versions []map[string]string
+		want     bool
+	}{
+		{name: "first version", versions: []map[string]string{bundle, plain}, want: true},
+		{name: "a later version", versions: []map[string]string{plain, plain, bundle}, want: true},
+		{name: "empty value", versions: []map[string]string{empty, plain}},
+		{name: "absent", versions: []map[string]string{plain, plain}},
+		{name: "no versions"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, IsBundleChart(tc.versions))
+		})
+	}
+}

@@ -25,7 +25,7 @@ var wantGroupTitles = map[string]string{
 	"cluster":     "Scale a machine pool, manage cluster-autoscaler settings, upgrade the Kubernetes version of a cluster, set its upgrade strategy or take an etcd snapshot (create a provisioning cluster with `rancher create cluster` and delete it with `rancher delete provisioning-cluster`)",
 	"node":        "Drain a node of a cluster or stop a drain (read nodes with `rancher get node --cluster <cluster>` and the drain state with `rancher get management-node --cluster <cluster>`)",
 	"app":         "Install a chart from a repository as an app, upgrade an app, or uninstall an app (list charts with `rancher charts`, read apps with `rancher get app`)",
-	"extension":   "Add a Rancher extension repository and list Rancher UI extensions",
+	"extension":   "Add a Rancher extension repository; list, install, upgrade and uninstall Rancher UI extensions",
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 

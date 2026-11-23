@@ -9,6 +9,7 @@ import (
 
 // versionDocument is the part of /rancherversion the source reads.
 type versionDocument struct {
+	Version      string `json:"Version"`
 	RancherPrime string `json:"RancherPrime"`
 }
 

@@ -276,6 +276,9 @@ var clusterValueWiringsWithoutSites = map[string]string{
 	"command oidc-client rotate-secret":    "the command takes no --cluster",
 	"command oidc-client remove-secret":    "the command takes no --cluster",
 	"command extension add-repository":     "the command takes no --cluster",
+	"command extension install":            "the command takes no --cluster",
+	"command extension upgrade":            "the command takes no --cluster",
+	"command extension uninstall":          "the command takes no --cluster",
 
 	"flag --cluster on access projects": "the command's own source claims the flag",
 

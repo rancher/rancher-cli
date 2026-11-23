@@ -961,7 +961,11 @@ func appScrubDeps(prepare func(s *appServer)) func(t *testing.T, f *scrubFake, p
 
 // appResultReason is the reason of the app rows: the result is built from
 // names, never from a server object.
-const appResultReason = "the result is built from names: the release, the operation Rancher names in its answer and the request id; no server object"
+const appResultReason = "the result is built from names: the release, the operation Rancher names in its response and the request id; no server object"
+
+// extensionResultReason is the reason of the extension rows: the result is
+// built from names, never from a server object.
+const extensionResultReason = "the result is built from names: the extension chart, the operation Rancher names in its response and the request id; no server object"
 
 // handWrittenScrubRows are the rows of the mutating commands that are not
 // generated from the kind table.
@@ -1121,6 +1125,35 @@ func handWrittenScrubRows() []scrubRow {
 				s.put(appOperationPath(appNS, "helm-operation-other"), map[string]any{
 					"apiVersion": "catalog.cattle.io/v1", "kind": "Operation",
 					"metadata": map[string]any{"name": "helm-operation-other", "namespace": appNS, "resourceVersion": "3"},
+					"status":   map[string]any{"releaseName": "other-release"},
+				})
+			})},
+		{command: "extension install", kind: "operation", class: classNames, reason: extensionResultReason,
+			input: in([]string{extChart}, nil),
+			deps: extensionScrubDeps(func(s *extensionServer) {
+				s.operations = append(s.operations, map[string]any{
+					"apiVersion": "catalog.cattle.io/v1", "kind": "Operation",
+					"metadata": map[string]any{"name": "helm-operation-other", "namespace": extNamespace, "resourceVersion": "3"},
+					"status":   map[string]any{"releaseName": "other-release"},
+				})
+			})},
+		{command: "extension upgrade", kind: "operation", class: classNames, reason: extensionResultReason,
+			input: in([]string{extChart}, nil),
+			deps: extensionScrubDeps(func(s *extensionServer) {
+				s.putApp("deployed")
+				s.operations = append(s.operations, map[string]any{
+					"apiVersion": "catalog.cattle.io/v1", "kind": "Operation",
+					"metadata": map[string]any{"name": "helm-operation-other", "namespace": extNamespace, "resourceVersion": "3"},
+					"status":   map[string]any{"releaseName": "other-release"},
+				})
+			})},
+		{command: "extension uninstall", kind: "operation", class: classNames, reason: extensionResultReason,
+			input: in([]string{extChart}, nil),
+			deps: extensionScrubDeps(func(s *extensionServer) {
+				s.putApp("deployed")
+				s.operations = append(s.operations, map[string]any{
+					"apiVersion": "catalog.cattle.io/v1", "kind": "Operation",
+					"metadata": map[string]any{"name": "helm-operation-other", "namespace": extNamespace, "resourceVersion": "3"},
 					"status":   map[string]any{"releaseName": "other-release"},
 				})
 			})},

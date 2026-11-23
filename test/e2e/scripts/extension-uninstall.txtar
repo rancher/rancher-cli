@@ -1,0 +1,65 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
+
+# An extension that is not installed is refused, with the list as the next step.
+! exec rancher extension uninstall ext-uninstall-chart --dry-run -o json
+jsonquery stderr data.error.code NOT_FOUND
+extensionuninstallactions actions.json
+jsonquery actions.json '#' 0
+
+# Install the extension, which Rancher records as the App the uninstall reads.
+exec rancher extension install ext-uninstall-chart --apply -o json
+extensionuninstallactions actions.json
+jsonquery actions.json '#' 1
+jsonquery actions.json '0.action' install
+
+# --dry-run reads the server and sends no action: the preview is from server
+# reads.
+exec rancher extension uninstall ext-uninstall-chart --dry-run -o json
+cp stdout dry.json
+jsonquery dry.json data.previewSource serverReads
+jsonquery dry.json data.action delete
+jsonquery dry.json data.displayKind app
+jsonquery dry.json data.displayName ext-uninstall-chart
+jsonquery dry.json 'data.diff.#(path="namespace").from' cattle-ui-plugin-system
+jsonquery dry.json 'data.diff.#(path="version").from' 1.1.0
+extensionuninstallactions actions.json
+jsonquery actions.json '#' 1
+
+# Without --yes the command is refused and sends nothing.
+! exec rancher extension uninstall ext-uninstall-chart -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+! exec rancher extension uninstall ext-uninstall-chart --apply -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+extensionuninstallactions actions.json
+jsonquery actions.json '#' 1
+
+# --apply --yes sends the uninstall action once, to the local cluster, with the
+# empty request the Rancher UI sends.
+exec rancher extension uninstall ext-uninstall-chart --apply --yes -o json
+cp stdout apply.json
+jsonquery apply.json data.release ext-uninstall-chart
+jsonquery apply.json data.operationNamespace cattle-ui-plugin-system
+extensionuninstallactions actions.json
+jsonquery actions.json '#' 2
+jsonquery actions.json '1.action' uninstall
+jsonquery actions.json '1.fieldManager' cli.rancher.io
+jsonquery actions.json '1.path' /v1/catalog.cattle.io.apps/cattle-ui-plugin-system/ext-uninstall-chart
+jsonquery actions.json '1.body.@keys' '[]'
+
+# Rancher deleted the App: the extension is not installed any more.
+! exec rancher extension uninstall ext-uninstall-chart --apply --yes -o json
+jsonquery stderr data.error.code NOT_FOUND
+extensionuninstallactions actions.json
+jsonquery actions.json '#' 2
+
+-- repo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: extension-uninstall-repo
+spec:
+  gitRepo: https://example.test/extension-uninstall-repo
+  gitBranch: main

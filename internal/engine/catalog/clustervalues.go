@@ -164,7 +164,7 @@ func readSetting(ctx context.Context, root engine.RootClient, name string) (valu
 	}
 	obj := &unstructured.Unstructured{}
 	if err := json.Unmarshal(body, &obj.Object); err != nil || obj.Object == nil {
-		return "", false, clierr.New(clierr.CodeGeneric, "GET "+r.Path()+" on the Rancher server did not answer a JSON object")
+		return "", false, clierr.New(clierr.CodeGeneric, "the response to GET "+r.Path()+" on the Rancher server is not a JSON object")
 	}
 	v, _ := engine.SettingValue(obj)
 	return v, false, nil

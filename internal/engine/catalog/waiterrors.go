@@ -197,12 +197,16 @@ func (w *appWait) uninstalledButFailedError(s stall, gone bool) *clierr.Error {
 
 // staysInstalledError is the error of an uninstall whose App still shows
 // the release: the exit code when the Operation was read Stalled, the App's
-// status and description.
+// status and description. An App at the status uninstalled says its kept
+// history was not removed, as keptHistoryError does.
 func (w *appWait) staysInstalledError(s *stall, r revision) *clierr.Error {
 	msg := fmt.Sprintf("operation %s ended%s; release %s is at status %s", clierr.ShellQuote(w.op.OperationName), s.clause(w),
 		clierr.ShellQuote(w.t.release), w.clean(r.status))
 	if desc := w.clean(r.description); desc != "" {
 		msg += " (" + desc + ")"
+	}
+	if r.status == "uninstalled" {
+		return w.committedError(msg+"; its kept history was not removed", w.t.getApp())
 	}
 	return w.committedError(msg+"; the release stays installed", w.t.getApp())
 }

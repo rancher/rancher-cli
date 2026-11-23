@@ -100,7 +100,7 @@ func TestEveryRepoFlagRefusesANameThatIsNotAClusterRepo(t *testing.T) {
 		func(args ...string) contractRun { return h.run(t, args...) })
 	t.Logf("commands with a --repo flag: %v", driven)
 	assert.Empty(t, failures)
-	assert.Subset(t, driven, []string{"charts", "app install", "app upgrade"})
+	assert.Subset(t, driven, []string{"charts", "app install", "app upgrade", "extension install", "extension upgrade"})
 }
 
 // TestRepoFlagTypedEmptyKeepsTheEmptyValueMessage asserts a typed empty

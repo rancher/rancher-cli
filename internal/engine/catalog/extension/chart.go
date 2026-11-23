@@ -20,6 +20,7 @@ const (
 	AnnotationPrimeOnly         = "catalog.cattle.io/prime-only"
 	AnnotationSourceRepo        = "catalog.cattle.io/ui-source-repo"
 	AnnotationClusterRepoName   = "catalog.cattle.io/cluster-repo-name"
+	AnnotationBundleMembers     = "catalog.cattle.io/ui-extensions-bundle-members"
 )
 
 // Namespace is the namespace Rancher installs extensions into.
@@ -49,6 +50,13 @@ func IsHiddenExtension(versions []map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// IsBundleChart reports whether a chart installs several extensions together:
+// any of its versions has a catalog.cattle.io/ui-extensions-bundle-members
+// annotation with a value that is not empty.
+func IsBundleChart(versions []map[string]string) bool {
+	return slices.ContainsFunc(versions, func(a map[string]string) bool { return a[AnnotationBundleMembers] != "" })
 }
 
 // kubernetesSuffix is the part of a Kubernetes version from the first "+" or

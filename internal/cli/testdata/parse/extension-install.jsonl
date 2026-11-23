@@ -1,0 +1,19 @@
+{"line":["extension","install","--repo","v"],"kind":"runs","command":"extension install","flags":{"repo":"v"},"exit":0}
+{"line":["extension","install","--repo=v"],"kind":"runs","command":"extension install","flags":{"repo":"v"},"exit":0}
+{"line":["extension","install","-repo","v"],"kind":"runs","command":"extension install","flags":{"repo":"v"},"exit":0}
+{"line":["extension","install","--repo"],"kind":"error","command":"","errorClass":"missing value","exit":2,"stderr":["error (VALIDATION): flag needs an argument: --repo; pass --help for usage","  hint: rancher schema"]}
+{"line":["extension","install","--version","v"],"kind":"runs","command":"extension install","flags":{"version":"v"},"exit":0}
+{"line":["extension","install","--version=v"],"kind":"runs","command":"extension install","flags":{"version":"v"},"exit":0}
+{"line":["extension","install","-version","v"],"kind":"runs","command":"extension install","flags":{"version":"v"},"exit":0}
+{"line":["extension","install","--wait"],"kind":"runs","command":"extension install","flags":{"wait":true},"exit":0}
+{"line":["extension","install","--wait="],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["extension","install","--wait=false"],"kind":"runs","command":"extension install","flags":{"wait":false},"exit":0}
+{"line":["extension","install","--wait= "],"kind":"refused","command":"","exit":2,"stderr":["error (VALIDATION): --wait= has an empty value; a bool flag typed with = takes true or false","  hint: write --wait or --wait=true|false"]}
+{"line":["extension","install","-wait"],"kind":"runs","command":"extension install","flags":{"wait":true},"exit":0}
+{"line":["extension","install","--timeout","v"],"kind":"runs","command":"extension install","flags":{"timeout":"v"},"exit":0}
+{"line":["extension","install","--timeout=v"],"kind":"runs","command":"extension install","flags":{"timeout":"v"},"exit":0}
+{"line":["extension","install","-timeout","v"],"kind":"runs","command":"extension install","flags":{"timeout":"v"},"exit":0}
+{"line":["extension","install"],"kind":"runs","command":"extension install","exit":0}
+{"line":["extension","install","--help"],"kind":"help","command":"extension install","exit":0,"helpPath":"extension-install.txt"}
+{"line":["extension","install","x"],"kind":"runs","command":"extension install","args":["x"],"exit":0}
+{"line":["extension","install","--bogus"],"kind":"error","command":"","errorClass":"undefined flag","exit":2,"stderr":["error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage","  hint: rancher schema"]}

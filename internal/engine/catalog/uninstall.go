@@ -155,19 +155,7 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 	if body.Timeout != "" {
 		diff = append(diff, safety.DiffEntry{Path: "timeout", To: body.Timeout})
 	}
-	eff := safety.Effect{
-		Action:            safety.ActionDelete,
-		Target:            kind("app").GVR.Resource + "/" + t.release,
-		DisplayKind:       "app",
-		DisplayName:       t.release,
-		PreviewSource:     safety.PreviewServerReads,
-		Cluster:           clusterID,
-		Diff:              diff,
-		ConflictDetection: false,
-		Reversible:        false,
-		Destructive:       true,
-		Warnings:          append([]string{idWarning, warnServerReadsUninstall}, warnings...),
-	}
+	eff := uninstallEffect(clusterID, t.release, diff, append([]string{idWarning, warnServerReadsUninstall}, warnings...))
 	if pullSecretsWarningApplies(ctx, c.clients) {
 		eff.Warnings = append(eff.Warnings, warnPullSecretsUninstall)
 		t.pullSecretNote = notePullSecretsUninstall
@@ -203,6 +191,24 @@ func (c *uninstallCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 		return waitedResult("uninstall", t, a, end), nil
 	}
 	return eff, exec, nil
+}
+
+// uninstallEffect is the Effect of an uninstall request previewed from server
+// reads: it carries no precondition, and the request uninstalls the release.
+func uninstallEffect(cluster, release string, diff []safety.DiffEntry, warnings []string) safety.Effect {
+	return safety.Effect{
+		Action:            safety.ActionDelete,
+		Target:            kind("app").GVR.Resource + "/" + release,
+		DisplayKind:       "app",
+		DisplayName:       release,
+		PreviewSource:     safety.PreviewServerReads,
+		Cluster:           cluster,
+		Diff:              diff,
+		ConflictDetection: false,
+		Reversible:        false,
+		Destructive:       true,
+		Warnings:          warnings,
+	}
 }
 
 // uninstallIdentity is who Helm runs as for an uninstall: the service

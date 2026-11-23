@@ -175,7 +175,7 @@ func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 // ownVersionFlags are the leaves that declare a --version flag of their own:
 // the version of the chart app install installs and the version app upgrade
 // upgrades to. Every other command below the root accepts no --version.
-var ownVersionFlags = [][]string{{"app", "install"}, {"app", "upgrade"}}
+var ownVersionFlags = [][]string{{"app", "install"}, {"app", "upgrade"}, {"extension", "install"}, {"extension", "upgrade"}}
 
 // commandAt returns the command at path below root.
 func commandAt(root *ucli.Command, path []string) *ucli.Command {

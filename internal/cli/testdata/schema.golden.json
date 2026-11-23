@@ -4673,6 +4673,57 @@
       "usage": "Add a Rancher extension repository"
     },
     {
+      "args": [
+        {
+          "desc": "name of the extension chart, which is also its release name",
+          "name": "chart",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Asks Rancher to install the extension <chart> as the Rancher UI's Extensions page does: through the install action of the ClusterRepo that offers it, as the Helm release <chart> in the namespace cattle-ui-plugin-system of the local cluster, with the request body the Rancher UI sends, plus three annotations (a request ID and the type and name of the source ClusterRepo), no Helm options, and no values except the system default registry, which is sent when the setting system-default-registry has a value and the chart's default image.repository starts with rancher/. The server has no dry-run for this action; the preview comes from server reads (previewSource serverReads): the ClusterRepos the Rancher UI reads and their indexes, the chart's versions with the checks of the Rancher UI, the UIPlugins, the App (it must not exist) and the operations of the namespace (none may still be running for the release). It carries no resourceVersion precondition: --apply reads the App, the operations and the index entry again before it sends the request, and without --wait nothing checks for a change after that. Without --repo exactly one ClusterRepo the Rancher UI reads must offer the chart. --version names one exact version from the index; without it the version is the first one in the index that passes the checks of the Rancher UI. Refused: a version that fails a check, a chart that installs several extensions together, an extension that is already installed or loaded from a URL, and a server where the feature uiextension is turned off or the namespace does not exist. Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. With --wait (or --timeout, default 55m, at most 55m) it returns when Helm's run has finished: with the release's revision and status, or with Helm's error, the release's state and the command to run next. It does not wait for the Rancher UI to load the extension; `rancher extension list` shows the UIPlugin's state.",
+      "destructive": "false",
+      "examples": [
+        "rancher extension install epinio --dry-run",
+        "rancher extension install epinio --repo partner-extensions --version 1.14.3 --apply"
+      ],
+      "flags": [
+        {
+          "desc": "ClusterRepo `name` that offers the chart (default: the only ClusterRepo the Rancher UI reads that offers it)",
+          "name": "repo",
+          "type": "string"
+        },
+        {
+          "desc": "exact chart `version` (default: the first version that passes the checks of the Rancher UI)",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "desc": "wait until Helm's run finishes and report how it ended",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 10m (default 55m, at most 55m; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "extension",
+      "name": "extension install",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Install a Rancher UI extension from a ClusterRepo"
+    },
+    {
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
@@ -4700,6 +4751,100 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "List the Rancher UI extensions the ClusterRepos offer and the installed ones"
+    },
+    {
+      "args": [
+        {
+          "desc": "name of the extension chart, which is also its release name",
+          "name": "chart",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Asks Rancher to uninstall the extension <chart> as the Rancher UI's Extensions page does: through the uninstall action of the App <chart> in the namespace cattle-ui-plugin-system of the local cluster, with the same empty request the Rancher UI sends; Helm deletes the UIPlugin the chart created. The server has no dry-run for this action; the preview comes from server reads (previewSource serverReads): the App and the operations of the namespace (none may still be running for the release). It carries no resourceVersion precondition on the request itself: --apply reads the App and the operations again before it sends the request, and refuses when the App changed, and without --wait nothing checks for a change after that. Refused: an extension that is not installed or was loaded from a URL (the Rancher UI uninstalls it), and a server where the feature uiextension is turned off or the namespace does not exist. An App with the status uninstalled (Helm kept its history) is accepted, with a warning that the command removes that history. Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. With --wait (or --timeout, default 55m, at most 55m) it returns when Helm's run has finished: with the release's status, or with Helm's error, the release's state and the command to run next.",
+      "destructive": "true",
+      "examples": [
+        "rancher extension uninstall epinio --dry-run",
+        "rancher extension uninstall epinio --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "wait until Helm's run finishes and report how it ended",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 10m (default 55m, at most 55m; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "extension",
+      "name": "extension uninstall",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Uninstall a Rancher UI extension"
+    },
+    {
+      "args": [
+        {
+          "desc": "name of the extension chart, which is also its release name",
+          "name": "chart",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Asks Rancher to upgrade the installed extension <chart> as the Rancher UI's Extensions page does: through the upgrade action of the ClusterRepo the App came from, for the Helm release <chart> in the namespace cattle-ui-plugin-system of the local cluster, with the request body the Rancher UI sends, plus three annotations (a request ID and the type and name of the source ClusterRepo), no Helm options, and no values except the system default registry, which is sent when the setting system-default-registry has a value and the chart's default image.repository starts with rancher/. The server has no dry-run for this action; the preview comes from server reads (previewSource serverReads): the App, the ClusterRepo and its index, the chart's versions with the checks of the Rancher UI and the operations of the namespace (none may still be running for the release). It carries no resourceVersion precondition on the request itself: --apply reads the App, the operations and the index entry again before it sends the request, and refuses when the App changed, and without --wait nothing checks for a change after that. --repo, when typed, must be the ClusterRepo the App came from. --version names one exact version from the index, an older one included (a downgrade, which Helm runs as any upgrade); without it the version is the first one in the index that passes the checks of the Rancher UI. Refused: a version that fails a check, the version that is installed, a chart that installs several extensions together, an extension that is not installed or was loaded from a URL, an App whose status is other than deployed, failed or superseded, and a server where the feature uiextension is turned off or the namespace does not exist. Without --wait the command returns once Rancher accepts the request, with the operation and the commands that follow it. With --wait (or --timeout, default 55m, at most 55m) it returns when Helm's run has finished: with the release's revision and status, or with Helm's error, the release's state and the command to run next. It does not wait for the Rancher UI to load the extension; `rancher extension list` shows the UIPlugin's state.",
+      "destructive": "true",
+      "examples": [
+        "rancher extension upgrade epinio --dry-run",
+        "rancher extension upgrade epinio --version 1.14.3 --apply --yes"
+      ],
+      "flags": [
+        {
+          "desc": "ClusterRepo `name` the extension came from (default: the ClusterRepo named in the App; another one is refused)",
+          "name": "repo",
+          "type": "string"
+        },
+        {
+          "desc": "exact chart `version` (default: the first version that passes the checks of the Rancher UI)",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "desc": "wait until Helm's run finishes and report how it ended",
+          "name": "wait",
+          "type": "bool"
+        },
+        {
+          "desc": "wait `timeout`, e.g. 10m (default 55m, at most 55m; starts the wait)",
+          "name": "timeout",
+          "type": "string"
+        }
+      ],
+      "gates": [
+        "--apply",
+        "--yes"
+      ],
+      "group": "extension",
+      "name": "extension upgrade",
+      "serverAccess": "write",
+      "shape": "text",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Upgrade an installed Rancher UI extension"
     },
     {
       "aliases": [
@@ -15233,9 +15378,12 @@
     {
       "commands": [
         "extension add-repository",
-        "extension list"
+        "extension list",
+        "extension install",
+        "extension upgrade",
+        "extension uninstall"
       ],
-      "desc": "Add one of the two Rancher extension repositories and list the Rancher UI extensions the ClusterRepos offer. The two repositories are the ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
+      "desc": "Add one of the two Rancher extension repositories, list the Rancher UI extensions the ClusterRepos offer, and install, upgrade or uninstall an extension. The two repositories are the ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
       "name": "extension"
     },
     {
@@ -17371,7 +17519,7 @@
           "state": "refused"
         },
         "delete": {
-          "note": "Helm deletes the UIPlugin of an extension chart when the extension is uninstalled, and the Rancher UI deletes the UIPlugin of an extension loaded from a URL when the extension is uninstalled there; this CLI does not uninstall extensions yet",
+          "note": "Helm deletes the UIPlugin of an extension chart when the extension is uninstalled, and the Rancher UI deletes the UIPlugin of an extension loaded from a URL when the extension is uninstalled there; to uninstall an extension chart, run `rancher extension uninstall <name> --dry-run` and add --apply --yes after reading the preview",
           "state": "absent"
         },
         "get": {

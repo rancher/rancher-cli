@@ -145,6 +145,9 @@ Read nodes with `get node --cluster <cluster>` and the drain state with
 |---|---|
 | `extension add-repository <name>` | Add one of the two Rancher extension repositories as a ClusterRepo on the local cluster: `partner-extensions` on every server, `rancher-ui-plugins` on Rancher Prime. It sends the name, git URL and branch the Rancher UI's Extensions page sends, and nothing else; the command is refused with `CONFLICT` when a ClusterRepo already reads the same URL. Rancher downloads the repository from github.com after the command; dry-run/apply. Details in [REFERENCE.md](REFERENCE.md#extensions) |
 | `extension list` | List the extensions the Rancher UI's Extensions page shows: what the ClusterRepos offer and what is installed, with the version each can be upgraded to and, in `-o json`, why a version is not compatible with the server (`--show all\|installed\|available`). Read-only. Details in [REFERENCE.md](REFERENCE.md#listing-extensions) |
+| `extension install <chart> [--repo <name>] [--version <v>]` | Install a Rancher UI extension as the Rancher UI's Extensions page does: through the install action of the ClusterRepo that offers it, into the namespace `cattle-ui-plugin-system` with the chart's name as the release name. Only a version that passes the Rancher UI's checks is installed. The preview comes from server reads (`previewSource: serverReads`) and carries no resourceVersion precondition; `--wait` waits for Helm's run to finish; dry-run/apply. Details in [REFERENCE.md](REFERENCE.md#installing-an-extension) |
+| `extension upgrade <chart> [--repo <name>] [--version <v>]` | Upgrade an installed Rancher UI extension as the Rancher UI's Extensions page does: through the upgrade action of the ClusterRepo the App came from, for the release with the chart's name in the namespace `cattle-ui-plugin-system`. Only a version that passes the Rancher UI's checks is accepted, and the version that is already installed is refused. The preview comes from server reads (`previewSource: serverReads`) and carries no resourceVersion precondition; `--wait` waits for Helm's run to finish - destructive; dry-run/apply --yes. Details in [REFERENCE.md](REFERENCE.md#upgrading-an-extension) |
+| `extension uninstall <chart>` | Uninstall a Rancher UI extension as the Rancher UI's Extensions page does: through the uninstall action of the App with the chart's name in the namespace `cattle-ui-plugin-system`, with the empty request the Rancher UI sends. An extension loaded from a URL, which has a UIPlugin and no App, is refused: the Rancher UI uninstalls it. The preview comes from server reads (`previewSource: serverReads`) and carries no resourceVersion precondition; `--wait` waits for Helm's run to finish - destructive; dry-run/apply --yes. Details in [REFERENCE.md](REFERENCE.md#uninstalling-an-extension) |
 
 ## Access
 
@@ -214,6 +217,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 73-kind table: `get <kind>` (73), `patch <kind>`
 (73), `delete <kind>` (43 - 42 deletable kinds, including the Rancher role binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-189 generated commands, 269 total together with the fixed commands above. The authoritative, always-current list is
+189 generated commands, 272 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

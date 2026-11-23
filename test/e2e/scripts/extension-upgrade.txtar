@@ -1,0 +1,89 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
+
+# An extension that is not installed is refused, with the install as the next step.
+! exec rancher extension upgrade ext-upgrade-chart --dry-run -o json
+jsonquery stderr data.error.code NOT_FOUND
+extensionupgradeactions actions.json
+jsonquery actions.json '#' 0
+
+# Install the older version, which Rancher records as the App the upgrade reads.
+exec rancher extension install ext-upgrade-chart --version 1.0.0 --apply -o json
+extensionupgradeactions actions.json
+jsonquery actions.json '#' 1
+jsonquery actions.json '0.action' install
+
+# The version that is installed is refused.
+! exec rancher extension upgrade ext-upgrade-chart --version 1.0.0 --dry-run -o json
+jsonquery stderr data.error.code VALIDATION
+
+# A repository other than the one the App came from is refused.
+! exec rancher extension upgrade ext-upgrade-chart --repo other-repo --dry-run -o json
+jsonquery stderr data.error.code VALIDATION
+
+# --dry-run reads the server and sends no action: the preview is from server
+# reads, and the version is the first one that passes the checks of the Rancher
+# UI (the newest, 1.2.0, needs a newer Extensions API version).
+exec rancher extension upgrade ext-upgrade-chart --dry-run -o json
+cp stdout dry.json
+jsonquery dry.json data.previewSource serverReads
+jsonquery dry.json data.action update
+jsonquery dry.json data.displayName ext-upgrade-chart
+jsonquery dry.json 'data.diff.#(path="repo").to' extension-upgrade-repo
+jsonquery dry.json 'data.diff.#(path="version").from' 1.0.0
+jsonquery dry.json 'data.diff.#(path="version").to' 1.1.0
+jsonquery dry.json 'data.diff.#(path="namespace").to' cattle-ui-plugin-system
+extensionupgradeactions actions.json
+jsonquery actions.json '#' 1
+
+# Without --yes the command is refused and sends nothing.
+! exec rancher extension upgrade ext-upgrade-chart -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+! exec rancher extension upgrade ext-upgrade-chart --apply -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+jsonquery stderr '[data.error].#(message%"*--yes*").code' CONFIRMATION_REQUIRED
+extensionupgradeactions actions.json
+jsonquery actions.json '#' 1
+
+# --apply --yes sends the upgrade action once, to the local cluster, with the
+# request the Rancher UI sends: no timeout, wait or description.
+exec rancher extension upgrade ext-upgrade-chart --apply --yes -o json
+cp stdout apply.json
+jsonquery apply.json data.release ext-upgrade-chart
+jsonquery apply.json data.operationNamespace cattle-ui-plugin-system
+jsonget apply.json data.requestID reqid.txt
+setenvfrom REQID reqid.txt
+extensionupgradeactions actions.json
+jsonquery actions.json '#' 2
+jsonquery actions.json '1.action' upgrade
+jsonquery actions.json '1.fieldManager' cli.rancher.io
+jsonquery actions.json '1.path' /v1/catalog.cattle.io.clusterrepos/extension-upgrade-repo
+jsonquery actions.json '1.body.@keys' '["namespace","charts"]'
+jsonquery actions.json '1.body.namespace' cattle-ui-plugin-system
+jsonquery actions.json '1.body.charts.#' 1
+jsonquery actions.json '1.body.charts.0.@keys' '["chartName","version","releaseName","values","annotations"]'
+jsonquery actions.json '1.body.charts.0.chartName' ext-upgrade-chart
+jsonquery actions.json '1.body.charts.0.releaseName' ext-upgrade-chart
+jsonquery actions.json '1.body.charts.0.version' 1.1.0
+jsonquery actions.json '1.body.charts.0.annotations.cli\.rancher\.io/request-id' $REQID
+jsonquery actions.json '1.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo' extension-upgrade-repo
+
+# Rancher records the new version: upgrading to it again is refused and sends
+# nothing.
+exec rancher get app ext-upgrade-chart --cluster local --namespace cattle-ui-plugin-system -o json
+jsonquery stdout data.spec.chart.metadata.version 1.1.0
+! exec rancher extension upgrade ext-upgrade-chart --apply --yes -o json
+jsonquery stderr data.error.code VALIDATION
+extensionupgradeactions actions.json
+jsonquery actions.json '#' 2
+
+-- repo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: extension-upgrade-repo
+spec:
+  gitRepo: https://example.test/extension-upgrade-repo
+  gitBranch: main

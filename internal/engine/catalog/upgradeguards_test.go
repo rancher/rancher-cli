@@ -109,6 +109,12 @@ type infoPlanPath struct {
 	edit    func(*appInput)
 	// refused is true when the Plan is VALIDATION with no info request.
 	refused bool
+	// extension is "install" or "upgrade" for an extension command, which
+	// extensionInfoPlan plans against its own fake.
+	extension string
+	// sends is the version an extension command chooses, which its info
+	// request names.
+	sends string
 }
 
 // TestEveryInfoReadIsForAListedOrCurrentVersion asserts, for every Plan path
@@ -120,47 +126,62 @@ type infoPlanPath struct {
 // package that imports this one calls it.
 func TestEveryInfoReadIsForAListedOrCurrentVersion(t *testing.T) {
 	t.Parallel()
-	const install, upgrade = "install.go:Plan", "upgrade.go:readInfo"
+	// shared is the one function that reads the info of app upgrade and of the
+	// extension commands.
+	const install, shared = "install.go:Plan", "index.go:readChartInfo"
 	only2 := func(f *appFake) { listIndex(f, "2.0.0") }
 	paths := []infoPlanPath{
 		{name: "install with a listed version", caller: install, edit: nil},
 		{name: "install with a typed listed version", caller: install, edit: withFlag(flagVersion, "1.0.0")},
 		{name: "install with a typed version the index does not list", caller: install, refused: true, edit: withFlag(flagVersion, "9.9.9")},
-		{name: "upgrade with a typed listed version", caller: upgrade, upgrade: true, edit: withFlag(flagVersion, "2.0.0")},
-		{name: "upgrade keeping a version the index lists", caller: upgrade, upgrade: true},
-		{name: "upgrade keeping a version the index does not list", caller: upgrade, upgrade: true, setup: only2},
-		{name: "upgrade keeping a typed version the index does not list", caller: upgrade, upgrade: true, setup: only2, edit: withFlag(flagVersion, "1.0.0")},
-		{name: "upgrade with a typed version the index does not list", caller: upgrade, upgrade: true, refused: true, edit: withFlag(flagVersion, "9.9.9")},
-		{name: "upgrade with a typed version the index does not list, current not listed", caller: upgrade, upgrade: true, refused: true, setup: only2, edit: withFlag(flagVersion, "9.9.9")},
-		{name: "upgrade with another repo that lists the version the App runs", caller: upgrade, upgrade: true,
+		{name: "upgrade with a typed listed version", caller: shared, upgrade: true, edit: withFlag(flagVersion, "2.0.0")},
+		{name: "upgrade keeping a version the index lists", caller: shared, upgrade: true},
+		{name: "upgrade keeping a version the index does not list", caller: shared, upgrade: true, setup: only2},
+		{name: "upgrade keeping a typed version the index does not list", caller: shared, upgrade: true, setup: only2, edit: withFlag(flagVersion, "1.0.0")},
+		{name: "upgrade with a typed version the index does not list", caller: shared, upgrade: true, refused: true, edit: withFlag(flagVersion, "9.9.9")},
+		{name: "upgrade with a typed version the index does not list, current not listed", caller: shared, upgrade: true, refused: true, setup: only2, edit: withFlag(flagVersion, "9.9.9")},
+		{name: "upgrade with another repo that lists the version the App runs", caller: shared, upgrade: true,
 			setup: func(f *appFake) { addOtherRepo(f, nil, "1.0.0") }, edit: withFlag(flagRepo, otherRepo)},
-		{name: "upgrade with another repo whose index does not list the version the App runs", caller: upgrade, upgrade: true, refused: true,
+		{name: "upgrade with another repo whose index does not list the version the App runs", caller: shared, upgrade: true, refused: true,
 			setup: func(f *appFake) { addOtherRepo(f, nil, "2.0.0") }, edit: withFlag(flagRepo, otherRepo)},
+		{name: "extension install with a listed version", caller: shared, extension: "install", sends: "1.14.3"},
+		{name: "extension install with a typed listed version", caller: shared, extension: "install", sends: "1.14.2", edit: withFlag(flagVersion, "1.14.2")},
+		{name: "extension install with a typed version the index does not list", caller: shared, extension: "install", refused: true, edit: withFlag(flagVersion, "9.9.9")},
+		{name: "extension upgrade with a listed version", caller: shared, extension: "upgrade", sends: "1.14.3"},
+		{name: "extension upgrade with a typed listed version", caller: shared, extension: "upgrade", sends: "1.14.3", edit: withFlag(flagVersion, "1.14.3")},
+		{name: "extension upgrade with a typed version the index does not list", caller: shared, extension: "upgrade", refused: true, edit: withFlag(flagVersion, "9.9.9")},
 	}
 	for _, p := range paths {
 		t.Run(p.name, func(t *testing.T) {
 			t.Parallel()
 			var f *appFake
+			var listed []string
 			var err error
-			in := installInput()
-			if p.upgrade {
-				f = upgradeFake(t, nil)
-				in = upgradeInput()
+			if p.extension != "" {
+				var ef *extFake
+				ef, listed, err = extensionInfoPlan(t, p.extension, p.edit)
+				f = ef.appFake
 			} else {
-				f = newAppFake(t)
+				in := installInput()
+				if p.upgrade {
+					f = upgradeFake(t, nil)
+					in = upgradeInput()
+				} else {
+					f = newAppFake(t)
+				}
+				if p.setup != nil {
+					p.setup(f)
+				}
+				if p.edit != nil {
+					p.edit(&in)
+				}
+				if p.upgrade {
+					_, _, err = planUpgrade(t, f, nil, in)
+				} else {
+					_, _, err = newTestInstall(f, nil).Plan(t.Context(), in)
+				}
+				listed = listedVersions(t, f)
 			}
-			if p.setup != nil {
-				p.setup(f)
-			}
-			if p.edit != nil {
-				p.edit(&in)
-			}
-			if p.upgrade {
-				_, _, err = planUpgrade(t, f, nil, in)
-			} else {
-				_, _, err = newTestInstall(f, nil).Plan(t.Context(), in)
-			}
-			listed := listedVersions(t, f)
 			infos := requestsOf(f, "link=info")
 			if p.refused {
 				ce, ok := errors.AsType[*clierr.Error](err)
@@ -177,6 +198,9 @@ func TestEveryInfoReadIsForAListedOrCurrentVersion(t *testing.T) {
 				version := u.Query().Get("version")
 				ok := slices.Contains(listed, version) || (p.upgrade && version == "1.0.0")
 				assert.True(t, ok, "info of version %q, which the index %v does not list and the App does not run", version, listed)
+				if p.sends != "" {
+					assert.Equal(t, p.sends, version, "the info request names the version the command sends")
+				}
 			}
 		})
 	}

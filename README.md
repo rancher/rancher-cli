@@ -165,7 +165,7 @@ or point the instructions file of any other coding-agent harness at it.
 | [Nodes](COMMANDS.md#nodes) | drain a node (`node drain`) or stop a drain (`node stop-drain`); Rancher runs the drain, and `get management-node` shows its state |
 | [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project/user reads, images, usage, charts |
 | [Apps](COMMANDS.md#apps) | install a chart from a ClusterRepo as a Helm release (`app install`), upgrade one (`app upgrade`), uninstall one (`app uninstall`); Rancher runs Helm, previews come from server reads |
-| [Extensions](COMMANDS.md#extensions) | add one of the two Rancher extension repositories (`extension add-repository`), list what the ClusterRepos offer and what is installed (`extension list`) |
+| [Extensions](COMMANDS.md#extensions) | add one of the two Rancher extension repositories (`extension add-repository`), list what the ClusterRepos offer and what is installed (`extension list`), install an extension (`extension install`), upgrade it (`extension upgrade`), uninstall it (`extension uninstall`) |
 | [Access](COMMANDS.md#access) | who can do what, as the cluster's authorizer answers it (`access can`, `access list`, `access who-can`, `access explain`), which clusters a subject can reach through Rancher's proxy (`access clusters`), and which projects a subject can see and is a member of (`access projects`) |
 | [Logs & support](COMMANDS.md#logs--support) | logs of Rancher components, support bundle |
 | [kubectl integration](COMMANDS.md#kubectl-integration) | kubeconfig that uses the exec plugin, legacy `rancher token` command |

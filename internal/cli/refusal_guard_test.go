@@ -105,7 +105,7 @@ func refusalCases() []refusalCase {
 		createRefusal("uiplugin", "uiplugin", manifestOf("catalog.cattle.io/v1", "UIPlugin", true),
 			"cannot create a uiplugin from a manifest; this CLI does not load an extension from a URL"),
 		deleteRefusal("uiplugin", "uiplugin",
-			`unknown command "uiplugin"; uiplugin cannot be deleted - Helm deletes the UIPlugin of an extension chart when the extension is uninstalled, and the Rancher UI deletes the UIPlugin of an extension loaded from a URL when the extension is uninstalled there; this CLI does not uninstall extensions yet`),
+			`unknown command "uiplugin"; uiplugin cannot be deleted - Helm deletes the UIPlugin of an extension chart when the extension is uninstalled, and the Rancher UI deletes the UIPlugin of an extension loaded from a URL when the extension is uninstalled there; to uninstall an extension chart, run `+"`"+clierr.Rancher+" extension uninstall <name> --dry-run`"+` and add --apply --yes after reading the preview`),
 
 		patchRefusal("authconfig", "authconfig",
 			"authconfig: patch is not supported - auth configs are read-only in this CLI for now: Rancher configures, enables and disables auth providers through its own test-and-apply flow, and changing them from the CLI is planned separately; read it with "+clierr.Rancher+" get 'authconfig'"),

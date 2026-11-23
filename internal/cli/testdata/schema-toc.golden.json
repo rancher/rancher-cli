@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 269,
+  "commandCount": 272,
   "effectSchema": {
     "actions": [
       "create",
@@ -480,9 +480,21 @@
         {
           "name": "extension list",
           "usage": "List the Rancher UI extensions the ClusterRepos offer and the installed ones"
+        },
+        {
+          "name": "extension install",
+          "usage": "Install a Rancher UI extension from a ClusterRepo"
+        },
+        {
+          "name": "extension upgrade",
+          "usage": "Upgrade an installed Rancher UI extension"
+        },
+        {
+          "name": "extension uninstall",
+          "usage": "Uninstall a Rancher UI extension"
         }
       ],
-      "desc": "Add one of the two Rancher extension repositories and list the Rancher UI extensions the ClusterRepos offer. The two repositories are the ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
+      "desc": "Add one of the two Rancher extension repositories, list the Rancher UI extensions the ClusterRepos offer, and install, upgrade or uninstall an extension. The two repositories are the ClusterRepos the Rancher UI's Extensions page adds, partner-extensions on every server and rancher-ui-plugins on Rancher Prime.",
       "name": "extension"
     },
     {

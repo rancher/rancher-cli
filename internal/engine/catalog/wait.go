@@ -326,7 +326,8 @@ func (w *appWait) installStalled(ctx context.Context, s stall) error {
 
 // uninstallDone reads the App after an Operation that ended without
 // Stalled, for the margin: done when it is gone, or with --keep-history when
-// it reads uninstalled.
+// it reads uninstalled. An App that reads uninstalled at the end of the margin
+// gets the kept-history error, whatever its status before the request.
 func (w *appWait) uninstallDone(ctx context.Context) (waitEnd, error) {
 	var end *waitEnd
 	err := w.read(ctx, readStep{
@@ -351,7 +352,7 @@ func (w *appWait) uninstallDone(ctx context.Context) (waitEnd, error) {
 				return nil
 			}
 			r := w.revisionOf(last)
-			if r.status == "uninstalled" && w.planStatus != "uninstalled" {
+			if r.status == "uninstalled" {
 				return w.keptHistoryError()
 			}
 			return w.staysInstalledError(nil, r)

@@ -283,29 +283,35 @@ func (c *installCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 		}},
 	}
 
-	eff := safety.Effect{
-		Action:            safety.ActionCreate,
-		Target:            kind("app").GVR.Resource + "/" + release,
-		DisplayKind:       "app",
-		DisplayName:       release,
-		PreviewSource:     safety.PreviewServerReads,
-		Cluster:           p.cluster,
-		Diff:              p.diff(),
-		ConflictDetection: false,
-		Reversible:        false,
-		Destructive:       false,
-		Warnings: append([]string{
-			idWarning,
-			warnServerReads,
-			"uninstalling the release leaves the CRDs of the chart's crds/ directory and the resources marked helm.sh/resource-policy: keep",
-		}, warnings...),
-	}
+	eff := installEffect(p.cluster, release, p.diff(), append([]string{
+		idWarning,
+		warnServerReads,
+		"uninstalling the release leaves the CRDs of the chart's crds/ directory and the resources marked helm.sh/resource-policy: keep",
+	}, warnings...))
 	if pullSecretsWarningApplies(ctx, c.clients) {
 		eff.Warnings = append(eff.Warnings, warnPullSecretsInstall)
 		p.target.pullSecretNote = notePullSecretsInstall
 	}
 	exec := func(ctx context.Context) (runtime.Result, error) { return c.execute(ctx, p) }
 	return eff, exec, nil
+}
+
+// installEffect is the Effect of an install request previewed from server
+// reads: it carries no precondition and changes nothing before the request.
+func installEffect(cluster, release string, diff []safety.DiffEntry, warnings []string) safety.Effect {
+	return safety.Effect{
+		Action:            safety.ActionCreate,
+		Target:            kind("app").GVR.Resource + "/" + release,
+		DisplayKind:       "app",
+		DisplayName:       release,
+		PreviewSource:     safety.PreviewServerReads,
+		Cluster:           cluster,
+		Diff:              diff,
+		ConflictDetection: false,
+		Reversible:        false,
+		Destructive:       false,
+		Warnings:          warnings,
+	}
 }
 
 // diff lists what the request sends: the source, the release, the Helm
@@ -374,10 +380,9 @@ func (p installPlan) resolveVersion(ctx context.Context, want string) (ChartVers
 	}
 	if isExtensionChart(versions) {
 		return ChartVersion{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"chart %s in ClusterRepo %s is a Rancher UI extension, which belongs in the namespace %s; "+
-				"this CLI does not install extensions yet",
+			"chart %s in ClusterRepo %s is a Rancher UI extension, which belongs in the namespace %s",
 			clierr.ShellQuote(p.chart), clierr.ShellQuote(p.repo), extension.Namespace)).
-			WithHintCommand(clierr.NewCommand("extension list"))
+			WithHintCommand(clierr.NewCommand("extension install").Arg(p.chart).FlagValue("--repo", p.repo).Flag("--dry-run"))
 	}
 	if want != "" {
 		for _, v := range versions {

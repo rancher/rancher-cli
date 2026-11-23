@@ -126,6 +126,10 @@ type repoRow struct {
 	Hidden  bool
 	Enabled bool
 	Address extension.ClusterRepo
+	// ServiceAccount and ServiceAccountNamespace name the service account Helm
+	// runs as for an install from the repository, when the ClusterRepo has one.
+	ServiceAccount          string
+	ServiceAccountNamespace string
 }
 
 // decodeRepoRow decodes one item of the steve ClusterRepo collection.
@@ -139,9 +143,11 @@ func decodeRepoRow(path string, index int, raw json.RawMessage) (string, repoRow
 			} `json:"state"`
 		} `json:"metadata"`
 		Spec struct {
-			Enabled *bool  `json:"enabled"`
-			GitRepo string `json:"gitRepo"`
-			URL     string `json:"url"`
+			Enabled                 *bool  `json:"enabled"`
+			GitRepo                 string `json:"gitRepo"`
+			URL                     string `json:"url"`
+			ServiceAccount          string `json:"serviceAccount"`
+			ServiceAccountNamespace string `json:"serviceAccountNamespace"`
 		} `json:"spec"`
 		Status struct {
 			URL string `json:"url"`
@@ -151,11 +157,12 @@ func decodeRepoRow(path string, index int, raw json.RawMessage) (string, repoRow
 		return "", repoRow{}, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s: item %d is not a ClusterRepo", path, index))
 	}
 	return item.Metadata.Name, repoRow{
-		Name:    item.Metadata.Name,
-		State:   item.Metadata.State.Name,
-		Hidden:  item.Metadata.Annotations[hiddenRepoAnnotation] == "true",
-		Enabled: item.Spec.Enabled == nil || *item.Spec.Enabled,
-		Address: extension.ClusterRepo{Name: item.Metadata.Name, StatusURL: item.Status.URL, GitRepo: item.Spec.GitRepo, URL: item.Spec.URL},
+		Name:           item.Metadata.Name,
+		State:          item.Metadata.State.Name,
+		Hidden:         item.Metadata.Annotations[hiddenRepoAnnotation] == "true",
+		Enabled:        item.Spec.Enabled == nil || *item.Spec.Enabled,
+		Address:        extension.ClusterRepo{Name: item.Metadata.Name, StatusURL: item.Status.URL, GitRepo: item.Spec.GitRepo, URL: item.Spec.URL},
+		ServiceAccount: item.Spec.ServiceAccount, ServiceAccountNamespace: item.Spec.ServiceAccountNamespace,
 	}, nil
 }
 
@@ -175,71 +182,22 @@ func (c *extensionListCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	get := steve.RootGetter(root)
 
-	rancherVersion := ""
-	if versions, ok := c.clients.(engine.ServerVersionProvider); ok {
-		if raw, err := versions.ServerVersion(ctx); err == nil {
-			rancherVersion = raw
-		}
-	}
-	edition := extension.EditionUnknown
-	if provider, ok := c.clients.(engine.ServerEditionProvider); ok {
-		if got, err := provider.ServerEdition(ctx); err == nil {
-			edition = leafEdition(got)
-		} else if ctx.Err() != nil {
-			return runtime.Result{}, err
-		}
-	}
-	kubeVersion := ""
-	if cluster, err := steve.GetCluster(ctx, get, engine.LocalCluster); err == nil {
-		info, _, _ := unstructured.NestedString(cluster.Object, "status", "info", "kubernetesVersion")
-		git, _, _ := unstructured.NestedString(cluster.Object, "status", "version", "gitVersion")
-		if v, ok := extension.KubernetesVersion(info, git); ok {
-			kubeVersion = v
-		}
-	} else if ctx.Err() != nil {
-		return runtime.Result{}, err
-	}
-	api, apiKnown := extension.ExtensionsAPIVersion(rancherVersion)
-	inputs := extension.Inputs{RancherVersion: rancherVersion, KubernetesVersion: kubeVersion, Edition: edition}
-	if apiKnown {
-		inputs.ExtensionsAPIVersion = api
-	}
-	below, known := config.VersionBelow(rancherVersion, pairByChartNameBelow)
-
-	repos, err := steve.ReadCollection(ctx, get, steve.Request{Type: ClusterRepoType}, decodeRepoRow)
+	ec, err := readExtensionContext(ctx, c.clients, root)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	slices.SortFunc(repos, func(a, b repoRow) int { return strings.Compare(a.Name, b.Name) })
+	rancherVersion, inputs, apiKnown := ec.rancherVersion, ec.inputs, ec.apiKnown
 
-	var warnings []string
-	var charts []extension.Chart
-	existing := make([]extension.ClusterRepo, 0, len(repos))
-	for _, repo := range repos {
-		existing = append(existing, repo.Address)
-		if repo.Hidden || !repo.Enabled {
-			continue
-		}
-		if repo.State != stateActive {
-			warnings = append(warnings, fmt.Sprintf("skipped ClusterRepo %s: its state is %s", clierr.ShellQuote(repo.Name), stateText(repo.State)))
-			continue
-		}
-		idx, err := ReadIndex(ctx, root, engine.LocalCluster, repo.Name)
-		if err != nil {
-			if ctx.Err() != nil {
-				return runtime.Result{}, err
-			}
-			if status, ok := clierr.HTTPStatus(err); ok && status == http.StatusServiceUnavailable {
-				warnings = append(warnings, fmt.Sprintf("skipped ClusterRepo %s: Rancher is still downloading it", clierr.ShellQuote(repo.Name)))
-				continue
-			}
-			warnings = append(warnings, "skipped "+clierr.From(err).Message)
-			continue
-		}
-		charts = append(charts, extensionCharts(repo.Name, idx)...)
+	repos, err := readRepoRows(ctx, root)
+	if err != nil {
+		return runtime.Result{}, err
 	}
+	scan, err := scanRepos(ctx, root, repos)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	warnings, charts, existing := scan.warnings, scan.charts, scan.existing
 
 	plugins, err := listUIPlugins(ctx, client)
 	if err != nil {
@@ -250,7 +208,7 @@ func (c *extensionListCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		return runtime.Result{}, err
 	}
 
-	items := extensionItems(extension.Pair(charts, plugins, apps, below && known), inputs)
+	items := extensionItems(extension.Pair(charts, plugins, apps, ec.pairByName), inputs)
 	list := extensionList{}
 	for _, it := range items {
 		installed := it.Installed != ""
@@ -264,6 +222,107 @@ func (c *extensionListCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		warnings = append(warnings, noRepositoryWarning())
 	}
 	return runtime.Result{Kind: "ExtensionList", Data: list, Warnings: warnings}, nil
+}
+
+// extensionContext is what every extension command that checks versions reads
+// first: the inputs of the compatibility function and whether the pairing rule
+// of the Rancher UI that Rancher v2.14 ships applies.
+type extensionContext struct {
+	rancherVersion string
+	inputs         extension.Inputs
+	apiKnown       bool
+	pairByName     bool
+}
+
+// readExtensionContext reads the server's version and edition and the
+// Kubernetes version of the local cluster. A value that cannot be read is
+// empty or unknown; only a cancelled context is an error.
+func readExtensionContext(ctx context.Context, clients engine.ClusterClientFactory, root engine.RootClient) (extensionContext, error) {
+	rancherVersion := ""
+	if versions, ok := clients.(engine.ServerVersionProvider); ok {
+		if raw, err := versions.ServerVersion(ctx); err == nil {
+			rancherVersion = raw
+		}
+	}
+	edition := extension.EditionUnknown
+	if provider, ok := clients.(engine.ServerEditionProvider); ok {
+		if got, err := provider.ServerEdition(ctx); err == nil {
+			edition = leafEdition(got)
+		} else if ctx.Err() != nil {
+			return extensionContext{}, err
+		}
+	}
+	kubeVersion := ""
+	if cluster, err := steve.GetCluster(ctx, steve.RootGetter(root), engine.LocalCluster); err == nil {
+		info, _, _ := unstructured.NestedString(cluster.Object, "status", "info", "kubernetesVersion")
+		git, _, _ := unstructured.NestedString(cluster.Object, "status", "version", "gitVersion")
+		if v, ok := extension.KubernetesVersion(info, git); ok {
+			kubeVersion = v
+		}
+	} else if ctx.Err() != nil {
+		return extensionContext{}, err
+	}
+	api, apiKnown := extension.ExtensionsAPIVersion(rancherVersion)
+	inputs := extension.Inputs{RancherVersion: rancherVersion, KubernetesVersion: kubeVersion, Edition: edition}
+	if apiKnown {
+		inputs.ExtensionsAPIVersion = api
+	}
+	below, known := config.VersionBelow(rancherVersion, pairByChartNameBelow)
+	return extensionContext{rancherVersion: rancherVersion, inputs: inputs, apiKnown: apiKnown, pairByName: below && known}, nil
+}
+
+// readRepoRows reads the ClusterRepos of the local cluster through steve, in
+// name order.
+func readRepoRows(ctx context.Context, root engine.RootClient) ([]repoRow, error) {
+	repos, err := steve.ReadCollection(ctx, steve.RootGetter(root), steve.Request{Type: ClusterRepoType}, decodeRepoRow)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(repos, func(a, b repoRow) int { return strings.Compare(a.Name, b.Name) })
+	return repos, nil
+}
+
+// repoScan is what reading the repositories the Rancher UI reads found: the
+// extension charts of their indexes, the index of each, the address of every
+// ClusterRepo, and a warning for each repository left out.
+type repoScan struct {
+	charts   []extension.Chart
+	indexes  map[string]Index
+	existing []extension.ClusterRepo
+	warnings []string
+}
+
+// scanRepos reads the index of each repository the Rancher UI reads (not
+// hidden, not disabled, in the state active). A repository that is not active,
+// still downloading or whose index cannot be read is left out with a warning;
+// only a cancelled context is an error.
+func scanRepos(ctx context.Context, root engine.RootClient, repos []repoRow) (repoScan, error) {
+	scan := repoScan{indexes: map[string]Index{}, existing: make([]extension.ClusterRepo, 0, len(repos))}
+	for _, repo := range repos {
+		scan.existing = append(scan.existing, repo.Address)
+		if repo.Hidden || !repo.Enabled {
+			continue
+		}
+		if repo.State != stateActive {
+			scan.warnings = append(scan.warnings, fmt.Sprintf("skipped ClusterRepo %s: its state is %s", clierr.ShellQuote(repo.Name), stateText(repo.State)))
+			continue
+		}
+		idx, err := ReadIndex(ctx, root, engine.LocalCluster, repo.Name)
+		if err != nil {
+			if ctx.Err() != nil {
+				return repoScan{}, err
+			}
+			if status, ok := clierr.HTTPStatus(err); ok && status == http.StatusServiceUnavailable {
+				scan.warnings = append(scan.warnings, fmt.Sprintf("skipped ClusterRepo %s: Rancher is still downloading it", clierr.ShellQuote(repo.Name)))
+				continue
+			}
+			scan.warnings = append(scan.warnings, "skipped "+clierr.From(err).Message)
+			continue
+		}
+		scan.indexes[repo.Name] = idx
+		scan.charts = append(scan.charts, extensionCharts(repo.Name, idx)...)
+	}
+	return scan, nil
 }
 
 // listItem is an extension item with what the warnings need.
@@ -474,12 +533,18 @@ func listExtensionApps(ctx context.Context, client engine.ClusterClient) ([]exte
 	}
 	apps := make([]extension.App, 0, len(list.Items))
 	for _, obj := range list.Items {
-		annotations, _, _ := unstructured.NestedStringMap(obj.Object, "spec", "chart", "metadata", "annotations")
-		repo := annotations[extension.AnnotationSourceRepo]
-		if repo == "" {
-			repo = obj.GetLabels()[extension.AnnotationClusterRepoName]
-		}
-		apps = append(apps, extension.App{Name: obj.GetName(), Repo: repo})
+		apps = append(apps, extension.App{Name: obj.GetName(), Repo: extensionAppRepo(&obj)})
 	}
 	return apps, nil
+}
+
+// extensionAppRepo is the ClusterRepo an App came from: the annotation
+// catalog.cattle.io/ui-source-repo of its chart, else its label
+// catalog.cattle.io/cluster-repo-name; empty when it has neither.
+func extensionAppRepo(obj *unstructured.Unstructured) string {
+	annotations, _, _ := unstructured.NestedStringMap(obj.Object, "spec", "chart", "metadata", "annotations")
+	if repo := annotations[extension.AnnotationSourceRepo]; repo != "" {
+		return repo
+	}
+	return obj.GetLabels()[extension.AnnotationClusterRepoName]
 }

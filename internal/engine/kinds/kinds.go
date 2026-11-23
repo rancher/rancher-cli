@@ -1393,7 +1393,7 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "catalog.cattle.io", Version: "v1", Resource: "uiplugins"},
 		Policy: NSWorkspace, DefaultNamespace: "cattle-ui-plugin-system", K8sKind: "UIPlugin", Scope: Management, Deletable: false,
 		NamespaceDesc:       "`namespace` of the UIPlugin (default: cattle-ui-plugin-system, where Rancher installs extensions)",
-		NoDeleteReason:      "Helm deletes the UIPlugin of an extension chart when the extension is uninstalled, and the Rancher UI deletes the UIPlugin of an extension loaded from a URL when the extension is uninstalled there; this CLI does not uninstall extensions yet",
+		NoDeleteReason:      "Helm deletes the UIPlugin of an extension chart when the extension is uninstalled, and the Rancher UI deletes the UIPlugin of an extension loaded from a URL when the extension is uninstalled there; to uninstall an extension chart, run `" + clierr.Rancher + " extension uninstall <name> --dry-run` and add --apply --yes after reading the preview",
 		NoPatchReason:       "the chart of an extension creates the UIPlugin and Rancher sets its status; this CLI does not change a UIPlugin",
 		NoCreateViaManifest: "this CLI does not load an extension from a URL",
 		Binding:             safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},

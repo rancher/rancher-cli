@@ -827,7 +827,7 @@ func TestUninstallWait(t *testing.T) {
 		"kept history not removed": {planStatus: "deployed", ops: []scripted{opDone}, apps: []scripted{mine("uninstalled")},
 			want: "release 'my-nginx' is at status uninstalled; its kept history was not removed", elapsed: appMargin},
 		"uninstalled before, still uninstalled": {planStatus: "uninstalled", ops: []scripted{opDone}, apps: []scripted{mine("uninstalled")},
-			want: "operation 'helm-operation-abcde' ended; release 'my-nginx' is at status uninstalled; the release stays installed", elapsed: appMargin},
+			want: "release 'my-nginx' is at status uninstalled; its kept history was not removed", elapsed: appMargin},
 		"stalled, gone": {planStatus: "deployed", ops: []scripted{opStalled(" exit code: 1")}, apps: []scripted{mine("deployed"), absent},
 			want: "release 'my-nginx' was uninstalled; a later step failed (exit code 1)",
 			hint: clierr.Rancher + " get apps --cluster 'prod' --namespace 'web'", elapsed: time.Second},
@@ -847,7 +847,7 @@ func TestUninstallWait(t *testing.T) {
 		"stalled, unchanged": {planStatus: "deployed", ops: []scripted{opStalled(" exit code: 1")}, apps: []scripted{mine("deployed")},
 			want: "operation 'helm-operation-abcde' ended (exit code 1); release 'my-nginx' is at status deployed; the release stays installed", elapsed: appMargin},
 		"stalled, uninstalled before and still": {planStatus: "uninstalled", ops: []scripted{opStalled(" exit code: 1")}, apps: []scripted{mine("uninstalled")},
-			want: "operation 'helm-operation-abcde' ended (exit code 1); release 'my-nginx' is at status uninstalled; the release stays installed", elapsed: appMargin},
+			want: "operation 'helm-operation-abcde' ended (exit code 1); release 'my-nginx' is at status uninstalled; its kept history was not removed", elapsed: appMargin},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

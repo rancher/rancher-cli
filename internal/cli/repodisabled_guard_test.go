@@ -20,9 +20,11 @@ import (
 // the required flags of a row; a missing positional argument fails the
 // refusal test with the command's own usage error.
 var repoFlagRows = map[string][]string{
-	"charts":      {"--cluster", "prod"},
-	"app install": {"my-nginx", "--cluster", "prod", "--namespace", "web", "--chart", "nginx"},
-	"app upgrade": {"my-nginx", "--cluster", "prod", "--namespace", "web"},
+	"charts":            {"--cluster", "prod"},
+	"app install":       {"my-nginx", "--cluster", "prod", "--namespace", "web", "--chart", "nginx"},
+	"app upgrade":       {"my-nginx", "--cluster", "prod", "--namespace", "web"},
+	"extension install": {"a1"},
+	"extension upgrade": {extChart},
 }
 
 // repoFlagGaps returns one problem per command of m that has a flag named
@@ -106,9 +108,9 @@ func TestRepoFlagGapsNamesACommandWithNoRow(t *testing.T) {
 	})
 	assert.Equal(t, []string{"charts info has a repo flag and no row"}, repoFlagGaps(withCommand, repoFlagRows))
 
-	extra := map[string][]string{"charts": {"--cluster", "prod"}, "app install": repoFlagRows["app install"], "app upgrade": repoFlagRows["app upgrade"], "get pods": nil}
+	extra := map[string][]string{"charts": {"--cluster", "prod"}, "app install": repoFlagRows["app install"], "app upgrade": repoFlagRows["app upgrade"], "extension install": repoFlagRows["extension install"], "extension upgrade": repoFlagRows["extension upgrade"], "get pods": nil}
 	assert.Equal(t, []string{"the row of get pods names a command with no repo flag"}, repoFlagGaps(m, extra))
 
-	short := map[string][]string{"charts": nil, "app install": repoFlagRows["app install"], "app upgrade": repoFlagRows["app upgrade"]}
+	short := map[string][]string{"charts": nil, "app install": repoFlagRows["app install"], "app upgrade": repoFlagRows["app upgrade"], "extension install": repoFlagRows["extension install"], "extension upgrade": repoFlagRows["extension upgrade"]}
 	assert.Equal(t, []string{"the row of charts lacks the required flag --cluster"}, repoFlagGaps(m, short))
 }

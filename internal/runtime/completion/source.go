@@ -87,13 +87,24 @@ const (
 	// objects read. Only the sources of an allowlist in internal/cli may claim
 	// it.
 	AllowanceFour
+	// AllowanceExtension is the request limit of an extension source: five reads
+	// (the version document, the local Cluster, the ClusterRepo collection, the
+	// UIPlugins and the Apps) and one index for each ClusterRepo, at most
+	// ExtensionRepositoryLimit indexes. A source may make fewer. Only the sources
+	// of an allowlist in internal/cli may claim it.
+	AllowanceExtension
 )
+
+// ExtensionRepositoryLimit bounds the repository indexes an extension source
+// reads: a source that would need more offers nothing. The request limit for
+// AllowanceExtension is 5 plus this value.
+const ExtensionRepositoryLimit = 8
 
 // DiscoveryGroupLimit bounds the group documents a source reads on a
 // discovery root that does not serve the aggregated document: the
 // legacy walk is one request per group, and a cluster with more groups
-// than this offers its first DiscoveryGroupLimit groups. The surface's
-// count for AllowanceDiscovery is derived from it.
+// than this offers its first DiscoveryGroupLimit groups. The request limit
+// for AllowanceDiscovery is derived from it.
 const DiscoveryGroupLimit = 100
 
 // Requirements is a source's declaration for one request, made without

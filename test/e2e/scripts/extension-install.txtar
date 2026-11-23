@@ -1,0 +1,77 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
+
+# --dry-run reads the server and sends no action: the preview is from server
+# reads, the version is the first one that passes the checks of the Rancher UI
+# (the newest, 1.2.0, needs a newer Extensions API version), and the registry
+# is the value of the setting system-default-registry, because the chart's
+# default image.repository starts with rancher/.
+exec rancher extension install ext-install-chart --dry-run -o json
+cp stdout dry.json
+jsonquery dry.json data.previewSource serverReads
+jsonquery dry.json data.action create
+jsonquery dry.json data.displayName ext-install-chart
+jsonquery dry.json 'data.diff.#(path="repo").to' extension-install-repo
+jsonquery dry.json 'data.diff.#(path="version").to' 1.1.0
+jsonquery dry.json 'data.diff.#(path="namespace").to' cattle-ui-plugin-system
+jsonquery dry.json 'data.diff.#(path="releaseName").to' ext-install-chart
+jsonquery dry.json 'data.diff.#(path="values.global.cattle.systemDefaultRegistry").to' setting-registry.e2e.example.test
+extensionactions actions.json
+jsonquery actions.json '#' 0
+
+# A version that fails a check is refused and sends nothing.
+! exec rancher extension install ext-install-chart --version 1.2.0 --dry-run -o json
+jsonquery stderr data.error.code VALIDATION
+extensionactions actions.json
+jsonquery actions.json '#' 0
+
+# Without --apply the command is refused and sends nothing.
+! exec rancher extension install ext-install-chart -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+extensionactions actions.json
+jsonquery actions.json '#' 0
+
+# --apply sends the install action once, to the local cluster, with the request
+# the Rancher UI sends: no timeout, wait or description.
+exec rancher extension install ext-install-chart --repo extension-install-repo --version 1.1.0 --apply -o json
+cp stdout apply.json
+jsonquery apply.json data.release ext-install-chart
+jsonquery apply.json data.operationNamespace cattle-ui-plugin-system
+jsonget apply.json data.requestID reqid.txt
+setenvfrom REQID reqid.txt
+extensionactions actions.json
+jsonquery actions.json '#' 1
+jsonquery actions.json '0.action' install
+jsonquery actions.json '0.fieldManager' cli.rancher.io
+jsonquery actions.json '0.path' /v1/catalog.cattle.io.clusterrepos/extension-install-repo
+jsonquery actions.json '0.body.@keys' '["namespace","charts"]'
+jsonquery actions.json '0.body.namespace' cattle-ui-plugin-system
+jsonquery actions.json '0.body.charts.#' 1
+jsonquery actions.json '0.body.charts.0.@keys' '["chartName","version","releaseName","values","annotations"]'
+jsonquery actions.json '0.body.charts.0.chartName' ext-install-chart
+jsonquery actions.json '0.body.charts.0.releaseName' ext-install-chart
+jsonquery actions.json '0.body.charts.0.version' 1.1.0
+jsonquery actions.json '0.body.charts.0.values.global.cattle.systemDefaultRegistry' setting-registry.e2e.example.test
+jsonquery actions.json '0.body.charts.0.annotations.cli\.rancher\.io/request-id' $REQID
+jsonquery actions.json '0.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo' extension-install-repo
+jsonquery actions.json '0.body.charts.0.annotations.catalog\.cattle\.io/ui-source-repo-type' cluster
+
+# Rancher records the release as an App: the extension is installed, and
+# installing it again is refused without sending anything.
+exec rancher get app ext-install-chart --cluster local --namespace cattle-ui-plugin-system -o json
+jsonquery stdout data.spec.info.status deployed
+! exec rancher extension install ext-install-chart --apply -o json
+jsonquery stderr data.error.code CONFLICT
+extensionactions actions.json
+jsonquery actions.json '#' 1
+
+-- repo.yaml --
+apiVersion: catalog.cattle.io/v1
+kind: ClusterRepo
+metadata:
+  name: extension-install-repo
+spec:
+  gitRepo: https://example.test/extension-install-repo
+  gitBranch: main

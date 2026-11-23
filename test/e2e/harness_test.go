@@ -111,7 +111,30 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	// apiserver and the facade do not serve.
 	"extension-list": func(o *testrancher.Options) {
 		o.ClusterObject = extensionLocalCluster(o.ClusterObject)
-		o.Fallthrough = rancherVersionRoute(extensionRepoRoutes(chartIndexRoute(o.Fallthrough)), "false")
+		o.Fallthrough = rancherVersionRoute(extensionRepoRoutes(chartIndexRoute(o.Fallthrough), "extension-list-repo"), "false")
+	},
+	// The extension install reads what the list reads, the Settings and the
+	// info link of the chart, and sends the install action to the local
+	// cluster, whose Operation is complete at once: the App is created as
+	// deployed. Every action body is kept for the script's check.
+	"extension-install": func(o *testrancher.Options) {
+		extensionActions = &appActionLog{outcome: appDeployed}
+		o.ClusterObject = extensionLocalCluster(o.ClusterObject)
+		o.Fallthrough = rancherVersionRoute(extensionRepoRoutes(appActionRoutes(extensionActions, chartIndexRoute(appSettingRoutes(o.Fallthrough))), "extension-install-repo"), "false")
+	},
+	// The extension upgrade reads the same, and the script installs the
+	// extension first, so the App it upgrades is the one Rancher recorded.
+	"extension-upgrade": func(o *testrancher.Options) {
+		extensionUpgradeActions = &appActionLog{outcome: appDeployed}
+		o.ClusterObject = extensionLocalCluster(o.ClusterObject)
+		o.Fallthrough = rancherVersionRoute(extensionRepoRoutes(appActionRoutes(extensionUpgradeActions, chartIndexRoute(appSettingRoutes(o.Fallthrough))), "extension-upgrade-repo"), "false")
+	},
+	// The extension uninstall reads the same, and the script installs the
+	// extension first, so the App it uninstalls is the one Rancher recorded.
+	"extension-uninstall": func(o *testrancher.Options) {
+		extensionUninstallActions = &appActionLog{outcome: appDeployed}
+		o.ClusterObject = extensionLocalCluster(o.ClusterObject)
+		o.Fallthrough = rancherVersionRoute(extensionRepoRoutes(appActionRoutes(extensionUninstallActions, chartIndexRoute(appSettingRoutes(o.Fallthrough))), "extension-uninstall-repo"), "false")
 	},
 	// The index and info links of a ClusterRepo, the install and uninstall
 	// actions and the Settings app install reads, none of which the envtest
@@ -171,6 +194,19 @@ var chartIndexes = map[string]string{
 	  "app-upgrade-chart":[
 	    {"name":"app-upgrade-chart","version":"1.2.0","appVersion":"12","description":"the chart","digest":"u2","urls":["app-upgrade-chart-1.2.0.tgz"]},
 	    {"name":"app-upgrade-chart","version":"1.1.0","appVersion":"11","description":"older","digest":"u1","urls":["app-upgrade-chart-1.1.0.tgz"]}]}}`,
+	"extension-install-repo": `{"apiVersion":"v1","entries":{
+	  "ext-install-chart":[
+	    {"name":"ext-install-chart","version":"1.2.0","appVersion":"12","description":"the extension","digest":"x2","urls":["ext-install-chart-1.2.0.tgz"],"annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 9.0.0"}},
+	    {"name":"ext-install-chart","version":"1.1.0","appVersion":"11","description":"the extension","digest":"x1","urls":["ext-install-chart-1.1.0.tgz"],"annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}},
+	    {"name":"ext-install-chart","version":"1.0.0","appVersion":"10","description":"older","digest":"x0","urls":["ext-install-chart-1.0.0.tgz"],"annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}}]}}`,
+	"extension-upgrade-repo": `{"apiVersion":"v1","entries":{
+	  "ext-upgrade-chart":[
+	    {"name":"ext-upgrade-chart","version":"1.2.0","appVersion":"12","description":"the extension","digest":"u2","urls":["ext-upgrade-chart-1.2.0.tgz"],"annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 9.0.0"}},
+	    {"name":"ext-upgrade-chart","version":"1.1.0","appVersion":"11","description":"the extension","digest":"u1","urls":["ext-upgrade-chart-1.1.0.tgz"],"annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}},
+	    {"name":"ext-upgrade-chart","version":"1.0.0","appVersion":"10","description":"older","digest":"u0","urls":["ext-upgrade-chart-1.0.0.tgz"],"annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}}]}}`,
+	"extension-uninstall-repo": `{"apiVersion":"v1","entries":{
+	  "ext-uninstall-chart":[
+	    {"name":"ext-uninstall-chart","version":"1.1.0","appVersion":"11","description":"the extension","digest":"w1","urls":["ext-uninstall-chart-1.1.0.tgz"],"annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}}]}}`,
 	"extension-list-repo": `{"apiVersion":"v1","entries":{
 	  "ext-installed":[
 	    {"name":"ext-installed","version":"2.0.0","appVersion":"2.0.0","description":"installed","annotations":{"catalog.cattle.io/ui-component":"plugins","catalog.cattle.io/ui-extensions-version":">= 3.0.0"}},
@@ -208,9 +244,9 @@ func extensionLocalCluster(next func(string) (map[string]any, bool)) func(string
 }
 
 // extensionRepoRoutes responds to GET /v1/catalog.cattle.io.clusterrepos with the
-// steve collection of the one ClusterRepo of the extension-list scenario, in
-// the state active, and passes every other request on.
-func extensionRepoRoutes(next http.Handler) http.Handler {
+// steve collection of the one ClusterRepo of a scenario, named repo, in the
+// state active, and passes every other request on.
+func extensionRepoRoutes(next http.Handler, repo string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/catalog.cattle.io.clusterrepos" || r.Method != http.MethodGet {
 			next.ServeHTTP(w, r)
@@ -221,7 +257,7 @@ func extensionRepoRoutes(next http.Handler) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"metadata":{"name":"extension-list-repo","state":{"name":"active"}},"spec":{}}],"count":1,"revision":"1"}`))
+		_, _ = w.Write([]byte(`{"data":[{"metadata":{"name":"` + repo + `","state":{"name":"active"}},"spec":{}}],"count":1,"revision":"1"}`))
 	})
 }
 
@@ -276,6 +312,17 @@ var appWaitActions *appActionLog
 
 // appUpgradeActions is the log of the app-upgrade scenario's Rancher.
 var appUpgradeActions *appActionLog
+
+// extensionActions is the log of the extension scenarios' Rancher.
+var extensionActions *appActionLog
+
+// extensionUpgradeActions is the log of the extension-upgrade scenario's
+// Rancher.
+var extensionUpgradeActions *appActionLog
+
+// extensionUninstallActions is the log of the extension-uninstall scenario's
+// Rancher.
+var extensionUninstallActions *appActionLog
 
 // appActionEntry is one accepted action: the action name, the request path,
 // the fieldManager query value and the JSON body as sent.
@@ -382,6 +429,33 @@ func cmdAppActions(ts *testscript.TestScript, neg bool, args []string) {
 	writeAppActions(ts, "appactions", appActions, args[0])
 }
 
+// cmdExtensionActions is cmdAppActions for the extension scenarios' Rancher:
+// extensionactions <file>.
+func cmdExtensionActions(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 || extensionActions == nil {
+		ts.Fatalf("usage: extensionactions <file> (in an extension scenario)")
+	}
+	writeAppActions(ts, "extensionactions", extensionActions, args[0])
+}
+
+// cmdExtensionUpgradeActions is cmdAppActions for the extension-upgrade
+// scenario's Rancher: extensionupgradeactions <file>.
+func cmdExtensionUpgradeActions(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 || extensionUpgradeActions == nil {
+		ts.Fatalf("usage: extensionupgradeactions <file> (in the extension-upgrade scenario)")
+	}
+	writeAppActions(ts, "extensionupgradeactions", extensionUpgradeActions, args[0])
+}
+
+// cmdExtensionUninstallActions is cmdAppActions for the extension-uninstall
+// scenario's Rancher: extensionuninstallactions <file>.
+func cmdExtensionUninstallActions(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 || extensionUninstallActions == nil {
+		ts.Fatalf("usage: extensionuninstallactions <file> (in the extension-uninstall scenario)")
+	}
+	writeAppActions(ts, "extensionuninstallactions", extensionUninstallActions, args[0])
+}
+
 // cmdAppUpgradeActions is cmdAppActions for the app-upgrade scenario's
 // Rancher: appupgradeactions <file>.
 func cmdAppUpgradeActions(ts *testscript.TestScript, neg bool, args []string) {
@@ -416,10 +490,14 @@ func cmdAppOutcome(ts *testscript.TestScript, neg bool, args []string) {
 // pkg/catalogv2/helm/info.go InfoFromTarball, :25-84; the type is
 // pkg/api/steve/catalog/types/rest.go:52-58).
 var appInfos = map[string]string{
-	"app-install-chart/1.2.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.2.0"}}`,
-	"app-install-chart/1.1.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.1.0"}}`,
-	"app-upgrade-chart/1.2.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-upgrade-chart","version":"1.2.0"}}`,
-	"app-upgrade-chart/1.1.0": `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-upgrade-chart","version":"1.1.0"}}`,
+	"app-install-chart/1.2.0":   `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.2.0"}}`,
+	"app-install-chart/1.1.0":   `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-install-chart","version":"1.1.0"}}`,
+	"app-upgrade-chart/1.2.0":   `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-upgrade-chart","version":"1.2.0"}}`,
+	"app-upgrade-chart/1.1.0":   `{"values":{"replicaCount":1,"image":{"tag":"stable"}},"chart":{"apiVersion":"v2","name":"app-upgrade-chart","version":"1.1.0"}}`,
+	"ext-install-chart/1.1.0":   `{"values":{"replicaCount":1,"image":{"repository":"rancher/ext-install-chart","tag":"stable"}},"chart":{"apiVersion":"v2","name":"ext-install-chart","version":"1.1.0"}}`,
+	"ext-upgrade-chart/1.1.0":   `{"values":{"replicaCount":1,"image":{"repository":"other/ext-upgrade-chart","tag":"stable"}},"chart":{"apiVersion":"v2","name":"ext-upgrade-chart","version":"1.1.0"}}`,
+	"ext-upgrade-chart/1.0.0":   `{"values":{"replicaCount":1,"image":{"repository":"other/ext-upgrade-chart","tag":"stable"}},"chart":{"apiVersion":"v2","name":"ext-upgrade-chart","version":"1.0.0"}}`,
+	"ext-uninstall-chart/1.1.0": `{"values":{"replicaCount":1,"image":{"repository":"other/ext-uninstall-chart","tag":"stable"}},"chart":{"apiVersion":"v2","name":"ext-uninstall-chart","version":"1.1.0"}}`,
 	appRegistryChart + "/1.0.0": `{"values":{"replicaCount":1,"global":{"systemDefaultRegistry":"","cattle":{"systemDefaultRegistry":""}}},` +
 		`"chart":{"apiVersion":"v2","name":"` + appRegistryChart + `","version":"1.0.0"}}`,
 }
@@ -459,13 +537,14 @@ func appSettingRoutes(next http.Handler) http.Handler {
 	})
 }
 
-// appActionRoutes answers, on c-test, GET
+// appActionRoutes responds to, on c-test and on the local cluster at the server
+// root, GET
 // /v1/catalog.cattle.io.clusterrepos/<name>?link=info, GET
 // /v1/secrets/<ns>/<name> for the release Secrets the log holds, and POST
 // /v1/catalog.cattle.io.clusterrepos/<name>?action=install,
 // /v1/catalog.cattle.io.clusterrepos/<name>?action=upgrade and
 // /v1/catalog.cattle.io.apps/<ns>/<name>?action=uninstall. An action keeps
-// its body, creates the Operation Rancher creates, and answers 201 as
+// its body, creates the Operation Rancher creates, and responds with 201 as
 // Rancher does. Every other request goes on.
 func appActionRoutes(log *appActionLog, next http.Handler) http.Handler {
 	const (
@@ -475,6 +554,10 @@ func appActionRoutes(log *appActionLog, next http.Handler) http.Handler {
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path, ok := strings.CutPrefix(r.URL.Path, "/k8s/clusters/c-test")
+		if !ok && strings.HasPrefix(r.URL.Path, "/v1/") {
+			// The local cluster is at the server root.
+			path, ok = r.URL.Path, true
+		}
 		q := r.URL.Query()
 		var serve func(http.ResponseWriter, *http.Request, string)
 		switch {
@@ -533,7 +616,7 @@ func appServerError(w http.ResponseWriter, message string) {
 // isAppRepo reports whether a ClusterRepo is one of the app scenarios'
 // repositories, whose charts appInfos describes.
 func isAppRepo(repo string) bool {
-	return repo == "app-install-repo" || repo == "app-wait-repo" || repo == "app-upgrade-repo"
+	return repo == "app-install-repo" || repo == "app-wait-repo" || repo == "app-upgrade-repo" || repo == "extension-install-repo" || repo == "extension-upgrade-repo" || repo == "extension-uninstall-repo"
 }
 
 // serveAppInfo answers the info link. An empty chartName is the bare
@@ -1817,6 +1900,7 @@ func TestMain(m *testing.M) {
 	seedManagementCluster()
 	seedNamespaces()
 	seedDirectEndpointFixtures()
+	seedExtensionFixtures()
 	seedAccessRBAC()
 	seedCloudCredential()
 	seedRoleObjects()
@@ -2170,21 +2254,24 @@ func TestScenarios(t *testing.T) {
 			return false, fmt.Errorf("unknown condition %q", cond)
 		},
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
-			"jsonquery":         cmdJSONQuery,
-			"jsonvalue":         cmdJSONValue,
-			"waitwatchopen":     cmdWaitWatchOpen,
-			"shimwaits":         cmdShimWaits,
-			"pathmatch":         cmdPathmatch,
-			"flipstatus":        cmdFlipStatus,
-			"rawget":            cmdRawGet,
-			"seedexeccache":     cmdSeedExecCache,
-			"seedobj":           cmdSeedObj,
-			"jsonget":           cmdJSONGet,
-			"setenvfrom":        cmdSetenvFrom,
-			"waitobj":           cmdWaitObj,
-			"appactions":        cmdAppActions,
-			"appoutcome":        cmdAppOutcome,
-			"appupgradeactions": cmdAppUpgradeActions,
+			"jsonquery":                 cmdJSONQuery,
+			"jsonvalue":                 cmdJSONValue,
+			"waitwatchopen":             cmdWaitWatchOpen,
+			"shimwaits":                 cmdShimWaits,
+			"pathmatch":                 cmdPathmatch,
+			"flipstatus":                cmdFlipStatus,
+			"rawget":                    cmdRawGet,
+			"seedexeccache":             cmdSeedExecCache,
+			"seedobj":                   cmdSeedObj,
+			"jsonget":                   cmdJSONGet,
+			"setenvfrom":                cmdSetenvFrom,
+			"waitobj":                   cmdWaitObj,
+			"appactions":                cmdAppActions,
+			"appoutcome":                cmdAppOutcome,
+			"appupgradeactions":         cmdAppUpgradeActions,
+			"extensionactions":          cmdExtensionActions,
+			"extensionupgradeactions":   cmdExtensionUpgradeActions,
+			"extensionuninstallactions": cmdExtensionUninstallActions,
 		},
 	})
 }
@@ -2202,6 +2289,26 @@ func seedManagementCluster() {
 	if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 		panic("seeding management cluster c-test: " + err.Error())
 	}
+}
+
+// seedExtensionFixtures creates the namespace cattle-ui-plugin-system and the
+// uiextension Feature turned on, which every extension script reads. Global
+// and one-time: no script turns the Feature off or deletes the namespace, as
+// the scripts run in parallel against one apiserver.
+func seedExtensionFixtures() {
+	create := func(gvr schema.GroupVersionResource, obj map[string]any) {
+		_, err := dynCli.Resource(gvr).Create(context.Background(), &unstructured.Unstructured{Object: obj}, metav1.CreateOptions{})
+		if err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
+			panic(fmt.Sprintf("seeding %s: %v", gvr.Resource, err))
+		}
+	}
+	create(schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}, map[string]any{
+		"apiVersion": "v1", "kind": "Namespace", "metadata": map[string]any{"name": "cattle-ui-plugin-system"},
+	})
+	create(schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"}, map[string]any{
+		"apiVersion": "management.cattle.io/v3", "kind": "Feature",
+		"metadata": map[string]any{"name": "uiextension"}, "spec": map[string]any{"value": true},
+	})
 }
 
 // seedDirectEndpointFixtures creates the management objects the kubeconfig

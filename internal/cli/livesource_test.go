@@ -42,7 +42,10 @@ func TestAllowanceLimit(t *testing.T) {
 	n, ok = allowanceLimit(completion.AllowanceFour)
 	require.True(t, ok)
 	assert.Equal(t, 4, n)
-	for _, a := range []completion.Allowance{0, -1, completion.AllowanceFour + 1, 100} {
+	n, ok = allowanceLimit(completion.AllowanceExtension)
+	require.True(t, ok)
+	assert.Equal(t, 13, n, "five reads plus one index read for each of the eight repositories")
+	for _, a := range []completion.Allowance{0, -1, completion.AllowanceExtension + 1, 100} {
 		_, ok := allowanceLimit(a)
 		assert.False(t, ok, "allowance %d", a)
 	}
@@ -188,7 +191,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		"oidc-client rotate-secret", "oidc-client remove-secret",
 		"logs", "inspect project", "inspect cluster",
 		"auth login", "auth get-token", "token",
-		"node drain", "node stop-drain", "extension add-repository",
+		"node drain", "node stop-drain", "extension add-repository", "extension install", "extension upgrade", "extension uninstall",
 	}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)

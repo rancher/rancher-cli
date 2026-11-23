@@ -28,11 +28,22 @@ var allowanceFourSources = map[string]string{
 	"internal/runtime/completion/source.go:AllowanceFour":                  "the declaration of the class member",
 }
 
+// allowanceExtensionSources are the declarations of the live source packages
+// and of the completion package that may name AllowanceExtension, listed as
+// allowanceFourSources lists its own.
+var allowanceExtensionSources = map[string]string{
+	"internal/engine/catalog/complete/extensioninstall.go:ExtensionInstallSource": "the `extension install` source of the chart name, --repo and --version: the version document, the local Cluster, the ClusterRepo collection, the UIPlugins, the Apps and one index per repository up to completion.ExtensionRepositoryLimit",
+	"internal/engine/catalog/complete/extensionupgrade.go:ExtensionUpgradeSource": "the `extension upgrade` source of the chart name and --version: the compatibility reads, the Apps, the ClusterRepo collection and one index per repository the Apps name up to completion.ExtensionRepositoryLimit",
+	"internal/runtime/completion/source.go:AllowanceExtension":                    "the declaration of the class member",
+}
+
 // allowanceScan is what the scan of one file found.
 type allowanceScan struct {
 	// uses are the "<file>:<declaration>" entries whose declaration names
 	// AllowanceFour.
 	uses []string
+	// extensionUses are the same for AllowanceExtension.
+	extensionUses []string
 	// bypasses are the places that build an Allowance without naming a
 	// member of the class: a conversion, arithmetic on a member or the
 	// field, a basic literal in an Allowance position.
@@ -82,12 +93,11 @@ func specName(spec ast.Spec) string {
 	return ""
 }
 
-// namesAllowanceFour reports whether the node has the identifier
-// AllowanceFour.
-func namesAllowanceFour(n ast.Node) bool {
+// namesIdent reports whether the node has the identifier name.
+func namesIdent(n ast.Node, name string) bool {
 	found := false
 	ast.Inspect(n, func(m ast.Node) bool {
-		if id, ok := m.(*ast.Ident); ok && id.Name == "AllowanceFour" {
+		if id, ok := m.(*ast.Ident); ok && id.Name == name {
 			found = true
 		}
 		return !found
@@ -102,13 +112,19 @@ func scanAllowanceFile(fset *token.FileSet, file *ast.File, key string) allowanc
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			if namesAllowanceFour(d) {
+			if namesIdent(d, "AllowanceFour") {
 				out.uses = append(out.uses, key+":"+d.Name.Name)
+			}
+			if namesIdent(d, "AllowanceExtension") {
+				out.extensionUses = append(out.extensionUses, key+":"+d.Name.Name)
 			}
 		case *ast.GenDecl:
 			for _, spec := range d.Specs {
-				if namesAllowanceFour(spec) {
+				if namesIdent(spec, "AllowanceFour") {
 					out.uses = append(out.uses, key+":"+specName(spec))
+				}
+				if namesIdent(spec, "AllowanceExtension") {
+					out.extensionUses = append(out.extensionUses, key+":"+specName(spec))
 				}
 			}
 		}
@@ -178,6 +194,8 @@ func scanAllowanceFile(fset *token.FileSet, file *ast.File, key string) allowanc
 	})
 	slices.Sort(out.uses)
 	out.uses = slices.Compact(out.uses)
+	slices.Sort(out.extensionUses)
+	out.extensionUses = slices.Compact(out.extensionUses)
 	return out
 }
 
@@ -205,10 +223,12 @@ func scanAllowancePackages(t *testing.T) allowanceScan {
 			require.NoError(t, err)
 			found := scanAllowanceFile(fset, parsed, rel+"/"+f.Name())
 			all.uses = append(all.uses, found.uses...)
+			all.extensionUses = append(all.extensionUses, found.extensionUses...)
 			all.bypasses = append(all.bypasses, found.bypasses...)
 		}
 	}
 	slices.Sort(all.uses)
+	slices.Sort(all.extensionUses)
 	return all
 }
 
@@ -236,6 +256,24 @@ func TestOnlyTheListedSourcesClaimAllowanceFour(t *testing.T) {
 	}
 }
 
+// TestOnlyTheListedSourcesClaimAllowanceExtension asserts that
+// AllowanceExtension is named only by the declarations of
+// allowanceExtensionSources, among the non-test files of every live source
+// package and of the completion package, and that every entry of the list is
+// still used.
+func TestOnlyTheListedSourcesClaimAllowanceExtension(t *testing.T) {
+	t.Parallel()
+	found := scanAllowancePackages(t)
+	for _, use := range found.extensionUses {
+		_, listed := allowanceExtensionSources[use]
+		assert.True(t, listed, "%s names AllowanceExtension and is not in allowanceExtensionSources: a source that reads one index per repository is a reviewed exception, with its reason", use)
+	}
+	for entry, reason := range allowanceExtensionSources {
+		assert.NotEmpty(t, reason, entry)
+		assert.Contains(t, found.extensionUses, entry, "allowanceExtensionSources lists %s, which names AllowanceExtension nowhere", entry)
+	}
+}
+
 // TestAllowanceScanSeesEveryBypass asserts that the scan reports each form
 // that builds an Allowance without naming a member of the class, and
 // nothing in a source that claims a member or passes a value on.
@@ -243,10 +281,11 @@ func TestAllowanceScanSeesEveryBypass(t *testing.T) {
 	t.Parallel()
 	const head = "package p\nimport \"x/completion\"\n"
 	tests := []struct {
-		name     string
-		src      string
-		uses     []string
-		bypasses []string
+		name          string
+		src           string
+		uses          []string
+		extensionUses []string
+		bypasses      []string
 	}{
 		{name: "claims a member", src: head + "func f() completion.Requirements { return completion.Requirements{Allowance: completion.AllowanceThree} }\n"},
 		{name: "passes a parameter on", src: head + "func f(a completion.Allowance) completion.Requirements { return completion.Requirements{Allowance: a} }\n"},
@@ -255,6 +294,8 @@ func TestAllowanceScanSeesEveryBypass(t *testing.T) {
 		{name: "names AllowanceFour in a function", src: head + "func f() completion.Requirements { return completion.Requirements{Allowance: completion.AllowanceFour} }\n", uses: []string{"f.go:f"}},
 		{name: "names AllowanceFour in a constructor", src: head + "func ManagementFourReads() Requirements { return Requirements{Allowance: AllowanceFour} }\n", uses: []string{"f.go:ManagementFourReads"}},
 		{name: "names AllowanceFour in a variable", src: head + "var four = completion.AllowanceFour\n", uses: []string{"f.go:four"}},
+		{name: "names AllowanceExtension in a function", src: head + "func f() completion.Requirements { return completion.Requirements{Allowance: completion.AllowanceExtension} }\n", extensionUses: []string{"f.go:f"}},
+		{name: "names AllowanceExtension in a variable", src: head + "var all = completion.AllowanceExtension\n", extensionUses: []string{"f.go:all"}},
 		{name: "converts a number", src: head + "func f() completion.Requirements { return completion.Requirements{Allowance: completion.Allowance(4)} }\n", bypasses: []string{"f.go:3: a conversion to Allowance"}},
 		{name: "converts without the package", src: head + "func f() Allowance { return Allowance(4) }\n", bypasses: []string{"f.go:3: a conversion to Allowance"}},
 		{name: "adds to a member", src: head + "func f() completion.Requirements { return completion.Requirements{Allowance: completion.AllowanceThree + 1} }\n", bypasses: []string{"f.go:3: arithmetic on an Allowance"}},
@@ -276,6 +317,7 @@ func TestAllowanceScanSeesEveryBypass(t *testing.T) {
 			require.NoError(t, err)
 			found := scanAllowanceFile(fset, parsed, "f.go")
 			assert.Equal(t, tc.uses, found.uses)
+			assert.Equal(t, tc.extensionUses, found.extensionUses)
 			assert.Equal(t, tc.bypasses, found.bypasses)
 		})
 	}

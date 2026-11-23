@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -437,25 +436,33 @@ func (c *upgradeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect,
 	}
 
 	warnings = append(warnings, p.optionWarnings(f, info)...)
-	eff := safety.Effect{
-		Action:            safety.ActionUpdate,
-		Target:            kind("app").GVR.Resource + "/" + release,
-		DisplayKind:       "app",
-		DisplayName:       release,
-		PreviewSource:     safety.PreviewServerReads,
-		Cluster:           p.cluster,
-		Diff:              append(p.diff(source), entries...),
-		ConflictDetection: false,
-		Reversible:        false,
-		Destructive:       true,
-		Warnings:          append(append([]string{idWarning, warnServerReads, warnUpgradeRisk}, storedWarnings...), warnings...),
-	}
+	eff := upgradeEffect(p.cluster, release, append(p.diff(source), entries...),
+		append(append([]string{idWarning, warnServerReads, warnUpgradeRisk}, storedWarnings...), warnings...))
 	if pullSecretsWarningApplies(ctx, c.clients) {
 		eff.Warnings = append(eff.Warnings, warnPullSecretsInstall)
 		p.target.pullSecretNote = notePullSecretsInstall
 	}
 	exec := func(ctx context.Context) (runtime.Result, error) { return c.execute(ctx, p) }
 	return eff, exec, nil
+}
+
+// upgradeEffect is the Effect of an upgrade request previewed from server
+// reads: it carries no precondition, and the request creates a new revision of the
+// release.
+func upgradeEffect(cluster, release string, diff []safety.DiffEntry, warnings []string) safety.Effect {
+	return safety.Effect{
+		Action:            safety.ActionUpdate,
+		Target:            kind("app").GVR.Resource + "/" + release,
+		DisplayKind:       "app",
+		DisplayName:       release,
+		PreviewSource:     safety.PreviewServerReads,
+		Cluster:           cluster,
+		Diff:              diff,
+		ConflictDetection: false,
+		Reversible:        false,
+		Destructive:       true,
+		Warnings:          warnings,
+	}
 }
 
 // checkStatus refuses an App Helm cannot upgrade: the status must be
@@ -572,47 +579,20 @@ func (p upgradePlan) resolveVersion(ctx context.Context, want string) (ChartVers
 // needs: a version the repository no longer has is a VALIDATION error, not a
 // server error, and the answer must be for exactly the version asked for.
 func (p upgradePlan) readInfo(ctx context.Context) (Info, error) {
-	info, err := ReadInfo(ctx, p.root, p.cluster, p.repo, p.chart, p.version)
-	if err != nil {
-		return Info{}, p.infoError(err)
-	}
-	if info.Chart.Version != p.version {
-		return Info{}, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"version %s of chart %s is no longer in ClusterRepo %s (Rancher returned version %s instead); name one with --version",
-			clierr.ShellQuote(p.version), clierr.ShellQuote(p.chart), clierr.ShellQuote(p.repo), clierr.ShellQuote(info.Chart.Version))).
-			WithHintCommand(p.chartsHint("--all-versions"))
-	}
-	return info, nil
+	return readChartInfo(ctx, p.root, p.infoTarget())
 }
 
-// The texts of Helm's index lookup that Rancher returns as a 500 when the
-// repository no longer has a chart or a version.
-const (
-	lookupNoChart    = "no chart name found"
-	lookupNoVersions = "no chart version found"
-	lookupNoVersion  = "no chart version found for "
-)
+// infoError maps a failed info read as readChartInfo does.
+func (p upgradePlan) infoError(err error) error { return p.infoTarget().mapError(err) }
 
-// infoError maps the 500 Rancher answers when its Helm index lookup finds no
-// chart or no version to a VALIDATION error naming what is missing; any other
-// error keeps the status table's code.
-func (p upgradePlan) infoError(err error) error {
-	status, ok := clierr.HTTPStatus(err)
-	if !ok || status != 500 {
-		return withRepoRemedy(err, p.target.typedCluster)
+// infoTarget is the info read of the target version, with the charts command
+// as the hint of a refusal.
+func (p upgradePlan) infoTarget() infoTarget {
+	return infoTarget{
+		noun:    "chart",
+		cluster: p.cluster, typedCluster: p.target.typedCluster, repo: p.repo, chart: p.chart, version: p.version,
+		listHint: p.chartsHint(), versionsHint: p.chartsHint("--all-versions"),
 	}
-	msg := clierr.From(err).Message
-	chart, repo := clierr.ShellQuote(p.chart), clierr.ShellQuote(p.repo)
-	switch {
-	case strings.Contains(msg, lookupNoChart):
-		return clierr.New(clierr.CodeValidation, fmt.Sprintf("chart %s is no longer in ClusterRepo %s", chart, repo)).WithHintCommand(p.chartsHint())
-	case strings.Contains(msg, lookupNoVersion):
-		return clierr.New(clierr.CodeValidation, fmt.Sprintf("version %s of chart %s is no longer in ClusterRepo %s; name one with --version",
-			clierr.ShellQuote(p.version), chart, repo)).WithHintCommand(p.chartsHint("--all-versions"))
-	case strings.Contains(msg, lookupNoVersions):
-		return clierr.New(clierr.CodeValidation, fmt.Sprintf("chart %s has no versions in ClusterRepo %s", chart, repo)).WithHintCommand(p.chartsHint())
-	}
-	return err
 }
 
 // countedFlagTyped reports whether a flag that makes a change was typed:

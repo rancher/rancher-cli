@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -95,6 +96,28 @@ func newChartsServer(t *testing.T, broken bool) *chartsServer {
 			_, _ = w.Write([]byte(`{"apiVersion":"catalog.cattle.io/v1","kind":"App","metadata":{"name":"` + appRelease + `","namespace":"` + appNS +
 				`","resourceVersion":"7"},"spec":{"name":"` + appRelease + `","version":1,"info":{"status":"deployed"},"chart":{"metadata":{"name":"` + appChart +
 				`","version":"2.0.0","annotations":{"catalog.cattle.io/ui-source-repo-type":"cluster","catalog.cattle.io/ui-source-repo":"rancher-charts"}}}}}`))
+			return
+		}
+		if path == localProxyPrefix+"/apis/catalog.cattle.io/v1/namespaces/cattle-ui-plugin-system/apps/"+extChart {
+			_, _ = w.Write([]byte(`{"apiVersion":"catalog.cattle.io/v1","kind":"App","metadata":{"name":"` + extChart + `","namespace":"cattle-ui-plugin-system","resourceVersion":"7"},` +
+				`"spec":{"name":"` + extChart + `","info":{"status":"deployed"},"chart":{"metadata":{"name":"` + extChart + `","version":"1.14.2",` +
+				`"annotations":{"catalog.cattle.io/ui-source-repo-type":"cluster","catalog.cattle.io/ui-source-repo":"off-charts"}}}}}`))
+			return
+		}
+		if path == localProxyPrefix+"/api/v1/namespaces/cattle-ui-plugin-system" {
+			_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"cattle-ui-plugin-system"}}`))
+			return
+		}
+		if path == "/v1/catalog.cattle.io.clusterrepos" {
+			items := make([]string, len(repos))
+			for i, name := range repoNames {
+				state, enabled := "active", "true"
+				if name == "off-charts" {
+					enabled = "false"
+				}
+				items[i] = `{"metadata":{"name":"` + name + `","state":{"name":"` + state + `"}},"spec":{"enabled":` + enabled + `}}`
+			}
+			_, _ = w.Write([]byte(`{"data":[` + strings.Join(items, ",") + `],"count":` + strconv.Itoa(len(items)) + `,"revision":"1"}`))
 			return
 		}
 		for _, prefix := range []string{localProxyPrefix, downProxyPrefix} {

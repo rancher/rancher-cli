@@ -34,6 +34,12 @@ var actionCallers = []actionCaller{
 	{"upgrade.go", "upgradeCmd.execute", "postAction", "upgrade"},
 	{"uninstall.go", "uninstallCmd.Plan", "postAction", "uninstall"},
 	{"uninstall.go", "uninstallCmd.Plan", "pullSecretsWarningApplies", "uninstall"},
+	{"extensioninstall.go", "extensionInstallCmd.Plan", "pullSecretsWarningApplies", "install"},
+	{"extensioninstall.go", "extensionInstallCmd.execute", "postAction", "install"},
+	{"extensionupgrade.go", "extensionUpgradeCmd.Plan", "pullSecretsWarningApplies", "upgrade"},
+	{"extensionupgrade.go", "extensionUpgradeCmd.execute", "postAction", "upgrade"},
+	{"extensionuninstall.go", "extensionUninstallCmd.Plan", "pullSecretsWarningApplies", "uninstall"},
+	{"extensionuninstall.go", "extensionUninstallCmd.execute", "postAction", "uninstall"},
 }
 
 // functionName is the name of decl, with the type of its receiver when it has

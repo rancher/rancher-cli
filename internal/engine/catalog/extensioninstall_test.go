@@ -36,11 +36,10 @@ func TestInstallRefusesAnExtensionChart(t *testing.T) {
 				}
 			})
 			_, _, err := newTestInstall(f, nil).Plan(t.Context(), in)
-			require.ErrorContains(t, err, "chart 'nginx' in ClusterRepo 'repo1' is a Rancher UI extension, which belongs in the namespace cattle-ui-plugin-system; "+
-				"this CLI does not install extensions yet")
+			require.ErrorContains(t, err, "chart 'nginx' in ClusterRepo 'repo1' is a Rancher UI extension, which belongs in the namespace cattle-ui-plugin-system")
 			ce := clierr.From(err)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Equal(t, clierr.Rancher+" extension list", ce.Hint)
+			assert.Equal(t, clierr.Rancher+" extension install 'nginx' --repo 'repo1' --dry-run", ce.Hint)
 			assert.Zero(t, f.postCount())
 		})
 	}

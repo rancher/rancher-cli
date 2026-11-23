@@ -2032,8 +2032,10 @@ end of Helm's run (see "What follows the request").
 have no dry-run. The CLI never sends the uninstall action's `dryRun` option. `--dry-run`
 therefore builds the preview from what the server answers to reads, and the
 Effect says so: `previewSource` is `serverReads` (every other mutation says
-`serverDryRun`, except `node drain` and `node stop-drain` for a caller without
-access to Rancher's local cluster), `resourceVersion` is empty and `conflictDetection` is false.
+`serverDryRun`, except `extension install`, `extension upgrade` and
+`extension uninstall`, and `node drain` and `node stop-drain` for a caller
+without access to Rancher's local cluster),
+`resourceVersion` is empty and `conflictDetection` is false.
 Every preview warns that it comes from server reads and names who Helm runs as.
 For an install that is the ClusterRepo's `spec.serviceAccount` in its
 `spec.serviceAccountNamespace` (both set, the namespace holding no `:`). For an
@@ -2416,7 +2418,8 @@ yet, or whose revision is not this request's yet, until
 the timeout, and a revision of this request at a status other than `deployed`
 or `failed` for at most 30 seconds more, or the time left; an uninstall reads
 the App for at most 30 seconds, or the time left, and an App still there at
-the end ends the wait with `the release stays installed`. A watch event that
+the end ends the wait with `the release stays installed`, or with `its kept
+history was not removed` when it reads `uninstalled`. A watch event that
 the App was deleted ends an uninstall's wait at once.
 
 - `app install` is done when the revision that carries this request's id
@@ -2449,8 +2452,9 @@ An install ends in an error when:
 An uninstall ends in an error when the operation is `Stalled` and the App is
 gone or reads `uninstalled` within the 30 seconds (`release <name> was
 uninstalled; a later step failed`), when the App is still there at the end
-(`the release stays installed`), or when the App reads `uninstalled` without
-`--keep-history` (its kept history was not removed).
+with a status other than `uninstalled` (`the release stays installed`), or
+when the App reads `uninstalled` at the end without `--keep-history` (its
+kept history was not removed).
 
 **What `app upgrade` does after a failure.** An upgrade ends in an error in the
 cases listed for an install. When the revision of the request reads `failed`,
@@ -2603,7 +2607,97 @@ with the server.
   warning.
 - `rancher charts` leaves extension charts out, as the Rancher UI's Charts page
   does, and `rancher app install` refuses one with `VALIDATION`, with and
-  without `--version`; this CLI does not install extensions yet.
+  without `--version`; `rancher extension install` installs one, `rancher extension upgrade` upgrades one and `rancher extension uninstall` uninstalls one.
+
+### Installing an extension
+
+`rancher extension install <chart> [--repo <repo>] [--version <version>]`
+installs an extension as the Rancher UI's Extensions page does: through the
+`install` action of the ClusterRepo that offers the chart, into the namespace
+`cattle-ui-plugin-system` of the local cluster, with the chart's name as the
+release name and no Helm option. The request body is the Rancher UI's: the
+namespace and one chart entry with the chart name, version, release name and
+`values: {}`, plus three annotations on the chart entry (a request ID and the
+type and name of the source ClusterRepo). The values have
+`global.cattle.systemDefaultRegistry` only when the setting
+`system-default-registry` has a value and the chart's default `image.repository`
+starts with `rancher/`.
+
+- Without `--repo`, exactly one ClusterRepo that the Rancher UI reads must offer
+  the chart; with two, the command names them and asks for `--repo`.
+- Without `--version` the version is the first one in the index that passes the
+  checks the Rancher UI runs; a prerelease or deprecated default is named in a
+  warning. A version that fails a check is refused with the check's reason.
+- The command is refused when an App with the chart's name exists in the
+  namespace (`CONFLICT`), when a UIPlugin of that name exists with no App (an
+  extension loaded from a URL, `CONFLICT`), and for a chart that installs several
+  extensions together.
+- The preview comes from server reads (`previewSource: serverReads`) because
+  Rancher has no dry-run for the action; `--apply` reads the App, the operations
+  and the index entry again before the request. `--wait` follows the Operation
+  and the App as `rancher app install` does and does not wait for the Rancher UI
+  to load the extension.
+- Differences from the Rancher UI, on purpose: the request carries three
+  annotations (a request ID, `catalog.cattle.io/ui-source-repo-type` and
+  `catalog.cattle.io/ui-source-repo`) where the UI sends none, so that `--wait`
+  finds the revision and an uninstall finds the repository's service account,
+  and an extension that is already installed is refused, where the UI sends the
+  `upgrade` action.
+- It needs the Kubernetes verbs `get` and `list` on the ClusterRepos and their
+  index links, `list` on `uiplugins`, `get` on apps in
+  `cattle-ui-plugin-system`, `list` on operations there (without it the
+  preview warns that running operations were not checked), `get` on the setting `system-default-registry` and the `install`
+  action of the ClusterRepo; `--wait` also needs `get` on operations there. The
+  Extensions page needs the admin role in the Rancher UI.
+
+### Upgrading an extension
+
+`rancher extension upgrade <chart> [--repo <repo>] [--version <version>]`
+upgrades an installed extension as the Rancher UI's Extensions page does:
+through the `upgrade` action of the ClusterRepo the App came from, for the
+release with the chart's name in the namespace `cattle-ui-plugin-system`. The
+request body and the registry rule are those of the install. It is destructive:
+`--apply` needs `--yes`.
+
+- The ClusterRepo is the one in the App's annotation
+  `catalog.cattle.io/ui-source-repo`, else in its label
+  `catalog.cattle.io/cluster-repo-name`; an App with neither is refused. A
+  `--repo` other than that ClusterRepo is refused.
+- Without `--version` the version is the first one in the index that passes the
+  checks the Rancher UI runs, as for the install. The version that is already
+  installed (the App's chart version) is refused. An older version is a downgrade: it is
+  accepted, with a warning, and Helm runs it as any upgrade. When the index
+  does not list the installed version, the warning says that whether the new
+  version is older was not checked.
+- An extension with no App is `NOT_FOUND`: not installed, or loaded from a URL
+  (a UIPlugin with no App), which this command does not upgrade. An App with a status
+  other than `deployed`, `failed` or `superseded` is `CONFLICT`.
+- The preview comes from server reads (`previewSource: serverReads`); `--apply`
+  reads the App again and refuses when it changed, reads the operations and the
+  index entry again, then sends the request. `--wait` follows the Operation and
+  the App as `rancher app upgrade` does.
+- It needs what the install needs, with the `upgrade` action of the ClusterRepo
+  in place of the `install` action.
+
+### Uninstalling an extension
+
+`rancher extension uninstall <chart>` uninstalls an installed extension as the
+Rancher UI's Extensions page does: through the `uninstall` action of the App
+with the chart's name in the namespace `cattle-ui-plugin-system` of the local
+cluster. The request body is empty, as the Rancher UI's is. It is destructive:
+`--apply` needs `--yes`.
+
+- An extension with no App is `NOT_FOUND`: not installed, or loaded from a URL
+  (a UIPlugin with no App), which the Rancher UI uninstalls. An App with no UIPlugin
+  is uninstalled.
+- An App with the status `uninstalled` (Helm kept its history) is accepted, with
+  a warning that the command removes the kept history.
+- The preview comes from server reads (`previewSource: serverReads`); `--apply`
+  reads the App and the operations again and refuses when the App changed, then
+  sends the request. `--wait` follows the Operation and the App as
+  `rancher app uninstall` does.
+- It needs `get` on the App, `list` on the operations in
+  `cattle-ui-plugin-system`, and the `uninstall` action of the App.
 
 ## Draining a node
 
@@ -3406,11 +3500,12 @@ the tokens the CLI created and recorded (see
 
 `--dry-run` of a mutating command still sends write-verb requests
 server-side (admission dry-run); a genuinely read-only RBAC token cannot
-dry-run at all. `app install` and `app uninstall`, and `node drain` and
+dry-run at all. `app install`, `app upgrade`, `app uninstall`, `extension
+install`, `extension upgrade` and `extension uninstall`, and `node drain` and
 `node stop-drain` for a caller without access to Rancher's local cluster, are
 the exception: their preview comes from server reads (`previewSource:
-serverReads`). Read-only mode doesn't special-case this - it refuses
-mutating commands outright, `--dry-run` included.
+serverReads`). Read-only mode doesn't special-case this - it refuses mutating
+commands outright, `--dry-run` included.
 
 ## Supported server version
 

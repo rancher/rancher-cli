@@ -6,7 +6,9 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -97,6 +99,70 @@ func ReadInfo(ctx context.Context, root engine.RootClient, cluster, repo, chart,
 				" in ClusterRepo "+clierr.ShellQuote(repo)+" is not valid JSON").WithCause(err)
 	}
 	return info, nil
+}
+
+// infoTarget is one chart version whose info a command reads, as the
+// command's user typed it, and the command a refusal points to.
+type infoTarget struct {
+	// noun is the word a refusal uses for the chart: "chart" for the app
+	// commands, "extension" for the extension commands.
+	noun string
+	// cluster is the cluster id the ClusterRepo is read from; typedCluster is
+	// the value the user typed for it, which the hint of a missing
+	// ClusterRepo carries.
+	cluster, typedCluster, repo, chart, version string
+	// listHint is the command that lists the repository's charts, and
+	// versionsHint the one that lists every version of them.
+	listHint, versionsHint clierr.Command
+}
+
+// The texts of Helm's index lookup that Rancher returns as a 500 when the
+// repository no longer has a chart or a version.
+const (
+	lookupNoChart    = "no chart name found"
+	lookupNoVersions = "no chart version found"
+	lookupNoVersion  = "no chart version found for "
+)
+
+// readChartInfo reads the info of the target version with the mapping an
+// upgrade needs: a version the repository no longer has is a VALIDATION error,
+// not a server error, and the response must be for exactly the version asked
+// for.
+func readChartInfo(ctx context.Context, root engine.RootClient, t infoTarget) (Info, error) {
+	info, err := ReadInfo(ctx, root, t.cluster, t.repo, t.chart, t.version)
+	if err != nil {
+		return Info{}, t.mapError(err)
+	}
+	if info.Chart.Version != t.version {
+		return Info{}, clierr.New(clierr.CodeValidation, fmt.Sprintf(
+			"version %s of %s %s is no longer in ClusterRepo %s (Rancher returned version %s instead); name one with --version",
+			clierr.ShellQuote(t.version), t.noun, clierr.ShellQuote(t.chart), clierr.ShellQuote(t.repo), clierr.ShellQuote(info.Chart.Version))).
+			WithHintCommand(t.versionsHint)
+	}
+	return info, nil
+}
+
+// mapError maps the 500 that Rancher returns when its Helm index lookup finds no
+// chart or no version to a VALIDATION error naming what is missing; a
+// NOT_FOUND response gets the command that lists the ClusterRepos, and any other
+// error keeps the status table's code.
+func (t infoTarget) mapError(err error) error {
+	status, ok := clierr.HTTPStatus(err)
+	if !ok || status != 500 {
+		return withRepoRemedy(err, t.typedCluster)
+	}
+	msg := clierr.From(err).Message
+	chart, repo := clierr.ShellQuote(t.chart), clierr.ShellQuote(t.repo)
+	switch {
+	case strings.Contains(msg, lookupNoChart):
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf("%s %s is no longer in ClusterRepo %s", t.noun, chart, repo)).WithHintCommand(t.listHint)
+	case strings.Contains(msg, lookupNoVersion):
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf("version %s of %s %s is no longer in ClusterRepo %s; name one with --version",
+			clierr.ShellQuote(t.version), t.noun, chart, repo)).WithHintCommand(t.versionsHint)
+	case strings.Contains(msg, lookupNoVersions):
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf("%s %s has no versions in ClusterRepo %s", t.noun, chart, repo)).WithHintCommand(t.listHint)
+	}
+	return err
 }
 
 // repoError puts the repository name in front of err's message and keeps

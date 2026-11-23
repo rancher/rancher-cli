@@ -1,0 +1,24 @@
+NAME:
+   rancher extension install - Install a Rancher UI extension from a ClusterRepo
+
+USAGE:
+   rancher extension install [options] <chart>
+
+OPTIONS:
+   --help, -h         show help
+   --repo name        ClusterRepo name that offers the chart (default: the only ClusterRepo the Rancher UI reads that offers it)
+   --timeout timeout  wait timeout, e.g. 10m (default 55m, at most 55m; starts the wait)
+   --version version  exact chart version (default: the first version that passes the checks of the Rancher UI)
+   --wait             wait until Helm's run finishes and report how it ended
+
+GLOBAL OPTIONS:
+   --allow-deprecated          allow writing to a deprecated resource
+   --apply                     apply the change
+   --color string              auto|always|never
+   --config string, -c string  path to the config directory [$RANCHER_CLI_CONFIG_DIR]
+   --debug                     print telemetry upload details on stderr (development builds)
+   --dry-run                   preview the changes without applying them
+   --no-input                  never prompt; fail with an error when the input is ambiguous
+   --output string, -o string  table|wide|json|yaml|name|template=<go-template>
+   --read-only                 refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it
+   --yes                       confirm a destructive change

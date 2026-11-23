@@ -1,8 +1,6 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-seedobj core/v1/namespaces . namespace.yaml
-seedobj management.cattle.io/v3/features . feature.yaml
 seedobj catalog.cattle.io/v1/clusterrepos . repo.yaml
 seedobj catalog.cattle.io/v1/uiplugins cattle-ui-plugin-system uiplugin.yaml
 seedobj catalog.cattle.io/v1/apps cattle-ui-plugin-system app.yaml
@@ -37,24 +35,6 @@ cp stdout available.json
 jsonquery available.json 'data.#(name=="ext-installed").name' ''
 jsonquery available.json 'data.#' 2
 
-# The feature turned off is refused before anything is read.
-exec rancher patch feature uiextension --patch '[{"op":"replace","path":"/spec/value","value":false}]' --apply --yes -o json
-! exec rancher extension list -o json
-cp stderr refused.json
-jsonquery refused.json 'data.error.code' VALIDATION
-
--- namespace.yaml --
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cattle-ui-plugin-system
--- feature.yaml --
-apiVersion: management.cattle.io/v3
-kind: Feature
-metadata:
-  name: uiextension
-spec:
-  value: true
 -- repo.yaml --
 apiVersion: catalog.cattle.io/v1
 kind: ClusterRepo

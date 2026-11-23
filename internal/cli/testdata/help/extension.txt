@@ -1,12 +1,15 @@
 NAME:
-   rancher extension - Add a Rancher extension repository and list Rancher UI extensions
+   rancher extension - Add a Rancher extension repository; list, install, upgrade and uninstall Rancher UI extensions
 
 USAGE:
    rancher extension [command [command options]]
 
 COMMANDS:
    add-repository:  Add a Rancher extension repository
+   install:         Install a Rancher UI extension from a ClusterRepo
    list:            List the Rancher UI extensions the ClusterRepos offer and the installed ones
+   uninstall:       Uninstall a Rancher UI extension
+   upgrade:         Upgrade an installed Rancher UI extension
 
 OPTIONS:
    --help, -h  show help
