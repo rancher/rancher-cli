@@ -832,7 +832,7 @@ func readText(t *testing.T, path string) string {
 // created in the UI before the tag exists, and the text that states the new
 // flow is present: the rehearsal first, then the tag push that stops before
 // the draft without a matching rehearsal, then the draft, the notes, the
-// publish and the rules after publishing.
+// publish, the milestone steps and the rules after publishing.
 // The forbidden list is a backstop; the required text is the guard.
 func TestReleaseTextDescribesDraftFirstOnly(t *testing.T) {
 	t.Parallel()
@@ -877,12 +877,13 @@ func TestReleaseTextDescribesDraftFirstOnly(t *testing.T) {
 	draft := find("a draft that holds every asset", `draft release that holds every asset, with the tag as its title`)
 	notes := find("the notes pasted into the draft before publishing", `Paste the reviewed notes into the draft, in the UI or with .gh release edit <tag> --notes-file <file>., before publishing: watchers' notifications and the releases feed carry the body as it is at publish`)
 	publish := find("the publish command", `Publish with .gh release edit <tag> --draft=false --prerelease=false --latest.`)
+	milestones := find("the milestones after publishing", `^Then update the milestones; .*Create the milestone of the next planned tag when it does not exist.*Move every open issue still in the milestone .<tag>. to the milestone .<next-tag>..*report the moved issues to the maintainer who cut the release.*Close the milestone .<tag>.`)
 	after := find("assets stay as they are after publishing", `^After publishing, .*Assets cannot be added or changed, and a bad release is fixed only by a new version`)
 	find("never move or reuse a pushed tag", `^Never move, delete and push again, or reuse a pushed tag`)
 	immutable := find("published releases are immutable", `Immutable releases are on for the repository: once a release is published, GitHub locks its assets and its tag`)
 	find("a flake re-runs, a fix deletes and counts on", `re-run the failed jobs when the cause is a flake .*delete the draft and the tag, fix on main, and cut the next number`)
-	assert.True(t, opener < rehearse && rehearse < install && install < tag && tag <= draft && draft < notes && notes < publish && publish < after,
-		"the bullets must keep the order opener, rehearse, install, tag, draft, notes, publish, edit after: got %d %d %d %d %d %d %d %d", opener, rehearse, install, tag, draft, notes, publish, after)
+	assert.True(t, opener < rehearse && rehearse < install && install < tag && tag <= draft && draft < notes && notes < publish && publish < milestones && milestones < after,
+		"the bullets must keep the order opener, rehearse, install, tag, draft, notes, publish, milestones, edit after: got %d %d %d %d %d %d %d %d %d", opener, rehearse, install, tag, draft, notes, publish, milestones, after)
 	for path, text := range texts {
 		assert.NotRegexp(t, `(?i)OS exercise`, text, "%s names an internal tool", path)
 	}

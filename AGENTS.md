@@ -255,6 +255,15 @@ Gotchas:
   carry the body as it is at publish.
 - Publish with `gh release edit <tag> --draft=false --prerelease=false --latest` (or in the UI). A draft for a tag
   with a suffix starts as a pre-release; the command publishes it as not a pre-release and as the latest release.
+- Then update the milestones; a milestone's title is its release tag. Create the milestone of the next planned tag
+  when it does not exist (`gh api 'repos/rancher/rancher-cli/milestones?state=all&per_page=100' --jq '.[].title'`
+  lists them; `gh api repos/rancher/rancher-cli/milestones -f title=<next-tag>` creates one). Move every open issue
+  still in the milestone `<tag>` to the milestone `<next-tag>` (`gh issue list --milestone <tag> --limit 500 --json
+  number --jq '.[].number'`, then `gh issue edit <n> --milestone <next-tag>` for each) and report the moved issues to
+  the maintainer who cut the release; the published notes stay as they are. Close the milestone `<tag>` (`gh api -X
+  PATCH repos/rancher/rancher-cli/milestones/<number> -f state=closed`; `gh api
+  'repos/rancher/rancher-cli/milestones?state=all&per_page=100' --jq '.[] | select(.title=="<tag>") | .number'`
+  prints the number).
 - After publishing, the title and notes can still be edited; the release cannot return to a draft. Assets cannot be
   added or changed, and a bad release is fixed only by a new version. `scripts/release-upsert` refuses to upload to a
   published release. Deleting a published release does not free its tag name: GitHub refuses a new release with that name.
