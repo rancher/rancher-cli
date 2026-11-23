@@ -645,6 +645,15 @@ NOT_FOUND candidates leave out the same global roles.
 - Windows PowerShell 5.1 decodes the CLI's output with the console encoding,
   so a description with non-ASCII characters may show garbled there.
 
+`create cloud-credential` completes `<driver>` with the drivers the command
+accepts on the server: each node driver that is active or has
+`addCloudCredential` and names credential fields, `s3`, and `alibaba` while its
+operator is active. After a driver, `--set` completes the names of its public
+fields and `--from-file` the names of its secret and multi-line fields, each
+followed by `=`; a field you already typed is left out, and nothing is offered
+after the `=`. `get cloud-credential` completes `<credential>` with the ids and
+the display names that name one credential.
+
 `--auth-provider` on `auth login`, `auth get-token` and `token` completes the
 names of the auth configs this CLI can sign in with, from the list of auth
 configs the server publishes, which needs no credential: the request carries
@@ -1287,7 +1296,9 @@ clusters) is documented in the
 
 Node-driver clusters take a machine config plus a cloud credential. Two
 prerequisites before the example below: a cloud credential must already
-exist (`rancher get cloud-credentials` lists yours - `do-creds` below),
+exist (`rancher create cloud-credential` creates one, see
+[Cloud credentials](#cloud-credentials); `rancher get cloud-credentials` lists yours -
+`do-creds` below),
 and the Kubernetes version must be one the server accepts
 (`rancher get kubernetes-versions` lists them - substitute it for
 `<supported-version>`):
@@ -1567,9 +1578,9 @@ set the items below; each stays unset unless a full manifest sent with
   scheduling customization and data directories: the CLI has no flag for them.
 - Cluster members: the UI adds the members chosen in its form when it creates
   the cluster; the CLI adds none (`rancher grant` afterwards).
-- Cloud credentials: the UI creates one from its form; the CLI has no command or
-  flag to create one, and `rancher get cloud-credentials` lists the ones that
-  exist.
+- Cloud credentials: the UI creates one from its form; `rancher create
+  cloud-credential` creates one (see [Cloud credentials](#cloud-credentials)), and
+  `rancher get cloud-credentials` lists the ones that exist.
 - Hosted clusters: the CLI has no command or flag for hosted clusters (EKS, AKS,
   GKE). `create machine-config` covers five node drivers (`amazonec2config`,
   `azureconfig`, `digitaloceanconfig`, `harvesterconfig`,
@@ -1579,6 +1590,78 @@ Rancher creates the management cluster, its default and system projects, and the
 registration token `default-token` with its node and import commands. For a
 cluster created without the `field.cattle.io/no-creator-rbac` annotation it
 also creates the creator's owner binding on the cluster.
+
+### Cloud credentials
+
+`rancher create cloud-credential <driver> <display-name>` creates a cloud credential
+through Rancher's Norman API (`/v3/cloudcredentials`), the one API that runs Rancher's
+credential checks: the driver must be active, the required fields must be given and, for
+Harvester, the tokens of the kubeconfig are checked. A credential made with `create secret`
+skips those checks. The CLI sends the request once and never retries it. Reads stay on the
+Kubernetes API.
+
+`<driver>` is the node driver's display name as `rancher get nodedrivers` shows it
+(`amazonec2`, never `aws`), `s3` for the credential of etcd snapshot backups, or `alibaba`
+while its Rancher operator is active. The fields of a node driver come from the server (the
+annotations of its NodeDriver); `s3` and `alibaba` have fixed fields.
+
+| Driver | `--set` fields (required unless marked) | `--from-file` fields |
+|---|---|---|
+| `amazonec2` | `accessKey`; `defaultRegion` (optional) | `secretKey` |
+| `azure` | `clientId`, `subscriptionId`, `environment`; `tenantId` (optional) | `clientSecret` |
+| `digitalocean` | none | `accessToken` |
+| `exoscale` | `apiKey` | `apiSecretKey` |
+| `google` | none | `authEncodedJson` |
+| `harvester` | `clusterType` (default `imported`); `clusterId` (optional) | `kubeconfigContent` |
+| `linode` | none | `token` |
+| `nutanix` | `endpoint`, `username`, `port` | `password` |
+| `oci` | `tenancyId`, `userId`, `fingerprint` | `privateKeyContents` |
+| `otc` | `accessKey`, `username` | `secretKey`, `password`, `token` |
+| `openstack` | none | `password` |
+| `packet` | none | `apiKey` |
+| `pnap` | `clientIdentifier` | `clientSecret` |
+| `rackspace`, `softlayer` | none | `apiKey` |
+| `vmwarevsphere` | `username`, `vcenter`, `vcenterPort` (default `443`) | `password` |
+| `outscale` | `accessKey`, `region` | `secretKey` |
+| `s3` | `accessKey`; `defaultRegion`, `defaultEndpoint`, `defaultEndpointCA`, `defaultSkipSSLVerify`, `defaultBucket`, `defaultFolder` (optional) | `secretKey` |
+| `alibaba` | `accessKeyId` (optional) | `accessKeySecret` (optional) |
+
+The table lists the built-in drivers. For a driver with required fields, `create cloud-credential <driver> <name>
+--dry-run` with no fields refuses and names the fields it needs.
+
+- Public fields go in `--set <field>=<value>`. The preview shows their values, so never
+  type a secret as the value of a public field.
+- Secret fields (the fields Rancher marks as a password, and `pnap` `clientSecret`) go in
+  `--from-file <field>=<path>`; `--from-file <field>=-` reads stdin, once. A secret in
+  `--set` is refused. The preview shows `<redacted>` in place of a secret value. An error
+  from Rancher has every secret value of 4 characters or more, and each line of a multi-line
+  secret value, replaced by `<hidden>`; a secret shorter than 4 characters is not hidden in an error.
+- `kubeconfigContent`, `privateKeyContents`, `authEncodedJson`, `sshKeyContents` and `s3`
+  `defaultEndpointCA` have several lines and also take `--from-file`. The CLI keeps their line
+  breaks and trims white space at both ends of the value.
+- A single-line value loses one trailing line ending. Any other line break, and white space at
+  either end, is refused, because Rancher stores the trimmed value. A byte order mark at the
+  start of a file or of stdin is dropped. A file or stdin that starts with a UTF-16 mark, or has
+  a NUL byte, is refused: save it as UTF-8.
+- `--description <text>` sets the description. The display name must not match the display
+  name of an existing cloud credential, because `rancher create cluster --cloud-credential` could not tell the two
+  apart; Rancher allows duplicates, so the CLI checks.
+- The preview comes from server reads (`previewSource: serverReads`): Rancher checks the
+  request only when it is sent, and does not check the values against the provider. The
+  Effect carries no `resourceVersion`, and `conflictDetection` is false.
+- After the create the command waits, up to 30 seconds, until you can read the new
+  credential, which is when `rancher create cluster --cloud-credential` finds it.
+  `--wait=false` skips the wait.
+- After a response of 500, 502 or 504, or a lost response, the credential may exist. The error
+  says so and is not retryable; check with `rancher get cloud-credentials` before you try again.
+  A 500 from Rancher's Harvester kubeconfig check is a refusal and wrote nothing.
+
+A Harvester credential needs a kubeconfig whose tokens Rancher can check. Generate one without
+the Rancher server's default entry and pipe it in, so it never reaches a file:
+
+```sh
+rancher create kubeconfig --clusters <cluster-id> --include-default-entry false --apply --yes | rancher create cloud-credential harvester <display-name> --set clusterId=<cluster-id> --from-file kubeconfigContent=- --apply
+```
 
 ### Taking an etcd snapshot of a provisioned cluster
 
@@ -2034,8 +2117,8 @@ therefore builds the preview from what the server answers to reads, and the
 Effect says so: `previewSource` is `serverReads` (every other mutation says
 `serverDryRun`, except `extension install`, `extension upgrade` and
 `extension uninstall`, and `node drain` and `node stop-drain` for a caller
-without access to Rancher's local cluster),
-`resourceVersion` is empty and `conflictDetection` is false.
+without access to Rancher's local cluster, and except the cloud credential
+writes through Norman), `resourceVersion` is empty and `conflictDetection` is false.
 Every preview warns that it comes from server reads and names who Helm runs as.
 For an install that is the ClusterRepo's `spec.serviceAccount` in its
 `spec.serviceAccountNamespace` (both set, the namespace holding no `:`). For an
@@ -3501,11 +3584,11 @@ the tokens the CLI created and recorded (see
 `--dry-run` of a mutating command still sends write-verb requests
 server-side (admission dry-run); a genuinely read-only RBAC token cannot
 dry-run at all. `app install`, `app upgrade`, `app uninstall`, `extension
-install`, `extension upgrade` and `extension uninstall`, and `node drain` and
-`node stop-drain` for a caller without access to Rancher's local cluster, are
-the exception: their preview comes from server reads (`previewSource:
-serverReads`). Read-only mode doesn't special-case this - it refuses mutating
-commands outright, `--dry-run` included.
+install`, `extension upgrade` and `extension uninstall`; `node drain` and
+`node stop-drain` for a caller without access to Rancher's local cluster; and
+the cloud credential writes through Norman are the exceptions: their preview
+comes from server reads (`previewSource: serverReads`). Read-only mode doesn't
+special-case this - it refuses mutating commands outright, `--dry-run` included.
 
 ## Supported server version
 

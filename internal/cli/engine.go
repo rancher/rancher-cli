@@ -82,6 +82,12 @@ type clientFactory struct {
 	nodeAction     engine.NodeActionClient
 	nodeActionErr  error
 
+	// cloudCredentialOnce builds the cloud credential client at most once per
+	// invocation, with its own http.Client for its own timeout.
+	cloudCredentialOnce sync.Once
+	cloudCredential     engine.CloudCredentialClient
+	cloudCredentialErr  error
+
 	// serverInfoOnce memoizes the /rancherversion version+edition read
 	// exactly once per invocation (f is itself the per-invocation instance):
 	// the capability detector and any future consumer sharing this factory
@@ -589,6 +595,7 @@ type runDeps struct {
 	roots       engine.RootClientFactory
 	actions     engine.ActionClientFactory
 	nodeActions engine.NodeActionClientFactory
+	cloudCreds  engine.CloudCredentialClientFactory
 	serverBase  engine.ServerBaseURLProvider
 	src         engine.FileSource
 	dir         string
@@ -697,7 +704,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				io.Capability = newCapabilityChecker(f)
 				io.Projects = projectResolver{f}
 				view := experimentView()
-				cmd = make(runDeps{clients: f, roots: f, actions: f, nodeActions: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
+				cmd = make(runDeps{clients: f, roots: f, actions: f, nodeActions: f, cloudCreds: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
 			}
 			addExperimentNotices(&io, d.Name)
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)

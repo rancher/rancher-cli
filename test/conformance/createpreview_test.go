@@ -55,8 +55,9 @@ const (
 var createPlannerFuncs = []string{"PlanCreate", "PlanCreateObserved", "CreateDiff"}
 
 // createEffectAllowlist maps a file to why it may build a create Effect,
-// assign a diff or name the row-less redaction constructor. Each entry is a
-// user decision.
+// assign a diff or name the row-less redaction constructor: the shared
+// planners, the Rancher catalog actions and the cloud credential write, whose
+// previews come from server reads. Each entry is a user decision.
 var createEffectAllowlist = map[string]string{
 	"internal/engine/effect.go":                             "the shared planners: they build the create Effect and set its diff from the walk",
 	"internal/engine/diff.go":                               "the create diff walk and the update diff",
@@ -66,6 +67,7 @@ var createEffectAllowlist = map[string]string{
 	"internal/engine/catalog/upgrade.go":                    "a Rancher catalog action the CLI previews from server reads: the Effect is built from server reads (previewSource serverReads) and its diff lists the release, its chart and version, the Helm options sent and the value paths that are added, removed or changed, never a value except those the CLI adds and the registry host",
 	"internal/engine/catalog/uninstall.go":                  "a Rancher catalog action the CLI previews from server reads: the Effect is built from server reads (previewSource serverReads) and its diff lists the release, its chart and version, the Helm options sent and what Helm removes; no value paths",
 	"internal/engine/nodes/normanpath.go":                   "the drain and stop-drain path for a caller without access to Rancher's local cluster: the Effect is built from server reads (previewSource serverReads) and its diff lists desiredNodeUnschedulable and nodeDrainInput from the Steve read to what Rancher's action writes",
+	"internal/engine/provisioning/cloudcredwrite.go":        "the cloud credential write through Norman, previewed from server reads (previewSource serverReads): the Effect is built from the checked fields and its diff lists each field the request sends, with the value of a secret field hidden",
 }
 
 // plannerCallKeys returns the sorted keys of the functions of pkg that use a

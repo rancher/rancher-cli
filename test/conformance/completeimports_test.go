@@ -48,11 +48,12 @@ var completePackages = map[string]bool{
 // production files may name.
 var completeImportAllowlist = map[string]bool{
 	"context": true, "errors": true, "fmt": true, "maps": true, "slices": true, "sort": true, "strconv": true, "strings": true,
-	modulePrefix + "internal/runtime/completion":             true,
-	modulePrefix + "internal/engine/kinds":                   true,
-	modulePrefix + "internal/clierr":                         true,
-	modulePrefix + "internal/engine/provisioning/clusterops": true,
-	modulePrefix + "internal/engine/catalog/extension":       true,
+	modulePrefix + "internal/runtime/completion":                  true,
+	modulePrefix + "internal/engine/kinds":                        true,
+	modulePrefix + "internal/clierr":                              true,
+	modulePrefix + "internal/engine/provisioning/clusterops":      true,
+	modulePrefix + "internal/engine/catalog/extension":            true,
+	modulePrefix + "internal/engine/provisioning/cloudcredfields": true,
 }
 
 // scanCompleteImports parses the production Go files of the package

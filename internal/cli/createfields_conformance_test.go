@@ -463,10 +463,11 @@ var createFieldCoverageTable = map[string]createFieldCoverage{
 // createFieldCoverageOutOfScope names the create commands the table does
 // not cover, each with the reason.
 var createFieldCoverageOutOfScope = map[string]string{
-	"create machine-config": "its fields come from each node driver's schema, which the server generates, not from the Rancher API types",
-	"create namespace":      "builds a core Kubernetes Namespace, not a Rancher API type",
-	"create secret":         "builds a core Kubernetes Secret, not a Rancher API type",
-	"create resource":       "takes a whole manifest, so it has no field flags",
+	"create cloud-credential": "its fields come from the node driver annotations the server serves and from fixed rows for s3 and alibaba, not from the Rancher API types",
+	"create machine-config":   "its fields come from each node driver's schema, which the server generates, not from the Rancher API types",
+	"create namespace":        "builds a core Kubernetes Namespace, not a Rancher API type",
+	"create secret":           "builds a core Kubernetes Secret, not a Rancher API type",
+	"create resource":         "takes a whole manifest, so it has no field flags",
 }
 
 // TestCreateFieldCoverageClosedWorld asserts every create command is

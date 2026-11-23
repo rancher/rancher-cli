@@ -15,7 +15,8 @@ import (
 
 // serverReadsCommands are the commands whose preview comes from server
 // reads: the Rancher catalog install, upgrade and uninstall actions of the app
-// commands, and the install, upgrade and uninstall actions of the extension commands.
+// commands, the install, upgrade and uninstall actions of the extension commands,
+// and the cloud credential writes through Norman.
 // serverReadsRows are the rows of one command whose preview comes from
 // server reads while its other rows preview through a server-side dry-run:
 // node drain and node stop-drain for a caller without access to Rancher's
@@ -23,7 +24,7 @@ import (
 // dry-run. A command or row added to either list is a reviewed exception to
 // the safety pipeline.
 var (
-	serverReadsCommands = []string{"app install", "app upgrade", "app uninstall", "extension install", "extension upgrade", "extension uninstall"}
+	serverReadsCommands = []string{"app install", "app upgrade", "app uninstall", "extension install", "extension upgrade", "extension uninstall", "create cloud-credential"}
 	serverReadsRows     = []string{
 		"node drain (no wait, through Rancher's node action)",
 		"node drain (waited, through Rancher's node action)",

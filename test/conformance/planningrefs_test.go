@@ -59,6 +59,7 @@ var planningRefPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\b[Ff]ix[- ]?(?:round\b|#?[0-9])`),
 	regexp.MustCompile(`\bfriction[- ]?[0-9]|\brun-[0-9]`),
 	regexp.MustCompile(`\bF[0-9]\b`),
+	regexp.MustCompile(`\bO[0-9]{1,2}\b`),
 	regexp.MustCompile(`(?i)\b(?:review issue|review pass|audit row|audit L)[- ]?#?[0-9]`),
 	regexp.MustCompile(`\b(?:Critical|High|Medium|Low)(?:[- ][0-9]|[- ]findings?\b)`),
 	regexp.MustCompile(`\bP[123]\b`),
@@ -297,6 +298,7 @@ var planningRefFlagged = []string{
 	"// friction-4 semantics",
 	"// asserts run-1 finding: when",
 	"// must not fall through - F3",
+	"// a design label (O3)",
 	"// (config-write-lock plan, review issue 2)",
 	"// review pass 2",
 	"// audit row 6 says so",
@@ -410,6 +412,7 @@ var planningRefClean = []string{
 	"// a high finding rate is not a label",
 	"// use a slice of pointers",
 	"// see the https://example.com page",
+	"// the IO3 board and an O100 limit",
 }
 
 var planningRefAllowlisted = []struct {

@@ -45,7 +45,7 @@ type stdinDocRun struct {
 }
 
 // stdinDocKey is the key of a row and of a flag in the gap check: the flag
-// name alone, because the three flags are one reader each whatever command
+// name alone, because the four flags are one reader each whatever command
 // carries them.
 func stdinDocKey(flag string) string { return flag }
 
@@ -289,6 +289,38 @@ func stdinDocRows() []stdinDocRow {
 				}}
 			},
 		},
+		{
+			flag: "from-file",
+			document: func(inside bool) string {
+				token := "kubeconfig-user-x:abc"
+				if inside {
+					token = "kubeconfig-user-x:a" + byteOrderMark + "bc"
+				}
+				return "apiVersion: v1\r\nkind: Config\r\nclusters:\r\n- name: c\r\nusers:\r\n- name: u\r\n  user:\r\n    token: " + token + "\r\n"
+			},
+			received: func(inside bool) map[string]any {
+				token := "kubeconfig-user-x:abc"
+				if inside {
+					token = "kubeconfig-user-x:a" + byteOrderMark + "bc"
+				}
+				return map[string]any{"kubeconfigContent": "apiVersion: v1\r\nkind: Config\r\nclusters:\r\n- name: c\r\nusers:\r\n- name: u\r\n  user:\r\n    token: " + token}
+			},
+			empty: "for kubeconfigContent is not a kubeconfig",
+			run: func(t *testing.T, stdin string) stdinDocRun {
+				t.Helper()
+				var posts []string
+				_, stderr, code, _ := ccRun(t, ccStub(ccNorman{status: 201, body: `{"id":"cattle-global-data:cc-abcde"}`}, &posts, false),
+					[]string{"-o", "json", "create", "cloud-credential", "harvester", "cc-harvester", "--from-file", "kubeconfigContent=-", "--apply", "--wait=false"}, stdin)
+				if code != 0 {
+					return stdinDocFailure(t, stderr, code)
+				}
+				require.Len(t, posts, 1)
+				var body map[string]any
+				require.NoError(t, json.Unmarshal([]byte(posts[0]), &body))
+				config, _ := body["harvestercredentialConfig"].(map[string]any)
+				return stdinDocRun{received: map[string]any{"kubeconfigContent": config["kubeconfigContent"]}}
+			},
+		},
 	}
 }
 
@@ -296,7 +328,7 @@ func stdinDocRows() []stdinDocRow {
 // the built command tree whose description names stdin and whose name does not
 // end in -stdin has a row in the table of
 // TestEveryStdinDocumentDropsLeadingByteOrderMarks, that no row is stale, and
-// that the set of the flags is the three that read a document. The check is
+// that the set of the flags is the four that read a document. The check is
 // by flag name: a new command that reuses one of the names has a row already,
 // and the source scan of the readers covers it.
 func TestEveryStdinDocumentFlagHasAByteOrderMarkRow(t *testing.T) {
@@ -314,7 +346,7 @@ func TestEveryStdinDocumentFlagHasAByteOrderMarkRow(t *testing.T) {
 		rows[key] = true
 	}
 	assert.Empty(t, stdinDocGaps(descriptors, rows))
-	assert.Equal(t, []string{"filename", "patch-file", "values"}, slices.Sorted(maps.Keys(rows)))
+	assert.Equal(t, []string{"filename", "from-file", "patch-file", "values"}, slices.Sorted(maps.Keys(rows)))
 }
 
 // TestStdinDocGapsNamesAFlagWithNoRowAndARowWithNoFlag asserts that the gap

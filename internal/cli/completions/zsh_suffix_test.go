@@ -112,3 +112,29 @@ func TestZshContinuationCandidatesGetEmptySuffix(t *testing.T) {
 		}
 	}
 }
+
+// TestZshCloudCredentialFieldTokens asserts the zsh side of create
+// cloud-credential's field completion: a `<field>=` token is added with the
+// empty compadd suffix, so the value is typed in the same word; after a typed
+// `<field>=` the source returns nothing and the script offers no candidate of
+// its own, only a call of zsh's file completion.
+func TestZshCloudCredentialFieldTokens(t *testing.T) {
+	t.Parallel()
+
+	got := zshDescribeGroups(t, []string{"rancher", "create", "cloud-credential", "amazonec2", "--set", ""}, []string{"accessKey=", "defaultRegion="})
+	for _, w := range []string{"GROUP:empty:accessKey=", "GROUP:empty:defaultRegion="} {
+		if !containsExact(got, w) {
+			t.Errorf("missing %q in _describe groups; got=%q", w, got)
+		}
+	}
+
+	got = zshDescribeGroups(t, []string{"rancher", "create", "cloud-credential", "amazonec2", "--from-file", "secretKey="}, nil)
+	if !containsExact(got, "FILES") {
+		t.Errorf("a typed field= word must call the file completion; got=%q", got)
+	}
+	for _, line := range got {
+		if strings.HasPrefix(line, "GROUP:") {
+			t.Errorf("a typed field= word must add no candidate; got=%q", got)
+		}
+	}
+}

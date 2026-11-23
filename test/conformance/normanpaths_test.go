@@ -18,7 +18,7 @@ import (
 )
 
 // Rancher's Norman API (/v3) is outside the CLI's Kubernetes-style surface, and
-// each use of it is a reviewed exception. Two scans keep every Norman request
+// each use of it is a reviewed exception. Three scans keep every Norman request
 // in the files and functions that carry that review:
 //
 //   - A string literal, interpreted or raw, that holds "/v3/" or "/v3?" or ends
@@ -30,11 +30,14 @@ import (
 //     ("https://rancher.example.io/v3/clusters") match. A stale row, a count
 //     that differs and a literal outside every row fail. Each allowlisted
 //     constant may be referenced only from the functions its row names, each
-//     once. A path built from pieces ("/v" + "3/") or read from a response is
-//     not seen.
+//     as many times as the row says. A path built from pieces ("/v" + "3/") or
+//     read from a response is not seen.
 //   - A call of NodeActions, the factory method that hands out the node action
 //     client, is allowed only in internal/engine/nodes and in the factory's own
 //     file.
+//   - A call of CloudCredentials, the factory method that hands out the cloud
+//     credential client, is allowed only in the cloud credential command file
+//     and in the factory's own file.
 //
 // The scans cover every non-test Go file outside testdata, whatever its build
 // tags, and leave out internal/testrancher: the test servers and the fidelity
@@ -42,21 +45,23 @@ import (
 // user's behalf, and no production package imports them.
 
 // normanAllowance is one declaration that may hold a Norman path literal: the
-// number of literals it holds, the number of references each listed function
-// makes to it, why it may, and the functions that may reference it, each
-// written "Type.Method" for a method or "name" for a function.
+// number of literals it has, why it may, and the functions that may
+// reference it with the number of references each makes, each function written
+// "Type.Method" for a method or "name" for a function.
 type normanAllowance struct {
 	count int
 	why   string
-	refs  []string
+	refs  map[string]int
 }
 
 // normanPathAllowlist maps "<file>:<declaration>" to the Norman path literal
 // it holds.
 var normanPathAllowlist = map[string]normanAllowance{
-	"internal/token/clustertoken.go:normanTokensPath": {1, "the Norman /v3/tokens create that createV3ClusterToken sends", []string{"createV3ClusterToken"}},
+	"internal/token/clustertoken.go:normanTokensPath": {1, "the Norman /v3/tokens create that createV3ClusterToken sends", map[string]int{"createV3ClusterToken": 1}},
 	"internal/cli/nodeactionclient.go:normanNodesPath": {1, "the one file that sends Norman /v3/nodes requests",
-		[]string{"nodeActionClient.GetNode", "nodeActionClient.PostNodeAction"}},
+		map[string]int{"nodeActionClient.GetNode": 1, "nodeActionClient.PostNodeAction": 1}},
+	"internal/cli/cloudcredclient.go:normanCloudCredentialsPath": {1, "the one file that sends Norman /v3/cloudcredentials requests",
+		map[string]int{"cloudCredentialClient.Create": 2}},
 }
 
 // groupVersionV3 is an API group and version, <group>.io/v3, where it starts a
@@ -159,8 +164,7 @@ func scanNormanPaths(fset *token.FileSet, sources []normanSource, allow map[stri
 
 // normanReferenceProblems checks the references to the constant a row names:
 // from the files of its package, only from the functions the row lists, each
-// as many times as the row's count says, and every listed function references
-// it.
+// as many times as the row says, and every listed function references it.
 func normanReferenceProblems(fset *token.FileSet, sources []normanSource, key string, a normanAllowance) []string {
 	file, name, _ := strings.Cut(key, ":")
 	dir := path.Dir(file)
@@ -183,7 +187,7 @@ func normanReferenceProblems(fset *token.FileSet, sources []normanSource, key st
 				if !ok || id.Name != name || isDeclaration(decl, id) {
 					return true
 				}
-				if !slices.Contains(a.refs, where) {
+				if _, ok := a.refs[where]; !ok {
 					out = append(out, fset.Position(id.Pos()).String()+": "+name+" is referenced from "+where+", which the allowlist does not name")
 					return true
 				}
@@ -192,12 +196,12 @@ func normanReferenceProblems(fset *token.FileSet, sources []normanSource, key st
 			})
 		}
 	}
-	for _, fn := range a.refs {
+	for _, fn := range slices.Sorted(maps.Keys(a.refs)) {
 		switch got := counts[fn]; {
 		case got == 0:
 			out = append(out, key+": the allowlist names "+fn+", which does not reference "+name+"; remove it")
-		case got != a.count:
-			out = append(out, fmt.Sprintf("%s: %s references %s %d times, the allowlist says %d", key, fn, name, got, a.count))
+		case got != a.refs[fn]:
+			out = append(out, fmt.Sprintf("%s: %s references %s %d times, the allowlist says %d", key, fn, name, got, a.refs[fn]))
 		}
 	}
 	return out
@@ -232,7 +236,7 @@ func normanSources(tree parsedSourceTree) []normanSource {
 // TestNormanPathsOnlyInTheListedDeclarations asserts every Norman path literal
 // of the production tree is in an allowlisted declaration, with the allowed
 // count, and that each allowlisted constant is referenced only from the
-// functions its row names.
+// functions its row names, each as many times as the row says.
 func TestNormanPathsOnlyInTheListedDeclarations(t *testing.T) {
 	t.Parallel()
 	tree := parseSourceTree()
@@ -263,6 +267,30 @@ func normanFixtureProblems(t *testing.T, files map[string]string, allow map[stri
 	return out
 }
 
+// TestNormanPathRule asserts the literal rule: a group-version at the start of
+// a literal or after /apis/ passes, and a Norman path in any other form fails,
+// a URL's host that ends in .io included.
+func TestNormanPathRule(t *testing.T) {
+	t.Parallel()
+	for value, want := range map[string]bool{
+		"management.cattle.io/v3":                                 false,
+		"/k8s/clusters/local/apis/management.cattle.io/v3/tokens": false,
+		"management.cattle.io/v3/something":                       false,
+		"/v3/cloudcredentials":                                    true,
+		"%s/v3/clusters":                                          true,
+		"https://h/v3/x":                                          true,
+		"https://rancher.example.io/v3/clusters":                  true,
+		"//x.io/v3/y":                                             true,
+		"/v3?action=x":                                            true,
+		"https://rancher.example.io/v3":                           true,
+		"/v3-public/authproviders":                                false,
+		"/v1/management.cattle.io.clusters":                       false,
+		"/k8s/clusters/c-x/apis/management.cattle.io/v3/namespaces/x/foos": false,
+	} {
+		assert.Equal(t, want, isNormanPath(value), value)
+	}
+}
+
 // positionPrefix is the file, line and column that start a message.
 var positionPrefix = regexp.MustCompile(`^[^ ]+\.go:\d+:\d+: `)
 
@@ -278,14 +306,16 @@ func parseSnippetIn(t *testing.T, fset *token.FileSet, filePath, src string) *as
 // Kubernetes group and version, bare or after /apis/, passes, and so does an
 // allowlisted constant used once by each function its row names. Each of a
 // path in a file of the nodes package, a format string, a full URL, a literal
-// that starts with // and a literal that ends with /v3, a raw string, a
-// reference from another function, two references from one function, a row
-// whose declaration does not exist, a row whose count differs and a row that
-// names a function that does not reference the constant fails.
+// that starts with // and a literal that ends with /v3, a raw string, a path
+// joined to a base, a literal in the cloud credential command file, a
+// reference from another function, from another file of the package and from
+// package level, two references from one function, a row whose declaration does
+// not exist, a row whose count differs and a row that names a function that
+// does not reference the constant fails.
 func TestNormanPathScanFixtures(t *testing.T) {
 	t.Parallel()
 	const header = "package p\n"
-	allow := map[string]normanAllowance{"internal/cli/x.go:normanPath": {1, "why", []string{"client.Get", "client.Post"}}}
+	allow := map[string]normanAllowance{"internal/cli/x.go:normanPath": {1, "why", map[string]int{"client.Get": 1, "client.Post": 1}}}
 	allowedSource := header + `
 const normanPath = "/v3/nodes"
 type client struct{}
@@ -316,8 +346,16 @@ func (c *client) Post() string { return normanPath + "/b" }
 			nil, []string{`the literal "/v3?x=1" holds a Norman path`}},
 		{"a raw string", map[string]string{"internal/engine/a.go": header + "var u = `/v3/nodes`"},
 			nil, []string{"the literal `/v3/nodes` holds a Norman path"}},
+		{"a path joined to a base", map[string]string{"internal/x/x.go": header + `func f(base string) string { return base + "/v3/clusters" }`},
+			nil, []string{`the literal "/v3/clusters" holds a Norman path`}},
+		{"a literal in the cloud credential command file", map[string]string{"internal/engine/provisioning/cloudcredwrite.go": header + `func f() string { return "/v3/cloudcredentials" }`},
+			nil, []string{`the literal "/v3/cloudcredentials" holds a Norman path`}},
 		{"a reference from another function", map[string]string{"internal/cli/x.go": allowedSource + `func other() string { return normanPath }`}, allow,
 			[]string{"normanPath is referenced from other, which the allowlist does not name"}},
+		{"a reference from another file of the package", map[string]string{"internal/cli/x.go": allowedSource, "internal/cli/y.go": header + `func other() string { return normanPath }`}, allow,
+			[]string{"normanPath is referenced from other, which the allowlist does not name"}},
+		{"a reference at package level of another file", map[string]string{"internal/cli/x.go": allowedSource, "internal/cli/y.go": header + `var v = normanPath`}, allow,
+			[]string{"normanPath is referenced from (package level), which the allowlist does not name"}},
 		{"two references from one function", map[string]string{"internal/cli/x.go": header + `
 const normanPath = "/v3/nodes"
 type client struct{}
@@ -403,4 +441,61 @@ func TestNodeActionPortCallFixtures(t *testing.T) {
 			assert.Len(t, nodeActionCallProblems(fset, tc.path, f), tc.want)
 		})
 	}
+}
+
+// normanClientCallers lists the files that may call CloudCredentials(), the
+// factory method that hands out the cloud credential client: the command file
+// and the file that implements the factory.
+var normanClientCallers = []string{
+	"internal/engine/provisioning/cloudcredwrite.go",
+	"internal/cli/cloudcredclient.go",
+}
+
+// scanNormanClientCalls returns one message per call of a method named
+// CloudCredentials, with no arguments, in a file outside allowed.
+func scanNormanClientCalls(fset *token.FileSet, filePath string, f *ast.File, allowed []string) []string {
+	if slices.Contains(allowed, filePath) {
+		return nil
+	}
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) != 0 {
+			return true
+		}
+		if sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok && sel.Sel.Name == "CloudCredentials" {
+			out = append(out, fset.Position(call.Pos()).String()+": a call of CloudCredentials() outside the cloud credential commands")
+		}
+		return true
+	})
+	return out
+}
+
+// TestOnlyTheCloudCredentialCommandsCallTheNormanClient asserts no production
+// file but the cloud credential command file and the factory's own file calls
+// CloudCredentials(), the method that hands out the cloud credential client.
+func TestOnlyTheCloudCredentialCommandsCallTheNormanClient(t *testing.T) {
+	t.Parallel()
+	tree := parseSourceTree()
+	require.NoError(t, tree.err)
+	for i, f := range tree.files {
+		if inTestrancher(tree.paths[i]) {
+			continue
+		}
+		for _, problem := range scanNormanClientCalls(tree.fset, tree.paths[i], f, normanClientCallers) {
+			t.Error(problem)
+		}
+	}
+}
+
+// TestNormanClientCallScanReportsAForeignCall asserts the call scan reports a call
+// from another file and none from the listed files.
+func TestNormanClientCallScanReportsAForeignCall(t *testing.T) {
+	t.Parallel()
+	src := "package p\n\nfunc f(c interface{ CloudCredentials() (int, error) }) { _, _ = c.CloudCredentials() }\n"
+	fset := token.NewFileSet()
+	foreign := parseSnippetIn(t, fset, "internal/engine/catalog/x.go", src)
+	listed := parseSnippetIn(t, fset, "internal/engine/provisioning/cloudcredwrite.go", src)
+	assert.NotEmpty(t, scanNormanClientCalls(fset, "internal/engine/catalog/x.go", foreign, normanClientCallers))
+	assert.Empty(t, scanNormanClientCalls(fset, "internal/engine/provisioning/cloudcredwrite.go", listed, normanClientCallers))
 }

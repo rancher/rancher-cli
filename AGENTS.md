@@ -159,11 +159,12 @@ Gotchas:
   only the authorizer's refusal of the read selects the uid precondition
   (`TestTheUIDPreconditionIsChosenOnlyByTheAuthorizersRefusal`,
   `TestEveryDeleteDeletesAnObjectTheCallerCannotGet`). A command cannot weaken
-  its own gates. The one exception: a Rancher action the CLI previews from
+  its own gates. The exceptions: a Rancher action the CLI previews from
   server reads (`app install`, `app upgrade`, `app uninstall`,
   `extension install`, `extension upgrade`, `extension uninstall`, and
   `node drain` and `node stop-drain` for a caller without access to Rancher's
-  local cluster) carries no precondition and says so in the Effect
+  local cluster), and the cloud credential writes through Norman
+  (`create cloud-credential`), carry no precondition and say so in the Effect
   (`previewSource: serverReads`); every other mutation sets
   `previewSource: serverDryRun`.
 - **A Local command writes to the server only objects the CLI created for its

@@ -1713,6 +1713,61 @@
     {
       "args": [
         {
+          "name": "driver",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "mutating",
+      "contract": "internal",
+      "desc": "Creates a cloud credential through Rancher's Norman API, the one API that runs Rancher's credential checks: the driver must be active, the required fields must be given and, for harvester, the tokens of the kubeconfig are checked. <driver> is the node driver's display name, as `rancher get nodedrivers` shows it (amazonec2, never aws), or s3, or alibaba while its operator is active. A field Rancher marks as a password is given only with --from-file <field>=<path>, where a <path> of - reads stdin, once; a field Rancher marks public is given with --set <field>=<value> and is shown in the preview; never type a secret there. The command is previewed from server reads: Rancher checks the request only when it is sent, and it does not check the values against the provider. The command waits, up to 30 seconds, until you can read the new credential, which is when `rancher create cluster --cloud-credential` finds it; --wait=false skips the wait.",
+      "destructive": "false",
+      "examples": [
+        "rancher create cloud-credential amazonec2 prod --set accessKey=AKIAEXAMPLE --from-file secretKey=./secret-key.txt --dry-run",
+        "rancher create cloud-credential digitalocean ci --from-file accessToken=- --apply < token.txt"
+      ],
+      "flags": [
+        {
+          "desc": "a public field of the driver, as `field=value`; repeat the flag for more fields",
+          "name": "set",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "a secret or multi-line field of the driver and the file that has its value, as `field=path`; a path of - reads stdin once; repeat the flag for more fields",
+          "name": "from-file",
+          "type": "stringSlice"
+        },
+        {
+          "desc": "the credential's `description`",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "desc": "wait until you can read the new credential (default true; --wait=false returns as soon as Rancher accepts the request)",
+          "name": "wait",
+          "type": "bool"
+        }
+      ],
+      "gates": [
+        "--apply"
+      ],
+      "group": "create",
+      "name": "create cloud-credential",
+      "serverAccess": "write",
+      "shape": "tabular",
+      "stability": "beta",
+      "toolset": "core",
+      "usage": "Create a cloud credential for a node driver or for etcd snapshots in S3"
+    },
+    {
+      "args": [
+        {
           "name": "name",
           "required": true,
           "type": "string"
@@ -15218,7 +15273,8 @@
         "create user",
         "create oidc-client",
         "create cluster",
-        "create machine-config"
+        "create machine-config",
+        "create cloud-credential"
       ],
       "desc": "Create Rancher resources. Most commands in this group have their own flags for one kind; `rancher create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",
       "name": "create"

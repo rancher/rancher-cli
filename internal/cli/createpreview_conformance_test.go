@@ -305,6 +305,22 @@ func createPreviewRows(t *testing.T) []createPreviewRow {
 			manifestCase("a user", "", "apiVersion: management.cattle.io/v3\nkind: User\nmetadata:\n  name: u-abc\nusername: alice\npassword: Sup3rS3cretPass\nenabled: true\n",
 				map[string]any{"/username": "alice", "/password": "<redacted>", "/enabled": true}),
 		}},
+		{"create cloud-credential", "", []previewCase{{
+			name: "a public field and a secret field",
+			plan: func(t *testing.T) previewResult {
+				t.Helper()
+				in := fieldCoverageInput{
+					args:  []string{"s3", "prod"},
+					lists: map[string][]string{"set": {"accessKey=AKIAFAKE"}, "from-file": {"secretKey=secret.txt"}},
+				}
+				return planPreview(t, t.Context(), provisioning.NewCreateCloudCredential(&fieldRecorder{}, nil, fieldCoverageSource{"fake-preview-secret-0001"}), in)
+			},
+			present: map[string]any{
+				"/name":                         "prod",
+				"/s3credentialConfig/accessKey": "AKIAFAKE",
+				"/s3credentialConfig/secretKey": "<redacted>",
+			},
+		}}},
 		{"create machine-config", "internal/engine/provisioning.createMachineConfigCmd.Plan", []previewCase{
 			machineConfigCase("curated flags", []string{"digitaloceanconfig", "web-pool"},
 				map[string]string{"region": "nyc3", "size": "s-2vcpu-4gb", "image": "ubuntu-24-10-x64", "tags": "web"}, nil,
@@ -390,7 +406,9 @@ func TestCreatePreviewTableCoversEveryPlanner(t *testing.T) {
 	rows := createPreviewRows(t)
 	var callers, commands []string
 	for _, row := range rows {
-		callers = append(callers, row.caller)
+		if row.caller != "" {
+			callers = append(callers, row.caller)
+		}
 		commands = append(commands, row.command)
 		assert.NotEmpty(t, row.cases, row.command)
 	}

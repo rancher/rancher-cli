@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -23,7 +22,7 @@ import (
 
 // hiddenText is what every printed form of Values shows, and what the
 // server-text filter puts in place of a value.
-const hiddenText = "<hidden>"
+const hiddenText = engine.HiddenText
 
 // flagValues is the repeatable flag that names a values file.
 const flagValues = "values"
@@ -413,99 +412,30 @@ func keySegment(k string) string {
 
 // minFilteredLength is the shortest value, in characters, the server-text
 // filter replaces: a shorter one would also replace ordinary words.
-const minFilteredLength = 4
+const minFilteredLength = engine.MinFilteredLength
 
 // Filter returns text with every value of v that could be a secret replaced
 // by <hidden>: each string leaf of 4 characters or more, each line of 4
 // characters or more of a multi-line string, and the JSON-escaped form of
-// each. Every occurrence of each of them in text as given is found,
-// occurrences that overlap included, and each run of text they cover
-// (occurrences that overlap or touch form one run) becomes one <hidden>, so
-// the result does not depend on the order of the values. It does not cover
-// numbers, booleans, shorter strings or a value the chart transforms. Every
-// path of the catalog commands that prints server text after the values
-// were sent runs it.
+// each (engine.NewTextFilter). It does not cover numbers, booleans, shorter
+// strings or a value the chart transforms. Every path of the catalog commands
+// that prints server text after the values were sent runs it.
 func (v Values) Filter(text string) string { return v.filterFunc()(text) }
 
 // filterFunc returns Filter with the list of values to hide built once, for
-// a caller that filters many strings. A replacer that deletes every value
-// only finds whether one occurs: it replaces the match that starts first
-// and skips a value that overlaps it, so it cannot hide both. When one
-// occurs, each value marks the bytes its occurrences cover in one array,
-// each byte at most once (only the bytes past the end of its previous
-// occurrence): marking every byte of every occurrence is too slow on
-// repetitive text, where occurrences overlap many times.
+// a caller that filters many strings.
 func (v Values) filterFunc() func(string) string {
-	needles := v.needles()
-	if len(needles) == 0 {
-		return func(text string) string { return text }
-	}
-	pairs := make([]string, 0, 2*len(needles))
-	for _, n := range needles {
-		pairs = append(pairs, n, "")
-	}
-	detect := strings.NewReplacer(pairs...)
-	return func(text string) string {
-		if len(detect.Replace(text)) == len(text) {
-			return text
-		}
-		covered := make([]bool, len(text))
-		for _, n := range needles {
-			end := 0
-			for from := 0; ; {
-				i := strings.Index(text[from:], n)
-				if i < 0 {
-					break
-				}
-				start := from + i
-				for j := max(start, end); j < start+len(n); j++ {
-					covered[j] = true
-				}
-				end = start + len(n)
-				from = start + 1
-			}
-		}
-		var b strings.Builder
-		for i := 0; i < len(text); {
-			j := i
-			for j < len(text) && covered[j] == covered[i] {
-				j++
-			}
-			if covered[i] {
-				b.WriteString(hiddenText)
-			} else {
-				b.WriteString(text[i:j])
-			}
-			i = j
-		}
-		return b.String()
-	}
+	return engine.NewTextFilter(v.strings(), false)
 }
 
-// needles lists the texts Filter replaces, longest first.
-func (v Values) needles() []string {
-	var needles []string
-	add := func(s string) {
-		if utf8.RuneCountInString(s) < minFilteredLength {
-			return
-		}
-		needles = append(needles, s)
-		for _, escaped := range jsonForms(s) {
-			if escaped != s {
-				needles = append(needles, escaped)
-			}
-		}
-	}
+// strings lists every string leaf of v.
+func (v Values) strings() []string {
+	var out []string
 	var walk func(x any)
 	walk = func(x any) {
 		switch t := x.(type) {
 		case string:
-			add(t)
-			if strings.ContainsAny(t, "\r\n") {
-				for line := range strings.FieldsFuncSeq(t, func(r rune) bool { return r == '\n' || r == '\r' }) {
-					add(line)
-				}
-			}
+			out = append(out, t)
 		case map[string]any:
 			for _, e := range t {
 				walk(e)
@@ -517,36 +447,14 @@ func (v Values) needles() []string {
 		}
 	}
 	walk(v.tree)
-	slices.SortFunc(needles, func(a, b string) int { return len(b) - len(a) })
-	return slices.Compact(needles)
+	return out
 }
 
 // jsonForms returns the forms s takes inside a JSON string: with and
 // without the escapes of <, > and &.
-func jsonForms(s string) []string {
-	plain, _ := json.Marshal(s)
-	var b strings.Builder
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(s); err != nil {
-		return []string{trimQuotes(string(plain))}
-	}
-	unescapedHTML := strings.TrimSuffix(b.String(), "\n")
-	return []string{trimQuotes(string(plain)), trimQuotes(unescapedHTML)}
-}
-
-func trimQuotes(s string) string {
-	return strings.TrimSuffix(strings.TrimPrefix(s, `"`), `"`)
-}
+func jsonForms(s string) []string { return engine.JSONForms(s) }
 
 // FilterError returns ce with the server text in its message and hint
 // passed through v.Filter. Its code and retry advice are kept; the cause is
 // dropped, because its text is the server's answer as it was sent.
-func (v Values) FilterError(err error) error {
-	ce := clierr.From(err)
-	out := clierr.New(ce.Code, v.Filter(ce.Message)).WithRetryable(ce.Retryable)
-	if ce.Hint != "" {
-		out = out.WithHint(v.Filter(ce.Hint))
-	}
-	return out
-}
+func (v Values) FilterError(err error) error { return engine.FilterError(err, v.Filter) }

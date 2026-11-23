@@ -188,6 +188,27 @@ func TestBashCompletionCandidateBoundaries(t *testing.T) {
 			want:       []string{"limitsCpu=", "limitsMemory="},
 		},
 		{
+			name:       "unique field= token of create cloud-credential gets no trailing space",
+			words:      []string{"rancher", "create", "cloud-credential", "amazonec2", "--set", "accessK"},
+			cword:      5,
+			candidates: []string{"accessKey="},
+			want:       []string{"accessKey="},
+		},
+		{
+			name:       "field= tokens of create cloud-credential stay bare",
+			words:      []string{"rancher", "create", "cloud-credential", "amazonec2", "--set", ""},
+			cword:      5,
+			candidates: []string{"accessKey=", "defaultRegion="},
+			want:       []string{"accessKey=", "defaultRegion="},
+		},
+		{
+			name:       "no candidates after a typed field= leave COMPREPLY empty",
+			words:      []string{"rancher", "create", "cloud-credential", "amazonec2", "--from-file", "secretKey="},
+			cword:      5,
+			candidates: nil,
+			want:       nil,
+		},
+		{
 			name:       "unique finished argument carries its trailing space",
 			words:      []string{"rancher", "get", "-o", "js"},
 			cword:      3,
@@ -322,6 +343,11 @@ func TestBash3FallbackGeneratesFileCandidates(t *testing.T) {
 		{
 			name: "no matching file leaves COMPREPLY empty",
 			cur:  "zzz",
+			want: func(string) []string { return nil },
+		},
+		{
+			name: "a typed field= word offers no file",
+			cur:  "secretKey=",
 			want: func(string) []string { return nil },
 		},
 	}

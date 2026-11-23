@@ -1165,6 +1165,12 @@ func handWrittenScrubRows() []scrubRow {
 			deps: appScrubDeps(func(s *appServer) {
 				s.putRelease("deployed", 3, map[string]any{"replicaCount": 3})
 			})},
+		{command: "create cloud-credential", variant: "dry run", kind: "secret", class: classNames, reason: cloudCredentialResultReason, dryRun: true,
+			input: cloudCredentialScrubInput, manifest: cloudCredentialScrubFile, deps: cloudCredentialScrubDeps,
+			setup: cloudCredentialScrubList, extra: cloudCredentialScrubSecrets},
+		{command: "create cloud-credential", variant: "apply", kind: "secret", class: classNames, reason: cloudCredentialResultReason,
+			input: cloudCredentialScrubInput, manifest: cloudCredentialScrubFile, deps: cloudCredentialScrubDeps,
+			setup: cloudCredentialScrubList, extra: cloudCredentialScrubSecrets},
 		{command: "grant", kind: "globalrolebinding", class: classEcho,
 			input: func(*plantSet) fieldCoverageInput {
 				return fieldCoverageInput{args: []string{"local://u-abc"}, values: map[string]string{"role": "admin"}, bools: map[string]bool{"global": true}}
@@ -1556,4 +1562,55 @@ func (saveScrubRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
 			`"status":{"driver":"rke2","conditions":[{"type":"Connected","status":"True"}]}}`), nil
 	}
 	return nil, clierr.New(clierr.CodeNotFound, path+" not found")
+}
+
+// cloudCredentialResultReason is the reason of the cloud credential rows: the
+// result is built from the id of Norman's response and the typed names; the
+// response's config is never read.
+const cloudCredentialResultReason = "the result is built from the id of Norman's response and the typed display name and driver; the response's config is never read"
+
+// cloudCredentialScrubSecret is the secret value the cloud credential rows
+// send; no output may show it.
+const cloudCredentialScrubSecret = "scrub-cc-secret-value-0001"
+
+func cloudCredentialScrubSecrets(*plantSet) []string { return []string{cloudCredentialScrubSecret} }
+
+func cloudCredentialScrubFile(*plantSet) string { return cloudCredentialScrubSecret }
+
+func cloudCredentialScrubInput(*plantSet) fieldCoverageInput {
+	return fieldCoverageInput{
+		args:  []string{"s3", "scrub-cc"},
+		lists: map[string][]string{"set": {"accessKey=AKIASCRUBEXAMPLE"}, "from-file": {"secretKey=secret.txt"}},
+		bools: map[string]bool{"wait": false},
+	}
+}
+
+// scrubCloudCredentials is a Norman client that returns an id for a create and
+// plants nothing else: it returns the id only.
+type scrubCloudCredentials struct{}
+
+func (scrubCloudCredentials) CloudCredentials() (engine.CloudCredentialClient, error) {
+	return scrubCloudCredentialClient{}, nil
+}
+
+type scrubCloudCredentialClient struct{}
+
+func (scrubCloudCredentialClient) Create(context.Context, engine.CloudCredentialBody) (string, error) {
+	return "cattle-global-data:cc-scrub", nil
+}
+
+func cloudCredentialScrubDeps(t *testing.T, f *scrubFake, ps *plantSet) runDeps {
+	t.Helper()
+	return runDeps{clients: f, roots: fieldCoverageRoots{}, serverBase: scrubBase{}, cloudCreds: scrubCloudCredentials{}, sessionNamer: scrubNamer{""}, src: fieldCoverageSource{cloudCredentialScrubSecret}}
+}
+
+// cloudCredentialScrubList makes the fake list one Secret in cattle-global-data,
+// the way the display name check reads the stored credentials.
+func cloudCredentialScrubList(f *scrubFake, _ *plantSet) {
+	f.list = func(gvr schema.GroupVersionResource) []unstructured.Unstructured {
+		if gvr.Resource != "secrets" {
+			return nil
+		}
+		return []unstructured.Unstructured{*f.base(gvr, "cattle-global-data", "cc-other")}
+	}
 }

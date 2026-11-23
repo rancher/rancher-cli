@@ -12,7 +12,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // AppType is the steve type of an App.
@@ -241,129 +240,10 @@ func operationPodRefusal(path string, body []byte, t actionTarget, values Values
 }
 
 // refused is the error for an action the server refused: the answer
-// classified again by clierr's status table, as the action client did,
-// from a body whose server text has the values hidden, with the server's
-// text added where the table's message does not hold it. The table's code,
-// retry advice, hint and wording stay; the filter runs on the whole text
-// before the table cuts it, so no part of a value is left, and a
-// Kubernetes Status keeps its whole message. The hint comes from the request
-// and is never filtered.
+// classified again by clierr's status table, with the values hidden in the
+// server's text (engine.RefusedError).
 func refused(path string, r *engine.ActionRefused, values Values) error {
-	body := filteredBody(r.Body, values.filterFunc())
-	said := serverText(body)
-	status, ok := clierr.HTTPStatus(r.Err)
-	if !ok {
-		// r.Err's message holds the server's text as sent and is never read
-		// here.
-		src := clierr.From(r.Err)
-		msg := "POST " + path + " on the Rancher server was refused"
-		if said != "" {
-			msg += ": " + said
-		}
-		return clierr.New(src.Code, msg).WithRetryable(src.Retryable)
-	}
-	prefix := "POST " + path + " on the Rancher server"
-	ce := clierr.FromResponse(prefix, http.MethodPost, status, body, r.Request)
-	// The server text is looked for after the prefix only, so a short text
-	// that the path holds, such as the action name, is still shown.
-	if said != "" && !strings.EqualFold(said, http.StatusText(status)) && !strings.Contains(strings.TrimPrefix(ce.Message, prefix), strings.TrimSuffix(said, "…")) {
-		ce = ce.WithMessage(ce.Message + ": " + said)
-	}
-	return ce
-}
-
-// serverText is the server's message in a body whose values are already
-// hidden. It runs no second filter, which would replace a value that is
-// part of <hidden> inside the marker.
-func serverText(filtered []byte) string {
-	return clierr.FilteredServerMessage(filtered, func(s string) string { return s })
-}
-
-// filteredBody is body with the values hidden in its server text: in a
-// Kubernetes Status, its message, details.name and each cause's message and
-// field; in any other JSON object, every string; or the whole of any other
-// body. A Status's kind, apiVersion, status, reason and code stay as sent,
-// so it is still read as that Status.
-func filteredBody(body []byte, filter func(string) string) []byte {
-	var obj map[string]any
-	if json.Unmarshal(body, &obj) != nil || obj == nil {
-		return []byte(filter(string(body)))
-	}
-	var st metav1.Status
-	if json.Unmarshal(body, &st) == nil && st.Kind == "Status" {
-		filterStatus(obj, filter)
-	} else {
-		filterStrings(obj, filter)
-	}
-	out, err := json.Marshal(obj)
-	if err != nil {
-		return []byte(filter(string(body)))
-	}
-	return out
-}
-
-// filterStatus runs filter on the text fields of a Status decoded into obj.
-// Keys match without regard to case, as encoding/json reads them.
-func filterStatus(obj map[string]any, filter func(string) string) {
-	filterField(obj, "message", filter)
-	for _, details := range fields(obj, "details") {
-		d, ok := details.(map[string]any)
-		if !ok {
-			continue
-		}
-		filterField(d, "name", filter)
-		for _, causes := range fields(d, "causes") {
-			list, ok := causes.([]any)
-			if !ok {
-				continue
-			}
-			for _, cause := range list {
-				if c, ok := cause.(map[string]any); ok {
-					filterField(c, "message", filter)
-					filterField(c, "field", filter)
-				}
-			}
-		}
-	}
-}
-
-// fields returns the values of obj's keys that equal name without regard to
-// case.
-func fields(obj map[string]any, name string) []any {
-	var out []any
-	for k, v := range obj {
-		if strings.EqualFold(k, name) {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-// filterField runs filter on each string under a key of obj that equals name
-// without regard to case.
-func filterField(obj map[string]any, name string, filter func(string) string) {
-	for k, v := range obj {
-		if s, ok := v.(string); ok && strings.EqualFold(k, name) {
-			obj[k] = filter(s)
-		}
-	}
-}
-
-// filterStrings returns v with filter run on every string in it.
-func filterStrings(v any, filter func(string) string) any {
-	switch t := v.(type) {
-	case string:
-		return filter(t)
-	case map[string]any:
-		for k, e := range t {
-			t[k] = filterStrings(e, filter)
-		}
-	case []any:
-		for i, e := range t {
-			t[i] = filterStrings(e, filter)
-		}
-	}
-	return v
+	return engine.RefusedError(http.MethodPost, path, r, values.filterFunc())
 }
 
 // outcomeUnknown is the error for an action request that was sent but whose

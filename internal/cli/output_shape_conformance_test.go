@@ -56,6 +56,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"config status":                     runtime.ShapeText,
 	"config update-server":              runtime.ShapeText,
 	"config use-server":                 runtime.ShapeText,
+	"create cloud-credential":           runtime.ShapeTabular,
 	"create cluster":                    runtime.ShapeText,
 	"create kubeconfig":                 runtime.ShapeBytes,
 	"create machine-config":             runtime.ShapeText,

@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 272,
+  "commandCount": 273,
   "effectSchema": {
     "actions": [
       "create",
@@ -283,6 +283,10 @@
         {
           "name": "create machine-config",
           "usage": "Create a machine config for the machine pool of a node-driver cluster"
+        },
+        {
+          "name": "create cloud-credential",
+          "usage": "Create a cloud credential for a node driver or for etcd snapshots in S3"
         }
       ],
       "desc": "Create Rancher resources. Most commands in this group have their own flags for one kind; `rancher create resource -f <file|->` creates any kind `rancher schema` lists (one document per run; a few kinds must be created with their dedicated command, and the refusal names it).",

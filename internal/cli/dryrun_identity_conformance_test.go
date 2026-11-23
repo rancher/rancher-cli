@@ -88,6 +88,7 @@ var dryRunBespokeEffectCommands = map[string]string{
 	"extension uninstall":            "internal/engine/catalog/extensionuninstall_test.go: TestExtensionUninstallPlanDisplayIdentity asserts DisplayKind/DisplayName (the chart name) and that the committed identity never carries the dry-run preview's \"*\" marker",
 	"app uninstall":                  "internal/engine/catalog/uninstall_test.go: TestUninstallPlanDisplayIdentity asserts DisplayKind/DisplayName (the release name) and that the committed identity never carries the dry-run preview's \"*\" marker",
 	"node drain":                     "internal/engine/nodes/drain_test.go: TestDrainPlanDisplayIdentity asserts DisplayKind/DisplayName (the node name) and that the committed result names the node; TestNormanPathDisplayIdentity asserts the same for the path through Rancher's node action",
+	"create cloud-credential":        "internal/engine/provisioning/cloudcredwrite_test.go: TestCloudCredentialPlanDisplayIdentity asserts DisplayKind/DisplayName (the display name typed) and TestCloudCredentialResultRow asserts the committed result names the credential",
 	"node stop-drain":                "internal/engine/nodes/stopdrain_test.go: TestStopDrainPlanDisplayIdentity asserts DisplayKind/DisplayName (the node name) and that the committed result names the node; TestNormanStopDrainPlanDisplayIdentity asserts the same for the path through Rancher's node action",
 }
 

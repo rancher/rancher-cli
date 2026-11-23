@@ -1,10 +1,3 @@
-// Package provisioning holds the read-only cloud-credential resolver plus
-// its `get cloud-credential` listing surface.
-// SECRET HYGIENE: every function here reads Kubernetes Secret
-// objects in cattle-global-data but retains ONLY key names and metadata
-// (name, the field.cattle.io/name annotation, creationTimestamp) - never a
-// `data` VALUE. A `data` value must never flow into CloudCredRef, a
-// runtime.Result, or an error string.
 package provisioning
 
 import (

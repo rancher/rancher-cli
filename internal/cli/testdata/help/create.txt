@@ -5,6 +5,7 @@ USAGE:
    rancher create [command [command options]]
 
 COMMANDS:
+   cloud-credential:         Create a cloud credential for a node driver or for etcd snapshots in S3
    cluster:                  Create a provisioning cluster (--import, --custom, or --machine-config for a node-driver cluster)
    kubeconfig:               Create a kubeconfig with an embedded token
    machine-config:           Create a machine config for the machine pool of a node-driver cluster

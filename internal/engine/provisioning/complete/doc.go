@@ -5,7 +5,8 @@
 // credential Secrets of cattle-global-data, every id plus each unique
 // display name), and --pool on the cluster-family verbs that take a pool
 // (the machine pools of the provisioning cluster typed as the first
-// positional). It is a restricted package: it may import the completion
+// positional), create cloud-credential's `<driver>` and field names, and
+// the `<credential>` of get cloud-credential. It is a restricted package: it may import the completion
 // seam, the kind table, and a fixed set of standard-library packages,
 // and nothing that reaches a client, a credential store, the
 // environment, the file system or a process. A conformance test enforces

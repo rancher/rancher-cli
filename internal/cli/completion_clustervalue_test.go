@@ -273,6 +273,8 @@ var clusterValueWiringsWithoutSites = map[string]string{
 	"command cluster clear-autoscaling":    "the command takes no --cluster",
 	"command cluster save-etcd-snapshot":   "the command takes no --cluster",
 	"command cluster set-upgrade-strategy": "the command takes no --cluster",
+	"command create cloud-credential":      "the command takes no --cluster",
+	"command get cloud-credential":         "the command takes no --cluster",
 	"command oidc-client rotate-secret":    "the command takes no --cluster",
 	"command oidc-client remove-secret":    "the command takes no --cluster",
 	"command extension add-repository":     "the command takes no --cluster",

@@ -103,6 +103,8 @@ var stdinDocUseAllowlist = map[string]stdinDocUseEntry{
 		"internal/engine/resources/patch.go:patchCmd.decodePatch"},
 	"internal/engine/resources/create.go:createCmd.readAndResolve": {1, "reads --filename, stdin included", stdinDocTableTest,
 		"internal/engine/resources/create.go:createCmd.readAndResolve"},
+	"internal/engine/provisioning/cloudcredwrite.go:createCloudCredentialCmd.readWords": {1, "reads every --from-file file of create cloud-credential, stdin included", stdinDocTableTest,
+		"internal/engine/provisioning/cloudcredwrite.go:createCloudCredentialCmd.readWords"},
 }
 
 // stdinDocDeclAllowlist maps "<file>:<Type>.<Method>" to why a declaration of

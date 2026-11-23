@@ -101,7 +101,40 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 		return nil, true
 	}
 	completionDebugf("source: %d requests, %d names, %d descriptions", conn.Used(), len(res.Names), len(res.Descriptions))
+	if fieldKeySite(d.Name, site) {
+		return emitFieldKeys(site, res), true
+	}
 	return emitResult(site, res), true
+}
+
+// fieldKeyFlags lists, per command, the flags whose value is a <field>=<value>
+// pair: the source returns the field names, and the surface adds the "=" that
+// the shell-safe charset of a name does not allow.
+var fieldKeyFlags = map[string][]string{
+	"create cloud-credential": {"set", "from-file"},
+}
+
+// fieldKeySite reports whether the site is the value of a flag of
+// fieldKeyFlags.
+func fieldKeySite(command string, site CompletionSite) bool {
+	return site.Kind == SiteFlagValue && slices.Contains(fieldKeyFlags[command], site.FlagName)
+}
+
+// emitFieldKeys returns the field names of a source as `<field>=` tokens: the
+// names pass the shell-safe charset, are listed once and sorted, and each gets
+// the "=" that continues into the value. An equals-form site gets full
+// --flag=<field>= tokens.
+func emitFieldKeys(site CompletionSite, res completion.Result) []string {
+	names := slices.Compact(sanitizeCandidates(res.Names))
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		tok := n + "="
+		if site.EqualsForm {
+			tok = site.FlagSpelling + "=" + tok
+		}
+		out = append(out, tok)
+	}
+	return out
 }
 
 // typedPositionals fills Request.Positionals: the tail's positionals with
