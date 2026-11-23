@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -290,14 +291,14 @@ func TestRefusedActionWithNoStatus(t *testing.T) {
 	}
 }
 
-// TestRefusedActionFiltersALargeBodyQuickly asserts a refusal whose body is
-// a JSON object of about 750 KB, an array of 150,000 strings of which 2,000
-// each hold one of 2,000 values, is classified in under 5 seconds. It does
-// not run in parallel, so other tests do not share its time.
-func TestRefusedActionFiltersALargeBodyQuickly(t *testing.T) {
+// largeRefusal returns a refusal for n values, the values, and the size of
+// its body in bytes. The body is a JSON object with an array of 75*n strings,
+// n of which each hold one of the values.
+func largeRefusal(t *testing.T, n int) (*engine.ActionRefused, Values, int) {
+	t.Helper()
 	tree := map[string]any{}
 	var values []string
-	for i := range 2000 {
+	for i := range n {
 		v := fmt.Sprintf("value-%04d <&> secret", i)
 		if i%4 == 0 {
 			v = fmt.Sprintf("first-%04d <a>\nsecond-%04d &b", i, i)
@@ -305,7 +306,7 @@ func TestRefusedActionFiltersALargeBodyQuickly(t *testing.T) {
 		tree["k"+strconv.Itoa(i)] = v
 		values = append(values, v)
 	}
-	items := make([]string, 150000)
+	items := make([]string, 75*n)
 	for i := range items {
 		items[i] = strconv.Itoa(i % 100)
 		if i < len(values) {
@@ -314,14 +315,51 @@ func TestRefusedActionFiltersALargeBodyQuickly(t *testing.T) {
 	}
 	b, err := json.Marshal(map[string]any{"type": "error", "message": "denied", "items": items})
 	require.NoError(t, err)
-	assert.InDelta(t, 750_000, len(b), 150_000)
-	r := refusal(http.StatusBadRequest, string(b))
-	start := time.Now()
-	got := refused(refusedPath, r, Values{tree: tree})
-	elapsed := time.Since(start)
-	t.Logf("refused took %v", elapsed)
-	assert.Less(t, elapsed, 5*time.Second)
-	assert.Equal(t, clierr.CodeValidation, clierr.From(got).Code)
+	return refusal(http.StatusBadRequest, string(b)), Values{tree: tree}, len(b)
+}
+
+// TestRefusedActionFilterTimeScalesWithTheBodySize asserts the time to classify
+// a refusal does not grow as fast as the square of the size of its body. The
+// body is a JSON object of about 750 KB, an array of 150,000 strings of which
+// 2,000 each hold one of 2,000 values. The check compares the shortest of three
+// runs on that body with the shortest of seven runs on a body one eighth its
+// size, with items and values both scaled; the three full-size runs alternate
+// with the first three small runs. The work is mainly the total length of the
+// strings plus, for every string that holds a value, a search of that string
+// for each value, so it grows between 8 and 64 times for an eight times larger
+// body; the limit is 32 times. CI runs the test under the race detector, where
+// the ratio of correct code is furthest from the limit. A time in seconds
+// depends on the machine; the ratio of two runs on the same machine changes
+// little with its speed. Each full-size run must also take under 60 seconds;
+// this only reports a slow run. A hang ends with the test timeout of go test.
+// The test does not run in parallel, so other tests do not share its time.
+func TestRefusedActionFilterTimeScalesWithTheBodySize(t *testing.T) {
+	const (
+		values    = 2000
+		scale     = 8
+		maxRatio  = 32
+		timeLimit = 60 * time.Second
+	)
+	smallRefusal, smallValues, _ := largeRefusal(t, values/scale)
+	fullRefusal, fullValues, size := largeRefusal(t, values)
+	assert.InDelta(t, 750_000, size, 150_000)
+	run := func(r *engine.ActionRefused, v Values, n int) time.Duration {
+		start := time.Now()
+		got := refused(refusedPath, r, v)
+		elapsed := time.Since(start)
+		require.Less(t, elapsed, timeLimit, "a run on a body of %d values took too long", n)
+		assert.Equal(t, clierr.CodeValidation, clierr.From(got).Code)
+		return elapsed
+	}
+	small, full := time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
+	for i := range 7 {
+		small = min(small, run(smallRefusal, smallValues, values/scale))
+		if i < 3 {
+			full = min(full, run(fullRefusal, fullValues, values))
+		}
+	}
+	t.Logf("shortest run: %v on the full body, %v on one eighth of it; ratio %.1f", full, small, float64(full)/float64(small))
+	assert.Less(t, full, maxRatio*small)
 }
 
 // TestRefusedActionAddsServerTextThePathHolds asserts Rancher's text is
