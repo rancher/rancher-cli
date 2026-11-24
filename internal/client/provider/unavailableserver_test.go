@@ -219,7 +219,9 @@ func guardPaths() []guardPath {
 				_, err := EffectiveTokenMetadata(ctx, guardEff(srv), "t")
 				return err
 			}},
-		{name: "v3 token metadata", retries: true, named: true,
+		// The v3 token read sends its request once: a 429 is not repeated for
+		// this read, whose failure only adds a warning to the report.
+		{name: "v3 token metadata", named: true,
 			run: func(t *testing.T, ctx context.Context, srv *testtransport.Answers, _ string) error {
 				t.Helper()
 				_, err := V3TokenMetadata(ctx, guardEff(srv), "t")

@@ -433,6 +433,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"tag grammar"}, "a valid release tag"},
 	{[]string{"tag redirect"}, "redirect to a release tag URL"},
 	{[]string{"text card"}, "text output"},
+	{[]string{"the answer to"}, "the response to"},
 	{[]string{"the pair"}, "the two binaries"},
 	{[]string{"the plan"}, "the dry-run preview"},
 	{[]string{"unexpected answer", "the answer is cluster"}, "unexpected response"},

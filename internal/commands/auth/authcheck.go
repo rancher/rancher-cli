@@ -36,8 +36,9 @@ type authCheckCmd struct {
 	// defaults to provider.EffectiveTokenMetadata.
 	token func(ctx context.Context, eff config.Effective, name string) (provider.TokenMetadata, error)
 	// v3token reads back the effective token's management.cattle.io/v3 Token
-	// metadata by name (the id before the ':') for non-ext tokens, injectable
-	// for tests; defaults to provider.V3TokenMetadata in NewAuthCheck.
+	// metadata by name (the id before the ':') for non-ext tokens through
+	// Rancher's Norman token API, injectable for tests; defaults to
+	// provider.V3TokenMetadata in NewAuthCheck.
 	v3token func(ctx context.Context, eff config.Effective, name string) (provider.TokenMetadata, error)
 }
 
@@ -175,7 +176,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	// only known once the goroutines above have joined) to classify a
 	// token-probe 404, so it happens here rather than inside probeToken.
 	token := tokenRaw
-	tokenWarn := tokenWarning(tokenErr, supported)
+	tokenWarn := tokenWarning(tokenErr, supported, os.Getenv(config.EnvToken) != "")
 
 	conflict := ""
 	if storeConflict != nil {
@@ -408,20 +409,28 @@ func (a authCheckCmd) checkIdentity(ctx context.Context, eff config.Effective) (
 	return map[string]any{"userID": userID}, ""
 }
 
-// errV3TokenNotFound signals that the management.cattle.io/v3 Token object was
-// absent - the management API is always present on a running Rancher server, so
-// this unambiguously means the token was revoked or rotated, never a missing
-// API group. tokenWarning treats this specially to emit the "re-authenticate"
-// advisory rather than the ext.cattle.io group-absent wording.
+// errV3TokenNotFound signals that Rancher's Norman token API responded with 404
+// for the token: it is gone, or it is not the caller's, and the caller's bearer
+// is the token itself, so it was revoked or rotated. tokenWarning maps it to
+// rotatedTokenAdvisory rather than the ext.cattle.io group-absent wording.
 var errV3TokenNotFound = errors.New("v3 token not found on the server")
 
-// rotatedTokenAdvisory is the warning text for a token whose server-side
-// record is absent - shared by the v3 and ext NotFound branches of
-// tokenWarning so the two messages cannot drift independently as the probe
-// grows.
-func rotatedTokenAdvisory() string {
-	return clierr.Text("token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate",
-		clierr.Lead(" with: "), clierr.NewCommand(config.LoginWords))
+// errTokenHasNoName signals a bearer with no name before its ':' (no ':', or
+// nothing before it), so no token name to read. Its text is the whole warning
+// after the field.
+var errTokenHasNoName = errors.New("the token is not in the form <name>:<secret> or ext/<name>:<secret>; its details were not read")
+
+// rotatedTokenAdvisory is the warning text for a token the server has no
+// record of, shared by the v3 and ext NotFound branches of tokenWarning so the
+// two messages cannot drift. A stored login gets the login command; a token
+// from RANCHER_CLI_TOKEN (fromVariable) gets the instruction to set the
+// variable, because a login does not replace it.
+func rotatedTokenAdvisory(fromVariable bool) string {
+	const unknown = "token metadata unavailable: the server has no such token (revoked or rotated); "
+	if fromVariable {
+		return unknown + "set " + config.EnvToken + " to another token"
+	}
+	return clierr.Text(unknown+"re-authenticate", clierr.Lead(" with: "), clierr.NewCommand(config.LoginWords))
 }
 
 // probeToken runs the token probe for the EFFECTIVE token (eff.Token -
@@ -430,11 +439,16 @@ func rotatedTokenAdvisory() string {
 // token package's bearer validation uses, applied here to the long-lived
 // effective credential rather than a token the login created.
 //
-// For ext/ tokens the probe delegates to a.token (EffectiveTokenMetadata).
+// For ext/ tokens the probe delegates to a.token (EffectiveTokenMetadata),
+// which reads the token through the Kubernetes API of the local cluster.
 // For all other tokens (management.cattle.io/v3, the common case for Rancher
-// 2.15 UI-created sessions) the probe delegates to a.v3token (V3TokenMetadata)
-// and reports the same five-field shape - name, kind (derived/session),
-// provider, expiresAt, current.
+// 2.15 UI-created sessions) the probe delegates to a.v3token (V3TokenMetadata),
+// which reads the token through Rancher's Norman token API, and reports the same
+// five-field shape - name, kind (derived/session), provider, expiresAt,
+// current. A bearer with no name before its ':' (no ':', or an empty name,
+// with or without the ext/ prefix) has no token name: no read is sent, because
+// a bearer never goes into a request path, and the probe returns
+// errTokenHasNoName.
 //
 // A nil a.token or a.v3token (possible when a test builds authCheckCmd directly
 // without going through NewAuthCheck) is treated as "not wired for this check"
@@ -454,8 +468,11 @@ func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any
 	if eff.Token == "" {
 		return nil, nil
 	}
-	id, _, _ := strings.Cut(eff.Token, ":")
+	id, _, found := strings.Cut(eff.Token, ":")
 	name, ok := strings.CutPrefix(id, "ext/")
+	if !found || id == "" || (ok && name == "") {
+		return nil, errTokenHasNoName
+	}
 	if !ok {
 		// Non-ext (management.cattle.io/v3) token: fall through to the v3 probe.
 		if a.v3token == nil {
@@ -493,9 +510,10 @@ func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any
 }
 
 // tokenWarning turns probeToken's raw outcome into the null-plus-warning text.
-// errV3TokenNotFound (a missing management.cattle.io/v3 Token object) always
-// maps to the "re-authenticate" advisory - the management API is always present,
-// so the absent object is unambiguously stale/revoked, not a missing API group.
+// errV3TokenNotFound (a 404 from Rancher's Norman token API) always maps to
+// rotatedTokenAdvisory: the token is gone or is not the caller's, and the
+// bearer is the token itself, so it was revoked or rotated. fromVariable is
+// true when RANCHER_CLI_TOKEN supplies the token.
 //
 // A CodeNotFound on the ext token GET is ambiguous by error code alone - it
 // means either the ext.cattle.io group itself is absent (below the 2.14 floor)
@@ -505,33 +523,32 @@ func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any
 // ambiguity: once it has confirmed the server IS at or above the floor, the
 // same 404 can only be the latter. When supported is nil or false, the
 // group-absent wording is the only thing that can honestly be said.
-func tokenWarning(err error, supported *bool) string {
+func tokenWarning(err error, supported *bool, fromVariable bool) string {
 	if err == nil {
 		return ""
 	}
 	if errors.Is(err, errV3TokenNotFound) {
-		return rotatedTokenAdvisory()
+		return rotatedTokenAdvisory(fromVariable)
 	}
 	if clierr.IsNotFound(err) && supported != nil && *supported {
-		return rotatedTokenAdvisory()
+		return rotatedTokenAdvisory(fromVariable)
 	}
 	return degradeWarning("token", err)
 }
 
 // degradeWarning turns an identity or token probe failure into the
-// null-plus-warning posture both identity and token metadata degrade to: RBAC
-// denial, a timeout, and the ext.cattle.io group/resource being missing (below
+// null-plus-warning posture both identity and token metadata degrade to: a
+// refusal, a timeout, and the ext.cattle.io group/resource being missing (below
 // the 2.14 floor, or genuinely absent for some other reason on a >= 2.14
 // server) are all warn-only - auth status's own success (`ok`) never depends on
-// either probe. The missing-group wording deliberately does not reuse
-// EvalMinVersionSupport's below-floor text: a server the version check already
-// reported as >= 2.14 must not also be told it is below the minimum just
-// because this group happens to be absent.
+// either probe. A refusal keeps the server's message; a Kubernetes refusal
+// names the user, the verb and the resource. The missing-group wording
+// deliberately does not reuse EvalMinVersionSupport's below-floor text: a
+// server the version check already reported as >= 2.14 must not also be told
+// it is below the minimum just because this group happens to be absent.
 func degradeWarning(field string, err error) string {
 	if ce, ok := errors.AsType[*clierr.Error](err); ok {
 		switch ce.Code {
-		case clierr.CodeRBAC:
-			return fmt.Sprintf("%s metadata unavailable: denied by RBAC", field)
 		case clierr.CodeNotFound:
 			return fmt.Sprintf("%s metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= %s, the supported minimum)", field, config.MinRancherVersion)
 		}

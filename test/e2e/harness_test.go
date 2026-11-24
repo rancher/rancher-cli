@@ -274,6 +274,26 @@ func rancherVersionRoute(next http.Handler, prime string) http.Handler {
 	})
 }
 
+// normanTokenRoute answers GET /v3/tokens/e2e for the harness bearer with the
+// token as Rancher's Norman token API sends it: the bearer is that token and it is
+// not derived, so current is true. Any other bearer on that path gets the 401
+// of Rancher's authentication filter. Every other request passes on.
+func normanTokenRoute(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v3/tokens/e2e" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.Header.Get("Authorization") != "Bearer "+testToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"type":"error","status":"401","message":"Unauthorized 401: must authenticate"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"type":"token","id":"e2e","name":"e2e","authProvider":"local","isDerived":false,"current":true,"expiresAt":"","userId":"u-session"}`))
+	})
+}
+
 // chartIndexRoute answers GET
 // <cluster>/v1/catalog.cattle.io.clusterrepos/<name> with link=index on the
 // local cluster and on c-test, from the index the test holds for the name. The
@@ -2181,7 +2201,7 @@ func TestScenarios(t *testing.T) {
 			idpSrv.StartTLS()
 			e.Defer(idpSrv.Close)
 			opts := testrancher.Options{
-				Fallthrough:         router,
+				Fallthrough:         normanTokenRoute(router),
 				Legacy:              legacyScripts[scriptName],
 				SeedToken:           testToken,
 				EnableIdP:           true,
@@ -2575,11 +2595,10 @@ func seedUserAttributeObjects() {
 
 // seedManagementToken creates the management.cattle.io/v3 Token whose name
 // matches the harness credential id ("e2e" - the id portion of
-// testToken "e2e:secret"). Seeding it globally (rather than per-script)
-// ensures auth status's v3 fallback probe returns deterministic metadata
-// regardless of script execution order, and lets management-token.txtar's
-// session-guard test rely on it without its own seedobj call racing other
-// scripts on the shared apiserver.
+// testToken "e2e:secret"). auth status does not read it: normanTokenRoute
+// answers its read through Rancher's Norman token API. Seeding it globally (rather than per-script) lets
+// management-token.txtar's session-guard test rely on it without its own
+// seedobj call racing other scripts on the shared apiserver.
 func seedManagementToken() {
 	gvr := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "tokens"}
 	obj := &unstructured.Unstructured{Object: map[string]any{

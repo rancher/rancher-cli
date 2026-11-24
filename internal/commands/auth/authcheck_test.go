@@ -322,8 +322,8 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 // TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe asserts the v3 fallback: a
 // non-ext (management.cattle.io/v3) effective token routes to the v3token probe
 // and never touches the ext probe. Here the v3 probe returns RBAC denial, so
-// token degrades to null with the RBAC warning - the same posture the ext probe
-// uses on the same error code.
+// token degrades to null with a warning that carries the server's message -
+// the same posture the ext probe uses on the same error code.
 func TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "legacy-id:legacysecret")
 	dir := seedAuthedDir(t)
@@ -339,14 +339,14 @@ func TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe(t *testing.T) {
 			return provider.TokenMetadata{}, nil
 		},
 		v3token: func(_ context.Context, _ config.Effective, _ string) (provider.TokenMetadata, error) {
-			return provider.TokenMetadata{}, clierr.New(clierr.CodeRBAC, "tokens.management.cattle.io is forbidden")
+			return provider.TokenMetadata{}, clierr.New(clierr.CodeRBAC, "can not get token")
 		},
 	}
 	res, err := cmd.Execute(t.Context(), cmdtest.Input{}, ui.Discard())
 	require.NoError(t, err)
 	assert.False(t, extCalled, "a non-ext token must never reach the ext probe")
 	assert.Nil(t, res.Data.(map[string]any)["token"])
-	assert.Contains(t, res.Warnings, "token metadata unavailable: denied by RBAC")
+	assert.Contains(t, res.Warnings, "token metadata unavailable: can not get token")
 }
 
 // TestAuthCheckNoTokenAtAllIsNotLegacy asserts checkToken's distinct empty-token
@@ -392,7 +392,7 @@ func TestAuthCheckIdentityDegradation(t *testing.T) {
 		{
 			name:    "RBAC denial (read-only token; identity is create-verb)",
 			err:     clierr.New(clierr.CodeRBAC, "selfusers.ext.cattle.io is forbidden: user cannot create resource"),
-			warning: "identity metadata unavailable: denied by RBAC",
+			warning: "identity metadata unavailable: selfusers.ext.cattle.io is forbidden: user cannot create resource",
 		},
 		{
 			name:    "timeout",
@@ -446,7 +446,7 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 		{
 			name:    "RBAC denial",
 			err:     clierr.New(clierr.CodeRBAC, "tokens.ext.cattle.io is forbidden: user cannot get resource"),
-			warning: "token metadata unavailable: denied by RBAC",
+			warning: "token metadata unavailable: tokens.ext.cattle.io is forbidden: user cannot get resource",
 		},
 		{
 			name:    "timeout",
@@ -526,7 +526,7 @@ func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 	require.NoError(t, err, "a token-probe failure must never fail the check")
 	data := res.Data.(map[string]any)
 	assert.Nil(t, data["token"])
-	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate with: "+clierr.Rancher+" auth login")
+	assert.Contains(t, res.Warnings, "token metadata unavailable: the server has no such token (revoked or rotated); set RANCHER_CLI_TOKEN to another token")
 }
 
 // TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes asserts the
@@ -556,8 +556,8 @@ func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.
 		require.NoError(t, err)
 		require.Len(t, res.Warnings, 3)
 		assert.Contains(t, res.Warnings[0], "below the supported minimum 2.14")
-		assert.Equal(t, "identity metadata unavailable: denied by RBAC", res.Warnings[1])
-		assert.Equal(t, "token metadata unavailable: denied by RBAC", res.Warnings[2])
+		assert.Equal(t, "identity metadata unavailable: selfusers.ext.cattle.io is forbidden", res.Warnings[1])
+		assert.Equal(t, "token metadata unavailable: tokens.ext.cattle.io is forbidden", res.Warnings[2])
 	}
 }
 
@@ -585,7 +585,7 @@ func TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken(t *testing.T) {
 	data := res.Data.(map[string]any)
 	assert.True(t, data["ok"].(bool))
 	assert.Nil(t, data["identity"])
-	assert.Contains(t, res.Warnings, "identity metadata unavailable: denied by RBAC")
+	assert.Contains(t, res.Warnings, `identity metadata unavailable: selfusers.ext.cattle.io is forbidden: user cannot create resource "selfusers"`)
 }
 
 // TestAuthCheckV3TokenFoundReturnsMetadata asserts the v3 fallback happy path: a
@@ -625,10 +625,11 @@ func TestAuthCheckV3TokenFoundReturnsMetadata(t *testing.T) {
 }
 
 // TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning asserts the v3 fallback
-// 404 path: when the management.cattle.io/v3 Token object is absent (revoked
-// or rotated) the token field degrades to null with the "re-authenticate"
-// advisory. Unlike the ext 404 disambiguation this warning is unconditional -
-// the management API is always present, so 404 unambiguously means a stale id.
+// 404 path: when Rancher's Norman token API answers 404 (the token is revoked
+// or rotated, or is not the caller's) the token field degrades to null with
+// the rotated token advisory. Unlike the ext 404 disambiguation this
+// warning is unconditional: the bearer is the token itself, so the 404 means
+// a stale id.
 func TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "token-stale:secret")
 	dir := seedAuthedDir(t)
@@ -645,7 +646,7 @@ func TestAuthCheckV3TokenNotFoundDegradesToNullWithWarning(t *testing.T) {
 	res, err := cmd.Execute(t.Context(), cmdtest.Input{}, ui.Discard())
 	require.NoError(t, err)
 	assert.Nil(t, res.Data.(map[string]any)["token"])
-	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate with: "+clierr.Rancher+" auth login")
+	assert.Contains(t, res.Warnings, "token metadata unavailable: the server has no such token (revoked or rotated); set RANCHER_CLI_TOKEN to another token")
 }
 
 // TestAuthCheckExtTokenProbeUnchanged asserts that an ext/ effective token still
@@ -763,7 +764,7 @@ func TestStyleAuthCheckTextAccentsFalseOK(t *testing.T) {
 // Text branch) and asserts that warnings still reach stderr as "# warning: ..."
 // lines - not stdout - when the text view is active. A non-ext token whose
 // v3 lookup 404s (revoked or rotated) is the real-world case: the Text view
-// renders on stdout while the re-authenticate advisory arrives only on stderr.
+// renders on stdout while the rotated token advisory arrives only on stderr.
 func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "legacy-id:legacysecret")
 	dir := seedAuthedDir(t)
@@ -784,7 +785,7 @@ func TestAuthCheckTextViewWarningsReachStderr(t *testing.T) {
 	stdout, stderr := out.String(), errBuf.String()
 	assert.Contains(t, stdout, "AUTH STATUS")
 	assert.NotContains(t, stdout, "# warning:", "warnings must never appear on stdout")
-	assert.Contains(t, stderr, "# warning: token metadata unavailable: stored token not found on the server (revoked or rotated); re-authenticate with: rancher auth login")
+	assert.Contains(t, stderr, "# warning: token metadata unavailable: the server has no such token (revoked or rotated); set RANCHER_CLI_TOKEN to another token")
 	assert.NotContains(t, stderr, "AUTH STATUS", "text view must never appear on stderr")
 }
 

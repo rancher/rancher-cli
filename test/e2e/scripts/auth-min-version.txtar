@@ -19,12 +19,11 @@ jsonquery stdout 'warnings.0' 'cannot determine server version, assuming support
 jsonquery stdout data.identity ''
 jsonquery stdout 'warnings.1' 'identity metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)'
 
-# The test token (e2e:secret) has no ext/ prefix, so the v3 fallback
-# probe runs. The "e2e" management.cattle.io/v3 Token is seeded globally in
-# harness_test.go's seedManagementToken() - always present, no ordering
-# dependency. It carries authProvider "local" and no isDerived/expiresAt/current.
+# The test token (e2e:secret) has no ext/ prefix, so the v3 token is read
+# through Rancher's Norman token API (GET /v3/tokens/e2e), which the harness answers
+# for every scenario.
 jsonquery stdout 'data.token.name' 'e2e'
 jsonquery stdout 'data.token.kind' 'session'
 jsonquery stdout 'data.token.provider' 'local'
 jsonquery stdout 'data.token.expiresAt' ''
-jsonquery stdout 'data.token.current' 'false'
+jsonquery stdout 'data.token.current' 'true'

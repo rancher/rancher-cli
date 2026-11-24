@@ -161,7 +161,7 @@ func FixedCommandRemedies(t *testing.T) []FixedCommandRemedy {
 	_, err = (&logoutCmd{dir: dir}).Execute(t.Context(), cmdtest.Input{}, ui.Discard())
 	add("no current server", asClierr(t, err).Message, logoutBoth...)
 
-	add("the rotated token advisory", rotatedTokenAdvisory(), ExpectedCommand{" auth login", nil})
+	add("the rotated token advisory", rotatedTokenAdvisory(false), ExpectedCommand{" auth login", nil})
 
 	seedServer(t, dir, "prod", "https://r.ex", "", false)
 	changed := register.AuthSnapshot{Name: "prod", CanonicalURL: "https://other.ex"}
@@ -295,7 +295,7 @@ func TestTheFactBeforeACommandSurvivesTheCutOfAnUnprintableDirectory(t *testing.
 		"a name cannot be derived":                 "a server name cannot be derived from an IPv6 address",
 		"a name and --all":                         "specify a server name or --all, not both",
 		"no current server":                        "no current server",
-		"the rotated token advisory":               "stored token not found on the server (revoked or rotated)",
+		"the rotated token advisory":               "the server has no such token (revoked or rotated)",
 		"the entry changed since the registration": "verify failed",
 	}
 	commandOnly := []string{"save the CA for the entry", "name collision hint", "--cacert without --url", "switch hint",

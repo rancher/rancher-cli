@@ -3703,13 +3703,27 @@ the warn-only period.
 reports `rancherVersion`/`supported` (the version-floor check above),
 `identity` (the caller's `userID`, from a create-verb identity probe against
 `ext.cattle.io`), and `token` (the effective token's
-name/kind/provider/expiry/`current` marker - for both `ext.cattle.io` tokens
-and management.cattle.io/v3 tokens; `token: null` with a warning appears only
-on a probe failure such as a revoked/rotated token). Any of these fields
-degrading to `null` with a warning is expected, not a bug - including
-`identity` under a read-only-RBAC token, since the identity probe is itself a
-create-verb request. `auth status`'s connectivity result (`ok`) never depends
-on them.
+name/kind/provider/expiry/`current` marker). An `ext.cattle.io` token is read
+through the Kubernetes API of Rancher's local cluster. A
+`management.cattle.io/v3` token is read with `GET /v3/tokens/<name>` on the
+Norman token API, which Rancher lets the token's owner call with no further
+permission. `token` is `null`, with a warning, only when the token cannot be
+read. The warning carries the message of the error, for example the server's
+message for a 403 or `the server rejected the credential (401)` for a 401. A
+404 for a `management.cattle.io/v3` token gives
+`the server has no such token (revoked or rotated)`, followed by the command to
+log in again, or by `set RANCHER_CLI_TOKEN to another token` when
+`RANCHER_CLI_TOKEN` supplies the token. A 404 for an `ext.cattle.io` token
+gives the same text when the version check finds the server at or above the
+supported minimum; when the server is below it, or its version cannot be read,
+the warning says `ext.cattle.io` is not served by this server. A token with no
+`:`, or with nothing before it (after `ext/` for an ext token), is not read,
+and the warning says the token is not in the form `<name>:<secret>` or
+`ext/<name>:<secret>`.
+Any of these fields degrading to `null` with a warning is expected, not a bug -
+including `identity` under a read-only-RBAC token, since the identity probe is
+itself a create-verb request. `auth status`'s connectivity result (`ok`) never
+depends on them.
 
 ## When login fails after a token was created
 

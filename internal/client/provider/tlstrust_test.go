@@ -55,9 +55,9 @@ func TestMappersPassATLSTrustErrorThrough(t *testing.T) {
 }
 
 // TestLocalProbesClassifyACertificateFailure asserts the requests auth
-// status and the login verify step make against the local cluster - the
-// version preflight, the owner read, the identity read - return TLS_TRUST
-// worded by the connection's remedy. Mutation: leave kube.RESTConfig
+// status and the login verify step make to the Rancher server - the
+// version preflight, the owner read, the identity read, the v3 token read -
+// return TLS_TRUST worded by the connection's remedy. Mutation: leave kube.RESTConfig
 // without its wrapper.
 func TestLocalProbesClassifyACertificateFailure(t *testing.T) {
 	eff := untrustedEffective(t)
@@ -71,6 +71,10 @@ func TestLocalProbesClassifyACertificateFailure(t *testing.T) {
 	})
 	t.Run("Identity", func(t *testing.T) {
 		_, err := Identity(t.Context(), eff)
+		requireClassified(t, err)
+	})
+	t.Run("V3TokenMetadata", func(t *testing.T) {
+		_, err := V3TokenMetadata(t.Context(), untrustedEffective(t), "token-x")
 		requireClassified(t, err)
 	})
 }

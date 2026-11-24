@@ -38,6 +38,7 @@ var clientConsumerAllowed = map[string]requestAllowance{
 	"internal/client/provider/client.go:NewClusterClient":      {5, "the config comes from kube.RESTConfig, passed in by the engine factory"},
 	"internal/client/provider/owner.go:Owner":                  {1, "the config comes from kube.RESTConfig through localRESTConfig"},
 	"internal/client/provider/preflight.go:Preflight":          {1, "the config comes from kube.RESTConfig through localRESTConfig"},
+	"internal/client/provider/tokenmeta.go:V3TokenMetadata":    {1, "the config comes from kube.RESTConfig through localRESTConfig"},
 	"internal/token/token.go:directClientFor":                  {1, "the direct endpoint check of a cached credential: its config comes from the exec entry, not from kube.RESTConfig, and a cache hit must record no host"},
 	"internal/commands/auth/login.go:idpClient":                {1, "httpx.NewExternal: the identity provider's origin, never Rancher"},
 	"internal/token/pluginlogin.go:pluginInput":                {1, "httpx.NewExternal: the identity provider's origin, never Rancher"},
