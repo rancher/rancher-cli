@@ -1,0 +1,3 @@
+go test fuzz v1
+string("access\x00can\x00-A\xcd\xcd\xcd\xcd")
+bool(true)

@@ -108,7 +108,7 @@ func TestUserIDCompletionThroughTheCommandTree(t *testing.T) {
 			require.NoError(t, err)
 			var out bytes.Buffer
 			root.Writer = &out
-			require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+			require.NoError(t, root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...)))
 			assert.Equal(t, tc.want, out.String())
 		})
 	}

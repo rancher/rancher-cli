@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	ucli "github.com/urfave/cli/v3"
-
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -23,13 +21,12 @@ import (
 // stdin, an editor that cannot start and a time bound, so a command that
 // runs instead of being refused cannot wait on a terminal or an editor. It
 // returns stdout, stderr and the exit code.
-func runBounded(t *testing.T, root *ucli.Command, argv []string) (stdout, stderr string, code int) {
+func runBounded(t *testing.T, root *Command, argv []string) (stdout, stderr string, code int) {
 	t.Helper()
 	t.Setenv("EDITOR", "rancher-test-no-such-editor")
 	t.Setenv("VISUAL", "rancher-test-no-such-editor")
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var out, errOut bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &errOut

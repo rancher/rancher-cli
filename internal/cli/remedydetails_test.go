@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -33,11 +32,11 @@ func (c detailsFailureCommand) Execute(context.Context, runtime.Input, runtime.P
 
 // nonBareRoot is a root with the real global flags and cmd as its one
 // command, wired as an entry that opens its directory.
-func nonBareRoot(t *testing.T, cmd runtime.Command) *ucli.Command {
+func nonBareRoot(t *testing.T, cmd runtime.Command) *Command {
 	t.Helper()
 	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
 	leaf := adaptEntry(reg, "v-test", false, func(runDeps) runtime.Command { return cmd })
-	wr := wiredRegistry{reg: reg, groups: map[string][]*ucli.Command{"": {leaf}}, order: []string{""}}
+	wr := wiredRegistry{reg: reg, groups: map[string][]*Command{"": {leaf}}, order: []string{""}}
 	return wr.root("v-test")
 }
 

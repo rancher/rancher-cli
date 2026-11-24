@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -44,7 +42,6 @@ func runRemedyCLI(t *testing.T, args ...string) string {
 	t.Helper()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
 	_ = root.Run(t.Context(), append([]string{"rancher"}, args...))
@@ -208,7 +205,7 @@ func TestTheLegacyTokenCommandNamesItsDirectory(t *testing.T) {
 func TestADirectoryFailureNamesTheDirectory(t *testing.T) {
 	t.Parallel()
 	var errOut bytes.Buffer
-	c := &ucli.Command{Name: "rancher", ErrWriter: &errOut}
+	c := &Command{Name: "rancher", ErrWriter: &errOut}
 	err := renderDepsError(c, runtime.IO{RemedyDir: "/d"}, errors.New("config.yaml cannot be read; run "+clierr.Rancher+" config status"))
 	require.Error(t, err)
 	assert.Contains(t, errOut.String(), "run rancher --config '/d' config status")

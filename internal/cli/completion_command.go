@@ -10,11 +10,9 @@ import (
 type completionCommand struct{}
 
 // NewCompletion builds the `completion <shell>` command: it emits an
-// in-repo, registry-wired shell completion script. This is deliberately our
-// own command rather than unhiding urfave's auto-appended built-in - that
-// built-in bypasses reg.Register entirely, so it would never appear in
-// `rancher schema`, and an advertised-surface CLI cannot have a load-bearing
-// command its own manifest denies exists.
+// in-repo, registry-wired shell completion script. It is registered like
+// every command and appears in `rancher schema`: an advertised-surface CLI
+// cannot have a load-bearing command its own manifest denies exists.
 func newCompletion() runtime.Command { return completionCommand{} }
 
 func (completionCommand) Describe() runtime.Descriptor {

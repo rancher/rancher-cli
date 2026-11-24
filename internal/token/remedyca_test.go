@@ -2,7 +2,6 @@ package token_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -42,7 +40,6 @@ func runPiped(t *testing.T, words []string, token string) (string, error) {
 	t.Helper()
 	root, err := cli.BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	root.Reader = strings.NewReader(token + "\n")
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut

@@ -2,14 +2,12 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 func TestCheckFlagValuesUnsetVariableBeforeFlag(t *testing.T) {
@@ -130,8 +128,6 @@ func TestCheckFlagValuesBeforeHookRendersPerParsedFormat(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		CaptureArgv(incidentArgv[1:])
 		runErr := root.Run(t.Context(), incidentArgv)
 		require.Error(t, runErr)
@@ -146,8 +142,6 @@ func TestCheckFlagValuesBeforeHookRendersPerParsedFormat(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		argv := append(append([]string{}, incidentArgv...), "-o", "json")
 		CaptureArgv(argv[1:])
 		runErr := root.Run(t.Context(), argv)

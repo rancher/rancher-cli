@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/testfs"
@@ -73,22 +72,21 @@ func parseWithRecorder(t *testing.T, words []string) (ran string, args []string,
 	t.Helper()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	set = map[string]bool{}
-	var record func(cmds []*ucli.Command, prefix string)
-	record = func(cmds []*ucli.Command, prefix string) {
+	var record func(cmds []*Command, prefix string)
+	record = func(cmds []*Command, prefix string) {
 		for _, c := range cmds {
 			name := strings.TrimSpace(prefix + " " + c.Name)
 			if len(c.Commands) > 0 {
 				record(c.Commands, name)
 				continue
 			}
-			c.Action = func(_ context.Context, c *ucli.Command) error {
-				ran, args = name, c.Args().Slice()
+			c.Action = func(_ context.Context, c *Command, in *Input) error {
+				ran, args = name, in.Args()
 				for _, f := range c.Flags {
-					if n := f.Names()[0]; c.IsSet(n) {
+					if n := f.Names()[0]; in.IsSet(n) {
 						set["--"+n] = true
 					}
 				}

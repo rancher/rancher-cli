@@ -3,14 +3,11 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"io"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
@@ -155,66 +152,4 @@ func TestAVersionThatCannotBeWrittenExitsWithAnError(t *testing.T) {
 	assert.Equal(t, 1, runMain(t, root, "--version"))
 	assert.True(t, strings.HasPrefix(errOut.String(), "error (GENERIC): "), "stderr: %q", errOut.String())
 	assert.Contains(t, errOut.String(), errScriptedWrite.Error())
-}
-
-// TestAGoodHelpRunNeverTakesTheWriteErrorOfAnotherRun asserts that help runs of
-// two roots at the same time keep their own write errors: the run whose writer
-// works ends without a kept error every time while the other fails and keeps
-// its error until the end. Each run is root.Run; run itself reads
-// process-wide state and is not for parallel use. Not parallel with other
-// tests: it sets the process environment.
-func TestAGoodHelpRunNeverTakesTheWriteErrorOfAnotherRun(t *testing.T) {
-	restoreRawArgv(t)
-	extraArgsEnv(t)
-	const runs = 200
-	build := func(w io.Writer) []*ucli.Command {
-		roots := make([]*ucli.Command, runs)
-		for i := range roots {
-			root, err := BuildRoot("v-test")
-			require.NoError(t, err)
-			root.Reader = strings.NewReader("")
-			root.Writer = w
-			root.ErrWriter = &bytes.Buffer{}
-			roots[i] = root
-		}
-		return roots
-	}
-	failing := build(&scriptedErrWriter{failFrom: 1})
-	working := build(&bytes.Buffer{})
-	start := make(chan struct{})
-	codes := make([]int, runs)
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		<-start
-		for _, root := range failing {
-			require.NoError(t, root.Run(t.Context(), []string{"rancher", "--help"}))
-		}
-	})
-	wg.Go(func() {
-		<-start
-		for i, root := range working {
-			codes[i] = helpOf(t, root)
-		}
-	})
-	close(start)
-	wg.Wait()
-	for i, code := range codes {
-		assert.Zero(t, code, "run %d", i)
-	}
-	for i, root := range failing {
-		assert.Error(t, takeHelpWriteError(root), "failing run %d keeps its own error", i)
-	}
-}
-
-// helpOf shows the help card of root with root.Run, which does not read or
-// write the captured command line.
-func helpOf(t *testing.T, root *ucli.Command) int {
-	t.Helper()
-	if err := root.Run(t.Context(), []string{"rancher", "--help"}); err != nil {
-		return 1
-	}
-	if takeHelpWriteError(root) != nil {
-		return 1
-	}
-	return 0
 }

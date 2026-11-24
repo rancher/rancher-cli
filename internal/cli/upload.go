@@ -6,8 +6,6 @@ import (
 	"os"
 	"time"
 
-	ucli "github.com/urfave/cli/v3"
-
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 	"github.com/rancher/rancher-cli/internal/telemetrysend"
@@ -41,7 +39,7 @@ var sendNow = telemetrysend.SendNow
 // refused endpoint and recording that a control turned off, and calls the
 // sender only when none applies. It reads no file before it calls the sender.
 // With debug true the sender writes its lines to the run's error output.
-func commandUpload(c *ucli.Command, dir, version string, view telemetry.ExperimentView) telemetry.UploadFunc {
+func commandUpload(c *Command, dir, version string, view telemetry.ExperimentView) telemetry.UploadFunc {
 	return func(ctx context.Context, debug bool, recording telemetry.Decision) telemetry.UploadResult {
 		switch {
 		case currentInvocation().ExecPlugin:
@@ -81,7 +79,7 @@ func commandUpload(c *ucli.Command, dir, version string, view telemetry.Experime
 // With --debug typed as true on the root level, the sender writes its lines to
 // the run's error output. It never changes the run: nothing it does reaches the
 // exit code or standard output, and a panic is recovered.
-func uploadStoredEvents(ctx context.Context, root *ucli.Command, k keptLine, in refreshInput, refreshDeadline time.Time) {
+func uploadStoredEvents(ctx context.Context, root *Command, k keptLine, in refreshInput, refreshDeadline time.Time) {
 	defer func() { _ = recover() }()
 	if _, excluded := uploadExcluded[in.command]; !in.recorded || excluded || currentInvocation().ExecPlugin {
 		return

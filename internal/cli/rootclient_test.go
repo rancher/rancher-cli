@@ -212,7 +212,7 @@ func TestRootClientFailsAtOnceOnAnUnavailableServer(t *testing.T) {
 }
 
 // argsInput is a minimal runtime.Input for driving a command's Execute
-// directly, outside the urfave adapter.
+// directly, outside the adapter.
 type argsInput struct {
 	args  []string
 	bools map[string]bool

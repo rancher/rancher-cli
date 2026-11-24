@@ -12,7 +12,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // completionServer points the config at a counting server and sets network
@@ -50,16 +49,13 @@ func completionServer(t *testing.T, network bool) *atomic.Int32 {
 
 // completionLevels returns the argv path of the root (empty), of every group
 // and of every leaf in the built tree, so a command added later is covered.
-func completionLevels(t *testing.T) (root *ucli.Command, groups, leaves [][]string) {
+func completionLevels(t *testing.T) (root *cli.Command, groups, leaves [][]string) {
 	t.Helper()
 	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
-	var walk func(c *ucli.Command, path []string)
-	walk = func(c *ucli.Command, path []string) {
+	var walk func(c *cli.Command, path []string)
+	walk = func(c *cli.Command, path []string) {
 		for _, sub := range c.Commands {
-			if sub.Hidden {
-				continue
-			}
 			p := append(slices.Clone(path), sub.Name)
 			if len(sub.VisibleCommands()) == 0 {
 				leaves = append(leaves, p)
@@ -74,9 +70,10 @@ func completionLevels(t *testing.T) (root *ucli.Command, groups, leaves [][]stri
 }
 
 // TestCompletionRejectedAndAcceptedLinesAtEveryLevel asserts, end to end
-// through urfave, for the root, every group and every leaf of the built tree,
-// that a line with a flag the level does not accept (`--bogus`) or a word
-// typed after a bool flag that accepts it as its value (`--dry-run true`)
+// through the dispatcher, for the root, every group and every leaf of the built tree,
+// that a line with a flag the level does not accept (`--bogus`) or an
+// argument typed after a bool flag that accepts it as its value (`--dry-run
+// true`)
 // offers nothing, and that lines made only of flags the level accepts (a
 // global flag with a value, --help) keep the candidates of the line
 // without them. The candidates compared are the flag names of the level
@@ -84,7 +81,7 @@ func completionLevels(t *testing.T) (root *ucli.Command, groups, leaves [][]stri
 // off, so a comparison is never empty against empty. The decision for
 // every spelling of a rejected or accepted line is asserted on the tree in
 // TestLineRejectedAtEveryLevel; here the rows that prove the decision
-// reaches urfave's completion at each level are run, and the version flag
+// reaches the completion of each level are run, and the version flag
 // (accepted at the root only), the bool flag with a joined value, the
 // word `-1` (a leaf that declares a positional argument keeps its
 // candidates; the root, groups and a leaf that declares none offer
@@ -178,7 +175,7 @@ func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 var ownVersionFlags = [][]string{{"app", "install"}, {"app", "upgrade"}, {"extension", "install"}, {"extension", "upgrade"}}
 
 // commandAt returns the command at path below root.
-func commandAt(root *ucli.Command, path []string) *ucli.Command {
+func commandAt(root *cli.Command, path []string) *cli.Command {
 	c := root
 	for _, name := range path {
 		c = c.Command(name)

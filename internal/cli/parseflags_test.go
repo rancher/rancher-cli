@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // flagTwiceWords returns the words that give flags of cmd twice: the first own
@@ -19,19 +18,22 @@ import (
 // values; a bool flag bare then false and false then bare; the flag with an
 // alias by its alias twice and by its alias then its long name. missing names
 // each rule that found no flag.
-func flagTwiceWords(cmd *ucli.Command) (lines [][]string, missing []string) {
-	var text, boolean, aliased ucli.Flag
+func flagTwiceWords(cmd *Command) (lines [][]string, missing []string) {
+	var text, boolean, aliased *Flag
 	for _, f := range cmd.Flags {
-		_, once := flagKind(f)
-		switch f.(type) {
-		case *ucli.StringFlag:
+		if f.Local {
+			continue
+		}
+		_, once := flagShape(f)
+		switch f.Kind {
+		case stringFlag:
 			if text == nil && !once {
 				text = f
 			}
 			if aliased == nil && len(f.Names()) > 1 {
 				aliased = f
 			}
-		case *ucli.BoolFlag:
+		case boolFlag:
 			if boolean == nil {
 				boolean = f
 			}
@@ -58,7 +60,7 @@ func flagTwiceWords(cmd *ucli.Command) (lines [][]string, missing []string) {
 	}
 	names := aliased.Names()
 	long, alias := "--"+names[0], "-"+names[len(names)-1]
-	if _, isBool := aliased.(*ucli.BoolFlag); isBool {
+	if aliased.Kind == boolFlag {
 		return append(lines, []string{alias, alias}, []string{alias, long + "=false"}), missing
 	}
 	return append(lines, []string{alias, "a", alias, "b"}, []string{alias, "a", long, "b"}), missing
@@ -67,12 +69,11 @@ func flagTwiceWords(cmd *ucli.Command) (lines [][]string, missing []string) {
 // treeCommand is a command of the tree and the words that name it.
 type treeCommand struct {
 	path []string
-	cmd  *ucli.Command
+	cmd  *Command
 }
 
-// treeCommands lists the root and every command below it, hidden ones
-// included.
-func treeCommands(t *testing.T) (root *ucli.Command, out []treeCommand) {
+// treeCommands lists the root and every command below it.
+func treeCommands(t *testing.T) (root *Command, out []treeCommand) {
 	t.Helper()
 	root, err := BuildRoot(goldenVersion)
 	require.NoError(t, err)
@@ -87,15 +88,15 @@ func treeCommands(t *testing.T) (root *ucli.Command, out []treeCommand) {
 // above the one the line reaches defines it.
 type flagRef struct {
 	long      string
-	flag      ucli.Flag
+	flag      *Flag
 	inherited bool
 }
 
 // flagsOf returns the flags the command at path accepts by every name: its
 // own and those of the commands above it. A flag of the command shadows one of
 // the same name above it.
-func flagsOf(root *ucli.Command, path []string) map[string]flagRef {
-	lineage := []*ucli.Command{root}
+func flagsOf(root *Command, path []string) map[string]flagRef {
+	lineage := []*Command{root}
 	for _, word := range path {
 		lineage = append(lineage, lineage[len(lineage)-1].Command(word))
 	}
@@ -143,7 +144,7 @@ func flagUses(line []string, byName map[string]flagRef) []flagUse {
 			continue
 		}
 		use := flagUse{ref: ref, alias: name != ref.long}
-		takesValue, _ := flagKind(ref.flag)
+		takesValue, _ := flagShape(ref.flag)
 		switch {
 		case takesValue && joined:
 			use.value = value
@@ -196,7 +197,7 @@ func TestFlagGivenTwiceKeepsTheLastValue(t *testing.T) {
 			byName := flagsOf(root, reached)
 			byFlag := map[string][]flagUse{}
 			for _, use := range flagUses(row.Line, byName) {
-				if _, isSlice := use.ref.flag.(*ucli.StringSliceFlag); !isSlice {
+				if use.ref.flag.Kind != sliceFlag {
 					byFlag[use.ref.long] = append(byFlag[use.ref.long], use)
 				}
 			}
@@ -213,10 +214,10 @@ func TestFlagGivenTwiceKeepsTheLastValue(t *testing.T) {
 					continue
 				}
 				assert.Equal(t, values[len(values)-1], row.Flags[long], "%s row %d, rancher %q: --%s given %v", goldenShown(file), i+1, row.Line, long, values)
-				switch uses[0].ref.flag.(type) {
-				case *ucli.StringFlag:
+				switch uses[0].ref.flag.Kind {
+				case stringFlag:
 					checked["string"]++
-				case *ucli.BoolFlag:
+				case boolFlag:
 					checked["bool"]++
 				}
 				if slices.ContainsFunc(uses, func(u flagUse) bool { return u.alias }) {
@@ -245,7 +246,7 @@ func TestEveryOnceFlagHasARepeatedRow(t *testing.T) {
 		_, rows := parseFileRows(t, c.path)
 		byName := flagsOf(root, c.path)
 		for _, f := range c.cmd.Flags {
-			if _, once := flagKind(f); !once {
+			if _, once := flagShape(f); !once {
 				continue
 			}
 			long := f.Names()[0]
@@ -282,7 +283,7 @@ func TestEveryListFlagKeepsACommaValue(t *testing.T) {
 		_, rows := parseFileRows(t, c.path)
 		byName := flagsOf(root, c.path)
 		for _, f := range c.cmd.Flags {
-			if _, isSlice := f.(*ucli.StringSliceFlag); !isSlice {
+			if f.Kind != sliceFlag {
 				continue
 			}
 			long := f.Names()[0]

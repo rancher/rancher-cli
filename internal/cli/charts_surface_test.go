@@ -19,7 +19,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 const (
@@ -398,7 +397,7 @@ func TestChartsRepoErrors(t *testing.T) {
 		t.Run(tc.repo, func(t *testing.T) {
 			stdout, stderr, err := runChartsCommand(t, "charts", "--cluster", "prod", "--repo", tc.repo, "-o", "json")
 			require.Error(t, err)
-			coder, ok := errors.AsType[ucli.ExitCoder](err)
+			coder, ok := errors.AsType[exitCoder](err)
 			require.True(t, ok, "the error carries an exit code")
 			assert.Equal(t, tc.exit, coder.ExitCode())
 			assert.Empty(t, stdout)

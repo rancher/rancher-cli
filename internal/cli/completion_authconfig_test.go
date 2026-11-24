@@ -71,7 +71,7 @@ func TestAuthConfigPositionalSiteFullCallback(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
-		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 		return out.String()
 	}
 

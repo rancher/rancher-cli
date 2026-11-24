@@ -27,7 +27,6 @@ type buildCheckAllowlistEntry struct {
 // one of those three files or gets an entry here with a reason.
 var buildCheckAllowlist = []buildCheckAllowlistEntry{
 	{"internal/cli/filesource.go", "no stdin available", "raised while a command reads standard input, not while the command tree is built"},
-	{"internal/cli/help.go", "internal error: the help template is not one of the three the CLI renders; no help was written", "raised while a help page is shown, not while the command tree is built"},
 	{"internal/cli/helprender.go", "internal error: the help page is not for the root, a group or a single command; no help was written", "raised while a help page is shown, not while the command tree is built"},
 	{"internal/cli/projectcompletion.go", "completion: no path for steve request %+v", "a completion error that its callers drop, never shown"},
 }

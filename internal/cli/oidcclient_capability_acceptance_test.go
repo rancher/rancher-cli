@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // This file is the real-kind-table acceptance coverage for the capability
@@ -84,8 +82,6 @@ func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	t.Run("proceed: feature enabled", func(t *testing.T) {
 		// Prime edition, not community: a prime-classified feature's
 		// enabled reading is only trustworthy once the server is confirmed
@@ -195,7 +191,6 @@ func TestCreateResourceOIDCClientManifestPrimeRequired(t *testing.T) {
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	stdout, stderr, err := grRun(t, root, dir, "create", "resource", "-f", manifest, "-o", "json")
 	require.Error(t, err)
 	env := oidcErrEnvelope(t, stdout, stderr)
@@ -224,7 +219,6 @@ func TestCreateResourceOIDCClientManifestDisabledAfterEnabled(t *testing.T) {
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	stdout, stderr, err := grRun(t, root, dir, "create", "resource", "-f", manifest, "-o", "json")
 	require.Error(t, err)
 	env := oidcErrEnvelope(t, stdout, stderr)

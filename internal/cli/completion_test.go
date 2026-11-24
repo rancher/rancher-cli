@@ -61,7 +61,7 @@ func TestCompletionEmissionHasNoSideEffects(t *testing.T) {
 
 // TestCompletionArgsUsageRendersEnumValues asserts that the completion command's
 // positional arg, which carries an Enum, renders as "<bash|zsh|fish|pwsh>"
-// rather than the bare "<shell>" name in the urfave ArgsUsage field.
+// rather than the bare "<shell>" name in the ArgsUsage field.
 func TestCompletionArgsUsageRendersEnumValues(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	root, err := BuildRoot("v-test")

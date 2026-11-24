@@ -3,10 +3,10 @@ package errwriter
 import (
 	"io"
 
-	"github.com/urfave/cli/v3"
+	"github.com/rancher/rancher-cli/internal/cli"
 )
 
-// Other has a field named ErrWriter that is not the field of the urfave Command.
+// Other has a field named ErrWriter that is not the field of the Command of internal/cli.
 type Other struct{ ErrWriter io.Writer }
 
 func read(cmd *cli.Command) io.Writer { return cmd.ErrWriter }

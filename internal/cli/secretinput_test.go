@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -24,7 +23,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 )
 
@@ -1293,7 +1291,7 @@ func secretServer(t *testing.T, stub secretStub, token string) *httptest.Server 
 
 // runWithStdin runs argv through a new root as the process entry point does
 // (Run, which refuses a line with words after a bare "-" or a bool value
-// typed as its own word before urfave parses it), with stdin as the
+// typed as its own word before the command tree acts on it), with stdin as the
 // command's standard input and a time bound, and returns stdout, stderr and the exit
 // code.
 func runWithStdin(t *testing.T, argv []string, stdin string) (stdout, stderr string, code int) {
@@ -1302,7 +1300,6 @@ func runWithStdin(t *testing.T, argv []string, stdin string) (stdout, stderr str
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var out, errOut strings.Builder
 	root.Writer = &out
 	root.ErrWriter = &errOut
@@ -1418,33 +1415,29 @@ func runSecretRow(t *testing.T, row secretRow) (stdout, stderr string, code int)
 // command that takes a secret input, whatever the value holds.
 func TestUsageErrorTextLeavesTheValueOutForASecretInput(t *testing.T) {
 	t.Parallel()
-	ordinary := &ucli.Command{Name: "a", Metadata: map[string]any{descriptorMetadataKey: runtime.Descriptor{Name: "a"}}}
-	secret := &ucli.Command{Name: "b", Metadata: map[string]any{descriptorMetadataKey: runtime.Descriptor{Name: "b", SecretInput: true}}}
-	undescribed := &ucli.Command{Name: "c"}
+	ordinary := &Command{Name: "a", descriptor: &runtime.Descriptor{Name: "a"}}
+	secret := &Command{Name: "b", descriptor: &runtime.Descriptor{Name: "b", SecretInput: true}}
+	undescribed := &Command{Name: "c"}
 
 	for _, tc := range []struct {
-		name, err, ordinary, secret string
+		name             string
+		err              usageError
+		ordinary, secret string
 	}{
-		{"a flag given twice", `invalid value "k=v" for flag -from-literal: can't duplicate this flag`, `invalid value "k=v" for flag -from-literal: can't duplicate this flag`, "invalid value for flag -from-literal: can't duplicate this flag"},
-		{"a bool flag with a value", `invalid value "pw" for flag -password-stdin: parse error`, `invalid value "pw" for flag -password-stdin: parse error`, "invalid value for flag -password-stdin: the value must be true or false"},
-		{"a value that holds the text around it", `invalid value "x for flag -y: parse error" for flag -z: parse error`, `invalid value "x for flag -y: parse error" for flag -z: parse error`, "invalid value for flag -z: the value must be true or false"},
-		{"a reason that quotes the value", `invalid value "abc" for flag -n: strconv.ParseInt: parsing "abc": invalid syntax`, `invalid value "abc" for flag -n: strconv.ParseInt: parsing "abc": invalid syntax`, "invalid value for flag -n"},
-		{"no flag named", `invalid value "abc"`, `invalid value "abc"`, "invalid value for a flag"},
-		{"a flag typed without its value, which the command defines", "flag needs an argument: -p", "flag needs an argument: -p", "flag needs an argument: -p"},
-		{"a text no list has", "bad flag syntax: ---s3cretcanary9", "bad flag syntax: ---s3cretcanary9", "the command line could not be parsed"},
-		{"an empty text", "", "", "the command line could not be parsed"},
-		{"a text that only starts like a known one", "flag needs an argumentative word: -s3cretcanary9", "flag needs an argumentative word: -s3cretcanary9", "the command line could not be parsed"},
+		{"a flag given twice", usageError{class: repeatedFlag, flag: "from-literal", value: "k=v"}, `invalid value "k=v" for flag -from-literal: can't duplicate this flag`, "invalid value for flag -from-literal: can't duplicate this flag"},
+		{"a bool flag with a value", usageError{class: badBoolValue, flag: "password-stdin", value: "pw"}, `invalid value "pw" for flag -password-stdin: parse error`, "invalid value for flag -password-stdin: the value must be true or false"},
+		{"a value that holds the text around it", usageError{class: badBoolValue, flag: "z", value: "x for flag -y: parse error"}, `invalid value "x for flag -y: parse error" for flag -z: parse error`, "invalid value for flag -z: the value must be true or false"},
+		{"a flag typed without its value, which the command defines", usageError{class: missingFlagValue, word: "-p"}, "flag needs an argument: -p", "flag needs an argument: -p"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := errors.New(tc.err)
-			assert.Equal(t, tc.ordinary, usageErrorText(ordinary, err))
+			assert.Equal(t, tc.ordinary, usageErrorText(ordinary, tc.err))
 			wantUndescribed := tc.ordinary
-			if strings.HasPrefix(tc.err, "invalid value ") {
+			if tc.err.class == repeatedFlag || tc.err.class == badBoolValue {
 				wantUndescribed = tc.secret
 			}
-			assert.Equal(t, wantUndescribed, usageErrorText(undescribed, err), "the root or a group names the flag and not its value, and passes every other text")
-			assert.Equal(t, tc.secret, usageErrorText(secret, err))
+			assert.Equal(t, wantUndescribed, usageErrorText(undescribed, tc.err), "the root or a group names the flag and not its value, and passes every other text")
+			assert.Equal(t, tc.secret, usageErrorText(secret, tc.err))
 		})
 	}
 }
@@ -1464,12 +1457,12 @@ func TestUnknownFlagTextGivesThePositionOfTheWord(t *testing.T) {
 	assert.Equal(t, "unknown flag", unknownFlagText("x", []string{" -x"}), "a word padded with a space gives no position")
 	assert.Equal(t, "unknown flag", unknownFlagText("-x", []string{"---x"}), "a word with three dashes gives no position")
 
-	ordinary := &ucli.Command{Name: "a", Metadata: map[string]any{descriptorMetadataKey: runtime.Descriptor{Name: "a"}}}
-	assert.Equal(t, "flag provided but not defined: -x", usageErrorText(ordinary, errors.New("flag provided but not defined: -x")))
+	ordinary := &Command{Name: "a", descriptor: &runtime.Descriptor{Name: "a"}}
+	assert.Equal(t, "flag provided but not defined: -x", usageErrorText(ordinary, usageError{class: undefinedFlag, word: "x"}))
 }
 
 // leafNamed returns the name of the descriptor of the leaf, or "" for nil.
-func leafNamed(leaf *ucli.Command) string {
+func leafNamed(leaf *Command) string {
 	if leaf == nil {
 		return ""
 	}
@@ -1519,19 +1512,19 @@ func TestLeafOfLineFollowsTheLineThroughUndefinedFlags(t *testing.T) {
 // TestUnknownFlagTextAtResolvesTheLeafOfTheLine asserts, on a tree of its own,
 // that an undefined flag reported by the root or a group gets the position
 // text when the line's leaf takes a secret input, has no descriptor or is not
-// found, and urfave's text when the leaf has a descriptor that takes none.
+// found, and the text that names the word when the leaf has a descriptor that takes none.
 func TestUnknownFlagTextAtResolvesTheLeafOfTheLine(t *testing.T) {
 	t.Parallel()
-	leaf := func(name string, md map[string]any) *ucli.Command { return &ucli.Command{Name: name, Metadata: md} }
-	described := func(secret bool) map[string]any {
-		return map[string]any{descriptorMetadataKey: runtime.Descriptor{Name: "x", SecretInput: secret}}
+	leaf := func(name string, d *runtime.Descriptor) *Command { return &Command{Name: name, descriptor: d} }
+	described := func(secret bool) *runtime.Descriptor {
+		return &runtime.Descriptor{Name: "x", SecretInput: secret}
 	}
-	root := &ucli.Command{Name: "rancher", Commands: []*ucli.Command{
+	root := link(&Command{Name: "rancher", StopAtFirstWord: true, Commands: []*Command{
 		leaf("secret", described(true)),
 		leaf("plain", described(false)),
 		leaf("bare", nil),
-		{Name: "group", Commands: []*ucli.Command{leaf("secret", described(true)), leaf("bare", nil)}},
-	}}
+		{Name: "group", StopAtFirstWord: true, Commands: []*Command{leaf("secret", described(true)), leaf("bare", nil)}},
+	}})
 	const msg = "flag provided but not defined: -x"
 	for _, tc := range []struct {
 		name string
@@ -1557,9 +1550,9 @@ func TestUnknownFlagTextAtResolvesTheLeafOfTheLine(t *testing.T) {
 // TestAnUnknownFlagBeforeTheCommandNameIsNamedByTheCommand asserts, through
 // the process entry point, that an undefined flag typed before the command
 // name is named by its position when the line's command takes a secret input
-// or no command is named, and keeps urfave's text, with the flag as typed,
-// for a command that takes none, at the root and at a group, so a typo of
-// such a flag still reads. The canary is the flag word of the first row.
+// or no command is named, and keeps the text "flag provided but not
+// defined", with the flag as typed, for a command that takes none, at the
+// root and at a group; a typo of such a flag still reads. The canary is the flag word of the first row.
 // Not parallel: it sets the process environment and the captured command
 // line.
 func TestAnUnknownFlagBeforeTheCommandNameIsNamedByTheCommand(t *testing.T) {
@@ -1663,7 +1656,7 @@ func TestOutputAndColorValuesOfACommandThatTakesASecretAreNotNamed(t *testing.T)
 		{"--color given the canary", []string{"create", "secret", "s1", "--color", c}, "--color value is not one of auto|always|never", true},
 		{"an ordinary command keeps the value of -o", []string{"get", "pods", "-o", "typo"}, `--output="typo" is not one of ` + oneOf, false},
 		{"an ordinary command keeps the value of --color", []string{"get", "pods", "--color", "typo"}, `--color="typo" is not one of auto|always|never`, false},
-		{"the hidden completion command names the unknown flag by position", []string{"__completion", "--" + c}, "unknown flag at argument 2 after rancher; pass --help for usage", true},
+		{"an unknown command names the word and not the flag after it", []string{"nosuch", "--" + c}, `unknown command "nosuch"`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stdout, stderr, code := runWithStdin(t, tc.argv, "")

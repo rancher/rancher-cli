@@ -7,23 +7,25 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
-// lineRefusal returns the refusal of the line p holds, or nil to let urfave
-// run it. wholeLine is true when the refusal renders in the output format
-// and color the whole typed line selects, the words after a "-" included.
-// The others render in the ones the parsed line selects when the walk read
-// the whole line (parsedLine.readWholeLine), and in the ones the line scan
-// finds otherwise. Three refusals are tried in order:
-//   - words typed after a "-" on its own;
+// lineRefusal returns the refusal of the command line p holds, or nil to let
+// it run. wholeLine is true when the refusal renders in the output format
+// and color the whole typed command line selects, the arguments after a "-"
+// included. The others render in the ones the parsed command line selects
+// when parsing read the whole command line (parsedLine.readWholeLine), and in
+// the ones the scan of the captured command line finds otherwise. Three
+// refusals are tried in order:
+//   - arguments typed after a "-" on its own;
 //   - a bool flag typed with "=" and an empty value, or one of only
-//     whitespace, which urfave parses as true or rejects;
-//   - a positional word that reads as a bool, typed as its own word after
-//     a bool flag, which takes its value only joined with "=".
+//     whitespace, which is parsed as true or rejected;
+//   - a positional argument that reads as a bool, typed as its own argument
+//     after a bool flag, which takes its value only joined with "=".
 //
-// A line is judged as urfave reads it up to the word a refusal is about: a
-// help display or version display urfave reaches before that word, and an
-// error it reports before it, win over the refusal. A bool flag typed with
-// "=" and a value of only whitespace is an error urfave reports, and the
-// line is read on past it, so a "-" on its own after it is refused as one.
+// A command line is judged as the command-line parser reads it up to the
+// argument a refusal is about: a help page or the version the dispatcher
+// shows before that argument, and a flag error it reports before it, win over
+// the refusal. A bool flag typed with "=" and a value of only whitespace is a
+// flag error the dispatcher reports, and the parser reads on past it. A "-" on
+// its own after it is refused as one.
 func lineRefusal(p parsedLine) (ce *clierr.Error, wholeLine bool) {
 	if words, level, ok := wordsAfterDash(p); ok {
 		if level.leaf {
@@ -43,14 +45,14 @@ func lineRefusal(p parsedLine) (ce *clierr.Error, wholeLine bool) {
 	return nil, false
 }
 
-// wordsAfterDash returns the words, as typed, after the first "-" on its
-// own the walk reads, when it has any to refuse. At a leaf the help flag
-// holding true before the "-" shows help, and at the root the version flag
-// set before it, with the help flag not true, prints the version. At the
-// root or a group the "-" is the word urfave takes for the command name;
-// one that comes after another argument is not read. It also returns the
-// level the "-" is typed at, which is a leaf when the walk has reached the
-// command.
+// wordsAfterDash returns the arguments, as typed, after the first "-" on its
+// own that parsing reads, when it has any to refuse. At a leaf the help flag
+// holding true before the "-" shows a help page, and at the root the version
+// flag set before it, with the help flag not true, prints the version. At the
+// root or a group the "-" is the argument taken for the command name; one
+// that comes after another argument is not read. It also returns the command
+// the "-" is typed at, which is a leaf when parsing has reached the command
+// that runs.
 func wordsAfterDash(p parsedLine) ([]string, *lineLevel, bool) {
 	for _, lv := range p.levels {
 		for _, w := range lv.words {
@@ -73,11 +75,11 @@ func wordsAfterDash(p parsedLine) ([]string, *lineLevel, bool) {
 	return nil, nil, false
 }
 
-// emptyBoolSpellings returns the bool flags the walk reads typed with "=" and
-// an empty value or one of only whitespace, each as typed without the
-// "=". A value of only whitespace counts when the level's help flag did not
-// hold true before the word. An empty value counts when the walk reaches a
-// leaf, the help and version flags left out: urfave reads it as true.
+// emptyBoolSpellings returns the bool flags parsing reads typed with "=" and
+// an empty value or one of only whitespace, each as typed without the "=". A
+// value of only whitespace counts when the command's help flag did not hold
+// true before the flag. An empty value counts when parsing reaches a leaf,
+// the help and version flags left out: it reads as true.
 func emptyBoolSpellings(p parsedLine, reachedLeaf bool) []string {
 	var flags []string
 	for _, lv := range p.levels {
@@ -97,9 +99,9 @@ func emptyBoolSpellings(p parsedLine, reachedLeaf bool) []string {
 	return flags
 }
 
-// boolValueRefusal returns the refusal of a positional word of the leaf the
-// walk reaches that reads as a bool and follows a bool flag typed without a
-// value, or nil.
+// boolValueRefusal returns the refusal of a positional argument of the leaf
+// parsing reaches that reads as a bool and follows a bool flag typed without
+// a value, or nil.
 func boolValueRefusal(p parsedLine) *clierr.Error {
 	leaf := p.levels[p.endIfBlankAccepted.level]
 	d, ok := commandDescriptor(leaf.cmd)

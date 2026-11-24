@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"maps"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -16,43 +14,33 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/rancher/rancher-cli/internal/telemetry"
-	ucli "github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
 
 // GlobalFlags returns the confirmation/output flags shared by all commands.
-// These are placed on the root command in v3; they are inherited by subcommands
-// via urfave/cli/v3's flag resolution (e.g. `rancher ping -o json`,
-// `rancher clusters scale ... --apply`). (--config and --debug are on root in root.go.)
+// These are placed on the root command; subcommands inherit them (e.g.
+// `rancher ping -o json`, `rancher clusters scale ... --apply`). (--config
+// and --debug are on root in root.go.)
 //
 // These TTY usage strings are the operator-facing counterpart of the schema
 // descriptions in runtime.GlobalFlags() (registry.go) - two deliberately
 // separate strings (terse here, fuller there), kept in sync by hand.
-func GlobalFlags() []ucli.Flag {
-	return []ucli.Flag{
-		&ucli.BoolFlag{Name: "dry-run", Usage: "preview the changes without applying them"},
-		&ucli.BoolFlag{Name: "apply", Usage: "apply the change"},
-		&ucli.BoolFlag{Name: "yes", Usage: "confirm a destructive change"},
-		&ucli.BoolFlag{Name: "allow-deprecated", Usage: "allow writing to a deprecated resource"},
-		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; fail with an error when the input is ambiguous"},
-		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|wide|json|yaml|name|template=<go-template>"},
-		&ucli.StringFlag{Name: "color", Usage: "auto|always|never"},
-		&ucli.StringFlag{Name: "project", Usage: "the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)"},
-		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it"},
+func GlobalFlags() []*Flag {
+	return []*Flag{
+		{Name: "dry-run", Kind: boolFlag, Usage: "preview the changes without applying them"},
+		{Name: "apply", Kind: boolFlag, Usage: "apply the change"},
+		{Name: "yes", Kind: boolFlag, Usage: "confirm a destructive change"},
+		{Name: "allow-deprecated", Kind: boolFlag, Usage: "allow writing to a deprecated resource"},
+		{Name: "no-input", Kind: boolFlag, Usage: "never prompt; fail with an error when the input is ambiguous"},
+		{Name: "output", Kind: stringFlag, Aliases: []string{"o"}, Usage: "table|wide|json|yaml|name|template=<go-template>"},
+		{Name: "color", Kind: stringFlag, Usage: "auto|always|never"},
+		{Name: "project", Kind: stringFlag, Usage: "the project, by id or display name, on the cluster given by --cluster (only commands that take --project accept it)"},
+		{Name: "read-only", Kind: boolFlag, Usage: "refuse commands that make changes in this run; once set it cannot be turned off; local commands do not accept it"},
 	}
 }
 
-// cmdInput adapts a *cli.Command to runtime.Input.
-type cmdInput struct{ c *ucli.Command }
-
-func (i cmdInput) String(name string) string    { return i.c.String(name) }
-func (i cmdInput) Bool(name string) bool        { return i.c.Bool(name) }
-func (i cmdInput) Strings(name string) []string { return i.c.StringSlice(name) }
-func (i cmdInput) IsSet(name string) bool       { return i.c.IsSet(name) }
-func (i cmdInput) Args() []string               { return i.c.Args().Slice() }
-
 // leafName returns the last space-separated token of a command name
-// ("auth status" -> "status") for use as the urfave leaf/subcommand name.
+// ("auth status" -> "status") for use as the leaf/subcommand name.
 func leafName(fullName string) string {
 	if _, leaf, found := strings.CutLast(fullName, " "); found {
 		return leaf
@@ -70,33 +58,32 @@ func groupName(fullName string) string {
 	return ""
 }
 
-// flagsFor converts a Descriptor's named Flags into urfave flags (string/bool).
-// ArgSpec.Desc feeds the flag's TTY usage text; a backtick-quoted word in it
-// sets the value placeholder (urfave's unquoteUsage), e.g. a Desc of
+// flagsFor converts a Descriptor's named Flags into command flags
+// (string/bool/string slice). ArgSpec.Desc feeds the flag's TTY usage text; a
+// backtick-quoted word in it sets the value placeholder, e.g. a Desc of
 // "patch `file`" renders "--patch-file file". Required-ness and Enum membership
-// are intentionally NOT set on the urfave flag: they are enforced by
-// runtime.validateInput so violations surface as structured clierr envelopes
-// (urfave's own required/validator errors are unstructured).
-func flagsFor(d runtime.Descriptor) []ucli.Flag {
-	var out []ucli.Flag
+// are intentionally NOT set on the flag: they are enforced by
+// runtime.validateInput so violations surface as structured clierr envelopes.
+func flagsFor(d runtime.Descriptor) []*Flag {
+	var out []*Flag
 	for _, f := range d.Flags {
 		if f.Name == runtime.FlagProject {
 			continue // the global --project flag; listing it declares that the command takes it
 		}
+		kind := stringFlag
 		switch f.Type {
 		case "bool":
-			out = append(out, &ucli.BoolFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, OnlyOnce: f.Once})
+			kind = boolFlag
 		case "stringSlice":
-			out = append(out, &ucli.StringSliceFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, OnlyOnce: f.Once})
-		default:
-			out = append(out, &ucli.StringFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, OnlyOnce: f.Once})
+			kind = sliceFlag
 		}
+		out = append(out, &Flag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, Kind: kind, Once: f.Once})
 	}
 	return out
 }
 
-// argsUsage renders a Descriptor's positional Args as urfave's ArgsUsage
-// help string: "<name>" for a Required arg, "[name]" otherwise, space-joined
+// argsUsage renders a Descriptor's positional Args as the ArgsUsage help
+// string: "<name>" for a Required arg, "[name]" otherwise, space-joined
 // in declared order. When an arg carries a non-empty Enum the name is replaced
 // by the pipe-joined allowed values (e.g. "<bash|zsh|fish|pwsh>"). This is the
 // SAME Args (incl. Required and Enum) the schema manifest publishes, so help
@@ -118,28 +105,28 @@ func argsUsage(args []runtime.ArgSpec) string {
 }
 
 // buildIO reads the resolved global flags/streams for a run.
-func buildIO(c *ucli.Command) runtime.IO {
+func buildIO(c *Command, in *Input) runtime.IO {
 	r := c.Root()
-	in := r.Reader
-	if in == nil {
-		in = os.Stdin
+	reader := r.Reader
+	if reader == nil {
+		reader = os.Stdin
 	}
 	isTTY := false
-	if fp, ok := in.(*os.File); ok {
+	if fp, ok := reader.(*os.File); ok {
 		isTTY = term.IsTerminal(int(fp.Fd()))
 	}
 	readOnly, readOnlySources := config.ReadOnlyOverride()
 	return runtime.IO{
 		Out:             r.Writer,
 		Err:             r.ErrWriter,
-		In:              in,
-		Format:          c.String("output"),
-		Color:           c.String("color"),
-		DryRun:          c.Bool("dry-run"),
-		Apply:           c.Bool("apply"),
-		Yes:             c.Bool("yes"),
-		AllowDeprecated: c.Bool("allow-deprecated"),
-		NoInput:         c.Bool("no-input"),
+		In:              reader,
+		Format:          in.String("output"),
+		Color:           in.String("color"),
+		DryRun:          in.Bool("dry-run"),
+		Apply:           in.Bool("apply"),
+		Yes:             in.Bool("yes"),
+		AllowDeprecated: in.Bool("allow-deprecated"),
+		NoInput:         in.Bool("no-input"),
 		IsTTY:           isTTY,
 		OutTTY:          fileIsTTY(r.Writer),
 		ErrTTY:          fileIsTTY(r.ErrWriter),
@@ -166,12 +153,12 @@ func fileIsTTY(w io.Writer) bool {
 // derives from env/flag sources; stored config is cleared rather than left
 // stale. It also keeps what recording a usage event needs (see
 // noteRecording); a config that fails to load turns recording off.
-func resolveReadOnly(c *ucli.Command) (bool, []string) {
+func resolveReadOnly(in *Input) (bool, []string) {
 	setStoredConfig(nil, "") // clear any prior stored config for this invocation
 	config.SetProcessCacheAnchor(nil)
 	resetRecordingState()
 	var sources []string
-	if dir, err := config.ResolveDir(c.String("config")); err == nil {
+	if dir, err := config.ResolveDir(in.String("config")); err == nil {
 		// The binding stamp is read BEFORE the config load, and the pair
 		// is what every cache reader without an anchor of its own - the
 		// legacy shim, live completion - judges a record against. One
@@ -202,7 +189,7 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 	if os.Getenv(config.EnvReadOnly) != "" {
 		sources = append(sources, config.EnvReadOnly)
 	}
-	if c.Bool("read-only") {
+	if in.Bool("read-only") {
 		sources = append(sources, "--read-only")
 	}
 	return len(sources) > 0, sources
@@ -211,62 +198,71 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 // Adapt wraps a fixed runtime.Command that needs no per-run config dir/store
 // (e.g. `schema`, `completion`). The binding is derived from the registry
 // uniformly, so a mutating command wired this way still runs under its gate.
-func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
+func Adapt(reg *runtime.Registry, rc runtime.Command) *Command {
 	d := rc.Describe()
 	b := reg.Binding(d.Name)
-	cmd := &ucli.Command{
-		Name:        leafName(d.Name),
-		Aliases:     d.Aliases,
-		Usage:       d.Usage,
-		Description: primeDescription(d),
-		Metadata:    leafMetadata(d),
-		ArgsUsage:   argsUsage(d.Args),
-		Flags:       flagsFor(d),
-		// Slice flags receive one entry per occurrence: urfave's default
-		// comma-splitting would tear a value like `--set tags=a,b` into two
-		// entries. Only slice/map flags read this; single-value
-		// flags are untouched.
-		DisableSliceFlagSeparator: true,
-		OnUsageError:              onUsageError,
-		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
-			// Flags have already parsed successfully at this point, so the
-			// invocation's own --output value is trusted directly - no raw-argv
-			// scan needed here, unlike commandNotFound/onUsageError below.
-			if ce := checkFlagValues(d.Flags, rawArgv, completionActive(), d.SecretInput); ce != nil {
-				runtime.WriteError(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")), "")
-				return ctx, exit(ce)
-			}
-			return ctx, nil
-		},
-		Action: func(ctx context.Context, c *ucli.Command) error {
-			streams := buildIO(c)
-			// A command wired through Adapt has no store dependency
-			// (schema, completion), so the only notices are the warnings
-			// of the experiment variable: resolving a dir/store would
-			// cost a config.yaml read+parse on every invocation purely to
-			// fill a seam nothing else drains. A future local command that
-			// grows a store dependency registers through adaptEntry,
-			// which wires the store and its notices.
-			addExperimentNotices(&streams, d.Name)
-			status, ce := runtime.Run(ctx, rc, cmdInput{c}, streams, b)
-			if ce != nil {
-				return exit(ce)
-			}
-			if status != 0 {
-				return ucli.Exit("", status)
-			}
-			return nil
-		},
+	cmd := leafCommand(d)
+	cmd.Before = func(ctx context.Context, c *Command, in *Input) error {
+		// Flags have already parsed successfully at this point. The
+		// invocation's own --output value is trusted directly: no scan of the
+		// captured command line is needed here, unlike the unknown-command
+		// and flag error reports.
+		if ce := checkFlagValues(d.Flags, rawArgv, completionActive(), d.SecretInput); ce != nil {
+			runtime.WriteError(c.Root().ErrWriter, in.String("output"), ce, errStyle(c, in.String("color")), "")
+			return exit(ce)
+		}
+		return nil
+	}
+	cmd.Action = func(ctx context.Context, c *Command, in *Input) error {
+		streams := buildIO(c, in)
+		// A command wired through Adapt has no store dependency
+		// (schema, completion), so the only notices are the warnings
+		// of the experiment variable: resolving a dir/store would
+		// cost a config.yaml read+parse on every invocation purely to
+		// fill a seam nothing else drains. A future local command that
+		// grows a store dependency registers through adaptEntry,
+		// which wires the store and its notices.
+		addExperimentNotices(&streams, d.Name)
+		status, ce := runtime.Run(ctx, rc, in, streams, b)
+		if ce != nil {
+			return exit(ce)
+		}
+		if status != 0 {
+			return statusExit(status)
+		}
+		return nil
 	}
 	installShellComplete(rc, cmd)
 	return cmd
 }
 
-// primeDescription is the normal `--help` marker seam: urfave's own default
-// help template renders a command's Description in a DESCRIPTION: block
-// (Usage feeds every other consumer - the TOC, the manifest, the command
-// card's usage line - and must never carry the marker). "" leaves urfave's
-// DESCRIPTION: block absent, exactly as for every non-Prime command today.
+// leafCommand returns the command of d with no Before, Action or Complete:
+// its names, help text and flags, the descriptor and the Prime marker.
+func leafCommand(d runtime.Descriptor) *Command {
+	cmd := &Command{
+		Name:        leafName(d.Name),
+		Aliases:     d.Aliases,
+		Usage:       d.Usage,
+		Description: primeDescription(d),
+		ArgsUsage:   argsUsage(d.Args),
+		Flags:       flagsFor(d),
+		descriptor:  &d,
+		prime:       d.Capability.Tier == runtime.CapabilityPrime,
+	}
+	for _, f := range d.Flags {
+		if f.Name == runtime.FlagProject {
+			desc := f.Desc
+			cmd.project = &desc
+		}
+	}
+	return cmd
+}
+
+// primeDescription is the normal `--help` marker seam: the help template
+// renders a command's Description in a DESCRIPTION: block (Usage feeds every
+// other consumer - the TOC, the manifest, the command card's usage line - and
+// must never carry the marker). "" leaves the DESCRIPTION: block absent, as
+// for every non-Prime command.
 func primeDescription(d runtime.Descriptor) string {
 	if d.Capability.Tier == runtime.CapabilityPrime {
 		return runtime.PrimeSentence
@@ -274,69 +270,34 @@ func primeDescription(d runtime.Descriptor) string {
 	return ""
 }
 
-// primeMetadataKey is the Metadata map key the help and schema TOC renderers
-// read to decide whether a command's row carries the "[Prime]" marker.
-const primeMetadataKey = "prime"
-
-// primeMetadata returns a Metadata map flagging a Prime descriptor, or nil
-// for an ordinary one.
-func primeMetadata(d runtime.Descriptor) map[string]any {
-	if d.Capability.Tier != runtime.CapabilityPrime {
-		return nil
-	}
-	return map[string]any{primeMetadataKey: true}
-}
-
-// projectMetadataKey is the Metadata map key holding the description of a
-// command's own --project entry: --project is parsed once, as the global
-// flag, so the help and flag-name completion of a command that takes it
-// show it from here, with what it does for that command.
-const projectMetadataKey = "project"
-
-// descriptorMetadataKey is the Metadata map key holding the command's
-// runtime.Descriptor, which lineRefusal reads before urfave parses the line.
-const descriptorMetadataKey = "descriptor"
-
-// leafMetadata is the command's Metadata map: its Descriptor, primeMetadata's
-// marker for a Prime command and the command's --project description when it
-// takes --project.
-func leafMetadata(d runtime.Descriptor) map[string]any {
-	md := map[string]any{descriptorMetadataKey: d}
-	maps.Copy(md, primeMetadata(d))
-	for _, f := range d.Flags {
-		if f.Name == runtime.FlagProject {
-			md[projectMetadataKey] = f.Desc
-		}
-	}
-	return md
-}
-
 // commandDescriptor returns the Descriptor of the leaf cmd and whether cmd
 // is a leaf built from one.
-func commandDescriptor(cmd *ucli.Command) (runtime.Descriptor, bool) {
-	d, ok := cmd.Metadata[descriptorMetadataKey].(runtime.Descriptor)
-	return d, ok
+func commandDescriptor(cmd *Command) (runtime.Descriptor, bool) {
+	if cmd.descriptor == nil {
+		return runtime.Descriptor{}, false
+	}
+	return *cmd.descriptor, true
 }
 
 // commandProject returns the description of cmd's own --project entry and
 // whether cmd takes --project.
-func commandProject(cmd *ucli.Command) (string, bool) {
-	desc, ok := cmd.Metadata[projectMetadataKey].(string)
-	return desc, ok
+func commandProject(cmd *Command) (string, bool) {
+	if cmd.project == nil {
+		return "", false
+	}
+	return *cmd.project, true
 }
 
-// commandIsPrime reports whether cmd carries the Prime metadata flag.
-func commandIsPrime(cmd *ucli.Command) bool {
-	v, _ := cmd.Metadata[primeMetadataKey].(bool)
-	return v
-}
+// commandIsPrime reports whether cmd is a Prime command, or a group of Prime
+// commands only.
+func commandIsPrime(cmd *Command) bool { return cmd.prime }
 
 // installShellComplete installs the universal completion callback on cmd for
 // every adapted leaf. When the command also implements
 // runtime.ShellCompleter, the config-local delegation layer is wired in;
 // when it implements completion.Completer, its live source is consulted
 // first for every live site.
-func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
+func installShellComplete(rc runtime.Command, cmd *Command) {
 	d := rc.Describe()
 	var sc runtime.ShellCompleter
 	if s, ok := rc.(runtime.ShellCompleter); ok {
@@ -346,7 +307,7 @@ func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 	if l, ok := rc.(completion.Completer); ok {
 		lc = l
 	}
-	cmd.ShellComplete = universalShellCompleteFunc(d, sc, lc)
+	cmd.Complete = universalShellCompleteFunc(d, sc, lc)
 }
 
 // resolveDeps opens the credential store per the config's policy for dir.
@@ -397,9 +358,9 @@ func remedyDirFor(dir string) string {
 // an empty stderr. Flags have already parsed, so the invocation's own
 // --output value is trusted, and its remedies name its directory through the
 // remedyDir argument of WriteError.
-func renderDepsError(c *ucli.Command, io runtime.IO, err error) error {
+func renderDepsError(c *Command, io runtime.IO, err error) error {
 	ce := clierr.From(err)
-	runtime.WriteError(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")), io.RemedyDir)
+	runtime.WriteError(c.Root().ErrWriter, io.Format, ce, errStyle(c, io.Color), io.RemedyDir)
 	return exit(ce)
 }
 
@@ -445,7 +406,7 @@ func constText[T any](s string) func(T) string {
 	return func(T) string { return s }
 }
 
-// genericSchemaHint is the hint every commandNotFound/onUsageError caller
+// genericSchemaHint is the hint every unknown-command and flag-error report
 // falls back to when no targeted entry matches, or a matched entry carries
 // no hint override.
 const genericSchemaHint = "rancher schema"
@@ -464,17 +425,15 @@ func resolveGuidance[T any](entries []hintEntry[T], in T) (detail, hint string) 
 	return "", genericSchemaHint
 }
 
-// notFoundInput bundles the arguments passed to commandNotFound.
+// notFoundInput bundles the arguments of reportUnknownCommand.
 type notFoundInput struct {
-	c    *ucli.Command
+	c    *Command
 	name string
-	// after holds the words typed after name, in order. Callers pass them
-	// explicitly: the command c may not have run, so it has no parsed
-	// arguments to read.
+	// after holds the arguments typed after name, in order.
 	after []string
 }
 
-// notFoundHints is the registration table for targeted command-not-found
+// notFoundHints is the registration table for targeted unknown-command
 // guidance: the first matching entry's detail is appended to the message,
 // and its hint (if any) overrides the generic schema pointer. Register new
 // targeted entries here, not in the seam.
@@ -531,15 +490,15 @@ func refusedDeleteRow(in notFoundInput) (kinds.Kind, bool) {
 }
 
 // helpHint returns the runnable `--help` command for a mistyped `help` (or
-// `h`) command. The words are the path down to the command that did not know
-// `help`, then the words typed after it, in the order typed (`rancher help
-// get pod` and `rancher get help pod` both give `rancher get pod --help`).
-// Words are kept while each one names a visible command under the previous
-// one, so the hint never names a command that does not exist. Every word
-// kept is a command name, which needs no shell quoting. The words typed
-// after `help` come parsed from commandNotFound and raw from the `--help`
-// walk, so a flag the command accepts and its value can sit among them:
-// they are skipped. Any other flag ends the words.
+// `h`) command. The arguments are the path down to the command that did not
+// know `help`, then the arguments typed after it, in the order typed
+// (`rancher help get pod` and `rancher get help pod` both give `rancher get
+// pod --help`). Arguments are kept while each one names a visible command
+// under the previous one. The hint never names a command that does not exist.
+// Every argument kept is a command name, which needs no shell quoting. The
+// arguments typed after `help` come as typed, so a flag the command accepts
+// and its value can sit among them: they are skipped. Any other flag ends the
+// arguments kept.
 func helpHint(in notFoundInput) string {
 	var typed []string
 	lineage := in.c.Lineage()
@@ -562,41 +521,34 @@ func helpHint(in notFoundInput) string {
 	return clierr.DirectoryFree(strings.Join(append(path, "--help"), " "))
 }
 
-// notFoundGuidance returns commandNotFound's message detail (possibly "")
+// notFoundGuidance returns the unknown-command message detail (possibly "")
 // and hint for name.
-func notFoundGuidance(c *ucli.Command, name string, after []string) (detail, hint string) {
+func notFoundGuidance(c *Command, name string, after []string) (detail, hint string) {
 	return resolveGuidance(notFoundHints, notFoundInput{c: c, name: name, after: after})
 }
 
-// usageErrorInput bundles the arguments passed to onUsageError.
+// usageErrorInput bundles the arguments of the flag error guidance.
 type usageErrorInput struct {
-	c   *ucli.Command
-	err error
+	c   *Command
+	err usageError
 }
 
 const noAllNamespacesFlag = "there is no all-namespaces flag"
 
-// isAllNamespacesFlag reports whether err is an unknown-flag error for the
-// kubectl -A/--all-namespaces reflex. urfave normalises --all-namespaces
-// to -all-namespaces in its error text.
-func isAllNamespacesFlag(err error) bool {
-	// test constructions and future entries may hand the predicate a nil error.
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.HasSuffix(msg, ": -A") || strings.HasSuffix(msg, ": -all-namespaces")
+// isAllNamespacesFlag reports whether ue is the unknown-flag error for the
+// kubectl -A/--all-namespaces reflex.
+func isAllNamespacesFlag(ue usageError) bool {
+	return ue.class == undefinedFlag && (ue.word == "A" || ue.word == "all-namespaces")
 }
 
 // allNamespacesEntry is the kubectl-reflex -A/--all-namespaces entry -
 // addressable by name so tests assert on THIS entry, not a table position.
 //
-// c.Path() returns the root-to-leaf segment slice (urfave v3 Path()),
-// so a `get pod` leaf reports ["rancher","get","pod"]; the `get` group
-// itself reports ["rancher","get"]. The positional p[1]=="get" check
-// matches only commands directly under the `get` group - a "get" segment
-// anywhere deeper in the path (e.g. a hypothetical `auth get-token`) does
-// not trigger the detail.
+// c.Path() returns the root-to-leaf segment slice, so a `get pod` leaf
+// reports ["rancher","get","pod"]; the `get` group itself reports
+// ["rancher","get"]. The positional p[1]=="get" check matches only commands
+// directly under the `get` group - a "get" segment anywhere deeper in the
+// path (e.g. a hypothetical `auth get-token`) does not trigger the detail.
 var allNamespacesEntry = hintEntry[usageErrorInput]{
 	// kubectl reflex -A/--all-namespaces: only a few leaves declare it;
 	// the group commands and the other leaves do not.
@@ -614,18 +566,12 @@ var allNamespacesEntry = hintEntry[usageErrorInput]{
 	},
 }
 
-// onceFlagRE reads the flag name from urfave's error for a second instance
-// of a flag declared runtime.ArgSpec.Once ("invalid value ... for flag
-// -name: can't duplicate this flag"; urfave prints one leading dash).
-var onceFlagRE = regexp.MustCompile(`for flag -+([^:\s]+): can't duplicate this flag$`)
-
 // onceFlagEntry names the remedy for a flag declared Once given twice: one
 // instance carrying every entry.
 var onceFlagEntry = hintEntry[usageErrorInput]{
-	match: func(in usageErrorInput) bool { return in.err != nil && onceFlagRE.MatchString(in.err.Error()) },
+	match: func(in usageErrorInput) bool { return in.err.class == repeatedFlag },
 	detail: func(in usageErrorInput) string {
-		name := onceFlagRE.FindStringSubmatch(in.err.Error())[1]
-		return fmt.Sprintf("--%s may be given once; give all its entries in one comma-separated value", name)
+		return fmt.Sprintf("--%s may be given once; give all its entries in one comma-separated value", in.err.first)
 	},
 }
 
@@ -635,30 +581,18 @@ var onceFlagEntry = hintEntry[usageErrorInput]{
 // when nothing matches. Register new targeted entries here, not in the seam.
 var usageErrorHints = []hintEntry[usageErrorInput]{allNamespacesEntry, onceFlagEntry}
 
-// usageErrorGuidance returns onUsageError's message detail (possibly "")
+// usageErrorGuidance returns the flag error message detail (possibly "")
 // and hint for err.
-func usageErrorGuidance(c *ucli.Command, err error) (detail, hint string) {
+func usageErrorGuidance(c *Command, err usageError) (detail, hint string) {
 	return resolveGuidance(usageErrorHints, usageErrorInput{c: c, err: err})
 }
 
-// commandNotFound is urfave/cli's seam for an unmatched command/subcommand
-// name (registered as root's and every group's CommandNotFound). Without it,
-// urfave's own DefaultShowCommandHelp hard-codes a plain-text "No help topic
-// for '<name>'" on stderr and exits 3 - indistinguishable from the AUTH exit
-// code documented for exit 3, and with no structured error for a script to
-// parse. CommandNotFoundFunc has no error return, so the error is rendered
-// here and recorded on the root for Run to read (see reportUnknownCommand);
-// the command carries on and urfave returns nil. No flag has parsed
-// successfully yet at this point, so the rendering format comes from a
-// raw-argv scan (scanOutputFormat), not a parsed --output value.
-func commandNotFound(_ context.Context, c *ucli.Command, name string) {
-	reportUnknownCommand(c, name, c.Args().Tail())
-}
-
 // reportUnknownCommand renders the unknown-command error for name under c
-// and records it on the root, where Run reads it once urfave returns. after
-// is the words typed after name (see notFoundInput).
-func reportUnknownCommand(c *ucli.Command, name string, after []string) {
+// and returns it. after is the arguments typed after name (see
+// notFoundInput). No flag has parsed successfully yet at this point. The
+// rendering format comes from a scan of the captured command line
+// (scanOutputFormat), not a parsed --output value.
+func reportUnknownCommand(c *Command, name string, after []string) *clierr.Error {
 	msg := fmt.Sprintf("unknown command %q", name)
 	detail, hint := notFoundGuidance(c, name, after)
 	if detail != "" {
@@ -666,119 +600,92 @@ func reportUnknownCommand(c *ucli.Command, name string, after []string) {
 	}
 	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
 	renderRawArgvError(c, ce)
-	recordUnknownCommand(c, ce)
+	return ce
 }
 
 // renderRawArgvError writes ce to the root's error writer in the format and
-// color the raw command line selects. It serves errors raised where no
-// flag has parsed successfully yet (an unknown command, a flag parse
-// failure) or that no command rendered (an error urfave returns itself).
-func renderRawArgvError(c *ucli.Command, ce *clierr.Error) {
+// color the captured command line selects. It serves errors raised where no
+// flag has parsed successfully yet (an unknown command, a flag error) or
+// that no command rendered.
+func renderRawArgvError(c *Command, ce *clierr.Error) {
 	runtime.WriteError(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)), "")
 }
 
-// onUsageError is urfave/cli's seam for a flag-parse failure (unknown flag,
-// bad value, missing value). Without it, urfave prints a plain-text
-// "Incorrect Usage: ..." line and falls through to help text - no structured
-// error for a script to parse, mirroring the gap commandNotFound closes for
-// unmatched command names. Wired on the root command and on every leaf and
-// group command via the adapters, since urfave checks OnUsageError on the
-// command node whose own flags failed to parse, not the root's. This
-// command's own flags failed to parse, so - like commandNotFound - the
-// rendering format comes from a raw-argv scan, not a parsed --output value.
-func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
-	msg := usageErrorText(c, err) + "; pass --help for usage"
-	detail, hint := usageErrorGuidance(c, err)
-	if detail != "" {
-		msg += "; " + detail
+// text is the message of the flag error: the undefined flag, the flag that
+// is missing its value, or the flag with a value it cannot take.
+func (e usageError) text() string {
+	switch e.class {
+	case undefinedFlag:
+		return "flag provided but not defined: -" + e.word
+	case missingFlagValue:
+		return "flag needs an argument: " + e.word
+	case repeatedFlag:
+		return fmt.Sprintf("invalid value %q for flag -%s: can't duplicate this flag", e.value, e.flag)
+	default:
+		return fmt.Sprintf("invalid value %q for flag -%s: parse error", e.value, e.flag)
 	}
-	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
-	renderRawArgvError(c, ce)
-	return exit(ce)
 }
 
-// quotedValueTails maps the reasons urfave gives after the flag name in an
-// "invalid value ... for flag -name: <reason>" error that quote nothing to
-// the reason shown: a second instance of a flag declared once, and a bool
-// flag given a value that is not true or false.
-var quotedValueTails = map[string]string{
-	"can't duplicate this flag": "can't duplicate this flag",
-	"parse error":               "the value must be true or false",
-}
-
-// usageErrorText is the text of the flag-parse error err of command c. A
-// command that takes a secret input fails closed, since any text urfave
-// builds from the command line may hold a typed word that is the secret.
-// Only these forms of urfave v3.14.0 get through:
-//   - "flag needs an argument: -<name>", which urfave gives only for a flag
-//     the command defines, and so holds no typed word;
-//   - "flag provided but not defined: -<word>", which becomes the position of
-//     the word (see unknownFlagText);
-//   - "invalid value "<value>" for flag -<name>: <reason>", which becomes the
-//     flag and, for the two reasons that quote nothing, the reason.
+// usageErrorText is the text of the flag error ue of command c. A command
+// that takes a secret input fails closed: any text built from the command
+// line may hold a typed argument that is the secret. Only these forms get
+// through:
+//   - a flag that is missing its value, which is given only for a flag the
+//     command defines, and holds no typed argument;
+//   - an undefined flag, which becomes the position of the argument (see
+//     unknownFlagText);
+//   - an invalid value, which becomes the flag and, for the two reasons that
+//     quote nothing, the reason.
 //
-// Every other text becomes a fixed text with no word and no position.
-//
-// A command with no descriptor (the root, a group or a hidden command such as
-// __completion) reports a flag typed before the command name, whose command
-// is not known yet, or a flag of a command that has no descriptor: an undefined
-// flag gets the position text unless the line's command is a leaf that takes
-// no secret input (see unknownFlagTextAt), and an invalid value gets the text
-// that names the flag and not the value. Every other text of such a command
-// passes through. A command with a descriptor that takes no secret input
-// keeps urfave's text.
-func usageErrorText(c *ucli.Command, err error) string {
-	msg := err.Error()
+// A command with no descriptor (the root or a group) reports a flag typed
+// before the command name, whose command is not known yet, or a flag of a
+// command that has no descriptor: an undefined flag gets the position text
+// unless the line's command is a leaf that takes no secret input (see
+// unknownFlagTextAt), and an invalid value gets the text that names the flag
+// and not the value. A missing value passes through. A command with a
+// descriptor that takes no secret input names the typed argument.
+func usageErrorText(c *Command, ue usageError) string {
+	msg := ue.text()
 	d, described := commandDescriptor(c)
 	if described && !d.SecretInput {
 		return msg
 	}
 	if !described {
-		if name, isUnknown := strings.CutPrefix(msg, "flag provided but not defined: -"); isUnknown {
-			return unknownFlagTextAt(c.Root(), name, rawArgv, msg)
-		}
-		if !strings.HasPrefix(msg, "invalid value ") {
+		switch ue.class {
+		case undefinedFlag:
+			return unknownFlagTextAt(c.Root(), ue.word, rawArgv, msg)
+		case missingFlagValue:
 			return msg
 		}
-		return invalidValueText(msg)
+		return invalidValueText(ue)
 	}
-	if strings.HasPrefix(msg, "flag needs an argument: -") {
+	switch ue.class {
+	case missingFlagValue:
 		return msg
+	case undefinedFlag:
+		return unknownFlagText(ue.word, rawArgv)
 	}
-	if name, isUnknown := strings.CutPrefix(msg, "flag provided but not defined: -"); isUnknown {
-		return unknownFlagText(name, rawArgv)
-	}
-	if !strings.HasPrefix(msg, "invalid value ") {
-		return "the command line could not be parsed"
-	}
-	return invalidValueText(msg)
+	return invalidValueText(ue)
 }
 
-// invalidValueText is urfave's "invalid value "<value>" for flag -<name>:
-// <reason>" without the value: the flag, and the reason when it is one of
-// the two that quote nothing.
-func invalidValueText(msg string) string {
-	_, flagAndReason, found := strings.CutLast(msg, " for flag -")
-	if !found {
-		return "invalid value for a flag"
+// invalidValueText is the text of a flag with a value it cannot take, without
+// the value: the flag, and the reason, which is one that quotes nothing.
+func invalidValueText(ue usageError) string {
+	out := "invalid value for flag -" + ue.flag
+	if ue.class == repeatedFlag {
+		return out + ": can't duplicate this flag"
 	}
-	name, tail, _ := strings.Cut(flagAndReason, ": ")
-	out := "invalid value for flag -" + name
-	if shown, ok := quotedValueTails[tail]; ok {
-		out += ": " + shown
-	}
-	return out
+	return out + ": the value must be true or false"
 }
 
 // unknownFlagTextAt is the text for the undefined flag name that the root
-// or a group reports, as the line argv is typed. The flag's command is the
-// leaf the rest of the line names (see leafOfLine). It is msg, urfave's
-// text, when that leaf has a descriptor that takes no secret input, since the
-// flag as typed helps a user find a typo there; in every other case, when the
-// leaf takes a secret input, is not found, or has no descriptor (the line
-// names a hidden command such as __completion, which has none), it is the
-// position text, which names no word.
-func unknownFlagTextAt(root *ucli.Command, name string, argv []string, msg string) string {
+// or a group reports, as the command line argv is typed. The flag's command
+// is the leaf the rest of the command line names (see leafOfLine). It is msg,
+// the text that names the flag as typed, when that leaf has a descriptor that
+// takes no secret input: the flag as typed helps a user find a typo there. In
+// every other case, when the leaf takes a secret input, is not found, or has
+// no descriptor, it is the position text, which names no flag.
+func unknownFlagTextAt(root *Command, name string, argv []string, msg string) string {
 	if leaf := leafOfLine(root, argv); leaf != nil {
 		if d, described := commandDescriptor(leaf); described && !d.SecretInput {
 			return msg
@@ -793,11 +700,11 @@ func unknownFlagTextAt(root *ucli.Command, name string, argv []string, msg strin
 // and the line read again, until the walk ends for another reason. An
 // undefined flag is read as one that takes no value, since the number of
 // values it takes cannot be known.
-func leafOfLine(root *ucli.Command, argv []string) *ucli.Command {
+func leafOfLine(root *Command, argv []string) *Command {
 	words := slices.Clone(argv)
 	for range len(argv) + 1 {
 		p := parseLine(root, words)
-		end := p.urfaveEnd
+		end := p.end
 		lv := p.levels[end.level]
 		if end.kind != lineError || end.class != undefinedFlag || len(lv.words) == 0 {
 			if lv.leaf {

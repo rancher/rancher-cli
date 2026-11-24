@@ -13,7 +13,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 	"github.com/rancher/rancher-cli/internal/token"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // keptLine is the parse runArgv made of a command line, and whether it made
@@ -40,9 +39,9 @@ var (
 	recordingHooks recordingState
 )
 
-// resetRecordingState says recording is off. run calls it before urfave
-// runs, and the hook before it decides; a run that never reaches the hook
-// records nothing.
+// resetRecordingState says recording is off. run calls it before the command
+// line runs, and the hook before it decides; a run that never reaches the
+// hook records nothing.
 func resetRecordingState() {
 	recordingMu.Lock()
 	defer recordingMu.Unlock()
@@ -93,21 +92,21 @@ var newRunEvent = telemetry.NewCommandRun
 // recordDecision says whether a run records and, when it does, the
 // descriptor of the command it ran. It reads only the parse and the hook
 // state; a run that records nothing does no other work. A run records
-// when the line was parsed, urfave runs a leaf command that has a descriptor
-// and is not excluded, and the hook found recording on and the config
-// directory present. A line the CLI refuses before urfave parses it never
+// when the command line was parsed, a leaf command that has a descriptor
+// runs and is not excluded, and the hook found recording on and the config
+// directory present. A command line the CLI refuses before it runs never
 // reaches the hook, and run clears the state first: the state says off.
 //
-// p.levels holds the walk to endIfBlankAccepted and urfaveEnd is where
-// urfave ends; they differ only on lines the CLI refuses before urfave runs
-// them, which never get this far; indexing the levels by urfaveEnd is
-// safe.
+// p.levels holds the commands reached up to endIfBlankAccepted, and end is
+// where parsing ends. They differ only on command lines the CLI refuses
+// before it runs them, which never get this far. Indexing the levels by end
+// is safe.
 func recordDecision(k keptLine, st recordingState) (runtime.Descriptor, bool) {
 	if !k.parsed || !st.on || !st.dirExisted {
 		return runtime.Descriptor{}, false
 	}
 	p := k.line
-	end := p.urfaveEnd
+	end := p.end
 	if end.kind != lineRuns || end.level >= len(p.levels) {
 		return runtime.Descriptor{}, false
 	}
@@ -148,7 +147,7 @@ func recordingTarget(k keptLine, st recordingState) (d runtime.Descriptor, serve
 // It also says whether the run reached the store with recording on, which
 // command ran, the compacted files the hourly pass wrote and when the event
 // write and the hourly pass ended, for the upload that follows.
-func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (in refreshInput) {
+func recordRun(root *Command, k keptLine, res runResult, start time.Time) (in refreshInput) {
 	defer func() {
 		if recover() != nil {
 			in = refreshInput{}
@@ -377,7 +376,7 @@ func recordedServer(d runtime.Descriptor, p parsedLine, cfg *config.Config) stri
 	}
 	var raw string
 	if row, ok := serverRows[d.Name]; ok {
-		raw = row(serverInput{leaf: p.levels[p.urfaveEnd.level], cfg: cfg})
+		raw = row(serverInput{leaf: p.levels[p.end.level], cfg: cfg})
 	} else if cfg != nil {
 		raw = effectiveConnectionURL(cfg)
 	}

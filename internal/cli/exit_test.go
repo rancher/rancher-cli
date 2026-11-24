@@ -14,7 +14,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // exitEnv gives the test an empty config directory, the file credential
@@ -33,6 +32,13 @@ func exitEnv(t *testing.T) {
 	t.Setenv(config.EnvReadOnly, "")
 }
 
+// plainResult returns r without the outcome of its run, for a comparison with
+// the result of another run, whose outcome names commands of another tree.
+func plainResult(r runResult) runResult {
+	r.outcome = outcome{}
+	return r
+}
+
 // runResultOf runs argv, the words after the program name, on a production
 // root through run and returns the result and what reached stderr.
 func runResultOf(t *testing.T, argv ...string) (runResult, string) {
@@ -41,48 +47,28 @@ func runResultOf(t *testing.T, argv ...string) (runResult, string) {
 	require.NoError(t, err)
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter, root.Reader = &out, &errOut, strings.NewReader("")
-	return run(t.Context(), root, append([]string{"rancher"}, argv...)), errOut.String()
+	return plainResult(run(t.Context(), root, append([]string{"rancher"}, argv...))), errOut.String()
 }
 
-// handBuiltRoot is a root with one Action and the production exit handler,
-// for the errors no production line returns.
-func handBuiltRoot(t *testing.T, action func(context.Context, *ucli.Command) error) (*ucli.Command, *bytes.Buffer) {
+// handBuiltRoot is a root with one Action, for the errors no production line
+// returns.
+func handBuiltRoot(t *testing.T, action func(context.Context, *Command, *Input) error) (*Command, *bytes.Buffer) {
 	t.Helper()
 	var errOut bytes.Buffer
-	root := &ucli.Command{
-		Name:           "rancher",
-		Metadata:       map[string]any{descriptorMetadataKey: runtime.Descriptor{Name: "rancher"}},
-		ExitErrHandler: func(context.Context, *ucli.Command, error) {},
-		Action:         action,
-		Writer:         &bytes.Buffer{},
-		ErrWriter:      &errOut,
-	}
+	root := link(&Command{
+		Name:       "rancher",
+		descriptor: &runtime.Descriptor{Name: "rancher"},
+		Action:     action,
+		Writer:     &bytes.Buffer{},
+		ErrWriter:  &errOut,
+	})
 	return root, &errOut
-}
-
-// TestRootHasAnExitHandlerThatDoesNothing asserts that the production root
-// sets urfave's exit handler, which urfave reads from the root only, and
-// that the handler returns without ending the process: an exit function
-// that records its calls is never called.
-func TestRootHasAnExitHandlerThatDoesNothing(t *testing.T) {
-	root, err := BuildRoot("v-test")
-	require.NoError(t, err)
-	require.NotNil(t, root.ExitErrHandler)
-
-	orig := ucli.OsExiter
-	var exits []int
-	ucli.OsExiter = func(code int) { exits = append(exits, code) }
-	t.Cleanup(func() { ucli.OsExiter = orig })
-	root.ExitErrHandler(t.Context(), root, ucli.Exit("text", 5))
-	root.ExitErrHandler(t.Context(), root, exit(clierr.New(clierr.CodeAuth, "x")))
-	root.ExitErrHandler(t.Context(), root, errors.New("plain"))
-	assert.Empty(t, exits)
 }
 
 // TestResultOf asserts the exit code and the stderr text for each shape of
 // error a run can end with: a message is rendered once as a GENERIC error in
-// the requested output format with exit 1 (never a code urfave chose, such as
-// its help error's 3), an empty message writes nothing and keeps its exit
+// the requested output format with exit 1 (never a code the error carries,
+// such as 3), an empty message writes nothing and keeps its exit
 // code, a plain error exits 1, an error that names its *clierr.Error keeps
 // that error's code and writes nothing, and a *clierr.Error returned
 // unrendered is rendered with its own code. Not parallel: the renderer reads
@@ -99,8 +85,8 @@ func TestResultOf(t *testing.T) {
 		return resultOf(root, err), errOut.String()
 	}
 
-	got, stderr := of(ucli.Exit("No help topic for 'x'", 3))
-	assert.Equal(t, 1, got.code, "urfave's own exit code must not reach the caller")
+	got, stderr := of(codedError{"No help topic for 'x'", 3})
+	assert.Equal(t, 1, got.code, "the exit code of the error must not reach the caller")
 	require.NotNil(t, got.err)
 	assert.Equal(t, clierr.CodeGeneric, got.err.Code)
 	assert.Equal(t, "error (GENERIC): No help topic for 'x'\n", stderr)
@@ -111,11 +97,11 @@ func TestResultOf(t *testing.T) {
 	assert.Equal(t, clierr.CodeGeneric, got.err.Code)
 	assert.Equal(t, "error (GENERIC): boom\n", stderr)
 
-	got, stderr = of(ucli.Exit("", 5))
+	got, stderr = of(statusExit(5))
 	assert.Equal(t, runResult{code: 5}, got, "a status the command declares carries its code and no error")
 	assert.Empty(t, stderr)
 
-	got, stderr = of(ucli.Exit("No help topic for 'x'", 3), "-o", "json", "get", "pod")
+	got, stderr = of(codedError{"No help topic for 'x'", 3}, "-o", "json", "get", "pod")
 	assert.Equal(t, 1, got.code)
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal([]byte(stderr), &env))
@@ -138,35 +124,36 @@ func TestResultOf(t *testing.T) {
 	assert.Equal(t, "error (AUTH): no access\n", stderr)
 }
 
-// TestResolveExitPrecedence asserts that an error urfave returned wins over
-// the unknown-command error recorded during the run, that the recorded error
-// applies when nothing was returned, and that no error and no record is a
-// success.
-func TestResolveExitPrecedence(t *testing.T) {
+// codedError is an error with a message and an exit code.
+type codedError struct {
+	msg  string
+	code int
+}
+
+func (e codedError) Error() string { return e.msg }
+
+func (e codedError) ExitCode() int { return e.code }
+
+// TestResolveExit asserts that the error a run returned decides its code,
+// and that no error is a success.
+func TestResolveExit(t *testing.T) {
 	restoreRawArgv(t)
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	root.ErrWriter = &bytes.Buffer{}
-	recorded := clierr.New(clierr.CodeValidation, "unknown command")
-	returned := exit(clierr.New(clierr.CodeAuth, "no access"))
 
-	got := resolveExit(root, returned, recorded)
-	assert.Equal(t, 3, got.code, "the returned error's code wins")
+	got := resolveExit(root, exit(clierr.New(clierr.CodeAuth, "no access")))
+	assert.Equal(t, 3, got.code)
 	assert.Equal(t, clierr.CodeAuth, got.err.Code)
 
-	got = resolveExit(root, nil, recorded)
-	assert.Equal(t, 2, got.code, "the recorded code applies when nothing was returned")
-	assert.Same(t, recorded, got.err)
-
-	assert.Equal(t, runResult{}, resolveExit(root, nil, nil))
+	assert.Equal(t, runResult{}, resolveExit(root, nil))
 }
 
-// TestUnknownCommandCodeWinsOverNilAndNeverLeaks asserts, through the
+// TestUnknownCommandEndsWithExit2AndNeverLeaks asserts, through the
 // production root and run, that an unknown command ends the run with exit 2
-// and its error although urfave returns nil, and that a valid line run on the
-// same root right after it ends with exit 0: the record of an earlier run is
-// cleared before the next one. Not parallel: it sets the process environment.
-func TestUnknownCommandCodeWinsOverNilAndNeverLeaks(t *testing.T) {
+// and its error, and that a valid line run on the same root right after it
+// ends with exit 0. Not parallel: it sets the process environment.
+func TestUnknownCommandEndsWithExit2AndNeverLeaks(t *testing.T) {
 	exitEnv(t)
 	for _, argv := range [][]string{
 		{"nosuch"},
@@ -187,7 +174,7 @@ func TestUnknownCommandCodeWinsOverNilAndNeverLeaks(t *testing.T) {
 			assert.Equal(t, 1, strings.Count(errOut.String(), "error (VALIDATION): unknown command"), "stderr: %s", errOut.String())
 
 			errOut.Reset()
-			got = run(t.Context(), root, []string{"rancher", "--version"})
+			got = plainResult(run(t.Context(), root, []string{"rancher", "--version"}))
 			assert.Equal(t, runResult{}, got, "a valid line right after an unknown command succeeds")
 			assert.Empty(t, errOut.String())
 		})
@@ -198,10 +185,10 @@ func TestUnknownCommandCodeWinsOverNilAndNeverLeaks(t *testing.T) {
 // line can end carries the *clierr.Error whose exit code matches the
 // result: an error from the dependencies of a command, a refusal before the
 // command runs, an error from the command, an unknown command, a flag error,
-// the refusal of a line before urfave parses it, an empty --config, and a
+// the refusal of a line before it runs, an empty --config, and a
 // run with no arguments; that a status a command declares carries its code
-// and no error; and, on a root built by hand, that an error urfave builds
-// itself and its "No help topic" error end as GENERIC with exit 1. Not
+// and no error; and, on a root built by hand, that a plain error and an
+// error with an exit code and a message end as GENERIC with exit 1. Not
 // parallel: it sets the process environment.
 func TestEveryExitPathCarriesItsError(t *testing.T) {
 	exitEnv(t)
@@ -229,7 +216,7 @@ func TestEveryExitPathCarriesItsError(t *testing.T) {
 		{"an unknown command", []string{"nosuch"}, 2, clierr.CodeValidation},
 		{"a flag error on a leaf", []string{"get", "pod", "--bogus"}, 2, clierr.CodeValidation},
 		{"a flag error on the root", []string{"--bogus"}, 2, clierr.CodeValidation},
-		{"the refusal of a line before urfave parses it", []string{"get", "pod", "-", "x"}, 2, clierr.CodeValidation},
+		{"the refusal of a line before it runs", []string{"get", "pod", "-", "x"}, 2, clierr.CodeValidation},
 		{"an empty --config", []string{"--config", "", "get", "pod", "--cluster", "local"}, 2, clierr.CodeValidation},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -247,7 +234,7 @@ func TestEveryExitPathCarriesItsError(t *testing.T) {
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer, root.ErrWriter = &out, &bytes.Buffer{}
-		assert.Equal(t, runResult{}, run(t.Context(), root, nil))
+		assert.Equal(t, runResult{}, plainResult(run(t.Context(), root, nil)))
 		assert.NotEmpty(t, out.String())
 	})
 
@@ -257,17 +244,17 @@ func TestEveryExitPathCarriesItsError(t *testing.T) {
 		assert.Empty(t, stderr)
 	})
 
-	t.Run("an error urfave builds itself", func(t *testing.T) {
-		root, errOut := handBuiltRoot(t, func(context.Context, *ucli.Command) error { return errors.New("urfave says no") })
+	t.Run("a plain error", func(t *testing.T) {
+		root, errOut := handBuiltRoot(t, func(context.Context, *Command, *Input) error { return errors.New("the command says no") })
 		got := run(t.Context(), root, []string{"rancher"})
 		assert.Equal(t, 1, got.code)
 		require.NotNil(t, got.err)
 		assert.Equal(t, clierr.CodeGeneric, got.err.Code)
-		assert.Equal(t, "error (GENERIC): urfave says no\n", errOut.String())
+		assert.Equal(t, "error (GENERIC): the command says no\n", errOut.String())
 	})
 
-	t.Run("urfave's no help topic error", func(t *testing.T) {
-		root, errOut := handBuiltRoot(t, func(context.Context, *ucli.Command) error { return ucli.Exit("No help topic for 'x'", 3) })
+	t.Run("an error with a message and an exit code", func(t *testing.T) {
+		root, errOut := handBuiltRoot(t, func(context.Context, *Command, *Input) error { return codedError{"No help topic for 'x'", 3} })
 		got := run(t.Context(), root, []string{"rancher"})
 		assert.Equal(t, 1, got.code)
 		require.NotNil(t, got.err)
@@ -286,7 +273,7 @@ func TestARawClierrReturnedFromACommandIsRenderedOnce(t *testing.T) {
 	restoreRawArgv(t)
 	run1 := func(t *testing.T, returned error) (runResult, string) {
 		t.Helper()
-		root, errOut := handBuiltRoot(t, func(context.Context, *ucli.Command) error { return returned })
+		root, errOut := handBuiltRoot(t, func(context.Context, *Command, *Input) error { return returned })
 		return run(t.Context(), root, []string{"rancher"}), errOut.String()
 	}
 	t.Run("direct", func(t *testing.T) {
@@ -306,12 +293,12 @@ func TestARawClierrReturnedFromACommandIsRenderedOnce(t *testing.T) {
 	})
 }
 
-// TestExitCodeOfClearsTheRecordAndKeepsStderr asserts the helper that tests
-// use after root.Run: on one root, an unknown command gives 2 and a valid
-// line right after it gives 0, because the helper clears the record it read;
-// and an error that nothing rendered is counted without writing to the
-// root's error writer. Not parallel: the renderer reads the captured argv.
-func TestExitCodeOfClearsTheRecordAndKeepsStderr(t *testing.T) {
+// TestExitCodeOfKeepsStderr asserts the helper that tests use after
+// root.Run: on one root, an unknown command gives 2 and a valid line right
+// after it gives 0; and an error that nothing rendered is counted without
+// writing to the root's error writer. Not parallel: the renderer reads the
+// captured command line.
+func TestExitCodeOfKeepsStderr(t *testing.T) {
 	restoreRawArgv(t)
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -325,7 +312,7 @@ func TestExitCodeOfClearsTheRecordAndKeepsStderr(t *testing.T) {
 	CaptureArgv([]string{"--version"})
 	errOut.Reset()
 	runErr = root.Run(t.Context(), []string{"rancher", "--version"})
-	assert.Equal(t, 0, exitCodeOf(root, runErr), "the record of the earlier line is gone")
+	assert.Equal(t, 0, exitCodeOf(root, runErr), "the earlier line leaves nothing behind")
 
 	assert.Equal(t, 1, exitCodeOf(root, errors.New("boom")))
 	assert.Empty(t, errOut.String(), "the helper writes nothing to the error writer")

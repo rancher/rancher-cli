@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // This file is the cluster-family acceptance coverage for the capability
@@ -79,8 +77,6 @@ func TestClusterFamilyCapabilityFourOutcomesLive(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	args := []string{"cluster", "set-autoscaling", "my-cluster", "--pool", "pool1", "--min", "1", "--max", "3", "--dry-run", "-o", "json"}
 
 	t.Run("proceed: feature enabled", func(t *testing.T) {

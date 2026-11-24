@@ -24,7 +24,7 @@ import (
 
 const (
 	outputWritesDir = "test/conformance/testdata/outputwrites"
-	urfaveCLIPath   = "github.com/urfave/cli/v3"
+	cliPath         = modulePrefix + "internal/cli"
 	uiPath          = modulePrefix + "internal/ui"
 	outputPath      = modulePrefix + "internal/output"
 )
@@ -708,8 +708,7 @@ var ioErrReferences = map[string][]string{
 // there. It does not follow a write through a value that holds a copy of the
 // writer (the reference where the copy is made is counted, the writes through
 // the copy are not), a file behind a build tag other than the system and the
-// architecture, or the writes urfave makes through its own Writer field inside
-// the library. The writes to the process's standard output
+// architecture. The writes to the process's standard output
 // are listed by TestEveryProcessStdoutReferenceIsListed.
 func TestEveryReferenceToIOOutIsListed(t *testing.T) {
 	t.Parallel()
@@ -719,8 +718,8 @@ func TestEveryReferenceToIOOutIsListed(t *testing.T) {
 	assertReferencesListed(t, "the field Out of runtime.IO", ioOutReferences, got)
 }
 
-// rootWriterReferences is every reference to the field Writer of urfave's
-// Command in a non-test file, one reason for each occurrence. None writes a
+// rootWriterReferences is every reference to the field Writer of the Command
+// of internal/cli in a non-test file, one reason for each occurrence. None writes a
 // remedy command.
 var rootWriterReferences = map[string][]string{
 	"internal/cli.buildIO": {
@@ -734,13 +733,17 @@ var rootWriterReferences = map[string][]string{
 	"internal/cli.completeCurrentWord": {
 		"raw: completion candidates, which pass their own filter and are not a remedy channel",
 	},
-	"internal/cli.showHelpCard": {
+	"internal/cli.helpPageOutcome": {
 		"raw: the help page, which holds only text the CLI wrote as literals and no remedy command",
+	},
+	"internal/cli.runArgv": {
+		"no text: the nil check before the default output writer is set",
+		"no text: the assignment of the default output writer",
 	},
 	"internal/cli.helpStyle": {
 		"no text: the terminal check that decides the help's styling",
 	},
-	"internal/cli.printVersion": {
+	"internal/cli.versionOutcome": {
 		"raw: the version line, which holds the command name and the version and no remedy command",
 	},
 	"internal/cli.recordRun": {
@@ -769,10 +772,10 @@ var prompterErrReferences = map[string][]string{
 	},
 }
 
-// urfaveErrWriterReferences is every reference to the field ErrWriter of
-// urfave's Command in a non-test file, one reason for each occurrence, by
+// rootErrWriterReferences is every reference to the field ErrWriter of the
+// Command of internal/cli in a non-test file, one reason for each occurrence, by
 // function.
-var urfaveErrWriterReferences = map[string][]string{
+var rootErrWriterReferences = map[string][]string{
 	"internal/cli.buildIO": {
 		"no text: the writer becomes the invocation's error output",
 		"no text: the terminal check of the error output",
@@ -800,30 +803,29 @@ var urfaveErrWriterReferences = map[string][]string{
 		"no text: the writer becomes the upload command's debug output",
 	},
 	"internal/cli.runArgv": {
-		"no text: the nil check before the root's writer is set",
+		"no text: the nil check before the default error writer is set",
 		"no text: the assignment of the default error writer",
 		"filtered: the error block of a refused command line, written by WriteError (rows: error block)",
 	},
 }
 
 // TestEveryReferenceToTheRootWriterIsListed asserts every reference to the
-// field Writer of the Command type of github.com/urfave/cli/v3 in a non-test
-// file (a selector, read or assigned, and a key of a composite literal) is
-// listed with a reason, by enclosing function; a function literal counts in the
-// function that declares it. No remedy command is written through any listed
+// field Writer of the Command type of internal/cli in a non-test file (a
+// selector, read or assigned, and a key of a composite literal) is listed with
+// a reason, by enclosing function; a function literal counts in the function
+// that declares it. No remedy command is written through any listed
 // reference: a later reference that writes one is a new text channel and is
 // listed with its expansion. A field named Writer of another type is not
 // counted in the type-checked files. It reads every file whatever its build
 // constraint on the system or the architecture (the files only another release
-// platform builds without types, where every selector named Writer counts),
-// follows the field of that type by those forms and does not follow the writes
-// urfave makes through the field inside the library.
+// platform builds without types, where every selector named Writer counts)
+// and follows the field of that type by those forms.
 func TestEveryReferenceToTheRootWriterIsListed(t *testing.T) {
 	t.Parallel()
 	sets, err := outputWritePackages()
 	require.NoError(t, err)
-	got := allReferencesByFunction(sets.references(fieldScan(urfaveCLIPath, "Command", "Writer")))
-	assertReferencesListed(t, "the field Writer of urfave's Command", rootWriterReferences, got)
+	got := allReferencesByFunction(sets.references(fieldScan(cliPath, "Command", "Writer")))
+	assertReferencesListed(t, "the field Writer of the Command of internal/cli", rootWriterReferences, got)
 }
 
 // TestEveryReferenceToIOErrIsListed asserts every reference to the field Err
@@ -838,8 +840,7 @@ func TestEveryReferenceToTheRootWriterIsListed(t *testing.T) {
 // without types: the callee is "untyped" and the call's function as written).
 // It does not follow a write through a value that holds a copy of the writer
 // (the reference where the copy is made is counted as "no call"), os.NewFile,
-// the print built-ins, a file behind another build tag, or what urfave writes
-// through its own writer field inside the library.
+// the print built-ins or a file behind another build tag.
 func TestEveryReferenceToIOErrIsListed(t *testing.T) {
 	t.Parallel()
 	sets, err := outputWritePackages()
@@ -863,20 +864,19 @@ func TestEveryReferenceToThePrompterErrorWriterIsListed(t *testing.T) {
 }
 
 // TestEveryReferenceToTheRootErrorWriterIsListed asserts every reference to
-// the field ErrWriter of the Command type of github.com/urfave/cli/v3 in a
-// non-test file (a selector, read or assigned, and a key of a composite
-// literal) is listed with a reason, by enclosing function; a function literal
-// counts in the function that declares it. It reads every file whatever its
-// build constraint on the system or the architecture (the files only another
+// the field ErrWriter of the Command type of internal/cli in a non-test file
+// (a selector, read or assigned, and a key of a composite literal) is listed
+// with a reason, by enclosing function; a function literal counts in the
+// function that declares it. It reads every file whatever its build
+// constraint on the system or the architecture (the files only another
 // release platform builds without types, where every selector named ErrWriter
-// counts) and does not follow what urfave writes through the field inside
-// the library.
+// counts).
 func TestEveryReferenceToTheRootErrorWriterIsListed(t *testing.T) {
 	t.Parallel()
 	sets, err := outputWritePackages()
 	require.NoError(t, err)
-	got := allReferencesByFunction(sets.references(fieldScan(urfaveCLIPath, "Command", "ErrWriter")))
-	assertReferencesListed(t, "the field ErrWriter of urfave's Command", urfaveErrWriterReferences, got)
+	got := allReferencesByFunction(sets.references(fieldScan(cliPath, "Command", "ErrWriter")))
+	assertReferencesListed(t, "the field ErrWriter of the Command of internal/cli", rootErrWriterReferences, got)
 }
 
 // rawBytesWriters are the functions that write the field RawBytes of
@@ -985,11 +985,11 @@ func TestEveryListedWriterNamesItsTerminalTextRows(t *testing.T) {
 	}
 	named := map[string]bool{}
 	for what, list := range map[string]map[string][]string{
-		"ioOutReferences":           ioOutReferences,
-		"rootWriterReferences":      rootWriterReferences,
-		"ioErrReferences":           ioErrReferences,
-		"prompterErrReferences":     prompterErrReferences,
-		"urfaveErrWriterReferences": urfaveErrWriterReferences,
+		"ioOutReferences":         ioOutReferences,
+		"rootWriterReferences":    rootWriterReferences,
+		"ioErrReferences":         ioErrReferences,
+		"prompterErrReferences":   prompterErrReferences,
+		"rootErrWriterReferences": rootErrWriterReferences,
 	} {
 		checkWriterReasons(t, what, list, rows, named)
 	}
@@ -1126,6 +1126,9 @@ var stdoutReferences = map[string][]string{
 	"internal/commands/configcmd.execEditor": {
 		"the standard output of the editor the user runs, which is the process's own",
 	},
+	"internal/cli.runArgv": {
+		"the default output writer of a command tree that has none: the process's own, written by the commands and the help pages",
+	},
 }
 
 // TestEveryProcessStdoutReferenceIsListed asserts every reference to the
@@ -1169,8 +1172,8 @@ var outputWriteFixtureNames = []string{"clean", "errwriter", "ioerr", "ioout", "
 // an assignment, a return, a comparison, a method value, and a reference
 // inside a function literal or a composite literal that is an argument; a
 // conversion; a built-in; and, in a file only windows builds, an untyped
-// call and no call), the err of a Prompter, the ErrWriter of urfave's Command
-// and the writes of the fields RawBytes and Raw of runtime.Result, each with a
+// call and no call), the err of a Prompter, the ErrWriter of the Command of
+// internal/cli and the writes of the fields RawBytes and Raw of runtime.Result, each with a
 // field of another type left out. The host type-checks the fixtures and the
 // other platforms the release builds contribute only the files they alone
 // build: the references to the field Out of runtime.IO as
@@ -1178,7 +1181,7 @@ var outputWriteFixtureNames = []string{"clean", "errwriter", "ioerr", "ioout", "
 // literal, one in a function literal, one at package level, one in a file only
 // windows builds and one in a file only s390x builds, with a field Out of
 // another type and a clean file left out; the same forms for the Writer of
-// urfave's Command with a Writer of another type left out; the calls and
+// the Command of internal/cli with a Writer of another type left out; the calls and
 // function values of a function named plainRemedies, with one of another
 // package left out; the writes and reads of PlainText, with a field of another
 // type left out; and the uses of os.Stdout and fmt.Print, Printf and Println,
@@ -1225,7 +1228,7 @@ func TestOutputWriteScanFixtures(t *testing.T) {
 		assert.NotContains(t, onLinux, key("ioout", "s390xWrite"), "a file only s390x builds is not read for linux/amd64")
 	})
 
-	t.Run("urfave Command.Writer", func(t *testing.T) {
+	t.Run("Command.Writer", func(t *testing.T) {
 		t.Parallel()
 		both := sets.only("rootwriter", "clean")
 		assert.Equal(t, map[string]int{
@@ -1233,7 +1236,7 @@ func TestOutputWriteScanFixtures(t *testing.T) {
 			key("rootwriter", "assign"):     1,
 			key("rootwriter", "literalKey"): 1,
 			key("rootwriter", "root"):       1,
-		}, allReferencesByFunction(both.references(fieldScan(urfaveCLIPath, "Command", "Writer"))))
+		}, allReferencesByFunction(both.references(fieldScan(cliPath, "Command", "Writer"))))
 	})
 
 	t.Run("IO.Err", func(t *testing.T) {
@@ -1275,7 +1278,7 @@ func TestOutputWriteScanFixtures(t *testing.T) {
 		}, allReferencesByFunction(both.references(fieldScan(pathOf("prompterr"), "Prompter", "err"))))
 	})
 
-	t.Run("urfave Command.ErrWriter", func(t *testing.T) {
+	t.Run("Command.ErrWriter", func(t *testing.T) {
 		t.Parallel()
 		both := sets.only("errwriter", "clean")
 		assert.Equal(t, map[string]int{
@@ -1283,7 +1286,7 @@ func TestOutputWriteScanFixtures(t *testing.T) {
 			key("errwriter", "assign"):     1,
 			key("errwriter", "literalKey"): 1,
 			key("errwriter", "root"):       1,
-		}, allReferencesByFunction(both.references(fieldScan(urfaveCLIPath, "Command", "ErrWriter"))))
+		}, allReferencesByFunction(both.references(fieldScan(cliPath, "Command", "ErrWriter"))))
 	})
 
 	t.Run("Result.RawBytes and Result.Raw", func(t *testing.T) {

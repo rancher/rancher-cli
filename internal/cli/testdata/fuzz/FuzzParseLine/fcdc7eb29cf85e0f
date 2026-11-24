@@ -1,0 +1,3 @@
+go test fuzz v1
+string("--rancher-completion-proto=2\x00schema\x0000")
+bool(true)

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -69,7 +67,6 @@ func TestKubeconfigRecordsTheDirectoryTheCommandOpened(t *testing.T) {
 			}
 			root, err := BuildRoot("v-test")
 			require.NoError(t, err)
-			root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 			var out, errOut bytes.Buffer
 			root.Writer, root.ErrWriter = &out, &errOut
 			args := []string{"rancher"}

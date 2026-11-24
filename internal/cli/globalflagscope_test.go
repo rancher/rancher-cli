@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -112,7 +111,7 @@ func hasOwnVersionFlag(path string) bool {
 
 // TestEveryCommandAndGroupOffersOnlyTheGlobalFlagsItAccepts asserts, for
 // every registered command, every command group of the built tree and the
-// root, that flag-name completion offers and the help card lists each
+// root, that flag-name completion offers and the help page lists each
 // global flag of the schema manifest exactly when the manifest's appliesTo
 // says the command accepts it: --dry-run, --apply, --yes and
 // --allow-deprecated on mutating commands, --read-only on commands that
@@ -120,7 +119,7 @@ func hasOwnVersionFlag(path string) bool {
 // the rest on every command. A group offers a flag when a command under it
 // accepts it; the root offers every flag. A command lists --project under
 // its own OPTIONS, never under GLOBAL OPTIONS. Completion offers --version
-// and its alias -v, and the help card lists --version, on the root only.
+// and its alias -v, and the help page lists --version, on the root only.
 // The offer is checked in both directions: a flag a command accepts must
 // still be offered. It also asserts that the built tree and the registry
 // hold the same commands and that every command of the tree carries its
@@ -175,8 +174,8 @@ func TestEveryCommandAndGroupOffersOnlyTheGlobalFlagsItAccepts(t *testing.T) {
 	require.NoError(t, err)
 	var treeCommands []string
 	var groups [][]string
-	var walk func(cmd *ucli.Command, path []string)
-	walk = func(cmd *ucli.Command, path []string) {
+	var walk func(cmd *Command, path []string)
+	walk = func(cmd *Command, path []string) {
 		for _, sub := range cmd.Commands {
 			p := append(slices.Clone(path), sub.Name)
 			if len(sub.Commands) > 0 {
@@ -293,19 +292,23 @@ func TestAppliesToAcceptsByCommandType(t *testing.T) {
 // with no descriptor accepts every flag. The help flag, which the manifest
 // does not list, is accepted everywhere.
 func TestAGroupAcceptsAGlobalFlagWhenAnyCommandUnderItDoes(t *testing.T) {
-	leaf := func(name string, ct runtime.CommandType, flags ...runtime.ArgSpec) *ucli.Command {
-		return &ucli.Command{Name: name, Metadata: map[string]any{
-			descriptorMetadataKey: runtime.Descriptor{Name: "g " + name, CommandType: ct, Flags: flags},
-		}}
+	leaf := func(name string, ct runtime.CommandType, flags ...runtime.ArgSpec) *Command {
+		return &Command{Name: name, descriptor: &runtime.Descriptor{Name: "g " + name, CommandType: ct, Flags: flags}}
 	}
-	group := func(subs ...*ucli.Command) *ucli.Command { return &ucli.Command{Name: "g", Commands: subs} }
+	group := func(subs ...*Command) *Command {
+		g := &Command{Name: "g", Commands: subs}
+		for _, sub := range subs {
+			sub.parent = g
+		}
+		return g
+	}
 	project := runtime.ProjectFlag(false, "the project")
 	mutating := []string{"apply", "dry-run", "yes", "allow-deprecated"}
 	always := []string{"output", "help"}
 
 	for _, row := range []struct {
 		name string
-		cmd  *ucli.Command
+		cmd  *Command
 		// accepted lists the flags the command or group accepts; every
 		// other flag of the row's check list is refused.
 		accepted []string
@@ -333,7 +336,7 @@ func TestAGroupAcceptsAGlobalFlagWhenAnyCommandUnderItDoes(t *testing.T) {
 		{"a mutating command", leaf("a", runtime.Mutating), slices.Concat(mutating, []string{"read-only"}, always)},
 		{"a read-only command that takes project", leaf("a", runtime.ReadOnly, project),
 			slices.Concat([]string{"read-only", "project"}, always)},
-		{"a command with no descriptor", &ucli.Command{Name: "a"},
+		{"a command with no descriptor", &Command{Name: "a"},
 			slices.Concat(mutating, []string{"read-only", "project"}, always)},
 	} {
 		t.Run(row.name, func(t *testing.T) {
@@ -346,27 +349,23 @@ func TestAGroupAcceptsAGlobalFlagWhenAnyCommandUnderItDoes(t *testing.T) {
 
 // TestOnlyTheRootAcceptsTheVersionFlag asserts that the rule accepts the
 // version flag on the root and refuses it on a command group and on a
-// command, and that the help flag is accepted by all three. The tree is run
-// once: a node that has not run has no parent and reads as its own root.
+// command, and that the help flag is accepted by all three.
 func TestOnlyTheRootAcceptsTheVersionFlag(t *testing.T) {
-	cmd := &ucli.Command{Name: "c", Metadata: map[string]any{
-		descriptorMetadataKey: runtime.Descriptor{Name: "g c", CommandType: runtime.Local},
-	}}
-	group := &ucli.Command{Name: "g", Commands: []*ucli.Command{cmd}}
-	root := &ucli.Command{
+	cmd := &Command{Name: "c", descriptor: &runtime.Descriptor{Name: "g c", CommandType: runtime.Local}}
+	group := &Command{Name: "g", Commands: []*Command{cmd}}
+	root := link(&Command{
 		Name:      "r",
 		Version:   "v-test",
-		Commands:  []*ucli.Command{group},
-		Action:    func(context.Context, *ucli.Command) error { return nil },
+		Commands:  []*Command{group},
+		Action:    func(context.Context, *Command, *Input) error { return nil },
 		Writer:    io.Discard,
 		ErrWriter: io.Discard,
-	}
-	require.NoError(t, root.Run(t.Context(), []string{"r"}))
+	})
 
 	assert.True(t, commandAcceptsGlobalFlag(root, "version"), "the root accepts --version")
 	assert.False(t, commandAcceptsGlobalFlag(group, "version"), "a command group refuses --version")
 	assert.False(t, commandAcceptsGlobalFlag(cmd, "version"), "a command refuses --version")
-	for _, c := range []*ucli.Command{root, group, cmd} {
+	for _, c := range []*Command{root, group, cmd} {
 		assert.True(t, commandAcceptsGlobalFlag(c, "help"), "%s accepts --help", c.Name)
 	}
 }
@@ -377,24 +376,24 @@ func TestOnlyTheRootAcceptsTheVersionFlag(t *testing.T) {
 // flag of that name from another command.
 func TestACommandsOwnFlagNamedLikeAGlobalFlagIsOffered(t *testing.T) {
 	var own, other []string
-	action := func(into *[]string) func(context.Context, *ucli.Command) error {
-		return func(_ context.Context, c *ucli.Command) error {
+	action := func(into *[]string) func(context.Context, *Command, *Input) error {
+		return func(_ context.Context, c *Command, _ *Input) error {
 			*into = flagNameCandidates(c, "--")
 			return nil
 		}
 	}
-	readOnly := func(name string) map[string]any {
-		return map[string]any{descriptorMetadataKey: runtime.Descriptor{Name: name, CommandType: runtime.ReadOnly}}
+	readOnly := func(name string) *runtime.Descriptor {
+		return &runtime.Descriptor{Name: name, CommandType: runtime.ReadOnly}
 	}
-	build := func() *ucli.Command {
-		return &ucli.Command{
+	build := func() *Command {
+		return link(&Command{
 			Name:  "r",
-			Flags: []ucli.Flag{&ucli.BoolFlag{Name: "apply", Usage: "global"}, &ucli.BoolFlag{Name: "yes", Usage: "global yes"}},
-			Commands: []*ucli.Command{
-				{Name: "own", HideHelpCommand: true, Metadata: readOnly("own"), Flags: []ucli.Flag{&ucli.BoolFlag{Name: "apply", Usage: "own"}}, Action: action(&own)},
-				{Name: "plain", HideHelpCommand: true, Metadata: readOnly("plain"), Action: action(&other)},
+			Flags: []*Flag{{Name: "apply", Kind: boolFlag, Usage: "global"}, {Name: "yes", Kind: boolFlag, Usage: "global yes"}},
+			Commands: []*Command{
+				{Name: "own", descriptor: readOnly("own"), Flags: []*Flag{{Name: "apply", Kind: boolFlag, Usage: "own"}}, Action: action(&own)},
+				{Name: "plain", descriptor: readOnly("plain"), Action: action(&other)},
 			},
-		}
+		})
 	}
 	require.NoError(t, build().Run(t.Context(), []string{"r", "own"}))
 	require.NoError(t, build().Run(t.Context(), []string{"r", "plain"}))

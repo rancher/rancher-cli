@@ -1,0 +1,3 @@
+go test fuzz v1
+string("-h\x00-h=\uf4e90")
+bool(true)

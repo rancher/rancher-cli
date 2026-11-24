@@ -34,15 +34,13 @@ func recordHelp(t *testing.T, commands [][]string) map[string]string {
 	return text
 }
 
-// TestHelpGolden asserts that every command, hidden ones and the root
-// included, shows the help in its file under testdata/help when it is run
-// with --help, and that every file belongs to a command. __completion is not
-// in the tree until the root runs and has no file. Rewrite the files with
+// TestHelpGolden asserts that every command, the root included, shows the
+// help in its file under testdata/help when it is run with --help, and that
+// every file belongs to a command. Rewrite the files with
 // -update after a change to the command surface and review the diff. Not
 // parallel: it sets the process environment and the captured command line.
 func TestHelpGolden(t *testing.T) {
 	home, work := goldenEnvironment(t)
-	restore := wrapPrinters(t)
 	commands := goldenCommands(t)
 	names := make([]string, len(commands))
 	for i, path := range commands {
@@ -61,8 +59,6 @@ func TestHelpGolden(t *testing.T) {
 			want[name+".txt"] = []byte(text)
 		}
 		writeGoldens(t, goldenHelpDir, want)
-		restore()
-		assertPrinters(t)
 		assertUntouched(t, home, work)
 		return
 	}
@@ -78,8 +74,6 @@ func TestHelpGolden(t *testing.T) {
 			assert.Equal(t, want, got[name], "the help of %s differs from %s; run with -update if intended", name, goldenShown(path))
 		})
 	}
-	restore()
-	assertPrinters(t)
 	assertUntouched(t, home, work)
 }
 

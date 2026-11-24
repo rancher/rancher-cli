@@ -27,7 +27,7 @@ func runNameLikeCompletion(t *testing.T, words []string, currentWord string) str
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = io.Discard
-	runArgv := cli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
+	runArgv := append([]string{"rancher"}, scriptArgs...)
 	_ = root.Run(t.Context(), runArgv)
 	return out.String()
 }
@@ -49,9 +49,9 @@ func extractTokens(output string) []string {
 // SiteNameLike bug: `usage --<TAB>` must emit long-form flag candidates
 // for both the leaf's own flags (--cluster, --by, --namespace, --node) AND
 // the global flags inherited from root (--output, --help). Before the fix,
-// delegation to urfave's DefaultCompleteWithFlags produced no output because
-// the "--" current word was stripped from argv and urfave
-// always took the subcommand branch.
+// delegation to a default completer produced no output because the "--"
+// current word was stripped from argv and the default completer always took
+// the subcommand branch.
 func TestFlagNameCompletionDoubleDash(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -240,7 +240,7 @@ func TestFlagNameCompletionConfigSetCompletion(t *testing.T) {
 
 // TestSubcommandCompletionTopLevel: `rancher <TAB>` (cur "") must list
 // top-level subcommands including get, usage, config, inspect, auth.
-// This goes through urfave's default completion for the root command (not
+// This goes through the Complete function of the root (not
 // universalShellCompleteFunc) and should pass before and after the fix.
 func TestSubcommandCompletionTopLevel(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -258,7 +258,7 @@ func TestSubcommandCompletionTopLevel(t *testing.T) {
 
 // TestSubcommandCompletionConfigGroup: `config <TAB>` (cur "") must list
 // config subcommands including set-completion.
-// Goes through urfave's default completion for the config group command.
+// Goes through the Complete function of the config group command.
 func TestSubcommandCompletionConfigGroup(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")

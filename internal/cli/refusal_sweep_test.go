@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +18,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 	"sigs.k8s.io/yaml"
 )
@@ -324,7 +322,6 @@ func TestEveryNetworkCommandReportsARefusal(t *testing.T) {
 						require.Zero(t, setupCode, "setup %v failed: %s", setup, setupStderr)
 					}
 					root := wr.root("v-test")
-					root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 					var stdout, stderr bytes.Buffer
 					root.Writer, root.ErrWriter = &stdout, &stderr
 					root.Reader = strings.NewReader("token-x:y\n")

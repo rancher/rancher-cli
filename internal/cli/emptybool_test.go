@@ -16,7 +16,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // emptyBoolMessage is the refusal of the bool flags typed with "=" and an
@@ -169,9 +168,9 @@ func methodRecorderEnv(t *testing.T) *methodRecorder {
 }
 
 // runAsMain runs argv through root as the process entry point does: the
-// command line captured, and urfave given SanitizedArgs of it. It returns
+// command line captured, then Run. It returns
 // stderr and the exit code. root must be one no earlier run has used.
-func runAsMain(t *testing.T, root *ucli.Command, argv []string) (stderr string, code int) {
+func runAsMain(t *testing.T, root *Command, argv []string) (stderr string, code int) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	root.Writer = &out
@@ -189,7 +188,7 @@ func runAsMain(t *testing.T, root *ucli.Command, argv []string) (stderr string, 
 // a tab, a newline, a no-break space) and whitespace ahead of the flag are
 // read with the whitespace cut off, a word that is only whitespace is
 // kept as typed, and so is a line holding the completion protocol marker,
-// which urfave never sees. Each is VALIDATION at exit 2 with no request,
+// which the captured line leaves out. Each is VALIDATION at exit 2 with no request,
 // naming each flag once. The lines run as the process entry point runs
 // them. Not parallel: it sets the process environment and the captured
 // command line.
@@ -236,9 +235,10 @@ func TestEmptyBoolValueIsRefused(t *testing.T) {
 	}
 }
 
-// TestPaddedWordsAreReadAsUrfaveReadsThem asserts that the bool value and
-// extra argument rules read a word with whitespace around it the way urfave
-// does: a positional word is used as typed, and is classified with the
+// TestPaddedWordsAreClassifiedWithTheWhitespaceCutOff asserts that the bool
+// value and extra argument rules read an argument with whitespace around it as
+// the command-line parser does: a positional argument is used as typed, and is
+// classified with the
 // whitespace cut off. A padded bool value typed after a bool flag is
 // refused as a bool value, in a free declared slot or beyond the declared
 // argument, and named as typed, with the joined line's value trimmed so the
@@ -247,7 +247,7 @@ func TestEmptyBoolValueIsRefused(t *testing.T) {
 // value and a word after "--" stay as typed in the hint. No row makes a
 // request. Not parallel: it sets the process environment and the captured
 // command line.
-func TestPaddedWordsAreReadAsUrfaveReadsThem(t *testing.T) {
+func TestPaddedWordsAreClassifiedWithTheWhitespaceCutOff(t *testing.T) {
 	restoreRawArgv(t)
 	rec := extraArgsEnv(t)
 	for _, tc := range []struct {
@@ -438,7 +438,7 @@ func TestEmptyBoolValueCompletesNothing(t *testing.T) {
 		root.Writer = &out
 		root.ErrWriter = &out
 		root.Reader = strings.NewReader("")
-		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 		return out.String(), rec.take()
 	}
 	for _, tc := range []struct {

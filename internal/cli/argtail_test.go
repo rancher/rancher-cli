@@ -7,14 +7,13 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // runCompletionRequest runs on root the completion request the shipped
 // scripts send for typed, the words before the cursor, and current, the word
 // being completed, through Run as main does. It returns the exit code. The argv globals are restored
 // when the test ends.
-func runCompletionRequest(t *testing.T, root *ucli.Command, typed []string, current string) int {
+func runCompletionRequest(t *testing.T, root *Command, typed []string, current string) int {
 	t.Helper()
 	restoreRawArgv(t)
 	argv := append(append([]string{protoSentinel}, typed...), curPrefix+current, completionFlag)
@@ -74,7 +73,7 @@ func TestParseArgTail(t *testing.T) {
 		},
 		{
 			// A partial flag in currentWord classifies as SiteNameLike.
-			name:        "partial flag currentWord → SiteNameLike (urfave default completer)",
+			name:        "partial flag currentWord → SiteNameLike",
 			args:        []string{},
 			currentWord: "--cl",
 			want:        CompletionSite{Kind: SiteNameLike},
@@ -206,23 +205,6 @@ func TestCaptureArgvEqualsFormCurrentWord(t *testing.T) {
 	assert.True(t, rawCompleting)
 }
 
-func TestSanitizedArgsStripsBothProtocolFields(t *testing.T) {
-	t.Parallel()
-	// SanitizedArgs must strip both the sentinel and the cur field (never
-	// forward currentWord to urfave, so unknown-command dispatch cannot fire on
-	// typed text).
-	in := []string{"rancher", "--rancher-completion-proto=2", "get", "pod", "--rancher-completion-cur=c-", "--generate-shell-completion"}
-	got := SanitizedArgs(in)
-	assert.Equal(t, []string{"rancher", "get", "pod", "--generate-shell-completion"}, got)
-}
-
-func TestSanitizedArgsStripsEmptyCurField(t *testing.T) {
-	t.Parallel()
-	in := []string{"rancher", "--rancher-completion-proto=2", "usage", "--rancher-completion-cur=", "--generate-shell-completion"}
-	got := SanitizedArgs(in)
-	assert.Equal(t, []string{"rancher", "usage", "--generate-shell-completion"}, got)
-}
-
 // TestParseArgTailRepeatableFlagArity asserts the completion arity of a
 // repeatable flag: a stringSlice flag takes a value on EVERY occurrence - a
 // second --set after a completed first one is a flag-value site, and a
@@ -313,13 +295,15 @@ func TestCompletionRequestIsDecidedByTheMarkerAlone(t *testing.T) {
 	}
 }
 
-// TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash asserts that urfave
-// receives a completion request as one it completes: the words from the first
-// "--" on are dropped (it reads the flag after one as an argument and runs the
-// command) and the flag is last. A line that is not a request is passed on
-// unchanged, "--" included.
-func TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash(t *testing.T) {
-	t.Parallel()
+// TestCompletionWordsStopAtTheDoubleDash asserts that a completion request is
+// read up to its first "--": every word after one is an argument, which the
+// completion of the command reads itself from the captured line. The words
+// are the ones the line holds without the protocol words.
+func TestCompletionWordsStopAtTheDoubleDash(t *testing.T) {
+	// NOT parallel: CaptureArgv sets package globals.
+	orig := rawArgv
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	tests := []struct {
 		name string
 		in   []string
@@ -327,55 +311,49 @@ func TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash(t *testing.T) {
 	}{
 		{
 			"a request",
-			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--apply", "--", "myserver", "--rancher-completion-cur=", "--generate-shell-completion"},
-			[]string{"rancher", "config", "add-server", "--apply", "--generate-shell-completion"},
+			[]string{"--rancher-completion-proto=2", "config", "add-server", "--apply", "--", "myserver", "--rancher-completion-cur=", "--generate-shell-completion"},
+			[]string{"config", "add-server", "--apply"},
 		},
 		{
 			"the double dash is the word being completed",
-			[]string{"rancher", "--rancher-completion-proto=2", "config", "--rancher-completion-cur=--", "--generate-shell-completion"},
-			[]string{"rancher", "config", "--generate-shell-completion"},
+			[]string{"--rancher-completion-proto=2", "config", "--rancher-completion-cur=--", "--generate-shell-completion"},
+			[]string{"config"},
 		},
 		{
 			"the double dash is the last word",
-			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--", "--rancher-completion-cur=", "--generate-shell-completion"},
-			[]string{"rancher", "config", "add-server", "--generate-shell-completion"},
+			[]string{"--rancher-completion-proto=2", "config", "add-server", "--", "--rancher-completion-cur=", "--generate-shell-completion"},
+			[]string{"config", "add-server"},
 		},
 		{
 			"a second double dash",
-			[]string{"rancher", "--rancher-completion-proto=2", "usage", "--", "--", "--rancher-completion-cur=", "--generate-shell-completion"},
-			[]string{"rancher", "usage", "--generate-shell-completion"},
+			[]string{"--rancher-completion-proto=2", "usage", "--", "--", "--rancher-completion-cur=", "--generate-shell-completion"},
+			[]string{"usage"},
 		},
 		{
 			"without the flag",
-			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--", "myserver", "--rancher-completion-cur="},
-			[]string{"rancher", "config", "add-server", "--generate-shell-completion"},
+			[]string{"--rancher-completion-proto=2", "config", "add-server", "--", "myserver", "--rancher-completion-cur="},
+			[]string{"config", "add-server"},
 		},
 		{
 			"the flag mid-line",
-			[]string{"rancher", "--rancher-completion-proto=2", "config", "--generate-shell-completion", "--", "x", "--rancher-completion-cur="},
-			[]string{"rancher", "config", "--generate-shell-completion"},
+			[]string{"--rancher-completion-proto=2", "config", "--generate-shell-completion", "--", "x", "--rancher-completion-cur="},
+			[]string{"config"},
 		},
 		{
 			"a double dash first",
-			[]string{"rancher", "--rancher-completion-proto=2", "--", "config", "--rancher-completion-cur=", "--generate-shell-completion"},
-			[]string{"rancher", "--generate-shell-completion"},
+			[]string{"--rancher-completion-proto=2", "--", "config", "--rancher-completion-cur=", "--generate-shell-completion"},
+			[]string{},
 		},
 		{
-			"an ordinary line",
-			[]string{"rancher", "config", "add-server", "--apply", "--", "myserver"},
-			[]string{"rancher", "config", "add-server", "--apply", "--", "myserver"},
+			"no double dash",
+			[]string{"--rancher-completion-proto=2", "get", "pod", "--rancher-completion-cur=", "--generate-shell-completion"},
+			[]string{"get", "pod"},
 		},
-		{
-			"an ordinary line holding the flag mid-line",
-			[]string{"rancher", "get", "--generate-shell-completion", "--", "x"},
-			[]string{"rancher", "get", "--generate-shell-completion", "--", "x"},
-		},
-		{"no program name", nil, []string{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, SanitizedArgs(tt.in))
+			CaptureArgv(tt.in)
+			assert.Equal(t, tt.want, completionWords(rawArgv))
 		})
 	}
 }
@@ -404,8 +382,9 @@ func TestCaptureArgvKeepsTheWordsAfterADoubleDash(t *testing.T) {
 }
 
 // TestScanTailDelimiter asserts which "--" ends the flags of a tail: the first
-// one that is not a flag's value and does not follow a word urfave reads as a
-// value, with its index in the tail.
+// one that is not a flag's value and does not follow a word that starts with a
+// dash and a character that is not a letter (as -1 does), with its index in the
+// tail.
 func TestScanTailDelimiter(t *testing.T) {
 	t.Parallel()
 	flags := map[string]bool{"output": true, "o": true, "debug": false}

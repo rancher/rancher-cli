@@ -2,7 +2,6 @@ package token_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"encoding/pem"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/rancher/rancher-cli/internal/cli"
@@ -31,7 +29,6 @@ func runCLI(t *testing.T, stdin string, words ...string) (stdout, stderr string,
 	t.Helper()
 	root, err := cli.BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	root.Reader = strings.NewReader(stdin)
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut

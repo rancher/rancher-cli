@@ -22,7 +22,6 @@ func LoadedConfigViewForTest() runtime.ConfigView {
 
 func SanitizeCandidatesForTest(s []string) []string { return sanitizeCandidates(s) }
 func SetRawArgvForTest(argv []string)               { SetRawArgv(argv) }
-func SanitizedArgsForTest(args []string) []string   { return SanitizedArgs(args) }
 func CaptureArgvForTest(args []string)              { CaptureArgv(args) }
 func GetRawCompletingForTest() bool                 { return rawCompleting }
 func GlobalArgSpecsForTest() []runtime.ArgSpec      { return globalArgSpecs }

@@ -19,7 +19,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -411,7 +410,6 @@ func (h *callerHarness) run(t *testing.T, args []string) callerRun {
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
 	root.Reader = strings.NewReader("")
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	CaptureArgv(args)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -28,7 +27,6 @@ import (
 	tokencomplete "github.com/rancher/rancher-cli/internal/token/complete"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"sigs.k8s.io/yaml"
 )
 
@@ -63,7 +61,7 @@ func (c halfSetCapabilityCmd) Describe() runtime.Descriptor {
 	return d
 }
 
-func findCommand(cmds []*ucli.Command, name string) *ucli.Command {
+func findCommand(cmds []*Command, name string) *Command {
 	for _, c := range cmds {
 		if c.Name == name {
 			return c
@@ -315,8 +313,8 @@ func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 	}
 }
 
-// TestBuildRootFlagsPrimeCommandsInMetadata asserts every adapted ucli.Command
-// carries the Prime metadata flag exactly when the manifest says its
+// TestBuildRootFlagsPrimeCommandsInMetadata asserts every adapted Command
+// carries the Prime flag exactly when the manifest says its
 // descriptor is Prime, and that a group carries the flag exactly when every
 // leaf underneath it does - the manifest is the source of truth, so this
 // walks it rather than hardcoding a full command list.
@@ -330,13 +328,11 @@ func TestBuildRootFlagsPrimeCommandsInMetadata(t *testing.T) {
 	}
 
 	// BuildRoot is called fresh, rather than reused from wr, so the tree
-	// walked below is the one BuildRoot returns, never one a Run() has set
-	// up: urfave's setup adds hidden nodes and flags to the commands it
-	// visits.
+	// walked below is the one BuildRoot returns.
 	root, err := BuildRoot("golden")
 	require.NoError(t, err)
 
-	byName := map[string]*ucli.Command{}
+	byName := map[string]*Command{}
 	var checked int
 	for _, top := range root.Commands {
 		byName[top.Name] = top
@@ -475,13 +471,13 @@ func TestNoUsageCarriesPrimeMarker(t *testing.T) {
 	}
 }
 
-// TestGroupPrimeMetadataEmptyGroupIsNotPrime asserts the group rollup's
+// TestGroupIsPrimeEmptyGroupIsNotPrime asserts the group rollup's
 // rule matches groupAllPrime's: a group with no leaves is never Prime, even
 // though "every leaf is Prime" is vacuously true of an empty slice.
-func TestGroupPrimeMetadataEmptyGroupIsNotPrime(t *testing.T) {
+func TestGroupIsPrimeEmptyGroupIsNotPrime(t *testing.T) {
 	t.Parallel()
-	assert.Nil(t, groupPrimeMetadata(nil))
-	assert.Nil(t, groupPrimeMetadata([]*ucli.Command{}))
+	assert.False(t, groupIsPrime(nil))
+	assert.False(t, groupIsPrime([]*Command{}))
 }
 
 // TestNoLowercasePrimeMarkerLiteral asserts the retired "[prime]" spelling
@@ -575,8 +571,8 @@ func TestKindOverridesReplaceExactlyTheirVerb(t *testing.T) {
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	names := map[string]int{}
-	var walk func(cmds []*ucli.Command, prefix string)
-	walk = func(cmds []*ucli.Command, prefix string) {
+	var walk func(cmds []*Command, prefix string)
+	walk = func(cmds []*Command, prefix string) {
 		for _, c := range cmds {
 			names[strings.TrimSpace(prefix+" "+c.Name)]++
 			walk(c.Commands, prefix+" "+c.Name)
@@ -731,8 +727,8 @@ func TestAdaptEntrySetsArgsUsageFromDescriptorArgs(t *testing.T) {
 
 func TestAssembleCommandsUnknownGroupReachable(t *testing.T) {
 	t.Parallel()
-	leaf := &ucli.Command{Name: "widget"}
-	out := assembleCommands(nil, []string{"update"}, map[string][]*ucli.Command{"update": {leaf}})
+	leaf := &Command{Name: "widget"}
+	out := assembleCommands(nil, []string{"update"}, map[string][]*Command{"update": {leaf}})
 	grp := findCommand(out, "update")
 	require.NotNil(t, grp, "a group not in the usage allowlist must still be reachable")
 	require.NotNil(t, findCommand(grp.Commands, "widget"))
@@ -1024,9 +1020,8 @@ func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
 }
 
 // An unknown top-level command or an unknown kind under a group
-// must surface the standard VALIDATION envelope at exit 2, not urfave's own
-// unhinted "No help topic" text at exit 3 (indistinguishable from the AUTH
-// exit code).
+// must surface the standard VALIDATION envelope at exit 2, not an unhinted
+// text at exit 3 (indistinguishable from the AUTH exit code).
 func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
@@ -1039,8 +1034,7 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 	root.ErrWriter = &errOut
 
 	CaptureArgv([]string{"-o", "json", "bogus-command-xyz"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "bogus-command-xyz"}))
-	assert.Equal(t, 2, exitCodeOf(root, nil))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "-o", "json", "bogus-command-xyz"})))
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
@@ -1049,8 +1043,7 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 	errOut = bytes.Buffer{}
 	root.ErrWriter = &errOut
 	CaptureArgv([]string{"-o", "json", "get", "bogus-kind-xyz"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "bogus-kind-xyz"}))
-	assert.Equal(t, 2, exitCodeOf(root, nil))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "bogus-kind-xyz"})))
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
@@ -1072,18 +1065,18 @@ func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 	root.ErrWriter = &errOut
 
 	CaptureArgv([]string{"bogus-command-xyz"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "bogus-command-xyz"}))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "bogus-command-xyz"})))
 	assert.Contains(t, errOut.String(), `error (VALIDATION): unknown command "bogus-command-xyz"`)
 	assert.NotContains(t, errOut.String(), "apiVersion")
 }
 
-// TestCommandNotFoundStyledWithColorAlways asserts that the errors the adapter
+// TestUnknownCommandIsStyledWithColorAlways asserts that the errors the adapter
 // renders itself - raised before any command dispatches, so never passing
 // through the pipeline's own style resolution - still honor --color: the
 // unknown-command error's prefix is ANSI-styled under --color=always (read
 // from raw argv, since flags never parsed) and byte-plain by default on a
 // non-terminal stderr.
-func TestCommandNotFoundStyledWithColorAlways(t *testing.T) {
+func TestUnknownCommandIsStyledWithColorAlways(t *testing.T) {
 	orig := rawArgv
 	t.Cleanup(func() { rawArgv = orig })
 
@@ -1094,7 +1087,7 @@ func TestCommandNotFoundStyledWithColorAlways(t *testing.T) {
 	root.ErrWriter = &errOut
 
 	CaptureArgv([]string{"--color", "always", "bogus-command-xyz"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--color", "always", "bogus-command-xyz"}))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "--color", "always", "bogus-command-xyz"})))
 	assert.Contains(t, errOut.String(), "\x1b[", "prefix styled under --color=always")
 	assert.Contains(t, errOut.String(), `unknown command "bogus-command-xyz"`)
 
@@ -1104,7 +1097,7 @@ func TestCommandNotFoundStyledWithColorAlways(t *testing.T) {
 	root2.Writer = &out
 	root2.ErrWriter = &errOut
 	CaptureArgv([]string{"--color", "always", "-o", "json", "bogus-command-xyz"})
-	require.NoError(t, root2.Run(t.Context(), []string{"rancher", "--color", "always", "-o", "json", "bogus-command-xyz"}))
+	assert.Equal(t, 2, exitCodeOf(root2, root2.Run(t.Context(), []string{"rancher", "--color", "always", "-o", "json", "bogus-command-xyz"})))
 	assert.NotContains(t, errOut.String(), "\x1b[", "json envelope never styled, whatever --color says")
 	assert.Contains(t, errOut.String(), "apiVersion")
 }
@@ -1139,8 +1132,6 @@ func TestUnknownFlagRendersTextWithoutOutputFlag(t *testing.T) {
 	var out, errOut bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &errOut
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	CaptureArgv([]string{"get", "pod", "--bogus-flag"})
 	runErr := root.Run(t.Context(), []string{"rancher", "get", "pod", "--bogus-flag"})
 	require.Error(t, runErr)
@@ -1164,7 +1155,7 @@ func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
 	root.ErrWriter = &errOut
 
 	CaptureArgv([]string{"--output=yaml", "bogus-command-xyz"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--output=yaml", "bogus-command-xyz"}))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "--output=yaml", "bogus-command-xyz"})))
 	assert.NotContains(t, errOut.String(), "error (VALIDATION)")
 	var env map[string]any
 	require.NoError(t, yaml.Unmarshal(errOut.Bytes(), &env))
@@ -1185,7 +1176,7 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	root.ErrWriter = &errOut
 
 	CaptureArgv([]string{"-o", "json", "version"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "version"}))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "-o", "json", "version"})))
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
@@ -1195,7 +1186,7 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	// point at (that flag is root-only) - it must get the generic hint.
 	errOut.Reset()
 	CaptureArgv([]string{"-o", "json", "get", "version"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "version"}))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "version"})))
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
@@ -1219,7 +1210,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 
 	// "cluster" under delete → must hint at provisioning-cluster.
 	CaptureArgv([]string{"-o", "json", "delete", "cluster", "my-cluster"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "delete", "cluster", "my-cluster"}))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "-o", "json", "delete", "cluster", "my-cluster"})))
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
@@ -1230,7 +1221,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	// "clusters" under delete → same targeted detail.
 	errOut.Reset()
 	CaptureArgv([]string{"-o", "json", "delete", "clusters", "my-cluster"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "delete", "clusters", "my-cluster"}))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "-o", "json", "delete", "clusters", "my-cluster"})))
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
@@ -1239,7 +1230,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	// unknown token under delete → generic message, not the cluster-specific one.
 	errOut.Reset()
 	CaptureArgv([]string{"-o", "json", "delete", "bogus-kind-xyz"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "delete", "bogus-kind-xyz"}))
+	assert.Equal(t, 2, exitCodeOf(root, root.Run(t.Context(), []string{"rancher", "-o", "json", "delete", "bogus-kind-xyz"})))
 	var env3 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env3))
 	assert.Equal(t, "VALIDATION", env3.Data.Error.Code)
@@ -1247,7 +1238,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 }
 
 // An unknown flag on a real command must surface the standard VALIDATION
-// envelope at exit 2, not urfave's own unhinted "Incorrect Usage" text.
+// envelope at exit 2, not an unhinted text.
 func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
@@ -1257,8 +1248,6 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 	var out, errOut bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &errOut
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	CaptureArgv([]string{"-o", "json", "get", "pod", "--bogus-flag"})
 	runErr := root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "pod", "--bogus-flag"})
 	require.Error(t, runErr)
@@ -1285,14 +1274,12 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		CaptureArgv([]string{"-o", "json", "get", "pod", "-A"})
 		runErr := root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "pod", "-A"})
 		require.Error(t, runErr)
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
-		t.Logf("urfave -A error message: %q", env.Data.Error.Message)
+		t.Logf("-A error message: %q", env.Data.Error.Message)
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - a get command lists every namespace when you omit --namespace, except for a kind with a default namespace (fleet-default); use --namespace for a kind that takes one")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
@@ -1304,14 +1291,12 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		CaptureArgv([]string{"-o", "json", "get", "pod", "--all-namespaces"})
 		runErr := root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "pod", "--all-namespaces"})
 		require.Error(t, runErr)
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
-		t.Logf("urfave --all-namespaces error message: %q", env.Data.Error.Message)
+		t.Logf("--all-namespaces error message: %q", env.Data.Error.Message)
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - a get command lists every namespace when you omit --namespace, except for a kind with a default namespace (fleet-default); use --namespace for a kind that takes one")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
@@ -1323,8 +1308,6 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		CaptureArgv([]string{"-o", "json", "get", "pod", "--bogus-flag"})
 		runErr := root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "pod", "--bogus-flag"})
 		require.Error(t, runErr)
@@ -1346,8 +1329,6 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		CaptureArgv([]string{"-o", "json", "inspect", "user", "u-abc", "--cluster", "c-x"})
 		runErr := root.Run(t.Context(), []string{"rancher", "-o", "json", "inspect", "user", "u-abc", "--cluster", "c-x"})
 		require.Error(t, runErr)
@@ -1362,8 +1343,6 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		CaptureArgv([]string{"-o", "json", "create", "namespace", "foo", "-A"})
 		runErr := root.Run(t.Context(), []string{"rancher", "-o", "json", "create", "namespace", "foo", "-A"})
 		require.Error(t, runErr)
@@ -1383,8 +1362,6 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		CaptureArgv([]string{"-o", "json", "create", "namespace", "foo", "--bogus-flag"})
 		runErr := root.Run(t.Context(), []string{"rancher", "-o", "json", "create", "namespace", "foo", "--bogus-flag"})
 		require.Error(t, runErr)
@@ -1402,8 +1379,6 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &errOut
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 		CaptureArgv([]string{"-o", "json", "get", "-A"})
 		runErr := root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "-A"})
 		require.Error(t, runErr)
@@ -1423,14 +1398,11 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 // clause is not accidentally dropped if the branching logic changes.
 func TestAllNamespacesHintsBothShareOpeningClause(t *testing.T) {
 	t.Parallel()
-	root := &ucli.Command{Name: "rancher"}
-	get := &ucli.Command{Name: "get"}
-	create := &ucli.Command{Name: "create"}
-	root.Commands = []*ucli.Command{get, create}
-	root.Writer = &bytes.Buffer{}
-	_ = root.Run(t.Context(), []string{"rancher"}) // wires parent pointers via setupDefaults
+	get := &Command{Name: "get"}
+	create := &Command{Name: "create"}
+	_ = link(&Command{Name: "rancher", Commands: []*Command{get, create}})
 
-	err := errors.New("flag provided but not defined: -A")
+	err := usageError{class: undefinedFlag, word: "A"}
 	getDetail := allNamespacesEntry.detail(usageErrorInput{c: get, err: err})
 	assert.True(t, strings.HasPrefix(getDetail, noAllNamespacesFlag),
 		"get-scoped -A detail must open with the noAllNamespacesFlag clause")
@@ -1456,8 +1428,6 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	root.ErrWriter = &errOut
 	// The default handler calls os.Exit on a non-zero ExitCoder, which would kill
 	// the test process; keep the error as a return value instead.
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	runErr := root.Run(t.Context(), []string{"rancher", "get", "cluster", "foo", "-o", "json"})
 	require.Error(t, runErr)
 
@@ -1501,10 +1471,9 @@ func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	assert.NotEmpty(t, out.String(), "the completion callback must still emit candidates on a corrupt config, not fail")
 }
 
-// TestGenerateShellCompletionListsTopLevelCommandNames asserts that
-// EnableShellCompletion activates default command-name completion for the
-// existing tree with no assembleCommands/wireEntry changes. Membership only -
-// urfave-owned ordering/format is not ours to golden-test.
+// TestGenerateShellCompletionListsTopLevelCommandNames asserts that a
+// completion request at the root lists the top-level command names.
+// Membership only: the candidates golden files record the order and format.
 func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -1518,18 +1487,10 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 	assert.Contains(t, out.String(), "auth")
 }
 
-// TestHiddenCompletionCommandEmitsNoScriptMarkers asserts that the renamed
-// built-in (__completion) remains invocable as machinery only: its
-// subcommands are stripped, so `rancher __completion bash` cannot emit
-// urfave's own divergent script. This asserts the INTENT, not urfave's own
-// help-topic mechanism: post-strip, "bash" is an unmatched subcommand name on
-// __completion, which now routes through the repo's standard CommandNotFound
-// seam - a structured JSON VALIDATION envelope on stderr at a non-zero exit,
-// the same envelope-everywhere contract every other unmatched command name
-// gets (see TestUnknownCommandIsValidationNotExitThree), not urfave's own
-// unhinted "No help topic" text and not a custom help Action (the command is
-// internal machinery, not part of the command surface).
-func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
+// TestDoubleUnderscoreCompletionIsAnUnknownCommand asserts that `rancher
+// __completion bash` is an unknown command like any other word: a structured
+// JSON VALIDATION envelope on stderr at exit 2, and no completion script.
+func TestDoubleUnderscoreCompletionIsAnUnknownCommand(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
 	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
@@ -1543,17 +1504,14 @@ func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 	root.ErrWriter = &errOut
 
 	CaptureArgv([]string{"--config", dir, "-o", "json", "__completion", "bash"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "-o", "json", "__completion", "bash"}))
-	assert.Equal(t, 2, exitCodeOf(root, nil), "an unmatched subcommand name is VALIDATION, exit 2, not urfave's own exit 3")
+	err = root.Run(t.Context(), []string{"rancher", "--config", dir, "-o", "json", "__completion", "bash"})
+	assert.Equal(t, 2, exitCodeOf(root, err), "an unknown command is VALIDATION, exit 2")
 
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-	assert.Contains(t, env.Data.Error.Message, "bash")
-
-	combined := out.String() + errOut.String()
-	assert.NotContains(t, combined, "--generate-shell-completion",
-		"the hidden built-in must never emit urfave's own completion script")
+	assert.Equal(t, `unknown command "__completion"`, env.Data.Error.Message)
+	assert.Empty(t, out.String(), "no script is written")
 }
 
 // TestPublicContractOpsAreListed closes the op-level half of the public-API
@@ -1769,7 +1727,6 @@ func TestGetFeatureCommunityPrimeWarningLive(t *testing.T) {
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	stdout, stderr, err := grRun(t, root, dir, "get", "feature", "cluster-autoscaling", "-o", "json")
 	require.NoError(t, err, "stderr: %s", stderr)
 

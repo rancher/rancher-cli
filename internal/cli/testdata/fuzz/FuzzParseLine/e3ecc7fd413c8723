@@ -1,0 +1,3 @@
+go test fuzz v1
+string("-o\x00yaml\x00\xd30\xad00\x12\xb90\x950\xd9")
+bool(true)

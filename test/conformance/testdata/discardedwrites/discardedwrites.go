@@ -9,8 +9,6 @@ import (
 	"io"
 	"strings"
 	"text/tabwriter"
-
-	ucli "github.com/urfave/cli/v3"
 )
 
 func renderThing(w io.Writer) error {
@@ -76,10 +74,6 @@ func bareCopyN(w io.Writer, r io.Reader) { io.CopyN(w, r, 1) }
 
 func bareCopyBuffer(w io.Writer, r io.Reader) { io.CopyBuffer(w, r, nil) }
 
-func blankRootHelp(c *ucli.Command) { _ = ucli.ShowRootCommandHelp(c) }
-
-func bareSubcommandHelp(c *ucli.Command) { ucli.ShowSubcommandHelp(c) }
-
 func bareInterfaceWrite(w io.Writer) { w.Write(nil) }
 
 func bareWriterMethods(s *sink) {
@@ -139,8 +133,6 @@ func resultsUsed(w io.Writer) error {
 	}
 	return err
 }
-
-func resultsUsedHelp(c *ucli.Command) error { return ucli.ShowRootCommandHelp(c) }
 
 func resultReturned(w io.Writer) error { return renderThing(w) }
 

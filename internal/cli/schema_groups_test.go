@@ -16,14 +16,12 @@ import (
 // order are both derived from the built root's own command tree (never a
 // hand-list), covering the leading fixed top-level section and the
 // ungrouped-entry section at its real position. Only commands the manifest
-// registers count; urfave-appended machinery (help, __completion) is not
-// surface.
+// registers count.
 func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 
-	// Snapshot the assembly BEFORE Run: urfave's Run injects help/completion
-	// machinery subcommands into every command, which are not surface.
+	// The commands of the built root are the surface: a Run adds none.
 	type node struct {
 		name   string
 		leaves []string

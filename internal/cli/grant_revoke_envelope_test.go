@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -20,7 +19,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 type effectData struct {
@@ -388,16 +386,15 @@ func grConfigDir(t *testing.T, srv *httptest.Server) string {
 // grRoot builds a fresh root for one run. A root keeps a flag's set state
 // from an earlier run, so a reused root would report a flag an earlier run
 // typed as typed and empty in a later run that did not type it.
-func grRoot(t *testing.T) *ucli.Command {
+func grRoot(t *testing.T) *Command {
 	t.Helper()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	return root
 }
 
 // grRun runs the root command and captures stdout/stderr.
-func grRun(t *testing.T, root *ucli.Command, dir string, args ...string) (stdout, stderr []byte, runErr error) {
+func grRun(t *testing.T, root *Command, dir string, args ...string) (stdout, stderr []byte, runErr error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	root.Writer = &out

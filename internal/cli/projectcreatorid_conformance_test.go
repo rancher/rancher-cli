@@ -26,7 +26,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -250,13 +249,12 @@ func TestCreateResourceProjectManifestRefusalsInTheEnvelope(t *testing.T) {
 			var out, errOut bytes.Buffer
 			root.Writer, root.ErrWriter = &out, &errOut
 			root.Reader = strings.NewReader("")
-			root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 			args := []string{"create", "resource", "-f", manifest, "--dry-run", "-o", "json"}
 			CaptureArgv(args)
 			t.Cleanup(func() { CaptureArgv(nil) })
 			runErr := root.Run(t.Context(), append([]string{"rancher"}, args...))
 			require.Error(t, runErr)
-			coder, ok := errors.AsType[ucli.ExitCoder](runErr)
+			coder, ok := errors.AsType[exitCoder](runErr)
 			require.True(t, ok, "got %v", runErr)
 			assert.Equal(t, clierr.ExitCode(tt.wantCode), coder.ExitCode())
 

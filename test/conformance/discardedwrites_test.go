@@ -172,17 +172,6 @@ func cannotFail(t types.Type) bool {
 		implementsOrPointerDoes(t, hashInterface())
 }
 
-// urfaveHelpPrinters are the functions, and the variables that hold a
-// function, of urfave/cli that show a help page. They return nil whether or
-// not the page was written, because the page goes through HelpPrinter, which
-// has no result; printStyledHelp in internal/cli keeps the write error for
-// the run. They are listed so that a call whose result is dropped is
-// reviewed.
-var urfaveHelpPrinters = []string{
-	"ShowRootCommandHelp", "ShowAppHelp", "ShowCommandHelp", "ShowSubcommandHelp",
-	"DefaultShowRootCommandHelp", "DefaultShowCommandHelp", "DefaultShowSubcommandHelp",
-}
-
 // writerMethods are the methods that write to a writer, or flush what it
 // holds, and report the failure.
 var writerMethods = []string{"Write", "WriteString", "WriteByte", "WriteRune", "Flush", "Encode"}
@@ -219,9 +208,6 @@ func discardedCallee(info *types.Info, call *ast.CallExpr, renderPkgs []string) 
 			used = info.Uses[f.Sel]
 		}
 	}
-	if v, ok := used.(*types.Var); ok && !v.IsField() && v.Pkg() != nil && v.Pkg().Path() == urfaveCLIPath && slices.Contains(urfaveHelpPrinters, v.Name()) {
-		return v.Pkg().Name() + "." + v.Name()
-	}
 	fn, _ = used.(*types.Func)
 	if fn == nil || fn.Pkg() == nil {
 		return ""
@@ -244,9 +230,6 @@ func discardedCallee(info *types.Info, call *ast.CallExpr, renderPkgs []string) 
 			}
 			return fn.Pkg().Name() + "." + name
 		case "fmt.Print", "fmt.Printf", "fmt.Println":
-			return fn.Pkg().Name() + "." + name
-		}
-		if fn.Pkg().Path() == urfaveCLIPath && slices.Contains(urfaveHelpPrinters, name) {
 			return fn.Pkg().Name() + "." + name
 		}
 		return ""
@@ -369,7 +352,7 @@ var discardScanPackages = sync.OnceValues(func() ([]*packages.Package, error) {
 // function of internal/output, internal/runtime or internal/cli whose name
 // starts with Render or render and returns an error, fmt.Print, Printf,
 // Println, Fprint, Fprintf and Fprintln, io.WriteString, io.Copy, io.CopyN and
-// io.CopyBuffer, the help page functions of urfave/cli, and the Write, WriteString,
+// io.CopyBuffer, and the Write, WriteString,
 // WriteByte, WriteRune, Flush and Encode methods of a writer. Every system
 // the release builds is read; the result does not depend on the machine that
 // runs the test. A write to a strings.Builder, a bytes.Buffer or a hash
@@ -396,8 +379,8 @@ var discardFixtures = sync.OnceValues(func() ([]*packages.Package, error) {
 // drops of the fixture package: a render call and a write call dropped by a
 // bare statement, by an assignment to _ and by a go or defer statement, a
 // method of a type that implements io.Writer, an io.Writer value, a
-// json.Encoder, fmt.Print, Printf and Println, io.CopyN and io.CopyBuffer and
-// the help card printers of urfave/cli, a drop in a function literal and at
+// json.Encoder, fmt.Print, Printf and Println, io.CopyN and io.CopyBuffer, a
+// drop in a function literal and at
 // package level, and a drop in a file only windows builds; and none of the
 // writes to a strings.Builder, bytes.Buffer, hash.Hash and hash.Hash64, as
 // values and pointers, the calls that use their result, and a render function
@@ -437,8 +420,6 @@ func TestDiscardedWriteScanFixtures(t *testing.T) {
 		"barePrintln":         1,
 		"bareCopyN":           1,
 		"bareCopyBuffer":      1,
-		"blankRootHelp":       1,
-		"bareSubcommandHelp":  1,
 		"bareInterfaceWrite":  1,
 		"bareWriterMethods":   2,
 		"bareValueWriter":     1,

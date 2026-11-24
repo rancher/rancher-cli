@@ -19,7 +19,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 )
 
@@ -83,14 +82,14 @@ func doubleDashLines(path []string) []completionLine {
 
 // leafPaths returns the command path of every command in root with no
 // subcommands, and installs on each a recorder that notes when it runs.
-func leafPaths(root *ucli.Command, ran *[]string) [][]string {
+func leafPaths(root *cli.Command, ran *[]string) [][]string {
 	var paths [][]string
-	var walk func(c *ucli.Command, path []string)
-	walk = func(c *ucli.Command, path []string) {
+	var walk func(c *cli.Command, path []string)
+	walk = func(c *cli.Command, path []string) {
 		if len(c.Commands) == 0 {
 			paths = append(paths, path)
 			name := strings.Join(path, " ")
-			c.Action = func(context.Context, *ucli.Command) error {
+			c.Action = func(context.Context, *cli.Command, *cli.Input) error {
 				*ran = append(*ran, name)
 				return nil
 			}
@@ -108,14 +107,9 @@ func leafPaths(root *ucli.Command, ran *[]string) [][]string {
 
 // everyLeaf returns the command path of every leaf of root, with a recorder
 // installed on each (see leafPaths), and asserts they are exactly the leaves
-// the schema manifest lists plus the hidden __completion command urfave adds,
-// so a command added to the surface is covered.
-func everyLeaf(t *testing.T, root *ucli.Command, ran *[]string) [][]string {
+// the schema manifest lists, so a command added to the surface is covered.
+func everyLeaf(t *testing.T, root *cli.Command, ran *[]string) [][]string {
 	t.Helper()
-	// urfave adds its hidden __completion command to the tree on the first
-	// run, so run a line once before the leaves get their recorders.
-	_, err := runCompletionLine(t, root, completionLine{typed: []string{"completion"}})
-	require.NoError(t, err)
 	paths := leafPaths(root, ran)
 
 	m, err := cli.BuildManifestForTest("test")
@@ -127,10 +121,9 @@ func everyLeaf(t *testing.T, root *ucli.Command, ran *[]string) [][]string {
 	for _, p := range paths {
 		leaves = append(leaves, strings.Join(p, " "))
 	}
-	surface = append(surface, "__completion")
 	slices.Sort(surface)
 	slices.Sort(leaves)
-	require.Equal(t, surface, leaves, "the sweep must cover exactly the leaves the schema manifest lists, and urfave's hidden command")
+	require.Equal(t, surface, leaves, "the sweep must cover exactly the leaves the schema manifest lists")
 	return paths
 }
 
@@ -154,25 +147,25 @@ func listDir(t *testing.T, dir string) []string {
 
 // buildRoot builds the command tree. A command that runs ends with an error
 // the assertions print.
-func buildRoot(t *testing.T) *ucli.Command {
+func buildRoot(t *testing.T) *cli.Command {
 	t.Helper()
 	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	return root
 }
 
-// runCompletionLine runs one completion request through the same two calls
-// main makes: CaptureArgv, then Run on the argv SanitizedArgs hands urfave. It
-// returns what the request wrote to stdout and what Run returned.
-func runCompletionLine(t *testing.T, root *ucli.Command, l completionLine) (string, error) {
+// runCompletionLine runs one completion request through the two calls a
+// caller of Command.Run makes: CaptureArgv, then Command.Run on the whole
+// command line. It returns what the request wrote to stdout and what Run
+// returned.
+func runCompletionLine(t *testing.T, root *cli.Command, l completionLine) (string, error) {
 	t.Helper()
 	argv := l.argv()
 	cli.CaptureArgvForTest(argv)
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = io.Discard
-	err := root.Run(t.Context(), cli.SanitizedArgsForTest(append([]string{"rancher"}, argv...)))
+	err := root.Run(t.Context(), append([]string{"rancher"}, argv...))
 	return out.String(), err
 }
 
@@ -183,8 +176,7 @@ func runCompletionLine(t *testing.T, root *ucli.Command, l completionLine) (stri
 // or the working directory, and no candidate is a flag, because every word
 // after a "--" is an argument. The word being completed is empty, partial and
 // flag-like. The leaves are checked against the schema manifest so a command
-// added to the surface is covered; the hidden __completion command urfave adds
-// is covered too. The tree is built once. NOT parallel: mutates the argv
+// added to the surface is covered. The tree is built once. NOT parallel: mutates the argv
 // globals, env and the working directory.
 func TestCompletionAfterDoubleDashRunsNothing(t *testing.T) {
 	keyring.MockInit()
@@ -401,14 +393,16 @@ func TestCompletionFlagAsAFlagValueIsAnOrdinaryLine(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := cli.BuildRoot("test")
 			require.NoError(t, err)
-			root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 			var stderr bytes.Buffer
 			root.Writer = io.Discard
 			root.ErrWriter = &stderr
 			cli.CaptureArgvForTest(tc.words)
-			runErr := root.Run(t.Context(), cli.SanitizedArgsForTest(append([]string{"rancher"}, tc.words...)))
+			runErr := root.Run(t.Context(), append([]string{"rancher"}, tc.words...))
 			require.Error(t, runErr)
-			coder, ok := errors.AsType[ucli.ExitCoder](runErr)
+			coder, ok := errors.AsType[interface {
+				error
+				ExitCode() int
+			}](runErr)
 			require.True(t, ok, "the error carries an exit code")
 			assert.Equal(t, tc.wantCode, coder.ExitCode())
 			assert.Contains(t, stderr.String(), tc.wantMsg)

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -20,14 +19,12 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
 	"github.com/rancher/rancher-cli/internal/testfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 const (
@@ -104,24 +101,17 @@ type commandSnapshot struct {
 	flags   map[string]any
 }
 
-// observed is what the handlers of a tree saw during one run.
+// observed is what the stand-ins of a tree saw during one run.
 type observed struct {
 	ran     *commandSnapshot
 	refused *commandSnapshot
 	// snapshotErr is the first error reading a command that parsed a line.
 	snapshotErr error
-	usage       []string
-	notFound    int
-	helps       []string
-	versions    int
-	// completed holds the command each completion callback that ran was
-	// reached for, in order.
-	completed []string
 }
 
 // commandText returns the words that name c, below the root, joined by a
 // space.
-func commandText(c *ucli.Command) string {
+func commandText(c *Command) string {
 	lineage := c.Lineage()
 	words := make([]string, 0, len(lineage))
 	for _, l := range lineage[:len(lineage)-1] {
@@ -132,10 +122,10 @@ func commandText(c *ucli.Command) string {
 }
 
 // snapshotOf reads the command c that parsed a line: its arguments and, for
-// each flag of c and of the commands above it that is set, its value under
-// the first name of the flag.
-func snapshotOf(c *ucli.Command) (commandSnapshot, error) {
-	snap := commandSnapshot{command: commandText(c), args: slices.Clone(c.Args().Slice())}
+// each flag of c and of the commands above it that is set (typed, or read from
+// its environment variable), its value under the first name of the flag.
+func snapshotOf(c *Command, in *Input) (commandSnapshot, error) {
+	snap := commandSnapshot{command: commandText(c), args: slices.Clone(in.Args())}
 	seen := map[string]bool{}
 	for _, l := range c.Lineage() {
 		for _, f := range l.Flags {
@@ -144,19 +134,19 @@ func snapshotOf(c *ucli.Command) (commandSnapshot, error) {
 				continue
 			}
 			seen[names[0]] = true
-			if !slices.ContainsFunc(names, c.IsSet) {
+			if !slices.ContainsFunc(names, func(name string) bool { return in.IsSet(name) || in.fromEnv(name) }) {
 				continue
 			}
 			var value any
-			switch f.(type) {
-			case *ucli.BoolFlag:
-				value = c.Bool(names[0])
-			case *ucli.StringFlag:
-				value = c.String(names[0])
-			case *ucli.StringSliceFlag:
-				value = slices.Clone(c.StringSlice(names[0]))
+			switch f.Kind {
+			case boolFlag:
+				value = in.Bool(names[0])
+			case stringFlag:
+				value = in.String(names[0])
+			case sliceFlag:
+				value = slices.Clone(in.Strings(names[0]))
 			default:
-				return snap, fmt.Errorf("flag %s has the type %T, which a parse row cannot hold", names[0], f)
+				return snap, fmt.Errorf("flag %s has the kind %d, which a parse row cannot hold", names[0], f.Kind)
 			}
 			if snap.flags == nil {
 				snap.flags = map[string]any{}
@@ -167,80 +157,46 @@ func snapshotOf(c *ucli.Command) (commandSnapshot, error) {
 	return snap, nil
 }
 
-func (o *observed) keepSnapshot(c *ucli.Command) commandSnapshot {
-	snap, err := snapshotOf(c)
+func (o *observed) keepSnapshot(c *Command, in *Input) commandSnapshot {
+	snap, err := snapshotOf(c, in)
 	if err != nil && o.snapshotErr == nil {
 		o.snapshotErr = err
 	}
 	return snap
 }
 
-// wrapHandlers makes cmd note each flag parse error and each unknown command
-// it reports, then do what it did before.
-func (o *observed) wrapHandlers(cmd *ucli.Command) {
-	if usage := cmd.OnUsageError; usage != nil {
-		cmd.OnUsageError = func(ctx context.Context, c *ucli.Command, err error, isSubcommand bool) error {
-			o.usage = append(o.usage, err.Error())
-			return usage(ctx, c, err, isSubcommand)
-		}
-	}
-	if notFound := cmd.CommandNotFound; notFound != nil {
-		cmd.CommandNotFound = func(ctx context.Context, c *ucli.Command, name string) {
-			o.notFound++
-			notFound(ctx, c, name)
-		}
-	}
-}
-
 // wrap makes the commands of cmd and below note what they do. The root
 // Before does nothing and every leaf Action only reads the line: the config
 // is not read and nothing touches the network, a file or a keychain. The
-// Before of a leaf, the Action of the root and of every group, the handlers of
-// errors and the printers of help and the version are the CLI's own. The
+// Before of a leaf and the completion of every command are the CLI's own. The
 // Action of a leaf the engine builds refuses a blank --config first
 // (emptyConfigFlag); the leaves built by Adapt (adapted) do not, and neither
 // does their stand-in: a row for one has the exit code of the real command.
-func (o *observed) wrap(root, cmd *ucli.Command, adapted map[string]bool) error {
-	if cmd.OnUsageError == nil {
-		return fmt.Errorf("command %q has no OnUsageError", commandText(cmd))
-	}
-	o.wrapHandlers(cmd)
-	if complete := cmd.ShellComplete; complete != nil {
-		cmd.ShellComplete = func(ctx context.Context, c *ucli.Command) {
-			o.completed = append(o.completed, commandText(c))
-			complete(ctx, c)
-		}
-	}
+func (o *observed) wrap(root, cmd *Command, adapted map[string]bool) error {
 	switch {
 	case cmd == root:
-		cmd.Before = func(ctx context.Context, _ *ucli.Command) (context.Context, error) { return ctx, nil }
-		if configure := cmd.ConfigureShellCompletionCommand; configure != nil {
-			cmd.ConfigureShellCompletionCommand = func(c *ucli.Command) {
-				configure(c)
-				o.wrapHandlers(c)
-			}
-		}
+		cmd.Before = func(context.Context, *Command, *Input) error { return nil }
 	case len(cmd.Commands) == 0:
 		before := cmd.Before
 		if before == nil {
 			return fmt.Errorf("leaf %q has no Before", commandText(cmd))
 		}
-		cmd.Before = func(ctx context.Context, c *ucli.Command) (context.Context, error) {
-			snap := o.keepSnapshot(c)
-			ctx, err := before(ctx, c)
+		cmd.Before = func(ctx context.Context, c *Command, in *Input) error {
+			snap := o.keepSnapshot(c, in)
+			err := before(ctx, c, in)
 			if err != nil {
 				o.refused = &snap
 			}
-			return ctx, err
+			return err
 		}
-		cmd.Action = func(_ context.Context, c *ucli.Command) error {
-			snap := o.keepSnapshot(c)
+		cmd.Action = func(_ context.Context, c *Command, in *Input) error {
+			snap := o.keepSnapshot(c, in)
 			o.ran = &snap
 			if adapted[snap.command] {
 				return nil
 			}
-			if ce := emptyConfigFlag(c); ce != nil {
-				streams := buildIO(c)
+			if ce := emptyConfigFlag(in); ce != nil {
+				streams := buildIO(c, in)
 				runtime.WriteError(c.Root().ErrWriter, streams.Format, ce, errStyle(c, streams.Color), "")
 				return exit(ce)
 			}
@@ -257,14 +213,14 @@ func (o *observed) wrap(root, cmd *ucli.Command, adapted map[string]bool) error 
 
 // builtTree is a new root with its commands wrapped.
 type builtTree struct {
-	root *ucli.Command
+	root *Command
 	obs  *observed
 	err  error
 }
 
 // adaptedPaths returns the full path, the words joined by a space, of each
 // leaf in fixed and below it. prefix is the path of the commands in fixed.
-func adaptedPaths(fixed []*ucli.Command, prefix []string) map[string]bool {
+func adaptedPaths(fixed []*Command, prefix []string) map[string]bool {
 	paths := map[string]bool{}
 	for _, c := range fixed {
 		path := append(slices.Clone(prefix), c.Name)
@@ -292,10 +248,10 @@ var adaptedLeaves = sync.OnceValues(func() (map[string]bool, error) {
 // with the same last word is then not taken for it.
 func TestAdaptedPathsUseTheFullPath(t *testing.T) {
 	t.Parallel()
-	leaf := func(name string) *ucli.Command { return &ucli.Command{Name: name} }
-	fixed := []*ucli.Command{
+	leaf := func(name string) *Command { return &Command{Name: name} }
+	fixed := []*Command{
 		leaf("schema"),
-		{Name: "tools", Commands: []*ucli.Command{leaf("lint"), {Name: "more", Commands: []*ucli.Command{leaf("deep")}}}},
+		{Name: "tools", Commands: []*Command{leaf("lint"), {Name: "more", Commands: []*Command{leaf("deep")}}}},
 	}
 	assert.Equal(t, map[string]bool{"schema": true, "tools lint": true, "tools more deep": true}, adaptedPaths(fixed, nil))
 	assert.False(t, adaptedPaths(fixed, nil)["lint"], "a leaf is not named by its last word alone")
@@ -352,81 +308,6 @@ func buildTrees(ctx context.Context, n int) (ready []chan builtTree, release fun
 		}
 	}()
 	return ready, func() { <-window }
-}
-
-// activeObserved is what the help and version printers report to while a line
-// runs. Lines run one after the other.
-var activeObserved *observed
-
-// startHelpPrinterCustom and startFlagStringer keep urfave's own functions for
-// printing a help page and writing a flag row, as they are when the test
-// package starts, for assertPrinters to compare against.
-var (
-	startHelpPrinterCustom = ucli.HelpPrinterCustom
-	startFlagStringer      = ucli.FlagStringer
-)
-
-// urfaveRenderCalls holds one entry for each call of urfave's help page printer
-// or flag formatter since wrapPrinters last ran; urfaveRenderLock guards it.
-var (
-	urfaveRenderLock  sync.Mutex
-	urfaveRenderCalls []string
-)
-
-// noteUrfaveRender records a call of the urfave function called function, with
-// the command the page is for when a command line is running.
-func noteUrfaveRender(function string, c *ucli.Command) {
-	entry := function + " called outside a command line"
-	if activeObserved != nil {
-		entry = function + " called by a command line"
-		if c != nil {
-			entry += ` for "rancher ` + commandText(c) + `"`
-		}
-	}
-	urfaveRenderLock.Lock()
-	defer urfaveRenderLock.Unlock()
-	urfaveRenderCalls = append(urfaveRenderCalls, entry)
-}
-
-// wrapPrinters makes the help and version printers note what they print and
-// then call the printers they replaced. It also replaces urfave's help page
-// printer and flag formatter with functions that note the call and write
-// nothing. assertPrinters fails when one was called; every page a test records
-// then comes from the CLI's own code. restore puts every function back before
-// the test ends.
-func wrapPrinters(t *testing.T) (restore func()) {
-	t.Helper()
-	help, version := ucli.HelpPrinter, ucli.VersionPrinter
-	printCustom, stringer := ucli.HelpPrinterCustom, ucli.FlagStringer
-	urfaveRenderLock.Lock()
-	urfaveRenderCalls = nil
-	urfaveRenderLock.Unlock()
-	restore = func() {
-		ucli.HelpPrinter, ucli.VersionPrinter = help, version
-		ucli.HelpPrinterCustom, ucli.FlagStringer = printCustom, stringer
-	}
-	t.Cleanup(restore)
-	ucli.HelpPrinter = func(w io.Writer, templ string, data any) {
-		if c, ok := data.(*ucli.Command); ok && activeObserved != nil {
-			activeObserved.helps = append(activeObserved.helps, commandText(c))
-		}
-		help(w, templ, data)
-	}
-	ucli.VersionPrinter = func(c *ucli.Command) {
-		if activeObserved != nil {
-			activeObserved.versions++
-		}
-		version(c)
-	}
-	ucli.HelpPrinterCustom = func(_ io.Writer, _ string, data any, _ map[string]any) {
-		c, _ := data.(*ucli.Command)
-		noteUrfaveRender("HelpPrinterCustom", c)
-	}
-	ucli.FlagStringer = func(ucli.Flag) string {
-		noteUrfaveRender("FlagStringer", nil)
-		return ""
-	}
-	return restore
 }
 
 // unsetEnv removes the variable name for the rest of the test.
@@ -516,14 +397,11 @@ func textLines(s string) ([]string, error) {
 }
 
 // runGoldenLines runs each row's line on a new root with the CLI's own entry point
-// (Run) and returns what each did. Trees are built ahead of the runs; the
-// runs are one after the other, since they share the captured command line
-// and the printers. helps is nil when the help of the lines is what is being
-// recorded.
+// (run) and returns what each did. Trees are built ahead of the runs; the
+// runs are one after the other, since they share the captured command line.
+// helps is nil when the help of the lines is what is being recorded.
 func runGoldenLines(t *testing.T, rows []parseRow, helps *goldenHelps) []goldenOutcome {
 	t.Helper()
-	model, err := BuildRoot(goldenVersion)
-	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	ready, release := buildTrees(ctx, len(rows))
@@ -532,24 +410,24 @@ func runGoldenLines(t *testing.T, rows []parseRow, helps *goldenHelps) []goldenO
 		tree := <-ready[i]
 		release()
 		require.NoError(t, tree.err)
-		out = append(out, runGoldenLine(t, model, tree, row, helps))
+		out = append(out, runGoldenLine(t, tree, row, helps))
 	}
 	return out
 }
 
 // runGoldenLine runs row.Line on tree. A row with environment variables runs
 // in a subtest that sets them and restores them when it ends.
-func runGoldenLine(t *testing.T, model *ucli.Command, tree builtTree, row parseRow, helps *goldenHelps) goldenOutcome {
+func runGoldenLine(t *testing.T, tree builtTree, row parseRow, helps *goldenHelps) goldenOutcome {
 	t.Helper()
 	if len(row.Env) == 0 {
-		return runGoldenLineHere(t, model, tree, row, helps)
+		return runGoldenLineHere(t, tree, row, helps)
 	}
 	var out goldenOutcome
 	if !t.Run("env", func(t *testing.T) {
 		for name, value := range row.Env {
 			t.Setenv(name, value)
 		}
-		out = runGoldenLineHere(t, model, tree, row, helps)
+		out = runGoldenLineHere(t, tree, row, helps)
 	}) {
 		t.FailNow()
 	}
@@ -557,33 +435,26 @@ func runGoldenLine(t *testing.T, model *ucli.Command, tree builtTree, row parseR
 }
 
 // runGoldenLineHere runs row.Line on tree in the environment of t.
-func runGoldenLineHere(t *testing.T, model *ucli.Command, tree builtTree, row parseRow, helps *goldenHelps) goldenOutcome {
+func runGoldenLineHere(t *testing.T, tree builtTree, row parseRow, helps *goldenHelps) goldenOutcome {
 	t.Helper()
 	label := fmt.Sprintf("rancher %q", row.Line)
-	request := completionRequest(row.Line)
-	var refusal *clierr.Error
-	if request {
+	if completionRequest(row.Line) {
 		require.False(t, completionNetworkEnabled(), "%s: live completion is on", label)
-	} else {
-		refusal, _ = lineRefusal(parseLine(model, row.Line))
 	}
 
 	var stdout, stderr bytes.Buffer
 	tree.root.Writer, tree.root.ErrWriter = &stdout, &stderr
 	tree.root.Reader = strings.NewReader("")
-	activeObserved = tree.obs
-	code := Run(t.Context(), tree.root, append([]string{"rancher"}, row.Line...))
-	activeObserved = nil
-	unknown := recordedUnknownCommand(tree.root)
+	res := run(t.Context(), tree.root, append([]string{"rancher"}, row.Line...))
 
 	require.NoError(t, tree.obs.snapshotErr, label)
 	require.NotContains(t, stderr.String(), goldenVersion, "%s: stderr holds the version of the build", label)
 	for _, dir := range []string{os.Getenv("HOME"), mustGetwd(t)} {
 		require.NotContains(t, stderr.String(), dir, "%s: stderr holds a temporary directory", label)
 	}
-	res, err := rowOf(row, tree.obs, refusal != nil, unknown != nil, code, stdout.String(), stderr.String(), helps)
+	got, err := rowOf(row, tree.obs, res.outcome, res.code, stdout.String(), stderr.String(), helps)
 	require.NoError(t, err, label)
-	return goldenOutcome{row: res, stdout: stdout.String()}
+	return goldenOutcome{row: got, stdout: stdout.String()}
 }
 
 func mustGetwd(t *testing.T) string {
@@ -593,11 +464,10 @@ func mustGetwd(t *testing.T) string {
 	return dir
 }
 
-// rowOf reads what a run did into the row for its line. refusedFirst says
-// that the line is one the entry point refuses before it parses it. A
-// completion request is never refused first: the entry point skips the
-// refusals for it.
-func rowOf(row parseRow, o *observed, refusedFirst, unknownCommand bool, code int, stdout, stderr string, helps *goldenHelps) (parseRow, error) {
+// rowOf reads what a run did into the row for its line, from the outcome of
+// the run and what the stand-ins saw. The entry point refuses a line before
+// it reads it for a command; a completion request is never refused first.
+func rowOf(row parseRow, o *observed, oc outcome, code int, stdout, stderr string, helps *goldenHelps) (parseRow, error) {
 	res := parseRow{Line: row.Line, Env: row.Env, Exit: code}
 	var err error
 	if res.Stdout, err = textLines(stdout); err != nil {
@@ -612,37 +482,41 @@ func rowOf(row parseRow, o *observed, refusedFirst, unknownCommand bool, code in
 			res.Args = nil
 		}
 	}
-	switch {
-	case completionRequest(row.Line) && len(o.completed) > 0:
-		if len(o.completed) > 1 || refusedFirst || o.ran != nil || o.refused != nil || len(o.usage) > 0 || o.notFound > 0 || len(o.helps) > 0 || o.versions > 0 {
-			return res, fmt.Errorf("a completion callback ran for %q and the line did something else: %+v", o.completed, o)
+	switch oc.kind {
+	case outcomeCompletion:
+		if o.ran != nil || o.refused != nil {
+			return res, fmt.Errorf("a completion request ran a command: %+v", o)
 		}
-		res.Kind, res.Command = "complete", o.completed[0]
-	case refusedFirst:
-		if o.ran != nil || o.refused != nil || len(o.usage) > 0 || o.notFound > 0 || len(o.helps) > 0 || o.versions > 0 {
+		res.Kind, res.Command = "complete", commandText(oc.cmd)
+	case outcomeRefused:
+		if o.ran != nil || o.refused != nil {
 			return res, errors.New("the entry point refused the line, but a command ran or reported on it")
 		}
 		res.Kind = "refused"
-	case o.refused != nil:
+	case outcomeBeforeFailed:
+		if o.refused == nil {
+			return res, errors.New("a Before refused the line and no command Before did")
+		}
 		fill(*o.refused)
 		res.Kind = "refused"
-	case o.ran != nil:
+	case outcomeRan:
+		if o.ran == nil {
+			return res, errors.New("a command ran and its action was not the stand-in")
+		}
 		fill(*o.ran)
 		res.Kind = "runs"
-	case len(o.usage) > 0:
-		if len(o.usage) > 1 {
-			return res, fmt.Errorf("%d parse errors: %q", len(o.usage), o.usage)
+	case outcomeUsageError:
+		class, ok := usageClassWords[oc.class]
+		if !ok {
+			return res, fmt.Errorf("the flag error class %d has no name", oc.class)
 		}
-		res.Kind, res.ErrorClass = "error", urfaveClass(o.usage[0])
-	case unknownCommand:
+		res.Kind, res.ErrorClass = "error", class
+	case outcomeUnknownCommand:
 		res.Kind, res.ErrorClass = "error", "unknown command"
-	case o.versions > 0:
+	case outcomeVersion:
 		res.Kind = "version"
-	case len(o.helps) > 0:
-		if len(o.helps) > 1 {
-			return res, fmt.Errorf("%d help cards: %q", len(o.helps), o.helps)
-		}
-		res.Kind, res.Command = "help", o.helps[0]
+	case outcomeHelp:
+		res.Kind, res.Command = "help", commandText(oc.cmd)
 		name := goldenName(strings.Fields(res.Command))
 		// A card that is not the one in the help file of its command stays in
 		// stdout, as the card of a command with no help file does.
@@ -658,6 +532,15 @@ func rowOf(row parseRow, o *observed, refusedFirst, unknownCommand bool, code in
 		return res, fmt.Errorf("the entry point refused the line with exit %d, want 2", res.Exit)
 	}
 	return res, assertRowFields(res)
+}
+
+// usageClassWords names each class of flag error by the word an error row
+// holds.
+var usageClassWords = map[lineErrorClass]string{
+	undefinedFlag:    "undefined flag",
+	missingFlagValue: "missing value",
+	repeatedFlag:     "repeated flag",
+	badBoolValue:     "bad bool value",
 }
 
 // errorClasses are the kinds of error an error row names. A parse error
@@ -934,7 +817,7 @@ func parseFiles(t *testing.T) []goldenFile {
 	}
 	slicePath := strings.Fields(withSlice)
 	for _, f := range sliceLeaf.Flags {
-		if _, ok := f.(*ucli.StringSliceFlag); !ok {
+		if f.Kind != sliceFlag {
 			continue
 		}
 		flag := "--" + f.Names()[0]
@@ -1056,9 +939,9 @@ func parseFiles(t *testing.T) []goldenFile {
 	add(getPod, sourceTwice, nil, []string{"-o", "json", "-o", "yaml", "get", "pod"})
 	add(createProject, sourceTwice, nil, append(slices.Clone(createProject), "--yes", "--yes=false"))
 
-	sliceRows := func(path []string, cmd *ucli.Command) {
+	sliceRows := func(path []string, cmd *Command) {
 		for _, f := range cmd.Flags {
-			if _, ok := f.(*ucli.StringSliceFlag); !ok {
+			if f.Kind != sliceFlag {
 				continue
 			}
 			names := f.Names()
@@ -1207,11 +1090,9 @@ func helpsFromDisk(t *testing.T, commands [][]string) *goldenHelps {
 // each command and for __completion, each line of a file one JSON row.
 // Rewrite the files with -update after a change to the command surface and
 // review the diff. Not parallel: it sets the process environment and runs
-// lines one after the other, since they share the captured command line and
-// the help printer.
+// lines one after the other, since they share the captured command line.
 func TestParseGolden(t *testing.T) {
 	home, work := goldenEnvironment(t)
-	restore := wrapPrinters(t)
 	files := parseFiles(t)
 	commands := goldenCommands(t)
 	names := make([]string, len(files))
@@ -1251,8 +1132,6 @@ func TestParseGolden(t *testing.T) {
 		}
 		writeGoldens(t, goldenParseDir, want)
 		t.Logf("rows by kind %v", counts)
-		restore()
-		assertPrinters(t)
 		assertUntouched(t, home, work)
 		return
 	}
@@ -1304,8 +1183,6 @@ func TestParseGolden(t *testing.T) {
 			assert.Equal(t, len(want), len(got), "%s: the number of rows differs; run with -update if intended", goldenShown(path))
 		})
 	}
-	restore()
-	assertPrinters(t)
 	assertUntouched(t, home, work)
 }
 
@@ -1315,19 +1192,4 @@ func envText(row parseRow) string {
 		return ""
 	}
 	return fmt.Sprintf(" with %v", row.Env)
-}
-
-// assertPrinters asserts that the help and version printers are the ones the
-// package installs, that urfave's help page printer and flag formatter are
-// urfave's own, and that nothing called either since wrapPrinters ran.
-func assertPrinters(t *testing.T) {
-	t.Helper()
-	assert.Equal(t, reflect.ValueOf(printStyledHelp).Pointer(), reflect.ValueOf(ucli.HelpPrinter).Pointer(), "the help printer is not the one the package installs")
-	assert.Equal(t, reflect.ValueOf(printVersion).Pointer(), reflect.ValueOf(ucli.VersionPrinter).Pointer(), "the version printer is not the one the package installs")
-	assert.Equal(t, reflect.ValueOf(startHelpPrinterCustom).Pointer(), reflect.ValueOf(ucli.HelpPrinterCustom).Pointer(), "urfave's help page printer is not urfave's own")
-	assert.Equal(t, reflect.ValueOf(startFlagStringer).Pointer(), reflect.ValueOf(ucli.FlagStringer).Pointer(), "urfave's flag formatter is not urfave's own")
-	urfaveRenderLock.Lock()
-	calls := slices.Clone(urfaveRenderCalls)
-	urfaveRenderLock.Unlock()
-	assert.Empty(t, calls, "urfave rendered help text: the CLI's own code renders every help page")
 }

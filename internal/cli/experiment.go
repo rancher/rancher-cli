@@ -25,7 +25,7 @@ var (
 )
 
 // resetExperimentState says no experiment is on and there is nothing to warn
-// about. run calls it before urfave runs, and noteExperiments before it
+// about. run calls it before the command line runs, and noteExperiments before it
 // decides; a run that never reaches the hook honors no experiment.
 func resetExperimentState() {
 	experimentMu.Lock()

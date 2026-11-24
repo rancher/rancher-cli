@@ -17,7 +17,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -404,7 +403,6 @@ func (h *missingHarness) run(t *testing.T, argv []string) (code string, requests
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
 	root.Reader = strings.NewReader("")
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	CaptureArgv(argv)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()

@@ -2,38 +2,31 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
-// levelCommands returns every command in the built tree with its argv path,
-// after one run of the root has set the tree up: urfave appends the help
-// flag (and, at the root, the version flag) to every command during that
-// setup, so the flags of each node are what completion sees. The root has an
-// empty path.
-func levelCommands(t *testing.T) map[string]*ucli.Command {
+// levelCommands returns every command in the built tree with the path that
+// names it. BuildRoot appends the help flag (and, at the root, the version
+// flag) to every command. The flags of each node are what completion sees.
+// The root has an empty path.
+func levelCommands(t *testing.T) map[string]*Command {
 	t.Helper()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &out
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--help"}))
 
-	nodes := map[string]*ucli.Command{"": root}
-	var walk func(c *ucli.Command, path []string)
-	walk = func(c *ucli.Command, path []string) {
+	nodes := map[string]*Command{"": root}
+	var walk func(c *Command, path []string)
+	walk = func(c *Command, path []string) {
 		for _, sub := range c.Commands {
-			if sub.Hidden {
-				continue
-			}
 			p := append(slices.Clone(path), sub.Name)
 			nodes[strings.Join(p, " ")] = sub
 			walk(sub, p)
@@ -62,10 +55,10 @@ func levelCommands(t *testing.T) map[string]*ucli.Command {
 // word after `--` (a `-` there too) are counted as words; a `-` as a
 // flag's value is a value. A bool flag typed with "=" and an empty value
 // (`--debug=`) and a bare `-` reject the line at every level, after the
-// command path or ahead of it; after `--` each is a word. The decision is
+// command path or ahead of it; after `--` each is an argument. The decision is
 // made on the tree without running a completion, so every level is covered
 // cheaply; the end-to-end sweep in completion_levelflags_test.go runs a few
-// rows per level through urfave.
+// rows per level through the dispatcher.
 func TestLineRejectedAtEveryLevel(t *testing.T) {
 	t.Parallel()
 	nodes := levelCommands(t)

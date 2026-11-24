@@ -18,7 +18,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -315,13 +314,12 @@ func (h *contractHarness) run(t *testing.T, args ...string) contractRun {
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
 	root.Reader = strings.NewReader("")
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	CaptureArgv(args)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	runErr := root.Run(ctx, append([]string{"rancher"}, args...))
 	r := contractRun{stdout: out.String(), stderr: errOut.String(), requests: h.srv.take()}
-	if ec, ok := errors.AsType[ucli.ExitCoder](runErr); ok {
+	if ec, ok := errors.AsType[exitCoder](runErr); ok {
 		r.exit = ec.ExitCode()
 	} else if runErr != nil {
 		r.exit = -1

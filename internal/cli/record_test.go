@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -82,13 +81,13 @@ func TestRecordDecisionNeedsTheHookState(t *testing.T) {
 // ends at a command with subcommands records nothing even when that command
 // has a descriptor: an unknown word after it, or no word.
 func TestRecordDecisionRefusesAGroupThatCarriesADescriptor(t *testing.T) {
-	leaf := &ucli.Command{Name: "leaf"}
-	group := &ucli.Command{
-		Name:     "grp",
-		Metadata: leafMetadata(runtime.Descriptor{Name: "grp"}),
-		Commands: []*ucli.Command{leaf},
+	leaf := &Command{Name: "leaf"}
+	group := &Command{
+		Name:       "grp",
+		descriptor: &runtime.Descriptor{Name: "grp"},
+		Commands:   []*Command{leaf},
 	}
-	root := &ucli.Command{Name: "rancher", Commands: []*ucli.Command{group}}
+	root := link(&Command{Name: "rancher", Commands: []*Command{group}})
 	on := recordingState{on: true, dirExisted: true}
 	for _, argv := range [][]string{{"grp", "bogus"}, {"grp"}} {
 		_, ok := recordDecision(keptLine{line: parseLine(root, argv), parsed: true}, on)

@@ -40,6 +40,7 @@ var stdinReaderAllowlist = map[string]requestAllowance{
 	"internal/engine/password.go:ReadCurrentAndNewPasswordStdin": {1, stdinReaderReason},
 	"internal/commands/auth/login.go:resolveLoginToken":          {1, stdinReaderReason},
 	"internal/cli/adapter.go:buildIO":                            {1, "the root Reader every command reads through; the secret readers are ReadPasswordStdin, ReadCurrentAndNewPasswordStdin and resolveLoginToken"},
+	"internal/cli/run.go:runArgv":                                {1, "gives a command tree with no Reader the process's standard input, where a run starts; buildIO reads the root's Reader and nothing reads it here"},
 	"internal/commands/configcmd/config_edit.go:execEditor":      {1, "wires the editor's terminal"},
 	"credhelper/serve.go:Serve":                                  {1, "the credential helper protocol: requests are JSON and no flag takes a secret"},
 }

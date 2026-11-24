@@ -10,7 +10,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // repoFlagRows holds, for each command with a repo flag naming a ClusterRepo,
@@ -76,7 +75,7 @@ func TestEveryRepoFlagRefusesADisabledClusterRepo(t *testing.T) {
 			args := slices.Concat(strings.Fields(c.Name), repoFlagRows[c.Name], []string{"--repo", "off-charts", "-o", "json"})
 			stdout, stderr, err := runChartsCommand(t, args...)
 			require.Error(t, err)
-			coder, ok := errors.AsType[ucli.ExitCoder](err)
+			coder, ok := errors.AsType[exitCoder](err)
 			require.True(t, ok, "the error carries an exit code")
 			assert.Equal(t, 2, coder.ExitCode())
 			assert.Empty(t, stdout)

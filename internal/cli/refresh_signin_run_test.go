@@ -23,7 +23,7 @@ func sendFromASignIn(t *testing.T, f *signInFixture) {
 // TestRunArgvRegistersTheSignInRequestOnlyForAParsedLine asserts the function
 // a sign-in calls is registered once the line is parsed and not refused, and
 // not for an empty command line, a completion request or a line the CLI
-// refuses before urfave runs it: with the hook state on and the facts due,
+// refuses before the command tree acts on it: with the hook state on and the facts due,
 // only the parsed line makes a sign-in send its install id request.
 func TestRunArgvRegistersTheSignInRequestOnlyForAParsedLine(t *testing.T) {
 	setup := func(t *testing.T) *signInFixture {
@@ -38,7 +38,7 @@ func TestRunArgvRegistersTheSignInRequestOnlyForAParsedLine(t *testing.T) {
 		restoreRawArgv(t)
 		root := newRoot(t)
 		root.Writer, root.ErrWriter = io.Discard, io.Discard
-		_, _ = runArgv(t.Context(), root, []string{"rancher", "access", "clusters"})
+		_, _ = runArgv(t.Context(), root, []string{"rancher", "access", "clusters"}, true)
 		sendFromASignIn(t, f)
 		assert.Len(t, f.srv.hitsOn(installIDPath), 1)
 		assert.Equal(t, "Bearer "+signInLoginToken, f.srv.hitsOn(installIDPath)[0].header.Get("Authorization"))
@@ -56,7 +56,7 @@ func TestRunArgvRegistersTheSignInRequestOnlyForAParsedLine(t *testing.T) {
 			noteRecording(f.dir, telemetry.ConfigUnset)
 			f.setConfig(t, f.srv.URL)
 			require.True(t, recordingStateNow().on)
-			_, _ = runArgv(t.Context(), root, args)
+			_, _ = runArgv(t.Context(), root, args, true)
 			if len(args) > 0 && args[1] == protoSentinel {
 				noteRecording(f.dir, telemetry.ConfigUnset)
 			}

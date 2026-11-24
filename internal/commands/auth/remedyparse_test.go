@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -42,20 +41,19 @@ func parseRemedyCommand(t *testing.T, dir, command string) parsedCommand {
 
 	root, err := cli.BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	var got parsedCommand
-	var record func(cmds []*ucli.Command, prefix string)
-	record = func(cmds []*ucli.Command, prefix string) {
+	var record func(cmds []*cli.Command, prefix string)
+	record = func(cmds []*cli.Command, prefix string) {
 		for _, c := range cmds {
 			name := strings.TrimSpace(prefix + " " + c.Name)
 			if len(c.Commands) > 0 {
 				record(c.Commands, name)
 				continue
 			}
-			c.Action = func(_ context.Context, c *ucli.Command) error {
-				got = parsedCommand{ran: name, configDir: c.String("config"), args: c.Args().Slice()}
+			c.Action = func(_ context.Context, c *cli.Command, in *cli.Input) error {
+				got = parsedCommand{ran: name, configDir: in.String("config"), args: in.Args()}
 				return nil
 			}
 		}

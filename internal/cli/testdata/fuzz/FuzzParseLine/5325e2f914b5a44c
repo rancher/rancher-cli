@@ -1,0 +1,3 @@
+go test fuzz v1
+string("get\x00po\x00-A𰹹\x86")
+bool(true)

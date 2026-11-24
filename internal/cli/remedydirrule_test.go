@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -52,7 +51,7 @@ func refuseToOpenDirectory(t *testing.T) *[]string {
 
 // runDirectoryLine runs argv through a new root over wr and returns stdout
 // and stderr.
-func runDirectoryLine(t *testing.T, root *ucli.Command, argv ...string) (stdout, stderr string) {
+func runDirectoryLine(t *testing.T, root *Command, argv ...string) (stdout, stderr string) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
@@ -320,11 +319,11 @@ func (c directoryRemedyCommand) Execute(context.Context, runtime.Input, runtime.
 
 // bareRoot is a root with the real global flags and cmd as its one command,
 // wired as a bare entry.
-func bareRoot(t *testing.T, cmd runtime.Command) *ucli.Command {
+func bareRoot(t *testing.T, cmd runtime.Command) *Command {
 	t.Helper()
 	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
 	leaf := adaptEntry(reg, "v-test", true, func(runDeps) runtime.Command { return cmd })
-	wr := wiredRegistry{reg: reg, groups: map[string][]*ucli.Command{"": {leaf}}, order: []string{""}}
+	wr := wiredRegistry{reg: reg, groups: map[string][]*Command{"": {leaf}}, order: []string{""}}
 	return wr.root("v-test")
 }
 
@@ -370,7 +369,7 @@ func TestABareCommandThatSetsRemedyConfigDirNamesItsDirectory(t *testing.T) {
 		_, resolveErr := config.ResolveDir("")
 		require.Error(t, resolveErr)
 		var want bytes.Buffer
-		require.Error(t, renderDepsError(&ucli.Command{Name: "rancher", ErrWriter: &want}, runtime.IO{}, resolveErr))
+		require.Error(t, renderDepsError(&Command{Name: "rancher", ErrWriter: &want}, runtime.IO{}, resolveErr))
 
 		var ran bool
 		stdout, stderr := runDirectoryLine(t, bareRoot(t, directoryRemedyCommand{ran: &ran}), "directory-remedy")

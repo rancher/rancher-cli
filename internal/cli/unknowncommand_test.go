@@ -83,9 +83,7 @@ func TestUnknownCommandIsReportedBeforeAnythingAfterIt(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Run("stops flag parsing after the first word", func(t *testing.T) {
-				if assert.NotNil(t, node.StopOnNthArg) {
-					assert.Equal(t, 1, *node.StopOnNthArg)
-				}
+				assert.True(t, node.StopAtFirstWord)
 			})
 
 			prefix := append([]string{"-o", "json"}, strings.Fields(path)...)
@@ -118,9 +116,9 @@ func TestUnknownCommandIsReportedBeforeAnythingAfterIt(t *testing.T) {
 // that name a known command first, or end flag parsing before any word, so
 // that stopping flag parsing after an unknown first word leaves them as
 // they were: flag errors from a leaf and from before the first word, the
-// -A detail, a leaf run after --, an unknown word after --, the version, the
-// help cards and the refusal of a bare - before more words. Not parallel:
-// the captured argv is process-wide.
+// -A detail, a leaf run after --, an unknown argument after --, the version,
+// the help pages and the refusal of a bare - before more arguments. Not
+// parallel: the captured command line is process-wide.
 func TestKnownCommandLinesKeepTheirResult(t *testing.T) {
 	restoreRawArgv(t)
 

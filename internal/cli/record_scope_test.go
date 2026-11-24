@@ -16,7 +16,7 @@ import (
 
 // TestLinesWithNoChosenCommandRecordNothing asserts a line with no command
 // chosen, or one the exclusion table names, stores no event and builds none:
-// each refusal the CLI makes before urfave parses the line, help, the
+// each refusal the CLI makes before the command tree acts on the line, help, the
 // version, a group or the root with no word, an unknown command at the root
 // and in a group, an unknown flag, a flag with no value, the completion
 // script and each telemetry command.
@@ -281,7 +281,7 @@ func TestRunsOnOneRootRecordWhatEachShould(t *testing.T) {
 }
 
 // TestTheHookStateIsResetWhenARunStarts asserts run clears the hook state
-// before urfave runs: a state left on by an earlier run does not record a run
+// before the command tree acts on the line: a state left on by an earlier run does not record a run
 // that never reaches the hook.
 func TestTheHookStateIsResetWhenARunStarts(t *testing.T) {
 	dir := recordingEnv(t)

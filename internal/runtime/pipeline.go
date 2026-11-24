@@ -339,8 +339,8 @@ func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.
 // VALIDATION error and a mutation can never execute and then fail at render.
 // The template parse here makes Render's own parse effectively pre-checked;
 // the duplicate parse is cheap and intentional (Render keeps it as defense in
-// depth for non-pipeline callers). A flag typed with no value makes urfave
-// take the next word as its value, a secret among them: for a command that
+// depth for non-pipeline callers). A flag typed with no value takes
+// the next word as its value, a secret among them: for a command that
 // takes a secret input (secret) no text holds the value or the parser's
 // message, which quotes parts of the source.
 func validateFormat(format string, secret bool) *clierr.Error {

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // commandAcceptsGlobalFlag reports whether the command, or a command group,
@@ -16,7 +15,7 @@ import (
 // root accepts --version. The help flag, which the manifest does not list,
 // is accepted everywhere, and a command with no descriptor accepts every flag:
 // a command that cannot be classified loses nothing from its offer.
-func commandAcceptsGlobalFlag(cmd *ucli.Command, name string) bool {
+func commandAcceptsGlobalFlag(cmd *Command, name string) bool {
 	if name == "version" {
 		return cmd == cmd.Root()
 	}
@@ -30,9 +29,9 @@ func commandAcceptsGlobalFlag(cmd *ucli.Command, name string) bool {
 	return commandAcceptsAppliesTo(cmd, runtime.GlobalFlags()[i].AppliesTo)
 }
 
-func commandAcceptsAppliesTo(cmd *ucli.Command, appliesTo string) bool {
+func commandAcceptsAppliesTo(cmd *Command, appliesTo string) bool {
 	if len(cmd.Commands) > 0 {
-		return slices.ContainsFunc(cmd.Commands, func(sub *ucli.Command) bool {
+		return slices.ContainsFunc(cmd.Commands, func(sub *Command) bool {
 			return commandAcceptsAppliesTo(sub, appliesTo)
 		})
 	}

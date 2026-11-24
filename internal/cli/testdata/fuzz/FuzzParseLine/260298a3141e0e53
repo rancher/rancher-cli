@@ -1,0 +1,3 @@
+go test fuzz v1
+string("-ł\x00-\xac")
+bool(true)

@@ -10,7 +10,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // renderHelp runs `rancher <path...> --help` through the real root and
@@ -103,7 +102,7 @@ func TestStyledHelpDescriptionPrecedesUsage(t *testing.T) {
 }
 
 // TestStyledHelpStripInvariant asserts the content-invariant for a rendered
-// help card: strip(styled) == plain byte-for-byte, and the styled render
+// help page: strip(styled) == plain byte-for-byte, and the styled render
 // actually differs from plain (proving the wrap ran). Not parallel-safe: it
 // sets the color env vars to a known-clean state for the plain baseline,
 // which would race a sibling that also mutates them.
@@ -141,7 +140,7 @@ func TestStyledHelpNoColorWinsOverForceVar(t *testing.T) {
 // requires.
 func TestColonOffsetCommandsAlignsOnLongestJoinedNames(t *testing.T) {
 	t.Parallel()
-	cmds := []*ucli.Command{
+	cmds := []*Command{
 		{Name: "a", Aliases: []string{"aaaaaaaaaa"}},
 		{Name: "bb"},
 	}
@@ -151,8 +150,8 @@ func TestColonOffsetCommandsAlignsOnLongestJoinedNames(t *testing.T) {
 // TestStyledHelpCommandRowShowsAliases renders `rancher get --help` (a
 // subcommand card whose leaves include kinds with declared aliases) and
 // asserts that a leaf's full name list - canonical name plus every alias,
-// comma-joined - renders before the colon, matching urfave's own stock
-// comma-joined listing rather than the canonical name alone.
+// comma-joined - renders before the colon, rather than the canonical name
+// alone.
 func TestStyledHelpCommandRowShowsAliases(t *testing.T) {
 	t.Parallel()
 	styled := renderHelp(t, "always", "get")

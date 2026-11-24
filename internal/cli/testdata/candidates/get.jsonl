@@ -4,8 +4,8 @@
 {"line":["--rancher-completion-proto=2","get","x","--rancher-completion-cur=","--generate-shell-completion"],"kind":"complete","command":"get","exit":0}
 {"line":["--rancher-completion-proto=2","get","--bogus","--rancher-completion-cur=","--generate-shell-completion"],"kind":"complete","command":"get","exit":0}
 {"line":["--rancher-completion-proto=2","get","--rancher-completion-cur=--h","--generate-shell-completion"],"kind":"complete","command":"get","exit":0,"stdout":["--help:show help"]}
-{"line":["--rancher-completion-proto=2","get","--help","pod","--rancher-completion-cur=","--generate-shell-completion"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
-{"line":["--rancher-completion-proto=2","get","-h","pod","--rancher-completion-cur=","--generate-shell-completion"],"kind":"help","command":"get pod","exit":0,"helpPath":"get-pod.txt"}
+{"line":["--rancher-completion-proto=2","get","--help","pod","--rancher-completion-cur=","--generate-shell-completion"],"kind":"complete","command":"get pod","exit":0}
+{"line":["--rancher-completion-proto=2","get","-h","pod","--rancher-completion-cur=","--generate-shell-completion"],"kind":"complete","command":"get pod","exit":0}
 {"line":["--rancher-completion-proto=2","get","--","x","--rancher-completion-cur=","--generate-shell-completion"],"kind":"complete","command":"get","exit":0}
 {"line":["--rancher-completion-proto=2","get","--yes=maybe","pod","--rancher-completion-cur=","--generate-shell-completion"],"kind":"complete","command":"get","exit":0}
 {"line":["--rancher-completion-proto=2","get","","--rancher-completion-cur=","--generate-shell-completion"],"kind":"complete","command":"get","exit":0}

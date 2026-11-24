@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	ucli "github.com/urfave/cli/v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
@@ -469,14 +468,14 @@ func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.Ver
 	return vs
 }
 
-// wireEntry validates one entry and returns its urfave leaf plus the
+// wireEntry validates one entry and returns its leaf plus the
 // command's registered name (BuildRoot records it in the entry's root
 // section). It probes Describe() with zero deps (Describe must be
 // dir/store/client-independent), checks the name's group matches the declared
 // group, requires every engine command - read or mutating (CommandType !=
 // Local) - to resolve to a binding, registers the probe, and wires it through
 // the single run adapter.
-func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string, e entry) (*ucli.Command, string, error) {
+func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string, e entry) (*Command, string, error) {
 	if e.make == nil {
 		return nil, "", fmt.Errorf("internal error: the entry in group %q has no function that creates its command", e.group)
 	}
@@ -525,10 +524,9 @@ var groupUsages = map[string]string{
 	"access":      "Which clusters a subject can reach, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 
-// aliasAwareGroupComplete is a verb group's own ShellComplete. urfave's
-// DefaultCompleteWithFlags lists only each leaf's canonical Name
-// (printCommandSuggestions), so `po<TAB>` under `get` would complete only
-// toward the canonical "pod" form; this lists each leaf's Aliases as well.
+// aliasAwareGroupComplete is a verb group's own Complete. It lists each
+// leaf's canonical Name and its Aliases, so `po<TAB>` under `get` completes
+// toward an alias as well as toward the canonical "pod" form.
 //
 // rawCurrentWord is classified the same way the leaf path does it
 // (ParseArgTail): equals-form flag values, partial flag names, and bare words
@@ -536,7 +534,7 @@ var groupUsages = map[string]string{
 // lives in completeCurrentWord, shared with the root command's own
 // ShellComplete; only the bare-word branch - the alias-aware subcommand
 // listing - is supplied here.
-func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
+func aliasAwareGroupComplete(ctx context.Context, cmd *Command, _ *Input) {
 	completeCurrentWord(ctx, cmd, func(w io.Writer) {
 		// Bare word (or empty): prefix-filter subcommand names and aliases
 		// by rawCurrentWord independently. An empty rawCurrentWord matches
@@ -545,9 +543,6 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 		// alias are tested independently so an alias-only prefix (e.g. "ns" for
 		// namespace) is not gated on the canonical name matching first.
 		for _, leaf := range cmd.Commands {
-			if leaf.Hidden {
-				continue
-			}
 			if strings.HasPrefix(leaf.Name, rawCurrentWord) {
 				printCompletionCandidate(w, leaf.Name, leaf.Usage)
 			}
@@ -561,7 +556,7 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 }
 
 // completeCurrentWord is the single classification of the current word for
-// non-leaf ShellComplete callbacks (verb groups and the root command):
+// non-leaf Complete callbacks (verb groups and the root command):
 // equals-form flag value, space-form flag value, partial flag name, or bare
 // word. Flag-value sites get the static enum values of the global flags (no
 // request: a live source for a global flag, such as the project list, needs a
@@ -569,7 +564,7 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 // rejects), partial flag names get flag-name candidates; only the bare-word
 // branch differs per level, so the caller supplies it (a group lists its
 // leaves with aliases, the root lists top-level commands).
-func completeCurrentWord(ctx context.Context, cmd *ucli.Command, bareWord func(w io.Writer)) {
+func completeCurrentWord(ctx context.Context, cmd *Command, bareWord func(w io.Writer)) {
 	// A flag this level does not accept, or a word that names no command,
 	// sits between the command path and the word being completed: the
 	// command rejects the line whatever is completed next (a command name,
@@ -624,23 +619,23 @@ func completeCurrentWord(ctx context.Context, cmd *ucli.Command, bareWord func(w
 	bareWord(w)
 }
 
-// lineRejected reports whether the words typed before the current one make
-// a line the command rejects whatever is completed next. argv is the
-// command line after the program name, and cmd the command it reaches. In
-// the words after cmd's path: a flag cmd does not accept (urfave fails
-// with "flag provided but not defined"), more than maxWords words that are
-// neither a flag nor a flag's value, or a word typed after a bool flag
-// that accepts it as its value (lineRefusal refuses it in any position).
-// Anywhere on the line: a bool flag typed with "=" and an empty value
+// lineRejected reports whether the arguments typed before the current one
+// make a command line the command rejects whatever is completed next. argv is
+// the command line after the program name, and cmd the command it reaches. In
+// the arguments after cmd's path: a flag cmd does not accept (the run fails
+// with "flag provided but not defined"), more than maxWords arguments that
+// are neither a flag nor a flag's value, or an argument typed after a bool
+// flag that accepts it as its value (lineRefusal refuses it in any position).
+// Anywhere on the command line: a bool flag typed with "=" and an empty value
 // (`--dry-run=`) or one of only whitespace, which lineRefusal refuses, a
-// second instance of a flag that may be given once (urfave fails with
-// "can't duplicate this flag"), and a bare "-": a line with a word after it
-// is refused before the command runs, and the word being completed would be
-// that word. maxWords is 0 at the root or a group (urfave enters a
-// subcommand that word names, so it names none) and the number of
-// positional arguments a leaf declares. A rejected line is offered nothing,
-// and no request is made for it.
-func lineRejected(cmd *ucli.Command, argv []string, maxWords int) bool {
+// second typing of a flag that may be typed once (the run fails with "can't
+// duplicate this flag"), and a bare "-": a command line with an argument
+// after it is refused before the command runs, and the argument being
+// completed would be that argument. maxWords is 0 at the root or a group (an
+// argument that names a subcommand enters it, so no argument names none) and
+// the number of positional arguments a leaf declares. A rejected command line
+// gets no candidates, and no request is made for it.
+func lineRejected(cmd *Command, argv []string, maxWords int) bool {
 	words, _, undefined := tailWords(stripRoutingPrefixByCmd(argv, cmd), levelFlags(cmd))
 	if undefined || len(words) > maxWords {
 		return true
@@ -672,56 +667,28 @@ func lineRejected(cmd *ucli.Command, argv []string, maxWords int) bool {
 
 // printCompletionCandidate writes one completion candidate line using
 // formatCandidate (the single format source), followed by a newline.
-// Mirrors urfave's own printCommandSuggestions format ("name:usage", or a
-// bare name when usage is empty) - unexported in urfave, so reproduced here
-// rather than golden-tested against its exact output.
+// A candidate line is "name:usage", or a bare name when usage is empty.
 func printCompletionCandidate(w io.Writer, name, usage string) {
 	_, _ = fmt.Fprintln(w, formatCandidate(name, usage))
 }
 
-// groupPrimeMetadata flags a group Prime when every one of its leaves is -
+// groupIsPrime reports whether a group is Prime: every one of its leaves is -
 // an all-Prime group carries the same marker as its members do, a mixed one
-// carries none. It reads the leaves' own metadata rather than the schema
+// carries none. It reads the leaves' own marker rather than the schema
 // manifest on purpose: the help rows under this group row are rendered from
-// that same metadata, so the group row and its rows agree by construction,
+// that same marker, so the group row and its rows agree by construction,
 // with no second source that could drift from what the rows show. The schema
 // renderer's groupAllPrime states the same rule over manifest commands, and
 // TestPrimeMarkerConformance asserts the two agree on the real manifest.
-func groupPrimeMetadata(leaves []*ucli.Command) map[string]any {
-	if len(leaves) == 0 {
-		return nil
-	}
-	for _, leaf := range leaves {
-		if !commandIsPrime(leaf) {
-			return nil
-		}
-	}
-	return map[string]any{primeMetadataKey: true}
-}
-
-// groupCommandAction is the Action of the root and of every group command.
-// A group has no work of its own: run with no word it shows its help card,
-// and with a first word that names no subcommand, an empty word included,
-// it hands the word to showCommandHelp, which reports an unknown command.
-// urfave's default action skips that lookup for an empty word and shows the
-// card with exit 0, which would answer an unset shell variable with help
-// and success.
-func groupCommandAction(ctx context.Context, c *ucli.Command) error {
-	switch {
-	case c.Args().Present():
-		return showCommandHelp(ctx, c, c.Args().First())
-	case c == c.Root():
-		return ucli.ShowRootCommandHelp(c)
-	default:
-		return ucli.ShowSubcommandHelp(c)
-	}
+func groupIsPrime(leaves []*Command) bool {
+	return len(leaves) > 0 && !slices.ContainsFunc(leaves, func(leaf *Command) bool { return !commandIsPrime(leaf) })
 }
 
 // assembleCommands builds the root command list: the top-level commands
 // followed by one group command per group in first-appearance order. Leaves in
 // the "" group are attached at the top level.
-func assembleCommands(topLevel []*ucli.Command, order []string, groups map[string][]*ucli.Command) []*ucli.Command {
-	out := append([]*ucli.Command{}, topLevel...)
+func assembleCommands(topLevel []*Command, order []string, groups map[string][]*Command) []*Command {
+	out := append([]*Command{}, topLevel...)
 	for _, g := range order {
 		leaves := groups[g]
 		if len(leaves) == 0 {
@@ -731,10 +698,10 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 			out = append(out, leaves...)
 			continue
 		}
-		// With StopOnNthArg 1 the group parses no flag after its first word:
-		// a known subcommand parses the rest itself, and an unknown first
-		// word is reported before any flag typed after it.
-		out = append(out, &ucli.Command{Name: g, Usage: groupUsages[g], Commands: leaves, Metadata: groupPrimeMetadata(leaves), CommandNotFound: commandNotFound, OnUsageError: onUsageError, StopOnNthArg: new(1), Action: groupCommandAction})
+		// The group reads flags only before its first argument: a known
+		// subcommand parses the rest itself, and an unknown first argument is
+		// reported before any flag typed after it.
+		out = append(out, &Command{Name: g, Usage: groupUsages[g], Commands: leaves, prime: groupIsPrime(leaves), StopAtFirstWord: true})
 	}
 	return out
 }
@@ -890,8 +857,8 @@ func composeBindings() (runtime.Resolver, error) {
 // avoid positional confusion across the former five return values.
 type wiredRegistry struct {
 	reg    *runtime.Registry
-	fixed  []*ucli.Command
-	groups map[string][]*ucli.Command
+	fixed  []*Command
+	groups map[string][]*Command
 	order  []string
 }
 
@@ -986,7 +953,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		return observe.NewSupportBundle(d.clients, d.roots, func() any { return reg.Schema(version, config.MinRancherVersion) })
 	}})
 
-	groups := map[string][]*ucli.Command{}
+	groups := map[string][]*Command{}
 	sectionCmds := map[string][]string{}
 	var order []string
 	// leaves and completers feed the live completion setup check below:
@@ -1093,7 +1060,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	}
 	return wiredRegistry{
 		reg:    reg,
-		fixed:  []*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completion)},
+		fixed:  []*Command{Adapt(reg, schemaCmd), Adapt(reg, completion)},
 		groups: groups,
 		order:  order,
 	}, nil
@@ -1116,7 +1083,8 @@ func validateWiring(reg *runtime.Registry, leaves map[string]runtime.Descriptor,
 	return nil
 }
 
-func BuildRoot(version string) (*ucli.Command, error) {
+// BuildRoot builds the command tree. One tree runs any number of lines.
+func BuildRoot(version string) (*Command, error) {
 	wr, err := buildWiredRegistry(version, config.ReadOnlyOverride)
 	if err != nil {
 		return nil, err
@@ -1125,26 +1093,28 @@ func BuildRoot(version string) (*ucli.Command, error) {
 }
 
 // root assembles the root command around the wired commands. Each call
-// returns new root and group commands over the same leaves: urfave keeps
-// the state of a run in the commands it ran, so a run needs a root no
-// earlier run has used, and a leaf no earlier run has reached.
-func (wr wiredRegistry) root(version string) *ucli.Command {
-	commandsList := assembleCommands(wr.fixed, wr.order, wr.groups)
+// returns new root and group commands over copies of the leaves, so two
+// roots share no command and the parent of each leaf is its own root.
+func (wr wiredRegistry) root(version string) *Command {
+	groups := make(map[string][]*Command, len(wr.groups))
+	for g, leaves := range wr.groups {
+		groups[g] = copyCommands(leaves)
+	}
+	commandsList := assembleCommands(copyCommands(wr.fixed), wr.order, groups)
 
 	// Install aliasAwareGroupComplete on every verb group (any command that
 	// has subcommands). For groups whose leaves carry Aliases this lists
 	// canonical name + aliases; for others (config, auth, etc.) it lists
-	// canonical names only - same as urfave's default, but with the
-	// flag-name branch that DefaultCompleteWithFlags lacks for the stripped
-	// current word (so `config --<TAB>` and `get --<TAB>` both yield flag
+	// canonical names only, and a flag-name branch gives flag candidates for
+	// the current word (so `config --<TAB>` and `get --<TAB>` both yield flag
 	// candidates).
 	for _, cmd := range commandsList {
 		if len(cmd.Commands) > 0 {
-			cmd.ShellComplete = noCompletionAfterDoubleDash(aliasAwareGroupComplete)
+			cmd.Complete = noCompletionAfterDoubleDash(aliasAwareGroupComplete)
 		}
 	}
 
-	rootShellComplete := func(ctx context.Context, c *ucli.Command) {
+	rootComplete := func(ctx context.Context, c *Command, _ *Input) {
 		// rawCurrentWord (stripped from argv) is classified by the same shared
 		// routing the verb groups use - so root-level flag-value sites
 		// (`rancher -o <TAB>`, `rancher --output=<TAB>`) reach the dispatch
@@ -1157,51 +1127,37 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 		})
 	}
 
-	return &ucli.Command{
-		Name:          "rancher",
-		ShellComplete: noCompletionAfterDoubleDash(rootShellComplete),
-		Usage:         "rancher-cli",
-		Version:       version,
-		Flags: append([]ucli.Flag{
+	return link(&Command{
+		Name:     "rancher",
+		Complete: noCompletionAfterDoubleDash(rootComplete),
+		Usage:    "rancher-cli",
+		Version:  version,
+		Flags: append([]*Flag{
 			// --debug makes a telemetry upload print its lines on stderr; the
 			// upload reads it from the parsed line.
-			&ucli.BoolFlag{Name: "debug", Usage: "print telemetry upload details on stderr (development builds)"},
-			&ucli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "path to the config directory",
-				Sources: ucli.EnvVars(config.EnvConfigDir)},
+			{Name: "debug", Kind: boolFlag, Usage: "print telemetry upload details on stderr (development builds)"},
+			{Name: "config", Kind: stringFlag, Aliases: []string{"c"}, Usage: "path to the config directory", EnvVar: config.EnvConfigDir},
 		}, GlobalFlags()...),
-		CommandNotFound: commandNotFound,
-		OnUsageError:    onUsageError,
-		// urfave reads the exit handler only from the root, and by default
-		// ends the process for an error that carries an exit code. This
-		// one does nothing, so every such error returns from Run and the
-		// caller decides how the process ends.
-		ExitErrHandler: func(context.Context, *ucli.Command, error) {},
-		// With StopOnNthArg 1 the root parses no flag after its first word:
-		// a known command parses the rest itself, and an unknown first word
-		// is reported before any flag typed after it.
-		StopOnNthArg: new(1),
-		Action:       groupCommandAction,
-		// Inherited by every command: urfave adds no `help` subcommand
-		// anywhere, so `help` is an ordinary unknown command name and a
-		// positional argument named help always reaches its command.
-		HideHelpCommand: true,
-		// urfave's auto-appended completion command is renamed and kept hidden
-		// machinery only: its subcommands are stripped so it can never emit
-		// urfave's own (divergent) scripts - `completion <shell>` (wired below,
-		// via Adapt like schema) is the one script-emitting surface.
-		EnableShellCompletion:      true,
-		ShellCompletionCommandName: "__completion",
-		ConfigureShellCompletionCommand: func(c *ucli.Command) {
-			c.Hidden = true
-			c.Commands = nil
-			c.CommandNotFound = commandNotFound
-			c.OnUsageError = onUsageError
-		},
-		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
-			config.SetReadOnlyOverride(resolveReadOnly(c))
+		// The root reads flags only before its first argument: a known
+		// command parses the rest itself, and an unknown first argument is
+		// reported before any flag typed after it.
+		StopAtFirstWord: true,
+		Before: func(ctx context.Context, c *Command, in *Input) error {
+			config.SetReadOnlyOverride(resolveReadOnly(in))
 			noteExperiments(version)
-			return ctx, nil
+			return nil
 		},
 		Commands: commandsList,
+	})
+}
+
+// copyCommands returns a copy of each command, with its flags, so that
+// link on one root's tree leaves the commands of the others as they are.
+func copyCommands(cmds []*Command) []*Command {
+	out := make([]*Command, len(cmds))
+	for i, c := range cmds {
+		cp := *c
+		out[i] = &cp
 	}
+	return out
 }

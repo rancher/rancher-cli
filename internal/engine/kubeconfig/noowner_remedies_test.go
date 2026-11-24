@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -79,20 +78,19 @@ func runInTree(t *testing.T, words []string) (ran, configDir string) {
 	t.Helper()
 	root, err := cli.BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	t.Cleanup(func() { cli.CaptureArgv(nil) })
-	var record func(cmds []*ucli.Command, prefix string)
-	record = func(cmds []*ucli.Command, prefix string) {
+	var record func(cmds []*cli.Command, prefix string)
+	record = func(cmds []*cli.Command, prefix string) {
 		for _, c := range cmds {
 			name := strings.TrimSpace(prefix + " " + c.Name)
 			if len(c.Commands) > 0 {
 				record(c.Commands, name)
 				continue
 			}
-			c.Action = func(_ context.Context, c *ucli.Command) error {
-				ran, configDir = name, c.String("config")
+			c.Action = func(_ context.Context, c *cli.Command, in *cli.Input) error {
+				ran, configDir = name, in.String("config")
 				return nil
 			}
 		}

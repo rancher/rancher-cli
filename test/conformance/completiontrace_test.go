@@ -97,6 +97,7 @@ func completionTraceFindings(fset *token.FileSet, file *ast.File) (findings []st
 					add("T3", decl.Type, traceFunction+" must name its parameters format and args")
 				}
 			}
+			exempt := defaultErrWriterUse(decl, osName, fieldNames)
 			parts := []ast.Node{decl.Type}
 			if decl.Body != nil {
 				parts = append(parts, decl.Body)
@@ -106,7 +107,7 @@ func completionTraceFindings(fset *token.FileSet, file *ast.File) (findings []st
 					switch {
 					case traceIsIdent(n, traceSink) && !inDebugf:
 						add("T1", n, traceSink+" is used outside "+traceFunction)
-					case traceIsOSStderr(n, osName, fieldNames):
+					case traceIsOSStderr(n, osName, fieldNames) && n != exempt:
 						add("T4", n, "os.Stderr is used outside the initializer of "+traceSink)
 					}
 					return true
@@ -120,6 +121,39 @@ func completionTraceFindings(fset *token.FileSet, file *ast.File) (findings []st
 		}
 	}
 	return findings, found
+}
+
+// defaultErrWriterFunc is the one function that may name os.Stderr outside the
+// initializer of the sink: it gives a command tree with no error writer the
+// process's own, in the one assignment `<root>.ErrWriter = os.Stderr`. The
+// default lives there because that function is where a run starts; no other
+// expression in it, and no other function, may name os.Stderr.
+const defaultErrWriterFunc = "runArgv"
+
+// defaultErrWriterUse returns the os.Stderr of the one assignment to a field
+// named ErrWriter in the function runArgv (no receiver), or nil when decl is
+// another function, has none, or has more than one such assignment (then none
+// is exempt).
+func defaultErrWriterUse(decl *ast.FuncDecl, osName string, fieldNames map[*ast.Ident]bool) ast.Node {
+	if decl.Name.Name != defaultErrWriterFunc || decl.Recv != nil || decl.Body == nil {
+		return nil
+	}
+	var found []ast.Node
+	ast.Inspect(decl.Body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || assign.Tok != token.ASSIGN || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+			return true
+		}
+		sel, ok := assign.Lhs[0].(*ast.SelectorExpr)
+		if ok && sel.Sel.Name == "ErrWriter" && traceIsOSStderr(assign.Rhs[0], osName, fieldNames) {
+			found = append(found, assign.Rhs[0])
+		}
+		return true
+	})
+	if len(found) != 1 {
+		return nil
+	}
+	return found[0]
 }
 
 func traceIsIdent(n ast.Node, name string) bool {
@@ -582,6 +616,31 @@ func TestCompletionTraceDetectorFixtures(t *testing.T) {
 			found:  traceTally{declarations: 1, debugfs: 1, writes: 1, filtered: 1},
 		},
 		{
+			name:   "the default error writer assignment in runArgv is exempt",
+			source: "package cli\n\nimport \"os\"\n\nfunc runArgv(root *Command) {\n\tif root.ErrWriter == nil {\n\t\troot.ErrWriter = os.Stderr\n\t}\n}\n",
+			want:   traceRuleCounts{},
+		},
+		{
+			name:   "a second os.Stderr in runArgv is not exempt",
+			source: "package cli\n\nimport \"os\"\n\nfunc runArgv(root *Command) {\n\troot.ErrWriter = os.Stderr\n\t_ = os.Stderr\n}\n",
+			want:   traceRuleCounts{"T4": 1},
+		},
+		{
+			name:   "a second default assignment in runArgv exempts none",
+			source: "package cli\n\nimport \"os\"\n\nfunc runArgv(root *Command) {\n\troot.ErrWriter = os.Stderr\n\troot.ErrWriter = os.Stderr\n}\n",
+			want:   traceRuleCounts{"T4": 2},
+		},
+		{
+			name:   "an assignment to another field in runArgv is not exempt",
+			source: "package cli\n\nimport \"os\"\n\nfunc runArgv(root *Command) {\n\troot.Writer = os.Stderr\n}\n",
+			want:   traceRuleCounts{"T4": 1},
+		},
+		{
+			name:   "the default error writer assignment in another function is not exempt",
+			source: "package cli\n\nimport \"os\"\n\nfunc other(root *Command) {\n\troot.ErrWriter = os.Stderr\n}\n",
+			want:   traceRuleCounts{"T4": 1},
+		},
+		{
 			name:   "file with none of the names",
 			source: "package cli\n\nfunc plain() int { return 1 }\n",
 			want:   traceRuleCounts{},
@@ -607,7 +666,9 @@ func TestCompletionTraceDetectorFixtures(t *testing.T) {
 // completionDebugf (T1, T2); the formatted text of format and args reaches
 // that write only through fmt.Sprintf(format, args...) given to the filter
 // (T3); os.Stderr occurs only as the value of completionDebugOut in its
-// declaration, under whatever name the file imports os by (T4); the scan
+// declaration, under whatever name the file imports os by, except the one
+// assignment `<root>.ErrWriter = os.Stderr` in runArgv, which gives a tree with
+// no error writer the process's own (T4); the scan
 // found the writer, so it cannot pass on a tree that no longer holds it (T5);
 // and every argument of the write is a string literal, the elapsed time or the
 // variable that holds the filtered text, which is declared once, assigned from

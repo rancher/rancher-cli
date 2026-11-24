@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // TestCreateResourceEntryIsNonBareAndImplementsCapabilityResolver is the
@@ -89,8 +87,6 @@ func TestSkillStatusRunsWithInvalidConfig(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	// skill status with no harness dirs in the sandboxed home: exit 0,
 	// empty data, one warning. If resolveDeps ran on the invalid config the
 	// action would fail silently before any output was produced.

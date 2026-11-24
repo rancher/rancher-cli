@@ -81,8 +81,9 @@ func refused(message, hint string) lineWant {
 	return lineWant{exit: 2, message: message, hint: hint}
 }
 
-// urfaveError is a line urfave fails on, before any request.
-func urfaveError(message string) lineWant {
+// undefinedFlagError is a command line the CLI refuses for a flag the command does
+// not define, before any request.
+func undefinedFlagError(message string) lineWant {
 	return refused(message+"; pass --help for usage", "rancher schema")
 }
 
@@ -105,7 +106,7 @@ const droppedWordsPrefix = "the words after a - on its own are not used: "
 // that hold a "-" on its own, a bool flag typed with "=" and an empty value
 // or one of only whitespace, a bool value typed as its own word, a word with
 // whitespace around it, the help flag or the version flag among them, each
-// run as the process runs it: the error and its hint, or the help card or
+// run as the process runs it: the error and its hint, or the help page or
 // version printed, and the requests made. Not parallel: it sets the process
 // environment and the captured command line.
 func TestCommandLineRowsGiveTheirResult(t *testing.T) {
@@ -113,10 +114,9 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 	rec := bodyRecorderEnv(t)
 
 	const (
-		dashHint  = bareDashHint
-		getPod    = "rancher get pod [options] [name]"
-		getPodErr = "rancher get pod [name]"
-		root      = "rancher [global options] [command [command options]]"
+		dashHint = bareDashHint
+		getPod   = "rancher get pod [options] [name]"
+		root     = "rancher [global options] [command [command options]]"
 	)
 	local := []string{"--cluster", "local"}
 	get := append([]string{"get", "pods"}, local...)
@@ -153,21 +153,21 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"help typed before the dash at a leaf", line("get", "pods", "--help", "-", "x"), helpCard(getPod)},
 		{"the version typed before the dash", line("--version", "-", "get"), versionOut},
 		{"an unknown command before the dash", line("-o", "json", "get", "nosuch", "-", "x"), unknownCommand("nosuch")},
-		{"an undefined flag before the dash", line("get", "pods", "--bogus", "-", "x"), urfaveError("flag provided but not defined: -bogus")},
+		{"an undefined flag before the dash", line("get", "pods", "--bogus", "-", "x"), undefinedFlagError("flag provided but not defined: -bogus")},
 		{"an undefined flag after the dash", line("get", "pods", "-", "--bogus"), droppedRefused("--bogus")},
 		{"a bool flag with a space as the value", line("delete", "namespace", "ns1", "--cluster", "local", "--apply", "--yes= ", "-o", "json"), emptyBoolRefused("--yes")},
 		{"a bool flag with a tab as the value", line("create", "namespace", "ns1", "--cluster", "local", "--apply=\t", "-o", "json"), emptyBoolRefused("--apply")},
 		{"a blank bool value then help", with(get, "--yes= ", "--help"), emptyBoolRefused("--yes")},
-		{"help then a blank bool value", with(get, "--help", "--yes= "), helpCard(getPodErr)},
+		{"help then a blank bool value", with(get, "--help", "--yes= "), helpCard(getPod)},
 		{"a blank help value", with(get, "--help= "), emptyBoolRefused("--help")},
 		{"a blank help value then a dash and a word", with(get, "--help= ", "-", "x"), droppedRefused("x")},
-		{"help, a blank bool value, then a dash and a word", with(get, "--help", "--yes= ", "-", "x"), helpCard(getPodErr)},
+		{"help, a blank bool value, then a dash and a word", with(get, "--help", "--yes= ", "-", "x"), helpCard(getPod)},
 		{"help then a blank bool value at the root", line("--help", "--yes= "), helpCard(root)},
 		{"help turned off then a blank bool value at the root", line("--help", "--help=false", "--yes= "), emptyBoolRefused("--yes")},
 		{"an empty help value", with(get, "--help="), helpCard(getPod)},
 		{"a blank bool value ahead of the command, then help", with(line("--dry-run= "), append(get, "--help")...), emptyBoolRefused("--dry-run")},
 		{"an unknown command then a blank bool value", line("nosuch", "--yes= "), unknownCommand("nosuch")},
-		{"an undefined flag then a blank bool value", with(get, "--bogus", "--yes= "), urfaveError("flag provided but not defined: -bogus")},
+		{"an undefined flag then a blank bool value", with(get, "--bogus", "--yes= "), undefinedFlagError("flag provided but not defined: -bogus")},
 		{"a blank bool value then an unknown command", line("--yes= ", "nosuch"), emptyBoolRefused("--yes")},
 		{"a blank bool value then the version flag", line("--yes= ", "--version"), emptyBoolRefused("--yes")},
 		{"a blank bool value then an undefined flag", with(get, "--yes= ", "--bogus"), emptyBoolRefused("--yes")},
@@ -191,9 +191,9 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"a padded command name", line(" get", "pods"), unknownCommand(" get")},
 		{"a dash and a symbol is an argument", with(get, "-€"), refused("--namespace is required when you give the name of one pod", "")},
 		{"a dash and a symbol, a dash and a word", with(get, "-€", "-", "x"), refused("get pod takes at most 1 argument ([name]); unexpected arguments '-' 'x'", "rancher get pod --help")},
-		{"an undefined flag after a bool value as its own word", with(get, "--dry-run", "false", "--bogus"), urfaveError("flag provided but not defined: -bogus")},
-		{"an undefined flag then help after a bool value", with(get, "--dry-run", "false", "--bogus", "--help"), urfaveError("flag provided but not defined: -bogus")},
-		{"help then an undefined flag", with(get, "--help", "--dry-run", "false", "--bogus"), helpCard(getPodErr)},
+		{"an undefined flag after a bool value as its own word", with(get, "--dry-run", "false", "--bogus"), undefinedFlagError("flag provided but not defined: -bogus")},
+		{"an undefined flag then help after a bool value", with(get, "--dry-run", "false", "--bogus", "--help"), undefinedFlagError("flag provided but not defined: -bogus")},
+		{"help then an undefined flag", with(get, "--help", "--dry-run", "false", "--bogus"), helpCard(getPod)},
 		{"a dash then help", with(get, "-", "--help"), droppedRefused("--help")},
 		{"a dash, a word, then help", with(get, "-", "x", "--help"), droppedRefused("x", "--help")},
 		{"the version flag then a dash after the command", with(append([]string{"--version"}, get...), "-", "x"), versionOut},
@@ -206,7 +206,7 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 			refused("get pod: 'false' was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher get pod --help")},
 		{"a bool value as its own word and a format that does not exist", with(get, "--dry-run", "false", "-o", "bogus"),
 			refused("get pod: 'false' was typed after the bool flag --dry-run"+boolRule("--dry-run"), "rancher get pod --help")},
-		{"a dash after the hidden completion command", line("__completion", "-", "x"), unknownCommand("-")},
+		{"a dash after an unknown command", line("nosuch", "-", "x"), unknownCommand("nosuch")},
 		{"a dash last is the name to create", line("create", "namespace", "--cluster", "local", "--apply", "-o", "json", " - "),
 			lineWant{requests: []string{
 				"POST /k8s/clusters/local/api/v1/namespaces?dryRun=All&fieldManager=cli.rancher.io",
@@ -324,11 +324,11 @@ func TestAPaddedBoolValueIsRefusedBeforeThePasswordIsRead(t *testing.T) {
 
 // TestBoolRefusalsRenderInTheFormatAndColorTheLineSelects asserts that the
 // refusals of an empty bool value and of a bool value typed as its own word
-// render in the output format and color the line selects, read as urfave
-// reads them: a "--" typed before the command name does not hide them, and
-// neither does an error urfave reports before they are typed, nor a root or
-// group line that ends at an unknown command, help or the version; for
-// those the line scan finds them. Not parallel: it sets the process
+// render in the output format and color the line selects, read from the whole
+// line: a "--" typed before the command name does not hide them, and
+// neither does a flag error the dispatcher reports before they are typed, nor
+// a root or group command line that ends at an unknown command, a help flag or
+// the version flag; for those the scan of the captured command line finds them. Not parallel: it sets the process
 // environment and the captured command line.
 func TestBoolRefusalsRenderInTheFormatAndColorTheLineSelects(t *testing.T) {
 	restoreRawArgv(t)

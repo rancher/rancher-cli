@@ -11,7 +11,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
-	ucli "github.com/urfave/cli/v3"
 )
 
 func TestEnumCandidatesSpaceForm(t *testing.T) {
@@ -407,10 +406,10 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 func TestFlagNameCandidatesDedupeSharedAlias(t *testing.T) {
 	t.Parallel()
 	// Two flags with different primaries but sharing short alias "x".
-	cmd := &ucli.Command{
-		Flags: []ucli.Flag{
-			&ucli.StringFlag{Name: "extra", Aliases: []string{"x"}},
-			&ucli.StringFlag{Name: "extend", Aliases: []string{"x"}},
+	cmd := &Command{
+		Flags: []*Flag{
+			{Name: "extra", Kind: stringFlag, Aliases: []string{"x"}},
+			{Name: "extend", Kind: stringFlag, Aliases: []string{"x"}},
 		},
 	}
 	got := flagNameCandidates(cmd, "-")

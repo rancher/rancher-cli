@@ -14,7 +14,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 )
 
@@ -23,10 +22,10 @@ const outdatedHint = "The rancher completion script in this shell is out of date
 
 // runLineAsMain runs words, the command line after the program name, the way
 // main does: OutdatedCompletionScript first and, only when it reports false,
-// CaptureArgv and Run on the argv SanitizedArgs hands urfave. It returns what
+// CaptureArgv and Run on the whole command line. It returns what
 // reached stdout, whether the line stopped before the command tree, and what
 // Run returned.
-func runLineAsMain(t *testing.T, root *ucli.Command, words []string) (string, bool, error) {
+func runLineAsMain(t *testing.T, root *cli.Command, words []string) (string, bool, error) {
 	t.Helper()
 	var out bytes.Buffer
 	if cli.OutdatedCompletionScript(words, &out) {
@@ -35,7 +34,7 @@ func runLineAsMain(t *testing.T, root *ucli.Command, words []string) (string, bo
 	cli.CaptureArgvForTest(words)
 	root.Writer = &out
 	root.ErrWriter = io.Discard
-	err := root.Run(t.Context(), cli.SanitizedArgsForTest(append([]string{"rancher"}, words...)))
+	err := root.Run(t.Context(), append([]string{"rancher"}, words...))
 	return out.String(), false, err
 }
 
@@ -43,7 +42,7 @@ func runLineAsMain(t *testing.T, root *ucli.Command, words []string) (string, bo
 // the command at path (empty for the root): each ends with
 // --generate-shell-completion and none opens with the protocol marker. They
 // cover the flag alone after the path, a partial word, a "--" (after which
-// urfave runs the command it reaches), a bare "-", global flags before the
+// the command it reaches runs), a bare "-", global flags before the
 // command name, a flag after it, the current-word field, and the marker
 // somewhere other than first. At the root that last line opens with the
 // marker, so it is left out.
@@ -69,10 +68,10 @@ func outdatedLines(path []string) [][]string {
 
 // groupPaths returns the command path of the root (empty) and of every
 // command in root that has subcommands.
-func groupPaths(root *ucli.Command) [][]string {
+func groupPaths(root *cli.Command) [][]string {
 	paths := [][]string{nil}
-	var walk func(c *ucli.Command, path []string)
-	walk = func(c *ucli.Command, path []string) {
+	var walk func(c *cli.Command, path []string)
+	walk = func(c *cli.Command, path []string) {
 		if len(c.Commands) == 0 {
 			return
 		}

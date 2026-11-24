@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,7 +8,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 )
 
@@ -36,7 +34,6 @@ func TestConfigDeleteServerThroughRootWritesNoPin(t *testing.T) {
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "config", "delete-server", "acme"}))
 
 	_, statErr := os.Stat(config.PinPath(dir))

@@ -9,7 +9,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // TestEveryLeafCarriesItsDescriptor asserts that every command of the built
@@ -44,20 +43,20 @@ func TestEveryLeafCarriesItsDescriptor(t *testing.T) {
 // TestALeafWithoutADescriptorIsAnInternalError asserts that a line that
 // reaches a leaf built without a Descriptor and runs it is not let through
 // unchecked: it fails with a GENERIC error naming the command, exit 1,
-// written to the error writer. A parse error, help or version urfave
-// reaches first wins, as it does over every refusal.
+// written to the error writer. A flag error, a help page or the version the
+// command line reaches first wins, as it does over every refusal.
 func TestALeafWithoutADescriptorIsAnInternalError(t *testing.T) {
 	restoreRawArgv(t)
-	newRoot := func() *ucli.Command {
-		return &ucli.Command{
+	newRoot := func() *Command {
+		return link(&Command{
 			Name:    "rancher",
 			Version: "v-test",
-			Commands: []*ucli.Command{{
+			Commands: []*Command{{
 				Name:   "bare",
-				Flags:  []ucli.Flag{&ucli.BoolFlag{Name: "apply"}},
-				Action: func(context.Context, *ucli.Command) error { return nil },
+				Flags:  []*Flag{{Name: "apply", Kind: boolFlag}},
+				Action: func(context.Context, *Command, *Input) error { return nil },
 			}},
-		}
+		})
 	}
 
 	ce, wholeLine := lineRefusal(parseLine(newRoot(), []string{"bare", "--apply", "false"}))

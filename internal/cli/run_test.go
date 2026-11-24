@@ -2,28 +2,32 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
-// TestRunRefusesALineBeforeUrfaveSetsTheWriters asserts that a line refused
-// before urfave parses it is written to the package error writer Run sets
-// on a root that has none: the error decodes from the envelope, VALIDATION
-// at exit 2, with no panic. The package writer is replaced by a buffer, and
-// not a pipe, since it keeps the value it had when the package loaded. Not
-// parallel: it replaces the package writer and sets the captured command
-// line.
-func TestRunRefusesALineBeforeUrfaveSetsTheWriters(t *testing.T) {
+// TestRunWritesARefusedLineToTheProcessErrorStream asserts that a line
+// refused before the command tree acts on it is written to the process's
+// standard error when the root has no error writer: the error decodes from
+// the envelope, VALIDATION at exit 2, with no panic. Standard error is
+// replaced by a file. Not parallel: it replaces os.Stderr and sets the
+// captured command line.
+func TestRunWritesARefusedLineToTheProcessErrorStream(t *testing.T) {
 	restoreRawArgv(t)
-	orig := ucli.ErrWriter
-	t.Cleanup(func() { ucli.ErrWriter = orig })
-	var errOut bytes.Buffer
-	ucli.ErrWriter = &errOut
+	orig := os.Stderr
+	f, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
+	require.NoError(t, err)
+	os.Stderr = f
+	t.Cleanup(func() {
+		os.Stderr = orig
+		_ = f.Close()
+	})
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -31,29 +35,53 @@ func TestRunRefusesALineBeforeUrfaveSetsTheWriters(t *testing.T) {
 	require.Nil(t, root.ErrWriter)
 
 	assert.Equal(t, 2, runMain(t, root, "get", "pods", "-", "x", "-o", "json"))
-	ce := renderedError(t, "json", errOut.String())
+	written, err := os.ReadFile(f.Name())
+	require.NoError(t, err)
+	ce := renderedError(t, "json", string(written))
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, bareDashMessage(0, "x", "-o", "json"), ce.Message)
 }
 
-// TestRunWithNoArgumentsRunsTheRootUnchanged asserts that Run called with a
-// nil or an empty argument list, with no program name to check, does what
-// root.Run does with it: the same exit code and the same output.
-func TestRunWithNoArgumentsRunsTheRootUnchanged(t *testing.T) {
-	restoreRawArgv(t)
+// TestRunSetsTheStreamsOfARootThatHasNone asserts that a root whose Reader,
+// Writer and ErrWriter are nil gets the process's standard input, output and
+// error from a run. The command line is a completion request that matches no
+// candidate and is captured first, as a process does: nothing is written.
+// Not parallel: it sets the process environment and the captured command
+// line.
+func TestRunSetsTheStreamsOfARootThatHasNone(t *testing.T) {
+	exitEnv(t)
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	require.Nil(t, root.Reader)
+	require.Nil(t, root.Writer)
+	require.Nil(t, root.ErrWriter)
+
+	args := []string{"rancher", protoSentinel, curPrefix + "zzz-no-such-word", completionFlag}
+	CaptureArgv(args[1:])
+	require.NoError(t, root.Run(t.Context(), args))
+	assert.Same(t, os.Stdin, root.Reader)
+	assert.Same(t, os.Stdout, root.Writer)
+	assert.Same(t, os.Stderr, root.ErrWriter)
+}
+
+// TestRunWithNoArgumentsShowsTheRootHelpPage asserts that Run called with a
+// nil or an empty argument list, with no program name to check, writes the
+// help page of the root, byte for byte as testdata/help/rancher.txt records
+// it, to standard output and nothing to standard error, and exits 0. Not
+// parallel: it sets the process environment and the captured command line.
+func TestRunWithNoArgumentsShowsTheRootHelpPage(t *testing.T) {
+	goldenEnvironment(t)
+	want := readGolden(t, filepath.Join(goldenHelpDir, goldenName(nil)+".txt"))
 	for name, args := range map[string][]string{"nil": nil, "empty": {}} {
 		t.Run(name, func(t *testing.T) {
-			var gotOut, gotErr, wantOut, wantErr bytes.Buffer
-			got, err := BuildRoot("v-test")
+			var out, errOut bytes.Buffer
+			root, err := BuildRoot(goldenVersion)
 			require.NoError(t, err)
-			got.Writer, got.ErrWriter = &gotOut, &gotErr
-			want, err := BuildRoot("v-test")
-			require.NoError(t, err)
-			want.Writer, want.ErrWriter = &wantOut, &wantErr
+			root.Writer, root.ErrWriter = &out, &errOut
 
-			assert.Equal(t, exitCodeOf(want, want.Run(t.Context(), args)), Run(t.Context(), got, args))
-			assert.Equal(t, wantOut.String(), gotOut.String())
-			assert.Equal(t, wantErr.String(), gotErr.String())
+			assert.Zero(t, Run(t.Context(), root, args))
+			assert.Equal(t, want, out.String())
+			assert.Empty(t, errOut.String())
 		})
 	}
 }

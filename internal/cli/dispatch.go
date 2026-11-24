@@ -18,17 +18,16 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
-	ucli "github.com/urfave/cli/v3"
 )
 
-// universalShellCompleteFunc returns a urfave ShellCompleteFunc that
+// universalShellCompleteFunc returns the Complete function that
 // dispatches TAB completions in order: (1) arg-tail site parse, (2) enum
 // static, (3) config-local (ShellCompleter delegation), (4) live (gated on
 // completion.network). Installed on EVERY adapted leaf. lc is the
 // command's own live source owner, nil for a command without one.
-func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter, lc completion.Completer) ucli.ShellCompleteFunc {
-	return func(ctx context.Context, c *ucli.Command) {
-		// Strip command routing tokens from rawArgv using the invoked urfave
+func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter, lc completion.Completer) func(context.Context, *Command, *Input) {
+	return func(ctx context.Context, c *Command, _ *Input) {
+		// Strip command routing tokens from rawArgv using the invoked
 		// command's lineage depth - NOT the canonical descriptor name string.
 		// This handles leading global flags (--output json get pod) and alias
 		// invocations (inspect po → depth 2) correctly.
@@ -58,10 +57,7 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 
 		if site.Kind == SiteNameLike {
 			// rawCurrentWord holds the real current word (stripped from argv by
-			// CaptureArgv). urfave's DefaultCompleteWithFlags reads from
-			// cmd.Args().Slice(), which never sees the stripped word, so it
-			// always falls into the subcommand branch and emits nothing for
-			// leaves. Handle it here.
+			// CaptureArgv).
 			w := c.Root().Writer
 			for _, cand := range withoutGivenOnceFlags(nameLikeCandidates(c, rawCurrentWord), d.Flags, tail) {
 				if candidateToken(cand) == "--"+runtime.FlagProject {
@@ -95,9 +91,9 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 // persistent globals. When currentWord starts with "-", flag-name candidates
 // are returned (long-only when currentWord starts with "--"). Otherwise,
 // subcommand-name candidates are returned (a leaf with no subcommands emits
-// nothing). Format matches urfave's own output: "token:usage" when usage is
-// non-empty, bare "token" otherwise.
-func nameLikeCandidates(c *ucli.Command, currentWord string) []string {
+// nothing). Format: "token:usage" when usage is non-empty, bare "token"
+// otherwise.
+func nameLikeCandidates(c *Command, currentWord string) []string {
 	if strings.HasPrefix(currentWord, "-") {
 		return flagNameCandidates(c, currentWord)
 	}
@@ -157,8 +153,7 @@ func withoutGivenOnceFlags(cands []string, flags []runtime.ArgSpec, tail []strin
 	return out
 }
 
-// formatCandidate returns the "name:usage" or bare "name" completion line,
-// matching urfave's own printCommandSuggestions format (unexported upstream).
+// formatCandidate returns the "name:usage" or bare "name" completion line.
 // All three emission paths - printCompletionCandidate, flagNameCandidates,
 // and subcommandCandidates - call this so the format lives in one place.
 func formatCandidate(name, usage string) string {
@@ -172,12 +167,8 @@ func formatCandidate(name, usage string) string {
 // currentWord, covering ALL names (primary + aliases) of every de-duplicated
 // flag on the command and the root's persistent globals.
 //
-// Hidden-flag exclusion: only *ucli.BoolFlag.Hidden is checked because urfave's
-// Flag interface has no generic hidden-check method - urfave's own
-// printFlagSuggestions has the identical gap. No hidden non-bool global flag
-// exists today, but one added in the future would appear in suggestions.
-// This is a latent limitation inherited from urfave, not a local oversight.
-func flagNameCandidates(c *ucli.Command, currentWord string) []string {
+// No flag is hidden: every flag of the command is offered.
+func flagNameCandidates(c *Command, currentWord string) []string {
 	cur := strings.TrimLeft(currentWord, "-")
 	longOnly := strings.HasPrefix(currentWord, "--")
 
@@ -191,15 +182,7 @@ func flagNameCandidates(c *ucli.Command, currentWord string) []string {
 		if slices.Contains(root.Flags, f) && !commandAcceptsGlobalFlag(c, f.Names()[0]) {
 			continue
 		}
-		// Skip hidden bool flags (matches urfave's printFlagSuggestions behavior;
-		// see doc comment above for the inherited limitation on other flag types).
-		if bf, ok := f.(*ucli.BoolFlag); ok && bf.Hidden {
-			continue
-		}
-		usage := ""
-		if dg, ok := f.(ucli.DocGenerationFlag); ok {
-			usage = dg.GetUsage()
-		}
+		usage := f.Usage
 		for _, name := range f.Names() {
 			count := utf8.RuneCountInString(name)
 			if longOnly && count == 1 {
@@ -227,14 +210,11 @@ func flagNameCandidates(c *ucli.Command, currentWord string) []string {
 }
 
 // subcommandCandidates returns subcommand-name candidates for a non-flag
-// currentWord, prefix-filtered by currentWord. Hidden subcommands are skipped.
-// A leaf with no subcommands returns nil.
-func subcommandCandidates(c *ucli.Command, currentWord string) []string {
+// currentWord, prefix-filtered by currentWord. A leaf with no subcommands
+// returns nil.
+func subcommandCandidates(c *Command, currentWord string) []string {
 	var out []string
 	for _, sub := range c.Commands {
-		if sub.Hidden {
-			continue
-		}
 		if !strings.HasPrefix(sub.Name, currentWord) {
 			continue
 		}
@@ -248,14 +228,14 @@ func subcommandCandidates(c *ucli.Command, currentWord string) []string {
 // with the same primary name. When c is the root itself, only c.Flags is used.
 //
 // Latent gap: only c and c.Root() are merged - intermediate ancestor commands
-// in the lineage are skipped. urfave's own flag resolution walks the full
-// Lineage(), so a flag defined on an intermediate group node (not a leaf, not
-// root) resolves at runtime but never appears in completion suggestions. No
-// group node in the current tree sets its own Flags, so this is latent.
-func allFlagsDeduped(c *ucli.Command) []ucli.Flag {
+// in the lineage are skipped. A flag defined on an intermediate group node
+// (not a leaf, not root) resolves at runtime but never appears in completion
+// suggestions. No group node in the current tree sets its own Flags, so this
+// is latent.
+func allFlagsDeduped(c *Command) []*Flag {
 	seen := make(map[string]bool)
-	var out []ucli.Flag
-	addFlag := func(f ucli.Flag) {
+	var out []*Flag
+	addFlag := func(f *Flag) {
 		names := f.Names()
 		if len(names) == 0 {
 			return
@@ -940,10 +920,10 @@ func kindForDescriptor(d runtime.Descriptor) (kinds.Kind, bool) {
 }
 
 // stripRoutingPrefixByCmd removes command routing tokens from argv using the
-// invoked urfave command's Lineage depth. This correctly handles:
+// invoked command's Lineage depth. This correctly handles:
 //   - alias invocations: `inspect po arg` (c.Lineage depth=2, skip "inspect","po")
 //   - leading global flags: `--output json get pod --cluster x` (skip 2 non-flag tokens)
-func stripRoutingPrefixByCmd(argv []string, c *ucli.Command) []string {
+func stripRoutingPrefixByCmd(argv []string, c *Command) []string {
 	// Lineage returns [leaf, ..., root]. depth = non-root levels.
 	depth := len(c.Lineage()) - 1
 	return stripRoutingPrefixByDepth(argv, depth)
@@ -951,7 +931,7 @@ func stripRoutingPrefixByCmd(argv []string, c *ucli.Command) []string {
 
 // stripRoutingPrefixByDepth skips `depth` non-flag routing tokens from argv,
 // transparently consuming flag tokens (using globalArgSpecs for arity).
-// Used by stripRoutingPrefixByCmd and directly testable without a *ucli.Command.
+// Used by stripRoutingPrefixByCmd and directly testable without a *Command.
 func stripRoutingPrefixByDepth(argv []string, depth int) []string {
 	if depth <= 0 {
 		return argv
@@ -959,7 +939,7 @@ func stripRoutingPrefixByDepth(argv []string, depth int) []string {
 	count := 0
 	i := 0
 	for i < len(argv) && count < depth {
-		// urfave reads each word with the whitespace around it trimmed.
+		// Each argument is read with the whitespace around it trimmed.
 		arg := strings.TrimSpace(argv[i])
 		if strings.HasPrefix(arg, "-") {
 			// Flag token: skip it plus its value if it takes one.

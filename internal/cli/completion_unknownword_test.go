@@ -28,7 +28,7 @@ func TestCompletionAfterUnknownWordOffersNothing(t *testing.T) {
 	require.NoError(t, err)
 	paths := [][]string{nil}
 	for _, c := range root.Commands {
-		if !c.Hidden && len(c.VisibleCommands()) > 0 {
+		if len(c.VisibleCommands()) > 0 {
 			paths = append(paths, []string{c.Name})
 		}
 	}

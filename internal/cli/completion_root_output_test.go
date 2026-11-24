@@ -14,8 +14,9 @@ var outputFormatCandidates = []string{"table", "wide", "json", "yaml", "name", "
 
 // TestRootSpaceFormOutputCompletion: `rancher -o <TAB>` (space form, empty
 // current word) must emit exactly the output-format candidate set - not
-// command names. Before the fix, rootShellComplete always routed through
-// nameLikeCandidates, so a flag-value site at root listed top-level commands.
+// command names. Before the fix, the Complete function of the root always
+// routed through nameLikeCandidates: a flag-value site at root listed
+// top-level commands.
 func TestRootSpaceFormOutputCompletion(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")

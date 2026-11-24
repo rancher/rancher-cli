@@ -206,7 +206,7 @@ func TestNoNetworkOnStaticSite(t *testing.T) {
 }
 
 // TestSchemaVerbFlagValueCompletionSurfaces drives `schema --verb <TAB>`
-// through the real Adapt-installed ShellComplete callback (BuildRoot +
+// through the Complete function of the command (BuildRoot +
 // root.Run, a marked line): the flag-value site must surface the descriptor's
 // --verb enum via the layer-1 enumCandidates path - offline, sorted, exactly
 // the enum set. Hermetic: no config file, network gate off, file credential
@@ -230,7 +230,7 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+	require.NoError(t, root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...)))
 
 	// The expected set is the descriptor's own enum (sorted, as
 	// resolveStaticEnum emits) - no third hand-copied verb list; the enum's
@@ -249,7 +249,7 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 }
 
 // TestAuthGetTokenAuthFlowCompletionSurfaces drives `auth get-token --auth-flow <TAB>`
-// through the real Adapt-installed ShellComplete callback: the flag-value site
+// through the Complete function of the command: the flag-value site
 // must surface the descriptor's --auth-flow enum offline, sorted, exactly the
 // enum set. Hermetic: no config file, network gate off, file credential store.
 func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
@@ -271,7 +271,7 @@ func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+	require.NoError(t, root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...)))
 
 	var want []string
 	for _, f := range token.NewTokenCommand(t.TempDir(), nil, nil).Describe().Flags {
@@ -287,7 +287,7 @@ func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
 }
 
 // TestTokenShimAuthFlowCompletionSurfaces drives `token --auth-flow <TAB>`
-// through the real Adapt-installed ShellComplete callback: the flag-value site
+// through the Complete function of the command: the flag-value site
 // must surface the shim descriptor's --auth-flow enum offline, sorted, exactly
 // the enum set. Hermetic: no config file, network gate off, file credential store.
 func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
@@ -309,7 +309,7 @@ func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
+	require.NoError(t, root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...)))
 
 	var want []string
 	for _, f := range token.NewLegacyTokenCommand(t.TempDir(), nil, nil).Describe().Flags {
@@ -325,7 +325,7 @@ func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
 }
 
 // TestSchemaPositionalCompletionSurfaces drives schema's selector
-// candidates through the real Adapt-installed ShellComplete callback
+// candidates through the Complete function of the command
 // (BuildRoot + root.Run), the same wiring path the use-context callback tests
 // assert. The candidates come from schemaCmd.CompleteArgs via the config-local
 // dispatch layer; no network is involved. Multi-token selector candidates

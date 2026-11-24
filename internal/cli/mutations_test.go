@@ -2,14 +2,12 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // errEnvelope decodes the {kind:"Error", data:{error:{...}}} envelope written
@@ -24,7 +22,7 @@ type errEnvelope struct {
 	} `json:"data"`
 }
 
-// TestCreateResourceShortFlag exercises the real urfave tree: `create resource
+// TestCreateResourceShortFlag exercises the real command tree: `create resource
 // -f -` must parse the `-f` alias, read the manifest from stdin, and fail with
 // VALIDATION on the unknown kind - proving the alias is wired end-to-end.
 func TestCreateResourceShortFlag(t *testing.T) {
@@ -39,8 +37,6 @@ func TestCreateResourceShortFlag(t *testing.T) {
 	root.Reader = bytes.NewBufferString("apiVersion: x/v1\nkind: Widget\nmetadata:\n  name: w\n")
 	// The default handler calls os.Exit on a non-zero ExitCoder, which would kill
 	// the test process; keep the error as a return value instead.
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	runErr := root.Run(t.Context(), []string{
 		"rancher", "--config", dir, "-o", "json", "create", "resource", "-f", "-", "--dry-run",
 	})
@@ -53,7 +49,7 @@ func TestCreateResourceShortFlag(t *testing.T) {
 }
 
 // TestReadOnlyModeRefusesMutatingBeforeDispatch proves the read-only gate
-// fires from the real urfave tree, before Plan (which performs real network
+// fires from the real command tree, before Plan (which performs real network
 // calls unconditionally) ever runs - no -f/--apply is supplied, so if the
 // gate did not fire first, some other VALIDATION (missing input) would
 // surface instead.
@@ -67,8 +63,6 @@ func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &errBuf
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	runErr := root.Run(t.Context(), []string{"rancher", "--config", dir, "-o", "json", "create", "resource"})
 	require.Error(t, runErr)
 
@@ -79,7 +73,7 @@ func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {
 	assert.Contains(t, env.Data.Error.Message, "create resource")
 }
 
-// TestPatchFlagSpellings asserts on the real urfave tree that a generated
+// TestPatchFlagSpellings asserts on the real command tree that a generated
 // patch command takes kubectl's spellings of its two input flags: -p is
 // --patch and --patch-file names the patch file, each reaching the leaf
 // (the patch is decoded or the file read), while -f and --filename are

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"slices"
 	"strings"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -24,8 +22,7 @@ func surfaceRun(t *testing.T, scriptArgs []string) string {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer, root.ErrWriter = &out, io.Discard
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-	_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+	_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 	return out.String()
 }
 

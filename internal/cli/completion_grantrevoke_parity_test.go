@@ -67,7 +67,7 @@ func runCompletion(t *testing.T, words []string, currentWord string) []string {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+	_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 	text := strings.TrimRight(out.String(), "\n")
 	if text == "" {
 		return nil

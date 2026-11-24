@@ -19,7 +19,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // requestRecorder is a server that records the path of every request it
@@ -104,14 +103,14 @@ func renderedError(t *testing.T, format, stderr string) cliError {
 // runOnce runs argv through root, with the command line captured as the
 // process entry point captures it, and returns stderr and the exit code.
 // root must be one no earlier run has used.
-func runOnce(t *testing.T, root *ucli.Command, argv []string) (stderr string, code int) {
+func runOnce(t *testing.T, root *Command, argv []string) (stderr string, code int) {
 	t.Helper()
 	_, stderr, code = runCaptured(t, root, argv)
 	return stderr, code
 }
 
 // runCaptured is runOnce that also returns stdout.
-func runCaptured(t *testing.T, root *ucli.Command, argv []string) (stdout, stderr string, code int) {
+func runCaptured(t *testing.T, root *Command, argv []string) (stdout, stderr string, code int) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	root.Writer = &out
@@ -518,7 +517,7 @@ func TestEveryLeafCompletesNothingPastItsArguments(t *testing.T) {
 	leaves, _ := commandPaths(wr.root("v-test"), nil)
 	require.Len(t, leaves, len(byName))
 
-	complete := func(t *testing.T, root *ucli.Command, words []string, cur string) {
+	complete := func(t *testing.T, root *Command, words []string, cur string) {
 		t.Helper()
 		scriptArgs := append(append([]string{protoSentinel}, words...), curPrefix+cur, "--generate-shell-completion")
 		CaptureArgv(scriptArgs)
@@ -526,7 +525,7 @@ func TestEveryLeafCompletesNothingPastItsArguments(t *testing.T) {
 		root.Writer = &out
 		root.ErrWriter = &out
 		root.Reader = strings.NewReader("")
-		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 		label := "rancher " + strings.Join(words, " ") + " " + cur + "<TAB>"
 		assert.Empty(t, out.String(), label)
 		assert.Empty(t, rec.take(), "%s: no request", label)
@@ -573,7 +572,7 @@ func TestSchemaSecondWordCompletesThroughTheBuiltRoot(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &out
-	_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+	_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 	assert.Equal(t, want, strings.Fields(out.String()))
 }
 
@@ -608,7 +607,7 @@ func TestSchemaKindCompletesKindsOnly(t *testing.T) {
 		var out bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = &out
-		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 		return strings.Fields(out.String())
 	}
 

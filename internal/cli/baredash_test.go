@@ -330,8 +330,9 @@ func TestBareDashLinesTheRuleLeavesAlone(t *testing.T) {
 // TestScanTailStopsAtABareDash asserts how scanTail reads a "-": a word
 // that is only "-" once trimmed is a positional argument, kept as "-",
 // and every word after it is dropped, kept as typed; a "-" as a flag's
-// separate value is a value; a "-" after "--" or after a word urfave reads
-// as a number is a plain argument, and the words after it are kept.
+// separate value is a value; a "-" after "--" or after a word that starts with
+// a dash and a character that is not a letter (as -1 does) is a plain
+// argument, and the words after it are kept.
 func TestScanTailStopsAtABareDash(t *testing.T) {
 	t.Parallel()
 	flags := map[string]bool{"f": true, "dry-run": false}
@@ -395,7 +396,7 @@ func TestBareDashCompletesNothing(t *testing.T) {
 		root.Writer = &out
 		root.ErrWriter = &out
 		root.Reader = strings.NewReader("")
-		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 		return out.String(), rec.take()
 	}
 	for _, tc := range []struct {

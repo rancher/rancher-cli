@@ -10,8 +10,8 @@ import (
 
 // TestGetGroupCompletionListsAliases asserts the alias-aware override: `get
 // <TAB>` must list each kind leaf's Aliases alongside its canonical name -
-// urfave's own default listing (printCommandSuggestions) prints only the
-// canonical Name, so `po<TAB>` would otherwise complete solely toward "pod".
+// a listing of the canonical Name alone would leave `po<TAB>` completing
+// solely toward "pod".
 func TestGetGroupCompletionListsAliases(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -54,7 +54,7 @@ func TestInspectGroupCompletionHasAliasOverride(t *testing.T) {
 	require.NoError(t, err)
 	inspectGroup := findCommand(root.Commands, "inspect")
 	require.NotNil(t, inspectGroup)
-	assert.NotNil(t, inspectGroup.ShellComplete, "inspect leaves now carry aliases; the override must be installed for alias dispatch")
+	assert.NotNil(t, inspectGroup.Complete, "inspect leaves now carry aliases; the override must be installed for alias dispatch")
 }
 
 // TestInspectGroupCompletionListsAliases asserts the alias-aware override on the
@@ -75,8 +75,8 @@ func TestInspectGroupCompletionListsAliases(t *testing.T) {
 }
 
 // TestInspectAliasPodDispatchesToPod asserts that the "po" alias on the inspect
-// pod leaf routes to inspect pod: help output proves urfave dispatched via
-// the alias, not an unknown-command error.
+// pod leaf routes to inspect pod: help output proves the dispatcher chose the
+// leaf by the alias, not an unknown-command error.
 func TestInspectAliasPodDispatchesToPod(t *testing.T) {
 	t.Parallel()
 	root, err := BuildRoot("v-test")

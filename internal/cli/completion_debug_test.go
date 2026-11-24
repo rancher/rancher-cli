@@ -44,7 +44,7 @@ func runCompletionTraced(t *testing.T, words []string) (stdout, trace string) {
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+	_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 	return out.String(), traceBuf.String()
 }
 

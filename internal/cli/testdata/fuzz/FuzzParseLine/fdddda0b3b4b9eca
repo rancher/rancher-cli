@@ -1,0 +1,3 @@
+go test fuzz v1
+string("get\x00d\xb1rloyme\r\r\r\r\r\r\r\r\x00v")
+bool(true)

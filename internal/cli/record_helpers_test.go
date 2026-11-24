@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/telemetry"
@@ -79,24 +78,24 @@ type recordedRun struct {
 
 // runRecorded runs argv, the words after the program name, through run on root
 // with captured output and returns what it wrote and how it ended.
-func runRecorded(tb testing.TB, root *ucli.Command, argv ...string) recordedRun {
+func runRecorded(tb testing.TB, root *Command, argv ...string) recordedRun {
 	tb.Helper()
 	return runRecordedStdin(tb, root, "", argv...)
 }
 
 // runRecordedStdin is runRecorded with the text standard input gives.
-func runRecordedStdin(tb testing.TB, root *ucli.Command, stdin string, argv ...string) recordedRun {
+func runRecordedStdin(tb testing.TB, root *Command, stdin string, argv ...string) recordedRun {
 	tb.Helper()
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter, root.Reader = &out, &errOut, strings.NewReader(stdin)
 	ctx, cancel := context.WithTimeout(tb.Context(), 60*time.Second)
 	defer cancel()
-	res := run(ctx, root, append([]string{"rancher"}, argv...))
+	res := plainResult(run(ctx, root, append([]string{"rancher"}, argv...)))
 	return recordedRun{stdout: out.String(), stderr: errOut.String(), res: res}
 }
 
 // newRoot builds the command tree.
-func newRoot(tb testing.TB) *ucli.Command {
+func newRoot(tb testing.TB) *Command {
 	tb.Helper()
 	root, err := BuildRoot("v-test")
 	require.NoError(tb, err)
@@ -171,11 +170,11 @@ func contextWithCancel(tb testing.TB) (context.Context, context.CancelFunc) {
 }
 
 // runWithContext is runRecorded with the context of the caller.
-func runWithContext(tb testing.TB, ctx context.Context, root *ucli.Command, argv ...string) recordedRun {
+func runWithContext(tb testing.TB, ctx context.Context, root *Command, argv ...string) recordedRun {
 	tb.Helper()
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter, root.Reader = &out, &errOut, strings.NewReader("")
-	res := run(ctx, root, append([]string{"rancher"}, argv...))
+	res := plainResult(run(ctx, root, append([]string{"rancher"}, argv...)))
 	return recordedRun{stdout: out.String(), stderr: errOut.String(), res: res}
 }
 

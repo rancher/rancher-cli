@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/cli"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // TestRenderedErrorReachesMainWithEmptyMessage asserts that a command
@@ -43,15 +43,11 @@ func runAsMain(t *testing.T, argv ...string) (string, int) {
 
 // TestFailingInvocationsWriteTheirErrorOnce asserts that for each failing
 // invocation the error text reaches stderr exactly once, counting what
-// urfave writes, what the command pipeline renders and what Run writes for
-// an error nothing rendered. Not parallel: it replaces urfave's error
-// writer.
+// the dispatcher renders, what the command pipeline renders and what Run
+// writes for an error nothing rendered. Not parallel: it sets the captured
+// command line.
 func TestFailingInvocationsWriteTheirErrorOnce(t *testing.T) {
-	origWriter := ucli.ErrWriter
-	t.Cleanup(func() {
-		ucli.ErrWriter = origWriter
-		cli.CaptureArgv(nil)
-	})
+	t.Cleanup(func() { cli.CaptureArgv(nil) })
 
 	const flagErr = "flag provided but not defined"
 	tests := []struct {
@@ -67,7 +63,7 @@ func TestFailingInvocationsWriteTheirErrorOnce(t *testing.T) {
 		{"unknown flag on a group, with no leaf command on the line, is named by position", []string{"get", "--bogus"}, "unknown flag at argument 2 after rancher", 1},
 		{"unknown flag on the root, with no leaf command on the line, is named by position", []string{"--bogus"}, "unknown flag at argument 1 after rancher", 1},
 		{"unknown command before an unknown flag", []string{"help", "--bogus"}, `unknown command "help"`, 1},
-		{"unknown flag on the hidden completion command, which has no descriptor, is named by position", []string{"__completion", "--bogus"}, "unknown flag at argument 2 after rancher", 1},
+		{"the double underscore completion word is an unknown command", []string{"__completion", "--bogus"}, `unknown command "__completion"`, 1},
 		{"unknown top-level command", []string{"nosuch"}, `unknown command "nosuch"`, 1},
 		{"unknown command in a group", []string{"get", "nosuch"}, `unknown command "nosuch"`, 1},
 		{"unknown name before --help on a group", []string{"get", "x", "--help"}, `unknown command "x"`, 1},
@@ -78,10 +74,7 @@ func TestFailingInvocationsWriteTheirErrorOnce(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var stderr bytes.Buffer
-			ucli.ErrWriter = &stderr
-			runErr, code := runAsMain(t, tt.argv...)
-			got := runErr + stderr.String()
+			got, code := runAsMain(t, tt.argv...)
 			wantCode := 2
 			if tt.want == 0 {
 				wantCode = 0
@@ -92,4 +85,25 @@ func TestFailingInvocationsWriteTheirErrorOnce(t *testing.T) {
 			assert.NotContains(t, got, "error (GENERIC)", "nothing reaches Run's rendering of an unrendered error")
 		})
 	}
+}
+
+// TestAFreshTreeRunAsAProcessWritesItsHelpToStdout asserts, for main run as a
+// process, that the help of the root reaches the process's standard output,
+// not standard error, with exit 0: a tree built by BuildRoot has no writers of
+// its own and takes the process's streams when it runs.
+func TestAFreshTreeRunAsAProcessWritesItsHelpToStdout(t *testing.T) {
+	t.Parallel()
+	env := []string{
+		"HOME=" + t.TempDir(),
+		"TMPDIR=" + t.TempDir(),
+		// A test binary built with -cover warns on stderr at exit
+		// when this is unset.
+		"GOCOVERDIR=" + t.TempDir(),
+		config.EnvConfigDir + "=" + t.TempDir(),
+		config.EnvCredentialStore + "=file",
+	}
+	stdout, stderr, code := runMainProcess(t, env, t.TempDir(), "--help")
+	assert.Zero(t, code)
+	assert.Empty(t, stderr)
+	assert.True(t, strings.HasPrefix(stdout, "NAME:"), "stdout: %q", stdout)
 }

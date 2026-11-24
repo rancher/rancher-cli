@@ -26,7 +26,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/telemetry"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // rootTimeout bounds the rootClient's HTTP requests. A package var (rather
@@ -625,7 +624,7 @@ type runDeps struct {
 // When bare is true the action skips resolveDeps, newClientFactory, and
 // newFileSource entirely and constructs the command with only version set.
 // Schema, completion, and wireEntry validation are unaffected.
-func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runDeps) runtime.Command) *ucli.Command {
+func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runDeps) runtime.Command) *Command {
 	// probe is the SAME zero-runDeps instance used for both Describe() and the
 	// ShellCompleter type-assert below - its dir field is permanently "". A
 	// completer wired here is later called with this exact probe at real
@@ -635,87 +634,73 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 	probe := make(runDeps{})
 	d := probe.Describe()
 	b := reg.Binding(d.Name)
-	cmd := &ucli.Command{
-		Name:        leafName(d.Name),
-		Aliases:     d.Aliases,
-		Usage:       d.Usage,
-		Description: primeDescription(d),
-		Metadata:    leafMetadata(d),
-		ArgsUsage:   argsUsage(d.Args),
-		Flags:       flagsFor(d),
-		// Slice flags receive one entry per occurrence: urfave's default
-		// comma-splitting would tear a value like `--set tags=a,b` into two
-		// entries. Only slice/map flags read this; single-value
-		// flags are untouched.
-		DisableSliceFlagSeparator: true,
-		OnUsageError:              onUsageError,
-		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
-			// Flags have already parsed successfully at this point, so the
-			// invocation's own --output value is trusted directly.
-			if ce := checkFlagValues(d.Flags, rawArgv, completionActive(), d.SecretInput); ce != nil {
-				runtime.WriteError(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")), "")
-				return ctx, exit(ce)
-			}
-			return ctx, nil
-		},
-		Action: func(ctx context.Context, c *ucli.Command) error {
-			io := buildIO(c)
-			if ce := emptyConfigFlag(c); ce != nil {
-				runtime.WriteError(c.Root().ErrWriter, io.Format, ce, errStyle(c, io.Color), "")
-				return exit(ce)
-			}
-			var cmd runtime.Command
-			if bare {
-				// A bare command that sets RemedyConfigDir resolves the
-				// directory only to name it; it opens nothing.
-				if d.RemedyConfigDir {
-					dir, err := config.ResolveDir(c.String("config"))
-					if err != nil {
-						return renderDepsError(c, io, err)
-					}
-					io.RemedyDir = remedyDirOf(d, cmdInput{c}, dir)
-				}
-				cmd = make(runDeps{version: version})
-			} else {
-				// One resolution: the directory the command opens is the
-				// one its remedies name, set before the config load, so a
-				// load error that carries a remedy names it.
-				dir, err := config.ResolveDir(c.String("config"))
+	cmd := leafCommand(d)
+	cmd.Before = func(ctx context.Context, c *Command, in *Input) error {
+		// Flags have already parsed successfully at this point, so the
+		// invocation's own --output value is trusted directly.
+		if ce := checkFlagValues(d.Flags, rawArgv, completionActive(), d.SecretInput); ce != nil {
+			runtime.WriteError(c.Root().ErrWriter, in.String("output"), ce, errStyle(c, in.String("color")), "")
+			return exit(ce)
+		}
+		return nil
+	}
+	cmd.Action = func(ctx context.Context, c *Command, in *Input) error {
+		io := buildIO(c, in)
+		if ce := emptyConfigFlag(in); ce != nil {
+			runtime.WriteError(c.Root().ErrWriter, io.Format, ce, errStyle(c, io.Color), "")
+			return exit(ce)
+		}
+		var cmd runtime.Command
+		if bare {
+			// A bare command that sets RemedyConfigDir resolves the
+			// directory only to name it; it opens nothing.
+			if d.RemedyConfigDir {
+				dir, err := config.ResolveDir(in.String("config"))
 				if err != nil {
 					return renderDepsError(c, io, err)
 				}
-				io.RemedyDir = remedyDirOf(d, cmdInput{c}, dir)
-				store, anchor, err := openDirectory(dir, d.SecretInput)
-				if err != nil {
-					return renderDepsError(c, io, err)
-				}
-				// The factory (a cluster lookup's warning) and the store (a
-				// loose-permission finding, a keychain degrade) are the drain
-				// handles for every notice recorded outside a Result, in that
-				// order - wired here so renderErr/renderResult can drain them
-				// ahead of rendering.
-				f := newClientFactory(dir, store)
-				sources := noticeSources{f}
-				if ns, ok := store.(runtime.NoticeSource); ok {
-					sources = append(sources, ns)
-				}
-				io.Notices = sources
-				io.ServerIdentity = f.Identity
-				io.Capability = newCapabilityChecker(f)
-				io.Projects = projectResolver{f}
-				view := experimentView()
-				cmd = make(runDeps{clients: f, roots: f, actions: f, nodeActions: f, cloudCreds: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
+				io.RemedyDir = remedyDirOf(d, in, dir)
 			}
-			addExperimentNotices(&io, d.Name)
-			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
-			if ce != nil {
-				return exit(ce)
+			cmd = make(runDeps{version: version})
+		} else {
+			// One resolution: the directory the command opens is the
+			// one its remedies name, set before the config load, so a
+			// load error that carries a remedy names it.
+			dir, err := config.ResolveDir(in.String("config"))
+			if err != nil {
+				return renderDepsError(c, io, err)
 			}
-			if status != 0 {
-				return ucli.Exit("", status)
+			io.RemedyDir = remedyDirOf(d, in, dir)
+			store, anchor, err := openDirectory(dir, d.SecretInput)
+			if err != nil {
+				return renderDepsError(c, io, err)
 			}
-			return nil
-		},
+			// The factory (a cluster lookup's warning) and the store (a
+			// loose-permission finding, a keychain degrade) are the drain
+			// handles for every notice recorded outside a Result, in that
+			// order - wired here so renderErr/renderResult can drain them
+			// ahead of rendering.
+			f := newClientFactory(dir, store)
+			sources := noticeSources{f}
+			if ns, ok := store.(runtime.NoticeSource); ok {
+				sources = append(sources, ns)
+			}
+			io.Notices = sources
+			io.ServerIdentity = f.Identity
+			io.Capability = newCapabilityChecker(f)
+			io.Projects = projectResolver{f}
+			view := experimentView()
+			cmd = make(runDeps{clients: f, roots: f, actions: f, nodeActions: f, cloudCreds: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f, experiments: view, upload: commandUpload(c, dir, version, view)})
+		}
+		addExperimentNotices(&io, d.Name)
+		status, ce := runtime.Run(ctx, cmd, in, io, b)
+		if ce != nil {
+			return exit(ce)
+		}
+		if status != 0 {
+			return statusExit(status)
+		}
+		return nil
 	}
 	installShellComplete(probe, cmd)
 	return cmd
@@ -767,14 +752,14 @@ func sameDirectory(a, b string) bool {
 }
 
 // emptyConfigFlag refuses a blank --config. The flag also reads
-// RANCHER_CLI_CONFIG_DIR, and urfave reports a value from the environment
-// as set: a variable set to "" is the shell's way to unset it, so a blank
-// value with the variable set to "" is not refused (a typed empty --config
-// then cannot be told apart and runs as the default directory); a value
-// equal to a blank variable is refused naming the variable.
-func emptyConfigFlag(c *ucli.Command) *clierr.Error {
-	v := c.String("config")
-	if !c.IsSet("config") || strings.TrimSpace(v) != "" {
+// RANCHER_CLI_CONFIG_DIR: a variable set to "" is the shell's way to unset
+// it, so a blank value with the variable set to "" is not refused (a typed
+// empty --config then cannot be told apart and runs as the default
+// directory); a value equal to a blank variable is refused naming the
+// variable.
+func emptyConfigFlag(in *Input) *clierr.Error {
+	v := in.String("config")
+	if !in.IsSet("config") && !in.fromEnv("config") || strings.TrimSpace(v) != "" {
 		return nil
 	}
 	env, set := os.LookupEnv(config.EnvConfigDir)

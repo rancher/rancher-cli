@@ -18,7 +18,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -282,7 +281,6 @@ func (h *day2Harness) run(t *testing.T, manifest string, args ...string) day2Run
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
 	root.Reader = strings.NewReader("")
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	argv := append([]string{"create", "resource", "-f", h.file, "-o", "json"}, args...)
 	CaptureArgv(argv)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -290,7 +288,7 @@ func (h *day2Harness) run(t *testing.T, manifest string, args ...string) day2Run
 	status := 0
 	if err := root.Run(ctx, append([]string{"rancher"}, argv...)); err != nil {
 		status = 1
-		if coder, ok := err.(ucli.ExitCoder); ok {
+		if coder, ok := err.(exitCoder); ok {
 			status = coder.ExitCode()
 		}
 	}
@@ -581,7 +579,6 @@ func runDay2Args(t *testing.T, args []string) day2Envelope {
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
 	root.Reader = strings.NewReader("")
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	argv := append(slices.Clone(args), "-o", "json")
 	CaptureArgv(argv)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)

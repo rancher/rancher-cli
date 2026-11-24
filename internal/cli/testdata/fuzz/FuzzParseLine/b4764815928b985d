@@ -1,0 +1,3 @@
+go test fuzz v1
+string("create\x00\x00\x00\x800\x00\x830\x00-A")
+bool(true)

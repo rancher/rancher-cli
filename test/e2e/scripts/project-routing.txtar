@@ -71,7 +71,7 @@ stdout 'namespace/proj-ns-with-project-label project label removed'
 exec rancher get namespace proj-ns-with-project-label --cluster testcluster -o json
 jsonquery stdout 'data.metadata.labels.field\.cattle\.io/projectId' ''
 
-# root-position --project reaches usage via urfave lineage (usage's own
+# root-position --project reaches usage as an inherited flag (usage's own
 # local --project flag is gone).
 # --project without --by returns member-namespace rows; rows derive from pods,
 # so a pod-less project yields an empty map - the by discriminator still

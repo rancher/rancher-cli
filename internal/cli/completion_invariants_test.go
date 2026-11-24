@@ -98,7 +98,7 @@ func TestCompletionNeverTouchesKeyring(t *testing.T) {
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	root.Writer = io.Discard
-	runErr := root.Run(t.Context(), cli.SanitizedArgsForTest(append([]string{"rancher"}, line...)))
+	runErr := root.Run(t.Context(), append([]string{"rancher"}, line...))
 	require.NoError(t, runErr, "completion must not fail when keyring is unavailable")
 	assert.Empty(t, stderr.String(), "completion must not write to stderr")
 	assert.Equal(t, int32(0), keyringOps.Load(), "completion must not contact the keyring")
@@ -149,11 +149,11 @@ func TestCompletionNoStderr(t *testing.T) {
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	root.Writer = io.Discard
-	runErr := root.Run(t.Context(), cli.SanitizedArgsForTest([]string{
+	runErr := root.Run(t.Context(), []string{
 		"rancher", "--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc",
 		"--rancher-completion-cur=",
 		"--generate-shell-completion",
-	}))
+	})
 	require.NoError(t, runErr, "completion must not exit nonzero")
 	assert.Empty(t, stderr.String(), "no stderr on any failure path (unreadable creds or unreachable server)")
 }
@@ -213,11 +213,11 @@ func TestCompletionAtMostTwoRequestsPerTab(t *testing.T) {
 	root.ErrWriter = io.Discard
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	_ = root.Run(ctx, cli.SanitizedArgsForTest([]string{
+	_ = root.Run(ctx, []string{
 		"rancher", "--rancher-completion-proto=2", "get", "pod", "--cluster", "prod", "--namespace",
 		"--rancher-completion-cur=kube-",
 		"--generate-shell-completion",
-	}))
+	})
 
 	assert.Equal(t, int32(2), hits.Load(), "exactly 2 HTTP requests for display-name resolution + namespace list")
 	assert.LessOrEqual(t, hits.Load(), int32(2), "at most 2 HTTP requests per TAB")
@@ -301,8 +301,8 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 
 	// run simulates the script: proto sentinel + words (flag last, no value) +
 	// --rancher-completion-cur=<currentWord> + --generate-shell-completion.
-	// CaptureArgvForTest processes the full script-shaped slice; SanitizedArgsForTest
-	// strips both protocol fields for urfave.
+	// CaptureArgvForTest processes the full script-shaped slice and strips both
+	// protocol fields from the words the parse reads.
 	run := func(t *testing.T, words []string, currentWord string) string {
 		t.Helper()
 		// Script-shaped request: proto sentinel + words + cur field + completion trigger.
@@ -314,8 +314,8 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 		var out bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = io.Discard
-		// root.Run receives sanitized args (proto sentinel stripped for urfave).
-		runArgv := cli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
+		// root.Run receives the whole request line; completion reads the words captured above.
+		runArgv := append([]string{"rancher"}, scriptArgs...)
 		_ = root.Run(t.Context(), runArgv)
 		return out.String()
 	}
@@ -432,10 +432,10 @@ func TestCompletionWritesNothingToDisk(t *testing.T) {
 	root.ErrWriter = io.Discard
 	// Capture runErr: a failed invocation must not masquerade as a no-write
 	// success.
-	runErr := root.Run(t.Context(), cli.SanitizedArgsForTest([]string{
+	runErr := root.Run(t.Context(), []string{
 		"rancher", "--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc", "--rancher-completion-cur=",
 		"--generate-shell-completion",
-	}))
+	})
 	require.NoError(t, runErr, "completion must not exit nonzero")
 	assert.Equal(t, before, hashDir(t, dir), "completion must write nothing (no prune-on-read or other writes)")
 }
@@ -443,7 +443,7 @@ func TestCompletionWritesNothingToDisk(t *testing.T) {
 // TestGlobalFlagSetsAgree asserts the 4-way lockstep agreement between the
 // three sources that must enumerate the same global flags:
 //   - registry.go GlobalFlags (schema metadata, canonical source)
-//   - internal/cli adapter.go + root.go root.Flags (live ucli flags, 11 total)
+//   - internal/cli adapter.go + root.go root.Flags (the flags of the built root, 11 total)
 //   - argtail.go globalArgSpecs (value-classification)
 //
 // If any source drifts - a flag added to adapter.go but not to globalArgSpecs,
@@ -471,12 +471,15 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 	}
 	sort.Strings(specNames)
 
-	// Extract canonical names from root.Flags (live ucli flags built by BuildRoot).
+	// Extract canonical names from root.Flags (the flags of the root BuildRoot builds).
 	// root.Flags = [debug, config] ++ GlobalFlags() - 12 total.
 	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
 	rootFlagNames := make([]string, 0)
 	for _, f := range root.Flags {
+		if f.Local {
+			continue
+		}
 		rootFlagNames = append(rootFlagNames, f.Names()[0])
 	}
 	sort.Strings(rootFlagNames)

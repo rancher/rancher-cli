@@ -9,7 +9,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/output/style"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // helpPage is the kind of help page to render.
@@ -37,7 +36,7 @@ const helpUsagePartial = `{{.FullName}}{{if .VisibleFlags}} [options]{{end}}{{if
 // the error of the flush. The page goes through one tab writer, which holds
 // the last lines until the end of the page; an error of those writes is
 // returned too.
-func renderHelpPage(w io.Writer, page helpPage, cmd *ucli.Command, s style.Style) error {
+func renderHelpPage(w io.Writer, page helpPage, cmd *Command, s style.Style) error {
 	var text string
 	switch page {
 	case helpPageRoot:
@@ -80,7 +79,7 @@ func helpFuncs(s style.Style) template.FuncMap {
 		"indent":              indentText,
 		"offset":              func(text string, fixed int) int { return len(text) + fixed },
 		"wrap":                wrapLines,
-		"flagRow":             helpFlagRow,
+		"flagRow":             (*Flag).helpRow,
 		"bold":                s.Bold,
 		"colonOffsetCommands": colonOffsetCommands,
 		"sortedCommands":      sortedCommands,
@@ -89,17 +88,17 @@ func helpFuncs(s style.Style) template.FuncMap {
 		"leafGlobalFlags":     leafGlobalFlags,
 		"groupGlobalFlags":    groupGlobalFlags,
 		"primeMark":           primeMark,
-		"colorPrimeMark":      func(cmd *ucli.Command, wrapped string) string { return colorPrimeMark(s, cmd, wrapped) },
-		"colorPrimeDescription": func(cmd *ucli.Command, wrapped string) string {
+		"colorPrimeMark":      func(cmd *Command, wrapped string) string { return colorPrimeMark(s, cmd, wrapped) },
+		"colorPrimeDescription": func(cmd *Command, wrapped string) string {
 			return colorPrimeDescription(s, cmd, wrapped)
 		},
 	}
 }
 
-// indentText returns text with spaces blanks added before it and after every
-// newline in it.
-func indentText(spaces int, text string) string {
-	pad := strings.Repeat(" ", spaces)
+// indentText returns text with n spaces before it and after every newline in
+// it.
+func indentText(n int, text string) string {
+	pad := strings.Repeat(" ", n)
 	return pad + strings.ReplaceAll(text, "\n", "\n"+pad)
 }
 
@@ -117,26 +116,23 @@ func wrapLines(text string, offset int) string {
 	return strings.Join(lines, "\n")
 }
 
-// helpFlagRow returns the row of flag f in an options list: the names, a tab
-// and the usage text, followed by the environment variables f reads. The
+// helpRow returns the row of flag f in an options list: the names, a tab
+// and the usage text, followed by the environment variable f reads. The
 // names are -x for a name of one character and --name for the others, each
 // followed by the placeholder; a flag that can be given more than once
 // repeats them in brackets. The placeholder is the text inside the first pair
 // of backticks of the usage text (the backticks are dropped from the text),
 // whether or not the flag takes a value; without a pair, a flag that takes a
 // value has the placeholder "string" and any other flag has none. No flag
-// shows a default value, and the variable names read the same on every OS.
-func helpFlagRow(f ucli.Flag) string {
-	df, ok := f.(ucli.DocGenerationFlag)
-	if !ok {
-		return ""
-	}
-	placeholder, usage := splitPlaceholder(df.GetUsage())
-	if placeholder == "" && df.TakesValue() {
+// shows a default value, and the variable name reads the same on every OS.
+func (f *Flag) helpRow() string {
+	placeholder, usage := splitPlaceholder(f.Usage)
+	if placeholder == "" && f.takesValue() {
 		placeholder = "string"
 	}
 	var names strings.Builder
-	for i, name := range f.Names() {
+	all := f.Names()
+	for i, name := range all {
 		if name == "" {
 			continue
 		}
@@ -149,17 +145,17 @@ func helpFlagRow(f ucli.Flag) string {
 		if placeholder != "" {
 			names.WriteString(" " + placeholder)
 		}
-		if i < len(f.Names())-1 {
+		if i < len(all)-1 {
 			names.WriteString(", ")
 		}
 	}
 	row := names.String()
-	if multi, ok := f.(ucli.DocGenerationMultiValueFlag); ok && multi.IsMultiValueFlag() {
+	if f.Kind == sliceFlag {
 		row += " [ " + row + " ]"
 	}
 	row += "\t" + strings.TrimSpace(usage)
-	if env := df.GetEnvVars(); len(env) > 0 {
-		row += " [$" + strings.Join(env, ", $") + "]"
+	if f.EnvVar != "" {
+		row += " [$" + f.EnvVar + "]"
 	}
 	return row
 }

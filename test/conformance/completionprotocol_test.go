@@ -17,8 +17,8 @@ import (
 
 // secondCompletionProtocol matches what a completion path for lines without
 // the protocol marker brings back: the parameter or flag that selected it,
-// urfave's own completion of the raw argv (which only works when the word
-// being completed is left on the line), and comments naming the scripts that
+// a command-line library's own completion of the raw argv (which only works
+// when the word being completed is left on the line), and comments naming the scripts that
 // sent such lines. Wording that names a protocol version is
 // TestNoCompletionProtocolVersion's.
 var secondCompletionProtocol = regexp.MustCompile(`(?i)\bhasMarker\b|\brawV1|DefaultCompleteWithFlags\(|\b(older|earlier|old installed) scripts?\b`)
@@ -70,7 +70,7 @@ const completionProtocolMarker = "--rancher-completion-proto=2"
 // the functions in internal/cli that may use it.
 //
 //   - protoSentinel (the marker) and completionFlag: where a line is
-//     classified and rewritten for urfave.
+//     classified.
 //   - rawCompleting: where it is set, and completionActive, which reports it.
 //   - completionActive: the Before hooks Adapt and adaptEntry install, which
 //     pass it to checkFlagValues so the unset-variable guard stays silent
@@ -86,8 +86,8 @@ const completionProtocolMarker = "--rancher-completion-proto=2"
 // A use is counted against the top-level function that holds it, so a
 // closure inside an allowed function counts as that function.
 var completionNames = map[string][]string{
-	"protoSentinel":    {"completionRequest", "SanitizedArgs", "CaptureArgv"},
-	"completionFlag":   {"OutdatedCompletionScript", "SanitizedArgs", "CaptureArgv"},
+	"protoSentinel":    {"completionRequest", "CaptureArgv"},
+	"completionFlag":   {"OutdatedCompletionScript", "CaptureArgv"},
 	"rawCompleting":    {"completionActive", "CaptureArgv"},
 	"completionActive": {"Adapt", "adaptEntry", "completionDebugEnabled", "noteExperiments", "resolveReadOnly"},
 	// completionDebugEnabled carries completionActive, so it is watched too.

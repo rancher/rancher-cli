@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 var goldenCandidatesDir = filepath.Join(goldenPackageDir, "testdata", "candidates")
@@ -44,17 +43,14 @@ func candidateKey(file string, line []string) string {
 // help or version flag before a command word, and the lines with flags, values
 // and blank words before the word to complete, some with a flag name or "--" as
 // the word to complete. A line that repeats another of its file is left out and
-// counted in dropped. helpBeforeCommand holds the lines (by candidateKey) that
-// show the help or the version in the reply: the command-line library prints
-// them when the first word after a help or version flag names a command.
-func candidateFiles(t *testing.T) (files []goldenFile, dropped int, helpBeforeCommand map[string]bool) {
+// counted in dropped.
+func candidateFiles(t *testing.T) (files []goldenFile, dropped int) {
 	t.Helper()
 	root, err := BuildRoot(goldenVersion)
 	require.NoError(t, err)
 	byName := map[string]*goldenFile{}
 	var ordered []*goldenFile
 	seen := map[string]bool{}
-	helpBeforeCommand = map[string]bool{}
 	add := func(path []string, src parseSource, words []string, cur string) {
 		name := goldenName(path)
 		f := byName[name]
@@ -72,9 +68,6 @@ func candidateFiles(t *testing.T) (files []goldenFile, dropped int, helpBeforeCo
 		seen[key] = true
 		f.lines = append(f.lines, parseRow{Line: line})
 		f.sources = append(f.sources, src)
-		if src == candidatesHelpBeforeCommand {
-			helpBeforeCommand[key] = true
-		}
 	}
 
 	for _, path := range goldenCommands(t) {
@@ -90,7 +83,7 @@ func candidateFiles(t *testing.T) (files []goldenFile, dropped int, helpBeforeCo
 		add(path, candidatesUndefined, with("--bogus"), "")
 		letter := "h"
 		for _, f := range cmd.Flags {
-			if visible, ok := f.(ucli.VisibleFlag); (ok && !visible.IsVisible()) || f.Names()[0] == "help" {
+			if f.Names()[0] == "help" {
 				continue
 			}
 			letter = f.Names()[0][:1]
@@ -160,20 +153,23 @@ func candidateFiles(t *testing.T) (files []goldenFile, dropped int, helpBeforeCo
 	for i, f := range ordered {
 		files[i] = *f
 	}
-	return files, dropped, helpBeforeCommand
+	return files, dropped
 }
 
-// assertCandidateKinds asserts that every row of a candidates file is a
-// completion reply, except the lines in helpBeforeCommand, which show the
-// help or the version.
-func assertCandidateKinds(t *testing.T, file goldenFile, rows []parseRow, helpBeforeCommand map[string]bool) {
+// assertCandidateKinds asserts that every row of a candidates file is a list
+// of completion candidates: it holds only candidates, never a help page or
+// the version. A candidate line is a name, or a name and its usage after a
+// colon.
+func assertCandidateKinds(t *testing.T, file goldenFile, rows []parseRow) {
 	t.Helper()
 	for i, row := range rows {
-		switch {
-		case row.Kind == "complete":
-		case (row.Kind == "help" || row.Kind == "version") && helpBeforeCommand[candidateKey(file.name, row.Line)]:
-		default:
+		if row.Kind != "complete" {
 			assert.Fail(t, "a completion row has the wrong kind", "%s row %d, rancher %q: kind %s", file.name, i+1, row.Line, row.Kind)
+		}
+		for _, line := range row.Stdout {
+			if strings.HasPrefix(line, "NAME:") || strings.HasPrefix(line, "rancher version ") {
+				assert.Fail(t, "a completion reply holds a help page or the version", "%s row %d, rancher %q: %q", file.name, i+1, row.Line, line)
+			}
 		}
 	}
 }
@@ -187,17 +183,16 @@ func assertCandidateKinds(t *testing.T, file goldenFile, rows []parseRow, helpBe
 // to complete. Rewrite the files with -update after a change to the command
 // surface or to completion and review the diff. Not parallel: it sets the
 // process environment and runs lines one after the other, since they share the
-// captured command line and the help printer.
+// captured command line.
 func TestCandidatesGolden(t *testing.T) {
 	home, work := goldenEnvironment(t)
-	restore := wrapPrinters(t)
 	kept := storedConfigSnapshot()
 	view, _ := loadedConfigView()
 	keptDir := view.ConfigDir()
 	t.Cleanup(func() { setStoredConfig(kept, keptDir) })
 	setStoredConfig(nil, "")
 
-	files, dropped, helpBeforeCommand := candidateFiles(t)
+	files, dropped := candidateFiles(t)
 	commands := goldenCommands(t)
 	names := make([]string, len(files))
 	for i, f := range files {
@@ -241,7 +236,7 @@ func TestCandidatesGolden(t *testing.T) {
 				}
 				counts[first[i].Kind]++
 			}
-			assertCandidateKinds(t, f, first, helpBeforeCommand)
+			assertCandidateKinds(t, f, first)
 			checkOutput(f, first)
 			require.False(t, t.Failed(), "a completion row has the wrong kind: nothing is written")
 			data, err := encodeRows(first)
@@ -250,8 +245,6 @@ func TestCandidatesGolden(t *testing.T) {
 		}
 		writeGoldens(t, goldenCandidatesDir, want)
 		t.Logf("rows by kind %v", counts)
-		restore()
-		assertPrinters(t)
 		assertUntouched(t, home, work)
 		return
 	}
@@ -276,7 +269,7 @@ func TestCandidatesGolden(t *testing.T) {
 			require.NoError(t, err, goldenShown(path))
 			require.NotEmpty(t, want, "%s holds no row: every command has rows; run with -update", goldenShown(path))
 			got := recordParse(t, f, helps)
-			assertCandidateKinds(t, f, got, helpBeforeCommand)
+			assertCandidateKinds(t, f, got)
 			checkOutput(f, got)
 			failures := 0
 			for i, row := range got {
@@ -299,7 +292,5 @@ func TestCandidatesGolden(t *testing.T) {
 			assert.Equal(t, len(want), len(got), "%s: the number of rows differs; run with -update if intended", goldenShown(path))
 		})
 	}
-	restore()
-	assertPrinters(t)
 	assertUntouched(t, home, work)
 }

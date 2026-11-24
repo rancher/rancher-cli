@@ -14,18 +14,14 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // commandPaths returns the argv path (without the program name) of every
 // visible command in the tree below cmd: leaves (no visible subcommands)
 // and groups separately. The tree is walked as built, so a command added
 // later is covered without a list to edit.
-func commandPaths(cmd *ucli.Command, prefix []string) (leaves, groups [][]string) {
+func commandPaths(cmd *Command, prefix []string) (leaves, groups [][]string) {
 	for _, sub := range cmd.Commands {
-		if sub.Hidden {
-			continue
-		}
 		path := append(slices.Clone(prefix), sub.Name)
 		if len(sub.VisibleCommands()) == 0 {
 			leaves = append(leaves, path)
@@ -51,7 +47,7 @@ func restoreRawArgv(t *testing.T) {
 
 // helpRoot returns a freshly built root with its output captured in out and
 // errOut.
-func helpRoot(t *testing.T) (root *ucli.Command, out, errOut *bytes.Buffer) {
+func helpRoot(t *testing.T) (root *Command, out, errOut *bytes.Buffer) {
 	t.Helper()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -65,7 +61,7 @@ func helpRoot(t *testing.T) (root *ucli.Command, out, errOut *bytes.Buffer) {
 // runHelpArgv runs argv through a freshly built root and returns stdout,
 // stderr and the error Run returned. It leaves the captured command line
 // alone, so a parallel test can call it; a line the process entry point
-// refuses before urfave parses it runs through runHelpArgvAsMain.
+// refuses before the command tree acts on it runs through runHelpArgvAsMain.
 func runHelpArgv(t *testing.T, argv ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	root, out, errOut := helpRoot(t)
@@ -95,9 +91,8 @@ func runHelpArgvAsMain(t *testing.T, argv ...string) (stdout, stderr string, cod
 // TestLeafHelpShowsOwnHelpWithPositionalArgument asserts that for every
 // leaf command in the built tree, `<leaf> x --help`, `<leaf> --help`,
 // `--help <leaf>` and `-h <leaf> x` all succeed, print nothing on stderr,
-// and print that leaf's own USAGE line. urfave treats a positional before
-// --help as a help topic and, left to itself, fails with exit 3 (the AUTH
-// exit code) and no output.
+// and print that leaf's own USAGE line: a positional before --help is not a
+// help topic, and the run never fails with exit 3 (the AUTH exit code).
 func TestLeafHelpShowsOwnHelpWithPositionalArgument(t *testing.T) {
 	t.Parallel()
 	root, err := BuildRoot("v-test")
@@ -131,7 +126,7 @@ func TestLeafHelpShowsOwnHelpWithPositionalArgument(t *testing.T) {
 // same stdout, the same stderr and the same exit, with the argument text
 // masked. A leaf that receives the argument reports whatever it reports for
 // any other argument; if a help command intercepts the word instead, the
-// leaf help card reaches stdout and the two runs differ. The runs use an
+// leaf help page reaches stdout and the two runs differ. The runs use an
 // empty config directory, the file credential store and no server, so no
 // leaf has anything to fetch. Not parallel: it sets the process
 // environment.
@@ -164,25 +159,21 @@ func TestLeafReceivesPositionalNamedHelp(t *testing.T) {
 }
 
 // exitCodeOf returns the process exit code a root.Run call that returned
-// err ends with, as run computes it: resolveExit over err and the
-// unknown-command error recorded on root during the call. It clears the
-// record after reading it, so a root can run another line next. It renders
+// err ends with, as run computes it: resolveExit over err. It renders
 // an error that nothing rendered, as run does, to a discarding writer: the
 // caller's stderr stays as the run left it.
-func exitCodeOf(root *ucli.Command, err error) int {
+func exitCodeOf(root *Command, err error) int {
 	errWriter := root.ErrWriter
 	root.ErrWriter = io.Discard
 	defer func() { root.ErrWriter = errWriter }()
-	code := resolveExit(root, err, recordedUnknownCommand(root)).code
-	clearUnknownCommand(root)
-	return code
+	return resolveExit(root, err).code
 }
 
 // runMain runs argv, the words after the program name, on root through Run
 // as main does, with the command line captured, and returns the exit code.
 // Every test that needs the code of a whole run uses it. Not for a parallel
 // test.
-func runMain(t *testing.T, root *ucli.Command, argv ...string) int {
+func runMain(t *testing.T, root *Command, argv ...string) int {
 	t.Helper()
 	return Run(t.Context(), root, append([]string{"rancher"}, argv...))
 }
@@ -190,7 +181,7 @@ func runMain(t *testing.T, root *ucli.Command, argv ...string) int {
 // TestGroupHelpWithUnknownNameKeepsValidationError asserts that the leaf
 // help override leaves groups alone: for every group in the built tree,
 // `<group> x --help` still reports the unknown command as a VALIDATION
-// error at exit 2, not a help page and not urfave's exit 3.
+// error at exit 2, not a help page and not exit 3.
 func TestGroupHelpWithUnknownNameKeepsValidationError(t *testing.T) {
 	restoreRawArgv(t)
 
@@ -209,64 +200,18 @@ func TestGroupHelpWithUnknownNameKeepsValidationError(t *testing.T) {
 	}
 }
 
-// TestHelpForHiddenChildOfGroupWithoutNotFoundSeam asserts that a group
-// with no CommandNotFound seam and only hidden subcommands still shows the
-// hidden subcommand's card for `<group> <hidden> --help`, not the group's:
-// the name is a subcommand, so it is a topic.
-func TestHelpForHiddenChildOfGroupWithoutNotFoundSeam(t *testing.T) {
-	t.Parallel()
-	hidden := &ucli.Command{Name: "hid", Hidden: true, Usage: "hidden child", Action: func(context.Context, *ucli.Command) error { return nil }}
-	group := &ucli.Command{Name: "grp", Usage: "group", Commands: []*ucli.Command{hidden}}
-	root := &ucli.Command{Name: "rancher", HideHelpCommand: true, Commands: []*ucli.Command{group}}
-	var out bytes.Buffer
-	root.Writer = &out
-	root.ErrWriter = &out
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "grp", "hid", "--help"}))
-	assert.Regexp(t, `(?m)^USAGE:\n\s+rancher grp hid( |$)`, out.String())
-}
-
-// TestHelpWalkShowsHiddenChildCard asserts that `--help <group> <hidden>`
-// shows the hidden subcommand's card, as `<group> <hidden> --help` does,
-// not an unknown command error: below the first word of the walk a hidden
-// subcommand is a topic too. Not parallel: it reads the captured argv.
-func TestHelpWalkShowsHiddenChildCard(t *testing.T) {
-	restoreRawArgv(t)
-	noop := func(context.Context, *ucli.Command) error { return nil }
-	hidden := &ucli.Command{Name: "hid", Hidden: true, Usage: "hidden child", Action: noop}
-	visible := &ucli.Command{Name: "vis", Usage: "visible child", Action: noop}
-	group := &ucli.Command{Name: "grp", Usage: "group", Commands: []*ucli.Command{visible, hidden}}
-	root := &ucli.Command{Name: "rancher", HideHelpCommand: true, Commands: []*ucli.Command{group}}
-	var out bytes.Buffer
-	root.Writer = &out
-	root.ErrWriter = &out
-	CaptureArgv([]string{"--help", "grp", "hid"})
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--help", "grp", "hid"}))
-	assert.Nil(t, recordedUnknownCommand(root))
-	assert.Regexp(t, `(?m)^USAGE:\n\s+rancher grp hid( |$)`, out.String())
-}
-
-// TestEveryCommandHandlesUsageErrors asserts that, once urfave has set up
-// the command tree, every command node - hidden ones and any subcommand
-// urfave adds on its own - has an OnUsageError handler, and that no command
-// is named help: the CLI has none, and urfave's own would take a positional
-// argument named help away from its command. A node without the handler
-// makes urfave print "Incorrect Usage: ..." itself and also return the
-// error, so the same message would be written twice.
-func TestEveryCommandHandlesUsageErrors(t *testing.T) {
+// TestNoCommandIsNamedHelp asserts that no command node of the tree is named
+// help: the CLI has none, and a command named help would take a positional
+// argument named help away from its command.
+func TestNoCommandIsNamedHelp(t *testing.T) {
 	t.Parallel()
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	root.ErrWriter = &out
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--help"}))
 
 	var nodes int
-	var walk func(c *ucli.Command, path string)
-	walk = func(c *ucli.Command, path string) {
+	var walk func(c *Command, path string)
+	walk = func(c *Command, path string) {
 		nodes++
-		assert.NotNil(t, c.OnUsageError, "%q has no OnUsageError", path)
 		for _, sub := range c.Commands {
 			assert.False(t, sub.HasName("help"), "%q has a help command", path)
 			walk(sub, path+" "+sub.Name)
@@ -327,7 +272,6 @@ func TestHelpIsUnknownCommandWithHelpFlagHint(t *testing.T) {
 		{"short spelling", []string{"h"}, "h", "rancher --help"},
 		{"short spelling then a leaf path", []string{"h", "get", "pod"}, "h", "rancher get pod --help"},
 		{"short spelling inside a group", []string{"get", "h"}, "h", "rancher get --help"},
-		{"hidden command is not named in the hint", []string{"__completion", "help"}, "help", "rancher --help"},
 		{"leaf path from the built tree", append([]string{"help"}, leaf...), "help", "rancher " + strings.Join(leaf, " ") + " --help"},
 	}
 	for _, tt := range tests {
@@ -382,9 +326,9 @@ func TestHelpWalkStopsAtFlag(t *testing.T) {
 // neither panic nor leave the error contract. The words are help, h and an
 // unknown name (VALIDATION, exit 2, and under -o json a decodable
 // envelope), and a flag (the walk ends and the group card is shown, exit
-// 0). The group was never run by urfave when the walk reaches the word, so
-// the error must be built from the words the walk holds, not from the
-// group's parsed arguments. Not parallel: the captured argv is
+// 0). The group has not run when the dispatcher reaches the argument: the
+// error must be built from the arguments typed after the group, not from the
+// group's parsed arguments. Not parallel: the captured command line is
 // process-wide.
 func TestHelpWalkUnknownWordUnderEveryGroup(t *testing.T) {
 	restoreRawArgv(t)
@@ -441,18 +385,18 @@ func TestHelpWalkUnknownWordUnderEveryGroup(t *testing.T) {
 
 // TestLevelFlagsOwnFlagWinsOverAncestors asserts, on a scratch tree, that a
 // command's own flag keeps its arity when an ancestor has a flag of the same
-// name, as in urfave (an ancestor's flag is not applied when the command
-// already has a flag with one of its names), and that an ancestor's other
-// flags are still accepted below it.
+// name (an ancestor's flag is not applied when the command already has a
+// flag with one of its names), and that an ancestor's other flags are still
+// accepted below it.
 func TestLevelFlagsOwnFlagWinsOverAncestors(t *testing.T) {
 	t.Parallel()
-	noop := func(context.Context, *ucli.Command) error { return nil }
-	child := &ucli.Command{Name: "child", Action: noop, Flags: []ucli.Flag{&ucli.BoolFlag{Name: "mode"}}}
-	root := &ucli.Command{
+	noop := func(context.Context, *Command, *Input) error { return nil }
+	child := &Command{Name: "child", Action: noop, Flags: []*Flag{{Name: "mode", Kind: boolFlag}}}
+	root := link(&Command{
 		Name:     "rancher",
-		Commands: []*ucli.Command{child},
-		Flags:    []ucli.Flag{&ucli.StringFlag{Name: "mode"}, &ucli.StringFlag{Name: "name", Aliases: []string{"n"}}},
-	}
+		Commands: []*Command{child},
+		Flags:    []*Flag{{Name: "mode", Kind: stringFlag}, {Name: "name", Kind: stringFlag, Aliases: []string{"n"}}},
+	})
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &out
@@ -464,7 +408,7 @@ func TestLevelFlagsOwnFlagWinsOverAncestors(t *testing.T) {
 	assert.False(t, takesValue, "the command's own bool flag wins over the ancestor's value flag")
 	assert.True(t, flags["name"], "an ancestor's flag with another name is accepted and takes a value")
 	assert.True(t, flags["n"], "and so is its alias")
-	assert.Contains(t, flags, "help", "the help flag urfave adds is accepted")
+	assert.Contains(t, flags, "help", "the help flag is accepted")
 	assert.True(t, levelFlags(root)["mode"], "at the root the flag keeps its own arity")
 }
 

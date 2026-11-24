@@ -38,12 +38,6 @@ import (
 //   - the Fatal and Exit functions of k8s.io/klog/v2 (klog has no such
 //     methods), its FlushAndExit and its OsExit variable, a call or an
 //     assignment;
-//   - urfave's OsExiter (a call or an assignment), HandleExitCoder and
-//     every Show...AndExit function;
-//   - urfave's Exit, unless it is called with an empty string literal as
-//     its first argument: such a call returns an error with no message, which
-//     Run reads as a declared exit status. A message, a non-literal first
-//     argument or a reference to the function that is not a call is refused;
 //   - credhelper.Serve, which ends the process;
 //   - the Fatal and Panic methods of *log.Logger, whatever expression
 //     reaches the logger: a call, a method value, a method expression, an
@@ -60,7 +54,6 @@ import (
 // matches nothing, or a different number of uses, fails the scan.
 
 const (
-	urfavePath     = "github.com/urfave/cli/v3"
 	credhelperPath = "github.com/rancher/rancher-cli/credhelper"
 	windowsPath    = "golang.org/x/sys/windows"
 	unixPath       = "golang.org/x/sys/unix"
@@ -98,8 +91,7 @@ type processExitUse struct {
 }
 
 // processExitNames lists, per import path, the names refused whatever the
-// arguments are. Urfave's Show...AndExit functions are matched by their
-// shape in processExitRefused.
+// arguments are.
 var processExitNames = map[string][]string{
 	"os":        {"Exit"},
 	"syscall":   {"Exit", "ExitProcess"},
@@ -111,7 +103,6 @@ var processExitNames = map[string][]string{
 		"Exit", "Exitf", "Exitln", "ExitDepth", "ExitfDepth", "ExitlnDepth",
 		"FlushAndExit", "OsExit",
 	},
-	urfavePath:     {"OsExiter", "HandleExitCoder"},
 	credhelperPath: {"Serve"},
 }
 
@@ -122,17 +113,13 @@ var processExitDefaultNames = map[string]string{
 	windowsPath:    "windows",
 	unixPath:       "unix",
 	klogPath:       "klog",
-	urfavePath:     "cli",
 	credhelperPath: "credhelper",
 }
 
 // processExitRefused reports whether name from the package at importPath is
 // refused whatever its arguments are.
 func processExitRefused(importPath, name string) bool {
-	if slices.Contains(processExitNames[importPath], name) {
-		return true
-	}
-	return importPath == urfavePath && strings.HasPrefix(name, "Show") && strings.HasSuffix(name, "AndExit")
+	return slices.Contains(processExitNames[importPath], name)
 }
 
 // processExitImportName returns the name the file gives the package at
@@ -163,20 +150,6 @@ func processExitImportName(file *ast.File, importPath string) string {
 // processExitImports are the import paths the scan watches.
 var processExitImports = slices.Sorted(maps.Keys(processExitNames))
 
-// emptyLiteralFirstArg reports whether call's first argument is an empty
-// string literal.
-func emptyLiteralFirstArg(call *ast.CallExpr) bool {
-	if len(call.Args) == 0 {
-		return false
-	}
-	lit, ok := call.Args[0].(*ast.BasicLit)
-	if !ok || lit.Kind != token.STRING {
-		return false
-	}
-	s, err := strconv.Unquote(lit.Value)
-	return err == nil && s == ""
-}
-
 // scanProcessExits returns every refused use in f, a file at path.
 func scanProcessExits(fset *token.FileSet, path string, f *ast.File) []processExitUse {
 	names := map[string]string{}
@@ -199,21 +172,11 @@ func scanProcessExits(fset *token.FileSet, path string, f *ast.File) []processEx
 		if fd, ok := decl.(*ast.FuncDecl); ok {
 			fn = fd.Name.Name
 		}
-		allowedExit := map[ast.Node]bool{}
 		add := func(n ast.Node, what string) {
 			uses = append(uses, processExitUse{key: path + ":" + fn, what: what, pos: fset.Position(n.Pos()).String()})
 		}
 		ast.Inspect(decl, func(n ast.Node) bool {
 			switch n := n.(type) {
-			case *ast.CallExpr:
-				if sel, ok := ast.Unparen(n.Fun).(*ast.SelectorExpr); ok {
-					if x, ok := ast.Unparen(sel.X).(*ast.Ident); ok && names[x.Name] == urfavePath && sel.Sel.Name == "Exit" && emptyLiteralFirstArg(n) {
-						allowedExit[sel] = true
-					}
-				}
-				if id, ok := ast.Unparen(n.Fun).(*ast.Ident); ok && slices.Contains(dotImports, urfavePath) && id.Name == "Exit" && emptyLiteralFirstArg(n) {
-					allowedExit[id] = true
-				}
 			case *ast.SelectorExpr:
 				x, ok := ast.Unparen(n.X).(*ast.Ident)
 				if !ok {
@@ -223,19 +186,13 @@ func scanProcessExits(fset *token.FileSet, path string, f *ast.File) []processEx
 				if !imported {
 					return true
 				}
-				switch {
-				case processExitRefused(importPath, n.Sel.Name):
+				if processExitRefused(importPath, n.Sel.Name) {
 					add(n, x.Name+"."+n.Sel.Name)
-				case importPath == urfavePath && n.Sel.Name == "Exit" && !allowedExit[n]:
-					add(n, x.Name+".Exit without an empty string literal as its first argument")
 				}
 			case *ast.Ident:
 				for _, p := range dotImports {
-					switch {
-					case processExitRefused(p, n.Name):
+					if processExitRefused(p, n.Name) {
 						add(n, n.Name+" from a dot import of "+p)
-					case p == urfavePath && n.Name == "Exit" && !allowedExit[n]:
-						add(n, "Exit from a dot import without an empty string literal as its first argument")
 					}
 				}
 			}
@@ -360,11 +317,11 @@ func TestNoProcessExitBelowMain(t *testing.T) {
 // TestProcessExitScanFixtures asserts the rules of the scan on in-memory
 // files: each refused form is found, a use as a value is found, an aliased
 // or dot import does not hide a use, a package that only shares a name with
-// a watched one is not matched, an empty-literal urfave Exit passes, and the
-// allowlist rules on stale rows and wrong counts hold.
+// a watched one is not matched, and the allowlist rules on stale rows and
+// wrong counts hold.
 func TestProcessExitScanFixtures(t *testing.T) {
 	t.Parallel()
-	const header = "package p\nimport (\n\t\"os\"\n\t\"syscall\"\n\t\"log\"\n\tucli \"github.com/urfave/cli/v3\"\n\t\"github.com/rancher/rancher-cli/credhelper\"\n)\n"
+	const header = "package p\nimport (\n\t\"os\"\n\t\"syscall\"\n\t\"log\"\n\t\"github.com/rancher/rancher-cli/credhelper\"\n)\n"
 	scan := func(t *testing.T, src string) []processExitUse {
 		t.Helper()
 		fset := token.NewFileSet()
@@ -373,28 +330,17 @@ func TestProcessExitScanFixtures(t *testing.T) {
 		return scanProcessExits(fset, "p.go", f)
 	}
 	refused := map[string]string{
-		"os.Exit call":                   "func f() { os.Exit(1) }",
-		"os.Exit as a value":             "func f() { exit := os.Exit; exit(1) }",
-		"os.Exit passed as an argument":  "func f() { g(os.Exit) }\nfunc g(func(int)) {}",
-		"syscall.Exit call":              "func f() { syscall.Exit(1) }",
-		"log.Fatal":                      "func f() { log.Fatal(\"x\") }",
-		"log.Fatalf":                     "func f() { log.Fatalf(\"x\") }",
-		"log.Fatalln":                    "func f() { log.Fatalln(\"x\") }",
-		"log.Panic":                      "func f() { log.Panic(\"x\") }",
-		"log.Panicf":                     "func f() { log.Panicf(\"x\") }",
-		"OsExiter call":                  "func f() { ucli.OsExiter(2) }",
-		"OsExiter assignment":            "func f() { ucli.OsExiter = func(int) {} }",
-		"HandleExitCoder":                "func f(err error) { ucli.HandleExitCoder(err) }",
-		"ShowAppHelpAndExit":             "func f(c *ucli.Command) { ucli.ShowAppHelpAndExit(c, 0) }",
-		"ShowCommandHelpAndExit":         "func f(c *ucli.Command) { ucli.ShowCommandHelpAndExit(c, \"x\", 0) }",
-		"urfave Exit with a message":     "func f() error { return ucli.Exit(\"text\", 4) }",
-		"urfave Exit with a variable":    "func f(msg string) error { return ucli.Exit(msg, 4) }",
-		"urfave Exit with a constant":    "const m = \"\"\nfunc f() error { return ucli.Exit(m, 4) }",
-		"urfave Exit with a raw message": "func f() error { return ucli.Exit(`text`, 4) }",
-		"urfave Exit as a value":         "func f() { g(ucli.Exit) }\nfunc g(func(any, int) ucli.ExitCoder) {}",
-		"urfave Exit with no argument":   "func f() { _ = ucli.Exit }",
-		"credhelper.Serve":               "func f() { credhelper.Serve(nil) }",
-		"a package-level var":            "var exit = os.Exit",
+		"os.Exit call":                  "func f() { os.Exit(1) }",
+		"os.Exit as a value":            "func f() { exit := os.Exit; exit(1) }",
+		"os.Exit passed as an argument": "func f() { g(os.Exit) }\nfunc g(func(int)) {}",
+		"syscall.Exit call":             "func f() { syscall.Exit(1) }",
+		"log.Fatal":                     "func f() { log.Fatal(\"x\") }",
+		"log.Fatalf":                    "func f() { log.Fatalf(\"x\") }",
+		"log.Fatalln":                   "func f() { log.Fatalln(\"x\") }",
+		"log.Panic":                     "func f() { log.Panic(\"x\") }",
+		"log.Panicf":                    "func f() { log.Panicf(\"x\") }",
+		"credhelper.Serve":              "func f() { credhelper.Serve(nil) }",
+		"a package-level var":           "var exit = os.Exit",
 	}
 	for name, body := range refused {
 		t.Run("refuses "+name, func(t *testing.T) {
@@ -408,12 +354,6 @@ func TestProcessExitScanFixtures(t *testing.T) {
 	})
 	t.Run("a dot import does not hide a use", func(t *testing.T) {
 		assert.Len(t, scan(t, "package p\nimport . \"os\"\nfunc f() { Exit(1) }"), 1)
-		assert.Len(t, scan(t, "package p\nimport . \"github.com/urfave/cli/v3\"\nfunc f() error { return Exit(\"x\", 1) }"), 1)
-		assert.Empty(t, scan(t, "package p\nimport . \"github.com/urfave/cli/v3\"\nfunc f() error { return Exit(\"\", 1) }"))
-	})
-	t.Run("an empty string literal passes", func(t *testing.T) {
-		assert.Empty(t, scan(t, header+"func f() error { return ucli.Exit(\"\", 7) }"))
-		assert.Empty(t, scan(t, header+"func f() error { return ucli.Exit(``, 7) }"))
 	})
 	t.Run("a package that shares a name is not matched", func(t *testing.T) {
 		assert.Empty(t, scan(t, "package p\nimport (\n\t\"example.com/os\"\n\t\"example.com/log\"\n)\nfunc f() { os.Exit(1); log.Fatal(\"x\") }"))
@@ -440,7 +380,6 @@ func TestProcessExitScanFixtures(t *testing.T) {
 				"Exit", "Exitf", "Exitln", "ExitDepth", "ExitfDepth", "ExitlnDepth",
 				"FlushAndExit", "OsExit",
 			},
-			urfavePath:     {"OsExiter", "HandleExitCoder", "ShowAppHelpAndExit", "ShowCommandHelpAndExit", "ShowSubcommandHelpAndExit", "ShowRootCommandHelpAndExit"},
 			credhelperPath: {"Serve"},
 		} {
 			for _, name := range names {
@@ -455,15 +394,9 @@ func TestProcessExitScanFixtures(t *testing.T) {
 		assert.Len(t, scan(t, "package p\nimport \"k8s.io/klog/v2\"\nfunc f() { klog.OsExit = nil }"), 1)
 		assert.Empty(t, scan(t, "package p\nimport \"k8s.io/klog/v2\"\nfunc f() { klog.Info(\"x\"); klog.Flush() }"))
 	})
-	t.Run("an unaliased urfave import is matched", func(t *testing.T) {
-		assert.Len(t, scan(t, "package p\nimport \"github.com/urfave/cli/v3\"\nfunc f() error { return cli.Exit(\"x\", 1) }"), 1)
-		assert.Empty(t, scan(t, "package p\nimport \"github.com/urfave/cli/v3\"\nfunc f() error { return cli.Exit(\"\", 7) }"))
-	})
 	t.Run("a parenthesized selector is matched", func(t *testing.T) {
 		assert.Len(t, scan(t, header+"func f() { (os).Exit(1) }"), 1)
 		assert.Len(t, scan(t, header+"func f() { (os.Exit)(1) }"), 1)
-		assert.Len(t, scan(t, header+"func f() error { return (ucli.Exit)(\"x\", 1) }"), 1)
-		assert.Empty(t, scan(t, header+"func f() error { return (ucli.Exit)(\"\", 7) }"))
 	})
 	t.Run("windows.TerminateProcess is allowed", func(t *testing.T) {
 		assert.Empty(t, scan(t, "package p\nimport \"golang.org/x/sys/windows\"\nfunc f() { _ = windows.TerminateProcess(0, 1) }"))

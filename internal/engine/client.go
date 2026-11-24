@@ -1,6 +1,6 @@
 // Package engine holds pure domain operations. It depends on the runtime
-// contracts and safety types only - never on the provider adapter, urfave,
-// or the terminal.
+// contracts and safety types only - never on the provider adapter, the
+// command line reader, or the terminal.
 package engine
 
 import (

@@ -164,7 +164,7 @@ func (s OutputShape) String() string {
 // Descriptor is a command's self-description (no contract/stability - those come
 // from the resolver at schema-generation time). Args are positional; Flags are
 // named `--flags`. Both feed the schema manifest, and Flags are wired into the
-// urfave command by the surface adapter.
+// command by the surface adapter.
 type Descriptor struct {
 	Name    string   `json:"name"`
 	Aliases []string `json:"aliases,omitempty"` // leaf aliases (plural/short forms)
@@ -288,7 +288,8 @@ type CommittedContext struct {
 	Recovery string
 }
 
-// Input abstracts parsed flags/args so engine code never imports urfave/cli.
+// Input abstracts parsed flags/args so engine code never imports the command
+// line reader.
 type Input interface {
 	String(name string) string
 	Bool(name string) bool

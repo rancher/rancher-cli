@@ -12,7 +12,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 type pingCmd struct{}
@@ -27,12 +26,12 @@ func (pingCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (runtim
 func TestAdaptRunsAndRendersJSON(t *testing.T) {
 	var out bytes.Buffer
 	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
-	root := &ucli.Command{
+	root := link(&Command{
 		Name:     "rancher",
 		Writer:   &out,
 		Flags:    GlobalFlags(),
-		Commands: []*ucli.Command{Adapt(reg, pingCmd{})},
-	}
+		Commands: []*Command{Adapt(reg, pingCmd{})},
+	})
 	err := root.Run(t.Context(), []string{"rancher", "ping", "-o", "json"})
 	require.NoError(t, err)
 
@@ -52,10 +51,9 @@ func (primePingCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (r
 }
 
 // TestPrimeDescriptionMarksHelpWithoutTouchingUsage asserts the normal --help
-// seam: a Prime requirement sets urfave's Description field (rendered in the
-// DESCRIPTION: block by urfave's own default help template) and leaves Usage
-// (which feeds the TOC, the manifest, and the command card's usage line)
-// untouched.
+// seam: a Prime requirement sets the command's Description field (rendered in
+// the DESCRIPTION: block of the help page) and leaves Usage (which feeds the
+// TOC, the manifest, and the command card's usage line) untouched.
 func TestPrimeDescriptionMarksHelpWithoutTouchingUsage(t *testing.T) {
 	t.Parallel()
 	d := runtime.Descriptor{Name: "get widget", Usage: "List widgets",
@@ -69,7 +67,7 @@ func TestPrimeDescriptionMarksHelpWithoutTouchingUsage(t *testing.T) {
 // TestAdaptSetsPrimeMetadataFlag asserts Adapt stamps the Prime metadata flag
 // on a Capability.Tier == CapabilityPrime command, and leaves it unset on an
 // ordinary command - the seam the help and schema renderers read the marker
-// from, distinct from primeDescription's urfave DESCRIPTION seam.
+// from, distinct from primeDescription's DESCRIPTION seam.
 func TestAdaptSetsPrimeMetadataFlag(t *testing.T) {
 	t.Parallel()
 	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
@@ -78,17 +76,17 @@ func TestAdaptSetsPrimeMetadataFlag(t *testing.T) {
 }
 
 // TestAdaptedPrimeCommandShowsHelpMarker proves the marker actually reaches
-// urfave's rendered --help output for an Adapt-wired command.
+// the help page of an Adapt-wired command.
 func TestAdaptedPrimeCommandShowsHelpMarker(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer
 	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
-	root := &ucli.Command{
+	root := link(&Command{
 		Name:     "rancher",
 		Writer:   &out,
 		Flags:    GlobalFlags(),
-		Commands: []*ucli.Command{Adapt(reg, primePingCmd{})},
-	}
+		Commands: []*Command{Adapt(reg, primePingCmd{})},
+	})
 	err := root.Run(t.Context(), []string{"rancher", "primeping", "--help"})
 	require.NoError(t, err)
 	assert.Contains(t, out.String(), runtime.PrimeSentence)
@@ -104,12 +102,12 @@ func TestAdaptedPrimeCommandDescriptionIsGreenWhenStyled(t *testing.T) {
 	render := func(color string) string {
 		var out bytes.Buffer
 		reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
-		root := &ucli.Command{
+		root := link(&Command{
 			Name:     "rancher",
 			Writer:   &out,
 			Flags:    GlobalFlags(),
-			Commands: []*ucli.Command{Adapt(reg, primePingCmd{})},
-		}
+			Commands: []*Command{Adapt(reg, primePingCmd{})},
+		})
 		argv := []string{"rancher", "primeping"}
 		if color != "" {
 			argv = append(argv, "--color", color)
@@ -135,15 +133,13 @@ func TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker(t *testing.T) {
 	t.Parallel()
 	var out, errOut bytes.Buffer
 	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
-	root := &ucli.Command{
+	root := link(&Command{
 		Name:      "rancher",
 		Writer:    &out,
 		ErrWriter: &errOut,
 		Flags:     GlobalFlags(),
-		Commands:  []*ucli.Command{Adapt(reg, primePingCmd{})},
-		// The default handler os.Exits the test binary on the error path.
-		ExitErrHandler: func(context.Context, *ucli.Command, error) {},
-	}
+		Commands:  []*Command{Adapt(reg, primePingCmd{})},
+	})
 	err := root.Run(t.Context(), []string{"rancher", "primeping"})
 	require.Error(t, err)
 	assert.Contains(t, errOut.String(), "no capability checker is set up")
@@ -174,7 +170,7 @@ func TestArgsUsageRendersRequiredAndOptionalArgs(t *testing.T) {
 	}))
 }
 
-// TestAdaptSetsArgsUsageFromDescriptorArgs asserts the Adapt wiring: the urfave
+// TestAdaptSetsArgsUsageFromDescriptorArgs asserts the Adapt wiring: the
 // ArgsUsage field is derived from the same Descriptor.Args the manifest
 // already publishes.
 func TestAdaptSetsArgsUsageFromDescriptorArgs(t *testing.T) {
@@ -200,22 +196,23 @@ func (schemaLikeCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (
 }
 
 // resolveReadOnlyFlags is the minimal flag set resolveReadOnly reads from.
-func resolveReadOnlyFlags() []ucli.Flag {
-	return []ucli.Flag{&ucli.StringFlag{Name: "config"}, &ucli.BoolFlag{Name: "read-only"}}
+func resolveReadOnlyFlags() []*Flag {
+	return []*Flag{{Name: "config", Kind: stringFlag}, {Name: "read-only", Kind: boolFlag}}
 }
 
 func runResolveReadOnly(t *testing.T, argv []string) (bool, []string) {
 	t.Helper()
 	var gotActive bool
 	var gotSources []string
-	cmd := &ucli.Command{
-		Name:  "x",
-		Flags: resolveReadOnlyFlags(),
-		Action: func(_ context.Context, c *ucli.Command) error {
-			gotActive, gotSources = resolveReadOnly(c)
+	cmd := link(&Command{
+		Name:       "x",
+		descriptor: &runtime.Descriptor{Name: "x"},
+		Flags:      resolveReadOnlyFlags(),
+		Action: func(_ context.Context, _ *Command, in *Input) error {
+			gotActive, gotSources = resolveReadOnly(in)
 			return nil
 		},
-	}
+	})
 	require.NoError(t, cmd.Run(t.Context(), argv))
 	return gotActive, gotSources
 }
@@ -260,13 +257,14 @@ func TestBuildIOReadsReadOnlyOverride(t *testing.T) {
 	config.SetReadOnlyOverride(true, []string{"RANCHER_CLI_READONLY"})
 
 	var got runtime.IO
-	cmd := &ucli.Command{
-		Name: "x",
-		Action: func(_ context.Context, c *ucli.Command) error {
-			got = buildIO(c)
+	cmd := link(&Command{
+		Name:       "x",
+		descriptor: &runtime.Descriptor{Name: "x"},
+		Action: func(_ context.Context, c *Command, in *Input) error {
+			got = buildIO(c, in)
 			return nil
 		},
-	}
+	})
 	require.NoError(t, cmd.Run(t.Context(), []string{"x"}))
 	assert.True(t, got.ReadOnly)
 	assert.Equal(t, []string{"RANCHER_CLI_READONLY"}, got.ReadOnlySources)
@@ -309,7 +307,7 @@ func (c *sliceEchoCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 }
 
 // TestAdaptedStringSliceFlagRoundTrip asserts, through the real
-// urfave adapter: a stringSlice descriptor becomes a StringSliceFlag whose
+// adapter: a stringSlice descriptor becomes a slice flag whose
 // occurrences arrive ordered and NEVER comma-split, and IsSet reports flag
 // presence for tri-state booleans.
 func TestAdaptedStringSliceFlagRoundTrip(t *testing.T) {
@@ -358,12 +356,7 @@ func TestGlobalFlagUsageTexts(t *testing.T) {
 	}
 	got := map[string]string{}
 	for _, f := range root.Flags {
-		switch fl := f.(type) {
-		case *ucli.StringFlag:
-			got[fl.Name] = fl.Usage
-		case *ucli.BoolFlag:
-			got[fl.Name] = fl.Usage
-		}
+		got[f.Name] = f.Usage
 	}
 	for name, usage := range want {
 		assert.Equal(t, usage, got[name], "usage of --%s", name)

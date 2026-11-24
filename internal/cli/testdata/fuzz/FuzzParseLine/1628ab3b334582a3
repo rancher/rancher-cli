@@ -1,0 +1,3 @@
+go test fuzz v1
+string("create\x00user\x00--c\x00--c")
+bool(true)

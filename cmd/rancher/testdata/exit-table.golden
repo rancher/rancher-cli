@@ -203,7 +203,7 @@ stderr:
 $ rancher __completion --bogus
 exit: 2
 stderr:
-> error (VALIDATION): unknown flag at argument 2 after rancher; pass --help for usage
+> error (VALIDATION): unknown command "__completion"
 >   hint: rancher schema
 
 $ rancher get pod --output

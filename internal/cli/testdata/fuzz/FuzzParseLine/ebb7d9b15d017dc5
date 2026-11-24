@@ -1,0 +1,3 @@
+go test fuzz v1
+string("usage\x9cx\x00-ۓ@-by=v")
+bool(true)

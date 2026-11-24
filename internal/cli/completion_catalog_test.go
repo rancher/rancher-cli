@@ -60,7 +60,7 @@ func TestFullCallbackCatalogNames(t *testing.T) {
 		var out bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = io.Discard
-		_ = root.Run(t.Context(), cli.SanitizedArgsForTest(append([]string{"rancher"}, script...)))
+		_ = root.Run(t.Context(), append([]string{"rancher"}, script...))
 		return out.String()
 	}
 

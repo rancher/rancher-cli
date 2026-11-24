@@ -11,12 +11,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // The --rancher-completion-* flag namespace is reserved for the completion
-// protocol. Both CaptureArgv and SanitizedArgs strip these words so they never
-// reach urfave as unknown flags, regardless of where they appear in argv.
+// protocol. CaptureArgv strips these arguments so they never reach the
+// command-line parser as unknown flags, regardless of where they appear.
 const (
 	protoSentinel  = "--rancher-completion-proto=2"
 	curPrefix      = "--rancher-completion-cur="
@@ -47,8 +46,7 @@ func GetCurrentWord() string { return rawCurrentWord }
 // A line is a request when it opens with the protocol marker, which every
 // script that `rancher completion` writes puts first. Where a "--" sits on the
 // line does not matter: the answer comes from the marker alone, and every
-// later layer reads it from rawCompleting or from the argv SanitizedArgs hands
-// urfave.
+// later layer reads it from rawCompleting.
 func completionRequest(args []string) bool {
 	return len(args) > 0 && args[0] == protoSentinel
 }
@@ -71,14 +69,13 @@ func OutdatedCompletionScript(args []string, w io.Writer) bool {
 	return true
 }
 
-// CaptureArgv processes os.Args[1:] before urfave parses. A line that opens
-// with the protocol marker is a completion request: the marker is stripped,
-// rawCurrentWord is read from --rancher-completion-cur=<word>, and
-// --generate-shell-completion is stripped. On any other line that flag is an
-// ordinary word, such as a flag's value. The marker and the current-word field
-// are stripped wherever they sit, as SanitizedArgs does, so rawArgv holds the
-// words urfave parses. (The argv urfave actually receives is produced
-// separately by SanitizedArgs.)
+// CaptureArgv processes os.Args[1:] before the command line is parsed. A
+// command line that opens with the protocol marker is a completion request:
+// the marker is stripped, rawCurrentWord is read from
+// --rancher-completion-cur=<word>, and --generate-shell-completion is
+// stripped. On any other command line that flag is an ordinary argument,
+// such as a flag's value. The marker and the current-word field are stripped
+// wherever they sit. rawArgv holds the arguments the parser reads.
 func CaptureArgv(args []string) {
 	request := completionRequest(args)
 	rawCompleting = request
@@ -93,52 +90,11 @@ func CaptureArgv(args []string) {
 			if request {
 				rawCurrentWord = a[len(curPrefix):]
 			}
-			continue // always stripped from urfave argv (never forward the protocol field)
+			continue // always stripped (never forward the protocol field)
 		}
 		out = append(out, a)
 	}
 	rawArgv = out
-}
-
-// SanitizedArgs strips ALL --rancher-completion-* words from os.Args so
-// urfave never sees unknown flags. It strips both the proto sentinel and any
-// --rancher-completion-cur=... word wherever they appear - not just at
-// position 0 - as a deliberate defense-in-depth measure: if either word
-// appears at an unexpected position (e.g. due to a future shell-script change
-// or caller error), it is still suppressed rather than forwarded to urfave.
-//
-// A completion request (a line that opens with the protocol marker) must
-// reach urfave as one it completes, never one it runs. urfave offers nothing
-// for a word typed after a "--", and the CLI's own completion answers there
-// (doubleDashSite). So for a request the words from the first "--" on are
-// dropped (rawArgv keeps them, and the completion callbacks read the line
-// from there) and the flag is put last.
-//
-// The cut is at the first literal "--", as urfave's own check is, even when
-// that "--" is the value of a flag typed before the command name
-// (`rancher -c -- completion <TAB>`): urfave then stops at the root, the
-// callbacks read the line with that "--" as a value, and nothing is offered.
-// Nothing runs.
-//
-// Run hands root.Run the result of SanitizedArgs(os.Args).
-func SanitizedArgs(args []string) []string {
-	out := make([]string, 0, len(args))
-	for _, a := range args {
-		if a == protoSentinel || strings.HasPrefix(a, curPrefix) {
-			continue
-		}
-		out = append(out, a)
-	}
-	if len(args) == 0 || !completionRequest(args[1:]) {
-		return out
-	}
-	out = slices.DeleteFunc(out, func(a string) bool { return a == completionFlag })
-	if len(out) > 0 {
-		if i := slices.Index(out[1:], "--"); i >= 0 {
-			out = out[:i+1]
-		}
-	}
-	return append(out, completionFlag)
 }
 
 // CompletionSiteKind discriminates the three site classifications.
@@ -197,12 +153,12 @@ func doubleDashSite(tail []string, delimiter int, flags map[string]bool) Complet
 // noCompletionAfterDoubleDash wraps the completion of a command that has
 // subcommands. After a "--" every word is an argument, so none names a command
 // or a flag, and such a command offers nothing.
-func noCompletionAfterDoubleDash(next ucli.ShellCompleteFunc) ucli.ShellCompleteFunc {
-	return func(ctx context.Context, c *ucli.Command) {
+func noCompletionAfterDoubleDash(next func(context.Context, *Command, *Input)) func(context.Context, *Command, *Input) {
+	return func(ctx context.Context, c *Command, in *Input) {
 		if doubleDashAt(stripRoutingPrefixByCmd(rawArgv, c), levelFlags(c)) >= 0 {
 			return
 		}
-		next(ctx, c)
+		next(ctx, c, in)
 	}
 }
 
@@ -288,27 +244,24 @@ func ParseArgTail(args []string, currentWord string, leaf runtime.Descriptor, gl
 }
 
 // levelFlags returns the flags cmd accepts, as name (and alias) to whether
-// the flag takes a value: its own, which include the help flag urfave adds
-// (and, at the root, the version flag), and the ones its ancestors apply to
-// their subcommands (every flag that is not local to its command). It is
-// read from the command tree, so it follows what urfave parses, not a
-// separate list.
-func levelFlags(cmd *ucli.Command) map[string]bool {
+// the flag takes a value: its own, which include the help flag (and, at the
+// root, the version flag), and the ones its ancestors apply to their
+// subcommands (every flag that is not local to its command). It is read from
+// the command tree, not from a separate list.
+func levelFlags(cmd *Command) map[string]bool {
 	flags := map[string]bool{}
 	for i, c := range cmd.Lineage() {
 		for _, f := range c.Flags {
-			if lf, ok := f.(ucli.LocalFlag); i > 0 && (!ok || lf.IsLocal()) {
+			if i > 0 && f.Local {
 				continue
 			}
-			// A command's own flag wins: urfave does not apply an ancestor's
-			// flag when the command already has a flag with one of its names.
+			// A command's own flag wins: an ancestor's flag does not apply
+			// when the command already has a flag with one of its names.
 			if i > 0 && slices.ContainsFunc(f.Names(), func(name string) bool { _, ok := flags[name]; return ok }) {
 				continue
 			}
-			df, ok := f.(ucli.DocGenerationFlag)
-			takesValue := ok && df.TakesValue()
 			for _, name := range f.Names() {
-				flags[name] = takesValue
+				flags[name] = f.takesValue()
 			}
 		}
 	}
@@ -316,47 +269,37 @@ func levelFlags(cmd *ucli.Command) map[string]bool {
 }
 
 // onceFlagNames maps every name and alias of a flag cmd itself declares
-// with urfave's OnlyOnce to the flag's name. urfave refuses a second
-// instance of such a flag while parsing, before the command runs. The
-// adapter sets OnlyOnce only on a leaf's own flags (runtime.ArgSpec.Once),
-// from the three flag types it builds.
-func onceFlagNames(cmd *ucli.Command) map[string]string {
+// with Once to the flag's name. A second instance of such a flag is refused
+// while the line is parsed, before the command runs. The adapter sets Once
+// only on a leaf's own flags (runtime.ArgSpec.Once).
+func onceFlagNames(cmd *Command) map[string]string {
 	names := map[string]string{}
 	for _, f := range cmd.Flags {
-		var once bool
-		switch f := f.(type) {
-		case *ucli.StringFlag:
-			once = f.OnlyOnce
-		case *ucli.BoolFlag:
-			once = f.OnlyOnce
-		case *ucli.StringSliceFlag:
-			once = f.OnlyOnce
-		}
-		if !once {
+		if !f.Once {
 			continue
 		}
 		for _, name := range f.Names() {
-			names[name] = f.Names()[0]
+			names[name] = f.Name
 		}
 	}
 	return names
 }
 
-// tailWords scans tail, the words typed after a command path, under flags
-// (see levelFlags). It returns the words that are neither flags nor the
-// value of a flag that takes one, how many of those words precede the first
-// flag that is not in flags (all of them when there is none), and whether
-// the tail holds such a flag. A flag that is not in flags is rejected by
-// urfave and counts as a flag without a value. A "--" ends the flags: the
-// words after it are all words. So does a word whose first character after
-// the dash is not a letter (`-1`, or a dash before a symbol), which urfave
-// reads as a value, with the words after it. A bare "-" is a word, and the
-// words after it are not counted: a line with one is refused. Each word is
-// classified with the whitespace around it cut off, as urfave classifies it
-// (` --apply=` is a flag, `--yes= ` has an empty value), and a word that is
-// not a flag is kept as typed. It is the one scan of a tail, for the check
-// that a line is rejected and for the hint built from the words typed after
-// a mistyped `help`.
+// tailWords scans tail, the arguments typed after a command path, under flags
+// (see levelFlags). It returns the arguments that are neither flags nor the
+// value of a flag that takes one, how many of those arguments precede the
+// first flag that is not in flags (all of them when there is none), and
+// whether the tail holds such a flag. A flag that is not in flags is rejected
+// and counts as a flag without a value. A "--" ends the flags: the arguments
+// after it are all arguments. So does an argument whose first character after
+// the dash is not a letter (`-1`, or a dash before a symbol), which is read
+// as a value, with the arguments after it. A bare "-" is an argument, and the
+// arguments after it are not counted: a command line with one is refused.
+// Each argument is classified with the whitespace around it cut off
+// (` --apply=` is a flag, `--yes= ` has an empty value), and an argument that
+// is not a flag is kept as typed. It is the one scan of a tail, for the check
+// that a command line is rejected and for the hint built from the arguments
+// typed after a mistyped `help`.
 func tailWords(tail []string, flags map[string]bool) (words []string, beforeUndefined int, undefined bool) {
 	beforeUndefined = -1
 	for _, w := range scanTail(tail, flags) {
@@ -405,9 +348,9 @@ type tailWord struct {
 	dash bool
 }
 
-// wordClass is how urfave reads one word of a command line at a level that
-// parses flags, before the level's own rules (how many words it takes, the
-// commands it names) apply.
+// wordClass is how one argument of a command line is read by a command that
+// parses flags, before the command's own rules (how many arguments it takes,
+// the commands it names) apply.
 type wordClass int
 
 const (
@@ -423,7 +366,7 @@ const (
 type classifiedWord struct {
 	class wordClass
 	// trimmed is the word with the whitespace around it cut off, the form
-	// urfave classifies it in.
+	// it is classified in.
 	trimmed string
 	// For a wordFlag: name is what follows one or two dashes, up to the
 	// first "=", joined whether the word holds an "=", and value what
@@ -432,9 +375,9 @@ type classifiedWord struct {
 	joined      bool
 }
 
-// classifyWord reads word the way urfave classifies it. It is the one
-// reading of a single word for scanTail and for parseLine, so the two
-// cannot drift apart.
+// classifyWord reads one argument of a command line. It is the one reading of
+// a single argument for scanTail and for parseLine. The two cannot drift
+// apart.
 func classifyWord(word string) classifiedWord {
 	trimmed := strings.TrimSpace(word)
 	c := classifiedWord{trimmed: trimmed}
@@ -513,7 +456,7 @@ func scanTail(tail []string, flags map[string]bool) []tailWord {
 // accepts. It is the one reading of a line for the checks the command
 // pipeline makes on it and for completion's decision that the line is
 // rejected.
-func scanLine(argv []string, c *ucli.Command) (head, tail []tailWord) {
+func scanLine(argv []string, c *Command) (head, tail []tailWord) {
 	rest := stripRoutingPrefixByCmd(argv, c)
 	levels := levelFlags(c)
 	return scanTail(argv[:len(argv)-len(rest)], levels), scanTail(rest, levels)
@@ -527,8 +470,8 @@ func hasBareDash(words []tailWord) bool {
 }
 
 // boolValueKind reads w as a bool flag the command accepts, typed with "="
-// and no value (empty) or a value of only whitespace (blank), which urfave
-// parses as true or rejects. lineRefusal refuses both and completion offers
+// and no value (empty) or a value of only whitespace (blank), which is
+// parsed as true or rejected. lineRefusal refuses both and completion offers
 // nothing on a line holding either.
 func boolValueKind(w tailWord) (blank, empty bool) {
 	if w.kind != flagWord || !w.defined || w.takesValue || !w.joined {
@@ -571,17 +514,17 @@ func isSeparateBoolFlag(w tailWord) bool {
 	return w.kind == flagWord && w.defined && !w.takesValue && !w.joined
 }
 
-// scanOutputFormat performs a raw-argv scan for an -o/--output value when no
-// parsed flag can be trusted yet - an unmatched command or a flag-parse
-// failure can fire before urfave finishes parsing this invocation's own
+// scanOutputFormat scans the captured command line for an -o/--output value
+// when no parsed flag can be trusted yet - an unknown command or a flag error
+// can fire before this invocation's own
 // --output. It recognizes all four accepted spellings (-o v, -o=v, --output
 // v, --output=v) via the same canonical-name/arity primitives ParseArgTail
 // and checkFlagValues already use - no second flag grammar - stops at the
 // first "--" (positionals after the delimiter never select an error's
-// rendering), and a trailing output flag with no following word selects no
+// rendering), and a trailing output flag with no following argument selects no
 // format (an empty result, same as never having typed one). A later
-// occurrence overrides an earlier one, matching urfave's own last-flag-wins
-// semantics for a repeated flag.
+// occurrence overrides an earlier one, as the last value wins for a repeated
+// flag.
 func scanOutputFormat(argv []string) string {
 	return scanGlobalFlag(argv, "output")
 }
@@ -592,8 +535,8 @@ func scanColorFlag(argv []string) string {
 	return scanGlobalFlag(argv, "color")
 }
 
-// scanGlobalFlag is the shared raw-argv scan behind scanOutputFormat and
-// scanColorFlag: it resolves each flag word against the global specs'
+// scanGlobalFlag is the scan of the captured command line behind
+// scanOutputFormat and scanColorFlag: it resolves each flag word against the global specs'
 // canonical names, honors the separate and equals value spellings for every
 // alias the flag's spec defines (four spellings for --output with its -o
 // short form, two for --color, which has none) with last-flag-wins, stops

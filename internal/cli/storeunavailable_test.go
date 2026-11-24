@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -48,7 +47,6 @@ func runRootJSON(t *testing.T, args ...string) (int, string, string) {
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
 	root.Reader = strings.NewReader("")
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	runErr := root.Run(ctx, append(append([]string{"rancher"}, args...), "-o", "json"))

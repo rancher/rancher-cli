@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -15,17 +14,12 @@ import (
 // mainEntryFile is the binary's entry point.
 const mainEntryFile = "cmd/rancher/main.go"
 
-// urfaveImport is the import path of the command-line library.
-const urfaveImport = "github.com/urfave/cli/v3"
-
 // TestTheEntryPointRunsTheCommandThroughCliRun asserts that the command tree
-// cli.BuildRoot builds is run through cli.Run, which refuses a command line
-// before urfave parses it, and not through the tree's own Run: no non-test
-// Go file outside internal/cli imports urfave, so none can name the type
-// of the tree; the entry point calls cli.Run and holds no other use of a
-// method named Run, a call or a method value; and no other non-test file
-// outside internal/cli calls Run on a variable that holds a tree
-// cli.BuildRoot returned.
+// cli.BuildRoot builds is run through cli.Run, which records the run, and not
+// through the tree's own Run: the entry point calls cli.Run and holds no
+// other use of a method named Run, a call or a method value; and no other
+// non-test file outside internal/cli calls Run on a variable that holds a
+// tree cli.BuildRoot returned.
 func TestTheEntryPointRunsTheCommandThroughCliRun(t *testing.T) {
 	t.Parallel()
 	files, err := repositoryFiles()
@@ -39,11 +33,6 @@ func TestTheEntryPointRunsTheCommandThroughCliRun(t *testing.T) {
 		}
 		file, perr := parser.ParseFile(fset, path, nil, 0)
 		require.NoError(t, perr, path)
-		for _, imp := range file.Imports {
-			if p, uerr := strconv.Unquote(imp.Path.Value); uerr == nil && p == urfaveImport {
-				offenders = append(offenders, fset.Position(imp.Pos()).String()+": imports urfave")
-			}
-		}
 		built := map[string]bool{}
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch v := n.(type) {

@@ -16,7 +16,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -140,7 +139,6 @@ func runTokenLookup(t *testing.T, s *tokenLookupServer, envToken string, args ..
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
 	root.Reader = strings.NewReader("")
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	argv := append([]string{"--config", cfgDir, "create", "kubeconfig"}, args...)
 	CaptureArgv(argv)
 	t.Cleanup(func() { CaptureArgv(nil) })
@@ -149,7 +147,7 @@ func runTokenLookup(t *testing.T, s *tokenLookupServer, envToken string, args ..
 	runErr := root.Run(ctx, append([]string{"rancher"}, argv...))
 
 	run := tokenLookupRun{stdout: out.String(), stderr: errOut.String(), cfgDir: cfgDir}
-	if coder, ok := runErr.(ucli.ExitCoder); ok {
+	if coder, ok := runErr.(exitCoder); ok {
 		run.exit = coder.ExitCode()
 	}
 	// The command accepts only the table format, so its error is the text

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"io/fs"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/telemetry"
@@ -27,11 +25,10 @@ func runShim(t *testing.T, args ...string) (stdout, stderr string, code int) {
 	require.NoError(t, err)
 	var out, errOut bytes.Buffer
 	root.Writer, root.ErrWriter = &out, &errOut
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	runErr := root.Run(t.Context(), append([]string{"rancher"}, args...))
 	if runErr != nil {
 		code = 1
-		if coder, ok := runErr.(ucli.ExitCoder); ok {
+		if coder, ok := runErr.(exitCoder); ok {
 			code = coder.ExitCode()
 		}
 	}

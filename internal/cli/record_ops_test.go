@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/experiment"
@@ -34,7 +33,7 @@ func runCounted(t *testing.T, dir string, argv ...string) (identity map[string]i
 }
 
 // runCountedRoot is runCounted on the tree root.
-func runCountedRoot(t *testing.T, root *ucli.Command, dir string, argv ...string) (identity map[string]int, files []string) {
+func runCountedRoot(t *testing.T, root *Command, dir string, argv ...string) (identity map[string]int, files []string) {
 	t.Helper()
 	identity = map[string]int{}
 	restore := config.SetIdentityObserverForTest(func(op string) { identity[op]++ })
@@ -91,7 +90,7 @@ func TestRecordingAddsTheListedOperationsToThePluginHit(t *testing.T) {
 	assert.Equal(t, "stat DIR", files[0])
 
 	t.Run("a development root with the experiment set", func(t *testing.T) {
-		develop := func() *ucli.Command {
+		develop := func() *Command {
 			root, err := BuildRoot("dev")
 			require.NoError(t, err)
 			return root

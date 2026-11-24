@@ -10,9 +10,9 @@ stderr 'error \(VALIDATION\):'
 
 # Callback driving: a request opens with the protocol marker and ends with the
 # current-word field and --generate-shell-completion, as the scripts send it.
-# Default urfave suggestions and our alias-aware override both arrive as
+# The command candidates and the alias-aware group candidates both arrive as
 # "name:usage" lines - anchor on the name prefix, never a whole line
-# (urfave-owned ordering/usage text is not ours to assert exactly).
+# (the usage text is not asserted exactly).
 exec rancher --rancher-completion-proto=2 get --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^pod:'
 stdout '(?m)^po:'

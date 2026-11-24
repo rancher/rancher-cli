@@ -17,8 +17,8 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 ! exec rancher get project does-not-exist --cluster testcluster -o json
 jsonquery stderr data.error.code NOT_FOUND
 
-# VALIDATION: unknown top-level command, via our CommandNotFound hook, not
-# urfave's own unhinted "No help topic" exit 3
+# VALIDATION: unknown top-level command, with a hint, not an unhinted "No
+# help topic" exit 3
 ! exec rancher bogus-command-xyz -o json
 jsonquery stderr data.error.code VALIDATION
 stderr 'rancher schema'

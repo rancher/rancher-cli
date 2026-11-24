@@ -16,7 +16,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // TestContainerLimitKeyCandidates asserts the key=value list completion of
@@ -167,7 +166,7 @@ func runCreateFieldCompletion(t *testing.T, words []string, currentWord string) 
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
-	_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+	_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 	return out.String()
 }
 
@@ -266,8 +265,6 @@ func TestKeyValueFlagsRefuseASecondInstance(t *testing.T) {
 			require.NoError(t, err)
 			var out, errBuf bytes.Buffer
 			root.Writer, root.ErrWriter = &out, &errBuf
-			root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 			argv := append(append([]string{"rancher", "--config", t.TempDir(), "-o", "json"}, tc.args...), "--dry-run")
 			// A parse error renders before flags parse, in the format read
 			// from the raw argv the entry point captured.
@@ -381,8 +378,7 @@ func TestCompletionOffersNothingOnALineWithAOnceFlagTwice(t *testing.T) {
 		CaptureArgv(scriptArgs)
 		var out bytes.Buffer
 		root.Writer, root.ErrWriter, root.Reader = &out, &out, strings.NewReader("")
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 		return out.String(), rec.take()
 	}
 
@@ -466,11 +462,10 @@ func (onceAliasCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (r
 func TestOnceFlagGivenByNameAndAlias(t *testing.T) {
 	restoreRawArgv(t)
 	reg := runtime.NewRegistry(runtime.MapResolver(provider.NewResolver()))
-	newRoot := func(out *bytes.Buffer) (*ucli.Command, *ucli.Command) {
+	newRoot := func(out *bytes.Buffer) (*Command, *Command) {
 		leaf := Adapt(reg, onceAliasCmd{})
-		root := &ucli.Command{Name: "rancher", Flags: GlobalFlags(), Commands: []*ucli.Command{leaf},
-			EnableShellCompletion: true, Writer: out, ErrWriter: out}
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+		root := link(&Command{Name: "rancher", Flags: GlobalFlags(), Commands: []*Command{leaf},
+			Writer: out, ErrWriter: out})
 		return root, leaf
 	}
 	_, leaf := newRoot(&bytes.Buffer{})
@@ -501,7 +496,7 @@ func TestOnceFlagGivenByNameAndAlias(t *testing.T) {
 		root, _ := newRoot(&out)
 		scriptArgs := append(append(append([]string{protoSentinel}, "oncealias"), words...), curPrefix+cur, "--generate-shell-completion")
 		CaptureArgv(scriptArgs)
-		_ = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...)))
+		_ = root.Run(t.Context(), append([]string{"rancher"}, scriptArgs...))
 		return out.String()
 	}
 	assert.NotEmpty(t, complete(nil, "--mode="), "the first instance offers the values")

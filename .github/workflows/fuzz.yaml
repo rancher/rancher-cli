@@ -14,13 +14,14 @@ permissions:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
-    # Seven targets, each with an 11-minute outer watchdog deadline (5m fuzz +
-    # 1m minimization + 5m allowance). A normal run takes about 40 minutes. A
+    # Eleven targets, each with an 11-minute outer watchdog deadline (5m fuzz +
+    # 1m minimization + 5m allowance). A normal run takes about 63 minutes. A
     # failing run stops at its first failing target and takes at most about
-    # 45 minutes (the job timeout is 60), with checkout/setup/self-test/
-    # script overhead and failure-artifact upload. The margin keeps the job
-    # timeout from preempting a per-target watchdog's distinct hang diagnosis.
-    timeout-minutes: 60
+    # 68 minutes, plus about 5 minutes of checkout/setup/self-test/script
+    # overhead and failure-artifact upload (the job timeout is 90). The margin
+    # keeps the job timeout from preempting a per-target watchdog's distinct
+    # hang diagnosis.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

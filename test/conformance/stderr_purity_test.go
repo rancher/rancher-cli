@@ -39,6 +39,7 @@ var stderrAllowlist = map[string]bool{
 	"credhelper/serve.go":                        true,
 	"cmd/rancher-credential-vault/main.go":       true,
 	"internal/cli/completion_debug.go":           true,
+	"internal/cli/run.go":                        true, // runArgv gives a tree with no error writer the process's own, where a run starts; the completion trace test limits the file to that one assignment
 }
 
 // TestNoStrayStderrWriterOutsideAllowlist is the grep-level (here, an AST

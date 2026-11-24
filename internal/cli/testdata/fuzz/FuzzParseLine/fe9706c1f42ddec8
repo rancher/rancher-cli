@@ -1,0 +1,3 @@
+go test fuzz v1
+string("\t\t\t\t\tg\x00use-server\x00--help")
+bool(true)
