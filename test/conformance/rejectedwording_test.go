@@ -31,7 +31,7 @@ import (
 //     path, a machine value) and is skipped. The packages that only
 //     support tests are left out: their strings are fixtures and fake
 //     server replies.
-//   - README.md, COMMANDS.md, REFERENCE.md, MIGRATING.md,
+//   - README.md, COMMANDS.md, REFERENCE.md, MIGRATING.md, SURFACE.md,
 //     skills/rancher/SKILL.md and CREDENTIAL_HELPERS.md, one paragraph at
 //     a time: a run of non-blank lines outside code fences, joined with
 //     single spaces, so a phrase wrapped across two lines is found. A
@@ -255,6 +255,7 @@ var wordingDocs = []string{
 	"COMMANDS.md",
 	"REFERENCE.md",
 	"MIGRATING.md",
+	"SURFACE.md",
 	"skills/rancher/SKILL.md",
 	"CREDENTIAL_HELPERS.md",
 }

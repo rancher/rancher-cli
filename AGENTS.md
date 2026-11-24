@@ -143,6 +143,12 @@ Gotchas:
   on purpose (`go test ./internal/cli/ -run
   'TestHelpGolden|TestParseGolden|TestCandidatesGolden' -update`); review that
   diff like the schema golden's.
+- **The surface follows SURFACE.md.** A new or changed command, flag or argument
+  follows the rules in [`SURFACE.md`](SURFACE.md); if it cannot, the same commit
+  changes the rule, its test and every command the rule covers. A rule with a
+  test names it. The tests in `internal/cli/surfaceconventions_test.go` each
+  have an allowlist: a row, with a reason, for each flag, argument or command
+  that does not follow the rule.
 - **One safety pipeline for every mutation.** Server-side dry-run → an `Effect` →
   explicit gates (`--apply`, `--yes` for destructive, `--allow-deprecated`) →
   execute. An update is bound to its preview by the resourceVersion of the
