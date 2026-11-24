@@ -214,8 +214,10 @@ func defaultDrivers() []*unstructured.Unstructured {
 		nodeDriver("amazonec2", "amazonec2", true, false, "accessKey", "secretKey", "", "", ""),
 		nodeDriver("digitalocean", "digitalocean", true, false, "", "accessToken", "", "", ""),
 		nodeDriver("harvester", "harvester", true, false, "clusterType,clusterId", "kubeconfigContent", "", "clusterId", "clusterType:imported"),
-		nodeDriver("linode", "linode", false, false, "", "token", "", "", ""),
-		nodeDriver("pnap", "pnap", true, false, "clientIdentifier,clientSecret", "", "clientSecret", "", ""),
+		nodeDriver("linode", "linode", false, false, "", "token", "rootPass", "", ""),
+		nodeDriver("pnap", "pnap", true, false, "clientIdentifier", "clientSecret", "", "", ""),
+		// publicpassword is not a Rancher driver: its passwordFields names a public field.
+		nodeDriver("publicpassword", "publicpassword", true, false, "host,note", "", "note", "", ""),
 		nodeDriver("twosecrets", "twosecrets", true, false, "user", "keyOne,keyTwo", "", "", ""),
 	}
 }
@@ -580,7 +582,7 @@ func TestCloudCredentialPlanRefusals(t *testing.T) {
 		{name: "a field twice", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"accessKey=a", "accessKey=b"}}, want: "the 1st --set and the 2nd --set give the same field; give each field once"},
 		{name: "a field in both flags", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"secretKey=a"}, fromFile: []string{"accessKey=x.txt", "secretKey=secret.txt"}},
 			want: "the 1st --set and the 2nd --from-file give the same field; give each field once"},
-		{name: "unknown driver", in: ccwInput{args: []string{"nope", "n"}}, want: "unknown cloud credential driver \"nope\"; drivers with a credential on this server: amazonec2, digitalocean, harvester, pnap, s3, twosecrets"},
+		{name: "unknown driver", in: ccwInput{args: []string{"nope", "n"}}, want: "unknown cloud credential driver \"nope\"; drivers with a credential on this server: amazonec2, digitalocean, harvester, pnap, publicpassword, s3, twosecrets"},
 		{name: "inactive driver", in: ccwInput{args: []string{"linode", "n"}}, want: "node driver \"linode\" is not active"},
 		{name: "alibaba while its operator is inactive", in: ccwInput{args: []string{"alibaba", "n"}}, want: "the alibaba operator is not active: the setting kev2-operators marks it inactive"},
 		{name: "unknown field", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"nope=1"}}, want: "the name in the 1st --set is not a field of amazonec2; its fields are accessKey, defaultRegion, secretKey"},
@@ -588,7 +590,7 @@ func TestCloudCredentialPlanRefusals(t *testing.T) {
 		{name: "a public field in another case with --from-file", in: ccwInput{args: []string{"amazonec2", "n"}, fromFile: []string{"accesskey=secret.txt"}}, want: "\"accesskey\" after --from-file is not a field of amazonec2"},
 		{name: "secret field in --set", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"secretKey=" + secretWord}}, want: "\"secretKey\" is a secret field and cannot be given with --set"},
 		{name: "secret field in --set in other case", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"SECRETKEY=" + secretWord}}, want: "is the secret field secretKey"},
-		{name: "a public field of a driver marked secret by passwordFields", in: ccwInput{args: []string{"pnap", "n"}, set: []string{"clientSecret=" + secretWord}}, want: "is a secret field"},
+		{name: "a public field of a driver marked secret by passwordFields", in: ccwInput{args: []string{"publicpassword", "n"}, set: []string{"note=" + secretWord}}, want: "is a secret field"},
 		{name: "public field in --from-file", in: ccwInput{args: []string{"amazonec2", "n"}, fromFile: []string{"accessKey=secret.txt"}}, want: "\"accessKey\" is a public field of amazonec2"},
 		{name: "missing required field with stdin that fails", in: ccwInput{args: []string{"amazonec2", "n"}, set: []string{"defaultRegion=us-east-1"}, fromFile: []string{"secretKey=-"}},
 			want: "amazonec2 needs these fields: accessKey (--set accessKey=<value>)"},
@@ -948,7 +950,7 @@ func TestPatchCloudCredentialCompletionOffersOnlyWhatPlanAccepts(t *testing.T) {
 	src := complete.PatchCloudCredentialSource()
 	refusedWords := []string{"is not a field of", "cannot be given with --set", "is a public field of", "has no fields of a node driver"}
 	offered := 0
-	for _, driver := range []string{"amazonec2", "digitalocean", "harvester", "pnap", "twosecrets", "s3"} {
+	for _, driver := range []string{"amazonec2", "digitalocean", "harvester", "pnap", "publicpassword", "twosecrets", "s3"} {
 		stored, err := json.Marshal(ccpStored(driver, "7").Object)
 		require.NoError(t, err)
 		server := completiontest.New(t, map[string]string{

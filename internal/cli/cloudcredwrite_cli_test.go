@@ -68,18 +68,18 @@ func ccStoredSecret(changed bool, driver string) string {
 // the driver table with its credential annotations.
 var ccDrivers = []struct{ name, public, private, password, optional, defaults string }{
 	{"amazonec2", "accessKey", "secretKey", "", "", ""},
-	{"azure", "clientId,subscriptionId,environment,tenantId", "clientSecret", "", "tenantId", ""},
+	{"azure", "clientId,subscriptionId,tenantId,environment", "clientSecret", "", "tenantId", ""},
 	{"digitalocean", "", "accessToken", "", "", ""},
 	{"exoscale", "apiKey", "apiSecretKey", "", "", ""},
 	{"google", "", "authEncodedJson", "", "", ""},
 	{"harvester", "clusterType,clusterId", "kubeconfigContent", "", "clusterId", "clusterType:imported"},
-	{"linode", "", "token", "", "", ""},
+	{"linode", "", "token", "rootPass", "", ""},
 	{"nutanix", "endpoint,username,port", "password", "", "", ""},
-	{"oci", "tenancyId,userId,fingerprint", "privateKeyContents", "", "", ""},
+	{"oci", "tenancyId,userId,fingerprint", "privateKeyContents", "privateKeyPassphrase", "", ""},
 	{"otc", "accessKey,username", "secretKey,password,token", "", "", ""},
 	{"openstack", "", "password", "", "", ""},
 	{"packet", "", "apiKey", "", "", ""},
-	{"pnap", "clientIdentifier,clientSecret", "", "clientSecret", "", ""},
+	{"pnap", "clientIdentifier", "clientSecret", "", "", ""},
 	{"rackspace", "", "apiKey", "", "", ""},
 	{"softlayer", "", "apiKey", "", "", ""},
 	{"vmwarevsphere", "username,vcenter,vcenterPort", "password", "", "", "vcenterPort:443"},
@@ -450,7 +450,9 @@ func ccDriverCase(t *testing.T, driver string, public, secret []string, norman c
 }
 
 // ccDriverRows lists the public and secret fields of every driver the stub
-// serves, and of the drivers that have no node driver.
+// serves, and of the drivers that have no node driver. A field is secret when
+// Rancher marks it private or names it in passwordFields; a passwordFields name
+// in neither the public nor the private list makes no credential field.
 func ccDriverRows() map[string][2][]string {
 	rows := map[string][2][]string{}
 	for _, prefix := range cloudcredfields.StaticPrefixes() {
@@ -471,13 +473,15 @@ func ccDriverRows() map[string][2][]string {
 	}
 	for _, d := range ccDrivers {
 		password := split(d.password)
-		var public []string
+		var public, secret []string
 		for _, name := range split(d.public) {
-			if !slices.Contains(password, name) {
+			if slices.Contains(password, name) {
+				secret = append(secret, name)
+			} else {
 				public = append(public, name)
 			}
 		}
-		rows[d.name] = [2][]string{public, slices.Concat(split(d.private), password)}
+		rows[d.name] = [2][]string{public, slices.Concat(split(d.private), secret)}
 	}
 	return rows
 }
@@ -561,7 +565,7 @@ func TestCloudCredentialCommandsNeverShowASecretValue(t *testing.T) {
 		{"a pasted secret that ends in equals signs as a --from-file argument", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--from-file", base + "==", "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a pasted secret that ends in equals signs given twice", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", base + "==", "--set", base + "==", "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"a secret given with --set", ccCase{argv: []string{"create", "cloud-credential", "amazonec2", "prod", "--set", "secretKey=" + base, "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
-		{"a password field given with --set", ccCase{argv: []string{"create", "cloud-credential", "pnap", "p", "--set", "clientSecret=" + base, "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
+		{"a password field given with --set", ccCase{argv: []string{"create", "cloud-credential", "publicpassword", "p", "--set", "note=" + base, "--dry-run"}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"an unknown driver", ccCase{argv: []string{"create", "cloud-credential", "nope", "n", "--from-file", "secretKey=-", "--dry-run"}, stdin: base + "\n", errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"an inactive driver", ccCase{argv: []string{"create", "cloud-credential", "dormant", "d", "--from-file", "token=-", "--dry-run"}, stdin: base + "\n", opts: ccOptions{dormant: true}, errCode: clierr.CodeValidation, secrets: []string{base}}},
 		{"alibaba while its operator is inactive", ccCase{argv: []string{"create", "cloud-credential", "alibaba", "a", "--from-file", "accessKeySecret=-", "--dry-run"}, stdin: base + "\n", opts: ccOptions{alibabaOff: true}, errCode: clierr.CodeValidation, secrets: []string{base}}},

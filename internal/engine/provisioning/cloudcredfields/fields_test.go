@@ -10,9 +10,12 @@ import (
 // TestCloudCredentialFieldsPerDriver asserts the fields, the secret fields and
 // the required fields the annotations of each built-in node driver give, plus a
 // driver whose passwordFields names a public field and one with an SSH key
-// field, and the static s3 and alibaba rows.
+// field, and the static s3 and alibaba rows. It also asserts that the
+// passwordFields name of linode and oci, which is in neither the public nor the
+// private list, is not a field.
 func TestCloudCredentialFieldsPerDriver(t *testing.T) {
 	t.Parallel()
+	passwordOnly := map[string]string{"linode": "rootPass", "oci": "privateKeyPassphrase"}
 	for _, tc := range []struct {
 		prefix   string
 		a        Annotations
@@ -21,20 +24,20 @@ func TestCloudCredentialFieldsPerDriver(t *testing.T) {
 		required []string
 	}{
 		{"amazonec2", Annotations{Public: "accessKey", Private: "secretKey"}, []string{"accessKey", "defaultRegion"}, []string{"secretKey"}, []string{"accessKey", "secretKey"}},
-		{"azure", Annotations{Public: "clientId,subscriptionId,environment,tenantId", Private: "clientSecret", Optional: "tenantId"},
+		{"azure", Annotations{Public: "clientId,subscriptionId,tenantId,environment", Private: "clientSecret", Optional: "tenantId"},
 			[]string{"clientId", "environment", "subscriptionId", "tenantId"}, []string{"clientSecret"}, []string{"clientId", "clientSecret", "environment", "subscriptionId"}},
 		{"digitalocean", Annotations{Private: "accessToken"}, nil, []string{"accessToken"}, []string{"accessToken"}},
 		{"exoscale", Annotations{Public: "apiKey", Private: "apiSecretKey"}, []string{"apiKey"}, []string{"apiSecretKey"}, []string{"apiKey", "apiSecretKey"}},
 		{"google", Annotations{Private: "authEncodedJson"}, nil, []string{"authEncodedJson"}, []string{"authEncodedJson"}},
 		{"harvester", Annotations{Public: "clusterType,clusterId", Private: "kubeconfigContent", Optional: "clusterId", Defaults: "clusterType:imported"},
 			[]string{"clusterId", "clusterType"}, []string{"kubeconfigContent"}, []string{"kubeconfigContent"}},
-		{"linode", Annotations{Private: "token"}, nil, []string{"token"}, []string{"token"}},
+		{"linode", Annotations{Private: "token", Password: "rootPass"}, nil, []string{"token"}, []string{"token"}},
 		{"nutanix", Annotations{Public: "endpoint,username,port", Private: "password"}, []string{"endpoint", "port", "username"}, []string{"password"}, []string{"endpoint", "password", "port", "username"}},
-		{"oci", Annotations{Public: "tenancyId,userId,fingerprint", Private: "privateKeyContents"}, []string{"fingerprint", "tenancyId", "userId"}, []string{"privateKeyContents"}, []string{"fingerprint", "privateKeyContents", "tenancyId", "userId"}},
+		{"oci", Annotations{Public: "tenancyId,userId,fingerprint", Private: "privateKeyContents", Password: "privateKeyPassphrase"}, []string{"fingerprint", "tenancyId", "userId"}, []string{"privateKeyContents"}, []string{"fingerprint", "privateKeyContents", "tenancyId", "userId"}},
 		{"otc", Annotations{Public: "accessKey,username", Private: "secretKey,password,token"}, []string{"accessKey", "username"}, []string{"password", "secretKey", "token"}, []string{"accessKey", "password", "secretKey", "token", "username"}},
 		{"openstack", Annotations{Private: "password"}, nil, []string{"password"}, []string{"password"}},
 		{"packet", Annotations{Private: "apiKey"}, nil, []string{"apiKey"}, []string{"apiKey"}},
-		{"pnap", Annotations{Public: "clientIdentifier,clientSecret", Password: "clientSecret"}, []string{"clientIdentifier"}, []string{"clientSecret"}, []string{"clientIdentifier", "clientSecret"}},
+		{"pnap", Annotations{Public: "clientIdentifier", Private: "clientSecret"}, []string{"clientIdentifier"}, []string{"clientSecret"}, []string{"clientIdentifier", "clientSecret"}},
 		{"rackspace", Annotations{Private: "apiKey"}, nil, []string{"apiKey"}, []string{"apiKey"}},
 		{"softlayer", Annotations{Private: "apiKey"}, nil, []string{"apiKey"}, []string{"apiKey"}},
 		{"vmwarevsphere", Annotations{Public: "username,vcenter,vcenterPort", Private: "password", Defaults: "vcenterPort:443"},
@@ -50,6 +53,11 @@ func TestCloudCredentialFieldsPerDriver(t *testing.T) {
 			assert.Equal(t, tc.public, d.Names(func(f Field) bool { return !f.Secret }), "public")
 			assert.Equal(t, tc.secret, d.Names(func(f Field) bool { return f.Secret }), "secret")
 			assert.Equal(t, tc.required, d.Names(func(f Field) bool { return f.Required }), "required")
+			if name, ok := passwordOnly[tc.prefix]; ok {
+				assert.Equal(t, name, tc.a.Password, "the row has the passwordFields name")
+				_, isField := d.Field(name)
+				assert.False(t, isField, "a passwordFields name in no other list is no field")
+			}
 		})
 	}
 

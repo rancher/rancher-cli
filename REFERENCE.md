@@ -1708,11 +1708,12 @@ The table lists the built-in drivers. For a driver with required fields, `create
 
 - Public fields go in `--set <field>=<value>`. The preview shows their values, so never
   type a secret as the value of a public field.
-- Secret fields (the fields Rancher marks as a password, and `pnap` `clientSecret`) go in
+- Secret fields (the fields Rancher marks as private or as a password) go in
   `--from-file <field>=<path>`; `--from-file <field>=-` reads stdin, once. A secret in
   `--set` is refused. The preview shows `<redacted>` in place of a secret value. An error
-  from Rancher has every secret value of 4 characters or more, and each line of a multi-line
-  secret value, replaced by `<hidden>`; a secret shorter than 4 characters is not hidden in an error.
+  from Rancher has every secret value of 4 characters or more, and each line of a
+  multi-line secret value, replaced by `<hidden>`; a secret shorter than 4 characters is
+  not hidden in an error.
 - `kubeconfigContent`, `privateKeyContents`, `authEncodedJson`, `sshKeyContents` and `s3`
   `defaultEndpointCA` have several lines and also take `--from-file`. The CLI keeps their line
   breaks and trims white space at both ends of the value.

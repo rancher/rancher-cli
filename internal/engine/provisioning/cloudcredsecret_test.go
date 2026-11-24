@@ -27,18 +27,18 @@ import (
 // names a public field.
 var ccsDrivers = []struct{ name, public, private, password, optional, defaults string }{
 	{"amazonec2", "accessKey", "secretKey", "", "", ""},
-	{"azure", "clientId,subscriptionId,environment,tenantId", "clientSecret", "", "tenantId", ""},
+	{"azure", "clientId,subscriptionId,tenantId,environment", "clientSecret", "", "tenantId", ""},
 	{"digitalocean", "", "accessToken", "", "", ""},
 	{"exoscale", "apiKey", "apiSecretKey", "", "", ""},
 	{"google", "", "authEncodedJson", "", "", ""},
 	{"harvester", "clusterType,clusterId", "kubeconfigContent", "", "clusterId", "clusterType:imported"},
-	{"linode", "", "token", "", "", ""},
+	{"linode", "", "token", "rootPass", "", ""},
 	{"nutanix", "endpoint,username,port", "password", "", "", ""},
-	{"oci", "tenancyId,userId,fingerprint", "privateKeyContents", "", "", ""},
+	{"oci", "tenancyId,userId,fingerprint", "privateKeyContents", "privateKeyPassphrase", "", ""},
 	{"otc", "accessKey,username", "secretKey,password,token", "", "", ""},
 	{"openstack", "", "password", "", "", ""},
 	{"packet", "", "apiKey", "", "", ""},
-	{"pnap", "clientIdentifier,clientSecret", "", "clientSecret", "", ""},
+	{"pnap", "clientIdentifier", "clientSecret", "", "", ""},
 	{"rackspace", "", "apiKey", "", "", ""},
 	{"softlayer", "", "apiKey", "", "", ""},
 	{"vmwarevsphere", "username,vcenter,vcenterPort", "password", "", "", "vcenterPort:443"},
@@ -103,18 +103,22 @@ func ccsInputFor(driver string, public, secret []string) ccsRun {
 }
 
 // ccsRuns lists the command line of every driver the table and the static
-// rows have.
+// rows have. A field is secret when Rancher marks it private or names it in
+// passwordFields; a passwordFields name in neither the public nor the private
+// list makes no credential field.
 func ccsRuns() map[string]ccsRun {
 	out := map[string]ccsRun{}
 	for _, d := range ccsDrivers {
 		password := ccsFields(d.password)
-		var public []string
+		var public, passwordPublic []string
 		for _, name := range ccsFields(d.public) {
-			if !slices.Contains(password, name) {
+			if slices.Contains(password, name) {
+				passwordPublic = append(passwordPublic, name)
+			} else {
 				public = append(public, name)
 			}
 		}
-		secret := slices.Concat(ccsFields(d.private), password)
+		secret := slices.Concat(ccsFields(d.private), passwordPublic)
 		out[d.name] = ccsInputFor(d.name, public, secret)
 	}
 	for _, prefix := range cloudcredfields.StaticPrefixes() {
@@ -366,7 +370,7 @@ func TestCloudCredentialRefusalsNeverShowASecretValue(t *testing.T) {
 		{name: "a --from-file argument with no equals sign", in: amazon(nil, secret), code: clierr.CodeValidation},
 		{name: "a secret given with --set", in: amazon([]string{"secretKey=" + secret}), code: clierr.CodeValidation},
 		{name: "a secret given with --set in another case", in: amazon([]string{"SECRETKEY=" + secret}), code: clierr.CodeValidation},
-		{name: "a password field given with --set", in: ccwInput{args: []string{"pnap", "n"}, set: []string{"clientSecret=" + secret}}, code: clierr.CodeValidation},
+		{name: "a password field given with --set", in: ccwInput{args: []string{"publicpassword", "n"}, set: []string{"note=" + secret}}, code: clierr.CodeValidation},
 		{name: "a public field given with --from-file", in: amazon(nil, "accessKey=secret.txt"), code: clierr.CodeValidation},
 		{name: "a missing required field", in: amazon([]string{"accessKey=AKIAFAKE"}), code: clierr.CodeValidation},
 		{name: "a missing required field with stdin that fails", in: amazon([]string{"defaultRegion=us-east-1"}, "secretKey=-"), code: clierr.CodeValidation},
